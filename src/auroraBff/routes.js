@@ -457,7 +457,12 @@ const {
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
-const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
+const {
+  normalizeKey: normalizeDupeKbKey,
+  getDupeKbEntry,
+  upsertDupeKbEntry,
+  purgeDupeKbEntriesByContractVersion,
+} = require('./dupeKbStore');
 const {
   normalizeKey: normalizeProductIntelKbKey,
   getProductIntelKbEntry,
@@ -1628,6 +1633,12 @@ function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
     callPath,
   }).effectiveModel;
 }
+
+function resolveAuroraGeminiModelRaw(keys, fallbackModel) {
+  const picked = pickConfiguredEnv(keys);
+  const raw = String(picked.value || fallbackModel || '').trim();
+  return raw || String(fallbackModel || '').trim();
+}
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
@@ -1653,6 +1664,16 @@ const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
 const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
   resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
+const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
+  resolveAuroraGeminiModelRaw(
+    ['AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL', 'AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL', 'AURORA_RUNTIME_QA_GEMINI_MODEL'],
+    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_MODEL ||
+      ANALYSIS_STORY_MODEL_GEMINI ||
+      'gemini-3-flash-preview',
+  );
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
@@ -15146,6 +15167,24 @@ function resolveStoryReviewGeminiModel(model) {
   if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
   const lower = configured.toLowerCase();
   if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
+  return configured;
+}
+
+function resolveRecoAlternativesOpenWorldGeminiModel(model) {
+  const configured = String(model || AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL || '').trim()
+    || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL
+    || 'gemini-3-flash-preview';
+  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
+  const lower = configured.toLowerCase();
+  if (lower === 'gemini-3-flash-preview') {
+    const preferredStable = String(
+      process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL ||
+      process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
+      '',
+    ).trim();
+    return preferredStable || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL || configured;
+  }
   return configured;
 }
 
@@ -40660,6 +40699,52 @@ function buildExternalSeedOpenWorldSchema() {
   };
 }
 
+function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
+  const text = unwrapCodeFence(rawText);
+  const keyMatch = /"alternatives"\s*:\s*\[/i.exec(text);
+  if (!keyMatch) return [];
+  const arrayStart = text.indexOf('[', keyMatch.index);
+  if (arrayStart < 0) return [];
+  const recovered = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let objectStart = -1;
+  for (let index = arrayStart + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === '{') {
+      if (depth === 0) objectStart = index;
+      depth += 1;
+      continue;
+    }
+    if (char === '}') {
+      if (depth > 0) depth -= 1;
+      if (depth === 0 && objectStart >= 0) {
+        const rawObject = text.slice(objectStart, index + 1);
+        const parsed = parseJsonOnlyObject(rawObject);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
+        objectStart = -1;
+      }
+      continue;
+    }
+    if (char === ']' && depth === 0) break;
+  }
+  return recovered;
+}
+
 function normalizeOpenWorldAlternativeRow(candidate, {
   targetSignals,
   anchorLabel = '',
@@ -40684,8 +40769,14 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
   if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
 
-  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 3), 3);
-  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 3), 3);
+  const reasons = uniqCaseInsensitiveStrings(
+    asStringArray(row.reasons, 3).concat(asLooseStringArray(row.reason, 1)),
+    3,
+  );
+  const tradeoffNotes = uniqCaseInsensitiveStrings(
+    asStringArray(row.tradeoff_notes, 3).concat(asLooseStringArray(row.tradeoff_note, 1)),
+    3,
+  );
   if (!reasons.length || !tradeoffNotes.length) return null;
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
@@ -40750,9 +40841,10 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   logger,
   profileMode = 'anchor_only',
 } = {}) {
-  const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const limit = Math.max(1, Math.min(2, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 2));
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
+  const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
   const hasAnchorSignals = Boolean(
     String(identity.anchorLabel || '').trim() ||
     String(targetSignals.category || '').trim() ||
@@ -40791,26 +40883,25 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         latency_ms: 0,
         cache_hit: false,
         provider: 'gemini',
-        model: ANALYSIS_STORY_MODEL_GEMINI,
+        model: resolvedModel,
         source_mode: 'local_gemini_open_world',
         error_class: 'precheck_fail',
         provider_reason: 'anchor_insufficient_for_open_world_fallback',
         provider_detail: null,
         provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+        provider_model: resolvedModel,
       },
     };
   }
 
   const systemPrompt = [
-    'You are a strict skincare alternatives selector.',
-    'Output STRICT JSON only that matches the schema.',
-    'Suggest conservative real-product alternatives for the anchor product using anchor signals only.',
-    'Do not depend on local candidate pools, selector-grounded placeholders, or synthetic fallback items.',
-    'Prefer 1 to 4 distinct viable alternatives for common anchors when possible.',
-    'Every alternative must include a real brand, a real product name, anchor-linked reasons, and at least one concrete tradeoff or uncertainty.',
-    'Never invent URLs, product IDs, SKUs, prices, exact INCI lists, or formula identity.',
-    'Never return the anchor itself or a trivial title variant.',
+    'Return JSON only.',
+    'Output exactly {"alternatives":[...]} with at most 2 items.',
+    'Each item must use flat keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+    'Return 1 short reason and 1 short tradeoff_note per item.',
+    'Do not output best_use, prose, markdown, URLs, SKUs, prices, or IDs.',
+    'Use anchor signals only. Suggest distinct real skincare products, not the anchor itself.',
+    'For common anchors, prefer 1-2 conservative viable alternatives over an empty list.',
   ].join('\n');
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
@@ -40830,15 +40921,15 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     },
     task: {
       max_alternatives: limit,
-      selection_rule: 'Open-world only. Use anchor signals only. Return distinct, viable skincare alternatives.',
+      selection_rule: 'Open-world only. Use anchor signals only. Return 1-2 distinct viable skincare alternatives.',
     },
   };
-  const userPrompt = JSON.stringify(userPayload, null, 2);
+  const userPrompt = JSON.stringify(userPayload);
   const traceSeed = buildRecoPromptTrace({
     templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
     query: `${systemPrompt}\n${userPrompt}`,
     provider: 'gemini',
-    model: ANALYSIS_STORY_MODEL_GEMINI,
+    model: resolvedModel,
     coverage: {
       has_anchor_id: Boolean(String(anchorId || '').trim()),
       has_product_json: Boolean(productObj && typeof productObj === 'object' && !Array.isArray(productObj)),
@@ -40849,18 +40940,21 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   try {
     const startedAt = Date.now();
     const resp = await callGeminiJsonObjectImpl({
-      model: ANALYSIS_STORY_MODEL_GEMINI,
+      model: resolvedModel,
       systemPrompt,
       userPrompt,
       timeoutMs: 6000,
       temperature: 0.2,
-      maxOutputTokens: 1200,
-      responseJsonSchema: buildExternalSeedOpenWorldSchema(),
+      maxOutputTokens: 360,
       route: 'aurora_reco_alternatives_open_world',
+      ignoreForceModel: true,
     });
-    const rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
+    let rawRows = resp?.ok === true && isPlainObject(resp.json) && Array.isArray(resp.json.alternatives)
       ? resp.json.alternatives
       : [];
+    if (!rawRows.length && typeof resp?.raw_text === 'string') {
+      rawRows = recoverCompleteOpenWorldAlternativesFromRawText(resp.raw_text);
+    }
     const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
     const llmTrace = {
       ...traceSeed,
@@ -40870,7 +40964,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       provider_reason: resp?.ok === true ? null : String(resp?.reason || '').trim() || null,
       provider_detail: resp?.ok === true ? null : String(resp?.detail || '').trim() || null,
       provider_route: 'aurora_reco_alternatives_open_world',
-      provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+      provider_model: resolvedModel,
       provider_timeout_stage: resp?.ok === true ? null : String(resp?.timeout_stage || '').trim() || null,
       provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
       provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
@@ -40878,7 +40972,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
     };
 
-    if (resp?.ok !== true) {
+    if (resp?.ok !== true && !rawRows.length) {
       return {
         ok: true,
         alternatives: [],
@@ -40989,7 +41083,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
           templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
           query: '',
           provider: 'gemini',
-          model: ANALYSIS_STORY_MODEL_GEMINI,
+          model: resolvedModel,
         }),
         latency_ms: 0,
         cache_hit: false,
@@ -40998,7 +41092,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         provider_reason: String(err?.code || err?.message || '').trim() || null,
         provider_detail: String(err?.message || '').trim() || null,
         provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: ANALYSIS_STORY_MODEL_GEMINI,
+        provider_model: resolvedModel,
         provider_timeout_stage: null,
         provider_total_ms: null,
         provider_upstream_ms: null,
@@ -46782,6 +46876,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       applyDupeSuggestSanitizeToEnvelope,
       getDupeKbEntry,
       upsertDupeKbEntry,
+      purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
       buildRecoAlternativesCandidatePool,

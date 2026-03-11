@@ -18,7 +18,8 @@ const {
   hasSyntheticRecommendationSuffix,
 } = require('../skills/dupe_utils');
 
-const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v4';
+const DUPE_SUGGEST_KB_CONTRACT_VERSION = 'dupe_suggest_v5';
+let dupeKbContractPurgePromise = null;
 const PLACEHOLDER_REASON_PATTERNS = [
   /^grounded alternatives derived from resolved candidate pool\.?$/i,
   /^based on resolved product candidates\.?$/i,
@@ -463,6 +464,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   const {
     getDupeKbEntry,
     upsertDupeKbEntry,
+    purgeDupeKbEntriesByContractVersion,
     normalizeDupeKbKey,
     searchPivotaBackendProducts,
     buildRecoAlternativesCandidatePool,
@@ -472,6 +474,22 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     getUpstreamStructuredOrJson,
     extractJsonObjectByKeys,
   } = services;
+
+  if (!dupeKbContractPurgePromise) {
+    dupeKbContractPurgePromise = (async () => {
+      if (typeof purgeDupeKbEntriesByContractVersion !== 'function') return null;
+      try {
+        return await purgeDupeKbEntriesByContractVersion(DUPE_SUGGEST_KB_CONTRACT_VERSION);
+      } catch (err) {
+        logger?.warn?.(
+          { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
+          'aurora bff: dupe kb contract purge failed',
+        );
+        return null;
+      }
+    })();
+  }
+  await dupeKbContractPurgePromise;
 
   function buildDupeSuggestTestSeedCandidates({ inputText, productObj, maxCandidates = 16 } = {}) {
     const queryText = String(inputText || '').trim();
@@ -1146,4 +1164,11 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
   };
 }
 
-module.exports = { executeDupeSuggest };
+function __resetDupeSuggestContractPurgeForTest() {
+  dupeKbContractPurgePromise = null;
+}
+
+module.exports = {
+  executeDupeSuggest,
+  __resetDupeSuggestContractPurgeForTest,
+};

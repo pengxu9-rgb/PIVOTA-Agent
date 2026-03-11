@@ -114,7 +114,29 @@ test('scenario 2: same brand same name different URL is filtered', () => {
   const { kept, dropped } = filterSelfReferences(candidates, anchor);
   expect(kept).toHaveLength(0);
   expect(dropped).toHaveLength(1);
-  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_SAME_NAME);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_EXACT_LABEL);
+});
+
+test('scenario 2a: same brand candidate with leading brand prefix is filtered as exact label match', () => {
+  const anchor = {
+    brand: 'The Ordinary',
+    name: 'Niacinamide 10% + Zinc 1%',
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'Serum',
+  };
+  const candidates = [
+    {
+      brand: 'The Ordinary',
+      name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      category: 'Serum',
+      confidence: 0.84,
+    },
+  ];
+
+  const { kept, dropped } = filterSelfReferences(candidates, anchor);
+  expect(kept).toHaveLength(0);
+  expect(dropped).toHaveLength(1);
+  expect(dropped[0]._drop_reason).toBe(DROP_REASON.SAME_BRAND_EXACT_LABEL);
 });
 
 test('scenario 2b: brand-missing catalog candidate with exact full-name match is filtered', () => {

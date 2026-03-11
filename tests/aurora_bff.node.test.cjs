@@ -5218,6 +5218,10 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5239,6 +5243,10 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
           geminiCalls += 1;
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
+          assert.equal(args.ignoreForceModel, true);
+          assert.equal(args.model, 'gemini-2.5-flash');
+          assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseJsonSchema'), false);
+          assert.equal(Object.prototype.hasOwnProperty.call(args, 'responseSchema'), false);
           return {
             ok: true,
             json: {
@@ -5248,9 +5256,8 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
                   name: 'Niacinamide Serum',
                   product_type: 'serum',
                   similarity_score: 72,
-                  reasons: ['Niacinamide-led serum role overlaps with the anchor.'],
-                  tradeoff_notes: ['Zinc support is less explicit than the anchor.'],
-                  best_use: 'Tone-evening serum routines',
+                  reason: 'Niacinamide-led serum role overlaps with the anchor.',
+                  tradeoff_note: 'Zinc support is less explicit than the anchor.',
                 },
               ],
             },
@@ -5294,6 +5301,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
         assert.equal(out?.source_mode, 'open_world_only');
         assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
         assert.equal(Array.isArray(out?.alternatives), true);
         assert.equal(out.alternatives.length, 1);
         assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
@@ -5317,6 +5325,10 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -5381,7 +5393,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
         assert.equal(out?.llm_trace?.provider_reason, 'gemini_client_unavailable');
         assert.equal(out?.llm_trace?.provider_detail, 'missing api key');
         assert.equal(out?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
-        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
         assert.equal(out?.llm_trace?.provider_timeout_stage, 'queue');
         assert.equal(out?.llm_trace?.provider_total_ms, 321);
         assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
@@ -5392,6 +5404,74 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
         decisionModule.auroraChat = originalAuroraChat;
         delete require.cache[moduleId];
         delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: open_world_only recovers complete alternatives from truncated raw JSON', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'true',
+      AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
+      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'PARSE_TRUNCATED_JSON',
+          detail: 'finish_reason=MAX_TOKENS',
+          raw_text: '{"alternatives":[{"brand":"Good Molecules","name":"Niacinamide Serum","product_type":"serum","similarity_score":72,"reason":"Niacinamide-led serum role overlaps with the anchor.","tradeoff_note":"Zinc support is less explicit than the anchor."},{"brand":"The Inkey List","name":"Niacinamide Serum"',
+          finish_reason: 'MAX_TOKENS',
+          parse_status: 'parse_truncated',
+          meta: { result_reason: 'gemini_json_max_tokens' },
+        }));
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: { lang: 'EN', request_id: 'req_open_world_trunc', trace_id: 'trace_open_world_trunc' },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          productObj: {
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            product_type: 'serum',
+            category: 'Serum',
+            ingredients: ['Niacinamide', 'Zinc PCA'],
+            claims: ['brightening', 'oil control'],
+          },
+          anchorId: '',
+          maxTotal: 2,
+          candidatePool: [],
+          logger: null,
+          options: {
+            recommendation_mode: 'open_world_only',
+            profile_mode: 'anchor_only',
+            disable_fallback: true,
+            disable_synthetic_local_fallback: true,
+            ignore_selector_candidates: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(Array.isArray(out?.alternatives), true);
+        assert.equal(out.alternatives.length, 1);
+        assert.equal(out.alternatives[0]?.product?.brand, 'Good Molecules');
+        assert.equal(out.alternatives[0]?.product?.name, 'Niacinamide Serum');
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        delete require.cache[moduleId];
       }
     },
   );
