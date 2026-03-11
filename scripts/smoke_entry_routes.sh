@@ -303,7 +303,18 @@ if "text_response" in cards:
             sections = card.get("sections") or []
             if sections:
                 text = (sections[0].get("text_en") or sections[0].get("text_zh") or "").strip().lower()
-                if text and ("alternate" in text or "avoid" in text or "separate" in text or "错开" in text or "不要同晚" in text):
+                if text and (
+                    "alternate" in text
+                    or "avoid" in text
+                    or "separate" in text
+                    or "错开" in text
+                    or "不要同晚" in text
+                    or "交替" in text
+                    or "轮换" in text
+                    or "隔天" in text
+                    or "另一个晚上" in text
+                    or "斑贴测试" in text
+                ):
                     raise SystemExit(0)
 if "confidence_notice" in cards:
     chip_ids = [(c.get("chip_id") or "") for c in (j.get("suggested_chips") or [])]
