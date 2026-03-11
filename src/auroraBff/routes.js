@@ -39528,6 +39528,23 @@ function normalizeRecoAlternativesMode(raw) {
   return 'pool_only';
 }
 
+function isExternalRecoAlternativesSeedProduct(productLike) {
+  const product = productLike && typeof productLike === 'object' && !Array.isArray(productLike) ? productLike : null;
+  if (!product) return false;
+  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata)
+    ? product.metadata
+    : null;
+  const topLevelMatchState = pickFirstTrimmed(product.match_state, product.matchState);
+  const metadataMatchState = metadata ? pickFirstTrimmed(metadata.match_state, metadata.matchState) : '';
+  const topLevelPdpOpen = product.pdp_open && typeof product.pdp_open === 'object' && !Array.isArray(product.pdp_open)
+    ? product.pdp_open
+    : (product.pdpOpen && typeof product.pdpOpen === 'object' && !Array.isArray(product.pdpOpen) ? product.pdpOpen : null);
+  const topLevelPdpPath = topLevelPdpOpen ? pickFirstTrimmed(topLevelPdpOpen.path) : '';
+  const metadataPdpPath = metadata ? pickFirstTrimmed(metadata.pdp_open_path, metadata.pdpOpenPath) : '';
+  return String(topLevelMatchState || metadataMatchState).trim().toLowerCase() === 'llm_seed'
+    || String(topLevelPdpPath || metadataPdpPath).trim().toLowerCase() === 'external';
+}
+
 function resolveRecoAlternativesPromptSpec(modeRaw) {
   const mode = normalizeRecoAlternativesMode(modeRaw);
   if (mode === 'pool_only') {
@@ -47280,6 +47297,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const maxTotal = Number.isFinite(Number(parsed.data.max_total))
         ? Math.max(1, Math.min(8, Math.trunc(Number(parsed.data.max_total))))
         : 6;
+      const isExternalSeedCompare = isExternalRecoAlternativesSeedProduct(productObj);
 
       if (!productInput && !anchorId) {
         return res.status(400).json({
@@ -47301,6 +47319,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         maxTotal,
         debug: includeDebug,
         logger,
+        ...(isExternalSeedCompare
+          ? {
+              options: {
+                recommendation_mode: 'hybrid_fallback',
+                disable_synthetic_local_fallback: true,
+              },
+            }
+          : {}),
       });
 
       return res.json({
