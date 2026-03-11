@@ -1423,6 +1423,256 @@ test('/v1/routine/simulate: emits conflict_heatmap payload when enabled', async 
   });
 });
 
+test('/v1/routine/simulate: normalizes pm="same_as_am" before simulation and heatmap generation', async () => {
+  await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true' }, async () => {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+    const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+      const m = String(method || '').toLowerCase();
+      const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+      const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+      if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+      const req = {
+        method: String(method || '').toUpperCase(),
+        path: routePath,
+        body,
+        query,
+        headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || '';
+        },
+      };
+
+      const res = {
+        statusCode: 200,
+        headers: {},
+        body: undefined,
+        headersSent: false,
+        status(code) {
+          this.statusCode = code;
+          return this;
+        },
+        setHeader(name, value) {
+          this.headers[String(name || '').toLowerCase()] = value;
+        },
+        header(name, value) {
+          this.setHeader(name, value);
+          return this;
+        },
+        json(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+        send(payload) {
+          this.body = payload;
+          this.headersSent = true;
+          return this;
+        },
+      };
+
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+      for (const fn of handlers) {
+        // eslint-disable-next-line no-await-in-loop
+        await fn(req, res, () => {});
+        if (res.headersSent) break;
+      }
+
+      return { status: res.statusCode, body: res.body };
+    };
+
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+      headers: { 'X-Aurora-UID': 'test_uid_same_am', 'X-Trace-ID': 'test_trace_same_am', 'X-Brief-ID': 'test_brief_same_am', 'X-Lang': 'EN' },
+      body: {
+        routine: {
+          am: [{ key_actives: ['retinol'], step: 'Treatment' }],
+          pm: 'same_as_am',
+        },
+        test_product: { key_actives: ['glycolic acid'], name: 'Test Acid' },
+      },
+    });
+
+    assert.equal(resp.status, 200);
+    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+    const heatmap = cards.find((c) => c && c.type === 'conflict_heatmap');
+    assert.ok(heatmap);
+    assert.equal(heatmap?.payload?.axes?.rows?.items?.length, 3);
+    assert.equal(heatmap.payload.axes.rows.items[0]?.label_i18n?.en, 'AM Treatment');
+    assert.equal(heatmap.payload.axes.rows.items[1]?.label_i18n?.en, 'PM Treatment');
+  });
+});
+
+test('/v1/routine/simulate: marks analysis_ready when actives/concepts are detectable', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+    headers: { 'X-Aurora-UID': 'test_uid_analysis_ready', 'X-Trace-ID': 'test_trace_analysis_ready', 'X-Brief-ID': 'test_brief_analysis_ready', 'X-Lang': 'EN' },
+    body: {
+      routine: {
+        pm: [{ key_actives: ['niacinamide'], step: 'Serum', name: 'Niacinamide Serum' }],
+      },
+      test_product: { key_actives: ['retinol'], name: 'Retinol Night Serum' },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const simCard = cards.find((c) => c && c.type === 'routine_simulation');
+  assert.ok(simCard);
+  assert.equal(simCard?.payload?.analysis_ready, true);
+  assert.equal(simCard?.payload?.signal_summary?.routine_active_count, 1);
+  assert.equal(simCard?.payload?.signal_summary?.test_active_count, 1);
+});
+
+test('/v1/routine/simulate: keeps analysis_ready false when no actives/concepts are detectable', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const invokeRoute = async (app, method, routePath, { headers = {}, body = {}, query = {} } = {}) => {
+    const m = String(method || '').toLowerCase();
+    const stack = app && app._router && Array.isArray(app._router.stack) ? app._router.stack : [];
+    const layer = stack.find((l) => l && l.route && l.route.path === routePath && l.route.methods && l.route.methods[m]);
+    if (!layer) throw new Error(`Route not found: ${method} ${routePath}`);
+
+    const req = {
+      method: String(method || '').toUpperCase(),
+      path: routePath,
+      body,
+      query,
+      headers: Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
+      get(name) {
+        return this.headers[String(name || '').toLowerCase()] || '';
+      },
+    };
+
+    const res = {
+      statusCode: 200,
+      headers: {},
+      body: undefined,
+      headersSent: false,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name, value) {
+        this.headers[String(name || '').toLowerCase()] = value;
+      },
+      header(name, value) {
+        this.setHeader(name, value);
+        return this;
+      },
+      json(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+      send(payload) {
+        this.body = payload;
+        this.headersSent = true;
+        return this;
+      },
+    };
+
+    const handlers = Array.isArray(layer.route.stack) ? layer.route.stack.map((s) => s && s.handle).filter(Boolean) : [];
+    for (const fn of handlers) {
+      // eslint-disable-next-line no-await-in-loop
+      await fn(req, res, () => {});
+      if (res.headersSent) break;
+    }
+
+    return { status: res.statusCode, body: res.body };
+  };
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/routine/simulate', {
+    headers: { 'X-Aurora-UID': 'test_uid_analysis_hidden', 'X-Trace-ID': 'test_trace_analysis_hidden', 'X-Brief-ID': 'test_brief_analysis_hidden', 'X-Lang': 'EN' },
+    body: {
+      routine: {
+        pm: [{ step: 'mask', name: 'Water Sleeping Mask', brand: 'Laneige' }],
+      },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const simCard = cards.find((c) => c && c.type === 'routine_simulation');
+  assert.ok(simCard);
+  assert.equal(simCard?.payload?.analysis_ready, false);
+  assert.equal(simCard?.payload?.signal_summary?.routine_active_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.routine_concept_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.test_active_count, 0);
+  assert.equal(simCard?.payload?.signal_summary?.test_concept_count, 0);
+});
+
 test('/v1/chat: compatibility question short-circuits to routine_simulation + conflict_heatmap', async () => {
   await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true', AURORA_BFF_RETENTION_DAYS: '0' }, async () => {
     const express = require('express');
