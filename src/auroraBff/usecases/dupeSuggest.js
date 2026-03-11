@@ -520,16 +520,30 @@ function inferDupePoolUsageRole(...values) {
 
 function scorePoolCandidateForSelector(row, anchorContext = {}) {
   const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const candidateName = String(candidate.display_name || candidate.name || '').trim();
   const anchorRole = normalizeTextToken(anchorContext.usageRole);
   const candidateRole = inferDupePoolUsageRole(
     candidate.category,
     candidate.product_type,
     candidate.type,
-    candidate.display_name,
+    candidateName,
     candidate.name,
   );
   const anchorCategory = normalizeTextToken(anchorContext.category);
   const candidateCategory = normalizeTextToken(candidate.category || candidate.product_type || candidate.type);
+  const candidateThemes = extractDupePoolActiveThemesFromText(candidateName, candidate.category, candidate.signals);
+  const activeOverlap = computeArrayOverlap(anchorContext.activeThemes, candidateThemes);
+  const extraThemeCount = Array.isArray(anchorContext.activeThemes) && anchorContext.activeThemes.length
+    ? candidateThemes.filter((theme) => !anchorContext.activeThemes.includes(theme)).length
+    : 0;
+  const extraThemePenalty = extraThemeCount > 0 ? Math.min(0.9, extraThemeCount * 0.45) : 0;
+  const themeNameBoost = Array.isArray(anchorContext.activeThemes) && anchorContext.activeThemes.some((theme) => (
+    normalizeTextToken(candidateName).includes(theme.replace(/_/g, ' '))
+  )) ? 0.75 : 0;
+  const nameTokenOverlap = computeArrayOverlap(
+    Array.isArray(anchorContext.textTokens) ? anchorContext.textTokens : [],
+    tokenizePoolCandidateText(candidate.brand, candidateName, candidate.category, candidate.signals),
+  );
   const similarity = Number(candidate.similarity_score ?? candidate.similarity ?? 0);
   const normalizedSimilarity = Number.isFinite(similarity)
     ? Math.max(0, Math.min(1, similarity > 1 ? similarity / 100 : similarity))
@@ -537,10 +551,14 @@ function scorePoolCandidateForSelector(row, anchorContext = {}) {
   const hasStableRef = Boolean(String(candidate.product_id || candidate.sku_id || candidate.url || candidate.pdp_url || '').trim());
   const source = normalizeTextToken(candidate._pool_source || candidate.retrieval_source);
   let score = 0;
+  score += activeOverlap * 5;
   if (anchorRole && anchorRole !== 'unknown' && candidateRole === anchorRole) score += 4;
   else if (candidateRole !== 'unknown') score += 1;
   if (anchorCategory && candidateCategory && anchorCategory === candidateCategory) score += 3;
+  score += nameTokenOverlap * 1.25;
   score += normalizedSimilarity * 3;
+  score += themeNameBoost;
+  score -= extraThemePenalty;
   if (hasStableRef) score += 1.5;
   if (source === 'product_embedded') score += 1.25;
   else if (source === 'catalog_search') score += 0.75;
@@ -1027,7 +1045,7 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     const brandToken = String(product.brand || '').trim();
     const nameToken = String(product.display_name || product.name || '').trim();
     const categoryToken = String(product.category || product.product_type || product.type || '').trim();
-    const usageRole = inferDupePoolUsageRole(categoryToken, nameToken);
+    const anchorContext = buildPoolFallbackAnchorContext({ original: productObj, inputText });
     const fallbackQueries = [];
     if (brandToken && nameToken) fallbackQueries.push(`${brandToken} ${nameToken}`);
     if (categoryToken && brandToken) fallbackQueries.push(`${categoryToken} ${brandToken}`);
@@ -1128,8 +1146,8 @@ async function executeDupeSuggest({ ctx, input, profileSummary = null, recentLog
     }
 
     deduped.sort((left, right) => {
-      const leftScore = scorePoolCandidateForSelector(left, { usageRole, category: categoryToken });
-      const rightScore = scorePoolCandidateForSelector(right, { usageRole, category: categoryToken });
+      const leftScore = scorePoolCandidateForSelector(left, anchorContext);
+      const rightScore = scorePoolCandidateForSelector(right, anchorContext);
       if (rightScore !== leftScore) return rightScore - leftScore;
       return String(left.display_name || left.name || '').localeCompare(String(right.display_name || right.name || ''));
     });
