@@ -678,6 +678,115 @@ test('analysis deep-dive helpers: llm patch merges into baseline story without d
   }
 });
 
+test('analysis deep-dive helpers: story snapshot overrides weak persisted lastAnalysis baseline', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+  });
+  internal.__setCallGeminiJsonObjectForTest(async () => ({
+    ok: false,
+    reason: 'forced_fallback',
+    detail: 'snapshot baseline only',
+  }));
+
+  try {
+    const result = await internal.buildAnalysisDeepDiveContentWithLlm({
+      lastAnalysis: {
+        skin_profile: {
+          current_strengths: [],
+        },
+        priority_findings: [{ title: 'Slight dryness or surface flaking.' }],
+        confidence_overall: { level: 'unconfirmed' },
+        guidance_brief: [],
+      },
+      diagnosisArtifact: {
+        artifact_id: 'da_snapshot_override',
+        use_photo: true,
+        overall_confidence: { level: 'medium', score: 0.72 },
+        photos: [{ slot: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_context: {
+          analysis_source: 'vision_gemini',
+          quality_grade: 'pass',
+        },
+      },
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        goals: ['acne', 'pores'],
+      },
+      language: 'EN',
+      requestId: 'req_snapshot_override',
+      replyText: 'Tell me more about my skin',
+      actionData: {
+        analysis_origin: 'photo',
+        source_card_type: 'analysis_story_v2',
+        photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_daylight_1', qc_status: 'passed' }],
+        analysis_story_snapshot: {
+          schema_version: 'aurora.analysis_story.v2',
+          confidence_overall: { level: 'medium' },
+          skin_profile: {
+            current_strengths: [
+              'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+            ],
+          },
+          priority_findings: [
+            {
+              priority: 1,
+              title: 'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              detail: 'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              evidence_region_or_module: [],
+            },
+            {
+              priority: 2,
+              title: 'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+              detail: 'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+              evidence_region_or_module: [],
+            },
+          ],
+          target_state: ['Stabilize barrier first, then improve tone and texture consistency.'],
+          core_principles: ['Stability first, then progression; avoid stacking multiple strong actives at once.'],
+          am_plan: [],
+          pm_plan: [],
+          timeline: {
+            first_4_weeks: ['Week 1: keep cleanse-moisturize-sunscreen baseline only.'],
+            week_8_12_expectation: ['Expect visible stability and tone improvements in 8-12 weeks.'],
+          },
+          ui_card_v1: {
+            headline: 'Stabilize barrier first, then improve tone and texture consistency.',
+            key_points: [
+              'Pores/texture look more noticeable (severe): lean on gentle cleansing + hydration + oil control; avoid over-exfoliating.',
+              'Some uneven tone/dark spot tendency (severe): prioritize consistent SPF and gentle brightening pace.',
+            ],
+            actions_now: ['AM: Gentle cleanse', 'AM: Hydration/repair serum'],
+            avoid_now: ['If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.'],
+            confidence_label: 'medium',
+            next_checkin: 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
+          },
+          safety_notes: ['If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.'],
+          disclaimer_non_medical: true,
+        },
+      },
+      sessionAnalysisContext: null,
+      logger: null,
+    });
+
+    const storyCard = result.cards.find((card) => card && card.type === 'analysis_story_v2');
+    assert.ok(storyCard);
+    assert.equal(result.analysis_origin, 'photo');
+    assert.equal(result.photo_ref_count, 1);
+    assert.equal(result.llm_used, false);
+    assert.equal(storyCard.payload.confidence_overall.level, 'medium');
+    assert.equal(Array.isArray(storyCard.payload.priority_findings), true);
+    assert.equal(storyCard.payload.priority_findings.length, 2);
+    assert.match(
+      String(storyCard.payload.ui_card_v1?.headline || ''),
+      /stabilize barrier first, then improve tone and texture consistency/i,
+    );
+    assert.doesNotMatch(String(result.assistant_text || ''), /Current confidence: unconfirmed/i);
+  } finally {
+    internal.__resetCallGeminiJsonObjectForTest();
+  }
+});
+
 test('analysis deep-dive helpers: truncated json recovers partial llm answer instead of falling back to baseline headline', async () => {
   const internal = loadInternalWithFlags({
     AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',

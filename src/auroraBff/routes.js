@@ -20798,6 +20798,144 @@ function buildDeepDiveFallbackStoryPayload({ lastAnalysis, language } = {}) {
   return coerceAnalysisStoryV2(story, story);
 }
 
+function humanizeDeepDiveConcernToken(token, language = 'EN') {
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+  const normalized = raw.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  const catalog = language === 'CN'
+    ? {
+        acne: '痘痘/爆痘倾向',
+        breakout: '痘痘/爆痘倾向',
+        pores: '毛孔与粗糙度',
+        texture: '纹理与粗糙度',
+        dark_spots: '色沉/暗沉',
+        pigmentation: '色沉/暗沉',
+        redness: '泛红',
+        dehydration: '缺水',
+        dryness: '干燥/起皮',
+        oiliness: '出油',
+        sensitivity: '敏感反应',
+      }
+    : {
+        acne: 'acne activity',
+        breakout: 'breakout activity',
+        pores: 'visible pores / texture',
+        texture: 'texture irregularity',
+        dark_spots: 'uneven tone / dark spots',
+        pigmentation: 'uneven tone / pigmentation',
+        redness: 'redness',
+        dehydration: 'dehydration',
+        dryness: 'dryness / flaking',
+        oiliness: 'oiliness',
+        sensitivity: 'sensitivity',
+      };
+  for (const [key, value] of Object.entries(catalog)) {
+    if (normalized.includes(key)) return value;
+  }
+  const humanized = raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!humanized) return null;
+  return humanized.charAt(0).toUpperCase() + humanized.slice(1);
+}
+
+function buildArtifactConcernLinesForDeepDive({ diagnosisArtifact, language } = {}) {
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
+  return concerns
+    .map((item) => {
+      const score =
+        item && item.confidence && typeof item.confidence === 'object'
+          ? Number(item.confidence.score)
+          : Number.NaN;
+      return {
+        title: humanizeDeepDiveConcernToken(
+          pickFirstTrimmed(item && item.title, item && item.label, item && item.concern_id, item && item.id),
+          lang,
+        ),
+        score: Number.isFinite(score) ? score : 0,
+      };
+    })
+    .filter((item) => Boolean(item.title))
+    .sort((a, b) => Number(b.score) - Number(a.score))
+    .slice(0, 4)
+    .map((item) =>
+      lang === 'CN'
+        ? `照片证据仍然更支持 ${item.title}。`
+        : `Photo-backed evidence still points to ${item.title}.`,
+    );
+}
+
+function normalizeDeepDiveStorySnapshot(snapshot, fallbackStory = null) {
+  if (!isPlainObject(snapshot)) return null;
+  try {
+    return coerceAnalysisStoryV2(snapshot, fallbackStory || snapshot);
+  } catch {
+    return null;
+  }
+}
+
+function resolveDeepDiveBaselineStoryPayload({
+  lastAnalysis,
+  storySnapshot,
+  diagnosisArtifact,
+  language,
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const snapshotStory = normalizeDeepDiveStorySnapshot(storySnapshot);
+  if (snapshotStory) return snapshotStory;
+
+  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis, language: lang });
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
+  const artifactConfidence =
+    artifact.overall_confidence && typeof artifact.overall_confidence === 'object'
+      ? artifact.overall_confidence
+      : {};
+  const artifactConcernLines = buildArtifactConcernLinesForDeepDive({
+    diagnosisArtifact: artifact,
+    language: lang,
+  });
+  const enriched = {
+    ...fallbackStory,
+    confidence_overall: {
+      ...(isPlainObject(fallbackStory.confidence_overall) ? fallbackStory.confidence_overall : {}),
+    },
+    ui_card_v1: isPlainObject(fallbackStory.ui_card_v1) ? { ...fallbackStory.ui_card_v1 } : {},
+  };
+
+  const baselineConfidence = rankAnalysisConfidenceLevel(
+    fallbackStory && fallbackStory.confidence_overall && fallbackStory.confidence_overall.level,
+  );
+  const artifactConfidenceRank = rankAnalysisConfidenceLevel(artifactConfidence && artifactConfidence.level);
+  if (artifactConfidenceRank > baselineConfidence) {
+    enriched.confidence_overall = {
+      ...(isPlainObject(enriched.confidence_overall) ? enriched.confidence_overall : {}),
+      ...(pickFirstTrimmed(artifactConfidence.level) ? { level: pickFirstTrimmed(artifactConfidence.level) } : {}),
+      ...(Number.isFinite(Number(artifactConfidence.score)) ? { score: Number(artifactConfidence.score) } : {}),
+    };
+  }
+
+  const baselineFindings = Array.isArray(fallbackStory.priority_findings) ? fallbackStory.priority_findings.filter(Boolean) : [];
+  if (artifactConcernLines.length > baselineFindings.length && baselineConfidence <= 1) {
+    enriched.priority_findings = artifactConcernLines.map((line, idx) => ({
+      priority: idx + 1,
+      title: line,
+      detail: line,
+      evidence_region_or_module: [],
+    }));
+    if (isPlainObject(enriched.ui_card_v1)) {
+      enriched.ui_card_v1 = {
+        ...enriched.ui_card_v1,
+        ...(artifactConcernLines.length ? { key_points: artifactConcernLines.slice(0, 3) } : {}),
+      };
+    }
+  }
+
+  return coerceAnalysisStoryV2(enriched, fallbackStory);
+}
+
 function buildDeepDiveRoutineContext(profile) {
   const routineRaw = isPlainObject(profile) ? profile.currentRoutine ?? profile.current_routine ?? null : null;
   if (routineRaw == null) return null;
@@ -20863,6 +21001,25 @@ function buildDeepDiveAnalysisEvidence({
     findingLines,
     strengths,
   } = extractAnalysisFollowupSignals(lastAnalysis);
+  const fallbackSignals = extractAnalysisFollowupSignals(fallbackStory);
+  const effectiveGuidanceBrief =
+    Array.isArray(fallbackSignals && fallbackSignals.guidanceBrief) && fallbackSignals.guidanceBrief.length > guidanceBrief.length
+      ? fallbackSignals.guidanceBrief
+      : guidanceBrief;
+  const effectiveConfidence =
+    rankAnalysisConfidenceLevel(fallbackSignals && fallbackSignals.confidence && fallbackSignals.confidence.level) >
+    rankAnalysisConfidenceLevel(confidence && confidence.level)
+      ? fallbackSignals.confidence
+      : confidence;
+  const effectiveStrengths = Array.isArray(strengths) && strengths.length
+    ? strengths
+    : Array.isArray(fallbackSignals && fallbackSignals.strengths)
+      ? fallbackSignals.strengths
+      : [];
+  const effectiveFindingLines =
+    Array.isArray(fallbackSignals && fallbackSignals.findingLines) && fallbackSignals.findingLines.length > findingLines.length
+      ? fallbackSignals.findingLines
+      : findingLines;
   const artifactConcerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
   const concernEvidence = artifactConcerns
     .map((item, idx) => {
@@ -20875,7 +21032,7 @@ function buildDeepDiveAnalysisEvidence({
       };
     })
     .filter(Boolean);
-  const followupEvidence = findingLines
+  const followupEvidence = effectiveFindingLines
     .map((line, idx) => ({
       rank: idx + 1,
       observation: line,
@@ -20920,13 +21077,13 @@ function buildDeepDiveAnalysisEvidence({
     },
     routine_context: routineContext,
     missing_routine_fields: deriveRoutineMissingFields(profile),
-    low_confidence: String(confidence.level || '').trim().toLowerCase() === 'low',
+    low_confidence: String(effectiveConfidence.level || '').trim().toLowerCase() === 'low',
     confidence_overall: {
-      level: pickFirstTrimmed(confidence.level) || null,
-      ...(Number.isFinite(Number(confidence.score)) ? { score: Number(confidence.score) } : {}),
+      level: pickFirstTrimmed(effectiveConfidence.level) || null,
+      ...(Number.isFinite(Number(effectiveConfidence.score)) ? { score: Number(effectiveConfidence.score) } : {}),
     },
-    current_strengths: strengths,
-    guidance_brief: guidanceBrief.slice(0, 4),
+    current_strengths: effectiveStrengths,
+    guidance_brief: effectiveGuidanceBrief.slice(0, 4),
     finding_evidence: findingEvidence,
     ingredient_targets: Array.isArray(ingredientPlan && ingredientPlan.targets)
       ? ingredientPlan.targets.slice(0, 4).map((item) => ({
@@ -21217,9 +21374,21 @@ async function buildAnalysisDeepDiveContentWithLlm({
   sessionAnalysisContext,
   logger,
 } = {}) {
+  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
+  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  const storySnapshot =
+    normalizedActionData.analysis_story_snapshot ||
+    normalizedActionData.analysis_story_v2 ||
+    normalizedSessionContext.analysis_story_snapshot ||
+    normalizedSessionContext.analysis_story_v2 ||
+    (normalizedArtifact && normalizedArtifact.analysis_story_snapshot) ||
+    null;
+  const analysisBaseline =
+    normalizeDeepDiveStorySnapshot(storySnapshot, null) || lastAnalysis;
   const fallback = buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.deep_dive_skin',
-    lastAnalysis,
+    lastAnalysis: analysisBaseline,
     language,
     requestId,
     replyText,
@@ -21237,9 +21406,6 @@ async function buildAnalysisDeepDiveContentWithLlm({
     };
   }
 
-  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
-  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
-  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
   const photoRefs = normalizeAnalysisPhotoRefs([
     ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
     ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
@@ -21250,9 +21416,14 @@ async function buildAnalysisDeepDiveContentWithLlm({
     photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
       ? 'photo'
       : 'profile';
-  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis, language });
+  const fallbackStory = resolveDeepDiveBaselineStoryPayload({
+    lastAnalysis: analysisBaseline,
+    storySnapshot,
+    diagnosisArtifact: normalizedArtifact,
+    language,
+  });
   const evidence = buildDeepDiveAnalysisEvidence({
-    lastAnalysis,
+    lastAnalysis: analysisBaseline,
     diagnosisArtifact: normalizedArtifact,
     profile,
     language,
