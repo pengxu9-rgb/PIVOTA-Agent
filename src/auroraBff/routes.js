@@ -50719,13 +50719,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const routine = parsed.data.routine || {};
+      const routine = normalizeRoutineInputWithPmShortcut(parsed.data.routine || {});
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
       const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
         : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
+      const simPayload = {
+        safe: sim.safe,
+        conflicts: sim.conflicts,
+        summary: sim.summary,
+        analysis_ready: sim.analysis_ready === true,
+        signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+      };
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
         suggested_chips: [],
@@ -50733,7 +50740,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           {
             card_id: `sim_${ctx.request_id}`,
             type: 'routine_simulation',
-            payload: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary },
+            payload: simPayload,
           },
           {
             card_id: `heatmap_${ctx.request_id}`,
@@ -55304,7 +55311,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (simInput) {
           const { routine, testProduct } = simInput;
           const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
-          const simPayload = { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary };
+          const simPayload = {
+            safe: sim.safe,
+            conflicts: sim.conflicts,
+            summary: sim.summary,
+            analysis_ready: sim.analysis_ready === true,
+            signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
+          };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
           const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
