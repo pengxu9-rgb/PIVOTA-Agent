@@ -4,7 +4,7 @@ const express = require('express');
 const request = require('supertest');
 
 const { registerRoutes } = require('../src/auroraBff');
-const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+const { __resetRouterForTests, __setLegacyChatProxyForTests } = require('../src/auroraBff/routes/chat');
 
 function createApp() {
   const app = express();
@@ -36,6 +36,50 @@ test.beforeEach(() => {
 test.after(() => {
   delete process.env.AURORA_CHAT_V2_STUB_RESPONSES;
   __resetRouterForTests();
+});
+
+test('POST /v1/chat/stream proxies deep-dive prompts to legacy chat route', async () => {
+  __setLegacyChatProxyForTests(async () => ({
+    status: 200,
+    data: {
+      assistant_message: { role: 'assistant', content: 'This explanation stays grounded in your latest photo-based analysis.' },
+      cards: [
+        {
+          card_id: 'analysis_followup_story_test',
+          type: 'analysis_story_v2',
+          payload: { summary: 'This explanation stays grounded in your latest photo-based analysis.' },
+        },
+      ],
+      events: [
+        {
+          event_name: 'analysis_followup_action_routed',
+          data: { action_id: 'chip.aurora.next_action.deep_dive_skin', fell_back_to_generic: false },
+        },
+      ],
+      suggested_chips: [],
+      session_patch: {},
+    },
+  }));
+
+  const app = createApp();
+  const response = await request(app)
+    .post('/v1/chat/stream')
+    .send({
+      message: 'Tell me more about my skin',
+      language: 'EN',
+    })
+    .expect(200);
+
+  const parsed = parseSse(response.text);
+  const resultPayload = parsed.find((event) => event.event === 'result')?.data;
+  assert.equal(parsed.some((event) => event.event === 'thinking'), false);
+  assert.ok(Array.isArray(resultPayload?.cards));
+  assert.equal(resultPayload?.cards?.[0]?.type, 'analysis_story_v2');
+  assert.equal(
+    resultPayload?.events?.some((event) => event && event.event_name === 'analysis_followup_action_routed'),
+    true,
+  );
+  assert.strictEqual(parsed[parsed.length - 1]?.event, 'done');
 });
 
 test('POST /v2/chat accepts legacy intent payloads and returns next_actions', async () => {

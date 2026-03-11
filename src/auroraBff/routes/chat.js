@@ -1,9 +1,26 @@
+const axios = require('axios');
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 
 let routerSingleton = null;
+let legacyChatProxyOverride = null;
+
+const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
+  'chip.aurora.next_action.deep_dive_skin',
+  'chip.aurora.next_action.ingredient_plan',
+  'chip.aurora.next_action.routine_deep_dive',
+  'chip.aurora.next_action.safety_concerns',
+]);
+
+const IMPLICIT_DEEP_DIVE_MESSAGES = new Set([
+  'tell me more about my skin',
+  'dive deeper into skin',
+  'deep dive into skin',
+  '深入了解我的皮肤状态',
+  '深入了解皮肤状态',
+]);
 
 function toBool(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -26,6 +43,11 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
+  legacyChatProxyOverride = null;
+}
+
+function __setLegacyChatProxyForTests(fn) {
+  legacyChatProxyOverride = typeof fn === 'function' ? fn : null;
 }
 
 function normalizeLocaleToken(value) {
@@ -76,6 +98,70 @@ function compactStringArray(value) {
   return value
     .map((item) => (typeof item === 'string' ? item.trim() : ''))
     .filter(Boolean);
+}
+
+function normalizeImplicitDeepDiveMessage(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function shouldProxyAnalysisFollowupToLegacy(body) {
+  const payload = isPlainObject(body) ? body : {};
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  if (ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim())) {
+    return true;
+  }
+  const message = pickFirstTrimmed(
+    payload.message,
+    payload.text,
+    payload.query,
+    isPlainObject(action.data) ? action.data.reply_text : null,
+    isPlainObject(action.data) ? action.data.replyText : null,
+  );
+  return IMPLICIT_DEEP_DIVE_MESSAGES.has(normalizeImplicitDeepDiveMessage(message));
+}
+
+function buildLegacyProxyHeaders(req) {
+  const headers = {};
+  const copyHeader = (name) => {
+    const value = req.get(name);
+    if (value != null && String(value).trim()) headers[name] = value;
+  };
+  [
+    'X-Aurora-UID',
+    'X-Trace-ID',
+    'X-Brief-ID',
+    'X-Lang',
+    'Accept-Language',
+    'X-Debug',
+    'X-Aurora-Debug',
+    'X-LLM-Provider',
+    'X-Aurora-LLM-Provider',
+    'X-LLM-Model',
+    'X-Aurora-LLM-Model',
+  ].forEach(copyHeader);
+  headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+async function proxyAnalysisFollowupToLegacyChat(req) {
+  if (legacyChatProxyOverride) {
+    return legacyChatProxyOverride(req);
+  }
+  const port = String(process.env.PORT || '3000').trim() || '3000';
+  const url = `http://127.0.0.1:${port}/v1/chat`;
+  const response = await axios.post(url, req.body || {}, {
+    headers: buildLegacyProxyHeaders(req),
+    timeout: 20000,
+    validateStatus: () => true,
+  });
+  return {
+    status: Number(response.status) || 500,
+    data: response.data,
+  };
 }
 
 function omitLegacyActionAliases(value) {
@@ -271,6 +357,10 @@ function resolveCurrentRoutine(bodyContext, profileSources) {
 
 async function handleChat(req, res) {
   try {
+    if (shouldProxyAnalysisFollowupToLegacy(req.body || {})) {
+      const proxied = await proxyAnalysisFollowupToLegacyChat(req);
+      return res.status(proxied.status).json(proxied.data);
+    }
     const skillRequest = buildSkillRequest(req);
     const skillResponse = await getRouter().route(skillRequest);
     res.json(mapSkillResponseToChatCardsV1(skillResponse));
@@ -296,6 +386,12 @@ async function handleChatStream(req, res) {
   };
 
   try {
+    if (shouldProxyAnalysisFollowupToLegacy(req.body || {})) {
+      const proxied = await proxyAnalysisFollowupToLegacyChat(req);
+      sendEvent('result', proxied.data);
+      sendEvent('done', {});
+      return;
+    }
     const skillRequest = buildSkillRequest(req);
     const thinkingSteps = [];
     let resultSent = false;
@@ -416,4 +512,5 @@ module.exports = {
   handleChat,
   handleChatStream,
   __resetRouterForTests,
+  __setLegacyChatProxyForTests,
 };
