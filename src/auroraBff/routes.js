@@ -478,7 +478,6 @@ const {
   createArtifactId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
-  listRecentDiagnosisArtifacts,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
@@ -541,6 +540,7 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID = 'reco_alternatives_open_world_v1';
+const RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE = 'reco_alternatives_open_world_v1.system.txt';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
@@ -1258,19 +1258,6 @@ function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
-  const sessionAnalysisContext =
-    isPlainObject(payload.session) && isPlainObject(payload.session.meta) && isPlainObject(payload.session.meta.analysis_context)
-      ? payload.session.meta.analysis_context
-      : null;
-  const rawMessage = pickFirstTrimmed(payload.message, payload.text, payload.query);
-  const isImplicitDeepDiveMessage = IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(
-    normalizeImplicitAnalysisFollowupMessage(rawMessage),
-  );
-  const isImplicitAnalysisFollowup =
-    isImplicitDeepDiveMessage || (
-      hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
-      IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizeImplicitAnalysisFollowupMessage(rawMessage))
-    );
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
     'chip.start.dupes',
@@ -1290,7 +1277,6 @@ function shouldDelegateV1ChatToV2(body) {
   }
 
   if (canDelegateActionToV2) return true;
-  if (isImplicitAnalysisFollowup) return false;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
   if (hasMessage) return true;
@@ -15021,7 +15007,6 @@ async function callGeminiJsonObject({
   queueTimeoutMs = 0,
   upstreamTimeoutMs = 0,
   ignoreForceModel = false,
-  thinkingBudget = undefined,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -15081,10 +15066,7 @@ async function callGeminiJsonObject({
           config: {
             temperature,
             responseMimeType: 'application/json',
-            thinkingConfig: {
-              includeThoughts: false,
-              ...(Number.isFinite(thinkingBudget) ? { thinkingBudget: Math.max(0, Math.trunc(thinkingBudget)) } : {}),
-            },
+            thinkingConfig: { includeThoughts: false },
             ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
             ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
           },
@@ -18132,18 +18114,12 @@ function scheduleSkinAnalysisKbBackfill({
     snapshot = null;
   }
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
-  const analysisStorySnapshot = buildAnalysisStoryFallbackPayload({
-    analysisSummaryPayload: snapshot,
-    profile: null,
-    language: ctx?.lang || 'EN',
-  });
 
   const artifact = {
     artifact_id: createArtifactId(),
     created_at: new Date().toISOString(),
     artifact_type: 'skin_analysis_kb_snapshot_v1',
     analysis_summary: snapshot,
-    analysis_story_snapshot: analysisStorySnapshot,
     overall_confidence: {
       score: confidenceScore,
       level: confidenceLevel,
@@ -20295,10 +20271,6 @@ function buildDiagnosisArtifactV1({
       ? 'llm'
       : null,
   ]);
-  const analysisStorySnapshot = buildDeepDiveFallbackStoryPayload({
-    lastAnalysis: analysis,
-    language: ctx && ctx.lang ? ctx.lang : 'EN',
-  });
 
   const artifact = {
     artifact_id: createArtifactId(),
@@ -20333,7 +20305,6 @@ function buildDiagnosisArtifactV1({
       quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
     },
     source_mix: sourceMix,
-    analysis_story_snapshot: analysisStorySnapshot,
     session_patch: {
       next_state: 'S5_ANALYSIS_SUMMARY',
       state: {
@@ -20814,144 +20785,6 @@ function buildDeepDiveFallbackStoryPayload({ lastAnalysis, language } = {}) {
   return coerceAnalysisStoryV2(story, story);
 }
 
-function humanizeDeepDiveConcernToken(token, language = 'EN') {
-  const raw = String(token || '').trim();
-  if (!raw) return null;
-  const normalized = raw.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  const catalog = language === 'CN'
-    ? {
-        acne: '痘痘/爆痘倾向',
-        breakout: '痘痘/爆痘倾向',
-        pores: '毛孔与粗糙度',
-        texture: '纹理与粗糙度',
-        dark_spots: '色沉/暗沉',
-        pigmentation: '色沉/暗沉',
-        redness: '泛红',
-        dehydration: '缺水',
-        dryness: '干燥/起皮',
-        oiliness: '出油',
-        sensitivity: '敏感反应',
-      }
-    : {
-        acne: 'acne activity',
-        breakout: 'breakout activity',
-        pores: 'visible pores / texture',
-        texture: 'texture irregularity',
-        dark_spots: 'uneven tone / dark spots',
-        pigmentation: 'uneven tone / pigmentation',
-        redness: 'redness',
-        dehydration: 'dehydration',
-        dryness: 'dryness / flaking',
-        oiliness: 'oiliness',
-        sensitivity: 'sensitivity',
-      };
-  for (const [key, value] of Object.entries(catalog)) {
-    if (normalized.includes(key)) return value;
-  }
-  const humanized = raw
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!humanized) return null;
-  return humanized.charAt(0).toUpperCase() + humanized.slice(1);
-}
-
-function buildArtifactConcernLinesForDeepDive({ diagnosisArtifact, language } = {}) {
-  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
-  return concerns
-    .map((item) => {
-      const score =
-        item && item.confidence && typeof item.confidence === 'object'
-          ? Number(item.confidence.score)
-          : Number.NaN;
-      return {
-        title: humanizeDeepDiveConcernToken(
-          pickFirstTrimmed(item && item.title, item && item.label, item && item.concern_id, item && item.id),
-          lang,
-        ),
-        score: Number.isFinite(score) ? score : 0,
-      };
-    })
-    .filter((item) => Boolean(item.title))
-    .sort((a, b) => Number(b.score) - Number(a.score))
-    .slice(0, 4)
-    .map((item) =>
-      lang === 'CN'
-        ? `照片证据仍然更支持 ${item.title}。`
-        : `Photo-backed evidence still points to ${item.title}.`,
-    );
-}
-
-function normalizeDeepDiveStorySnapshot(snapshot, fallbackStory = null) {
-  if (!isPlainObject(snapshot)) return null;
-  try {
-    return coerceAnalysisStoryV2(snapshot, fallbackStory || snapshot);
-  } catch {
-    return null;
-  }
-}
-
-function resolveDeepDiveBaselineStoryPayload({
-  lastAnalysis,
-  storySnapshot,
-  diagnosisArtifact,
-  language,
-} = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const snapshotStory = normalizeDeepDiveStorySnapshot(storySnapshot);
-  if (snapshotStory) return snapshotStory;
-
-  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis, language: lang });
-  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
-  const artifactConfidence =
-    artifact.overall_confidence && typeof artifact.overall_confidence === 'object'
-      ? artifact.overall_confidence
-      : {};
-  const artifactConcernLines = buildArtifactConcernLinesForDeepDive({
-    diagnosisArtifact: artifact,
-    language: lang,
-  });
-  const enriched = {
-    ...fallbackStory,
-    confidence_overall: {
-      ...(isPlainObject(fallbackStory.confidence_overall) ? fallbackStory.confidence_overall : {}),
-    },
-    ui_card_v1: isPlainObject(fallbackStory.ui_card_v1) ? { ...fallbackStory.ui_card_v1 } : {},
-  };
-
-  const baselineConfidence = rankAnalysisConfidenceLevel(
-    fallbackStory && fallbackStory.confidence_overall && fallbackStory.confidence_overall.level,
-  );
-  const artifactConfidenceRank = rankAnalysisConfidenceLevel(artifactConfidence && artifactConfidence.level);
-  if (artifactConfidenceRank > baselineConfidence) {
-    enriched.confidence_overall = {
-      ...(isPlainObject(enriched.confidence_overall) ? enriched.confidence_overall : {}),
-      ...(pickFirstTrimmed(artifactConfidence.level) ? { level: pickFirstTrimmed(artifactConfidence.level) } : {}),
-      ...(Number.isFinite(Number(artifactConfidence.score)) ? { score: Number(artifactConfidence.score) } : {}),
-    };
-  }
-
-  const baselineFindings = Array.isArray(fallbackStory.priority_findings) ? fallbackStory.priority_findings.filter(Boolean) : [];
-  if (artifactConcernLines.length > baselineFindings.length && baselineConfidence <= 1) {
-    enriched.priority_findings = artifactConcernLines.map((line, idx) => ({
-      priority: idx + 1,
-      title: line,
-      detail: line,
-      evidence_region_or_module: [],
-    }));
-    if (isPlainObject(enriched.ui_card_v1)) {
-      enriched.ui_card_v1 = {
-        ...enriched.ui_card_v1,
-        ...(artifactConcernLines.length ? { key_points: artifactConcernLines.slice(0, 3) } : {}),
-      };
-    }
-  }
-
-  return coerceAnalysisStoryV2(enriched, fallbackStory);
-}
-
 function buildDeepDiveRoutineContext(profile) {
   const routineRaw = isPlainObject(profile) ? profile.currentRoutine ?? profile.current_routine ?? null : null;
   if (routineRaw == null) return null;
@@ -21017,25 +20850,6 @@ function buildDeepDiveAnalysisEvidence({
     findingLines,
     strengths,
   } = extractAnalysisFollowupSignals(lastAnalysis);
-  const fallbackSignals = extractAnalysisFollowupSignals(fallbackStory);
-  const effectiveGuidanceBrief =
-    Array.isArray(fallbackSignals && fallbackSignals.guidanceBrief) && fallbackSignals.guidanceBrief.length > guidanceBrief.length
-      ? fallbackSignals.guidanceBrief
-      : guidanceBrief;
-  const effectiveConfidence =
-    rankAnalysisConfidenceLevel(fallbackSignals && fallbackSignals.confidence && fallbackSignals.confidence.level) >
-    rankAnalysisConfidenceLevel(confidence && confidence.level)
-      ? fallbackSignals.confidence
-      : confidence;
-  const effectiveStrengths = Array.isArray(strengths) && strengths.length
-    ? strengths
-    : Array.isArray(fallbackSignals && fallbackSignals.strengths)
-      ? fallbackSignals.strengths
-      : [];
-  const effectiveFindingLines =
-    Array.isArray(fallbackSignals && fallbackSignals.findingLines) && fallbackSignals.findingLines.length > findingLines.length
-      ? fallbackSignals.findingLines
-      : findingLines;
   const artifactConcerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
   const concernEvidence = artifactConcerns
     .map((item, idx) => {
@@ -21048,7 +20862,7 @@ function buildDeepDiveAnalysisEvidence({
       };
     })
     .filter(Boolean);
-  const followupEvidence = effectiveFindingLines
+  const followupEvidence = findingLines
     .map((line, idx) => ({
       rank: idx + 1,
       observation: line,
@@ -21093,13 +20907,13 @@ function buildDeepDiveAnalysisEvidence({
     },
     routine_context: routineContext,
     missing_routine_fields: deriveRoutineMissingFields(profile),
-    low_confidence: String(effectiveConfidence.level || '').trim().toLowerCase() === 'low',
+    low_confidence: String(confidence.level || '').trim().toLowerCase() === 'low',
     confidence_overall: {
-      level: pickFirstTrimmed(effectiveConfidence.level) || null,
-      ...(Number.isFinite(Number(effectiveConfidence.score)) ? { score: Number(effectiveConfidence.score) } : {}),
+      level: pickFirstTrimmed(confidence.level) || null,
+      ...(Number.isFinite(Number(confidence.score)) ? { score: Number(confidence.score) } : {}),
     },
-    current_strengths: effectiveStrengths,
-    guidance_brief: effectiveGuidanceBrief.slice(0, 4),
+    current_strengths: strengths,
+    guidance_brief: guidanceBrief.slice(0, 4),
     finding_evidence: findingEvidence,
     ingredient_targets: Array.isArray(ingredientPlan && ingredientPlan.targets)
       ? ingredientPlan.targets.slice(0, 4).map((item) => ({
@@ -21390,21 +21204,9 @@ async function buildAnalysisDeepDiveContentWithLlm({
   sessionAnalysisContext,
   logger,
 } = {}) {
-  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
-  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
-  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
-  const storySnapshot =
-    normalizedActionData.analysis_story_snapshot ||
-    normalizedActionData.analysis_story_v2 ||
-    normalizedSessionContext.analysis_story_snapshot ||
-    normalizedSessionContext.analysis_story_v2 ||
-    (normalizedArtifact && normalizedArtifact.analysis_story_snapshot) ||
-    null;
-  const analysisBaseline =
-    normalizeDeepDiveStorySnapshot(storySnapshot, null) || lastAnalysis;
   const fallback = buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.deep_dive_skin',
-    lastAnalysis: analysisBaseline,
+    lastAnalysis,
     language,
     requestId,
     replyText,
@@ -21422,6 +21224,9 @@ async function buildAnalysisDeepDiveContentWithLlm({
     };
   }
 
+  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
+  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
   const photoRefs = normalizeAnalysisPhotoRefs([
     ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
     ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
@@ -21432,14 +21237,9 @@ async function buildAnalysisDeepDiveContentWithLlm({
     photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
       ? 'photo'
       : 'profile';
-  const fallbackStory = resolveDeepDiveBaselineStoryPayload({
-    lastAnalysis: analysisBaseline,
-    storySnapshot,
-    diagnosisArtifact: normalizedArtifact,
-    language,
-  });
+  const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis, language });
   const evidence = buildDeepDiveAnalysisEvidence({
-    lastAnalysis: analysisBaseline,
+    lastAnalysis,
     diagnosisArtifact: normalizedArtifact,
     profile,
     language,
@@ -22270,21 +22070,6 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
 
 async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
   const preferredArtifactId = extractLatestArtifactIdFromSession(session);
-  const normalizeArtifactPayload = (row) => {
-    if (
-      row &&
-      row.artifact_json &&
-      typeof row.artifact_json === 'object' &&
-      !Array.isArray(row.artifact_json)
-    ) {
-      return {
-        ...row.artifact_json,
-        artifact_id: row.artifact_id,
-        created_at: row.created_at || row.artifact_json.created_at,
-      };
-    }
-    return row || null;
-  };
   try {
     const latestArtifact = await getLatestDiagnosisArtifact({
       auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
@@ -22293,28 +22078,19 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
       maxAgeDays: 30,
       preferArtifactId: preferredArtifactId,
     });
-    const normalizedLatestArtifact = normalizeArtifactPayload(latestArtifact);
-    if (hasReusableDiagnosisArtifactForDeepDive(normalizedLatestArtifact)) {
-      return normalizedLatestArtifact;
+    if (
+      latestArtifact &&
+      latestArtifact.artifact_json &&
+      typeof latestArtifact.artifact_json === 'object' &&
+      !Array.isArray(latestArtifact.artifact_json)
+    ) {
+      return {
+        ...latestArtifact.artifact_json,
+        artifact_id: latestArtifact.artifact_id,
+        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+      };
     }
-    const recentArtifacts = await listRecentDiagnosisArtifacts({
-      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
-      userId: identity && identity.userId ? identity.userId : null,
-      limit: 8,
-      maxAgeDays: 30,
-    });
-    const normalizedSessionId = ctx && ctx.brief_id ? String(ctx.brief_id).trim() : '';
-    const reusableArtifact = (Array.isArray(recentArtifacts) ? recentArtifacts : [])
-      .map((item) => normalizeArtifactPayload(item))
-      .find((item) => {
-        if (!item) return false;
-        if (normalizedSessionId) {
-          const artifactSessionId = String(item.session_id || '').trim();
-          if (artifactSessionId && artifactSessionId !== normalizedSessionId) return false;
-        }
-        return hasReusableDiagnosisArtifactForDeepDive(item);
-      });
-    return reusableArtifact || normalizedLatestArtifact || null;
+    return latestArtifact || null;
   } catch (err) {
     logger?.warn?.(
       { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
@@ -25465,87 +25241,6 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
 ]);
-
-const IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES = new Map([
-  ['tell me more about my skin', 'chip.aurora.next_action.deep_dive_skin'],
-  ['dive deeper into skin', 'chip.aurora.next_action.deep_dive_skin'],
-  ['deep dive into skin', 'chip.aurora.next_action.deep_dive_skin'],
-  ['深入了解我的皮肤状态', 'chip.aurora.next_action.deep_dive_skin'],
-  ['深入了解皮肤状态', 'chip.aurora.next_action.deep_dive_skin'],
-]);
-
-function normalizeImplicitAnalysisFollowupMessage(raw) {
-  return String(raw || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function hasReusableAnalysisFollowupContext(lastAnalysis) {
-  const {
-    skinProfile,
-    ingredientPlan,
-    routineFit,
-    findingLines,
-  } = extractAnalysisFollowupSignals(lastAnalysis);
-  return Boolean(
-    Object.keys(skinProfile).length ||
-      findingLines.length ||
-      (ingredientPlan && typeof ingredientPlan === 'object') ||
-      routineFit,
-  );
-}
-
-function hasReusableSessionAnalysisContext(sessionAnalysisContext) {
-  const ctx = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : null;
-  if (!ctx) return false;
-  const photoRefs = normalizeAnalysisPhotoRefs(ctx.photo_refs);
-  return Boolean(
-    photoRefs.length ||
-      ctx.use_photo === true ||
-      pickFirstTrimmed(ctx.analysis_origin, ctx.source_card_type),
-  );
-}
-
-function hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact) {
-  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
-  if (!artifact) return false;
-  const photoRefs = normalizeAnalysisPhotoRefs(artifact.photos);
-  const storySnapshot = normalizeDeepDiveStorySnapshot(
-    artifact.analysis_story_snapshot || artifact.analysis_story_v2 || null,
-    null,
-  );
-  const concerns = Array.isArray(artifact.concerns) ? artifact.concerns : [];
-  return Boolean(
-    photoRefs.length ||
-      storySnapshot ||
-      concerns.length ||
-      artifact.use_photo === true ||
-      (artifact.analysis_context &&
-        typeof artifact.analysis_context === 'object' &&
-        !Array.isArray(artifact.analysis_context) &&
-        artifact.analysis_context.used_photos === true),
-  );
-}
-
-function inferImplicitAnalysisFollowupActionId({
-  explicitActionId,
-  message,
-  lastAnalysis,
-  sessionAnalysisContext,
-  diagnosisArtifact,
-} = {}) {
-  if (String(explicitActionId || '').trim()) return null;
-  if (
-    !hasReusableAnalysisFollowupContext(lastAnalysis) &&
-    !hasReusableSessionAnalysisContext(sessionAnalysisContext) &&
-    !hasReusableDiagnosisArtifactForDeepDive(diagnosisArtifact)
-  ) {
-    return null;
-  }
-  const normalizedMessage = normalizeImplicitAnalysisFollowupMessage(message);
-  return IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.get(normalizedMessage) || null;
-}
 
 function buildRoutineFitSummaryCard(fitResult, requestId) {
   const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
@@ -41789,7 +41484,7 @@ function limitCompactStrings(values, limit, maxChars = 64) {
     .slice(0, limit);
 }
 
-function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '' } = {}) {
+function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '', activeThemes = [] } = {}) {
   const compact = {};
   const queryText = String(productInput || '').trim();
   const brand = pickFirstTrimmed(targetSignals.brand);
@@ -41814,6 +41509,7 @@ function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {},
   if (knownActives.length) compact.known_actives = knownActives;
   if (primaryClaims.length) compact.primary_claims = primaryClaims;
   if (textureHints.length) compact.texture_hints = textureHints;
+  if (Array.isArray(activeThemes) && activeThemes.length) compact.active_themes = uniqCaseInsensitiveStrings(activeThemes, 6);
 
   const anchorSignalCount =
     Number(Boolean(brand)) +
@@ -41832,69 +41528,53 @@ function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {},
 }
 
 const RECO_OPEN_WORLD_ACTIVE_THEME_RULES = [
-  { key: 'niacinamide', re: /\bniacinamide\b|烟酰胺/i },
-  { key: 'zinc', re: /\bzinc\b|锌/i },
-  { key: 'salicylic_acid', re: /\bsalicylic\b|\bbha\b|水杨酸/i },
-  { key: 'hyaluronic_acid', re: /\bhyaluronic\b|\bhyaluronate\b|透明质酸|玻尿酸/i },
-  { key: 'vitamin_c', re: /\bvitamin\s*c\b|\bascorbic\b|\bvc\b|维c|维生素c|抗坏血酸/i },
-  { key: 'retinol', re: /\bretinol\b|\bretinal\b|\bretinoid\b|视黄醇|维a|a醇/i },
-  { key: 'ceramide', re: /\bceramide\b|神经酰胺/i },
-  { key: 'azelaic_acid', re: /\bazelaic\b|壬二酸/i },
-  { key: 'tranexamic_acid', re: /\btranexamic\b|传明酸|氨甲环酸/i },
-  { key: 'peptide', re: /\bpeptide\b|肽/i },
+  { key: 'niacinamide', patterns: [/\bniacinamide\b/i, /烟酰胺/], aliases: ['niacinamide'] },
+  { key: 'zinc', patterns: [/\bzinc\b/i, /锌/], aliases: ['zinc'] },
+  { key: 'salicylic_acid', patterns: [/\bsalicylic\b/i, /\bbha\b/i, /水杨酸/], aliases: ['salicylic acid', 'bha'] },
+  { key: 'hyaluronic_acid', patterns: [/\bhyaluronic\b/i, /\bha\b/i, /\bsodium hyaluronate\b/i, /玻尿酸/, /透明质酸/], aliases: ['hyaluronic acid'] },
+  { key: 'vitamin_c', patterns: [/\bvitamin c\b/i, /\bascorb/i, /维c/, /维C/, /抗坏血酸/], aliases: ['vitamin c'] },
+  { key: 'retinol', patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /视黄醇/, /a醇/, /维a/], aliases: ['retinol', 'retinoid'] },
+  { key: 'ceramide', patterns: [/\bceramide\b/i, /神经酰胺/], aliases: ['ceramide'] },
+  { key: 'peptide', patterns: [/\bpeptide\b/i, /肽/], aliases: ['peptide'] },
+  { key: 'azelaic_acid', patterns: [/\bazelaic\b/i, /壬二酸/], aliases: ['azelaic acid'] },
+  { key: 'tranexamic_acid', patterns: [/\btranexamic\b/i, /传明酸/, /氨甲环酸/], aliases: ['tranexamic acid'] },
+  { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/], aliases: ['panthenol'] },
+  { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/], aliases: ['snail mucin'] },
 ];
 
-function extractRecoOpenWorldActiveThemesFromText(raw) {
-  const text = String(raw || '').trim();
-  if (!text) return [];
+function extractRecoOpenWorldActiveThemesFromText(...values) {
+  const joined = values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!joined) return [];
   const out = [];
   for (const rule of RECO_OPEN_WORLD_ACTIVE_THEME_RULES) {
-    if (rule.re.test(text)) out.push(rule.key);
+    if (rule.patterns.some((pattern) => pattern.test(joined))) out.push(rule.key);
   }
   return uniqCaseInsensitiveStrings(out, 8);
 }
 
-function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, anchorLabel = '', productInput = '' } = {}) {
-  return uniqCaseInsensitiveStrings(
-    [
-      ...extractRecoOpenWorldActiveThemesFromText(anchorLabel),
-      ...extractRecoOpenWorldActiveThemesFromText(productInput),
-      ...extractRecoOpenWorldActiveThemesFromText(
-        [
-          ...(Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : []),
-          ...(Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : []),
-          ...(Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims : []),
-        ].join(' '),
-      ),
-    ],
-    6,
+function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, productInput = '' } = {}) {
+  const signals = targetSignals && typeof targetSignals === 'object' && !Array.isArray(targetSignals) ? targetSignals : {};
+  return extractRecoOpenWorldActiveThemesFromText(
+    signals.knownActives,
+    signals.heroIngredients,
+    signals.primaryClaims,
+    signals.notes,
+    signals.name,
+    signals.productType,
+    signals.category,
+    productInput,
   );
 }
 
 function hasRecoOpenWorldActiveOverlap({ anchorActiveThemes = [], candidateText = '' } = {}) {
-  const anchorThemes = uniqCaseInsensitiveStrings(Array.isArray(anchorActiveThemes) ? anchorActiveThemes : [], 8);
+  const anchorThemes = uniqCaseInsensitiveStrings(anchorActiveThemes, 8);
   if (!anchorThemes.length) return false;
   const candidateThemes = extractRecoOpenWorldActiveThemesFromText(candidateText);
-  if (!candidateThemes.length) return false;
-  const candidateSet = new Set(candidateThemes.map((token) => String(token || '').trim().toLowerCase()).filter(Boolean));
-  return anchorThemes.some((token) => candidateSet.has(String(token || '').trim().toLowerCase()));
-}
-
-function buildLocalRecoOpenWorldSystemPrompt() {
-  return [
-    'Return JSON only.',
-    'Output exactly {"alternatives":[...]} with at most 1 item.',
-    'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-    'Return 1 distinct real skincare product only when there is clear active or ingredient theme overlap with the anchor.',
-    'Allowed overlap signals: known_actives, hero_ingredients, or canonical actives clearly present in the anchor name such as niacinamide, bha, hyaluronic acid, vitamin c, retinol, ceramide, or zinc.',
-    'Role, claim, texture, or moisturizer-step overlap alone is not enough.',
-    'If the anchor has no clear active or ingredient theme, return {"alternatives":[]}.',
-    'Never return the anchor itself or a trivial title variant.',
-    'Example yes: The Ordinary Niacinamide 10% + Zinc 1% -> Good Molecules Niacinamide Serum.',
-    'Example no: Generic Daily Moisturizer -> [].',
-    'Example no: The Ordinary Niacinamide 10% + Zinc 1% -> The Ordinary Niacinamide 10% + Zinc 1%.',
-    'Do not output extra keys, nested arrays, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
-  ].join('\n');
+  return anchorThemes.some((theme) => candidateThemes.includes(theme));
 }
 
 function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
@@ -41967,10 +41647,10 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   targetSignals,
   anchorLabel = '',
   anchorNameTokens = [],
+  anchorActiveThemes = [],
   ingredientTokens = [],
   claimTokens = [],
   textureTokens = [],
-  anchorActiveThemes = [],
 } = {}) {
   const row = isPlainObject(candidate) ? candidate : {};
   const brand = pickFirstTrimmed(row.brand);
@@ -42071,11 +41751,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
   const limit = 1;
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const targetSignals = identity.targetSignals;
-  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({
-    targetSignals,
-    anchorLabel: identity.anchorLabel,
-    productInput,
-  });
+  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({ targetSignals, productInput });
   const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
   const hasAnchorSignals = Boolean(
     String(identity.anchorLabel || '').trim() ||
@@ -42126,13 +41802,19 @@ async function fetchRecoAlternativesForLocalOpenWorld({
     };
   }
 
-  const systemPrompt = buildLocalRecoOpenWorldSystemPrompt();
+  const systemPrompt = loadRecoPromptTemplateFile(RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE, {
+    parseJson: false,
+    fallback: [
+      'Return JSON only.',
+      'Output exactly {"alternatives":[...]} with at most 1 item.',
+      'Each item may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
+      'Return exactly 1 distinct real skincare product only when active or ingredient theme overlap is explicit; otherwise return {"alternatives":[]}.',
+      'Do not output extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
+    ].join('\n'),
+  });
   const userPayload = {
     lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: {
-      ...buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput }),
-      active_themes: anchorActiveThemes.slice(0, 4),
-    },
+    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
     task: {
       max_alternatives: limit,
       selection_rule: 'Open-world only. Return exactly 1 distinct viable skincare alternative only when active or ingredient theme overlap is explicit; otherwise [].',
@@ -42186,9 +41868,6 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       finish_reason: String(resp?.finish_reason || '').trim() || null,
       parse_status: String(resp?.parse_status || '').trim() || null,
       ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
-      thinking_budget_config: null,
-      max_output_tokens_config: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
-      raw_text_length: typeof resp?.raw_text === 'string' ? resp.raw_text.length : null,
     };
 
     if (resp?.ok !== true && !rawRows.length) {
@@ -42216,10 +41895,10 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         targetSignals,
         anchorLabel: identity.anchorLabel,
         anchorNameTokens: identity.anchorNameTokens,
+        anchorActiveThemes,
         ingredientTokens: identity.ingredientTokens,
         claimTokens: identity.claimTokens,
         textureTokens: identity.textureTokens,
-        anchorActiveThemes,
       }))
       .filter(Boolean);
     const deduped = [];
@@ -42249,7 +41928,7 @@ async function fetchRecoAlternativesForLocalOpenWorld({
         refresh_after_ms: 0,
         failure_class: 'empty_structured',
         attempt_count: 1,
-        no_result_reason: 'no_viable_results_after_fallback',
+        no_result_reason: 'open_world_empty_structured',
         recommendation_mode: 'open_world_only',
         profile_mode: normalizeAlternativesProfileMode(profileMode),
         template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
@@ -42525,6 +42204,10 @@ async function fetchRecoAlternativesForProduct({
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
   const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
+  const selectorSeedOnly = opts.selector_seed_only === true;
+  const selectorTimeoutMs = Number.isFinite(Number(opts.selector_timeout_ms))
+    ? Math.max(1000, Math.min(20000, Math.trunc(Number(opts.selector_timeout_ms))))
+    : RECO_ALTERNATIVES_TIMEOUT_MS;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
@@ -42534,12 +42217,20 @@ async function fetchRecoAlternativesForProduct({
   const bestInput = inputText || anchor;
   const selectorCandidatePool = ignoreSelectorCandidates
     ? []
-    : buildRecoAlternativesCandidatePool({
-      sharedCandidates: candidatePool,
-      productObj,
-      anchorId: anchor,
-      maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-    });
+    : selectorSeedOnly
+      ? (Array.isArray(candidatePool) ? candidatePool : [])
+        .map((row, index) => normalizeAlternativesSelectorCandidate(row, { index }))
+        .filter(Boolean)
+      : buildRecoAlternativesCandidatePool({
+        sharedCandidates: candidatePool,
+        productObj,
+        anchorId: anchor,
+        maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+      });
+  const selectorMeta = {
+    input_count: Array.isArray(selectorCandidatePool) ? selectorCandidatePool.length : 0,
+    timeout_ms: selectorTimeoutMs,
+  };
   const selectorGroundedAlternatives = ignoreSelectorCandidates
     ? []
     : mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
@@ -42576,6 +42267,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
         raw_output_summary: null,
+        selector_meta: selectorMeta,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -42596,6 +42288,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -42623,6 +42316,7 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
     };
   }
 
@@ -42790,6 +42484,7 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -42807,6 +42502,7 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
+            selector_meta: selectorMeta,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -42824,6 +42520,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -42862,6 +42559,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -42880,6 +42578,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -42896,6 +42595,7 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
+          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -42963,7 +42663,7 @@ async function fetchRecoAlternativesForProduct({
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
+      timeoutMs: selectorTimeoutMs,
       retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
       trace_id: ctx.trace_id,
       request_id: ctx.request_id,
@@ -43003,6 +42703,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -43033,6 +42734,7 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
+        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
@@ -43059,6 +42761,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: emptyRawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
@@ -43130,6 +42833,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -43153,6 +42857,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
     };
@@ -43174,6 +42879,7 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
+      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -43237,6 +42943,7 @@ async function fetchRecoAlternativesForProduct({
     profile_mode: profileMode,
     template_id: queryPack.templateId,
     raw_output_summary: rawOutputSummary,
+    selector_meta: selectorMeta,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
@@ -48099,8 +47806,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
-      buildRecoAlternativesCandidatePool,
       buildExternalSeedCompareSearchQueries,
+      buildRecoAlternativesCandidatePool,
       fetchRecoAlternativesForProduct,
       auroraChat,
       buildContextPrefix,
@@ -54912,44 +54619,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
         : normalizeChatLlmModel(parsed.data.llm_model) ||
           normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
-      const sessionAnalysisContext =
-        parsed.data &&
-        parsed.data.session &&
-        typeof parsed.data.session === 'object' &&
-        !Array.isArray(parsed.data.session) &&
-        parsed.data.session.meta &&
-        typeof parsed.data.session.meta === 'object' &&
-        !Array.isArray(parsed.data.session.meta) &&
-        parsed.data.session.meta.analysis_context &&
-        typeof parsed.data.session.meta.analysis_context === 'object' &&
-        !Array.isArray(parsed.data.session.meta.analysis_context)
-          ? parsed.data.session.meta.analysis_context
-          : null;
-      const normalizedImplicitFollowupMessage = normalizeImplicitAnalysisFollowupMessage(message);
-      let latestDiagnosisArtifactForAnalysisFollowup = null;
-      if (
-        !String(actionId || '').trim() &&
-        IMPLICIT_ANALYSIS_FOLLOWUP_MESSAGES.has(normalizedImplicitFollowupMessage)
-      ) {
-        latestDiagnosisArtifactForAnalysisFollowup = await loadLatestDiagnosisArtifactForRoute({
-          identity,
-          session: parsed.data.session,
-          ctx,
-          logger,
-        });
-      }
-      const inferredAnalysisFollowupActionId = inferImplicitAnalysisFollowupActionId({
-        explicitActionId: actionId,
-        message,
-        lastAnalysis: profile && profile.lastAnalysis,
-        sessionAnalysisContext,
-        diagnosisArtifact: latestDiagnosisArtifactForAnalysisFollowup,
-      });
-      const normalizedEffectiveActionId =
-        String(inferredAnalysisFollowupActionId || actionId || '').trim() || null;
-      if (normalizedEffectiveActionId && !actionIdForReplay) {
-        actionIdForReplay = normalizedEffectiveActionId;
-      }
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -55128,9 +54797,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
         return makeAssistantMessage(text, format);
       };
-      const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(normalizedEffectiveActionId || '').trim());
+      const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
       if (isAnalysisFollowupAction) {
-        const normalizedActionId = String(normalizedEffectiveActionId || '').trim();
+        const normalizedActionId = String(actionId || '').trim();
         const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
         const actionData =
           normalizedActionPayload &&
@@ -55140,9 +54809,21 @@ function mountAuroraBffRoutes(app, { logger }) {
           !Array.isArray(normalizedActionPayload.data)
             ? normalizedActionPayload.data
             : {};
+        const sessionAnalysisContext =
+          parsed.data &&
+          parsed.data.session &&
+          typeof parsed.data.session === 'object' &&
+          !Array.isArray(parsed.data.session) &&
+          parsed.data.session.meta &&
+          typeof parsed.data.session.meta === 'object' &&
+          !Array.isArray(parsed.data.session.meta) &&
+          parsed.data.session.meta.analysis_context &&
+          typeof parsed.data.session.meta.analysis_context === 'object' &&
+          !Array.isArray(parsed.data.session.meta.analysis_context)
+            ? parsed.data.session.meta.analysis_context
+            : null;
         const latestDiagnosisArtifact = isDeepDiveAction
-          ? latestDiagnosisArtifactForAnalysisFollowup ||
-            await loadLatestDiagnosisArtifactForRoute({
+          ? await loadLatestDiagnosisArtifactForRoute({
               identity,
               session: parsed.data.session,
               ctx,
@@ -55218,7 +54899,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               llm_used: Boolean(followup && followup.llm_used),
               llm_model: followup && followup.llm_model ? followup.llm_model : null,
               llm_failure_reason: followup && followup.llm_failure_reason ? followup.llm_failure_reason : null,
-              inferred_from_message: Boolean(inferredAnalysisFollowupActionId && !String(actionId || '').trim()),
               fell_back_to_generic: false,
             }),
           ],
@@ -61607,7 +61287,6 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraRecoAlternativesQuery,
-  buildExternalSeedCompareSearchQueries,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
   buildIngredientReportPayload,
@@ -61624,7 +61303,6 @@ const __internal = {
   applyRecoCardContractInvariant,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
-  buildDiagnosisArtifactV1,
   normalizeAnalysisPhotoRefs,
   buildDeepDiveFallbackStoryPayload,
   buildDeepDiveAnalysisEvidence,

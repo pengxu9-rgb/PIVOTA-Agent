@@ -22,7 +22,8 @@ test('legacy reco alternatives system prompt encodes candidate-only and uncertai
   assert.match(text, /exactly one top-level key: alternatives/i);
   assert.match(text, /Choose up to task\.max_alternatives alternatives/i);
   assert.match(text, /Select ONLY from candidates\[\]/i);
-  assert.match(text, /If no candidate is strong enough, return \{"alternatives": \[\]\}/i);
+  assert.match(text, /prefer returning 1-3 distinct candidates over \[\]/i);
+  assert.match(text, /Return \{"alternatives": \[\]\} only when all candidates are self matches, placeholders, clearly mismatched, or too weak/i);
   assert.match(text, /Every returned item must include short reasons plus concrete tradeoffs/i);
   assert.match(text, /Do not claim "exact dupe", "identical formula"/i);
   assert.match(text, /Respect profile sensitivity and barrier context/i);

@@ -5316,7 +5316,6 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
-        assert.deepEqual(payload?.anchor?.active_themes ?? [], ['niacinamide', 'zinc']);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
@@ -5428,7 +5427,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
   );
 });
 
-test('fetchRecoAlternativesForProduct: open_world_only returns deterministic empty for weak anchors without active themes', async () => {
+test('fetchRecoAlternativesForProduct: weak anchors without active themes fail precheck with explicit reason', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -5438,7 +5437,7 @@ test('fetchRecoAlternativesForProduct: open_world_only returns deterministic emp
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
-      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '900',
+      AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
     async () => {
       const moduleId = require.resolve('../src/auroraBff/routes');
@@ -5446,12 +5445,6 @@ test('fetchRecoAlternativesForProduct: open_world_only returns deterministic emp
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { __internal } = routeModule;
-        let geminiCalls = 0;
-        __internal.__setCallGeminiJsonObjectForTest(async () => {
-          geminiCalls += 1;
-          return { ok: true, json: { alternatives: [] } };
-        });
-
         const out = await __internal.fetchRecoAlternativesForProduct({
           ctx: { lang: 'EN', request_id: 'req_open_world_weak_anchor', trace_id: 'trace_open_world_weak_anchor' },
           profileSummary: null,
@@ -5477,15 +5470,11 @@ test('fetchRecoAlternativesForProduct: open_world_only returns deterministic emp
           },
         });
 
-        assert.equal(geminiCalls, 0);
         assert.equal(out?.ok, true);
         assert.equal(out?.failure_class, 'precheck_fail');
         assert.equal(out?.no_result_reason, 'anchor_signal_insufficient_for_open_world');
-        assert.deepEqual(out?.field_missing, [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }]);
-        assert.equal(out?.llm_trace?.provider_reason, 'anchor_signal_insufficient_for_open_world');
+        assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
       } finally {
-        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
-        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         delete require.cache[moduleId];
       }
     },
@@ -12121,410 +12110,6 @@ test('/v1/chat: deep_dive_skin without reusable analysis context returns confide
       assert.ok(findCardByType(response.body?.cards, 'confidence_notice'));
       assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
       assert.match(String(response.body?.assistant_text || response.body?.assistant_message?.content || ''), /recent skin analysis|run skin analysis again/i);
-    },
-  );
-});
-
-test('/v1/chat: implicit deep_dive_skin message is inferred when action_id is missing', async () => {
-  await withEnv(
-    {
-      AURORA_BFF_USE_MOCK: 'true',
-      DATABASE_URL: undefined,
-      AURORA_BFF_RETENTION_DAYS: '0',
-      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
-    },
-    async () => {
-      const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
-      const memoryStore = require('../src/auroraBff/memoryStore');
-      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      const uid = 'uid_analysis_followup_inferred_deep_dive';
-      const sessionId = 'brief_analysis_followup_inferred_deep_dive';
-      const headers = {
-        'X-Aurora-UID': uid,
-        'X-Trace-ID': 'trace_analysis_followup_inferred_deep_dive',
-        'X-Brief-ID': sessionId,
-        'X-Lang': 'EN',
-      };
-      const llmCalls = [];
-      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
-        llmCalls.push(request);
-        return {
-          ok: true,
-          json: {
-            conclusion: 'Photo evidence still points to mild barrier stress with dehydration.',
-            key_signals: ['Cheek redness remains the clearest signal.', 'The photo context suggests barrier stress over oiliness.'],
-            actions_now: ['Keep cleanser gentle and simplify actives for a few days.'],
-            avoid_now: ['Avoid stacking strong acids during active redness.'],
-            confidence_note: 'Medium confidence from the latest photo-backed analysis.',
-          },
-        };
-      });
-
-      try {
-        await memoryStore.saveLastAnalysisForIdentity(
-          { auroraUid: uid, userId: null },
-          {
-            analysis: {
-              skin_profile: {
-                skin_type_tendency: 'combination',
-                sensitivity_tendency: 'high',
-                current_strengths: ['steady barrier'],
-              },
-              priority_findings: [{ title: 'Cheek redness' }, { detail: 'Mild dehydration' }],
-              confidence_overall: { level: 'medium', score: 0.73 },
-              guidance_brief: ['Simplify the morning active stack', 'Keep barrier support stable'],
-            },
-            lang: 'EN',
-          },
-        );
-        await artifactStore.saveDiagnosisArtifact({
-          auroraUid: uid,
-          userId: null,
-          sessionId,
-          artifact: {
-            artifact_id: 'da_test_inferred_photo_deep_dive',
-            created_at: new Date().toISOString(),
-            use_photo: true,
-            overall_confidence: { level: 'medium', score: 0.73 },
-            skinType: { value: 'combination' },
-            sensitivity: { value: 'high' },
-            concerns: [{ id: 'redness', title: 'Cheek redness' }],
-            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_implicit', qc_status: 'passed' }],
-            analysis_context: {
-              analysis_source: 'vision_gemini',
-              used_photos: true,
-              quality_grade: 'pass',
-            },
-            source_mix: ['photo', 'profile'],
-          },
-          artifactId: 'da_test_inferred_photo_deep_dive',
-        });
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const response = await supertest(app)
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            message: 'Tell me more about my skin',
-            language: 'EN',
-          })
-          .expect(200);
-
-        assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
-        assert.equal(Boolean(findCardByType(response.body?.cards, 'ingredient_hub')), false);
-        assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
-        assert.match(String(response.body?.assistant_message?.content || ''), /photo-based analysis|barrier stress/i);
-        assert.equal(llmCalls.length, 1);
-        assert.equal(llmCalls[0]?.model, 'gemini-3-pro-preview');
-        const routedEvent = (Array.isArray(response.body?.events) ? response.body.events : []).find(
-          (event) => event && event.event_name === 'analysis_followup_action_routed',
-        );
-        assert.equal(routedEvent?.data?.action_id, 'chip.aurora.next_action.deep_dive_skin');
-        assert.equal(Boolean(routedEvent?.data?.inferred_from_message), true);
-      } finally {
-        __internal.__setCallGeminiJsonObjectForTest(null);
-        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
-        delete require.cache[routeModuleId];
-      }
-    },
-  );
-});
-
-test('/v1/chat: implicit deep_dive_skin message can route from diagnosis artifact without persisted lastAnalysis', async () => {
-  await withEnv(
-    {
-      AURORA_BFF_USE_MOCK: 'true',
-      DATABASE_URL: undefined,
-      AURORA_BFF_RETENTION_DAYS: '0',
-      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
-    },
-    async () => {
-      const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
-      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      const uid = 'uid_analysis_followup_inferred_from_artifact_only';
-      const sessionId = 'brief_analysis_followup_inferred_from_artifact_only';
-      const headers = {
-        'X-Aurora-UID': uid,
-        'X-Trace-ID': 'trace_analysis_followup_inferred_from_artifact_only',
-        'X-Brief-ID': sessionId,
-        'X-Lang': 'EN',
-      };
-      const llmCalls = [];
-      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
-        llmCalls.push(request);
-        return {
-          ok: true,
-          json: {
-            conclusion: 'Photo-backed evidence still leans toward congestion and uneven tone.',
-            key_signals: ['Visible pore texture remains the clearest signal.', 'Tone irregularity still shows around the cheeks.'],
-            actions_now: ['Keep the routine simple and use consistent SPF.'],
-            avoid_now: ['Avoid layering multiple strong exfoliants together.'],
-            confidence_note: 'Medium confidence from the latest photo-backed analysis.',
-          },
-        };
-      });
-
-      try {
-        await artifactStore.saveDiagnosisArtifact({
-          auroraUid: uid,
-          userId: null,
-          sessionId,
-          artifact: {
-            artifact_id: 'da_test_inferred_from_artifact_only',
-            created_at: new Date().toISOString(),
-            use_photo: true,
-            overall_confidence: { level: 'medium', score: 0.71 },
-            concerns: [
-              { id: 'pores', title: 'Visible pore texture' },
-              { id: 'tone', title: 'Uneven tone' },
-            ],
-            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_artifact_only', qc_status: 'passed' }],
-            analysis_context: {
-              analysis_source: 'vision_gemini',
-              used_photos: true,
-              quality_grade: 'pass',
-            },
-            analysis_story_snapshot: {
-              schema_version: 'aurora.analysis_story.v2',
-              confidence_overall: { level: 'medium' },
-              skin_profile: {
-                skin_type_tendency: 'oily',
-                sensitivity_tendency: 'medium',
-                current_strengths: ['Texture and pore visibility are the main signals.'],
-              },
-              priority_findings: [
-                {
-                  priority: 1,
-                  title: 'Visible pore texture remains the clearest signal.',
-                  detail: 'Visible pore texture remains the clearest signal.',
-                  evidence_region_or_module: [],
-                },
-              ],
-              target_state: ['Keep texture stable and reduce visible congestion.'],
-              core_principles: ['Stability first, then gradual refinement.'],
-              am_plan: [],
-              pm_plan: [],
-              timeline: { first_4_weeks: [], week_8_12_expectation: [] },
-              safety_notes: [],
-              disclaimer_non_medical: true,
-            },
-            source_mix: ['photo', 'profile'],
-          },
-          artifactId: 'da_test_inferred_from_artifact_only',
-        });
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const response = await supertest(app)
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            message: 'Tell me more about my skin',
-            language: 'EN',
-          })
-          .expect(200);
-
-        assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
-        assert.equal(Boolean(findCardByType(response.body?.cards, 'ingredient_hub')), false);
-        assert.equal(Boolean(findCardByType(response.body?.cards, 'nudge')), false);
-        assert.match(String(response.body?.assistant_message?.content || ''), /photo-backed|pore|tone/i);
-        assert.equal(llmCalls.length, 1);
-        const routedEvent = (Array.isArray(response.body?.events) ? response.body.events : []).find(
-          (event) => event && event.event_name === 'analysis_followup_action_routed',
-        );
-        assert.equal(routedEvent?.data?.action_id, 'chip.aurora.next_action.deep_dive_skin');
-        assert.equal(Boolean(routedEvent?.data?.inferred_from_message), true);
-      } finally {
-        __internal.__setCallGeminiJsonObjectForTest(null);
-        const memoryStore = require('../src/auroraBff/memoryStore');
-        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
-        delete require.cache[routeModuleId];
-      }
-    },
-  );
-});
-
-test('buildDiagnosisArtifactV1 stores analysis_story_snapshot for later deep dives', async () => {
-  await withEnv(
-    {
-      AURORA_BFF_USE_MOCK: 'true',
-      DATABASE_URL: undefined,
-      AURORA_BFF_RETENTION_DAYS: '0',
-    },
-    async () => {
-      const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
-      const { __internal } = require('../src/auroraBff/routes');
-      const artifact = __internal.buildDiagnosisArtifactV1({
-        ctx: { lang: 'EN', brief_id: 'brief_story_snapshot_artifact' },
-        identity: { auroraUid: 'uid_story_snapshot_artifact', userId: null },
-        profileSummary: {
-          skinType: 'oily',
-          sensitivity: 'medium',
-          barrierStatus: 'stable',
-          goals: ['acne', 'pores'],
-        },
-        recentLogsSummary: [],
-        analysis: {
-          skin_profile: {
-            skin_type_tendency: 'oily',
-            sensitivity_tendency: 'medium',
-            current_strengths: ['Oiliness is the strongest consistent signal.'],
-          },
-          priority_findings: [
-            { title: 'Visible pore texture remains the clearest signal.' },
-            { detail: 'Breakout activity remains a secondary signal.' },
-          ],
-          guidance_brief: ['Keep cleansing gentle and use consistent SPF.'],
-          confidence_overall: { level: 'medium', score: 0.72 },
-        },
-        analysisSource: 'vision_gemini',
-        usePhoto: true,
-        usedPhotos: true,
-        photos: [{ slot_id: 'daylight', photo_id: 'photo_story_snapshot_artifact', qc_status: 'passed' }],
-        photoQuality: { grade: 'pass' },
-      });
-
-      assert.equal(artifact?.analysis_story_snapshot?.confidence_overall?.level, 'medium');
-      assert.ok(Array.isArray(artifact?.analysis_story_snapshot?.priority_findings));
-      assert.ok((artifact?.analysis_story_snapshot?.priority_findings || []).length >= 2);
-      assert.equal(artifact?.analysis_story_snapshot?.disclaimer_non_medical, true);
-    },
-  );
-});
-
-test('/v1/chat: deep_dive_skin prefers reusable diagnosis artifact over newer kb snapshot artifact', async () => {
-  await withEnv(
-    {
-      AURORA_BFF_USE_MOCK: 'true',
-      DATABASE_URL: undefined,
-      AURORA_BFF_RETENTION_DAYS: '0',
-      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
-    },
-    async () => {
-      const routeModuleId = require.resolve('../src/auroraBff/routes');
-      delete require.cache[routeModuleId];
-      const artifactStore = require('../src/auroraBff/diagnosisArtifactStore');
-      const routeModule = require('../src/auroraBff/routes');
-      const { mountAuroraBffRoutes, __internal } = routeModule;
-      const uid = 'uid_analysis_followup_prefers_reusable_artifact';
-      const sessionId = 'brief_analysis_followup_prefers_reusable_artifact';
-      const headers = {
-        'X-Aurora-UID': uid,
-        'X-Trace-ID': 'trace_analysis_followup_prefers_reusable_artifact',
-        'X-Brief-ID': sessionId,
-        'X-Lang': 'EN',
-      };
-      const llmCalls = [];
-      __internal.__setCallGeminiJsonObjectForTest(async (request) => {
-        llmCalls.push(request);
-        return {
-          ok: true,
-          json: {
-            conclusion: 'The deeper read still leans toward congestion plus barrier sensitivity.',
-            key_signals: ['Visible pore texture remains the strongest signal.', 'Sensitivity still needs a conservative pace.'],
-            actions_now: ['Keep exfoliation slow and keep SPF steady.'],
-            avoid_now: ['Avoid stacking multiple irritation-prone actives at once.'],
-            confidence_note: 'Medium confidence from the latest photo-backed analysis.',
-          },
-        };
-      });
-
-      try {
-        await artifactStore.saveDiagnosisArtifact({
-          auroraUid: uid,
-          userId: null,
-          sessionId,
-          artifact: {
-            artifact_id: 'da_primary_reusable_artifact',
-            created_at: new Date(Date.now() - 1000).toISOString(),
-            use_photo: true,
-            overall_confidence: { level: 'medium', score: 0.74 },
-            concerns: [{ id: 'pores', title: 'Visible pore texture' }],
-            photos: [{ slot: 'daylight', photo_id: 'photo_daylight_reusable_artifact', qc_status: 'passed' }],
-            analysis_context: {
-              analysis_source: 'vision_gemini',
-              used_photos: true,
-              quality_grade: 'degraded',
-            },
-            analysis_story_snapshot: {
-              schema_version: 'aurora.analysis_story.v2',
-              confidence_overall: { level: 'medium' },
-              skin_profile: {
-                skin_type_tendency: 'oily',
-                sensitivity_tendency: 'medium',
-                current_strengths: ['Texture and pore visibility are the main signals.'],
-              },
-              priority_findings: [
-                {
-                  priority: 1,
-                  title: 'Visible pore texture remains the strongest signal.',
-                  detail: 'Visible pore texture remains the strongest signal.',
-                  evidence_region_or_module: [],
-                },
-              ],
-              target_state: ['Stabilize texture while keeping sensitivity under control.'],
-              core_principles: ['Go slow with actives and keep SPF consistent.'],
-              am_plan: [],
-              pm_plan: [],
-              timeline: { first_4_weeks: [], week_8_12_expectation: [] },
-              safety_notes: [],
-              disclaimer_non_medical: true,
-            },
-            source_mix: ['photo', 'profile'],
-          },
-          artifactId: 'da_primary_reusable_artifact',
-        });
-        await artifactStore.saveDiagnosisArtifact({
-          auroraUid: uid,
-          userId: null,
-          sessionId,
-          artifact: {
-            artifact_id: 'da_newer_kb_snapshot_artifact',
-            created_at: new Date().toISOString(),
-            artifact_type: 'skin_analysis_kb_snapshot_v1',
-            overall_confidence: { level: 'unconfirmed', score: 0.2 },
-            analysis_summary: { note: 'kb snapshot only' },
-            source_mix: ['profile'],
-          },
-          artifactId: 'da_newer_kb_snapshot_artifact',
-        });
-
-        const app = express();
-        app.use(express.json({ limit: '1mb' }));
-        mountAuroraBffRoutes(app, { logger: null });
-
-        const response = await supertest(app)
-          .post('/v1/chat')
-          .set(headers)
-          .send({
-            message: 'Tell me more about my skin',
-            language: 'EN',
-          })
-          .expect(200);
-
-        assert.ok(findCardByType(response.body?.cards, 'analysis_story_v2'));
-        assert.equal(llmCalls.length, 1);
-        assert.match(String(response.body?.assistant_message?.content || ''), /photo-backed|congestion|texture/i);
-        const storyCard = findCardByType(response.body?.cards, 'analysis_story_v2');
-        assert.equal(storyCard?.payload?.confidence_overall?.level, 'medium');
-      } finally {
-        __internal.__setCallGeminiJsonObjectForTest(null);
-        const memoryStore = require('../src/auroraBff/memoryStore');
-        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
-        delete require.cache[routeModuleId];
-      }
     },
   );
 });
