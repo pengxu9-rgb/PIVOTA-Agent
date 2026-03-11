@@ -158,6 +158,18 @@ function buildRecommendationPassTrace(pass, { fallbackTemplateId = null } = {}) 
     fallback_source: String(upstreamOut.fallback_source || '').trim() || null,
     failure_class: String(upstreamOut.failure_class || '').trim() || null,
     llm_error_class: String(llmTrace.error_class || '').trim() || null,
+    provider_reason: String(llmTrace.provider_reason || '').trim() || null,
+    provider_detail: String(llmTrace.provider_detail || '').trim() || null,
+    provider_route: String(llmTrace.provider_route || '').trim() || null,
+    provider_model: String(llmTrace.provider_model || '').trim() || null,
+    provider_timeout_stage: String(llmTrace.provider_timeout_stage || '').trim() || null,
+    provider_result_reason: String(llmTrace.provider_result_reason || '').trim() || null,
+    provider_total_ms: Number.isFinite(Number(llmTrace.provider_total_ms))
+      ? Math.max(0, Math.trunc(Number(llmTrace.provider_total_ms)))
+      : null,
+    provider_upstream_ms: Number.isFinite(Number(llmTrace.provider_upstream_ms))
+      ? Math.max(0, Math.trunc(Number(llmTrace.provider_upstream_ms)))
+      : null,
     upstream_status: (upstreamStatusRaw === null || upstreamStatusRaw === undefined || upstreamStatusRaw === '')
       ? null
       : Number.isFinite(Number(upstreamStatusRaw))
