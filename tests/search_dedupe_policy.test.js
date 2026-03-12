@@ -112,6 +112,42 @@ describe('search dedupe policy', () => {
     expect(payload.search.fast_mode).toBe(true);
   });
 
+  test('fallback clarification honors resolved travel lookup slot state', () => {
+    const body = app._debug.buildProxySearchSoftFallbackResponse({
+      queryParams: {
+        query: 'Face SPF50+ PA++++ sunscreen',
+        ui_surface: 'travel_lookup',
+        clarification_slot: 'brand',
+        clarification_answer: 'No brand preference',
+        slot_state: JSON.stringify({
+          asked_slots: ['brand'],
+          resolved_slots: {},
+        }),
+      },
+      reason: 'primary_irrelevant_no_fallback',
+      queryClass: 'attribute',
+      intent: {
+        language: 'en',
+        query_class: 'attribute',
+        primary_domain: 'beauty',
+      },
+      queryText: 'Face SPF50+ PA++++ sunscreen',
+    });
+
+    expect(body.clarification).toEqual(
+      expect.objectContaining({
+        slot: 'budget',
+        reason_code: 'CLARIFY_BUDGET',
+      }),
+    );
+    expect(body.metadata.slot_state).toEqual({
+      asked_slots: ['brand'],
+      resolved_slots: {
+        brand: 'No brand preference',
+      },
+    });
+  });
+
   test('budget clarification maps to price bounds', () => {
     const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
       query: 'Gel-cream moisturizer',

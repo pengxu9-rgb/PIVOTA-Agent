@@ -3675,6 +3675,29 @@ function buildProxySearchSoftFallbackResponse({
     Boolean(forceClarify) ||
     forceClarifyByRecallExhaustion ||
     (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
+  const slotState = (() => {
+    const parsed = normalizeTravelLookupSlotState(
+      parseQueryJsonObject(queryParams?.slot_state || queryParams?.slotState),
+    );
+    const clarificationSlot = String(
+      firstQueryParamValue(queryParams?.clarification_slot || queryParams?.clarificationSlot) || '',
+    )
+      .trim()
+      .toLowerCase();
+    const clarificationAnswer = String(
+      firstQueryParamValue(queryParams?.clarification_answer || queryParams?.clarificationAnswer) || '',
+    ).trim();
+    if (clarificationSlot) {
+      parsed.asked_slots = Array.from(new Set([...parsed.asked_slots, clarificationSlot]));
+    }
+    if (clarificationSlot && clarificationAnswer) {
+      parsed.resolved_slots = {
+        ...parsed.resolved_slots,
+        [clarificationSlot]: clarificationAnswer,
+      };
+    }
+    return hasTravelLookupSlotState(parsed) ? parsed : null;
+  })();
   const clarification = shouldClarify
     ? buildClarification({
         queryClass: String(queryClass || intent?.query_class || 'exploratory').toLowerCase(),
@@ -3682,6 +3705,7 @@ function buildProxySearchSoftFallbackResponse({
         language:
           (intent && typeof intent === 'object' ? intent.language : null) ||
           (typeof queryText === 'string' && /[\u4e00-\u9fff]/.test(queryText) ? 'zh' : 'en'),
+        slotState,
       })
     : null;
   const resolvedReply =
@@ -3731,6 +3755,7 @@ function buildProxySearchSoftFallbackResponse({
             }
           : {}),
         ...(quotaExhausted && shouldClarify ? { upstream_quota_guarded: true } : {}),
+        ...(slotState ? { slot_state: slotState } : {}),
       },
     },
     {
@@ -20952,6 +20977,7 @@ module.exports._debug = {
   searchCrossMerchantFromCache,
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
+  buildProxySearchSoftFallbackResponse,
   collapseNearDuplicateSearchProducts,
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
