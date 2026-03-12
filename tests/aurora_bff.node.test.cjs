@@ -6480,7 +6480,7 @@ test('enrichProductAnalysisPayload: adds profile-fit reasons and hides raw risk 
   assert.equal(/\bTargets:\b/i.test(joined), false);
 });
 
-test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yields recommendations after profile saved', async () => {
+test('/v1/chat: chip_get_recos first clarifies goal, then yields recommendations after goal is resolved', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -6569,15 +6569,19 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
 
 	    assert.equal(resp1.status, 200);
 	    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
+      const chips1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips : [];
 	    const nextState1 = resp1.body?.session_patch?.next_state;
-	    assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT');
+	    assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT' || nextState1 === 'S7_PRODUCT_RECO');
 	    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
 	    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
 	    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
-    assert.ok(reco1 || conf1);
-    if (conf1) {
-      assert.notEqual(String(conf1?.payload?.reason || ''), 'diagnosis_first');
-    }
+    assert.equal(reco1, null);
+    assert.equal(conf1, null);
+    assert.ok(chips1.length >= 5);
+    const goalChip = chips1.find((chip) => chip && chip.chip_id === 'chip.reco_goal.breakouts') || chips1[0] || null;
+    assert.ok(goalChip);
+    assert.equal(String(goalChip?.data?.action_id || ''), 'chip.start.reco_products');
+    assert.ok(Array.isArray(goalChip?.data?.profile_patch?.goals));
 
     const seed = await invokeRoute(app, 'POST', '/v1/profile/update', {
       headers,
@@ -6593,7 +6597,11 @@ test('/v1/chat: chip_get_recos does not hard-gate when profile missing, then yie
     const resp2 = await invokeRoute(app, 'POST', '/v1/chat', {
       headers,
       body: {
-        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+        action: {
+          action_id: String(goalChip?.data?.action_id || 'chip.start.reco_products'),
+          kind: 'chip',
+          data: goalChip?.data || {},
+        },
         session: { state: 'idle' },
         language: 'EN',
       },

@@ -22673,6 +22673,231 @@ function inferGoalFromClarificationText(raw) {
   return '';
 }
 
+function normalizeRecoGoalToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token === 'breakout' || token === 'breakouts' || token === 'blemish' || token === 'blemishes') return 'acne';
+  if (token === 'brightening' || token === 'tone') return 'dark_spots';
+  if (token === 'antiaging' || token === 'anti-aging' || token === 'anti_aging' || token === 'fine_lines') return 'wrinkles';
+  if (token === 'barrier' || token === 'barrier repair' || token === 'barrier_repair') return 'barrier_repair';
+  if (token === 'spf' || token === 'sun' || token === 'sunscreen' || token === 'uv_protection') return 'sunscreen';
+  return token;
+}
+
+function extractResolvedRecoGoals(raw) {
+  const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
+  const out = [];
+  for (const value of values) {
+    const normalized = normalizeRecoGoalToken(value);
+    if (!normalized || normalized === 'unknown' || normalized === 'other') continue;
+    out.push(normalized);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function inferRecoGoalSignalFromText(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(barrier repair|repair barrier|skin barrier|barrier support|修护屏障|屏障修护|屏障受损|屏障)/.test(text)) {
+    return 'barrier_repair';
+  }
+  if (/(spf|sunscreen|sun screen|uv protect|sun protect|防晒)/.test(text)) {
+    return 'sunscreen';
+  }
+  const inferred = inferGoalFromClarificationText(text);
+  if (inferred) return inferred;
+  if (/(pore|pores|毛孔)/.test(text)) return 'pores';
+  return '';
+}
+
+function inferRecoCategoryHintFromText(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return '';
+  if (/(cleanser|cleanse|face wash|洁面|洗面)/.test(text)) return 'cleanser';
+  if (/(serum|essence|ampoule|booster|精华)/.test(text)) return 'serum';
+  if (/(moisturizer|moisturiser|cream|lotion|gel cream|保湿霜|面霜|乳液)/.test(text)) return 'moisturizer';
+  if (/(sunscreen|sun screen|sunblock|spf|防晒)/.test(text)) return 'sunscreen';
+  if (/(toner|lotion toner|爽肤水|化妆水)/.test(text)) return 'toner';
+  if (/(mask|面膜)/.test(text)) return 'mask';
+  return '';
+}
+
+function isCannedGenericRecoRequestText(raw) {
+  const text = String(raw || '').trim().toLowerCase();
+  if (!text) return false;
+  return (
+    /^get product recommendations?$/.test(text) ||
+    /^recommend products?$/.test(text) ||
+    /^recommend a few products\b/.test(text) ||
+    /^get recommendations$/.test(text) ||
+    /^show full skincare product recommendations\.?$/.test(text) ||
+    /^recommend a few skincare products for my profile and goals\.?$/.test(text) ||
+    /^获取产品推荐$/.test(text) ||
+    /^给我(一些)?产品推荐$/.test(text) ||
+    /^推荐一些产品/.test(text) ||
+    /^请给我完整护肤产品推荐/.test(text)
+  );
+}
+
+function hasResolvedRecoGoal({
+  profile = null,
+  action = null,
+  message = '',
+  ingredientContext = null,
+  travelRecoHandoff = false,
+} = {}) {
+  if (travelRecoHandoff) return true;
+  if (extractResolvedRecoGoals(profile && profile.goals).length > 0) return true;
+
+  const actionObj = action && typeof action === 'object' && !Array.isArray(action) ? action : null;
+  const actionData =
+    actionObj && actionObj.data && typeof actionObj.data === 'object' && !Array.isArray(actionObj.data)
+      ? actionObj.data
+      : null;
+  const actionProfilePatch =
+    actionData && actionData.profile_patch && typeof actionData.profile_patch === 'object' && !Array.isArray(actionData.profile_patch)
+      ? actionData.profile_patch
+      : actionData && actionData.profilePatch && typeof actionData.profilePatch === 'object' && !Array.isArray(actionData.profilePatch)
+        ? actionData.profilePatch
+        : null;
+
+  if (extractResolvedRecoGoals(actionProfilePatch && actionProfilePatch.goals).length > 0) return true;
+  if (extractResolvedRecoGoals(actionData && actionData.goals).length > 0) return true;
+  if (extractResolvedRecoGoals(actionData && actionData.goal).length > 0) return true;
+
+  const ingredientQuery = pickFirstTrimmed(
+    actionData && actionData.ingredient_query,
+    actionData && actionData.ingredientQuery,
+    actionData && actionData.inci,
+    actionData && actionData.ingredient_name,
+    ingredientContext && (ingredientContext.query || ingredientContext.ingredient_query),
+  );
+  if (ingredientQuery) return true;
+
+  const ingredientGoal = pickFirstTrimmed(
+    actionData && actionData.ingredient_goal,
+    actionData && actionData.ingredientGoal,
+    ingredientContext && (ingredientContext.goal || ingredientContext.ingredient_goal),
+  );
+  if (ingredientGoal) return true;
+
+  const ingredientCandidates = Array.isArray(actionData && actionData.ingredient_candidates)
+    ? actionData.ingredient_candidates
+    : Array.isArray(actionData && actionData.ingredientCandidates)
+      ? actionData.ingredientCandidates
+      : Array.isArray(ingredientContext && ingredientContext.candidates)
+        ? ingredientContext.candidates
+        : [];
+  if (ingredientCandidates.length > 0) return true;
+
+  const productCandidates = Array.isArray(actionData && actionData.product_candidates)
+    ? actionData.product_candidates
+    : Array.isArray(actionData && actionData.productCandidates)
+      ? actionData.productCandidates
+      : Array.isArray(ingredientContext && ingredientContext.product_candidates)
+        ? ingredientContext.product_candidates
+        : [];
+  if (productCandidates.length > 0) return true;
+
+  const textCandidates = [
+    message,
+    actionData && actionData.reply_text,
+    actionData && actionData.goal,
+    actionData && actionData.ingredient_goal,
+    actionData && actionData.category,
+    actionData && actionData.product_type,
+    actionData && actionData.productType,
+  ];
+
+  for (const candidate of textCandidates) {
+    if (!candidate || isCannedGenericRecoRequestText(candidate)) continue;
+    if (inferRecoGoalSignalFromText(candidate)) return true;
+    if (inferRecoCategoryHintFromText(candidate)) return true;
+  }
+
+  return false;
+}
+
+function buildRecoGoalClarificationChips(language) {
+  const isCn = language === 'CN';
+  const goalChips = [
+    {
+      chip_id: 'chip.reco_goal.breakouts',
+      label: isCn ? '控痘/闭口' : 'Breakouts',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '给我控痘/闭口方向的产品推荐。' : 'Recommend products for breakouts / clogged pores.',
+        profile_patch: { goals: ['acne'] },
+        trigger_source: 'reco_goal_clarify',
+        include_alternatives: true,
+      },
+    },
+    {
+      chip_id: 'chip.reco_goal.brightening',
+      label: isCn ? '提亮/淡斑' : 'Brightening',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '给我提亮/淡斑方向的产品推荐。' : 'Recommend products for brightening / dark spots.',
+        profile_patch: { goals: ['dark_spots'] },
+        trigger_source: 'reco_goal_clarify',
+        include_alternatives: true,
+      },
+    },
+    {
+      chip_id: 'chip.reco_goal.antiaging',
+      label: isCn ? '抗老' : 'Anti-aging',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '给我抗老方向的产品推荐。' : 'Recommend products for anti-aging / fine lines.',
+        profile_patch: { goals: ['wrinkles'] },
+        trigger_source: 'reco_goal_clarify',
+        include_alternatives: true,
+      },
+    },
+    {
+      chip_id: 'chip.reco_goal.barrier',
+      label: isCn ? '修护屏障' : 'Barrier repair',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '给我修护屏障方向的产品推荐。' : 'Recommend products for barrier repair.',
+        profile_patch: { goals: ['barrier_repair'] },
+        trigger_source: 'reco_goal_clarify',
+        include_alternatives: true,
+      },
+    },
+    {
+      chip_id: 'chip.reco_goal.spf',
+      label: isCn ? '防晒' : 'SPF / sun',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '给我日常防晒方向的产品推荐。' : 'Recommend sunscreen / daily SPF products.',
+        profile_patch: { goals: ['sunscreen'] },
+        trigger_source: 'reco_goal_clarify',
+        include_alternatives: true,
+      },
+    },
+    {
+      chip_id: 'chip.reco_goal.other',
+      label: isCn ? '其他' : 'Other',
+      kind: 'quick_reply',
+      data: {
+        action_id: 'chip.start.reco_products',
+        reply_text: isCn ? '告诉我你这次最想解决的目标或想看的品类。' : 'Tell me your top goal or product type first.',
+        trigger_source: 'reco_goal_clarify',
+        reco_goal: 'other',
+        v2_freeform_fallback: true,
+      },
+    },
+  ];
+  return goalChips;
+}
+
 function inferProfilePatchFromClarification({ clarificationId, replyText }) {
   const field = normalizeClarificationField(clarificationId);
   const raw = String(replyText || '').trim();
@@ -55705,6 +55930,37 @@ function mountAuroraBffRoutes(app, { logger }) {
           : 'goal_based_products';
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
+        const recoGoalResolved = hasResolvedRecoGoal({
+          profile,
+          action: normalizedActionPayload,
+          message,
+          ingredientContext: recoIngredientContext,
+          travelRecoHandoff,
+        });
+        if (!recoGoalResolved) {
+          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
+          const sessionPatch = nextState ? { next_state: nextState } : {};
+          const assistantText =
+            ctx.lang === 'CN'
+              ? '你这次想优先解决什么，或者想先看哪类产品？我先按这个方向给你收紧推荐。'
+              : 'What do you want to prioritize first, or which product type do you want first? I will narrow recommendations from there.';
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(assistantText),
+            suggested_chips: buildRecoGoalClarificationChips(ctx.lang),
+            cards: [],
+            session_patch: sessionPatch,
+            events: [
+              makeEvent(ctx, 'recos_requested', {
+                explicit: true,
+                gated: true,
+                reason: 'reco_goal_clarify',
+                source: 'goal_clarify',
+                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+              }),
+            ],
+          });
+          return sendChatEnvelope(envelope);
+        }
         const recoSafetyGate = resolveSafetyGateActionV2({
           safety: safetyDecision,
           profileValue: profile,
