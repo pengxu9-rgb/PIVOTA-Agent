@@ -281,15 +281,32 @@ function containsEyeStepSignal(value) {
   return /(eye product|eye cream|eye serum|eye gel|under[- ]?eye|under eye|dedicated eye|eye treatment|eye care)/i.test(text);
 }
 
+function containsIngredientStepSignal(value) {
+  const text = asString(value).toLowerCase();
+  return /\b(ceramide|ceramide np|panthenol|b5|peptide|hyaluronic|hyaluronate|niacinamide|glycerin|centella|cica|allantoin|azelaic|beta glucan|snail|madecassoside)\b/i.test(text);
+}
+
+function containsCoreRoutineStepSignal(value) {
+  const text = asString(value).toLowerCase();
+  return /\b(sunscreen|spf|cleanser|cleanse|cleansing|moisturizer|moisturiser|cream|lotion|pm routine|am routine|night routine|evening routine)\b/i.test(text);
+}
+
 function isLowSignalOptionalAdjustment(item, context = {}) {
   const actionType = asString(item && item.action_type);
   if (actionType !== 'add_step') return false;
   if (containsEyeStepSignal(asString(item && item.title))) return true;
+  const title = asString(item && item.title);
+  const why = asString(item && item.why_this_first);
   const linkedNeeds = asArray(context && context.raw_recommendation_needs)
     .filter((need) => asString(need && need.adjustment_id) === asString(item && item.adjustment_id));
   if (linkedNeeds.some((need) => containsEyeStepSignal(asString(need && need.target_step)) || containsEyeStepSignal(asString(need && need.why)))) {
     return true;
   }
+  const ingredientLikeSignal = containsIngredientStepSignal(title) || containsIngredientStepSignal(why)
+    || linkedNeeds.some((need) => containsIngredientStepSignal(asString(need && need.target_step)) || containsIngredientStepSignal(asString(need && need.why)));
+  const hasCoreStepSignal = containsCoreRoutineStepSignal(title) || containsCoreRoutineStepSignal(why)
+    || linkedNeeds.some((need) => containsCoreRoutineStepSignal(asString(need && need.target_step)) || containsCoreRoutineStepSignal(asString(need && need.why)));
+  if (ingredientLikeSignal && !hasCoreStepSignal) return true;
   return false;
 }
 
@@ -300,6 +317,50 @@ function isCoreGuidanceStep(targetStep) {
     || token === 'moisturizer'
     || token === 'spf moisturizer'
     || token === 'am sunscreen';
+}
+
+function isNonActionableKeepAdjustment(item) {
+  return asString(item && item.action_type) === 'keep';
+}
+
+function isLowSignalSecondaryReplacement(item, allAdjustments, products) {
+  if (asString(item && item.action_type) !== 'replace') return false;
+  const priorityRank = Number(item && item.priority_rank);
+  if (!Number.isFinite(priorityRank) || priorityRank <= 1) return false;
+  const title = asString(item && item.title).toLowerCase();
+  const why = asString(item && item.why_this_first).toLowerCase();
+  const hedged = /(^|\b)(consider|maybe|might|could|evaluate|different)(\b|$)/i.test(title) || /(^|\b)(may|might|could)(\b|$)/i.test(why);
+  if (!hedged) return false;
+  const affected = asArray(item && item.affected_products)
+    .map((ref) => asArray(products).find((product) => asString(product && product.product_ref) === asString(ref)))
+    .filter(Boolean);
+  if (!affected.length) return false;
+  const productActionsAreWeak = affected.every((product) => ['keep', 'unknown'].includes(asString(product && product.suggested_action)));
+  if (!productActionsAreWeak) return false;
+  const higherPriorityCoreGapExists = asArray(allAdjustments).some((candidate) => {
+    if (!candidate || candidate === item) return false;
+    const candidateRank = Number(candidate.priority_rank);
+    if (!Number.isFinite(candidateRank) || candidateRank >= priorityRank) return false;
+    return asString(candidate.action_type) === 'add_step' && containsCoreRoutineStepSignal(asString(candidate.title));
+  });
+  return higherPriorityCoreGapExists;
+}
+
+function buildUnresolvedRecommendationNotes(synthesis, visibleRecommendationGroups) {
+  if (asArray(visibleRecommendationGroups).length > 0) return [];
+  const out = [];
+  const seen = new Set();
+  for (const need of asArray(synthesis && synthesis.recommendation_needs)) {
+    const adjustmentId = asString(need && need.adjustment_id);
+    if (!adjustmentId) continue;
+    if (seen.has(adjustmentId)) continue;
+    seen.add(adjustmentId);
+    out.push({
+      adjustment_id: adjustmentId,
+      note: 'Need identified, but no grounded product candidates are available yet.',
+    });
+  }
+  return out;
 }
 
 function buildFallbackProductAudit(candidate, context = {}) {
@@ -1070,9 +1131,13 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
   const products = asArray(auditOutput && auditOutput.products);
   const removedAdjustmentIds = new Set();
   const overlapOrGaps = asArray(synthesis && synthesis.overlap_or_gaps).filter((issue) => !isFalseGapReference(issue, context));
-  const topAdjustments = asArray(synthesis && synthesis.top_3_adjustments)
+  const rawAdjustments = asArray(synthesis && synthesis.top_3_adjustments);
+  const topAdjustments = rawAdjustments
     .filter((item) => {
-      const shouldKeep = !isFalseGapReference(item, context) && !isLowSignalOptionalAdjustment(item, context);
+      const shouldKeep = !isFalseGapReference(item, context)
+        && !isLowSignalOptionalAdjustment(item, context)
+        && !isNonActionableKeepAdjustment(item)
+        && !isLowSignalSecondaryReplacement(item, rawAdjustments, products);
       if (!shouldKeep && asString(item && item.adjustment_id)) removedAdjustmentIds.add(asString(item.adjustment_id));
       return shouldKeep;
     })
@@ -1086,6 +1151,7 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
     .filter((need) => !removedAdjustmentIds.has(asString(need && need.adjustment_id)))
     .filter((need) => !isFalseGapReference(need, context))
     .filter((need) => !containsEyeStepSignal(asString(need && need.target_step)) && !containsEyeStepSignal(asString(need && need.why)))
+    .filter((need) => !(containsIngredientStepSignal(asString(need && need.target_step)) && !containsCoreRoutineStepSignal(asString(need && need.target_step))))
     .filter((need) => validAdjustmentIds.has(asString(need && need.adjustment_id)));
   const validNeedIds = new Set(recommendationNeeds.map((item) => asString(item.adjustment_id)).filter(Boolean));
   const recommendationQueries = asArray(synthesis && synthesis.recommendation_queries)
@@ -1187,12 +1253,7 @@ function buildAssistantText(synthesis, language) {
 
 function buildCards({ audit, synthesis, recommendationGroups, additionalCandidates, language, requestId, context = {} }) {
   const visibleRecommendationGroups = getVisibleRecommendationGroups(recommendationGroups, synthesis, context);
-  const unresolvedRecommendationNotes = visibleRecommendationGroups.length === 0
-    ? asArray(synthesis && synthesis.recommendation_needs).map((need) => ({
-      adjustment_id: asString(need && need.adjustment_id),
-      note: 'Need identified, but no grounded product candidates are available yet.',
-    })).filter((row) => row.adjustment_id)
-    : [];
+  const unresolvedRecommendationNotes = buildUnresolvedRecommendationNotes(synthesis, visibleRecommendationGroups);
   const cards = [
     {
       card_id: `routine_product_audit_${requestId}`,
@@ -1424,7 +1485,12 @@ async function runRoutineAnalysisV2({
 
 function coerceSynthesisOutput(rawOutput, auditOutput, context = {}) {
   const fallback = buildDeterministicSynthesis(auditOutput, context);
-  if (!isPlainObject(rawOutput)) return sanitizeSynthesisOutput(fallback, auditOutput, context);
+  if (!isPlainObject(rawOutput)) {
+    return sanitizeSynthesisOutput(fallback, auditOutput, {
+      ...context,
+      raw_recommendation_needs: asArray(fallback && fallback.recommendation_needs),
+    });
+  }
   const normalizeImproved = (rows) => asArray(rows)
     .map((row) => isPlainObject(row) ? {
       step_order: Number.isFinite(Number(row.step_order)) ? Math.max(1, Math.trunc(Number(row.step_order))) : null,
@@ -1513,7 +1579,10 @@ function coerceSynthesisOutput(rawOutput, auditOutput, context = {}) {
     confidence: clampNumber(rawOutput.confidence, 0, 1, fallback.confidence),
     missing_info: uniqStrings(rawOutput.missing_info, 8).length ? uniqStrings(rawOutput.missing_info, 8) : fallback.missing_info,
   };
-  return sanitizeSynthesisOutput(normalized, auditOutput, context);
+  return sanitizeSynthesisOutput(normalized, auditOutput, {
+    ...context,
+    raw_recommendation_needs: recommendationNeeds,
+  });
 }
 
 function __resetGatewayForTest() {
@@ -1532,6 +1601,7 @@ module.exports = {
   buildDeterministicSynthesis,
   buildRoutineInventory,
   getVisibleRecommendationGroups,
+  buildUnresolvedRecommendationNotes,
   buildFallbackProductAudit,
   __resetGatewayForTest,
 };

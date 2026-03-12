@@ -381,3 +381,234 @@ test('guidance-only secondary replace-current recommendations stay hidden', asyn
   assert.equal(visible.length, 1);
   assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
 });
+
+test('coerceSynthesisOutput filters weak secondary routine adjustments behind a core gap', async () => {
+  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
+  const audit = {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        input_label: 'CeraVe Hydrating Cleanser',
+        inferred_product_type: 'cleanser',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'This cleanser is directionally usable in both slots.',
+      },
+      {
+        product_ref: 'routine_am_02',
+        slot: 'am',
+        input_label: 'Vitamin C serum',
+        inferred_product_type: 'vitamin c serum',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'This is a normal AM treatment step.',
+      },
+      {
+        product_ref: 'routine_pm_04',
+        slot: 'pm',
+        input_label: 'Retinol serum',
+        inferred_product_type: 'retinoid serum',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'This is a valid PM treatment step.',
+      },
+    ],
+    additional_items_needing_verification: [],
+    missing_info: [],
+    confidence: 0.75,
+  };
+
+  const synthesis = coerceSynthesisOutput({
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'AM sunscreen is missing.',
+      main_strengths: ['There is already treatment coverage.'],
+      main_issues: ['Missing Sunscreen', 'Consider a different PM cleanser', 'Monitor Vitamin C and Retinol'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [
+      { issue_type: 'gap', title: 'Missing Sunscreen', evidence: ['No AM SPF found.'], affected_products: [] },
+      { issue_type: 'overlap', title: 'CeraVe Hydrating Cleanser AM and PM', evidence: ['The same cleanser appears in AM and PM.'], affected_products: ['routine_am_01'] },
+    ],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'add_sunscreen',
+        priority_rank: 1,
+        title: 'Add Sunscreen to AM Routine',
+        action_type: 'add_step',
+        affected_products: [],
+        why_this_first: 'AM protection is missing.',
+        expected_outcome: 'A more complete AM routine.',
+      },
+      {
+        adjustment_id: 'consider_pm_cleanser',
+        priority_rank: 2,
+        title: 'Consider a different PM cleanser',
+        action_type: 'replace',
+        affected_products: ['routine_am_01'],
+        why_this_first: 'A different PM cleanser may be more comfortable.',
+        expected_outcome: 'Potentially less friction at night.',
+      },
+      {
+        adjustment_id: 'monitor_actives',
+        priority_rank: 3,
+        title: 'Monitor Vitamin C and Retinol',
+        action_type: 'keep',
+        affected_products: ['routine_am_02', 'routine_pm_04'],
+        why_this_first: 'These are already directionally fine.',
+        expected_outcome: 'No major change needed.',
+      },
+    ],
+    improved_am_routine: [],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [],
+    recommendation_needs: [
+      {
+        adjustment_id: 'add_sunscreen',
+        need_state: 'fill_gap',
+        target_step: 'sunscreen',
+        why: 'Need AM protection.',
+        required_attributes: ['daily UV protection'],
+        avoid_attributes: ['unclear SPF claims'],
+        timing: 'am',
+        texture_or_format: null,
+        priority: 'high',
+      },
+      {
+        adjustment_id: 'consider_pm_cleanser',
+        need_state: 'replace_current',
+        target_step: 'PM cleanser',
+        why: 'A different PM cleanser may be more comfortable.',
+        required_attributes: ['gentler cleanse'],
+        avoid_attributes: ['stripping finish'],
+        timing: 'pm',
+        texture_or_format: null,
+        priority: 'medium',
+      },
+    ],
+    recommendation_queries: [
+      { adjustment_id: 'add_sunscreen', query_en: 'daily sunscreen' },
+      { adjustment_id: 'consider_pm_cleanser', query_en: 'gentle pm cleanser' },
+    ],
+    confidence: 0.7,
+    missing_info: [],
+  }, audit, {});
+
+  assert.deepEqual(
+    synthesis.top_3_adjustments.map((item) => item.adjustment_id),
+    ['add_sunscreen'],
+  );
+  assert.deepEqual(
+    synthesis.recommendation_needs.map((item) => item.adjustment_id),
+    ['add_sunscreen'],
+  );
+});
+
+test('coerceSynthesisOutput filters ingredient-specific add-step noise', async () => {
+  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
+  const audit = {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products: [
+      {
+        product_ref: 'routine_pm_07',
+        slot: 'pm',
+        input_label: 'Tretinoin cream',
+        inferred_product_type: 'retinoid serum',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'Tretinoin is already present at night.',
+      },
+      {
+        product_ref: 'routine_pm_08',
+        slot: 'pm',
+        input_label: 'Glycolic acid serum',
+        inferred_product_type: 'exfoliant treatment',
+        suggested_action: 'reduce_frequency',
+        concise_reasoning_en: 'This looks strong enough to reduce frequency.',
+      },
+    ],
+    additional_items_needing_verification: [],
+    missing_info: [],
+    confidence: 0.74,
+  };
+  const synthesis = coerceSynthesisOutput({
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'The routine may be irritating.',
+      main_strengths: ['There is treatment coverage.'],
+      main_issues: ['Potential irritation from combining Tretinoin and Glycolic Acid'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [
+      {
+        issue_type: 'too_irritating',
+        title: 'Potential irritation from combining Tretinoin and Glycolic Acid',
+        evidence: ['These steps may stack too aggressively.'],
+        affected_products: ['routine_pm_07', 'routine_pm_08'],
+      },
+    ],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'reduce_glycolic',
+        priority_rank: 1,
+        title: 'Reduce the frequency of Glycolic Acid serum',
+        action_type: 'reduce_frequency',
+        affected_products: ['routine_pm_08'],
+        why_this_first: 'This is the clearest irritation lever.',
+        expected_outcome: 'Lower irritation risk.',
+      },
+      {
+        adjustment_id: 'add_ceramide_np',
+        priority_rank: 2,
+        title: 'Add a Ceramide NP product',
+        action_type: 'add_step',
+        affected_products: [],
+        why_this_first: 'Extra ceramide support may help.',
+        expected_outcome: 'More barrier support.',
+      },
+    ],
+    improved_am_routine: [],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [],
+    recommendation_needs: [
+      {
+        adjustment_id: 'add_ceramide_np',
+        need_state: 'fill_gap',
+        target_step: 'Ceramide NP product',
+        why: 'Extra ceramide support may help.',
+        required_attributes: ['ceramide support'],
+        avoid_attributes: ['heavy residue'],
+        timing: 'either',
+        texture_or_format: null,
+        priority: 'medium',
+      },
+    ],
+    recommendation_queries: [
+      { adjustment_id: 'add_ceramide_np', query_en: 'ceramide support product' },
+    ],
+    confidence: 0.72,
+    missing_info: [],
+  }, audit, {});
+
+  assert.deepEqual(
+    synthesis.top_3_adjustments.map((item) => item.adjustment_id),
+    ['reduce_glycolic'],
+  );
+  assert.equal(synthesis.recommendation_needs.length, 0);
+});
+
+test('buildUnresolvedRecommendationNotes deduplicates repeated adjustment ids', async () => {
+  const { buildUnresolvedRecommendationNotes } = require('../src/auroraBff/routineAnalysisV2');
+  const notes = buildUnresolvedRecommendationNotes({
+    recommendation_needs: [
+      { adjustment_id: 'adj_one' },
+      { adjustment_id: 'adj_one' },
+      { adjustment_id: 'adj_two' },
+    ],
+  }, []);
+
+  assert.deepEqual(notes, [
+    { adjustment_id: 'adj_one', note: 'Need identified, but no grounded product candidates are available yet.' },
+    { adjustment_id: 'adj_two', note: 'Need identified, but no grounded product candidates are available yet.' },
+  ]);
+});
