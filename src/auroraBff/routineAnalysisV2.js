@@ -276,6 +276,32 @@ function isFalseGapReference(row, context = {}) {
   return inventoryHasStep(inventory, ref.step, ref.timing);
 }
 
+function containsEyeStepSignal(value) {
+  const text = asString(value).toLowerCase();
+  return /(eye product|eye cream|eye serum|eye gel|under[- ]?eye|under eye|dedicated eye|eye treatment|eye care)/i.test(text);
+}
+
+function isLowSignalOptionalAdjustment(item, context = {}) {
+  const actionType = asString(item && item.action_type);
+  if (actionType !== 'add_step') return false;
+  if (containsEyeStepSignal(asString(item && item.title))) return true;
+  const linkedNeeds = asArray(context && context.raw_recommendation_needs)
+    .filter((need) => asString(need && need.adjustment_id) === asString(item && item.adjustment_id));
+  if (linkedNeeds.some((need) => containsEyeStepSignal(asString(need && need.target_step)) || containsEyeStepSignal(asString(need && need.why)))) {
+    return true;
+  }
+  return false;
+}
+
+function isCoreGuidanceStep(targetStep) {
+  const token = asString(targetStep).toLowerCase();
+  return token === 'sunscreen'
+    || token === 'cleanser'
+    || token === 'moisturizer'
+    || token === 'spf moisturizer'
+    || token === 'am sunscreen';
+}
+
 function buildFallbackProductAudit(candidate, context = {}) {
   const inputLabel = asString(candidate && candidate.product_text) || asString(candidate && candidate.product_url) || 'Unknown product';
   const inferredProductType = inferProductType(candidate);
@@ -1046,7 +1072,7 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
   const overlapOrGaps = asArray(synthesis && synthesis.overlap_or_gaps).filter((issue) => !isFalseGapReference(issue, context));
   const topAdjustments = asArray(synthesis && synthesis.top_3_adjustments)
     .filter((item) => {
-      const shouldKeep = !isFalseGapReference(item, context);
+      const shouldKeep = !isFalseGapReference(item, context) && !isLowSignalOptionalAdjustment(item, context);
       if (!shouldKeep && asString(item && item.adjustment_id)) removedAdjustmentIds.add(asString(item.adjustment_id));
       return shouldKeep;
     })
@@ -1059,6 +1085,7 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
   const recommendationNeeds = asArray(synthesis && synthesis.recommendation_needs)
     .filter((need) => !removedAdjustmentIds.has(asString(need && need.adjustment_id)))
     .filter((need) => !isFalseGapReference(need, context))
+    .filter((need) => !containsEyeStepSignal(asString(need && need.target_step)) && !containsEyeStepSignal(asString(need && need.why)))
     .filter((need) => validAdjustmentIds.has(asString(need && need.adjustment_id)));
   const validNeedIds = new Set(recommendationNeeds.map((item) => asString(item.adjustment_id)).filter(Boolean));
   const recommendationQueries = asArray(synthesis && synthesis.recommendation_queries)
@@ -1101,11 +1128,20 @@ function shouldDisplayRecommendationGroup(group, synthesis, context = {}) {
   if (!isPlainObject(group && group.category_guidance)) return false;
   const targetStep = asString(group && group.target_step).toLowerCase();
   const needState = asString(group && group.need_state);
-  if (needState === 'replace_current') return true;
-  if (['sunscreen', 'cleanser', 'moisturizer'].includes(targetStep)) return true;
   const adjustment = asArray(synthesis && synthesis.top_3_adjustments)
     .find((item) => asString(item && item.adjustment_id) === asString(group && group.adjustment_id));
-  if (adjustment && ['replace', 'remove', 'swap_step'].includes(asString(adjustment.action_type))) return true;
+  if (containsEyeStepSignal(targetStep) || containsEyeStepSignal(asString(group && group.why))) return false;
+  if (needState === 'fill_gap' && isCoreGuidanceStep(targetStep) && !isFalseGapReference({ ...group, action_type: 'add_step' }, context)) {
+    return true;
+  }
+  if (needState === 'replace_current' && adjustment) {
+    const priorityRank = Number(adjustment.priority_rank) || 99;
+    const actionType = asString(adjustment.action_type);
+    const isStrongReplacement = ['replace', 'swap_step', 'remove'].includes(actionType);
+    if (priorityRank === 1 && isStrongReplacement && (isCoreGuidanceStep(targetStep) || targetStep === 'serum' || targetStep === 'treatment')) {
+      return true;
+    }
+  }
   if (isFalseGapReference({ ...group, action_type: 'add_step' }, context)) return false;
   return false;
 }

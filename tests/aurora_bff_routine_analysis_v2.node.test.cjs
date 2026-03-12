@@ -257,3 +257,127 @@ test('guidance-only serum upgrades stay hidden while core-gap guidance stays vis
   assert.equal(visible.length, 1);
   assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
 });
+
+test('coerceSynthesisOutput removes dedicated eye-product adjustments and linked needs', async () => {
+  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
+  const audit = {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        input_label: 'Gentle cleanser',
+        inferred_product_type: 'cleanser',
+        concise_reasoning_en: 'Core cleanser step is already present.',
+      },
+      {
+        product_ref: 'routine_am_02',
+        slot: 'am',
+        input_label: 'Daily SPF 50',
+        inferred_product_type: 'sunscreen',
+        concise_reasoning_en: 'Daily sunscreen is already present.',
+      },
+    ],
+    additional_items_needing_verification: [],
+    missing_info: [],
+    confidence: 0.78,
+  };
+  const synthesis = coerceSynthesisOutput({
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'The routine is fine but could use an eye product.',
+      main_strengths: ['Has sunscreen and cleanser.'],
+      main_issues: ['Incorporate a dedicated eye product'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_eye_product',
+        priority_rank: 1,
+        title: 'Incorporate a dedicated eye product',
+        action_type: 'add_step',
+        affected_products: [],
+        why_this_first: 'A dedicated eye step could help with under-eye concerns.',
+        expected_outcome: 'More targeted eye care.',
+      },
+    ],
+    improved_am_routine: [],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [
+      {
+        adjustment_id: 'adj_eye_product',
+        reasoning: 'A dedicated eye product could help.',
+        evidence: ['Optional eye support.'],
+        tradeoff_or_caution: 'Extra step.',
+      },
+    ],
+    recommendation_needs: [
+      {
+        adjustment_id: 'adj_eye_product',
+        need_state: 'fill_gap',
+        target_step: 'eye product',
+        why: 'Need more targeted under-eye care.',
+        required_attributes: ['gentle eye hydration'],
+        avoid_attributes: ['irritating fragrance'],
+        timing: 'either',
+        texture_or_format: null,
+        priority: 'low',
+      },
+    ],
+    recommendation_queries: [
+      {
+        adjustment_id: 'adj_eye_product',
+        query_en: 'gentle eye product',
+      },
+    ],
+    confidence: 0.72,
+    missing_info: [],
+  }, audit, {});
+
+  assert.equal(synthesis.top_3_adjustments.length, 0);
+  assert.equal(synthesis.recommendation_needs.length, 0);
+  assert.equal(synthesis.recommendation_queries.length, 0);
+});
+
+test('guidance-only secondary replace-current recommendations stay hidden', async () => {
+  const { getVisibleRecommendationGroups } = require('../src/auroraBff/routineAnalysisV2');
+  const synthesis = {
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_gap_spf',
+        priority_rank: 1,
+        action_type: 'add_step',
+        title: 'Add Sunscreen to AM Routine',
+      },
+      {
+        adjustment_id: 'adj_cleanser_replace',
+        priority_rank: 2,
+        action_type: 'replace',
+        title: 'Consider a different cleanser for PM',
+      },
+    ],
+  };
+  const visible = getVisibleRecommendationGroups([
+    {
+      adjustment_id: 'adj_gap_spf',
+      need_state: 'fill_gap',
+      target_step: 'sunscreen',
+      candidate_pool: [],
+      category_guidance: { what_to_look_for: ['daily sunscreen'] },
+      why: 'AM protection is missing.',
+    },
+    {
+      adjustment_id: 'adj_cleanser_replace',
+      need_state: 'replace_current',
+      target_step: 'PM cleanser',
+      candidate_pool: [],
+      category_guidance: { what_to_look_for: ['gentler PM cleanser'] },
+      why: 'A different PM cleanser may be more comfortable.',
+    },
+  ], synthesis);
+
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
+});
