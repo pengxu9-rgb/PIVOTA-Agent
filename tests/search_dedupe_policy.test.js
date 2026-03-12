@@ -158,6 +158,31 @@ describe('search dedupe policy', () => {
     expect(payload.search.max_price).toBe(50);
   });
 
+  test('show baseline picks broadens over-constrained sunscreen query', () => {
+    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
+      query: 'Face SPF50+ PA++++ sunscreen',
+      ui_surface: 'travel_lookup',
+      clarification_slot: 'budget',
+      clarification_answer: 'Show baseline picks',
+      slot_state: JSON.stringify({
+        asked_slots: ['brand'],
+        resolved_slots: { brand: 'No brand preference' },
+      }),
+    });
+
+    expect(payload.search.query).toBe('sunscreen');
+    expect(payload.search.min_price).toBeUndefined();
+    expect(payload.search.max_price).toBeUndefined();
+    expect(payload.context).toEqual({
+      ui_surface: 'travel_lookup',
+      asked_slots: ['brand', 'budget'],
+      resolved_slots: {
+        brand: 'No brand preference',
+        budget: 'Show baseline picks',
+      },
+    });
+  });
+
   test('travel lookup post-process dedupes by canonical url and ranks stock last', () => {
     const processed = app._debug.postProcessTravelLookupProductsResponse({
       products: [

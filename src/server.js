@@ -3890,6 +3890,44 @@ function appendSearchQueryHint(queryText, hint) {
   return [base, next].filter(Boolean).join(' ').trim();
 }
 
+function buildTravelLookupBaselineQuery(queryText) {
+  const raw = String(queryText || '').trim();
+  const normalized = normalizeSearchTextForMatch(raw);
+  if (!normalized) return raw;
+
+  const exactRules = [
+    [/\bbody sunscreen\b/i, 'body sunscreen'],
+    [/\bspf lip balm\b/i, 'spf lip balm'],
+    [/\blip balm\b/i, 'lip balm'],
+    [/\bafter[-\s]?sun\b/i, 'after sun gel'],
+    [/\bbody lotion\b/i, 'body lotion'],
+    [/\bbody gel\b/i, 'body gel'],
+    [/\bbarrier repair cream\b/i, 'barrier repair cream'],
+    [/\brepair serum\b/i, 'repair serum'],
+    [/\bsoothing serum\b/i, 'soothing serum'],
+    [/\bantioxidant serum\b/i, 'antioxidant serum'],
+    [/\bgel[-\s]?cream moisturizer\b/i, 'gel cream moisturizer'],
+    [/\bmoisturi[sz]er\b/i, 'moisturizer'],
+    [/\bmask\b/i, 'face mask'],
+  ];
+  for (const [pattern, replacement] of exactRules) {
+    if (pattern.test(normalized)) return replacement;
+  }
+
+  if (/\bsunscreen\b/i.test(normalized)) {
+    return /\bmineral\b/i.test(normalized) ? 'mineral sunscreen' : 'sunscreen';
+  }
+  if (/\bserum\b/i.test(normalized)) return 'serum';
+  if (/\bcream\b/i.test(normalized)) return 'cream';
+
+  const stripped = normalized
+    .replace(/\b(face|facial|portable|reapply|format|stick|cushion|outdoor|travel|elevated|uv|pa\+{1,5}|spf\s*\d+\+?|am|pm)\b/gi, ' ')
+    .replace(/[^a-z0-9\s-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped || raw;
+}
+
 function applyTravelLookupClarificationToSearch(search, slot, answer) {
   const normalizedSlot = String(slot || '').trim().toLowerCase();
   const rawAnswer = String(answer || '').trim();
@@ -3920,6 +3958,12 @@ function applyTravelLookupClarificationToSearch(search, slot, answer) {
   }
 
   if (normalizedSlot === 'budget') {
+    if (normalizedAnswer === 'show baseline picks') {
+      search.query = buildTravelLookupBaselineQuery(search.query);
+      delete search.min_price;
+      delete search.max_price;
+      return;
+    }
     const budgetRanges = new Map([
       ['$0-25', [0, 25]],
       ['$25-50', [25, 50]],
