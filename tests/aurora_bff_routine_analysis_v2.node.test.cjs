@@ -612,3 +612,69 @@ test('buildUnresolvedRecommendationNotes deduplicates repeated adjustment ids', 
     { adjustment_id: 'adj_two', note: 'Need identified, but no grounded product candidates are available yet.' },
   ]);
 });
+
+test('coerceSynthesisOutput removes monitor-like frequency adjustments without explicit conflict evidence', async () => {
+  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
+  const audit = {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products: [
+      {
+        product_ref: 'routine_am_02',
+        slot: 'am',
+        input_label: 'Vitamin C serum',
+        inferred_product_type: 'vitamin c serum',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'Normal AM antioxidant step.',
+      },
+      {
+        product_ref: 'routine_pm_06',
+        slot: 'pm',
+        input_label: 'Retinal serum',
+        inferred_product_type: 'retinoid serum',
+        suggested_action: 'keep',
+        concise_reasoning_en: 'Normal PM treatment step.',
+      },
+    ],
+    additional_items_needing_verification: [],
+    missing_info: [],
+    confidence: 0.76,
+  };
+  const synthesis = coerceSynthesisOutput({
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'The routine is broadly fine.',
+      main_strengths: ['Has sunscreen and moisturizer.'],
+      main_issues: ['Monitor for irritation from Vitamin C and Retinal'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [
+      {
+        issue_type: 'overlap',
+        title: 'Duplication of cleanser and moisturizer in AM and PM',
+        evidence: ['Basics repeat in both slots.'],
+        affected_products: ['routine_am_01'],
+      },
+    ],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_monitor_vitc_retinal',
+        priority_rank: 1,
+        title: 'Monitor for irritation from Vitamin C and Retinal',
+        action_type: 'reduce_frequency',
+        affected_products: ['Vitamin C serum', 'Retinal serum'],
+        why_this_first: 'Watch for sensitivity if these feel too active together.',
+        expected_outcome: 'Potentially less irritation.',
+      },
+    ],
+    improved_am_routine: [],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [],
+    recommendation_needs: [],
+    recommendation_queries: [],
+    confidence: 0.7,
+    missing_info: [],
+  }, audit, {});
+
+  assert.equal(synthesis.top_3_adjustments.length, 0);
+});

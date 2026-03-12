@@ -346,6 +346,43 @@ function isLowSignalSecondaryReplacement(item, allAdjustments, products) {
   return higherPriorityCoreGapExists;
 }
 
+function hasExplicitConflictEvidenceForAdjustment(item, issues, products) {
+  const productRefs = new Set(
+    asArray(item && item.affected_products)
+      .map((ref) => asString(ref))
+      .filter(Boolean),
+  );
+  if (!productRefs.size) {
+    for (const token of asArray(item && item.affected_products)) {
+      const raw = asString(token).toLowerCase();
+      if (!raw) continue;
+      const matched = asArray(products).find((product) => {
+        const ref = asString(product && product.product_ref).toLowerCase();
+        const inputLabel = asString(product && product.input_label).toLowerCase();
+        const resolvedName = asString(product && product.resolved_name_or_null).toLowerCase();
+        return raw === ref || raw === inputLabel || (resolvedName && raw === resolvedName);
+      });
+      if (matched) productRefs.add(asString(matched.product_ref));
+    }
+  }
+  const relatedIssue = asArray(issues).find((issue) => {
+    const issueType = asString(issue && issue.issue_type);
+    if (!['overlap', 'conflict', 'too_irritating', 'too_heavy'].includes(issueType)) return false;
+    const affected = new Set(asArray(issue && issue.affected_products).map((ref) => asString(ref)).filter(Boolean));
+    return Array.from(productRefs).some((ref) => affected.has(ref));
+  });
+  return Boolean(relatedIssue);
+}
+
+function isLowSignalMonitoringAdjustment(item, issues, products) {
+  if (asString(item && item.action_type) !== 'reduce_frequency') return false;
+  const title = asString(item && item.title);
+  const why = asString(item && item.why_this_first);
+  const isMonitorLike = /(^|\b)(monitor|watch|keep an eye on)(\b|$)/i.test(title) || /(^|\b)(monitor|watch|keep an eye on)(\b|$)/i.test(why);
+  if (!isMonitorLike) return false;
+  return !hasExplicitConflictEvidenceForAdjustment(item, issues, products);
+}
+
 function buildUnresolvedRecommendationNotes(synthesis, visibleRecommendationGroups) {
   if (asArray(visibleRecommendationGroups).length > 0) return [];
   const out = [];
@@ -1137,6 +1174,7 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
       const shouldKeep = !isFalseGapReference(item, context)
         && !isLowSignalOptionalAdjustment(item, context)
         && !isNonActionableKeepAdjustment(item)
+        && !isLowSignalMonitoringAdjustment(item, overlapOrGaps, products)
         && !isLowSignalSecondaryReplacement(item, rawAdjustments, products);
       if (!shouldKeep && asString(item && item.adjustment_id)) removedAdjustmentIds.add(asString(item.adjustment_id));
       return shouldKeep;
