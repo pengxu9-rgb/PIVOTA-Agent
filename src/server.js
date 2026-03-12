@@ -3652,6 +3652,7 @@ function buildProxySearchSoftFallbackResponse({
   semanticRetryQuery = null,
   semanticRetryHits = 0,
   forceClarify = false,
+  slotStateInput = null,
 }) {
   const quotaExhausted = isUpstreamQuotaExhausted({ upstreamStatus, upstreamCode, upstreamMessage });
   const fallbackReasonToken = String(reason || '').trim().toLowerCase();
@@ -3676,9 +3677,15 @@ function buildProxySearchSoftFallbackResponse({
     forceClarifyByRecallExhaustion ||
     (quotaExhausted && shouldClarifyOnQuota({ queryClass, intent }));
   const slotState = (() => {
-    const parsed = normalizeTravelLookupSlotState(
+    const parsed = normalizeTravelLookupSlotState(slotStateInput);
+    const fromQuery = normalizeTravelLookupSlotState(
       parseQueryJsonObject(queryParams?.slot_state || queryParams?.slotState),
     );
+    parsed.asked_slots = Array.from(new Set([...parsed.asked_slots, ...fromQuery.asked_slots]));
+    parsed.resolved_slots = {
+      ...parsed.resolved_slots,
+      ...fromQuery.resolved_slots,
+    };
     const clarificationSlot = String(
       firstQueryParamValue(queryParams?.clarification_slot || queryParams?.clarificationSlot) || '',
     )
@@ -19262,6 +19269,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryClass: traceQueryClass,
               queryText,
               querySource: 'agent_products_error_fallback',
+              slotStateInput: metadata?.slot_state || payload?.context || null,
             }),
           };
         }
@@ -19704,6 +19712,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               semanticRetryQuery,
               semanticRetryHits,
 	              forceClarify: true,
+              slotStateInput: metadata?.slot_state || payload?.context || null,
 	            });
           } else if (primaryLowQualityNonempty) {
             const lowQualityReason = secondaryFallbackMeta?.semantic_retry_applied
@@ -19729,6 +19738,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
               ),
               forceClarify: true,
+              slotStateInput: metadata?.slot_state || payload?.context || null,
             });
 	          } else {
             const fallbackReason = skipSecondaryFallback
@@ -19764,6 +19774,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
                 ),
                 forceClarify: true,
+                slotStateInput: metadata?.slot_state || payload?.context || null,
               });
             } else {
               upstreamData = withProxySearchFallbackMetadata(upstreamData, {

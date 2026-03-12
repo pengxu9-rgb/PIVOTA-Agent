@@ -117,12 +117,10 @@ describe('search dedupe policy', () => {
       queryParams: {
         query: 'Face SPF50+ PA++++ sunscreen',
         ui_surface: 'travel_lookup',
-        clarification_slot: 'brand',
-        clarification_answer: 'No brand preference',
-        slot_state: JSON.stringify({
-          asked_slots: ['brand'],
-          resolved_slots: {},
-        }),
+      },
+      slotStateInput: {
+        asked_slots: ['brand'],
+        resolved_slots: { brand: 'No brand preference' },
       },
       reason: 'primary_irrelevant_no_fallback',
       queryClass: 'attribute',
