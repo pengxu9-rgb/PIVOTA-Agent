@@ -346,6 +346,13 @@ function buildVariants(product) {
     const availability = {};
     if (inStock !== undefined) availability.in_stock = inStock;
     if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
+    const variantImages = Array.from(
+      new Set(
+        [v.image_url, v.image, ...(Array.isArray(v.images) ? v.images : []), ...(Array.isArray(v.image_urls) ? v.image_urls : [])]
+          .map((image) => (typeof image === 'string' ? image : image?.url || image?.src || image?.image_url))
+          .filter((image) => typeof image === 'string' && image.trim()),
+      ),
+    );
 
     return {
       variant_id: String(variantId),
@@ -355,7 +362,9 @@ function buildVariants(product) {
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       price: toVariantPrice(v.price || v.pricing, currency),
       availability,
-      image_url: v.image_url || v.image || v.images?.[0],
+      image_url: variantImages[0],
+      images: variantImages,
+      image_urls: variantImages,
     };
   });
 }
@@ -395,6 +404,24 @@ function buildMediaItems(product, variants) {
   });
 
   variants.forEach((v) => {
+    const variantImages = Array.isArray(v.images)
+      ? v.images
+      : Array.isArray(v.image_urls)
+        ? v.image_urls
+        : v.image_url
+          ? [v.image_url]
+          : [];
+
+    variantImages.forEach((variantImage) => {
+      const url = typeof variantImage === 'string' ? variantImage : variantImage?.url || variantImage?.src || variantImage?.image_url;
+      if (!url || items.some((item) => item.url === url)) return;
+      items.push({
+        type: 'image',
+        url,
+        alt_text: product.title,
+      });
+    });
+
     if (v.image_url && !items.some((i) => i.url === v.image_url)) {
       items.push({
         type: 'image',

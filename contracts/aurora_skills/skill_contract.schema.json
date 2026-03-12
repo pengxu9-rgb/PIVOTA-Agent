@@ -7,7 +7,7 @@
   "$defs": {
     "SkillId": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },
     "SemVer": {
       "type": "string",

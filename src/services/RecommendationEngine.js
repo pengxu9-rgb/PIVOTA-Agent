@@ -7,8 +7,11 @@ const {
   computeSemanticSignalStrength,
   UNKNOWN_VERTICAL,
 } = require('./recoSemanticSignals');
-
-const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
+  ensureJsonObject,
+} = require('./externalSeedProducts');
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -778,121 +781,6 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
   }
 
   return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
-}
-
-function normalizeSeedAvailability(raw) {
-  const v = String(raw || '').trim().toLowerCase();
-  if (!v) return null;
-  if (v === 'in stock' || v === 'instock' || v === 'in_stock' || v === 'available') return 'in_stock';
-  if (v === 'out of stock' || v === 'outofstock' || v === 'out_of_stock' || v === 'oos') return 'out_of_stock';
-  return v;
-}
-
-function availabilityToInStock(availability) {
-  const a = normalizeSeedAvailability(availability);
-  if (!a || a === 'in_stock') return true;
-  if (a === 'out_of_stock') return false;
-  return true;
-}
-
-function ensureJsonObject(val) {
-  if (!val) return {};
-  if (typeof val === 'object') return val;
-  if (typeof val !== 'string') return {};
-  const trimmed = val.trim();
-  if (!trimmed) return {};
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function stableExternalProductId(url) {
-  const u = String(url || '').trim();
-  if (!u) return '';
-  const hash = crypto.createHash('sha256').update(u).digest('hex').slice(0, 24);
-  return `ext_${hash}`;
-}
-
-function normalizeSeedImageUrls(seedData, row) {
-  const out = [];
-  const candidates = [];
-  if (seedData && typeof seedData === 'object') {
-    if (typeof seedData.image_url === 'string') candidates.push(seedData.image_url);
-    if (Array.isArray(seedData.image_urls)) candidates.push(...seedData.image_urls);
-    if (Array.isArray(seedData.images)) candidates.push(...seedData.images);
-    if (seedData.snapshot && typeof seedData.snapshot === 'object') {
-      if (typeof seedData.snapshot.image_url === 'string') candidates.push(seedData.snapshot.image_url);
-      if (Array.isArray(seedData.snapshot.images)) candidates.push(...seedData.snapshot.images);
-    }
-  }
-  if (row && typeof row === 'object' && typeof row.image_url === 'string') candidates.push(row.image_url);
-  for (const c of candidates) {
-    const u = String(c || '').trim();
-    if (!u) continue;
-    if (!u.startsWith('http://') && !u.startsWith('https://')) continue;
-    if (out.includes(u)) continue;
-    out.push(u);
-  }
-  return out;
-}
-
-function buildExternalSeedProduct(row) {
-  if (!row || typeof row !== 'object') return null;
-  const seedData = ensureJsonObject(row.seed_data);
-  const destinationUrl = String(row.destination_url || seedData.destination_url || '').trim();
-  const canonicalUrl =
-    String(row.canonical_url || seedData.canonical_url || seedData.snapshot?.canonical_url || '').trim() || '';
-  const externalProductId =
-    String(row.external_product_id || seedData.external_product_id || seedData.product_id || '').trim() ||
-    stableExternalProductId(canonicalUrl || destinationUrl);
-  if (!externalProductId) return null;
-
-  const title =
-    seedData.title ||
-    row.title ||
-    seedData.snapshot?.title ||
-    canonicalUrl ||
-    destinationUrl ||
-    externalProductId;
-  const description = String(seedData.description || seedData.snapshot?.description || '').trim();
-  const brand = String(seedData.brand || '').trim() || undefined;
-  const category = String(seedData.category || seedData.product?.category || '').trim() || undefined;
-
-  const rawAmount = row.price_amount ?? seedData.price_amount ?? seedData.snapshot?.price_amount ?? undefined;
-  const price = normalizeAmount(rawAmount);
-  const currency = normalizeCurrency({ currency: row.price_currency || seedData.price_currency || seedData.snapshot?.price_currency }, 'USD');
-
-  const availability = normalizeSeedAvailability(row.availability || seedData.availability || seedData.snapshot?.availability);
-  const inStock = availabilityToInStock(availability);
-
-  const imageUrls = normalizeSeedImageUrls(seedData, row);
-  const imageUrl = imageUrls[0] || undefined;
-
-  const merchantName = String(seedData.merchant_display_name || seedData.brand || row.domain || 'External').trim() || 'External';
-  return {
-    id: externalProductId,
-    product_id: externalProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-    merchant_name: merchantName,
-    platform: 'external',
-    platform_product_id: externalProductId,
-    title: String(title || '').trim() || externalProductId,
-    description,
-    price,
-    currency,
-    image_url: imageUrl,
-    images: imageUrls,
-    inventory_quantity: inStock ? 999 : 0,
-    in_stock: inStock,
-    product_type: category || 'external',
-    source: 'external_seed',
-    external_seed_id: row.id ? String(row.id) : undefined,
-    ...(brand ? { vendor: brand, brand } : {}),
-    ...(category ? { category } : {}),
-  };
 }
 
 async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {

@@ -95,6 +95,47 @@ describe('external seed products in creator categories', () => {
                   description: 'Makeup brush for seamless base',
                   brand: 'Acme',
                   category: 'Beauty Tools',
+                  image_urls: [
+                    'https://example.com/img.jpg',
+                    'https://example.com/img-2.jpg',
+                  ],
+                  snapshot: {
+                    canonical_url: 'https://example.com/p/1',
+                    image_urls: [
+                      'https://example.com/img.jpg',
+                      'https://example.com/img-2.jpg',
+                    ],
+                    variants: [
+                      {
+                        sku: 'ACME-001',
+                        variant_id: 'ACME-001',
+                        option_name: 'Shade',
+                        option_value: 'Light',
+                        price: '19.99',
+                        currency: 'USD',
+                        stock: 'In Stock',
+                        image_url: 'https://example.com/img.jpg',
+                        image_urls: [
+                          'https://example.com/img.jpg',
+                          'https://example.com/img-2.jpg',
+                        ],
+                      },
+                      {
+                        sku: 'ACME-002',
+                        variant_id: 'ACME-002',
+                        option_name: 'Shade',
+                        option_value: 'Medium',
+                        price: '21.99',
+                        currency: 'USD',
+                        stock: 'In Stock',
+                        image_url: 'https://example.com/img-3.jpg',
+                        image_urls: [
+                          'https://example.com/img-3.jpg',
+                          'https://example.com/img-4.jpg',
+                        ],
+                      },
+                    ],
+                  },
                 },
                 status: 'active',
                 attached_product_key: null,
@@ -128,5 +169,27 @@ describe('external seed products in creator categories', () => {
     const bySlug = new Map(tree.roots.map((n) => [n.category.slug, n]));
     expect(bySlug.get('beauty-tools')?.category.productCount).toBe(1);
   });
-});
 
+  test('builds external products with seed snapshot variants and image galleries', async () => {
+    const { getCreatorCategoryProducts } = loadCategoriesServiceWithDb();
+
+    const result = await getCreatorCategoryProducts('test-creator', 'beauty-tools', {
+      viewId: 'GLOBAL_BEAUTY',
+      locale: 'en-US',
+      limit: 10,
+    });
+
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0].images).toEqual([
+      'https://example.com/img.jpg',
+      'https://example.com/img-2.jpg',
+    ]);
+    expect(result.products[0].variants).toHaveLength(2);
+    expect(result.products[0].variants[0]).toEqual(
+      expect.objectContaining({
+        sku: 'ACME-001',
+        image_url: 'https://example.com/img.jpg',
+      }),
+    );
+  });
+});

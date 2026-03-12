@@ -54,7 +54,7 @@ function validateSkillRequest(request) {
     errors.push('Either skill_id or intent is required');
   }
 
-  if (request.skill_id && !/^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/.test(request.skill_id)) {
+  if (request.skill_id && !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(request.skill_id)) {
     errors.push(`Invalid skill_id format: ${request.skill_id}`);
   }
 
