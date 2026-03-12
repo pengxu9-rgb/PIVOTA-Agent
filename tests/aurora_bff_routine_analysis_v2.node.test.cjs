@@ -613,7 +613,7 @@ test('buildUnresolvedRecommendationNotes deduplicates repeated adjustment ids', 
   ]);
 });
 
-test('coerceSynthesisOutput removes monitor-like frequency adjustments without explicit conflict evidence', async () => {
+test('coerceSynthesisOutput removes weak frequency adjustments without audit or conflict evidence', async () => {
   const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
   const audit = {
     schema_version: 'aurora.routine_product_audit.v1',
@@ -660,10 +660,10 @@ test('coerceSynthesisOutput removes monitor-like frequency adjustments without e
       {
         adjustment_id: 'adj_monitor_vitc_retinal',
         priority_rank: 1,
-        title: 'Monitor for irritation from Vitamin C and Retinal',
+        title: 'Reduce Retinal Serum Frequency',
         action_type: 'reduce_frequency',
-        affected_products: ['Vitamin C serum', 'Retinal serum'],
-        why_this_first: 'Watch for sensitivity if these feel too active together.',
+        affected_products: ['Retinal serum'],
+        why_this_first: 'Retinal can cause irritation, especially when starting.',
         expected_outcome: 'Potentially less irritation.',
       },
     ],

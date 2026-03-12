@@ -347,24 +347,7 @@ function isLowSignalSecondaryReplacement(item, allAdjustments, products) {
 }
 
 function hasExplicitConflictEvidenceForAdjustment(item, issues, products) {
-  const productRefs = new Set(
-    asArray(item && item.affected_products)
-      .map((ref) => asString(ref))
-      .filter(Boolean),
-  );
-  if (!productRefs.size) {
-    for (const token of asArray(item && item.affected_products)) {
-      const raw = asString(token).toLowerCase();
-      if (!raw) continue;
-      const matched = asArray(products).find((product) => {
-        const ref = asString(product && product.product_ref).toLowerCase();
-        const inputLabel = asString(product && product.input_label).toLowerCase();
-        const resolvedName = asString(product && product.resolved_name_or_null).toLowerCase();
-        return raw === ref || raw === inputLabel || (resolvedName && raw === resolvedName);
-      });
-      if (matched) productRefs.add(asString(matched.product_ref));
-    }
-  }
+  const productRefs = new Set(resolveAffectedProductRows(item, products).map((product) => asString(product && product.product_ref)).filter(Boolean));
   const relatedIssue = asArray(issues).find((issue) => {
     const issueType = asString(issue && issue.issue_type);
     if (!['overlap', 'conflict', 'too_irritating', 'too_heavy'].includes(issueType)) return false;
@@ -374,13 +357,33 @@ function hasExplicitConflictEvidenceForAdjustment(item, issues, products) {
   return Boolean(relatedIssue);
 }
 
-function isLowSignalMonitoringAdjustment(item, issues, products) {
+function resolveAffectedProductRows(item, products) {
+  const rows = [];
+  const seen = new Set();
+  for (const token of asArray(item && item.affected_products)) {
+    const raw = asString(token).toLowerCase();
+    if (!raw) continue;
+    const matched = asArray(products).find((product) => {
+      const ref = asString(product && product.product_ref).toLowerCase();
+      const inputLabel = asString(product && product.input_label).toLowerCase();
+      const resolvedName = asString(product && product.resolved_name_or_null).toLowerCase();
+      return raw === ref || raw === inputLabel || (resolvedName && raw === resolvedName);
+    });
+    if (!matched) continue;
+    const ref = asString(matched.product_ref);
+    if (!ref || seen.has(ref)) continue;
+    seen.add(ref);
+    rows.push(matched);
+  }
+  return rows;
+}
+
+function isLowSignalFrequencyAdjustment(item, issues, products) {
   if (asString(item && item.action_type) !== 'reduce_frequency') return false;
-  const title = asString(item && item.title);
-  const why = asString(item && item.why_this_first);
-  const isMonitorLike = /(^|\b)(monitor|watch|keep an eye on)(\b|$)/i.test(title) || /(^|\b)(monitor|watch|keep an eye on)(\b|$)/i.test(why);
-  if (!isMonitorLike) return false;
-  return !hasExplicitConflictEvidenceForAdjustment(item, issues, products);
+  if (hasExplicitConflictEvidenceForAdjustment(item, issues, products)) return false;
+  const affectedProducts = resolveAffectedProductRows(item, products);
+  if (!affectedProducts.length) return true;
+  return !affectedProducts.some((product) => asString(product && product.suggested_action) === 'reduce_frequency');
 }
 
 function buildUnresolvedRecommendationNotes(synthesis, visibleRecommendationGroups) {
@@ -1174,7 +1177,7 @@ function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
       const shouldKeep = !isFalseGapReference(item, context)
         && !isLowSignalOptionalAdjustment(item, context)
         && !isNonActionableKeepAdjustment(item)
-        && !isLowSignalMonitoringAdjustment(item, overlapOrGaps, products)
+        && !isLowSignalFrequencyAdjustment(item, overlapOrGaps, products)
         && !isLowSignalSecondaryReplacement(item, rawAdjustments, products);
       if (!shouldKeep && asString(item && item.adjustment_id)) removedAdjustmentIds.add(asString(item.adjustment_id));
       return shouldKeep;
