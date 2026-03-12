@@ -80,6 +80,32 @@ function buildDestinationResolverFetch(overrides = {}) {
         feature_code: 'PPLC',
       },
     ],
+    'San Francisco, CA': [
+      {
+        name: 'San Francisco',
+        latitude: 37.7749,
+        longitude: -122.4194,
+        country: 'United States',
+        country_code: 'US',
+        admin1: 'California',
+        timezone: 'America/Los_Angeles',
+        population: 808988,
+        feature_code: 'PPLA2',
+      },
+    ],
+    Busan: [
+      {
+        name: 'Busan',
+        latitude: 35.1796,
+        longitude: 129.0756,
+        country: 'South Korea',
+        country_code: 'KR',
+        admin1: 'Busan',
+        timezone: 'Asia/Seoul',
+        population: 3349731,
+        feature_code: 'PPLA',
+      },
+    ],
   };
   const lookup = { ...defaultRows, ...overrides };
 
@@ -154,6 +180,7 @@ test('/v1/travel-plans: create -> list -> archive flow', async () => {
         .set(headers)
         .send({
           destination: 'Tokyo',
+          departure_region: 'San Francisco, CA',
           start_date: '2099-03-01',
           end_date: '2099-03-05',
           indoor_outdoor_ratio: 0.4,
@@ -164,6 +191,8 @@ test('/v1/travel-plans: create -> list -> archive flow', async () => {
       const createdPlan = createResp.body?.plan;
       assert.ok(createdPlan);
       assert.equal(createdPlan.destination, 'Tokyo, Japan');
+      assert.ok(String(createdPlan.departure_region || '').includes('San Francisco'));
+      assert.equal(createdPlan.departure_place?.canonical_name, 'San Francisco');
       assert.equal(createdPlan.destination_place?.canonical_name, 'Tokyo');
       assert.equal(createdPlan.destination_place?.country_code, 'JP');
       assert.equal(createdPlan.status, 'upcoming');
@@ -220,6 +249,7 @@ test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', 
         .set(headers)
         .send({
           destination: 'Osaka',
+          departure_region: 'Seoul',
           start_date: '2099-04-01',
           end_date: '2099-04-03',
         })
@@ -236,6 +266,7 @@ test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', 
         .set(headers)
         .send({
           destination: 'Osaka, JP',
+          departure_region: 'Busan',
           itinerary: 'Mostly indoor conference with short outdoor commute.',
           indoor_outdoor_ratio: 0.2,
         })
@@ -244,6 +275,7 @@ test('/v1/travel-plans/:trip_id: patch keeps created_at_ms and updates fields', 
       const updated = patchResp.body?.plan;
       assert.ok(updated);
       assert.equal(updated.destination, 'Osaka, Japan');
+      assert.ok(String(updated.departure_region || '').includes('Busan'));
       assert.equal(updated.destination_place?.canonical_name, 'Osaka');
       assert.equal(updated.itinerary, 'Mostly indoor conference with short outdoor commute.');
       assert.equal(Number(updated.created_at_ms || 0), createdAtMs);
@@ -266,6 +298,7 @@ test('/v1/travel-plans/:trip_id: empty patch body returns BAD_REQUEST (route hit
         .set(headers)
         .send({
           destination: 'Seoul',
+          departure_region: 'Tokyo',
           start_date: '2099-04-10',
           end_date: '2099-04-12',
         })
@@ -297,8 +330,31 @@ test('/v1/travel-plans: invalid date range returns BAD_REQUEST', async () => {
       .set(headers)
       .send({
         destination: 'Paris',
+        departure_region: 'Tokyo',
         start_date: '2099-05-20',
         end_date: '2099-05-10',
+      })
+      .expect(400);
+
+    assert.equal(resp.body?.error, 'BAD_REQUEST');
+  } finally {
+    delete require.cache[moduleId];
+    delete require.cache[memoryStoreId];
+  }
+});
+
+test('/v1/travel-plans: missing departure_region returns BAD_REQUEST', async () => {
+  const { app, moduleId, memoryStoreId } = buildApp();
+  const uid = `travel_missing_departure_${Date.now()}`;
+  const headers = buildHeaders(uid);
+  try {
+    const resp = await supertest(app)
+      .post('/v1/travel-plans')
+      .set(headers)
+      .send({
+        destination: 'Paris',
+        start_date: '2099-05-10',
+        end_date: '2099-05-20',
       })
       .expect(400);
 
@@ -403,12 +459,70 @@ test('/v1/travel-plans: ambiguous destination returns 409 with candidates', asyn
           .set(headers)
           .send({
             destination: 'Paris',
+            departure_region: 'Seoul',
             start_date: '2099-07-10',
             end_date: '2099-07-15',
           })
           .expect(409);
 
         assert.equal(resp.body?.error, 'DESTINATION_AMBIGUOUS');
+        assert.equal(resp.body?.normalized_query, 'Paris');
+        assert.equal(Array.isArray(resp.body?.candidates), true);
+        assert.ok(resp.body.candidates.length >= 2);
+      } finally {
+        delete require.cache[moduleId];
+        delete require.cache[memoryStoreId];
+      }
+    },
+  );
+});
+
+test('/v1/travel-plans: ambiguous departure returns 409 with candidates', async () => {
+  await withMockFetch(
+    buildDestinationResolverFetch({
+      Paris: [
+        {
+          name: 'Paris',
+          latitude: 48.85341,
+          longitude: 2.3488,
+          country: 'France',
+          country_code: 'FR',
+          admin1: 'Ile-de-France',
+          timezone: 'Europe/Paris',
+          population: 2148000,
+          feature_code: 'PPLA',
+        },
+        {
+          name: 'Paris',
+          latitude: 33.66094,
+          longitude: -95.55551,
+          country: 'United States',
+          country_code: 'US',
+          admin1: 'Texas',
+          timezone: 'America/Chicago',
+          population: 24900,
+          feature_code: 'PPLA2',
+        },
+      ],
+    }),
+    async () => {
+      const { app, moduleId, memoryStoreId } = buildApp();
+      const uid = `travel_departure_ambiguous_${Date.now()}`;
+      const headers = buildHeaders(uid);
+      try {
+        const resp = await supertest(app)
+          .post('/v1/travel-plans')
+          .set(headers)
+          .send({
+            destination: 'Tokyo',
+            departure_region: 'Paris',
+            start_date: '2099-07-10',
+            end_date: '2099-07-15',
+          })
+          .expect(409);
+
+        assert.equal(resp.body?.error, 'DEPARTURE_AMBIGUOUS');
+        assert.equal(resp.body?.field, 'departure');
         assert.equal(resp.body?.normalized_query, 'Paris');
         assert.equal(Array.isArray(resp.body?.candidates), true);
         assert.ok(resp.body.candidates.length >= 2);
@@ -458,6 +572,7 @@ test('/v1/travel-plans/:trip_id: patch returns 409 when new destination is ambig
           .set(headers)
           .send({
             destination: 'Tokyo',
+            departure_region: 'Seoul',
             start_date: '2099-08-10',
             end_date: '2099-08-15',
           })

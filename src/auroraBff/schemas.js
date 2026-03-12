@@ -257,6 +257,8 @@ const TravelPlanItemPatchSchema = z
     trip_id: z.string().min(1).max(80).optional(),
     destination: z.string().min(1).max(100),
     destination_place: TravelPlanDestinationPlaceSchema.optional(),
+    departure_region: z.string().min(1).max(140).optional(),
+    departure_place: TravelPlanDestinationPlaceSchema.optional(),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
@@ -272,6 +274,8 @@ const TravelPlanCreateSchema = z
   .object({
     destination: z.string().min(1).max(100),
     destination_place: TravelPlanDestinationPlaceSchema.optional(),
+    departure_region: z.string().min(1).max(140),
+    departure_place: TravelPlanDestinationPlaceSchema.optional(),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
@@ -283,6 +287,8 @@ const TravelPlanUpdateSchema = z
   .object({
     destination: z.string().min(1).max(100).optional(),
     destination_place: TravelPlanDestinationPlaceSchema.optional(),
+    departure_region: z.string().min(1).max(140).optional(),
+    departure_place: TravelPlanDestinationPlaceSchema.optional(),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     indoor_outdoor_ratio: z.number().min(0).max(1).optional(),
@@ -333,6 +339,8 @@ const UserProfilePatchSchema = z
       .object({
         destination: z.string().min(1).optional(),
         destination_place: TravelPlanDestinationPlaceSchema.optional(),
+        departure_region: z.string().min(1).max(140).optional(),
+        departure_place: TravelPlanDestinationPlaceSchema.optional(),
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         time_window: z

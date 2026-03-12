@@ -739,12 +739,15 @@ function buildPersonalFocus({ language, profile, destinationSummary, summaryTags
   return out.slice(0, 4);
 }
 
-function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, destination, nowMs }) {
+function buildJetlagSleep({ language, profile, destinationWeather, originWeather, homeWeather, destination, originLabel, nowMs }) {
+  const baselineWeather = isPlainObject(originWeather) ? originWeather : isPlainObject(homeWeather) ? homeWeather : null;
   const tzHome = resolveTimezoneFromHints(
     [
-      homeWeather && homeWeather.location && homeWeather.location.timezone,
+      baselineWeather && baselineWeather.location && baselineWeather.location.timezone,
       profile && profile.home_timezone,
-      homeWeather && homeWeather.location && homeWeather.location.name,
+      baselineWeather && baselineWeather.location && baselineWeather.location.name,
+      originLabel,
+      profile && profile.departure_region,
       profile && profile.region,
     ],
     'UTC',
@@ -790,6 +793,7 @@ function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, 
   ];
 
   return {
+    tz_origin: tzHome,
     tz_home: tzHome,
     tz_destination: tzDestination,
     hours_diff: hoursDiff,
@@ -799,11 +803,12 @@ function buildJetlagSleep({ language, profile, destinationWeather, homeWeather, 
   };
 }
 
-function buildConfidence({ language, profile, recentLogs, destinationWeather, hasHomeBaseline, destination }) {
+function buildConfidence({ language, profile, recentLogs, destinationWeather, hasOriginBaseline, destination, originLabel }) {
   const missingInputs = [];
   if (!normalizeText(destination, 120)) missingInputs.push('destination');
   if (!isPlainObject(destinationWeather) || !isPlainObject(destinationWeather.summary)) missingInputs.push('destination_weather');
-  if (!hasHomeBaseline) missingInputs.push('home_baseline_weather');
+  if (!normalizeText(originLabel, 140)) missingInputs.push('departure_region');
+  else if (!hasOriginBaseline) missingInputs.push('origin_baseline_weather');
   if (!Array.isArray(recentLogs) || recentLogs.length === 0) missingInputs.push('recent_logs');
   if (!profile || profile.currentRoutine == null) missingInputs.push('current_routine');
 
@@ -824,8 +829,11 @@ function buildConfidence({ language, profile, recentLogs, destinationWeather, ha
   if (missingInputs.includes('recent_logs')) {
     improveBy.push(t(language, '补 2-3 条近期打卡可优化节奏。', 'Add 2-3 recent check-ins to tune cadence.'));
   }
-  if (missingInputs.includes('home_baseline_weather')) {
-    improveBy.push(t(language, '设置常驻地 region 可得到更准确 delta。', 'Set home region for clearer destination-vs-home deltas.'));
+  if (missingInputs.includes('departure_region')) {
+    improveBy.push(t(language, '补充本次行程的出发地，可按出发地与目的地比较气候差异。', 'Add the departure location for this trip so I can compare departure vs destination climate.'));
+  }
+  if (missingInputs.includes('origin_baseline_weather')) {
+    improveBy.push(t(language, '补充更明确的出发地可得到更准确的出发地基线。', 'A more precise departure location will produce a clearer origin baseline.'));
   }
 
   return {
@@ -1070,7 +1078,9 @@ function buildTravelReadiness({
   startDate,
   endDate,
   destinationWeather,
+  originWeather,
   homeWeather,
+  originContext,
   travelAlerts = [],
   epiPayload,
   recommendationCandidates = [],
@@ -1085,18 +1095,25 @@ function buildTravelReadiness({
   const weatherSource = normalizeText(destinationWeather && destinationWeather.source, 40).toLowerCase();
   const usesLiveWeather = weatherSource === 'weather_api';
   const weatherReason = normalizeText(destinationWeather && destinationWeather.reason, 80) || null;
-  const homeSummary = isPlainObject(homeWeather && homeWeather.summary) ? homeWeather.summary : null;
-  const hasHomeBaseline = Boolean(homeSummary);
+  const baselineWeather = isPlainObject(originWeather) ? originWeather : isPlainObject(homeWeather) ? homeWeather : null;
+  const originSummary = isPlainObject(baselineWeather && baselineWeather.summary) ? baselineWeather.summary : null;
+  const hasOriginBaseline = Boolean(originSummary);
+  const normalizedOriginContext = isPlainObject(originContext) ? originContext : {};
+  const originLabel =
+    normalizeText(normalizedOriginContext.label, 140) ||
+    normalizeText(baselineWeather && baselineWeather.location && baselineWeather.location.name, 140) ||
+    normalizeText(profile && (profile.departure_region || profile.region), 140) ||
+    null;
   const forecastWindow = usesLiveWeather
     ? normalizeForecastWindowRows(destinationWeather && destinationWeather.forecast_window)
     : [];
   const alerts = normalizeTravelAlerts(travelAlerts, lang);
 
-  const temperature = buildMetricDelta(homeSummary && homeSummary.temperature_max_c, destinationSummary && destinationSummary.temperature_max_c, 'C');
-  const humidity = buildMetricDelta(homeSummary && homeSummary.humidity_mean, destinationSummary && destinationSummary.humidity_mean, '%');
-  const uv = buildMetricDelta(homeSummary && homeSummary.uv_index_max, destinationSummary && destinationSummary.uv_index_max, '');
-  const wind = buildMetricDelta(homeSummary && homeSummary.wind_kph_max, destinationSummary && destinationSummary.wind_kph_max, 'kph');
-  const precip = buildMetricDelta(homeSummary && homeSummary.precipitation_mm, destinationSummary && destinationSummary.precipitation_mm, 'mm');
+  const temperature = buildMetricDelta(originSummary && originSummary.temperature_max_c, destinationSummary && destinationSummary.temperature_max_c, 'C');
+  const humidity = buildMetricDelta(originSummary && originSummary.humidity_mean, destinationSummary && destinationSummary.humidity_mean, '%');
+  const uv = buildMetricDelta(originSummary && originSummary.uv_index_max, destinationSummary && destinationSummary.uv_index_max, '');
+  const wind = buildMetricDelta(originSummary && originSummary.wind_kph_max, destinationSummary && destinationSummary.wind_kph_max, 'kph');
+  const precip = buildMetricDelta(originSummary && originSummary.precipitation_mm, destinationSummary && destinationSummary.precipitation_mm, 'mm');
 
   const summaryTags = buildSummaryTags({
     temperature,
@@ -1104,7 +1121,7 @@ function buildTravelReadiness({
     uv,
     wind,
     precip,
-    hasHomeBaseline,
+    hasHomeBaseline: hasOriginBaseline,
     destinationSummary,
     absoluteTagsEnabled: weatherSource !== 'weather_api',
   });
@@ -1114,11 +1131,21 @@ function buildTravelReadiness({
     language: lang,
     profile,
     destinationWeather,
-    homeWeather,
+    originWeather: baselineWeather,
+    homeWeather: baselineWeather,
     destination: destinationText,
+    originLabel,
     nowMs,
   });
-  const confidence = buildConfidence({ language: lang, profile, recentLogs, destinationWeather, hasHomeBaseline, destination: destinationText });
+  const confidence = buildConfidence({
+    language: lang,
+    profile,
+    recentLogs,
+    destinationWeather,
+    hasOriginBaseline,
+    destination: destinationText,
+    originLabel,
+  });
   const recoBundle = buildRecoBundle({
     language: lang,
     deltaVsHome: {
@@ -1159,6 +1186,20 @@ function buildTravelReadiness({
       weather_reason: weatherReason,
       epi: toNumber(epiPayload && epiPayload.epi),
     },
+    origin_context: {
+      label: originLabel,
+      source: normalizeText(normalizedOriginContext.source, 40) || null,
+      baseline_status: hasOriginBaseline ? 'ok' : 'baseline_unavailable',
+    },
+    delta_vs_origin: {
+      temperature: usesLiveWeather ? temperature : null,
+      humidity: usesLiveWeather ? humidity : null,
+      uv: usesLiveWeather ? uv : null,
+      wind: usesLiveWeather ? wind : null,
+      precip: usesLiveWeather ? precip : null,
+      summary_tags: summaryTags,
+      baseline_status: hasOriginBaseline ? 'ok' : 'baseline_unavailable',
+    },
     delta_vs_home: {
       temperature: usesLiveWeather ? temperature : null,
       humidity: usesLiveWeather ? humidity : null,
@@ -1166,7 +1207,7 @@ function buildTravelReadiness({
       wind: usesLiveWeather ? wind : null,
       precip: usesLiveWeather ? precip : null,
       summary_tags: summaryTags,
-      baseline_status: hasHomeBaseline ? 'ok' : 'baseline_unavailable',
+      baseline_status: hasOriginBaseline ? 'ok' : 'baseline_unavailable',
     },
     forecast_window: forecastWindow,
     alerts,

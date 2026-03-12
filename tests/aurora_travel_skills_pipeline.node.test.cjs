@@ -609,3 +609,148 @@ test('travel skills pipeline: ambiguous destination returns clarification chips 
     },
   );
 });
+
+test('travel skills pipeline: plan flow uses trip departure baseline instead of profile region fallback', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const weatherCalls = [];
+      await withModuleOverrides(
+        {
+          [ROOT_WEATHER]: {
+            getTravelWeather: async ({ destination, destinationPlace }) => {
+              weatherCalls.push({
+                destination: destination || null,
+                canonical_name: destinationPlace?.canonical_name || null,
+              });
+              const key = destinationPlace?.canonical_name || destination;
+              if (key === 'Tokyo') {
+                return {
+                  source: 'weather_api',
+                  reason: 'live_ok',
+                  summary: {
+                    temperature_max_c: 26,
+                    humidity_mean: 72,
+                    uv_index_max: 8,
+                    wind_kph_max: 15,
+                    precipitation_mm: 2,
+                  },
+                  location: { name: 'Tokyo', timezone: 'Asia/Tokyo' },
+                  forecast_window: [{ date: '2026-03-10' }],
+                };
+              }
+              return {
+                source: 'weather_api',
+                reason: 'live_ok',
+                summary: {
+                  temperature_max_c: 31,
+                  humidity_mean: 84,
+                  uv_index_max: 10,
+                  wind_kph_max: 11,
+                  precipitation_mm: 4,
+                },
+                location: { name: 'Singapore', timezone: 'Asia/Singapore' },
+                forecast_window: [{ date: '2026-03-10' }],
+              };
+            },
+          },
+          [ROOT_ALERTS]: {
+            getTravelAlerts: async () => ({ source: 'none', reason: 'none', alerts: [] }),
+          },
+        },
+        async () => {
+          const { runTravelPipeline } = loadFreshPipeline();
+          const out = await runTravelPipeline(
+            buildInput('Build my Tokyo travel plan.', {
+              travelWeatherLiveEnabled: true,
+              profile: {
+                ...buildProfile(),
+                region: 'New York, NY',
+                travel_plan: {
+                  trip_id: 'trip_tokyo_departure',
+                  destination: 'Tokyo',
+                  destination_place: {
+                    label: 'Tokyo, Japan',
+                    canonical_name: 'Tokyo',
+                    latitude: 35.6895,
+                    longitude: 139.69171,
+                    country_code: 'JP',
+                    country: 'Japan',
+                    admin1: 'Tokyo',
+                    timezone: 'Asia/Tokyo',
+                    resolution_source: 'auto_resolved',
+                  },
+                  departure_region: 'Singapore',
+                  departure_place: {
+                    label: 'Singapore',
+                    canonical_name: 'Singapore',
+                    latitude: 1.28967,
+                    longitude: 103.85007,
+                    country_code: 'SG',
+                    country: 'Singapore',
+                    admin1: 'Singapore',
+                    timezone: 'Asia/Singapore',
+                    resolution_source: 'auto_resolved',
+                  },
+                  start_date: '2026-03-10',
+                  end_date: '2026-03-15',
+                },
+              },
+            }),
+          );
+
+          assert.equal(out.ok, true);
+          assert.equal(out.travel_readiness?.origin_context?.label, 'Singapore');
+          assert.equal(out.travel_readiness?.delta_vs_origin?.temperature?.home, 31);
+          assert.equal(out.travel_readiness?.delta_vs_home?.temperature?.home, 31);
+          assert.equal(weatherCalls.some((row) => row.destination === 'New York, NY'), false);
+          assert.equal(weatherCalls.some((row) => row.canonical_name === 'Singapore'), true);
+        },
+      );
+    },
+  );
+});
+
+test('travel skills pipeline: legacy trip flow without departure blocks with departure_missing clarification', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('Build my Tokyo travel plan.', {
+          profile: {
+            ...buildProfile(),
+            region: 'New York, NY',
+            travel_plan: {
+              trip_id: 'trip_missing_departure',
+              destination: 'Tokyo',
+              start_date: '2026-03-10',
+              end_date: '2026-03-15',
+            },
+          },
+          canonicalIntent: {
+            intent: 'travel_planning',
+            entities: {
+              destination: 'Tokyo',
+              date_range: { start: '2026-03-10', end: '2026-03-15' },
+            },
+          },
+        }),
+      );
+
+      assert.equal(out.ok, true);
+      assert.equal(out.env_source, 'pending_clarification');
+      assert.equal(out.quality_reason, 'departure_missing');
+      assert.equal(out.pending_clarification?.type, 'departure_missing');
+      assert.equal(out.pending_clarification?.field, 'departure_region');
+      assert.equal(out.travel_readiness, null);
+      assert.equal(out.travel_skill_invocation_matrix?.llm_skip_reason, 'departure_missing');
+    },
+  );
+});
