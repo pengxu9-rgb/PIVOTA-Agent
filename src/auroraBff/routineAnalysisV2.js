@@ -179,6 +179,103 @@ function buildEvidenceBasis(candidate) {
   return basis;
 }
 
+function inferInventoryStep(row) {
+  const type = asString(row && row.inferred_product_type).toLowerCase();
+  const step = normalizeStep(row && (row.original_step_label || row.step));
+  const label = asString(row && (row.input_label || row.product_text)).toLowerCase();
+  if (type.includes('sunscreen') || type === 'spf moisturizer' || step === 'sunscreen' || /(spf|sunscreen|uv)/i.test(label)) return 'sunscreen';
+  if (type.includes('cleanser') || step === 'cleanser' || /(cleanser|cleanse|face wash|wash|洁面|洗面)/i.test(label)) return 'cleanser';
+  if (type.includes('moisturizer') || step === 'moisturizer' || /(moistur|cream|lotion|balm|gel cream|乳液|面霜)/i.test(label)) return 'moisturizer';
+  if (type.includes('serum') || type.includes('treatment') || type.includes('essence') || step === 'treatment' || step === 'toner' || step === 'essence') return 'treatment';
+  return 'other';
+}
+
+function buildRoutineInventory(rows = []) {
+  const inventory = {
+    any: { sunscreen: false, cleanser: false, moisturizer: false, treatment: false },
+    am: { sunscreen: false, cleanser: false, moisturizer: false, treatment: false },
+    pm: { sunscreen: false, cleanser: false, moisturizer: false, treatment: false },
+    total_count: 0,
+  };
+  for (const row of asArray(rows)) {
+    if (!isPlainObject(row)) continue;
+    inventory.total_count += 1;
+    const step = inferInventoryStep(row);
+    const slot = normalizeSlot(row.slot);
+    if (!Object.prototype.hasOwnProperty.call(inventory.any, step)) continue;
+    inventory.any[step] = true;
+    if (slot === 'am' || slot === 'pm') inventory[slot][step] = true;
+  }
+  return inventory;
+}
+
+function resolveGapTiming(rawTiming, step, text) {
+  const explicit = asString(rawTiming).toLowerCase();
+  if (explicit === 'am' || explicit === 'pm' || explicit === 'either') return explicit;
+  const lower = asString(text).toLowerCase();
+  if (/(am and pm|pm and am|both am and pm|morning and night|morning and evening|both routines|both slots)/i.test(lower)) return 'both';
+  if (/(^|\b)(am|morning|daytime)(\b|$)/i.test(lower)) return 'am';
+  if (/(^|\b)(pm|night|evening)(\b|$)/i.test(lower)) return 'pm';
+  if (step === 'sunscreen') return 'am';
+  return 'either';
+}
+
+function inferGapReference(row = {}) {
+  const text = [
+    asString(row.title),
+    asString(row.why_this_first),
+    asString(row.reasoning),
+    asString(row.why),
+    asString(row.note),
+    ...asArray(row.evidence),
+  ].join(' ').trim();
+  const targetStep = asString(row.target_step).toLowerCase();
+  let step = '';
+  if (targetStep) {
+    step = targetStep;
+  } else if (/(spf|sunscreen|uv protection)/i.test(text)) {
+    step = 'sunscreen';
+  } else if (/(cleanser|cleanse|cleansing|face wash|wash)/i.test(text)) {
+    step = 'cleanser';
+  } else if (/(moisturizer|moisturis|moisturiz|cream|lotion|barrier cream|gel cream|balm)/i.test(text)) {
+    step = 'moisturizer';
+  } else if (/(serum|treatment|panthenol|peptide|hydrating|soothing)/i.test(text)) {
+    step = 'serum';
+  }
+  return {
+    step,
+    timing: resolveGapTiming(row.timing, step, text),
+    isGapLike:
+      asString(row.action_type) === 'add_step'
+      || asString(row.need_state) === 'fill_gap'
+      || asString(row.issue_type) === 'gap'
+      || /(missing|gap|lack|add\b|need\b)/i.test(text),
+  };
+}
+
+function inventoryHasStep(inventory, step, timing = 'either') {
+  const slotMap = isPlainObject(inventory) ? inventory : {};
+  if (!step || !isPlainObject(slotMap.any)) return false;
+  if (step === 'serum' || step === 'treatment') {
+    if (timing === 'am') return Boolean(slotMap.am && slotMap.am.treatment);
+    if (timing === 'pm') return Boolean(slotMap.pm && slotMap.pm.treatment);
+    if (timing === 'both') return Boolean(slotMap.am && slotMap.am.treatment) && Boolean(slotMap.pm && slotMap.pm.treatment);
+    return Boolean(slotMap.any && slotMap.any.treatment);
+  }
+  if (timing === 'am') return Boolean(slotMap.am && slotMap.am[step]);
+  if (timing === 'pm') return Boolean(slotMap.pm && slotMap.pm[step]);
+  if (timing === 'both') return Boolean(slotMap.am && slotMap.am[step]) && Boolean(slotMap.pm && slotMap.pm[step]);
+  return Boolean(slotMap.any && slotMap.any[step]);
+}
+
+function isFalseGapReference(row, context = {}) {
+  const inventory = isPlainObject(context && context.routine_inventory) ? context.routine_inventory : null;
+  if (!inventory) return false;
+  const ref = inferGapReference(row);
+  if (!ref.isGapLike || !ref.step) return false;
+  return inventoryHasStep(inventory, ref.step, ref.timing);
+}
+
 function buildFallbackProductAudit(candidate, context = {}) {
   const inputLabel = asString(candidate && candidate.product_text) || asString(candidate && candidate.product_url) || 'Unknown product';
   const inferredProductType = inferProductType(candidate);
@@ -417,7 +514,11 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
   const issues = [];
   const amProducts = products.filter((product) => product.slot === 'am');
   const pmProducts = products.filter((product) => product.slot === 'pm');
-  const amHasSpf = amProducts.some((product) => String(product.inferred_product_type || '').toLowerCase().includes('sunscreen') || String(product.inferred_product_type || '').toLowerCase() === 'spf moisturizer');
+  const inventory = isPlainObject(context && context.routine_inventory)
+    ? context.routine_inventory
+    : buildRoutineInventory(products);
+  const amHasSpf = inventoryHasStep(inventory, 'sunscreen', 'am')
+    || amProducts.some((product) => String(product.inferred_product_type || '').toLowerCase().includes('sunscreen') || String(product.inferred_product_type || '').toLowerCase() === 'spf moisturizer');
   if (!amHasSpf) {
     issues.push({
       issue_type: 'gap',
@@ -501,7 +602,7 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     if (adjustments.length >= 3) break;
   }
 
-  if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap')) {
+  if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
     adjustments.push({
       adjustment_id: 'adj_add_spf_gap',
       priority_rank: adjustments.length + 1,
@@ -939,7 +1040,81 @@ function buildCategoryGuidance(need, context = {}) {
   };
 }
 
-function buildLegacyCompatPayload(synthesis, recommendationGroups) {
+function sanitizeSynthesisOutput(synthesis, auditOutput, context = {}) {
+  const products = asArray(auditOutput && auditOutput.products);
+  const removedAdjustmentIds = new Set();
+  const overlapOrGaps = asArray(synthesis && synthesis.overlap_or_gaps).filter((issue) => !isFalseGapReference(issue, context));
+  const topAdjustments = asArray(synthesis && synthesis.top_3_adjustments)
+    .filter((item) => {
+      const shouldKeep = !isFalseGapReference(item, context);
+      if (!shouldKeep && asString(item && item.adjustment_id)) removedAdjustmentIds.add(asString(item.adjustment_id));
+      return shouldKeep;
+    })
+    .slice(0, 3)
+    .map((item, index) => ({
+      ...item,
+      priority_rank: index + 1,
+    }));
+  const validAdjustmentIds = new Set(topAdjustments.map((item) => asString(item.adjustment_id)).filter(Boolean));
+  const recommendationNeeds = asArray(synthesis && synthesis.recommendation_needs)
+    .filter((need) => !removedAdjustmentIds.has(asString(need && need.adjustment_id)))
+    .filter((need) => !isFalseGapReference(need, context))
+    .filter((need) => validAdjustmentIds.has(asString(need && need.adjustment_id)));
+  const validNeedIds = new Set(recommendationNeeds.map((item) => asString(item.adjustment_id)).filter(Boolean));
+  const recommendationQueries = asArray(synthesis && synthesis.recommendation_queries)
+    .filter((item) => validNeedIds.has(asString(item && item.adjustment_id)));
+  const rationale = asArray(synthesis && synthesis.rationale_for_each_adjustment)
+    .filter((item) => validAdjustmentIds.has(asString(item && item.adjustment_id)));
+  const mainIssues = buildMainIssues(topAdjustments, overlapOrGaps);
+  const summary = buildAssessmentSummary(topAdjustments, overlapOrGaps);
+  return {
+    ...synthesis,
+    current_routine_assessment: {
+      summary,
+      main_strengths: uniqStrings(synthesis && synthesis.current_routine_assessment && synthesis.current_routine_assessment.main_strengths, 3).length
+        ? uniqStrings(synthesis.current_routine_assessment.main_strengths, 3)
+        : buildMainStrengths(products),
+      main_issues: mainIssues,
+    },
+    overlap_or_gaps: overlapOrGaps,
+    top_3_adjustments: topAdjustments,
+    improved_am_routine: buildImprovedRoutine(products, 'am', topAdjustments),
+    improved_pm_routine: buildImprovedRoutine(products, 'pm', topAdjustments),
+    rationale_for_each_adjustment: rationale.length
+      ? rationale
+      : topAdjustments.map((item) => ({
+        adjustment_id: item.adjustment_id,
+        reasoning: item.why_this_first,
+        evidence: collectAdjustmentEvidence(item, products, overlapOrGaps),
+        tradeoff_or_caution: item.action_type === 'add_step'
+          ? 'A new step only helps if it is consistent with the rest of the routine.'
+          : 'Keep changes minimal at first so you can see which adjustment actually helps.',
+      })),
+    recommendation_needs: recommendationNeeds,
+    recommendation_queries: recommendationQueries,
+  };
+}
+
+function shouldDisplayRecommendationGroup(group, synthesis, context = {}) {
+  const hasPool = asArray(group && group.candidate_pool).length > 0;
+  if (hasPool) return true;
+  if (!isPlainObject(group && group.category_guidance)) return false;
+  const targetStep = asString(group && group.target_step).toLowerCase();
+  const needState = asString(group && group.need_state);
+  if (needState === 'replace_current') return true;
+  if (['sunscreen', 'cleanser', 'moisturizer'].includes(targetStep)) return true;
+  const adjustment = asArray(synthesis && synthesis.top_3_adjustments)
+    .find((item) => asString(item && item.adjustment_id) === asString(group && group.adjustment_id));
+  if (adjustment && ['replace', 'remove', 'swap_step'].includes(asString(adjustment.action_type))) return true;
+  if (isFalseGapReference({ ...group, action_type: 'add_step' }, context)) return false;
+  return false;
+}
+
+function getVisibleRecommendationGroups(recommendationGroups, synthesis, context = {}) {
+  return asArray(recommendationGroups).filter((group) => shouldDisplayRecommendationGroup(group, synthesis, context));
+}
+
+function buildLegacyCompatPayload(synthesis, recommendationGroups, context = {}) {
   const summary = asString(synthesis && synthesis.current_routine_assessment && synthesis.current_routine_assessment.summary);
   const highlights = uniqStrings(synthesis && synthesis.current_routine_assessment && synthesis.current_routine_assessment.main_strengths, 3);
   const concerns = uniqStrings(synthesis && synthesis.current_routine_assessment && synthesis.current_routine_assessment.main_issues, 3);
@@ -947,12 +1122,13 @@ function buildLegacyCompatPayload(synthesis, recommendationGroups) {
     asArray(synthesis && synthesis.top_3_adjustments).map((item) => `How should I apply "${asString(item && item.title)}"?`),
     3,
   );
+  const visibleRecommendationGroups = getVisibleRecommendationGroups(recommendationGroups, synthesis, context);
   return {
     summary,
     highlights,
     concerns,
     next_questions: nextQuestions,
-    recommendation_cta_enabled: asArray(recommendationGroups).some((group) => asArray(group && group.candidate_pool).length > 0 || isPlainObject(group && group.category_guidance)),
+    recommendation_cta_enabled: visibleRecommendationGroups.length > 0,
     source: 'routine_analysis_v2',
   };
 }
@@ -973,12 +1149,8 @@ function buildAssistantText(synthesis, language) {
   return summary || 'I reviewed the current products first and then mapped the main routine-level adjustments.';
 }
 
-function buildCards({ audit, synthesis, recommendationGroups, additionalCandidates, language, requestId }) {
-  const visibleRecommendationGroups = recommendationGroups.filter((group) => {
-    const hasPool = asArray(group && group.candidate_pool).length > 0;
-    const hasGuidance = isPlainObject(group && group.category_guidance);
-    return hasPool || hasGuidance;
-  });
+function buildCards({ audit, synthesis, recommendationGroups, additionalCandidates, language, requestId, context = {} }) {
+  const visibleRecommendationGroups = getVisibleRecommendationGroups(recommendationGroups, synthesis, context);
   const unresolvedRecommendationNotes = visibleRecommendationGroups.length === 0
     ? asArray(synthesis && synthesis.recommendation_needs).map((need) => ({
       adjustment_id: asString(need && need.adjustment_id),
@@ -1055,6 +1227,7 @@ async function runRoutineAnalysisV2({
   const seasonClimateContext = buildSeasonClimateContext(profile, profileSummary);
   const prioritized = prioritizeRoutineCandidates(routineProductCandidates, goalContext);
   const gateway = llmGateway || getGateway();
+  const routineInventory = buildRoutineInventory(routineProductCandidates);
   const stageAInputProducts = prioritized.audited.map((candidate) => ({
     product_ref: candidate.product_ref,
     slot: normalizeSlot(candidate.slot),
@@ -1071,6 +1244,7 @@ async function runRoutineAnalysisV2({
     total_routine_product_count: asArray(routineProductCandidates).length,
     selected_product_refs: prioritized.audited.map((item) => item.product_ref),
     deferred_product_refs: prioritized.additional.map((item) => item.product_ref),
+    deferred_product_labels: prioritized.additional.map((item) => asString(item.product_text)).filter(Boolean).slice(0, 8),
     ingredient_plan_present: Boolean(ingredientPlan),
   };
 
@@ -1114,6 +1288,20 @@ async function runRoutineAnalysisV2({
         season_climate_context_json: seasonClimateContext,
         deterministic_signals_json: deterministicSignals,
         routine_products_json: stageAInputProducts,
+        deferred_products_json: prioritized.additional.map((candidate) => ({
+          product_ref: candidate.product_ref,
+          slot: normalizeSlot(candidate.slot),
+          original_step_label: normalizeStep(candidate.step),
+          input_label: asString(candidate.product_text),
+          inferred_product_type_hint: inferProductType(candidate),
+        })),
+        all_routine_products_json: prioritized.audited.concat(prioritized.additional).map((candidate) => ({
+          product_ref: candidate.product_ref,
+          slot: normalizeSlot(candidate.slot),
+          original_step_label: normalizeStep(candidate.step),
+          input_label: asString(candidate.product_text),
+          inferred_product_type_hint: inferProductType(candidate),
+        })),
         product_audit_json: audit,
         ingredient_plan_json: ingredientPlan || null,
       },
@@ -1128,6 +1316,7 @@ async function runRoutineAnalysisV2({
     skinType: profileContext.skin_type,
     sensitivity: profileContext.sensitivity,
     goals: goalContext.goals,
+    routine_inventory: routineInventory,
   });
   const recommendationGroups = await resolveRecommendationGroups({
     recommendationNeeds: synthesis.recommendation_needs,
@@ -1148,6 +1337,9 @@ async function runRoutineAnalysisV2({
     additionalCandidates: prioritized.additional,
     language: normalizedLanguage,
     requestId,
+    context: {
+      routine_inventory: routineInventory,
+    },
   });
   return {
     audit,
@@ -1155,7 +1347,9 @@ async function runRoutineAnalysisV2({
     recommendation_groups: recommendationGroups,
     cards,
     assistant_text: buildAssistantText(synthesis, normalizedLanguage),
-    legacy_compat: buildLegacyCompatPayload(synthesis, recommendationGroups),
+    legacy_compat: buildLegacyCompatPayload(synthesis, recommendationGroups, {
+      routine_inventory: routineInventory,
+    }),
     debug_meta: {
       schema_version: 'aurora.routine_analysis_v2.debug.v1',
       enabled: true,
@@ -1194,7 +1388,7 @@ async function runRoutineAnalysisV2({
 
 function coerceSynthesisOutput(rawOutput, auditOutput, context = {}) {
   const fallback = buildDeterministicSynthesis(auditOutput, context);
-  if (!isPlainObject(rawOutput)) return fallback;
+  if (!isPlainObject(rawOutput)) return sanitizeSynthesisOutput(fallback, auditOutput, context);
   const normalizeImproved = (rows) => asArray(rows)
     .map((row) => isPlainObject(row) ? {
       step_order: Number.isFinite(Number(row.step_order)) ? Math.max(1, Math.trunc(Number(row.step_order))) : null,
@@ -1246,7 +1440,7 @@ function coerceSynthesisOutput(rawOutput, auditOutput, context = {}) {
     } : null)
     .filter((row) => row && row.adjustment_id && row.query_en);
 
-  return {
+  const normalized = {
     schema_version: 'aurora.routine_synthesis.v1',
     current_routine_assessment: isPlainObject(rawOutput.current_routine_assessment) ? {
       summary: asString(rawOutput.current_routine_assessment.summary) || fallback.current_routine_assessment.summary,
@@ -1283,6 +1477,7 @@ function coerceSynthesisOutput(rawOutput, auditOutput, context = {}) {
     confidence: clampNumber(rawOutput.confidence, 0, 1, fallback.confidence),
     missing_info: uniqStrings(rawOutput.missing_info, 8).length ? uniqStrings(rawOutput.missing_info, 8) : fallback.missing_info,
   };
+  return sanitizeSynthesisOutput(normalized, auditOutput, context);
 }
 
 function __resetGatewayForTest() {
@@ -1299,6 +1494,8 @@ module.exports = {
   coerceSynthesisOutput,
   normalizeFallbackAuditOutput,
   buildDeterministicSynthesis,
+  buildRoutineInventory,
+  getVisibleRecommendationGroups,
   buildFallbackProductAudit,
   __resetGatewayForTest,
 };

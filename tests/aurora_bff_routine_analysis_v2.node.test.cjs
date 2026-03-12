@@ -114,3 +114,146 @@ test('routineAnalysisV2 recommendation groups: empty pool degrades to category g
   assert.equal(groups[0].unresolved_reason, 'no_grounded_candidates');
   assert.ok(groups[0].category_guidance, 'guidance should exist when candidate pool is empty');
 });
+
+test('coerceSynthesisOutput removes false cleanser gaps when cleanser exists in deferred inventory', async () => {
+  const { coerceSynthesisOutput, buildRoutineInventory } = require('../src/auroraBff/routineAnalysisV2');
+  const audit = {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products: [
+      {
+        product_ref: 'routine_am_03',
+        slot: 'am',
+        input_label: 'Vitamin C serum',
+        inferred_product_type: 'vitamin c serum',
+        concise_reasoning_en: 'This is fine in AM.',
+      },
+      {
+        product_ref: 'routine_pm_04',
+        slot: 'pm',
+        input_label: 'Retinol serum',
+        inferred_product_type: 'retinoid serum',
+        concise_reasoning_en: 'This is better kept in PM.',
+      },
+    ],
+    additional_items_needing_verification: [],
+    missing_info: [],
+    confidence: 0.7,
+  };
+  const routineInventory = buildRoutineInventory([
+    { slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
+    { slot: 'pm', step: 'cleanser', product_text: 'Gentle cleanser' },
+    { slot: 'am', step: 'treatment', product_text: 'Vitamin C serum' },
+    { slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+  ]);
+  const synthesis = coerceSynthesisOutput({
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'The routine needs cleansing support.',
+      main_strengths: ['There is treatment coverage.'],
+      main_issues: ['Add cleansing steps to AM and PM routines'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [
+      {
+        issue_type: 'gap',
+        title: 'Cleansing looks missing',
+        evidence: ['No cleanser was found in the current routine.'],
+        affected_products: [],
+      },
+    ],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_cleanser_gap',
+        priority_rank: 1,
+        title: 'Add cleansing steps to AM and PM routines',
+        action_type: 'add_step',
+        affected_products: [],
+        why_this_first: 'No cleanser appears present right now.',
+        expected_outcome: 'A cleaner baseline.',
+      },
+    ],
+    improved_am_routine: [
+      {
+        step_order: 1,
+        what_to_use: 'Add a cleanser',
+        frequency: 'daily',
+        note: 'Missing cleanser step.',
+        source_type: 'step_placeholder',
+      },
+    ],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [
+      {
+        adjustment_id: 'adj_cleanser_gap',
+        reasoning: 'No cleanser appears present.',
+        evidence: ['No cleanser was found in the routine.'],
+        tradeoff_or_caution: 'Keep it simple.',
+      },
+    ],
+    recommendation_needs: [
+      {
+        adjustment_id: 'adj_cleanser_gap',
+        need_state: 'fill_gap',
+        target_step: 'cleanser',
+        why: 'Need a cleanser.',
+        required_attributes: ['gentle cleanse'],
+        avoid_attributes: ['stripping formula'],
+        timing: 'either',
+        texture_or_format: null,
+        priority: 'high',
+      },
+    ],
+    recommendation_queries: [
+      {
+        adjustment_id: 'adj_cleanser_gap',
+        query_en: 'gentle cleanser',
+      },
+    ],
+    confidence: 0.7,
+    missing_info: [],
+  }, audit, { routine_inventory: routineInventory });
+
+  assert.equal(synthesis.top_3_adjustments.length, 0);
+  assert.equal(synthesis.recommendation_needs.length, 0);
+  assert.equal(synthesis.recommendation_queries.length, 0);
+  assert.equal(synthesis.overlap_or_gaps.some((item) => /cleans/i.test(item.title)), false);
+  assert.equal(synthesis.improved_am_routine.some((item) => /add a cleanser/i.test(item.what_to_use)), false);
+});
+
+test('guidance-only serum upgrades stay hidden while core-gap guidance stays visible', async () => {
+  const { getVisibleRecommendationGroups } = require('../src/auroraBff/routineAnalysisV2');
+  const synthesis = {
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_support_serum',
+        action_type: 'add_step',
+        title: 'Add a hydrating/soothing serum',
+      },
+      {
+        adjustment_id: 'adj_gap_spf',
+        action_type: 'add_step',
+        title: 'Add a clear AM sunscreen step',
+      },
+    ],
+  };
+  const visible = getVisibleRecommendationGroups([
+    {
+      adjustment_id: 'adj_support_serum',
+      need_state: 'fill_gap',
+      target_step: 'serum',
+      candidate_pool: [],
+      category_guidance: { what_to_look_for: ['hydrating serum'] },
+    },
+    {
+      adjustment_id: 'adj_gap_spf',
+      need_state: 'fill_gap',
+      target_step: 'sunscreen',
+      candidate_pool: [],
+      category_guidance: { what_to_look_for: ['daily sunscreen'] },
+    },
+  ], synthesis);
+
+  assert.equal(visible.length, 1);
+  assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
+});
