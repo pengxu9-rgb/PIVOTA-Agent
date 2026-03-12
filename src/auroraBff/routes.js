@@ -196,6 +196,7 @@ const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
+const { runRoutineAnalysisV2 } = require('./routineAnalysisV2');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
 const {
@@ -660,6 +661,12 @@ const AURORA_ANALYSIS_STORY_V2_ENABLED = (() => {
 })();
 const AURORA_ROUTINE_SOFT_GATE_DELAY_RECO = (() => {
   const raw = String(process.env.AURORA_ROUTINE_SOFT_GATE_DELAY_RECO || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_ROUTINE_ANALYSIS_V2_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_ANALYSIS_V2_ENABLED || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1231,6 +1238,7 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   multiturn_contract_gate_v1: AURORA_MULTITURN_CONTRACT_GATE_V1_ENABLED,
   analysis_story_v2: AURORA_ANALYSIS_STORY_V2_ENABLED,
   routine_soft_gate_delay_reco: AURORA_ROUTINE_SOFT_GATE_DELAY_RECO,
+  routine_analysis_v2: AURORA_ROUTINE_ANALYSIS_V2_ENABLED,
   rule_relax_mode: AURORA_RULE_RELAX_MODE,
   kb_write_policy: AURORA_KB_WRITE_POLICY,
   kb_serve_policy: AURORA_KB_SERVE_POLICY,
@@ -31980,6 +31988,27 @@ async function applyProductIntelGuardrailsToEnvelope({
     allowResolverExternalRecommendations: true,
     logger,
   });
+  const routineAnalysisV2Meta =
+    base &&
+    base.session_patch &&
+    isPlainObject(base.session_patch) &&
+    isPlainObject(base.session_patch.meta) &&
+    isPlainObject(base.session_patch.meta.routine_analysis_v2)
+      ? base.session_patch.meta.routine_analysis_v2
+      : null;
+  if (routineAnalysisV2Meta && routineAnalysisV2Meta.enabled === true) {
+    return {
+      envelope: {
+        ...base,
+        cards: sanitized.cards,
+        ...(isPlainObject(sanitized.lookup_meta) ? { lookup_meta: sanitized.lookup_meta } : {}),
+      },
+      dropped: sanitized.dropped,
+      externalized: sanitized.externalized,
+      rejected: sanitized.rejected,
+      lookup_meta: sanitized.lookup_meta,
+    };
+  }
   const withStoryAndGate = await applyAnalysisStoryAndRoutineSoftGate(sanitized.cards, {
     ctx,
     profile,
@@ -53093,10 +53122,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           reportModelErrorReason,
         });
         const degradeReason = degradeMeta.degradeReason;
+        let routineAnalysisV2Result = null;
         const analysisMeta = {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
+          routine_analysis_version: 'legacy',
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
           gate_relax_mode: AURORA_RULE_RELAX_MODE,
           low_quality_tolerated: Boolean(
@@ -53183,14 +53214,60 @@ function mountAuroraBffRoutes(app, { logger }) {
           (renderedAnalysisSource === 'rule_based' || renderedAnalysisSource === 'baseline_low_confidence');
 
         const extraCards = [];
-        if (ingredientPlan) {
+        const routineProductEvents = [];
+        if (AURORA_ROUTINE_ANALYSIS_V2_ENABLED && hasRoutine && routineProductCandidates.length > 0) {
+          try {
+            routineAnalysisV2Result = await runRoutineAnalysisV2({
+              requestId: ctx.request_id,
+              language: ctx.lang,
+              profile,
+              profileSummary,
+              routineProductCandidates,
+              ingredientPlan,
+              logger,
+            });
+            analysisMeta.routine_analysis_version = 'v2';
+            routineProductEvents.push(
+              makeEvent(ctx, 'routine_analysis_v2_completed', {
+                audited_product_count:
+                  routineAnalysisV2Result &&
+                  routineAnalysisV2Result.audit &&
+                  Array.isArray(routineAnalysisV2Result.audit.products)
+                    ? routineAnalysisV2Result.audit.products.length
+                    : 0,
+                recommendation_group_count: Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
+                  ? routineAnalysisV2Result.recommendation_groups.length
+                  : 0,
+                deferred_product_count:
+                  routineAnalysisV2Result &&
+                  routineAnalysisV2Result.debug_meta &&
+                  routineAnalysisV2Result.debug_meta.stage_a &&
+                  Number.isFinite(Number(routineAnalysisV2Result.debug_meta.stage_a.deferred_product_count))
+                    ? Number(routineAnalysisV2Result.debug_meta.stage_a.deferred_product_count)
+                    : 0,
+              }),
+            );
+          } catch (err) {
+            recordAnalysisSubstageFailure('routine_analysis_v2', err, {
+              candidate_count: routineProductCandidates.length,
+            });
+            routineAnalysisV2Result = null;
+          }
+        }
+        if (!routineAnalysisV2Result && ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
             profile: profileSummary || profile || {},
             catalogPath: DIAG_PRODUCT_CATALOG_PATH,
             language: ctx.lang,
           }));
         }
-        const routineProductEvents = [];
+        if (routineAnalysisV2Result) {
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            routine_analysis_v2: routineAnalysisV2Result.debug_meta,
+            routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+          };
+        }
 
         const routineFitPlan = resolveRoutineFitAnalysisPlan({
           routineProductCandidates,
@@ -53203,7 +53280,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let routineFitPartialDimensions = [];
         let routineFitFallbackUsed = false;
         let routineFitFallbackReason = null;
-        if (routineFitPlan.shouldEvaluateRoutineFit) {
+        if (!routineAnalysisV2Result && routineFitPlan.shouldEvaluateRoutineFit) {
           try {
           routineProductEvents.push(
             makeEvent(ctx, 'routine_fit_evaluation_started', {
@@ -53379,6 +53456,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (routineFitCard && analysisSummaryPayload && typeof analysisSummaryPayload === 'object') {
           analysisSummaryPayload.routine_fit = routineFitCard.payload;
         }
+        if (routineAnalysisV2Result && analysisSummaryPayload && typeof analysisSummaryPayload === 'object') {
+          analysisSummaryPayload.routine_analysis_v2 = routineAnalysisV2Result.persist_payload;
+          analysisSummaryPayload.routine_analysis_legacy_compat = routineAnalysisV2Result.legacy_compat;
+        }
 
         if (routineFitCard && persistLastAnalysis && analysis) {
           try {
@@ -53405,6 +53486,37 @@ function mountAuroraBffRoutes(app, { logger }) {
             await saveLastAnalysisForIdentity(
               { auroraUid: identity.auroraUid, userId: identity.userId },
               { analysis: analysisWithFollowups, lang: ctx.lang },
+            );
+          } catch {
+            // non-critical: follow-up chat can still use the current response card
+          }
+        }
+        if (routineAnalysisV2Result && persistLastAnalysis && analysis) {
+          try {
+            const analysisWithRoutineV2 = {
+              ...analysis,
+              ...(ingredientPlan ? {
+                ingredient_plan: {
+                  targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
+                    ingredient_id: t.ingredient_id,
+                    ingredient_name: t.ingredient_name,
+                    role: t.role,
+                    priority: t.priority,
+                  })) : [],
+                  avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
+                    ingredient_id: a.ingredient_id,
+                    ingredient_name: a.ingredient_name,
+                    severity: a.severity,
+                    reason: a.reason,
+                  })) : [],
+                },
+              } : {}),
+              routine_analysis_v2: routineAnalysisV2Result.persist_payload,
+              routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+            };
+            await saveLastAnalysisForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              { analysis: analysisWithRoutineV2, lang: ctx.lang },
             );
           } catch {
             // non-critical: follow-up chat can still use the current response card
@@ -53466,30 +53578,38 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           lowConfidence: lowConfidenceSummary,
           hasIngredientPlan: Boolean(ingredientPlan),
-          hasRoutineFit: Boolean(routineFitCard),
+          hasRoutineFit: Boolean(routineFitCard || routineAnalysisV2Result),
         });
-        const analysisAssistantText = buildAnalysisAssistantMessage({
-          language: ctx.lang,
-          skinProfile: analysisSkinProfile,
-          lowConfidence: lowConfidenceSummary,
-          ingredientPlan,
-          routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
-        });
+        const analysisAssistantText = routineAnalysisV2Result && typeof routineAnalysisV2Result.assistant_text === 'string'
+          ? routineAnalysisV2Result.assistant_text
+          : buildAnalysisAssistantMessage({
+              language: ctx.lang,
+              skinProfile: analysisSkinProfile,
+              lowConfidence: lowConfidenceSummary,
+              ingredientPlan,
+              routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
+            });
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
           suggested_chips: analysisChips,
-          cards: [
-            {
-              card_id: `analysis_${ctx.request_id}`,
-              type: 'analysis_summary',
-              payload: analysisSummaryPayload,
-              ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
-            },
-            ...(routineFitCard ? [routineFitCard] : []),
-            ...(photoModulesCard ? [photoModulesCard] : []),
-            ...extraCards,
-          ],
+          cards: routineAnalysisV2Result
+            ? [
+                ...((Array.isArray(routineAnalysisV2Result.cards) ? routineAnalysisV2Result.cards : [])),
+                ...(photoModulesCard ? [photoModulesCard] : []),
+                ...extraCards,
+              ]
+            : [
+                {
+                  card_id: `analysis_${ctx.request_id}`,
+                  type: 'analysis_summary',
+                  payload: analysisSummaryPayload,
+                  ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
+                },
+                ...(routineFitCard ? [routineFitCard] : []),
+                ...(photoModulesCard ? [photoModulesCard] : []),
+                ...extraCards,
+              ],
           session_patch: sessionPatch,
           events: [
             ...routineProductEvents,

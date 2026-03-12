@@ -110,7 +110,17 @@ function splitSseLines(buffer) {
   return buffer.split(/\r?\n/);
 }
 
-function _validateNode(value, schema) {
+function pushValidationError(errors, path, reason, extra = {}) {
+  if (!Array.isArray(errors)) return false;
+  errors.push({
+    path: path || '$',
+    reason,
+    ...extra,
+  });
+  return false;
+}
+
+function _validateNode(value, schema, path = '$', errors = null) {
   if (!schema || typeof schema !== 'object') return true;
 
   if (schema.nullable && value === null) return true;
@@ -118,53 +128,85 @@ function _validateNode(value, schema) {
   const expectedType = schema.type;
   if (expectedType) {
     if (expectedType === 'object') {
-      if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return pushValidationError(errors, path, 'type_mismatch', { expected: 'object', received: Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value });
+      }
     } else if (expectedType === 'array') {
-      if (!Array.isArray(value)) return false;
+      if (!Array.isArray(value)) {
+        return pushValidationError(errors, path, 'type_mismatch', { expected: 'array', received: value === null ? 'null' : typeof value });
+      }
     } else if (expectedType === 'string') {
-      if (typeof value !== 'string') return false;
+      if (typeof value !== 'string') {
+        return pushValidationError(errors, path, 'type_mismatch', { expected: 'string', received: value === null ? 'null' : typeof value });
+      }
     } else if (expectedType === 'number') {
-      if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return pushValidationError(errors, path, 'type_mismatch', { expected: 'number', received: value === null ? 'null' : typeof value });
+      }
     } else if (expectedType === 'boolean') {
-      if (typeof value !== 'boolean') return false;
+      if (typeof value !== 'boolean') {
+        return pushValidationError(errors, path, 'type_mismatch', { expected: 'boolean', received: value === null ? 'null' : typeof value });
+      }
     }
   }
 
-  if (Array.isArray(schema.enum)) {
-    if (!schema.enum.includes(value)) return false;
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    return pushValidationError(errors, path, 'enum_mismatch', { allowed: schema.enum });
   }
 
   if (expectedType === 'number') {
-    if (typeof schema.min === 'number' && value < schema.min) return false;
-    if (typeof schema.max === 'number' && value > schema.max) return false;
+    if (typeof schema.min === 'number' && value < schema.min) {
+      return pushValidationError(errors, path, 'number_below_min', { min: schema.min, received: value });
+    }
+    if (typeof schema.max === 'number' && value > schema.max) {
+      return pushValidationError(errors, path, 'number_above_max', { max: schema.max, received: value });
+    }
+  }
+
+  if (expectedType === 'string') {
+    if (typeof schema.minLength === 'number' && value.length < schema.minLength) {
+      return pushValidationError(errors, path, 'string_below_min_length', { minLength: schema.minLength, receivedLength: value.length });
+    }
+    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) {
+      return pushValidationError(errors, path, 'string_above_max_length', { maxLength: schema.maxLength, receivedLength: value.length });
+    }
   }
 
   if (expectedType === 'object' && typeof value === 'object' && value !== null) {
     if (Array.isArray(schema.required)) {
       for (const key of schema.required) {
-        if (!(key in value)) return false;
+        if (!(key in value)) {
+          return pushValidationError(errors, `${path}.${key}`, 'missing_required_key');
+        }
       }
     }
     if (schema.additionalProperties === false && schema.properties) {
       const allowed = new Set(Object.keys(schema.properties));
       for (const key of Object.keys(value)) {
-        if (!allowed.has(key)) return false;
+        if (!allowed.has(key)) {
+          return pushValidationError(errors, `${path}.${key}`, 'unexpected_property');
+        }
       }
     }
     if (schema.properties) {
       for (const [key, propSchema] of Object.entries(schema.properties)) {
         if (key in value) {
-          if (!_validateNode(value[key], propSchema)) return false;
+          if (!_validateNode(value[key], propSchema, `${path}.${key}`, errors)) return false;
         }
       }
     }
   }
 
   if (expectedType === 'array' && Array.isArray(value)) {
-    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) return false;
+    if (typeof schema.minItems === 'number' && value.length < schema.minItems) {
+      return pushValidationError(errors, path, 'array_below_min_items', { minItems: schema.minItems, receivedLength: value.length });
+    }
+    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) {
+      return pushValidationError(errors, path, 'array_above_max_items', { maxItems: schema.maxItems, receivedLength: value.length });
+    }
     if (schema.items) {
-      for (const item of value) {
-        if (!_validateNode(item, schema.items)) return false;
+      for (let index = 0; index < value.length; index += 1) {
+        if (!_validateNode(value[index], schema.items, `${path}[${index}]`, errors)) return false;
       }
     }
   }
@@ -495,6 +537,291 @@ function buildRoutineAuditStructuredPrompt() {
     'audit_results={{audit_results}}',
     'safety_flags={{safety_flags}}',
     'locale={{locale}}',
+    '[/INPUT_CONTEXT]',
+  ].join('\n');
+}
+
+function buildRoutineProductAuditPrompt() {
+  return [
+    '[ROLE]',
+    'You are Aurora, a production skincare routine auditor.',
+    'Return one single valid JSON object only.',
+    'No markdown, no code fences, no prose outside JSON.',
+    '[/ROLE]',
+    '',
+    '[TASK]',
+    'Audit the user\'s CURRENT routine product by product before any routine-level summary.',
+    'You must evaluate each product occurrence in the order provided.',
+    'Your job is not to recommend new products yet.',
+    'Your job is to identify what each current product likely is, what role it likely plays, how well it fits the user\'s skin type, goals, sensitivity, and season/climate, what concerns it may raise, and what action should be taken with that specific product occurrence.',
+    'If the exact SKU is unclear, make a tentative but evidence-based judgment and explicitly record uncertainty instead of pretending certainty.',
+    'Prefer evidence-rich structured analysis over compressed summary.',
+    '[/TASK]',
+    '',
+    '[OUTPUT_CONTRACT]',
+    'Return exactly this top-level JSON shape:',
+    '{',
+    '  "schema_version": "aurora.routine_product_audit.v1",',
+    '  "products": [',
+    '    {',
+    '      "product_ref": "string",',
+    '      "slot": "am|pm|unknown",',
+    '      "original_step_label": "string|null",',
+    '      "input_label": "string",',
+    '      "resolved_name_or_null": "string|null",',
+    '      "evidence_basis": ["resolved_name|step_label|brand_signal|product_type_hint|ingredient_hint|unknown"],',
+    '      "inferred_product_type": "string",',
+    '      "likely_role": "string",',
+    '      "likely_key_ingredients_or_signals": ["string"],',
+    '      "fit_for_skin_type": {',
+    '        "verdict": "good|mixed|poor|unknown",',
+    '        "reason": "string"',
+    '      },',
+    '      "fit_for_goals": [',
+    '        {',
+    '          "goal": "string",',
+    '          "verdict": "good|mixed|poor|unknown",',
+    '          "reason": "string"',
+    '        }',
+    '      ],',
+    '      "fit_for_season_or_climate": {',
+    '        "verdict": "good|mixed|poor|unknown",',
+    '        "reason": "string"',
+    '      },',
+    '      "potential_concerns": ["string"],',
+    '      "suggested_action": "keep|move_to_am|move_to_pm|reduce_frequency|replace|remove|unknown",',
+    '      "confidence": 0.0,',
+    '      "missing_info": ["string"],',
+    '      "concise_reasoning_en": "string"',
+    '    }',
+    '  ],',
+    '  "additional_items_needing_verification": [',
+    '    {',
+    '      "input_label": "string",',
+    '      "reason": "string"',
+    '    }',
+    '  ],',
+    '  "missing_info": ["string"],',
+    '  "confidence": 0.0',
+    '}',
+    'Do not add extra top-level keys.',
+    'Do not omit required keys.',
+    'If a value is unknown, use null, [], "unknown", or a cautious explanation rather than inventing details.',
+    '[/OUTPUT_CONTRACT]',
+    '',
+    '[FIELD_SEMANTICS]',
+    '- product_ref: preserve the stable input-side identifier exactly.',
+    '- slot: the usage slot for this occurrence. The same product used in AM and PM should be audited separately if it appears twice.',
+    '- original_step_label: the claimed current step label if provided; do not invent one.',
+    '- evidence_basis: only use these allowed values: resolved_name, step_label, brand_signal, product_type_hint, ingredient_hint, unknown.',
+    '- inferred_product_type: describe the practical product category, such as cleanser, hydrating serum, retinoid serum, moisturizer, sunscreen, exfoliant, or spot treatment.',
+    '- likely_role: describe the practical routine role this product seems to play.',
+    '- likely_key_ingredients_or_signals: include likely actives, filters, texture clues, or formulation signals that matter to the judgment.',
+    '- fit_for_goals: evaluate only explicit user goals. Do not invent goals.',
+    '- concise_reasoning_en: 1-2 product-specific sentences with actual evidence, not generic skincare advice.',
+    '[/FIELD_SEMANTICS]',
+    '',
+    '[HARD_RULES]',
+    '1. Analyze EVERY provided product occurrence. Do not skip products because they seem basic.',
+    '2. Keep the products array in the exact same order as INPUT_CONTEXT.routine_products.',
+    '3. Do not start with generic principles, barrier advice, or overall routine commentary before finishing product-level judgments.',
+    '4. Do not output generic scores or vague labels without product-specific reasons.',
+    '5. Do not assume the user has PM steps, AM steps, sunscreen, cleanser, moisturizer, or any other routine element unless it is explicitly provided in INPUT_CONTEXT.',
+    '6. Do not recommend unrelated products, ingredient buckets, or shopping lists in this stage.',
+    '7. Do not claim exact ingredients, percentages, or SKU certainty unless provided or strongly grounded by resolved context.',
+    '8. If a product seems ambiguous, say what it most likely is and why, then record the uncertainty in missing_info.',
+    '9. If a product is obviously day-bound or night-bound, reflect that in suggested_action with concise reasoning.',
+    '10. Avoid boilerplate language such as "consistency is key", "support the barrier", or "focus on balance" unless tied to the named product and concrete context.',
+    '[/HARD_RULES]',
+    '',
+    '[MISSING_DATA_POLICY]',
+    '- If the exact SKU is unknown, use product category, name signals, slot, resolved hints, and deterministic flags to make a tentative judgment.',
+    '- If a product name is too vague, keep inferred_product_type broad and note the missing information.',
+    '- If season/climate context is missing, set fit_for_season_or_climate.verdict="unknown" and explain briefly.',
+    '- If goals are missing, keep fit_for_goals as an empty array rather than inventing goals.',
+    '- If confidence is below 0.55, keep the action conservative and explain the uncertainty.',
+    '[/MISSING_DATA_POLICY]',
+    '',
+    '[FORBIDDEN_BEHAVIOR]',
+    '- Do not skip product analysis and jump straight to routine-level advice.',
+    '- Do not output obviously templated boilerplate.',
+    '- Do not invent unprovided PM steps or hidden products.',
+    '- Do not give shopping recommendations.',
+    '- Do not produce abstract ingredient scores without evidence.',
+    '- Do not pretend exact SKU recognition when you only have a colloquial product name.',
+    '[/FORBIDDEN_BEHAVIOR]',
+    '',
+    '[INPUT_CONTEXT]',
+    'profile_context={{profile_context_json}}',
+    'goal_context={{goal_context_json}}',
+    'season_climate_context={{season_climate_context_json}}',
+    'deterministic_signals={{deterministic_signals_json}}',
+    'routine_products={{routine_products_json}}',
+    '[/INPUT_CONTEXT]',
+  ].join('\n');
+}
+
+function buildRoutineSynthesisPrompt() {
+  return [
+    '[ROLE]',
+    'You are Aurora, a production skincare routine synthesis engine.',
+    'Return one single valid JSON object only.',
+    'No markdown, no code fences, no prose outside JSON.',
+    '[/ROLE]',
+    '',
+    '[TASK]',
+    'Use the structured Product Audit output as the primary evidence layer.',
+    'First synthesize what the current routine is doing well or poorly.',
+    'Then determine the best AM/PM order, the major overlaps or gaps, the top 1-3 adjustments to make first, the improved AM/PM routines, and only then define recommendation needs that are strictly bound to those adjustments.',
+    'Do not recommend products unless there is a clearly defined adjustment need.',
+    'If the routine is incomplete, do not invent missing AM or PM steps; reason only from what is provided.',
+    'Prefer evidence-rich structured analysis over compressed summary.',
+    '[/TASK]',
+    '',
+    '[OUTPUT_CONTRACT]',
+    'Return exactly this top-level JSON shape:',
+    '{',
+    '  "schema_version": "aurora.routine_synthesis.v1",',
+    '  "current_routine_assessment": {',
+    '    "summary": "string",',
+    '    "main_strengths": ["string"],',
+    '    "main_issues": ["string"]',
+    '  },',
+    '  "per_step_order_am": [',
+    '    {',
+    '      "product_ref": "string",',
+    '      "input_label": "string",',
+    '      "recommended_order": 1,',
+    '      "why_here": "string"',
+    '    }',
+    '  ],',
+    '  "per_step_order_pm": [',
+    '    {',
+    '      "product_ref": "string",',
+    '      "input_label": "string",',
+    '      "recommended_order": 1,',
+    '      "why_here": "string"',
+    '    }',
+    '  ],',
+    '  "overlap_or_gaps": [',
+    '    {',
+    '      "issue_type": "overlap|gap|conflict|too_heavy|too_irritating|goal_mismatch|season_mismatch|order_problem",',
+    '      "title": "string",',
+    '      "evidence": ["string"],',
+    '      "affected_products": ["string"]',
+    '    }',
+    '  ],',
+    '  "top_3_adjustments": [',
+    '    {',
+    '      "adjustment_id": "string",',
+    '      "priority_rank": 1,',
+    '      "title": "string",',
+    '      "action_type": "keep|move|reduce_frequency|replace|remove|add_step|swap_step",',
+    '      "affected_products": ["string"],',
+    '      "why_this_first": "string",',
+    '      "expected_outcome": "string"',
+    '    }',
+    '  ],',
+    '  "improved_am_routine": [',
+    '    {',
+    '      "step_order": 1,',
+    '      "what_to_use": "string",',
+    '      "frequency": "string",',
+    '      "note": "string",',
+    '      "source_type": "existing_product|step_placeholder"',
+    '    }',
+    '  ],',
+    '  "improved_pm_routine": [',
+    '    {',
+    '      "step_order": 1,',
+    '      "what_to_use": "string",',
+    '      "frequency": "string",',
+    '      "note": "string",',
+    '      "source_type": "existing_product|step_placeholder"',
+    '    }',
+    '  ],',
+    '  "rationale_for_each_adjustment": [',
+    '    {',
+    '      "adjustment_id": "string",',
+    '      "reasoning": "string",',
+    '      "evidence": ["string"],',
+    '      "tradeoff_or_caution": "string"',
+    '    }',
+    '  ],',
+    '  "recommendation_needs": [',
+    '    {',
+    '      "adjustment_id": "string",',
+    '      "need_state": "replace_current|fill_gap|upgrade_existing",',
+    '      "target_step": "string",',
+    '      "why": "string",',
+    '      "required_attributes": ["string"],',
+    '      "avoid_attributes": ["string"],',
+    '      "timing": "am|pm|either",',
+    '      "texture_or_format": "string|null",',
+    '      "priority": "high|medium|low"',
+    '    }',
+    '  ],',
+    '  "recommendation_queries": [',
+    '    {',
+    '      "adjustment_id": "string",',
+    '      "query_en": "string"',
+    '    }',
+    '  ],',
+    '  "confidence": 0.0,',
+    '  "missing_info": ["string"]',
+    '}',
+    'Do not add extra top-level keys.',
+    'Do not omit required keys.',
+    'If there is no recommendation need, return recommendation_needs=[] and recommendation_queries=[].',
+    '[/OUTPUT_CONTRACT]',
+    '',
+    '[FIELD_SEMANTICS]',
+    '- current_routine_assessment.summary: 1-2 sentences explaining the overall state of the CURRENT routine, grounded in the audited products.',
+    '- per_step_order_am and per_step_order_pm: only include products that were actually provided for that slot.',
+    '- overlap_or_gaps: combination-level findings only. These must come from how products interact, duplicate, miss a function, or misfit the user goals or context.',
+    '- top_3_adjustments: rank the most important 1-3 changes. Each adjustment must reference affected_products and explain why it comes first.',
+    '- improved_am_routine and improved_pm_routine: use current products where possible. If a step is missing, name the step category, not a specific product.',
+    '- recommendation_needs are shopping needs, not products. They must stay bound to adjustment_id.',
+    '- recommendation_queries: one query per recommendation need, tightly scoped to the associated adjustment_id.',
+    '[/FIELD_SEMANTICS]',
+    '',
+    '[HARD_RULES]',
+    '1. You MUST use Product Audit output as the evidence base. Do not ignore it.',
+    '2. Do not start with generic principles, abstract target states, or vague skincare philosophy.',
+    '3. Do not output empty adjustments with generic wording. Every adjustment must name affected_products and an explicit reason.',
+    '4. Do not assume missing PM or AM steps that were not provided. If a category is absent, treat it as a gap; do not pretend it exists.',
+    '5. Do not generate standalone recommendation content that is not tied to a top_3_adjustments.adjustment_id.',
+    '6. Do not recommend unrelated products, unrelated ingredients, or broad shopping buckets.',
+    '7. Do not output routine fit scores, ingredient match scores, conflict scores, or sensitivity scores. This contract does not require them.',
+    '8. Prefer fixing the current routine with minimal changes before creating recommendation needs.',
+    '9. If the same product appears in both AM and PM, you may keep it in one slot and change the other only if the audit evidence supports that change.',
+    '10. Avoid obvious boilerplate such as "simplify and stay consistent" unless you specify what to simplify and which products are involved.',
+    '[/HARD_RULES]',
+    '',
+    '[MISSING_DATA_POLICY]',
+    '- If Product Audit shows unresolved items, still synthesize the routine using cautious language and list unresolved points in missing_info.',
+    '- If season/climate context is missing, do not overstate heaviness or seasonal mismatch.',
+    '- If goals are broad, prioritize the explicitly stated goals over inferred ones.',
+    '- If no purchase is necessary, leave recommendation_needs empty and keep the answer focused on usage and adjustment.',
+    '- If confidence is limited, keep adjustments conservative and say which missing detail would most change the result.',
+    '[/MISSING_DATA_POLICY]',
+    '',
+    '[FORBIDDEN_BEHAVIOR]',
+    '- Do not skip per-product evidence and jump to generic routine advice.',
+    '- Do not give empty scores without explanation.',
+    '- Do not assume unprovided PM steps.',
+    '- Do not recommend products unrelated to the adjustment needs.',
+    '- Do not output obviously templated boilerplate text.',
+    '[/FORBIDDEN_BEHAVIOR]',
+    '',
+    '[INPUT_CONTEXT]',
+    'profile_context={{profile_context_json}}',
+    'goal_context={{goal_context_json}}',
+    'season_climate_context={{season_climate_context_json}}',
+    'deterministic_signals={{deterministic_signals_json}}',
+    'routine_products={{routine_products_json}}',
+    'product_audit={{product_audit_json}}',
+    'ingredient_plan={{ingredient_plan_json}}',
     '[/INPUT_CONTEXT]',
   ].join('\n');
 }
@@ -1199,7 +1526,7 @@ class LlmGateway {
     this._registerDefaultSchemas();
   }
 
-  async call({ templateId, taskMode, params, schema }) {
+  async call({ templateId, taskMode, params, schema, maxOutputTokens = null }) {
     const template = this._promptRegistry.get(templateId);
     if (!template) {
       throw new Error(`LlmGateway: unknown template "${templateId}"`);
@@ -1211,21 +1538,38 @@ class LlmGateway {
     const startMs = Date.now();
 
     const provider = this._useStubResponses ? 'stub' : this._provider;
+    const effectiveMaxOutputTokens =
+      Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+        ? Math.max(64, Math.min(8192, Math.trunc(Number(maxOutputTokens))))
+        : Number.isFinite(Number(template.maxOutputTokens)) && Number(template.maxOutputTokens) > 0
+          ? Math.max(64, Math.min(8192, Math.trunc(Number(template.maxOutputTokens))))
+          : 2048;
     let text;
 
     if (this._useStubResponses) {
       text = JSON.stringify(this._buildStubStructuredResponse({ templateId, taskMode, params }));
     } else {
-      ({ text } = await this._callStructuredProvider(prompt, { templateId, schemaId: schema, params }));
+      ({ text } = await this._callStructuredProvider(prompt, {
+        templateId,
+        schemaId: schema,
+        params,
+        maxOutputTokens: effectiveMaxOutputTokens,
+      }));
     }
 
     let parsed = null;
     if (schema) {
-      parsed = this._validateAndParse(text, schema);
+      const validation = this._validateAndParse(text, schema);
+      parsed = validation ? validation.parsed : null;
       if (!parsed) {
         throw new LlmQualityError(
           `LLM output failed schema validation: ${schema}`,
-          { templateId, schema, provider }
+          {
+            templateId,
+            schema,
+            provider,
+            validationErrors: validation && Array.isArray(validation.errors) ? validation.errors : [],
+          }
         );
       }
     } else {
@@ -1240,6 +1584,7 @@ class LlmGateway {
       provider,
       elapsed_ms: Date.now() - startMs,
       schema_valid: parsed !== null,
+      max_output_tokens: effectiveMaxOutputTokens,
     });
 
     return {
@@ -1307,7 +1652,7 @@ class LlmGateway {
     };
   }
 
-  async _callStructuredProvider(prompt, { templateId, schemaId, params } = {}) {
+  async _callStructuredProvider(prompt, { templateId, schemaId, params, maxOutputTokens = null } = {}) {
     const schema = schemaId ? this._schemaRegistry.get(schemaId) : null;
     const requiredKeys = Array.isArray(schema?.required) ? schema.required : [];
     const allKeys = schema?.properties ? Object.keys(schema.properties) : requiredKeys;
@@ -1340,7 +1685,7 @@ class LlmGateway {
         content: prompt,
       },
     ];
-    return this._callChatProvider(messages, { mode: 'structured' });
+    return this._callChatProvider(messages, { mode: 'structured', maxOutputTokens });
   }
 
   async _callChatProvider(messages, options = {}) {
@@ -1471,7 +1816,10 @@ class LlmGateway {
       contents,
       generationConfig: {
         temperature: options.mode === 'structured' ? 0 : 0.6,
-        maxOutputTokens: 2048,
+        maxOutputTokens:
+          Number.isFinite(Number(options.maxOutputTokens)) && Number(options.maxOutputTokens) > 0
+            ? Math.max(64, Math.min(8192, Math.trunc(Number(options.maxOutputTokens))))
+            : 2048,
         ...(options.mode === 'structured' ? { responseMimeType: 'application/json' } : {}),
       },
     };
@@ -1569,12 +1917,15 @@ class LlmGateway {
 
   _validateAndParse(text, schemaId) {
     const parsed = this._tryParseJson(text);
-    if (!parsed) return null;
+    if (!parsed) return { parsed: null, errors: [{ path: '$', reason: 'invalid_json' }] };
 
     const schema = this._schemaRegistry.get(schemaId);
-    if (!schema) return parsed;
+    if (!schema) return { parsed, errors: [] };
 
-    return _validateNode(parsed, schema) ? parsed : null;
+    const errors = [];
+    return _validateNode(parsed, schema, '$', errors)
+      ? { parsed, errors: [] }
+      : { parsed: null, errors };
   }
 
   _tryParseJson(text) {
@@ -1640,6 +1991,10 @@ class LlmGateway {
         return this._buildStubRoutineCategorization(params);
       case 'routine_audit_optimize':
         return this._buildStubRoutineAudit(params);
+      case 'routine_product_audit_v1':
+        return this._buildStubRoutineProductAudit(params);
+      case 'routine_synthesis_v1':
+        return this._buildStubRoutineSynthesis(params);
       case 'reco_step_based':
         return this._buildStubStepRecommendations(params);
       case 'tracker_checkin_insights':
@@ -1727,6 +2082,182 @@ class LlmGateway {
       optimized_pm_steps: routine.pm_steps || [],
       changes,
       compatibility_issues: compatibilityIssues,
+    };
+  }
+
+  _buildStubRoutineProductAudit(params) {
+    const products = Array.isArray(params?.routine_products_json) ? params.routine_products_json : [];
+    const goals = Array.isArray(params?.goal_context_json?.goals) ? params.goal_context_json.goals : [];
+    return {
+      schema_version: 'aurora.routine_product_audit.v1',
+      products: products.map((product, index) => {
+        const inputLabel = compactText(product?.input_label || product?.product_text || `Product ${index + 1}`);
+        const lower = inputLabel.toLowerCase();
+        const inferredProductType = lower.includes('spf') || lower.includes('sunscreen')
+          ? 'sunscreen'
+          : lower.includes('retinol') || lower.includes('retinal')
+            ? 'retinoid serum'
+            : lower.includes('cleanser')
+              ? 'cleanser'
+              : lower.includes('cream') || lower.includes('moistur')
+                ? 'moisturizer'
+                : lower.includes('serum')
+                  ? 'serum'
+                  : compactText(product?.inferred_product_type_hint) || 'treatment';
+        const suggestedAction =
+          inferredProductType === 'sunscreen' && compactText(product?.slot).toLowerCase() === 'pm'
+            ? 'move_to_am'
+            : inferredProductType === 'retinoid serum' && compactText(product?.slot).toLowerCase() === 'am'
+              ? 'move_to_pm'
+              : 'keep';
+        return {
+          product_ref: compactText(product?.product_ref || `routine_${index + 1}`),
+          slot: compactText(product?.slot || 'unknown').toLowerCase() || 'unknown',
+          original_step_label: compactText(product?.original_step_label) || null,
+          input_label: inputLabel,
+          resolved_name_or_null: compactText(product?.resolved_name_or_null) || null,
+          evidence_basis: Array.isArray(product?.evidence_basis) && product.evidence_basis.length ? product.evidence_basis : ['step_label'],
+          inferred_product_type: inferredProductType,
+          likely_role:
+            inferredProductType === 'sunscreen'
+              ? 'UV protection'
+              : inferredProductType === 'retinoid serum'
+                ? 'anti-aging treatment'
+                : inferredProductType === 'moisturizer'
+                  ? 'barrier support'
+                  : 'general skincare support',
+          likely_key_ingredients_or_signals:
+            inferredProductType === 'retinoid serum'
+              ? ['retinoid signal']
+              : inferredProductType === 'sunscreen'
+                ? ['UV filter signal']
+                : inferredProductType === 'moisturizer'
+                  ? ['barrier support signal']
+                  : ['product type signal'],
+          fit_for_skin_type: {
+            verdict: inferredProductType === 'retinoid serum' ? 'mixed' : 'good',
+            reason: inferredProductType === 'retinoid serum'
+              ? 'This may fit, but stronger actives usually need more tolerance context.'
+              : 'This product type is directionally compatible in a standard routine.',
+          },
+          fit_for_goals: goals.slice(0, 3).map((goal) => ({
+            goal,
+            verdict: inferredProductType === 'retinoid serum' || inferredProductType === 'sunscreen' || inferredProductType === 'moisturizer' ? 'good' : 'mixed',
+            reason: 'Stub output ties the product to the stated routine goal at a category level.',
+          })),
+          fit_for_season_or_climate: {
+            verdict: 'unknown',
+            reason: 'Season or climate fit is left tentative in the stub response.',
+          },
+          potential_concerns:
+            suggestedAction === 'move_to_am'
+              ? ['This looks like an AM protection step, not a PM step.']
+              : suggestedAction === 'move_to_pm'
+                ? ['This looks like a stronger active that is usually easier to manage at night.']
+                : [],
+          suggested_action: suggestedAction,
+          confidence: inferredProductType === 'treatment' ? 0.58 : 0.76,
+          missing_info: compactText(product?.resolved_name_or_null) ? [] : ['Exact SKU or full product name was not confirmed.'],
+          concise_reasoning_en:
+            suggestedAction === 'move_to_am'
+              ? 'This reads like a sunscreen-style product, so it makes more sense in AM than PM.'
+              : suggestedAction === 'move_to_pm'
+                ? 'This reads like a stronger active, so PM placement is the safer first move.'
+                : 'This looks directionally usable in the current slot, with the main unknown tied to exact formula details.',
+        };
+      }),
+      additional_items_needing_verification: [],
+      missing_info: [],
+      confidence: 0.72,
+    };
+  }
+
+  _buildStubRoutineSynthesis(params) {
+    const audit = params?.product_audit_json || {};
+    const products = Array.isArray(audit?.products) ? audit.products : [];
+    const amProducts = products.filter((product) => compactText(product?.slot).toLowerCase() === 'am');
+    const pmProducts = products.filter((product) => compactText(product?.slot).toLowerCase() === 'pm');
+    const firstAdjustmentProduct = products.find((product) => compactText(product?.suggested_action) && compactText(product?.suggested_action) !== 'keep' && compactText(product?.suggested_action) !== 'unknown');
+    const adjustments = firstAdjustmentProduct
+      ? [{
+          adjustment_id: `adj_${compactText(firstAdjustmentProduct.product_ref) || '1'}`,
+          priority_rank: 1,
+          title: compactText(firstAdjustmentProduct?.suggested_action) === 'move_to_pm'
+            ? `Move ${compactText(firstAdjustmentProduct?.input_label)} to PM`
+            : compactText(firstAdjustmentProduct?.suggested_action) === 'move_to_am'
+              ? `Move ${compactText(firstAdjustmentProduct?.input_label)} to AM`
+              : `Rework ${compactText(firstAdjustmentProduct?.input_label)}`,
+          action_type: compactText(firstAdjustmentProduct?.suggested_action).startsWith('move_to_') ? 'move' : 'replace',
+          affected_products: [compactText(firstAdjustmentProduct?.product_ref)],
+          why_this_first: compactText(firstAdjustmentProduct?.concise_reasoning_en) || 'This is the clearest product-slot mismatch in the current routine.',
+          expected_outcome: 'Cleaner routine fit with less mismatch.',
+        }]
+      : [];
+    const needs = adjustments
+      .filter((item) => item.action_type === 'replace')
+      .map((item) => ({
+        adjustment_id: item.adjustment_id,
+        need_state: 'replace_current',
+        target_step: 'serum',
+        why: item.why_this_first,
+        required_attributes: ['better fit for the stated routine goal'],
+        avoid_attributes: ['unnecessary irritation load'],
+        timing: 'either',
+        texture_or_format: null,
+        priority: 'high',
+      }));
+    return {
+      schema_version: 'aurora.routine_synthesis.v1',
+      current_routine_assessment: {
+        summary: adjustments.length
+          ? `The routine is usable, but "${adjustments[0].title}" is the clearest first fix.`
+          : 'The routine is broadly usable, but several product details remain tentative.',
+        main_strengths: [
+          amProducts.length ? 'There is already an AM routine structure present.' : 'The routine is concise enough to refine without a full reset.',
+        ],
+        main_issues: adjustments.length ? [adjustments[0].title] : ['Exact SKU confidence is still limited.'],
+      },
+      per_step_order_am: amProducts.map((product, index) => ({
+        product_ref: compactText(product?.product_ref),
+        input_label: compactText(product?.input_label),
+        recommended_order: index + 1,
+        why_here: 'Stub ordering keeps current AM products in a simple light-to-heavy order.',
+      })),
+      per_step_order_pm: pmProducts.map((product, index) => ({
+        product_ref: compactText(product?.product_ref),
+        input_label: compactText(product?.input_label),
+        recommended_order: index + 1,
+        why_here: 'Stub ordering keeps current PM products in a simple light-to-heavy order.',
+      })),
+      overlap_or_gaps: [],
+      top_3_adjustments: adjustments,
+      improved_am_routine: amProducts.map((product, index) => ({
+        step_order: index + 1,
+        what_to_use: compactText(product?.input_label),
+        frequency: 'as currently tolerated',
+        note: 'Keep this step in the streamlined AM order.',
+        source_type: 'existing_product',
+      })),
+      improved_pm_routine: pmProducts.map((product, index) => ({
+        step_order: index + 1,
+        what_to_use: compactText(product?.input_label),
+        frequency: 'as currently tolerated',
+        note: 'Keep this step in the streamlined PM order.',
+        source_type: 'existing_product',
+      })),
+      rationale_for_each_adjustment: adjustments.map((item) => ({
+        adjustment_id: item.adjustment_id,
+        reasoning: item.why_this_first,
+        evidence: [item.why_this_first],
+        tradeoff_or_caution: 'Change one high-priority point first so the effect is observable.',
+      })),
+      recommendation_needs: needs,
+      recommendation_queries: needs.map((need) => ({
+        adjustment_id: need.adjustment_id,
+        query_en: `${need.target_step} ${need.required_attributes.join(' ')}`.trim(),
+      })),
+      confidence: 0.7,
+      missing_info: [],
     };
   }
 
@@ -2200,6 +2731,20 @@ class LlmGateway {
         text: buildRoutineAuditStructuredPrompt(),
       },
       {
+        id: 'routine_product_audit_v1',
+        version: '1.0.0',
+        taskMode: 'routine',
+        text: buildRoutineProductAuditPrompt(),
+        maxOutputTokens: 2800,
+      },
+      {
+        id: 'routine_synthesis_v1',
+        version: '1.0.0',
+        taskMode: 'routine',
+        text: buildRoutineSynthesisPrompt(),
+        maxOutputTokens: 2200,
+      },
+      {
         id: 'reco_step_based',
         version: '2.2.0',
         taskMode: 'recommendation',
@@ -2428,6 +2973,297 @@ class LlmGateway {
               },
             },
           },
+        },
+      },
+      {
+        id: 'RoutineProductAuditOutput',
+        type: 'object',
+        required: ['schema_version', 'products', 'additional_items_needing_verification', 'missing_info', 'confidence'],
+        additionalProperties: false,
+        properties: {
+          schema_version: { type: 'string', enum: ['aurora.routine_product_audit.v1'] },
+          products: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: [
+                'product_ref',
+                'slot',
+                'original_step_label',
+                'input_label',
+                'resolved_name_or_null',
+                'evidence_basis',
+                'inferred_product_type',
+                'likely_role',
+                'likely_key_ingredients_or_signals',
+                'fit_for_skin_type',
+                'fit_for_goals',
+                'fit_for_season_or_climate',
+                'potential_concerns',
+                'suggested_action',
+                'confidence',
+                'missing_info',
+                'concise_reasoning_en',
+              ],
+              additionalProperties: false,
+              properties: {
+                product_ref: { type: 'string', minLength: 1, maxLength: 120 },
+                slot: { type: 'string', enum: ['am', 'pm', 'unknown'] },
+                original_step_label: { type: 'string', nullable: true, maxLength: 120 },
+                input_label: { type: 'string', minLength: 1, maxLength: 240 },
+                resolved_name_or_null: { type: 'string', nullable: true, maxLength: 240 },
+                evidence_basis: {
+                  type: 'array',
+                  minItems: 1,
+                  items: {
+                    type: 'string',
+                    enum: ['resolved_name', 'step_label', 'brand_signal', 'product_type_hint', 'ingredient_hint', 'unknown'],
+                  },
+                },
+                inferred_product_type: { type: 'string', minLength: 1, maxLength: 120 },
+                likely_role: { type: 'string', minLength: 1, maxLength: 180 },
+                likely_key_ingredients_or_signals: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1, maxLength: 140 },
+                },
+                fit_for_skin_type: {
+                  type: 'object',
+                  required: ['verdict', 'reason'],
+                  additionalProperties: false,
+                  properties: {
+                    verdict: { type: 'string', enum: ['good', 'mixed', 'poor', 'unknown'] },
+                    reason: { type: 'string', minLength: 1, maxLength: 320 },
+                  },
+                },
+                fit_for_goals: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['goal', 'verdict', 'reason'],
+                    additionalProperties: false,
+                    properties: {
+                      goal: { type: 'string', minLength: 1, maxLength: 140 },
+                      verdict: { type: 'string', enum: ['good', 'mixed', 'poor', 'unknown'] },
+                      reason: { type: 'string', minLength: 1, maxLength: 320 },
+                    },
+                  },
+                },
+                fit_for_season_or_climate: {
+                  type: 'object',
+                  required: ['verdict', 'reason'],
+                  additionalProperties: false,
+                  properties: {
+                    verdict: { type: 'string', enum: ['good', 'mixed', 'poor', 'unknown'] },
+                    reason: { type: 'string', minLength: 1, maxLength: 320 },
+                  },
+                },
+                potential_concerns: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1, maxLength: 220 },
+                },
+                suggested_action: {
+                  type: 'string',
+                  enum: ['keep', 'move_to_am', 'move_to_pm', 'reduce_frequency', 'replace', 'remove', 'unknown'],
+                },
+                confidence: { type: 'number', min: 0, max: 1 },
+                missing_info: {
+                  type: 'array',
+                  items: { type: 'string', minLength: 1, maxLength: 220 },
+                },
+                concise_reasoning_en: { type: 'string', minLength: 1, maxLength: 420 },
+              },
+            },
+          },
+          additional_items_needing_verification: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['input_label', 'reason'],
+              additionalProperties: false,
+              properties: {
+                input_label: { type: 'string', minLength: 1, maxLength: 240 },
+                reason: { type: 'string', minLength: 1, maxLength: 240 },
+              },
+            },
+          },
+          missing_info: {
+            type: 'array',
+            items: { type: 'string', minLength: 1, maxLength: 220 },
+          },
+          confidence: { type: 'number', min: 0, max: 1 },
+        },
+      },
+      {
+        id: 'RoutineSynthesisOutput',
+        type: 'object',
+        required: [
+          'schema_version',
+          'current_routine_assessment',
+          'per_step_order_am',
+          'per_step_order_pm',
+          'overlap_or_gaps',
+          'top_3_adjustments',
+          'improved_am_routine',
+          'improved_pm_routine',
+          'rationale_for_each_adjustment',
+          'recommendation_needs',
+          'recommendation_queries',
+          'confidence',
+          'missing_info',
+        ],
+        additionalProperties: false,
+        properties: {
+          schema_version: { type: 'string', enum: ['aurora.routine_synthesis.v1'] },
+          current_routine_assessment: {
+            type: 'object',
+            required: ['summary', 'main_strengths', 'main_issues'],
+            additionalProperties: false,
+            properties: {
+              summary: { type: 'string', minLength: 1, maxLength: 360 },
+              main_strengths: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 220 } },
+              main_issues: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 220 } },
+            },
+          },
+          per_step_order_am: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['product_ref', 'input_label', 'recommended_order', 'why_here'],
+              additionalProperties: false,
+              properties: {
+                product_ref: { type: 'string', minLength: 1, maxLength: 120 },
+                input_label: { type: 'string', minLength: 1, maxLength: 240 },
+                recommended_order: { type: 'number', min: 1, max: 20 },
+                why_here: { type: 'string', minLength: 1, maxLength: 220 },
+              },
+            },
+          },
+          per_step_order_pm: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['product_ref', 'input_label', 'recommended_order', 'why_here'],
+              additionalProperties: false,
+              properties: {
+                product_ref: { type: 'string', minLength: 1, maxLength: 120 },
+                input_label: { type: 'string', minLength: 1, maxLength: 240 },
+                recommended_order: { type: 'number', min: 1, max: 20 },
+                why_here: { type: 'string', minLength: 1, maxLength: 220 },
+              },
+            },
+          },
+          overlap_or_gaps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['issue_type', 'title', 'evidence', 'affected_products'],
+              additionalProperties: false,
+              properties: {
+                issue_type: {
+                  type: 'string',
+                  enum: ['overlap', 'gap', 'conflict', 'too_heavy', 'too_irritating', 'goal_mismatch', 'season_mismatch', 'order_problem'],
+                },
+                title: { type: 'string', minLength: 1, maxLength: 180 },
+                evidence: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 240 } },
+                affected_products: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 120 } },
+              },
+            },
+          },
+          top_3_adjustments: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['adjustment_id', 'priority_rank', 'title', 'action_type', 'affected_products', 'why_this_first', 'expected_outcome'],
+              additionalProperties: false,
+              properties: {
+                adjustment_id: { type: 'string', minLength: 1, maxLength: 120 },
+                priority_rank: { type: 'number', min: 1, max: 3 },
+                title: { type: 'string', minLength: 1, maxLength: 200 },
+                action_type: { type: 'string', enum: ['keep', 'move', 'reduce_frequency', 'replace', 'remove', 'add_step', 'swap_step'] },
+                affected_products: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 120 } },
+                why_this_first: { type: 'string', minLength: 1, maxLength: 320 },
+                expected_outcome: { type: 'string', minLength: 1, maxLength: 220 },
+              },
+            },
+          },
+          improved_am_routine: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step_order', 'what_to_use', 'frequency', 'note', 'source_type'],
+              additionalProperties: false,
+              properties: {
+                step_order: { type: 'number', min: 1, max: 20 },
+                what_to_use: { type: 'string', minLength: 1, maxLength: 220 },
+                frequency: { type: 'string', minLength: 1, maxLength: 120 },
+                note: { type: 'string', minLength: 1, maxLength: 220 },
+                source_type: { type: 'string', enum: ['existing_product', 'step_placeholder'] },
+              },
+            },
+          },
+          improved_pm_routine: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['step_order', 'what_to_use', 'frequency', 'note', 'source_type'],
+              additionalProperties: false,
+              properties: {
+                step_order: { type: 'number', min: 1, max: 20 },
+                what_to_use: { type: 'string', minLength: 1, maxLength: 220 },
+                frequency: { type: 'string', minLength: 1, maxLength: 120 },
+                note: { type: 'string', minLength: 1, maxLength: 220 },
+                source_type: { type: 'string', enum: ['existing_product', 'step_placeholder'] },
+              },
+            },
+          },
+          rationale_for_each_adjustment: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['adjustment_id', 'reasoning', 'evidence', 'tradeoff_or_caution'],
+              additionalProperties: false,
+              properties: {
+                adjustment_id: { type: 'string', minLength: 1, maxLength: 120 },
+                reasoning: { type: 'string', minLength: 1, maxLength: 360 },
+                evidence: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 240 } },
+                tradeoff_or_caution: { type: 'string', minLength: 1, maxLength: 220 },
+              },
+            },
+          },
+          recommendation_needs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['adjustment_id', 'need_state', 'target_step', 'why', 'required_attributes', 'avoid_attributes', 'timing', 'texture_or_format', 'priority'],
+              additionalProperties: false,
+              properties: {
+                adjustment_id: { type: 'string', minLength: 1, maxLength: 120 },
+                need_state: { type: 'string', enum: ['replace_current', 'fill_gap', 'upgrade_existing'] },
+                target_step: { type: 'string', minLength: 1, maxLength: 120 },
+                why: { type: 'string', minLength: 1, maxLength: 320 },
+                required_attributes: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 220 } },
+                avoid_attributes: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 220 } },
+                timing: { type: 'string', enum: ['am', 'pm', 'either'] },
+                texture_or_format: { type: 'string', nullable: true, maxLength: 120 },
+                priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+              },
+            },
+          },
+          recommendation_queries: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['adjustment_id', 'query_en'],
+              additionalProperties: false,
+              properties: {
+                adjustment_id: { type: 'string', minLength: 1, maxLength: 120 },
+                query_en: { type: 'string', minLength: 1, maxLength: 220 },
+              },
+            },
+          },
+          confidence: { type: 'number', min: 0, max: 1 },
+          missing_info: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 220 } },
         },
       },
       {
