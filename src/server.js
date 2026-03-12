@@ -3784,6 +3784,187 @@ function parseQueryStringArray(value) {
     .filter(Boolean);
 }
 
+function normalizeSearchUiSurface(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized || '';
+}
+
+function parseQueryJsonObject(value) {
+  const raw = firstQueryParamValue(value);
+  if (!raw) return null;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTravelLookupSlotState(raw) {
+  const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!input) return { asked_slots: [], resolved_slots: {} };
+  const askedSlots = Array.isArray(input.asked_slots)
+    ? Array.from(
+        new Set(
+          input.asked_slots
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const resolvedSlots =
+    input.resolved_slots && typeof input.resolved_slots === 'object' && !Array.isArray(input.resolved_slots)
+      ? Object.fromEntries(
+          Object.entries(input.resolved_slots)
+            .map(([key, val]) => [String(key || '').trim().toLowerCase(), String(val || '').trim()])
+            .filter(([key, val]) => key && val),
+        )
+      : {};
+  return {
+    asked_slots: askedSlots,
+    resolved_slots: resolvedSlots,
+  };
+}
+
+function hasTravelLookupSlotState(slotState) {
+  return Boolean(
+    slotState &&
+      ((Array.isArray(slotState.asked_slots) && slotState.asked_slots.length > 0) ||
+        (slotState.resolved_slots &&
+          typeof slotState.resolved_slots === 'object' &&
+          Object.keys(slotState.resolved_slots).length > 0)),
+  );
+}
+
+function normalizeTravelLookupChoice(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ');
+}
+
+function appendSearchQueryHint(queryText, hint) {
+  const base = String(queryText || '').trim();
+  const next = String(hint || '').trim();
+  if (!next) return base;
+  const normalizedBase = normalizeSearchTextForMatch(base);
+  const normalizedHint = normalizeSearchTextForMatch(next);
+  if (normalizedBase && normalizedHint && normalizedBase.includes(normalizedHint)) return base;
+  return [base, next].filter(Boolean).join(' ').trim();
+}
+
+function applyTravelLookupClarificationToSearch(search, slot, answer) {
+  const normalizedSlot = String(slot || '').trim().toLowerCase();
+  const rawAnswer = String(answer || '').trim();
+  const normalizedAnswer = normalizeTravelLookupChoice(rawAnswer);
+  if (!normalizedSlot || !rawAnswer) return;
+
+  if (normalizedSlot === 'brand') {
+    if (
+      normalizedAnswer === 'no brand preference' ||
+      normalizedAnswer === '无品牌偏好'
+    ) {
+      return;
+    }
+    if (normalizedAnswer === 'global brands' || normalizedAnswer === '国际品牌') {
+      search.query = appendSearchQueryHint(search.query, 'global brand');
+      return;
+    }
+    if (normalizedAnswer === 'local brands' || normalizedAnswer === '本地品牌') {
+      search.query = appendSearchQueryHint(search.query, 'local brand');
+      return;
+    }
+    if (normalizedAnswer === 'value-for-money first' || normalizedAnswer === '性价比优先') {
+      search.query = appendSearchQueryHint(search.query, 'value for money budget');
+      return;
+    }
+    search.query = appendSearchQueryHint(search.query, rawAnswer);
+    return;
+  }
+
+  if (normalizedSlot === 'budget') {
+    const budgetRanges = new Map([
+      ['$0-25', [0, 25]],
+      ['$25-50', [25, 50]],
+      ['$50-100', [50, 100]],
+      ['$100+', [100, null]],
+    ]);
+    const range = budgetRanges.get(normalizedAnswer);
+    if (range) {
+      search.min_price = range[0];
+      if (range[1] == null) delete search.max_price;
+      else search.max_price = range[1];
+      return;
+    }
+  }
+
+  search.query = appendSearchQueryHint(search.query, rawAnswer);
+}
+
+function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
+  const uiSurface = normalizeSearchUiSurface(
+    firstQueryParamValue(query.ui_surface || query.uiSurface),
+  );
+  const context = {};
+  if (uiSurface) {
+    metadata.ui_surface = uiSurface;
+    context.ui_surface = uiSurface;
+  }
+
+  const parsedSlotState = normalizeTravelLookupSlotState(
+    parseQueryJsonObject(query.slot_state || query.slotState),
+  );
+  const clarificationSlot = String(
+    firstQueryParamValue(query.clarification_slot || query.clarificationSlot) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const clarificationAnswer = String(
+    firstQueryParamValue(query.clarification_answer || query.clarificationAnswer) || '',
+  ).trim();
+
+  if (clarificationSlot) {
+    parsedSlotState.asked_slots = Array.from(
+      new Set([
+        ...parsedSlotState.asked_slots,
+        clarificationSlot,
+      ]),
+    );
+  }
+  if (clarificationSlot && clarificationAnswer) {
+    parsedSlotState.resolved_slots = {
+      ...parsedSlotState.resolved_slots,
+      [clarificationSlot]: clarificationAnswer,
+    };
+    applyTravelLookupClarificationToSearch(search, clarificationSlot, clarificationAnswer);
+  }
+
+  if (uiSurface === 'travel_lookup') {
+    if (search.allow_external_seed === undefined) {
+      search.allow_external_seed = true;
+    }
+    if (!String(search.external_seed_strategy || '').trim()) {
+      search.external_seed_strategy = 'unified_relevance';
+    }
+    if (search.fast_mode === undefined) {
+      search.fast_mode = true;
+    }
+  }
+
+  if (hasTravelLookupSlotState(parsedSlotState)) {
+    context.asked_slots = parsedSlotState.asked_slots;
+    context.resolved_slots = parsedSlotState.resolved_slots;
+    metadata.slot_state = parsedSlotState;
+  }
+
+  return Object.keys(context).length > 0 ? context : null;
+}
+
 function normalizeAgentSource(source) {
   return String(source || '')
     .trim()
@@ -3990,6 +4171,28 @@ function buildSearchProductKey(product) {
   return `${merchantId}::${productId}`;
 }
 
+function normalizeSearchProductUrlForDedupe(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) return raw.toLowerCase();
+  try {
+    const url = new URL(raw);
+    return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/, '').toLowerCase()}`;
+  } catch {
+    return raw.toLowerCase();
+  }
+}
+
+function buildTravelLookupSearchProductDedupeKey(product) {
+  if (!product || typeof product !== 'object') return '';
+  const urlKey =
+    normalizeSearchProductUrlForDedupe(product.canonical_url) ||
+    normalizeSearchProductUrlForDedupe(product.destination_url) ||
+    normalizeSearchProductUrlForDedupe(product.external_url);
+  if (urlKey) return urlKey;
+  return buildSearchProductKey(product);
+}
+
 function normalizeSearchProductTitleForDedupe(product) {
   if (!product || typeof product !== 'object') return '';
   const title = String(
@@ -4012,8 +4215,18 @@ function collapseNearDuplicateSearchProducts(products, options = {}) {
       ? Math.floor(perTitleLimitRaw)
       : 1;
   const counts = new Map();
+  const seenDedupeKeys = new Set();
+  const dedupeKey =
+    typeof options.dedupeKey === 'function'
+      ? options.dedupeKey
+      : null;
   const out = [];
   for (const product of list) {
+    const productDedupeKey = dedupeKey ? String(dedupeKey(product) || '').trim() : '';
+    if (productDedupeKey) {
+      if (seenDedupeKeys.has(productDedupeKey)) continue;
+      seenDedupeKeys.add(productDedupeKey);
+    }
     const titleKey = normalizeSearchProductTitleForDedupe(product);
     if (!titleKey) {
       out.push(product);
@@ -4053,6 +4266,8 @@ function normalizeProductImages(product) {
   pushFromArray(src.image_urls);
   pushFromArray(src.variants);
   pushFromArray(src.media);
+  pushFromArray(src?.seed_data?.variants);
+  pushFromArray(src?.seed_data?.snapshot?.variants);
   pushFromArray(src?.seed_data?.snapshot?.image_urls);
   pushFromArray(src?.seed_data?.snapshot?.images);
 
@@ -4066,7 +4281,11 @@ function normalizeProductImages(product) {
   };
 }
 
-function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass }) {
+function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass, uiSurface }) {
+  const normalizedUiSurface = normalizeSearchUiSurface(uiSurface);
+  if (normalizedUiSurface === 'travel_lookup') {
+    return 1;
+  }
   const normalizedClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
   const primaryDomain = String(intent?.primary_domain || '').trim().toLowerCase();
   const scenarioName = String(intent?.scenario?.name || '').trim().toLowerCase();
@@ -4097,6 +4316,70 @@ function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass }) {
   }
 
   return 1;
+}
+
+function normalizeSearchAvailabilityState(product, options = {}) {
+  if (!product || typeof product !== 'object') return 'unknown';
+  if (typeof product.in_stock === 'boolean') {
+    return product.in_stock ? 'in_stock' : 'out_of_stock';
+  }
+  if (typeof product.available === 'boolean') {
+    return product.available ? 'in_stock' : 'out_of_stock';
+  }
+  const availability = String(product.availability || '').trim().toLowerCase();
+  if (availability.includes('out_of_stock') || availability.includes('out of stock')) return 'out_of_stock';
+  if (availability.includes('in_stock') || availability.includes('in stock') || availability === 'available') {
+    return 'in_stock';
+  }
+  const quantity = product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity;
+  if (quantity != null && quantity !== '' && Number.isFinite(Number(quantity))) {
+    return Number(quantity) > 0 ? 'in_stock' : 'out_of_stock';
+  }
+  if (options.includeVariants !== false && Array.isArray(product.variants) && product.variants.length > 0) {
+    const states = product.variants.map((variant) => normalizeSearchAvailabilityState(variant, { includeVariants: false }));
+    if (states.includes('in_stock')) return 'in_stock';
+    if (states.every((state) => state === 'out_of_stock')) return 'out_of_stock';
+  }
+  return 'unknown';
+}
+
+function postProcessTravelLookupProductsResponse(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const products = Array.isArray(body.products) ? body.products : [];
+  if (products.length === 0) return body;
+  const deduped = collapseNearDuplicateSearchProducts(products, {
+    perTitleLimit: 1,
+    dedupeKey: buildTravelLookupSearchProductDedupeKey,
+  });
+  const availabilityRank = {
+    in_stock: 0,
+    unknown: 1,
+    out_of_stock: 2,
+  };
+  const ranked = deduped
+    .map((product, index) => {
+      const availabilityState = normalizeSearchAvailabilityState(product);
+      return {
+        index,
+        availabilityState,
+        product: {
+          ...product,
+          availability_state: availabilityState,
+        },
+      };
+    })
+    .sort((left, right) => {
+      const rankDiff = availabilityRank[left.availabilityState] - availabilityRank[right.availabilityState];
+      if (rankDiff !== 0) return rankDiff;
+      return left.index - right.index;
+    })
+    .map((entry) => entry.product);
+  return {
+    ...body,
+    products: ranked,
+    total: ranked.length,
+    page_size: ranked.length,
+  };
 }
 
 function extractSearchQueryText(rawQuery) {
@@ -5057,6 +5340,12 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
   if (source) metadata.source = source;
 
+  const context = applyTravelLookupContinuationFromQuery({
+    query,
+    search,
+    metadata,
+  });
+
   if (!metadata.source && !search.catalog_surface && textQuery) {
     const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: textQuery });
     if (beautyQueryProfile?.isBeautyQuery) {
@@ -5066,6 +5355,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   }
 
   const payload = { search };
+  if (context) payload.context = context;
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
   return payload;
 }
@@ -16974,9 +17264,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             queryText: cacheQueryText,
             intent: effectiveIntent,
             queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
+            uiSurface:
+              metadata?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              null,
           });
           const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
             perTitleLimit: dedupePerTitleLimit,
+            ...(normalizeSearchUiSurface(
+              metadata?.ui_surface ||
+                payload?.metadata?.ui_surface ||
+                payload?.context?.ui_surface ||
+                null,
+            ) === 'travel_lookup'
+              ? { dedupeKey: buildTravelLookupSearchProductDedupeKey }
+              : {}),
           });
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
@@ -20260,6 +20563,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
+
+      if (
+        normalizeSearchUiSurface(
+          enriched?.metadata?.ui_surface ||
+            metadata?.ui_surface ||
+            effectivePayload?.metadata?.ui_surface ||
+            effectivePayload?.context?.ui_surface,
+        ) === 'travel_lookup'
+      ) {
+        enriched = postProcessTravelLookupProductsResponse(enriched);
+      }
     }
 
     return res.status(response.status).json(enriched);
@@ -20325,7 +20639,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }),
           },
         );
-        return res.status(200).json(cacheGuardDiagnosed);
+        const finalCacheGuardBody =
+          normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface,
+          ) === 'travel_lookup'
+            ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
+            : cacheGuardDiagnosed;
+        return res.status(200).json(finalCacheGuardBody);
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
@@ -20629,6 +20951,11 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   normalizeProductImages,
+  buildFindProductsMultiPayloadFromQuery,
+  collapseNearDuplicateSearchProducts,
+  buildTravelLookupSearchProductDedupeKey,
+  normalizeSearchAvailabilityState,
+  postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
