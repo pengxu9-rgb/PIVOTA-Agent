@@ -39,6 +39,7 @@ function buildTravelPlanActivityPayload(plan) {
   return {
     trip_id: typeof target.trip_id === 'string' ? target.trip_id : null,
     destination: typeof target.destination === 'string' ? target.destination : null,
+    departure_region: typeof target.departure_region === 'string' ? target.departure_region : null,
     start_date: typeof target.start_date === 'string' ? target.start_date : null,
     end_date: typeof target.end_date === 'string' ? target.end_date : null,
     is_archived: Boolean(target.is_archived),
@@ -51,27 +52,30 @@ function getRouteUserLocale(req, ctx) {
   return String(ctx && ctx.lang ? ctx.lang : 'EN');
 }
 
-async function resolvePersistedDestination({
-  destination,
-  destinationPlace,
+async function resolvePersistedPlace({
+  text,
+  place,
+  ambiguityCode = 'DESTINATION_AMBIGUOUS',
+  field = 'destination',
   userLocale,
   fetchImpl = global.fetch,
 } = {}) {
-  const destinationText = typeof destination === 'string' ? destination.trim() : '';
+  const placeText = typeof text === 'string' ? text.trim() : '';
   const resolution = await resolveDestinationInput({
-    destination: destinationText,
-    destinationPlace,
+    destination: placeText,
+    destinationPlace: place,
     userLocale,
     fetchImpl,
   });
 
   if (resolution && resolution.ambiguous) {
-    const err = new Error('DESTINATION_AMBIGUOUS');
+    const err = new Error(ambiguityCode);
     err.status = 409;
-    err.code = 'DESTINATION_AMBIGUOUS';
+    err.code = ambiguityCode;
     err.body = {
-      error: 'DESTINATION_AMBIGUOUS',
-      normalized_query: resolution.normalized_query || destinationText,
+      error: ambiguityCode,
+      field,
+      normalized_query: resolution.normalized_query || placeText,
       candidates: Array.isArray(resolution.candidates) ? resolution.candidates : [],
     };
     throw err;
@@ -79,14 +83,14 @@ async function resolvePersistedDestination({
 
   if (resolution && resolution.ok && resolution.resolved_place) {
     return {
-      destination: resolution.resolved_place.label || destinationText,
-      destination_place: resolution.resolved_place,
+      text: resolution.resolved_place.label || placeText,
+      place: resolution.resolved_place,
     };
   }
 
   return {
-    destination: destinationText,
-    destination_place: null,
+    text: placeText,
+    place: null,
   };
 }
 
@@ -255,9 +259,18 @@ function mountTravelPlansRoutes(app, deps = {}) {
         return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
       }
 
-      const resolvedDestination = await resolvePersistedDestination({
-        destination: parsed.data.destination,
-        destinationPlace: parsed.data.destination_place,
+      const resolvedDestination = await resolvePersistedPlace({
+        text: parsed.data.destination,
+        place: parsed.data.destination_place,
+        ambiguityCode: 'DESTINATION_AMBIGUOUS',
+        field: 'destination',
+        userLocale: getRouteUserLocale(req, ctx),
+      });
+      const resolvedDeparture = await resolvePersistedPlace({
+        text: parsed.data.departure_region,
+        place: parsed.data.departure_place,
+        ambiguityCode: 'DEPARTURE_AMBIGUOUS',
+        field: 'departure',
         userLocale: getRouteUserLocale(req, ctx),
       });
 
@@ -280,8 +293,10 @@ function mountTravelPlansRoutes(app, deps = {}) {
         patch: {
           travel_plans: [
             {
-              destination: resolvedDestination.destination || parsed.data.destination,
-              ...(resolvedDestination.destination_place ? { destination_place: resolvedDestination.destination_place } : {}),
+              destination: resolvedDestination.text || parsed.data.destination,
+              ...(resolvedDestination.place ? { destination_place: resolvedDestination.place } : {}),
+              departure_region: resolvedDeparture.text || parsed.data.departure_region,
+              ...(resolvedDeparture.place ? { departure_place: resolvedDeparture.place } : {}),
               start_date: parsed.data.start_date,
               end_date: parsed.data.end_date,
               ...(Number.isFinite(Number(parsed.data.indoor_outdoor_ratio))
@@ -321,7 +336,9 @@ function mountTravelPlansRoutes(app, deps = {}) {
           (Array.isArray(listOut.plans) ? listOut.plans : []).find(
             (plan) =>
               String((plan && plan.destination) || '').trim() ===
-                String(resolvedDestination.destination || parsed.data.destination || '').trim() &&
+                String(resolvedDestination.text || parsed.data.destination || '').trim() &&
+              String((plan && plan.departure_region) || '').trim() ===
+                String(resolvedDeparture.text || parsed.data.departure_region || '').trim() &&
               String((plan && plan.start_date) || '').trim() === String(parsed.data.start_date || '').trim() &&
               String((plan && plan.end_date) || '').trim() === String(parsed.data.end_date || '').trim(),
           ) || null;
@@ -353,7 +370,7 @@ function mountTravelPlansRoutes(app, deps = {}) {
 
       return res.status(200).json({ plan: createdPlan || null, summary: listOut.summary });
     } catch (err) {
-      if (err && err.code === 'DESTINATION_AMBIGUOUS' && err.body) {
+      if (err && (err.code === 'DESTINATION_AMBIGUOUS' || err.code === 'DEPARTURE_AMBIGUOUS') && err.body) {
         return res.status(409).json(err.body);
       }
       const fail = toTravelPlansStorageError(err, classifyStorageError);
@@ -403,25 +420,51 @@ function mountTravelPlansRoutes(app, deps = {}) {
       };
       const destinationWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'destination');
       const destinationPlaceWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'destination_place');
+      const departureWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'departure_region');
+      const departurePlaceWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'departure_place');
       if (destinationWasUpdated || destinationPlaceWasUpdated) {
-        const resolvedDestination = await resolvePersistedDestination({
-          destination:
+        const resolvedDestination = await resolvePersistedPlace({
+          text:
             typeof mergedPlan.destination === 'string' && mergedPlan.destination.trim()
               ? mergedPlan.destination
               : existing.destination,
-          destinationPlace: destinationPlaceWasUpdated
+          place: destinationPlaceWasUpdated
             ? parsed.data.destination_place
             : destinationWasUpdated
               ? null
               : existing.destination_place,
+          ambiguityCode: 'DESTINATION_AMBIGUOUS',
+          field: 'destination',
           userLocale: getRouteUserLocale(req, ctx),
         });
-        mergedPlan.destination = resolvedDestination.destination || mergedPlan.destination;
-        if (resolvedDestination.destination_place) mergedPlan.destination_place = resolvedDestination.destination_place;
+        mergedPlan.destination = resolvedDestination.text || mergedPlan.destination;
+        if (resolvedDestination.place) mergedPlan.destination_place = resolvedDestination.place;
         else delete mergedPlan.destination_place;
+      }
+      if (departureWasUpdated || departurePlaceWasUpdated) {
+        const resolvedDeparture = await resolvePersistedPlace({
+          text:
+            typeof mergedPlan.departure_region === 'string' && mergedPlan.departure_region.trim()
+              ? mergedPlan.departure_region
+              : existing.departure_region,
+          place: departurePlaceWasUpdated
+            ? parsed.data.departure_place
+            : departureWasUpdated
+              ? null
+              : existing.departure_place,
+          ambiguityCode: 'DEPARTURE_AMBIGUOUS',
+          field: 'departure',
+          userLocale: getRouteUserLocale(req, ctx),
+        });
+        mergedPlan.departure_region = resolvedDeparture.text || mergedPlan.departure_region;
+        if (resolvedDeparture.place) mergedPlan.departure_place = resolvedDeparture.place;
+        else delete mergedPlan.departure_place;
       }
       if (!isTravelDateRangeValid(mergedPlan.start_date, mergedPlan.end_date)) {
         return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
+      }
+      if (typeof mergedPlan.departure_region !== 'string' || !mergedPlan.departure_region.trim()) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: { departure_region: 'required' } });
       }
       if (parsed.data.is_archived === true) {
         mergedPlan.is_archived = true;
@@ -471,7 +514,7 @@ function mountTravelPlansRoutes(app, deps = {}) {
 
       return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
     } catch (err) {
-      if (err && err.code === 'DESTINATION_AMBIGUOUS' && err.body) {
+      if (err && (err.code === 'DESTINATION_AMBIGUOUS' || err.code === 'DEPARTURE_AMBIGUOUS') && err.body) {
         return res.status(409).json(err.body);
       }
       const fail = toTravelPlansStorageError(err, classifyStorageError);

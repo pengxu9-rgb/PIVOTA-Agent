@@ -122,6 +122,18 @@ function formatNumber(value, digits = 1) {
   return n.toFixed(digits).replace(/\.0+$/, '');
 }
 
+function pickTravelDelta(travelReadiness) {
+  if (isPlainObject(travelReadiness && travelReadiness.delta_vs_origin)) return travelReadiness.delta_vs_origin;
+  if (isPlainObject(travelReadiness && travelReadiness.delta_vs_home)) return travelReadiness.delta_vs_home;
+  return {};
+}
+
+function pickOriginLabel(travelReadiness, fallback) {
+  const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
+  const originContext = isPlainObject(readiness.origin_context) ? readiness.origin_context : {};
+  return normalizeText(originContext.label, 140) || normalizeText(fallback, 140);
+}
+
 function normalizeUnit(unitRaw) {
   const unit = String(unitRaw || '').trim();
   if (!unit) return '';
@@ -360,9 +372,7 @@ function getDeltaKeysForDisplay(foci) {
 }
 
 function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinationLabel, repeated }) {
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const repeatPrefix = repeated
     ? t(language, '更具体一点，', 'More specifically, ')
     : '';
@@ -371,22 +381,22 @@ function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinati
     const d = toNumber(delta?.humidity?.delta);
     if (d != null) {
       if (d >= 8) {
-        return `${repeatPrefix}${t(language, `${destinationLabel} 会更湿。`, `${destinationLabel} will be more humid than your home baseline.`)}`;
+        return `${repeatPrefix}${t(language, `${destinationLabel} 会更湿。`, `${destinationLabel} will be more humid than your departure baseline.`)}`;
       }
       if (d <= -8) {
-        return `${repeatPrefix}${t(language, `${destinationLabel} 不会更湿，反而更干。`, `${destinationLabel} is likely drier than home.`)}`;
+        return `${repeatPrefix}${t(language, `${destinationLabel} 不会更湿，反而更干。`, `${destinationLabel} is likely drier than departure.`)}`;
       }
-      return `${repeatPrefix}${t(language, `${destinationLabel} 湿度和常驻地接近。`, `${destinationLabel} humidity is close to home.`)}`;
+      return `${repeatPrefix}${t(language, `${destinationLabel} 湿度和出发地接近。`, `${destinationLabel} humidity is close to your departure baseline.`)}`;
     }
-    return `${repeatPrefix}${t(language, '湿度对比基线不足，我按目的地给你可执行方案。', 'Home humidity baseline is missing, so I will give destination-first actions.')}`;
+    return `${repeatPrefix}${t(language, '湿度对比基线不足，我按目的地给你可执行方案。', 'Departure humidity baseline is missing, so I will give destination-first actions.')}`;
   }
 
   if (primaryFocus === FOCUS_ENUM.TEMPERATURE) {
     const d = toNumber(delta?.temperature?.delta);
     if (d != null) {
-      if (d >= 3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更暖。`, `${destinationLabel} will be warmer than home.`)}`;
-      if (d <= -3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更冷。`, `${destinationLabel} will be colder than home.`)}`;
-      return `${repeatPrefix}${t(language, `${destinationLabel} 温度与常驻地接近。`, `${destinationLabel} temperature is close to home.`)}`;
+      if (d >= 3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更暖。`, `${destinationLabel} will be warmer than departure.`)}`;
+      if (d <= -3) return `${repeatPrefix}${t(language, `${destinationLabel} 会更冷。`, `${destinationLabel} will be colder than departure.`)}`;
+      return `${repeatPrefix}${t(language, `${destinationLabel} 温度与出发地接近。`, `${destinationLabel} temperature is close to your departure baseline.`)}`;
     }
     return `${repeatPrefix}${t(language, '温度基线不完整，我先给稳态方案。', 'Temperature baseline is incomplete, so I will start with a stability-first plan.')}`;
   }
@@ -419,9 +429,7 @@ function buildPrimaryAnswer({ language, primaryFocus, travelReadiness, destinati
 }
 
 function buildComparisonLines({ language, foci, travelReadiness, displayedDeltaKeys }) {
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const keys = Array.isArray(displayedDeltaKeys) && displayedDeltaKeys.length
     ? displayedDeltaKeys.slice(0, 3)
     : getDeltaKeysForDisplay(foci);
@@ -451,9 +459,7 @@ function buildComparisonLines({ language, foci, travelReadiness, displayedDeltaK
 }
 
 function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys }) {
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const lines = [];
   const seenSemantics = new Set();
   const focusHumidity = Array.isArray(foci) && foci.includes(FOCUS_ENUM.HUMIDITY);
@@ -506,9 +512,7 @@ function buildPhasedPlanLines({ language, travelReadiness, foci }) {
   const tripDays = getTripDaysInclusive(context.start_date, context.end_date);
   if (!Number.isFinite(tripDays) || tripDays < 3) return [];
 
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const uvDestination = toNumber(delta?.uv?.destination);
   const hasUvStress = uvDestination != null && uvDestination >= 6;
   const hasSleepFocus = Array.isArray(foci) && foci.includes(FOCUS_ENUM.SLEEP);
@@ -723,9 +727,7 @@ function buildActiveHandlingLines({ language, travelReadiness }) {
   const personalFocus = Array.isArray(travelReadiness && travelReadiness.personal_focus)
     ? travelReadiness.personal_focus
     : [];
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const summaryTags = Array.isArray(delta.summary_tags) ? delta.summary_tags : [];
   const isWindy = summaryTags.includes('windier');
   const hasPollen = summaryTags.includes('pollen') || summaryTags.includes('seasonal_allergen');
@@ -757,9 +759,7 @@ function buildPackingListLines({ language, travelReadiness }) {
 
 function buildTroubleshootingLines({ language, travelReadiness }) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
   const summaryTags = Array.isArray(delta.summary_tags) ? delta.summary_tags : [];
 
   const lines = [];
@@ -791,9 +791,7 @@ function buildReplySignature({ foci, travelReadiness, homeRegion }) {
   const destinationContext = isPlainObject(travelReadiness && travelReadiness.destination_context)
     ? travelReadiness.destination_context
     : {};
-  const delta = isPlainObject(travelReadiness && travelReadiness.delta_vs_home)
-    ? travelReadiness.delta_vs_home
-    : {};
+  const delta = pickTravelDelta(travelReadiness);
 
   const signatureParts = [
     Array.isArray(foci) && foci.length ? foci.join('+') : FOCUS_ENUM.GENERAL,
@@ -887,7 +885,7 @@ function composeTravelReply({
     normalizeText(destinationContext.destination, 140) ||
     normalizeText(destination, 140) ||
     t(lang, '目的地', 'destination');
-  const homeRegionText = normalizeText(homeRegion, 140);
+  const originRegionText = pickOriginLabel(readiness, homeRegion);
 
   const startDate = normalizeText(destinationContext.start_date, 24);
   const endDate = normalizeText(destinationContext.end_date, 24);
@@ -895,13 +893,13 @@ function composeTravelReply({
     ? `${startDate} -> ${endDate}`
     : startDate || endDate || '';
 
-  const delta = isPlainObject(readiness.delta_vs_home) ? readiness.delta_vs_home : {};
+  const delta = pickTravelDelta(readiness);
   const homeBaselineAvailable = normalizeText(delta.baseline_status, 40) !== 'baseline_unavailable';
 
   const foci = detectTravelFoci(message);
   const focusToken = foci.join('+');
   const displayedDeltaKeys = getDeltaKeysForDisplay(foci);
-  const replySig = buildReplySignature({ foci, travelReadiness: readiness, homeRegion: homeRegionText });
+  const replySig = buildReplySignature({ foci, travelReadiness: readiness, homeRegion: originRegionText });
   const normalizedPrevFocus = normalizeText(previousFocus, 60).toLowerCase();
   const normalizedPrevSig = normalizeText(previousReplySig, 260).toLowerCase();
   const normalizedPrevQuestionHash = normalizeText(previousQuestionHash, 40).toLowerCase();
@@ -919,11 +917,11 @@ function composeTravelReply({
     repeated,
   });
 
-  const contextLine = homeRegionText
+  const contextLine = originRegionText
     ? t(
       lang,
-      `常驻地：${homeRegionText} -> 目的地：${destinationLabel}${dateText ? `（${dateText}）` : ''}`,
-      `Home region: ${homeRegionText} -> Destination: ${destinationLabel}${dateText ? ` (${dateText})` : ''}`,
+      `出发地：${originRegionText} -> 目的地：${destinationLabel}${dateText ? `（${dateText}）` : ''}`,
+      `Departure: ${originRegionText} -> Destination: ${destinationLabel}${dateText ? ` (${dateText})` : ''}`,
     )
     : t(
       lang,
@@ -957,11 +955,11 @@ function composeTravelReply({
     profile: {},
   });
 
-  const baselineGapLine = homeRegionText && !homeBaselineAvailable
+  const baselineGapLine = originRegionText && !homeBaselineAvailable
     ? t(
       lang,
-      '缺少 home baseline，对比已降级为目的地绝对值建议。',
-      'Home baseline is unavailable, so comparison is downgraded to destination-only absolute guidance.',
+      '缺少出发地基线，对比已降级为目的地绝对值建议。',
+      'Departure baseline is unavailable, so comparison is downgraded to destination-only absolute guidance.',
     )
     : '';
 
