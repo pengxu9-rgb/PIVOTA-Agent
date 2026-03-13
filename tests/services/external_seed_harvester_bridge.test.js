@@ -104,7 +104,7 @@ describe('externalSeedHarvesterBridge', () => {
     );
   });
 
-  test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
+  test('excludes gift cards, kits, bundles, collections, and default title candidates from harvester export', () => {
     expect(
       shouldExcludeCandidate({
         product_name: 'Pixi E-Gift Card 200 - Default Title',
@@ -118,6 +118,21 @@ describe('externalSeedHarvesterBridge', () => {
     expect(
       shouldExcludeCandidate({
         product_name: 'Best Of Pixi Bundle - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'daily brightness boosters kit - KIT',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Glow2OH Dark Spot Toner Duo - 6.5 oz',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'The Eye, Lash & Brow Collection',
       }),
     ).toBe(true);
     expect(

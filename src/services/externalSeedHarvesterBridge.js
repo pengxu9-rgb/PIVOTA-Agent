@@ -29,6 +29,11 @@ const EXCLUDED_PRODUCT_PATTERNS = [
   /\bgift\s*card\b/i,
   /\bdefault\s+title\b/i,
   /\bbundle\b/i,
+  /\bkit\b/i,
+  /\bset\b/i,
+  /\bduo\b/i,
+  /\btrio\b/i,
+  /\bcollection\b/i,
   /\bmystery\s+box\b/i,
 ];
 
