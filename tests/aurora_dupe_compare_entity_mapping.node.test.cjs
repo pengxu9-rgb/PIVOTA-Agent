@@ -48,3 +48,25 @@ test('skill_router preserves explicit dupe anchor and fills comparison targets f
     { name: 'Vanicream Gentle Facial Cleanser' },
   ]);
 });
+
+test('skill_router extracts dupe_compare pair from free-text compare syntax when classifier products are missing', () => {
+  const router = new SkillRouter({});
+  const request = {
+    params: {
+      user_message: 'Compare CeraVe Hydrating Cleanser and La Roche-Posay Toleriane Hydrating Gentle Cleanser',
+    },
+  };
+
+  router._applyClassificationEntities(request, {
+    intent: 'dupe_compare',
+    entities: {
+      products: [],
+      user_question: 'Compare CeraVe Hydrating Cleanser and La Roche-Posay Toleriane Hydrating Gentle Cleanser',
+    },
+  });
+
+  assert.deepEqual(request.params.product_anchor, { name: 'CeraVe Hydrating Cleanser' });
+  assert.deepEqual(request.params.comparison_targets, [
+    { name: 'La Roche-Posay Toleriane Hydrating Gentle Cleanser' },
+  ]);
+});
