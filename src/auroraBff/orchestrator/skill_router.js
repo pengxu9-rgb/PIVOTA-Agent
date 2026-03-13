@@ -324,6 +324,11 @@ class SkillRouter {
   _applyClassificationEntities(request, classification) {
     const entities = classification?.entities || {};
     request.params = request.params || {};
+    const normalizedProducts = Array.isArray(entities.products)
+      ? entities.products
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+      : [];
 
     if (!request.params._user_question && entities.user_question) {
       request.params._user_question = entities.user_question;
@@ -331,8 +336,31 @@ class SkillRouter {
     if (!request.params.ingredient_query && Array.isArray(entities.ingredients) && entities.ingredients.length > 0) {
       request.params.ingredient_query = entities.ingredients[0];
     }
-    if (!request.params.product_anchor && Array.isArray(entities.products) && entities.products.length > 0) {
-      request.params.product_anchor = { name: entities.products[0] };
+    if (!request.params.product_anchor && normalizedProducts.length > 0) {
+      request.params.product_anchor = { name: normalizedProducts[0] };
+    }
+    if (
+      classification?.intent === 'dupe_compare'
+      && (!Array.isArray(request.params.comparison_targets) || request.params.comparison_targets.length === 0)
+      && normalizedProducts.length > 1
+    ) {
+      const anchorName = String(
+        request.params?.product_anchor?.name
+        || request.params?.product_anchor?.display_name
+        || normalizedProducts[0]
+        || ''
+      ).trim().toLowerCase();
+      const comparisonNames = normalizedProducts
+        .slice(request.params.product_anchor ? 0 : 1)
+        .filter((name, index, list) => {
+          const normalizedName = String(name || '').trim().toLowerCase();
+          if (!normalizedName) return false;
+          if (normalizedName === anchorName) return false;
+          return list.findIndex((entry) => String(entry || '').trim().toLowerCase() === normalizedName) === index;
+        });
+      if (comparisonNames.length > 0) {
+        request.params.comparison_targets = comparisonNames.map((name) => ({ name }));
+      }
     }
     if (!request.params._extracted_concerns && Array.isArray(entities.concerns) && entities.concerns.length > 0) {
       request.params._extracted_concerns = entities.concerns.slice(0, 3);
