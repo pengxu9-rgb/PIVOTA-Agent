@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { normalizeDestinationPlace } = require('./destinationResolver');
 
 const DATE_TOKEN_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +51,10 @@ function normalizeDestinationText(value, maxLen = 100) {
   return text;
 }
 
+function normalizeTravelPlaceText(value, maxLen = 140) {
+  return normalizeDestinationText(value, maxLen);
+}
+
 function clampRatio(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
@@ -84,6 +89,9 @@ function normalizeLegacyTravelPlan(raw) {
   if (!isPlainObject(raw)) return null;
 
   const destination = normalizeDestinationText(raw.destination, 100);
+  const destinationPlace = normalizeDestinationPlace(raw.destination_place || raw.destinationPlace);
+  const departureRegion = normalizeTravelPlaceText(raw.departure_region || raw.departureRegion, 140);
+  const departurePlace = normalizeDestinationPlace(raw.departure_place || raw.departurePlace);
   const startDate = normalizeDateToken(raw.start_date);
   let endDate = normalizeDateToken(raw.end_date);
   const ratio = clampRatio(raw.indoor_outdoor_ratio);
@@ -97,6 +105,9 @@ function normalizeLegacyTravelPlan(raw) {
 
   const out = {
     ...(destination ? { destination } : {}),
+    ...(destinationPlace ? { destination_place: destinationPlace } : {}),
+    ...(departureRegion ? { departure_region: departureRegion } : {}),
+    ...(departurePlace ? { departure_place: departurePlace } : {}),
     ...(startDate ? { start_date: startDate } : {}),
     ...(endDate ? { end_date: endDate } : {}),
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
@@ -135,6 +146,9 @@ function normalizeTravelPlanItem(raw, options = {}) {
   return {
     trip_id: tripId,
     destination: base.destination,
+    ...(base.destination_place ? { destination_place: base.destination_place } : {}),
+    ...(base.departure_region ? { departure_region: base.departure_region } : {}),
+    ...(base.departure_place ? { departure_place: base.departure_place } : {}),
     start_date: base.start_date,
     end_date: base.end_date,
     ...(base.indoor_outdoor_ratio != null ? { indoor_outdoor_ratio: base.indoor_outdoor_ratio } : {}),
@@ -278,8 +292,11 @@ function buildPrepChecklist(plan, options = {}) {
       : 0;
   const longTrip = spanDaysRaw >= 7;
   const destination = normalizeDestinationText(plan && plan.destination, 100);
-  const homeRegion = normalizeText(options.homeRegion, 120);
-  const crossRegion = Boolean(destination && homeRegion && destination.toLowerCase() !== homeRegion.toLowerCase());
+  const departureRegion = normalizeTravelPlaceText(
+    plan && (plan.departure_region || plan.departureRegion || options.departureRegion),
+    140,
+  );
+  const crossRegion = Boolean(destination && departureRegion && destination.toLowerCase() !== departureRegion.toLowerCase());
 
   const out = [];
   const add = (cn, en) => out.push(lang === 'CN' ? cn : en);
@@ -369,7 +386,12 @@ function listTravelPlansForView(profile, options = {}) {
       status,
       days_to_start: diffDays(plan.start_date, nowDate),
       days_to_end: diffDays(plan.end_date, nowDate),
-      prep_checklist: buildPrepChecklist(plan, { nowMs, nowDate, lang, homeRegion: state.home_region }),
+      prep_checklist: buildPrepChecklist(plan, {
+        nowMs,
+        nowDate,
+        lang,
+        departureRegion: plan && plan.departure_region ? plan.departure_region : null,
+      }),
     };
   });
 
@@ -387,6 +409,7 @@ function listTravelPlansForView(profile, options = {}) {
     plans: visiblePlans,
     summary: {
       active_trip_id: state.active_trip ? state.active_trip.trip_id : null,
+      home_region: state.home_region,
       counts,
     },
   };
@@ -405,6 +428,15 @@ function toLegacyTravelPlan(trip) {
   const updatedAt = Number.isFinite(Number(trip.updated_at_ms)) ? safeInt(trip.updated_at_ms, Date.now()) : null;
   return {
     ...(destination ? { destination } : {}),
+    ...(normalizeDestinationPlace(trip.destination_place || trip.destinationPlace) ? {
+      destination_place: normalizeDestinationPlace(trip.destination_place || trip.destinationPlace),
+    } : {}),
+    ...(normalizeTravelPlaceText(trip.departure_region || trip.departureRegion, 140)
+      ? { departure_region: normalizeTravelPlaceText(trip.departure_region || trip.departureRegion, 140) }
+      : {}),
+    ...(normalizeDestinationPlace(trip.departure_place || trip.departurePlace)
+      ? { departure_place: normalizeDestinationPlace(trip.departure_place || trip.departurePlace) }
+      : {}),
     ...(startDate ? { start_date: startDate } : {}),
     ...(endDate ? { end_date: endDate } : {}),
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
@@ -562,6 +594,17 @@ function applyTravelExtractionToProfile(profile, extraction = {}, options = {}) 
     ...(ratio != null ? { indoor_outdoor_ratio: ratio } : {}),
     updated_at_ms: nowMs,
   };
+  const currentDestination = normalizeDestinationText(
+    currentState && currentState.legacy_travel_plan && currentState.legacy_travel_plan.destination,
+    100,
+  );
+  if (
+    destination &&
+    currentDestination &&
+    destination.toLowerCase() !== currentDestination.toLowerCase()
+  ) {
+    delete nextLegacy.destination_place;
+  }
 
   const normalizedLegacy = normalizeLegacyTravelPlan(nextLegacy);
   if (!normalizedLegacy) {

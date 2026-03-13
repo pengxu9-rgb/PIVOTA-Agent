@@ -15,6 +15,7 @@ const EPHEMERAL_MAX_EVENTS_PER_IDENTITY = (() => {
 
 const ephemeral = {
   events: new Map(),
+  details: new Map(),
 };
 
 function nowIso() {
@@ -44,6 +45,15 @@ function identityKey({ auroraUid, userId }) {
   if (user) return `u:${user}`;
   if (guest) return `g:${guest}`;
   return null;
+}
+
+function identityKeys({ auroraUid, userId }) {
+  const guest = normalizeIdentityValue(auroraUid);
+  const user = normalizeIdentityValue(userId);
+  const keys = [];
+  if (user) keys.push(`u:${user}`);
+  if (guest) keys.push(`g:${guest}`);
+  return keys;
 }
 
 function touchMap(map, key, value) {
@@ -112,6 +122,17 @@ function normalizeOccurredAtMs(input) {
   const n = Number(input);
   if (!Number.isFinite(n)) return Date.now();
   return Math.max(0, Math.trunc(n));
+}
+
+function normalizeDetailKind(input) {
+  const value = String(input || '').trim().toLowerCase();
+  if (!value) return 'activity_event';
+  return value.slice(0, 80);
+}
+
+function normalizeDetailJson(input) {
+  if (!isPlainObject(input)) return {};
+  return input;
 }
 
 function parseListLimit(input) {
@@ -200,6 +221,16 @@ function mapRow(row) {
   };
 }
 
+function mapDetailRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    activity_id: row.activity_id != null ? String(row.activity_id) : null,
+    detail_kind: normalizeDetailKind(row.detail_kind),
+    detail_json: safeJson(row.detail_json, {}),
+    created_at: row.created_at ? new Date(row.created_at).toISOString() : nowIso(),
+  };
+}
+
 function toEphemeralRecord({
   activityId,
   auroraUid,
@@ -223,13 +254,48 @@ function toEphemeralRecord({
   };
 }
 
+function toEphemeralDetailRecord({
+  activityId,
+  detailKind,
+  detailJson,
+}) {
+  const id = String(activityId || '').trim();
+  if (!id) return null;
+  return {
+    activity_id: id,
+    detail_kind: normalizeDetailKind(detailKind),
+    detail_json: normalizeDetailJson(detailJson),
+    created_at: nowIso(),
+  };
+}
+
 function upsertEphemeralEvent(identity, event) {
-  const key = identityKey(identity);
-  if (!key) return;
-  const current = Array.isArray(ephemeral.events.get(key)) ? ephemeral.events.get(key).slice() : [];
-  current.unshift(event);
-  current.sort(compareEventsDesc);
-  touchMap(ephemeral.events, key, current.slice(0, EPHEMERAL_MAX_EVENTS_PER_IDENTITY));
+  for (const key of identityKeys(identity)) {
+    const current = Array.isArray(ephemeral.events.get(key)) ? ephemeral.events.get(key).slice() : [];
+    current.unshift(event);
+    current.sort(compareEventsDesc);
+    touchMap(ephemeral.events, key, current.slice(0, EPHEMERAL_MAX_EVENTS_PER_IDENTITY));
+  }
+}
+
+function upsertEphemeralDetail(detail) {
+  if (!detail || !detail.activity_id) return;
+  ephemeral.details.set(String(detail.activity_id), detail);
+}
+
+function mergeLocalEventsForIdentity(identity) {
+  const merged = [];
+  const seen = new Set();
+  for (const key of identityKeys(identity)) {
+    const rows = Array.isArray(ephemeral.events.get(key)) ? ephemeral.events.get(key) : [];
+    for (const row of rows) {
+      const id = String(row && row.activity_id || '').trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(row);
+    }
+  }
+  return merged;
 }
 
 function filterAndPageEvents(events, { limit, cursor, eventTypes }) {
@@ -338,8 +404,7 @@ async function listActivityForIdentity({
   const n = parseListLimit(limit);
   const cursorObj = decodeCursor(cursor);
   const normalizedTypes = normalizeEventTypeList(eventTypes);
-  const key = identityKey(identity);
-  const localRows = key && Array.isArray(ephemeral.events.get(key)) ? ephemeral.events.get(key) : [];
+  const localRows = mergeLocalEventsForIdentity(identity);
 
   if (persistenceDisabled()) {
     return filterAndPageEvents(localRows, {
@@ -352,7 +417,10 @@ async function listActivityForIdentity({
   try {
     const params = [];
     const where = [];
-    if (identity.userId) {
+    if (identity.userId && identity.auroraUid) {
+      params.push(identity.userId, identity.auroraUid);
+      where.push(`(user_id = $${params.length - 1} OR aurora_uid = $${params.length})`);
+    } else if (identity.userId) {
       params.push(identity.userId);
       where.push(`user_id = $${params.length}`);
     } else {
@@ -409,9 +477,134 @@ async function listActivityForIdentity({
   }
 }
 
+async function getActivityEventByIdForIdentity({
+  auroraUid,
+  userId,
+  activityId,
+} = {}) {
+  const identity = {
+    auroraUid: normalizeIdentityValue(auroraUid),
+    userId: normalizeIdentityValue(userId),
+  };
+  const id = String(activityId || '').trim();
+  if (!id) return null;
+  if (!identity.auroraUid && !identity.userId) return null;
+
+  const localRows = mergeLocalEventsForIdentity(identity);
+  const localHit = localRows.find((row) => String(row && row.activity_id || '').trim() === id) || null;
+  if (localHit) return localHit;
+
+  if (persistenceDisabled()) return null;
+
+  try {
+    const params = [id];
+    const where = ['activity_id = $1'];
+    if (identity.userId && identity.auroraUid) {
+      params.push(identity.userId, identity.auroraUid);
+      where.push(`(user_id = $2 OR aurora_uid = $3)`);
+    } else if (identity.userId) {
+      params.push(identity.userId);
+      where.push(`user_id = $2`);
+    } else {
+      params.push(identity.auroraUid);
+      where.push(`aurora_uid = $2`);
+    }
+
+    const res = await query(
+      `
+        SELECT activity_id, aurora_uid, user_id, event_type, payload, deeplink, source, occurred_at_ms, created_at
+        FROM aurora_activity_events
+        WHERE ${where.join(' AND ')}
+        ORDER BY occurred_at_ms DESC, id DESC
+        LIMIT 1
+      `,
+      params,
+    );
+    return mapRow(res.rows && res.rows[0]);
+  } catch (err) {
+    if (isStorageUnavailableError(err)) return localHit;
+    throw err;
+  }
+}
+
+async function upsertActivityDetail({
+  activityId,
+  detailKind,
+  detailJson,
+} = {}) {
+  const normalized = toEphemeralDetailRecord({
+    activityId,
+    detailKind,
+    detailJson,
+  });
+  if (!normalized) return null;
+
+  upsertEphemeralDetail(normalized);
+  if (persistenceDisabled()) return normalized;
+
+  try {
+    const res = await query(
+      `
+        INSERT INTO aurora_activity_details (
+          activity_id,
+          detail_kind,
+          detail_json
+        )
+        VALUES (
+          $1,
+          $2,
+          $3::jsonb
+        )
+        ON CONFLICT (activity_id) DO UPDATE SET
+          detail_kind = EXCLUDED.detail_kind,
+          detail_json = EXCLUDED.detail_json,
+          created_at = now()
+        RETURNING *
+      `,
+      [
+        normalized.activity_id,
+        normalized.detail_kind,
+        JSON.stringify(normalized.detail_json || {}),
+      ],
+    );
+    return mapDetailRow(res.rows && res.rows[0]) || normalized;
+  } catch (err) {
+    if (isStorageUnavailableError(err)) return normalized;
+    throw err;
+  }
+}
+
+async function getActivityDetail(activityId) {
+  const id = String(activityId || '').trim();
+  if (!id) return null;
+
+  const local = mapDetailRow(ephemeral.details.get(id));
+  if (local) return local;
+  if (persistenceDisabled()) return null;
+
+  try {
+    const res = await query(
+      `
+        SELECT activity_id, detail_kind, detail_json, created_at
+        FROM aurora_activity_details
+        WHERE activity_id = $1
+        LIMIT 1
+      `,
+      [id],
+    );
+    return mapDetailRow(res.rows && res.rows[0]);
+  } catch (err) {
+    if (isStorageUnavailableError(err)) return local;
+    throw err;
+  }
+}
+
 module.exports = {
   appendActivityForIdentity,
   listActivityForIdentity,
+  getActivityEventByIdForIdentity,
+  upsertActivityDetail,
+  getActivityDetail,
   __internal: {
     decodeCursor,
     encodeCursor,

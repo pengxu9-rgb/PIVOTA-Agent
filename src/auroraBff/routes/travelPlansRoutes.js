@@ -14,6 +14,7 @@ const {
   normalizeTravelProfilePatch,
   resolveTravelPlansState,
 } = require('../travelPlans');
+const { resolveDestinationInput } = require('../destinationResolver');
 const {
   recordAuroraRoute404,
   recordAuroraTravelPlansNonJson,
@@ -38,9 +39,62 @@ function buildTravelPlanActivityPayload(plan) {
   return {
     trip_id: typeof target.trip_id === 'string' ? target.trip_id : null,
     destination: typeof target.destination === 'string' ? target.destination : null,
+    departure_region: typeof target.departure_region === 'string' ? target.departure_region : null,
     start_date: typeof target.start_date === 'string' ? target.start_date : null,
     end_date: typeof target.end_date === 'string' ? target.end_date : null,
     is_archived: Boolean(target.is_archived),
+    itinerary: typeof target.itinerary === 'string' ? target.itinerary.slice(0, 220) : null,
+    indoor_outdoor_ratio: Number.isFinite(Number(target.indoor_outdoor_ratio))
+      ? Number(target.indoor_outdoor_ratio)
+      : null,
+  };
+}
+
+function getRouteUserLocale(req, ctx) {
+  const acceptLanguage = req && req.headers ? String(req.headers['accept-language'] || '').trim() : '';
+  if (acceptLanguage) return acceptLanguage;
+  return String(ctx && ctx.lang ? ctx.lang : 'EN');
+}
+
+async function resolvePersistedPlace({
+  text,
+  place,
+  ambiguityCode = 'DESTINATION_AMBIGUOUS',
+  field = 'destination',
+  userLocale,
+  fetchImpl = global.fetch,
+} = {}) {
+  const placeText = typeof text === 'string' ? text.trim() : '';
+  const resolution = await resolveDestinationInput({
+    destination: placeText,
+    destinationPlace: place,
+    userLocale,
+    fetchImpl,
+  });
+
+  if (resolution && resolution.ambiguous) {
+    const err = new Error(ambiguityCode);
+    err.status = 409;
+    err.code = ambiguityCode;
+    err.body = {
+      error: ambiguityCode,
+      field,
+      normalized_query: resolution.normalized_query || placeText,
+      candidates: Array.isArray(resolution.candidates) ? resolution.candidates : [],
+    };
+    throw err;
+  }
+
+  if (resolution && resolution.ok && resolution.resolved_place) {
+    return {
+      text: resolution.resolved_place.label || placeText,
+      place: resolution.resolved_place,
+    };
+  }
+
+  return {
+    text: placeText,
+    place: null,
   };
 }
 
@@ -115,9 +169,29 @@ function mountTravelPlansRoutes(app, deps = {}) {
   const requireAuroraUid = ensureDependency('requireAuroraUid', deps.requireAuroraUid);
   const resolveIdentity = ensureDependency('resolveIdentity', deps.resolveIdentity);
   const classifyStorageError = ensureDependency('classifyStorageError', deps.classifyStorageError);
-  const appendActivity = typeof deps.appendActivityEventForIdentity === 'function'
-    ? deps.appendActivityEventForIdentity
-    : appendActivityEventForIdentity;
+  const appendActivity = typeof deps.appendActivityForIdentity === 'function'
+    ? deps.appendActivityForIdentity
+    : async ({
+        auroraUid,
+        userId,
+        eventType,
+        payload,
+        deeplink,
+        source,
+        occurredAtMs,
+      }) => appendActivityEventForIdentity(
+        { auroraUid, userId },
+        {
+          event_type: eventType,
+          payload,
+          deeplink,
+          source,
+          occurred_at_ms: occurredAtMs,
+        },
+      );
+  const saveActivityDetail = typeof deps.upsertActivityDetail === 'function'
+    ? deps.upsertActivityDetail
+    : null;
 
   mountTravelPlansResponseObserver(app, { logger });
 
@@ -209,6 +283,21 @@ function mountTravelPlansRoutes(app, deps = {}) {
         return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
       }
 
+      const resolvedDestination = await resolvePersistedPlace({
+        text: parsed.data.destination,
+        place: parsed.data.destination_place,
+        ambiguityCode: 'DESTINATION_AMBIGUOUS',
+        field: 'destination',
+        userLocale: getRouteUserLocale(req, ctx),
+      });
+      const resolvedDeparture = await resolvePersistedPlace({
+        text: parsed.data.departure_region,
+        place: parsed.data.departure_place,
+        ambiguityCode: 'DEPARTURE_AMBIGUOUS',
+        field: 'departure',
+        userLocale: getRouteUserLocale(req, ctx),
+      });
+
       const nowMs = Date.now();
       const identity = await resolveIdentity(req, ctx);
       const profile = await getProfileForIdentity({
@@ -228,7 +317,10 @@ function mountTravelPlansRoutes(app, deps = {}) {
         patch: {
           travel_plans: [
             {
-              destination: parsed.data.destination,
+              destination: resolvedDestination.text || parsed.data.destination,
+              ...(resolvedDestination.place ? { destination_place: resolvedDestination.place } : {}),
+              departure_region: resolvedDeparture.text || parsed.data.departure_region,
+              ...(resolvedDeparture.place ? { departure_place: resolvedDeparture.place } : {}),
               start_date: parsed.data.start_date,
               end_date: parsed.data.end_date,
               ...(Number.isFinite(Number(parsed.data.indoor_outdoor_ratio))
@@ -267,7 +359,10 @@ function mountTravelPlansRoutes(app, deps = {}) {
         createdPlan =
           (Array.isArray(listOut.plans) ? listOut.plans : []).find(
             (plan) =>
-              String((plan && plan.destination) || '').trim() === String(parsed.data.destination || '').trim() &&
+              String((plan && plan.destination) || '').trim() ===
+                String(resolvedDestination.text || parsed.data.destination || '').trim() &&
+              String((plan && plan.departure_region) || '').trim() ===
+                String(resolvedDeparture.text || parsed.data.departure_region || '').trim() &&
               String((plan && plan.start_date) || '').trim() === String(parsed.data.start_date || '').trim() &&
               String((plan && plan.end_date) || '').trim() === String(parsed.data.end_date || '').trim(),
           ) || null;
@@ -276,16 +371,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
         createdPlan = listOut.plans[0];
       }
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_created',
-            payload: buildTravelPlanActivityPayload(createdPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(createdPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_created',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
@@ -299,6 +401,9 @@ function mountTravelPlansRoutes(app, deps = {}) {
 
       return res.status(200).json({ plan: createdPlan || null, summary: listOut.summary });
     } catch (err) {
+      if (err && (err.code === 'DESTINATION_AMBIGUOUS' || err.code === 'DEPARTURE_AMBIGUOUS') && err.body) {
+        return res.status(409).json(err.body);
+      }
       const fail = toTravelPlansStorageError(err, classifyStorageError);
       logger?.warn?.(
         {
@@ -344,8 +449,53 @@ function mountTravelPlansRoutes(app, deps = {}) {
         created_at_ms: Number(existing.created_at_ms || nowMs),
         updated_at_ms: nowMs,
       };
+      const destinationWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'destination');
+      const destinationPlaceWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'destination_place');
+      const departureWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'departure_region');
+      const departurePlaceWasUpdated = Object.prototype.hasOwnProperty.call(parsed.data, 'departure_place');
+      if (destinationWasUpdated || destinationPlaceWasUpdated) {
+        const resolvedDestination = await resolvePersistedPlace({
+          text:
+            typeof mergedPlan.destination === 'string' && mergedPlan.destination.trim()
+              ? mergedPlan.destination
+              : existing.destination,
+          place: destinationPlaceWasUpdated
+            ? parsed.data.destination_place
+            : destinationWasUpdated
+              ? null
+              : existing.destination_place,
+          ambiguityCode: 'DESTINATION_AMBIGUOUS',
+          field: 'destination',
+          userLocale: getRouteUserLocale(req, ctx),
+        });
+        mergedPlan.destination = resolvedDestination.text || mergedPlan.destination;
+        if (resolvedDestination.place) mergedPlan.destination_place = resolvedDestination.place;
+        else delete mergedPlan.destination_place;
+      }
+      if (departureWasUpdated || departurePlaceWasUpdated) {
+        const resolvedDeparture = await resolvePersistedPlace({
+          text:
+            typeof mergedPlan.departure_region === 'string' && mergedPlan.departure_region.trim()
+              ? mergedPlan.departure_region
+              : existing.departure_region,
+          place: departurePlaceWasUpdated
+            ? parsed.data.departure_place
+            : departureWasUpdated
+              ? null
+              : existing.departure_place,
+          ambiguityCode: 'DEPARTURE_AMBIGUOUS',
+          field: 'departure',
+          userLocale: getRouteUserLocale(req, ctx),
+        });
+        mergedPlan.departure_region = resolvedDeparture.text || mergedPlan.departure_region;
+        if (resolvedDeparture.place) mergedPlan.departure_place = resolvedDeparture.place;
+        else delete mergedPlan.departure_place;
+      }
       if (!isTravelDateRangeValid(mergedPlan.start_date, mergedPlan.end_date)) {
         return res.status(400).json({ error: 'BAD_REQUEST', details: { date_range: 'start_date_must_be_before_or_equal_end_date' } });
+      }
+      if (typeof mergedPlan.departure_region !== 'string' || !mergedPlan.departure_region.trim()) {
+        return res.status(400).json({ error: 'BAD_REQUEST', details: { departure_region: 'required' } });
       }
       if (parsed.data.is_archived === true) {
         mergedPlan.is_archived = true;
@@ -372,16 +522,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_updated',
-            payload: buildTravelPlanActivityPayload(nextPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(nextPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_updated',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
@@ -395,6 +552,9 @@ function mountTravelPlansRoutes(app, deps = {}) {
 
       return res.status(200).json({ plan: nextPlan, summary: listOut.summary });
     } catch (err) {
+      if (err && (err.code === 'DESTINATION_AMBIGUOUS' || err.code === 'DEPARTURE_AMBIGUOUS') && err.body) {
+        return res.status(409).json(err.body);
+      }
       const fail = toTravelPlansStorageError(err, classifyStorageError);
       logger?.warn?.(
         {
@@ -453,16 +613,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_archived',
-            payload: buildTravelPlanActivityPayload(nextPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(nextPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_archived',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
