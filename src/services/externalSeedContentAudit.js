@@ -101,6 +101,17 @@ function parseLocaleSegment(url) {
   }
 }
 
+function localeSegmentsAreLanguageCompatible(expectedLocale, actualLocale) {
+  const expected = normalizeNonEmptyString(expectedLocale).toLowerCase();
+  const actual = normalizeNonEmptyString(actualLocale).toLowerCase();
+  if (!expected || !actual) return false;
+  if (expected === actual) return true;
+
+  const [expectedLanguage] = expected.split(/[-_]/);
+  const [actualLanguage] = actual.split(/[-_]/);
+  return Boolean(expectedLanguage && actualLanguage && expectedLanguage === actualLanguage);
+}
+
 function getSnapshot(row) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -170,11 +181,21 @@ function detectLanguage(description) {
 
   const scores = Object.entries(LANGUAGE_MARKERS).map(([language, patterns]) => ({
     language,
-    matches: patterns.filter((pattern) => pattern.test(text)).length,
+    matchedPatterns: patterns.filter((pattern) => pattern.test(text)),
   }));
 
-  const winner = scores.sort((left, right) => right.matches - left.matches)[0];
-  return winner && winner.matches > 0 ? winner.language : null;
+  const winner = scores
+    .map((score) => ({ ...score, matches: score.matchedPatterns.length }))
+    .sort((left, right) => right.matches - left.matches)[0];
+
+  if (!winner || winner.matches === 0) return null;
+
+  if (winner.language === 'fr' && winner.matches === 1) {
+    const onlyMatch = winner.matchedPatterns[0];
+    if (onlyMatch && String(onlyMatch.source || '').includes('cr(?:è|e)me')) return null;
+  }
+
+  return winner.language;
 }
 
 function getLanguageAnomalyType(language) {
@@ -214,7 +235,10 @@ function detectNonProductFallback(row, title, description, canonicalUrl) {
   })();
   if (path && NON_PRODUCT_PATH_RE.test(path)) return true;
   const combined = `${normalizeNonEmptyString(title)} ${normalizeNonEmptyString(description)}`.toLowerCase();
-  return /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i.test(combined);
+  return (
+    /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i.test(combined) ||
+    /\b(this product is used for the app|bogos(?:\.io)?|free gift bogo bundle|buy x get y|secomapp)\b/i.test(combined)
+  );
 }
 
 function detectPriceCurrencyMismatch(row, variants) {
@@ -245,7 +269,7 @@ function auditExternalSeedRow(row, options = {}) {
   const detectedLanguage = options.detectedLanguage || detectLanguage(description);
   const lastExtractedAt = getLastExtractedAt(row, snapshot);
 
-  if (expectedLocale && localeSegment && expectedLocale !== localeSegment) {
+  if (expectedLocale && localeSegment && !localeSegmentsAreLanguageCompatible(expectedLocale, localeSegment)) {
     findings.push(
       buildFinding(row, snapshot, {
         anomalyType: 'locale_market_mismatch',

@@ -1,7 +1,7 @@
 const { auditExternalSeedRow, summarizeAuditResults } = require('../../src/services/externalSeedContentAudit');
 
 describe('externalSeedContentAudit', () => {
-  test('flags Patyka-style generic template copy and French content on US seeds', () => {
+  test('flags Patyka-style generic template copy on US seeds', () => {
     const row = {
       id: 'eps_patyka_1',
       domain: 'patyka.com',
@@ -31,7 +31,6 @@ describe('externalSeedContentAudit', () => {
     expect(result.findings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ anomaly_type: 'generic_template_description', severity: 'review' }),
-        expect.objectContaining({ anomaly_type: 'fr_content_in_us_seed', severity: 'review' }),
       ]),
     );
   });
@@ -71,6 +70,38 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('does not flag English descriptions as French when only creme terminology appears', () => {
+    const row = {
+      id: 'eps_fenty_false_positive',
+      domain: 'fentybeauty.com',
+      market: 'US',
+      canonical_url: 'https://fentybeauty.com/products/fenty-parfum-body-creme',
+      title: 'Fenty Parfum Body Crème',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/fenty-parfum-body-creme',
+          description:
+            'Make a lasting impression wherever you go with this rich body crème and travel fragrance set in an unforgettable, warm floral scent.',
+          variants: [
+            {
+              sku: 'FEN-1',
+              variant_id: 'FEN-1',
+              currency: 'USD',
+              price: '48.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/fenty.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ anomaly_type: 'fr_content_in_us_seed' })]),
+    );
+  });
+
   test('flags locale drift, currency mismatch, zero image, zero variant, and manual override presence', () => {
     const row = {
       id: 'eps_mixed_1',
@@ -99,6 +130,36 @@ describe('externalSeedContentAudit', () => {
         expect.objectContaining({ anomaly_type: 'zero_variants', severity: 'blocker' }),
         expect.objectContaining({ anomaly_type: 'manual_image_override_present', severity: 'review' }),
       ]),
+    );
+  });
+
+  test('does not flag same-language locale variants like en-eu for US seeds', () => {
+    const row = {
+      id: 'eps_locale_compatible',
+      domain: 'patyka.com',
+      market: 'US',
+      canonical_url: 'https://patyka.com/en-eu/products/detox-cleansing-foam',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://patyka.com/en-eu/products/detox-cleansing-foam',
+          description: 'A lightweight cleansing foam that removes impurities and pollution particles.',
+          variants: [
+            {
+              sku: 'PAT-EN-1',
+              variant_id: 'PAT-EN-1',
+              currency: 'EUR',
+              price: '15.90',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/patyka-en.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ anomaly_type: 'locale_market_mismatch' })]),
     );
   });
 
