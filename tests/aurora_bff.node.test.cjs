@@ -135,6 +135,44 @@ function assertPassiveGateAdvisorySignal(body, gateId) {
   assert.equal(passiveSuppressed || suppressedGateIds.includes(gateId) || hasGateEvent, true);
 }
 
+test('extractQuickProfileLightweightPatch maps lightweight quick-profile signals', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const patch = __internal.extractQuickProfileLightweightPatch({
+      skin_feel: 'combination',
+      goal_primary: 'breakouts',
+      sensitivity_flag: 'yes',
+    });
+    assert.deepEqual(patch, {
+      skinType: 'combination',
+      goals: ['acne'],
+      sensitivity: 'high',
+    });
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('extractProfilePatchFromRequestContextPayload reads nested quick-profile signals', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const patch = __internal.extractProfilePatchFromRequestContextPayload({
+      context: {
+        skin_feel: 'oily',
+        goal_primary: 'antiaging',
+        sensitivity_flag: 'unsure',
+      },
+    });
+    assert.deepEqual(patch, {
+      skinType: 'oily',
+      goals: ['wrinkles'],
+      sensitivity: 'unknown',
+    });
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();
@@ -9955,6 +9993,50 @@ test('trusted anchor provisional bridge upgrades unknown cleanser verdict into a
   assert.ok(Array.isArray(out.missing_info) && out.missing_info.includes('trusted_anchor_category_provisional'));
   assert.equal(out.provenance?.trusted_anchor_provisional_verdict?.applied, true);
   assert.equal(out.provenance?.trusted_anchor_provisional_verdict?.product_type, 'cleanser');
+});
+
+test('/v1/product/analyze: quick-profile request context is consumed as explicit-only analysis context', async () => {
+  const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const resp = await supertest(app)
+    .post('/v1/product/analyze')
+    .set('X-Aurora-UID', 'test_uid_quick_profile')
+    .set('X-Trace-ID', 'tqp')
+    .set('X-Brief-ID', 'bqp')
+    .set('X-Lang', 'EN')
+    .send({
+      name: 'Mock Parsed Product',
+      context: {
+        skin_feel: 'oily',
+        goal_primary: 'breakouts',
+        sensitivity_flag: 'yes',
+      },
+    });
+
+  assert.equal(resp.status, 200);
+  const meta =
+    resp.body &&
+    resp.body.session_patch &&
+    resp.body.session_patch.meta &&
+    typeof resp.body.session_patch.meta === 'object' &&
+    !Array.isArray(resp.body.session_patch.meta)
+      ? resp.body.session_patch.meta
+      : {};
+
+  assert.equal(meta.profile_context_source, 'request_overlay_applied');
+  assert.deepEqual(meta.request_profile_overlay_keys, ['goals', 'sensitivity', 'skinType']);
+  assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.context_mode, 'explicit_only');
+  assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.explicit_override_applied, true);
+  assert.deepEqual(
+    Array.isArray(meta.analysis_context_usage && meta.analysis_context_usage.hard_context_fields_used)
+      ? meta.analysis_context_usage.hard_context_fields_used.sort()
+      : [],
+    ['active_goals', 'sensitivity', 'skin_type'],
+  );
 });
 
 test('/v1/dupe/compare: returns tradeoffs (prefers structured alternatives)', async () => {
