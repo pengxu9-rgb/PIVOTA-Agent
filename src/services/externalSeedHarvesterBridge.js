@@ -12,6 +12,21 @@ function normalizeUrlLike(value) {
   return /^https?:\/\//i.test(normalized) ? normalized : '';
 }
 
+function buildVariantSourceUrl(baseUrl, variantId) {
+  const normalizedUrl = normalizeUrlLike(baseUrl);
+  const normalizedVariantId = normalizeNonEmptyString(variantId);
+  if (!normalizedUrl || !normalizedVariantId) return normalizedUrl;
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    if (parsed.searchParams.has('variant')) return parsed.toString();
+    parsed.searchParams.set('variant', normalizedVariantId);
+    return parsed.toString();
+  } catch {
+    return normalizedUrl;
+  }
+}
+
 function sanitizeKeySegment(value, fallback = 'product') {
   const normalized = normalizeNonEmptyString(value)
     .replace(/[^a-zA-Z0-9._-]+/g, '-')
@@ -120,7 +135,8 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
   return variants
     .map((variant, index) => {
       const candidateId = buildCandidateId(row, variant, index);
-      const variantUrl = normalizeUrlLike(variant?.url) || sourceUrl;
+      const variantId = normalizeNonEmptyString(variant?.variant_id || variant?.id);
+      const variantUrl = buildVariantSourceUrl(normalizeUrlLike(variant?.url) || sourceUrl, variantId);
       const rawIngredientText =
         extractRawIngredientText(variant?.description) ||
         extractRawIngredientText(snapshot.description) ||
@@ -134,7 +150,7 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
         brand,
         product_name: buildProductName(baseTitle, variant),
         variant_sku: normalizeNonEmptyString(variant?.sku),
-        variant_id: normalizeNonEmptyString(variant?.variant_id || variant?.id),
+        variant_id: variantId,
         source_type: 'external_seed',
         source_ref: variantUrl,
         url: variantUrl,
@@ -186,6 +202,7 @@ function filterCandidatesForHarvester(rows, options = {}) {
 
 module.exports = {
   buildCandidateId,
+  buildVariantSourceUrl,
   buildExternalSeedHarvesterCandidates,
   extractRawIngredientText,
   filterCandidatesForHarvester,

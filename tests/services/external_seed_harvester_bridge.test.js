@@ -1,5 +1,6 @@
 const {
   buildExternalSeedHarvesterCandidates,
+  buildVariantSourceUrl,
   extractRawIngredientText,
   filterCandidatesForHarvester,
   shouldExcludeCandidate,
@@ -47,9 +48,50 @@ describe('externalSeedHarvesterBridge', () => {
         sku_key: 'extseed:eps_ole_1:41609',
         brand: 'Ole Henriksen',
         product_name: 'Banana Bright Vitamin C Serum - 30ml',
-        source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+        source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum?variant=41609',
         raw_ingredient_text: 'Water, Ascorbic Acid, Glycerin.',
       }),
+    );
+  });
+
+  test('appends variant query parameter when seed only stores generic PDP url', () => {
+    expect(buildVariantSourceUrl('https://www.pixibeauty.com/products/on-the-glow-blush', '42457583845472')).toBe(
+      'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+    );
+    expect(
+      buildVariantSourceUrl(
+        'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+        '999999',
+      ),
+    ).toBe('https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472');
+
+    const row = {
+      id: 'eps_pixi_1',
+      external_product_id: 'ext_pixi_1',
+      market: 'US',
+      canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+      title: 'On-the-Glow Blush',
+      seed_data: {
+        brand: 'Pixi Beauty',
+        snapshot: {
+          canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+          title: 'On-the-Glow Blush',
+          variants: [
+            {
+              sku: 'PIXI-CASSIS',
+              variant_id: '42457583845472',
+              option_value: 'Cassis',
+              url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+            },
+          ],
+        },
+      },
+    };
+
+    const candidates = buildExternalSeedHarvesterCandidates(row);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].source_ref).toBe(
+      'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
     );
   });
 
