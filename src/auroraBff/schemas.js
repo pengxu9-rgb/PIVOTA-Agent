@@ -566,8 +566,18 @@ const RecoGenerateRequestSchema = z
     focus: z.string().min(1).optional(),
     constraints: z.record(z.string(), z.any()).optional(),
     include_alternatives: z.boolean().optional(),
+    session: z
+      .object({
+        session_id: z.string().min(1).optional(),
+        sessionId: z.string().min(1).optional(),
+        id: z.string().min(1).optional(),
+        next_state: z.string().min(1).optional(),
+        state: z.union([z.string().min(1), z.record(z.string(), z.any())]).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 const RecoAlternativesRequestSchema = z
   .object({
