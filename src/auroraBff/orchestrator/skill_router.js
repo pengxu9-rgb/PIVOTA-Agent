@@ -104,6 +104,34 @@ function extractUserMessage(request) {
   );
 }
 
+function extractDupeCompareProductsFromText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+
+  const normalized = raw
+    .replace(/\s+/g, ' ')
+    .replace(/[？?！!。．]+$/g, '')
+    .trim();
+  if (!normalized) return [];
+
+  const patterns = [
+    /^(?:compare|check compatibility between|compare between|what(?:'s| is) the difference between)\s+(.+?)\s+(?:vs\.?|versus|and)\s+(.+)$/i,
+    /^(.+?)\s+(?:vs\.?|versus)\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) continue;
+    const left = String(match[1] || '').trim().replace(/^between\s+/i, '');
+    const right = String(match[2] || '').trim();
+    if (!left || !right) continue;
+    if (left.toLowerCase() === right.toLowerCase()) continue;
+    return [left, right];
+  }
+
+  return [];
+}
+
 function resolveDeterministicTravelSkill(request, userMessage) {
   if (!hasTravelCue(userMessage)) return null;
   if (!hasCompleteTravelPlan(request?.context?.travel_plan)) return null;
@@ -324,11 +352,18 @@ class SkillRouter {
   _applyClassificationEntities(request, classification) {
     const entities = classification?.entities || {};
     request.params = request.params || {};
-    const normalizedProducts = Array.isArray(entities.products)
+    const extractedProducts = Array.isArray(entities.products)
       ? entities.products
         .map((value) => String(value || '').trim())
         .filter(Boolean)
       : [];
+    const fallbackProducts = (
+      classification?.intent === 'dupe_compare'
+      && extractedProducts.length < 2
+    )
+      ? extractDupeCompareProductsFromText(entities.user_question || extractUserMessage(request))
+      : [];
+    const normalizedProducts = extractedProducts.length >= 2 ? extractedProducts : fallbackProducts;
 
     if (!request.params._user_question && entities.user_question) {
       request.params._user_question = entities.user_question;
