@@ -11,6 +11,7 @@ const {
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { runTravelPipeline } = require('../travelSkills/contracts');
+const { buildRequestContext } = require('../requestContext');
 
 let routerSingleton = null;
 let travelPipelineImpl = runTravelPipeline;
@@ -60,6 +61,48 @@ function __setRouterForTests(router) {
 
 function __setTravelPipelineForTests(fn) {
   travelPipelineImpl = typeof fn === 'function' ? fn : runTravelPipeline;
+}
+
+function hasAuthorizationHeader(req) {
+  const header =
+    (typeof req?.get === 'function' ? req.get('authorization') || req.get('Authorization') : null) ||
+    req?.headers?.authorization;
+  return typeof header === 'string' && header.trim().length > 0;
+}
+
+function getRoutesInternal() {
+  try {
+    const routes = require('../routes');
+    return routes && routes.__internal ? routes.__internal : {};
+  } catch {
+    return {};
+  }
+}
+
+function mergeResponseMeta(payload, authMeta) {
+  if (!isPlainObject(authMeta)) return payload;
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const meta = isPlainObject(base.meta) ? { ...base.meta } : {};
+  meta.auth = authMeta;
+  return {
+    ...base,
+    meta,
+  };
+}
+
+async function resolveRequestIdentity(req) {
+  const body = isPlainObject(req.body) ? req.body : {};
+  const ctx = buildRequestContext(req, body);
+  const helpers = hasAuthorizationHeader(req) ? getRoutesInternal() : {};
+  if (!hasAuthorizationHeader(req) || typeof helpers.resolveIdentity !== 'function') {
+    return { ctx };
+  }
+  try {
+    req._identity = await helpers.resolveIdentity(req, ctx);
+  } catch {
+    // Ignore auth resolution failures here and let the route continue as guest.
+  }
+  return { ctx };
 }
 
 function normalizeLocaleToken(value) {
@@ -522,14 +565,15 @@ async function maybeRunTravelPipeline(req, skillRequest) {
 
 async function handleChat(req, res) {
   try {
+    const auth = await resolveRequestIdentity(req);
     const skillRequest = buildSkillRequest(req);
     const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
     if (travelResponse) {
-      res.json(travelResponse);
+      res.json(mergeResponseMeta(travelResponse, auth.ctx.auth_meta));
       return;
     }
     const skillResponse = await getRouter().route(skillRequest);
-    res.json(mapSkillResponseToChatCardsV1(skillResponse));
+    res.json(mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta));
   } catch (error) {
     console.error('[chat] skill execution error:', error);
     res.status(500).json({
@@ -586,6 +630,7 @@ async function handleChatStream(req, res) {
   };
 
   try {
+    const auth = await resolveRequestIdentity(req);
     let routes;
     try { routes = require('../routes'); } catch { routes = null; }
     const internal = routes && routes.__internal ? routes.__internal : {};
@@ -695,7 +740,7 @@ async function handleChatStream(req, res) {
           safetyDecision: null,
           threadOps: [],
         });
-        sendEvent('result', v1Response);
+        sendEvent('result', mergeResponseMeta(v1Response, auth.ctx.auth_meta));
         sendEvent('done', {});
         return;
       }
@@ -704,7 +749,7 @@ async function handleChatStream(req, res) {
     const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
     if (travelResponse) {
       sendEvent('thinking', { step: 'travel_context', message: 'Checking destination conditions...' });
-      sendEvent('result', travelResponse);
+      sendEvent('result', mergeResponseMeta(travelResponse, auth.ctx.auth_meta));
       sendEvent('done', {});
       return;
     }
@@ -723,12 +768,12 @@ async function handleChatStream(req, res) {
       }
       if (event.type === 'result') {
         resultSent = true;
-        sendEvent('result', mapSkillResponseToStreamEnvelope(event.data, thinkingSteps));
+        sendEvent('result', mergeResponseMeta(mapSkillResponseToStreamEnvelope(event.data, thinkingSteps), auth.ctx.auth_meta));
       }
     });
 
     if (!resultSent) {
-      sendEvent('result', mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps));
+      sendEvent('result', mergeResponseMeta(mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps), auth.ctx.auth_meta));
     }
     sendEvent('done', {});
   } catch (error) {

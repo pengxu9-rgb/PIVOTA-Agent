@@ -85,6 +85,7 @@ const ChatCardsResponseSchema = z
     cards: z.array(ChatCardSchema).max(3),
     follow_up_questions: z.array(FollowUpQuestionSchema).max(3),
     suggested_quick_replies: z.array(QuickReplySchema).max(8),
+    meta: z.record(z.string(), z.any()).optional(),
     session_patch: z.record(z.string(), z.any()).optional(),
     ops: z
       .object({
