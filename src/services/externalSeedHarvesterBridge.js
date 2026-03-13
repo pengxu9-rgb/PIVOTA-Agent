@@ -24,6 +24,14 @@ function stableHash(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
 }
 
+const EXCLUDED_PRODUCT_PATTERNS = [
+  /\be-?gift\s*card\b/i,
+  /\bgift\s*card\b/i,
+  /\bdefault\s+title\b/i,
+  /\bbundle\b/i,
+  /\bmystery\s+box\b/i,
+];
+
 function extractRawIngredientText(description) {
   const text = normalizeNonEmptyString(description);
   if (!text) return '';
@@ -58,6 +66,12 @@ function buildProductName(baseTitle, variant) {
   const optionValue = normalizeNonEmptyString(variant?.option_value || variant?.title);
   if (!optionValue || /^default$/i.test(optionValue)) return title;
   return `${title} - ${optionValue}`;
+}
+
+function shouldExcludeCandidate(candidate) {
+  const productName = normalizeNonEmptyString(candidate?.product_name);
+  if (!productName) return false;
+  return EXCLUDED_PRODUCT_PATTERNS.some((pattern) => pattern.test(productName));
 }
 
 function buildExternalSeedHarvesterCandidates(row, options = {}) {
@@ -95,32 +109,34 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
         url: sourceUrl,
         raw_ingredient_text: productLevelIngredientText,
       },
-    ];
+    ].filter((candidate) => !shouldExcludeCandidate(candidate));
   }
 
-  return variants.map((variant, index) => {
-    const candidateId = buildCandidateId(row, variant, index);
-    const variantUrl = normalizeUrlLike(variant?.url) || sourceUrl;
-    const rawIngredientText =
-      extractRawIngredientText(variant?.description) ||
-      extractRawIngredientText(snapshot.description) ||
-      productLevelIngredientText;
-    return {
-      candidate_id: candidateId,
-      sku_key: candidateId,
-      external_seed_id: normalizeNonEmptyString(row?.id),
-      external_product_id: normalizeNonEmptyString(row?.external_product_id),
-      market,
-      brand,
-      product_name: buildProductName(baseTitle, variant),
-      variant_sku: normalizeNonEmptyString(variant?.sku),
-      variant_id: normalizeNonEmptyString(variant?.variant_id || variant?.id),
-      source_type: 'external_seed',
-      source_ref: variantUrl,
-      url: variantUrl,
-      raw_ingredient_text: rawIngredientText,
-    };
-  });
+  return variants
+    .map((variant, index) => {
+      const candidateId = buildCandidateId(row, variant, index);
+      const variantUrl = normalizeUrlLike(variant?.url) || sourceUrl;
+      const rawIngredientText =
+        extractRawIngredientText(variant?.description) ||
+        extractRawIngredientText(snapshot.description) ||
+        productLevelIngredientText;
+      return {
+        candidate_id: candidateId,
+        sku_key: candidateId,
+        external_seed_id: normalizeNonEmptyString(row?.id),
+        external_product_id: normalizeNonEmptyString(row?.external_product_id),
+        market,
+        brand,
+        product_name: buildProductName(baseTitle, variant),
+        variant_sku: normalizeNonEmptyString(variant?.sku),
+        variant_id: normalizeNonEmptyString(variant?.variant_id || variant?.id),
+        source_type: 'external_seed',
+        source_ref: variantUrl,
+        url: variantUrl,
+        raw_ingredient_text: rawIngredientText,
+      };
+    })
+    .filter((candidate) => !shouldExcludeCandidate(candidate));
 }
 
 function filterCandidatesForHarvester(rows, options = {}) {
@@ -140,10 +156,20 @@ function filterCandidatesForHarvester(rows, options = {}) {
       continue;
     }
 
+    const candidates = buildExternalSeedHarvesterCandidates(row, options);
+    if (candidates.length === 0) {
+      skipped.push({
+        row_id: normalizeNonEmptyString(row?.id),
+        reason: 'candidate_policy_filtered',
+        findings: [],
+      });
+      continue;
+    }
+
     out.push({
       row,
       audit,
-      candidates: buildExternalSeedHarvesterCandidates(row, options),
+      candidates,
     });
   }
 
@@ -158,4 +184,5 @@ module.exports = {
   buildExternalSeedHarvesterCandidates,
   extractRawIngredientText,
   filterCandidatesForHarvester,
+  shouldExcludeCandidate,
 };

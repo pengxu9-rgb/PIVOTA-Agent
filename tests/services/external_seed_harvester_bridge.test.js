@@ -2,6 +2,7 @@ const {
   buildExternalSeedHarvesterCandidates,
   extractRawIngredientText,
   filterCandidatesForHarvester,
+  shouldExcludeCandidate,
 } = require('../../src/services/externalSeedHarvesterBridge');
 
 describe('externalSeedHarvesterBridge', () => {
@@ -100,6 +101,64 @@ describe('externalSeedHarvesterBridge', () => {
     expect(result.skipped).toHaveLength(1);
     expect(result.skipped[0].findings).toEqual(
       expect.arrayContaining([expect.objectContaining({ anomaly_type: 'non_product_fallback_page' })]),
+    );
+  });
+
+  test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Pixi E-Gift Card 200 - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Ultimate Glow Skin Routine Set - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Best Of Pixi Bundle - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Banana Bright Vitamin C Serum - 30ml',
+      }),
+    ).toBe(false);
+
+    const rows = [
+      {
+        id: 'eps_bundle_1',
+        domain: 'pixibeauty.com',
+        market: 'US',
+        canonical_url: 'https://www.pixibeauty.com/products/ultimate-glow-mystery-box',
+        title: 'Ultimate Glow Skin Routine Set - Default Title',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          snapshot: {
+            canonical_url: 'https://www.pixibeauty.com/products/ultimate-glow-mystery-box',
+            title: 'Ultimate Glow Skin Routine Set - Default Title',
+            variants: [
+              {
+                sku: 'PIXI-BUNDLE-1',
+                variant_id: 'PIXI-BUNDLE-1',
+                title: 'Default Title',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(0);
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          row_id: 'eps_bundle_1',
+          reason: 'candidate_policy_filtered',
+        }),
+      ]),
     );
   });
 });
