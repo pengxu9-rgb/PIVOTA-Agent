@@ -1125,6 +1125,7 @@ function buildRoutineAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
+    snapshot_present: Boolean(snapshot),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1227,6 +1228,132 @@ function buildProductAnalysisContextFromSnapshot(resolved = {}) {
   };
 }
 
+function selectCollectionContext(envelope, field, { max = 4, hardThreshold = 0.72 } = {}) {
+  const hard = [];
+  const soft = [];
+  const exclusions = [];
+  const conflictState = asString(envelope && envelope.conflict_state);
+  const blockedHard = conflictState === 'mixed' || conflictState === 'uncertain';
+  const items = asArray(envelope && envelope.primary_items);
+  for (const item of items) {
+    const value = asString(item && item.value);
+    if (!value) continue;
+    if (!blockedHard && isHardCandidate(item, { hardThreshold })) {
+      hard.push(value);
+      continue;
+    }
+    soft.push(value);
+    const reason =
+      blockedHard
+        ? 'conflicted'
+        : item && item.freshness_bucket === FRESHNESS_BUCKET.STALE
+          ? 'stale_for_task'
+          : 'low_confidence';
+    exclusions.push(makeExclusion(`${field}.${value}`, reason, item && item.source_class));
+  }
+  return {
+    hard: uniqStrings(hard, max),
+    soft: uniqStrings(soft, max),
+    exclusions,
+  };
+}
+
+function buildIngredientAnalysisContextFromSnapshot(resolved = {}) {
+  const snapshot = resolved.snapshot;
+  const explicit = resolved.explicit_profile;
+  const override = resolved.request_override;
+  const hard = {};
+  const soft = {};
+  const exclusions = [];
+  const evidence = [];
+  let explicitOverrideApplied = false;
+
+  const goalContext = selectGoalContext({
+    explicitGoals: explicit.goals,
+    overrideGoals: override.goals,
+    snapshotActiveGoals: collectionPrimaryValues(snapshot && snapshot.goals && snapshot.goals.active_goals),
+    snapshotBackgroundGoals: collectionValues(snapshot && snapshot.goals && snapshot.goals.background_goals),
+  });
+  if (goalContext.hard_goals.length) hard.active_goals = goalContext.hard_goals.slice(0, 3);
+  if (goalContext.soft_goals.length) soft.background_goals = goalContext.soft_goals.slice(0, 3);
+  explicitOverrideApplied = explicitOverrideApplied || goalContext.explicit_override_applied;
+
+  for (const item of [
+    resolveScalarForTask(snapshot && snapshot.sensitivity_tendency, 'sensitivity'),
+    resolveScalarForTask(snapshot && snapshot.barrier_status_tendency, 'barrier_status'),
+  ]) {
+    if (item.hard) Object.assign(hard, item.hard);
+    if (item.soft) Object.assign(soft, item.soft);
+    exclusions.push(...item.excluded);
+  }
+  explicitOverrideApplied = applyExplicitScalarOverride({
+    field: 'sensitivity',
+    explicitValue: explicit.sensitivity,
+    overrideValue: override.sensitivity,
+    hard,
+    soft,
+    exclusions,
+  }) || explicitOverrideApplied;
+  explicitOverrideApplied = applyExplicitScalarOverride({
+    field: 'barrier_status',
+    explicitValue: explicit.barrierStatus,
+    overrideValue: override.barrierStatus,
+    hard,
+    soft,
+    exclusions,
+  }) || explicitOverrideApplied;
+
+  const targets = selectCollectionContext(snapshot && snapshot.ingredient_targets, 'ingredient_targets', {
+    max: 4,
+    hardThreshold: 0.76,
+  });
+  if (targets.hard.length) hard.ingredient_targets = targets.hard;
+  if (targets.soft.length) soft.ingredient_targets = targets.soft;
+  exclusions.push(...targets.exclusions);
+
+  const avoidContext = selectAvoidContext({
+    explicitAvoids: explicit.contraindications,
+    overrideAvoids: override.contraindications,
+    snapshotEnvelope: snapshot && snapshot.ingredient_avoid,
+    max: 4,
+  });
+  if (avoidContext.hard_avoid.length) hard.ingredient_avoid = avoidContext.hard_avoid;
+  if (avoidContext.soft_avoid.length) soft.ingredient_avoid = avoidContext.soft_avoid;
+  exclusions.push(...avoidContext.exclusions);
+  explicitOverrideApplied = explicitOverrideApplied || avoidContext.explicit_override_applied;
+
+  const riskAxes = collectionPrimaryValues(snapshot && snapshot.risk_axes)
+    .map((item) => isPlainObject(item) ? `${item.axis}:${item.level}` : asString(item))
+    .filter(Boolean)
+    .slice(0, 3);
+  if (riskAxes.length) soft.risk_axes = riskAxes;
+
+  if (asArray(snapshot && snapshot.photo_findings_summary).length) {
+    exclusions.push(makeExclusion('photo_findings_summary', 'irrelevant_for_task', SOURCE_CLASS.ARTIFACT));
+  }
+
+  evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
+  return {
+    adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
+    snapshot_present: Boolean(snapshot),
+    task_hard_context: hard,
+    task_soft_context: soft,
+    task_exclusions: exclusions,
+    evidence_summary: evidence.slice(0, 5),
+    context_mode: buildContextMode({ snapshotPresent: Boolean(snapshot), hardContext: hard, softContext: soft }),
+    explicit_override_applied: explicitOverrideApplied,
+    snapshot_fields_used: ['goals', 'sensitivity_tendency', 'barrier_status_tendency', 'ingredient_targets', 'ingredient_avoid', 'risk_axes'],
+    hard_context_fields_used: Object.keys(hard),
+    soft_context_fields_used: Object.keys(soft),
+    analysis_context_conflicts: compactConflictSummary(snapshot && snapshot.conflicts, [
+      'sensitivity_tendency',
+      'barrier_status_tendency',
+      'ingredient_targets',
+      'ingredient_avoid',
+    ]),
+  };
+}
+
 function buildRecommendationAnalysisContextFromSnapshot(resolved = {}) {
   const base = buildProductAnalysisContextFromSnapshot(resolved);
   const hard = { ...base.task_hard_context };
@@ -1303,6 +1430,7 @@ function buildChatAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 5));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
+    snapshot_present: Boolean(snapshot),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1369,6 +1497,7 @@ function buildTravelAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
+    snapshot_present: Boolean(snapshot),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1414,6 +1543,7 @@ module.exports = {
   resolveAnalysisContextForTask,
   buildRoutineAnalysisContextFromSnapshot,
   buildProductAnalysisContextFromSnapshot,
+  buildIngredientAnalysisContextFromSnapshot,
   buildRecommendationAnalysisContextFromSnapshot,
   buildChatAnalysisContextFromSnapshot,
   buildTravelAnalysisContextFromSnapshot,

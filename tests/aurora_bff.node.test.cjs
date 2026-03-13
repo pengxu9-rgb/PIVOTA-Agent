@@ -4756,6 +4756,98 @@ test('/v1/chat: ingredient.lookup uses research path and second lookup can hit i
   );
 });
 
+test('/v1/chat: ingredient.lookup consumes explicit profile lane and emits analysis_context_usage', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_INGREDIENT_LLM_REPORT_ENABLED: 'true',
+      AURORA_LLM_SINGLE_PROVIDER: 'gemini',
+      AURORA_LLM_QA_MODE: 'single',
+      AURORA_LLM_OPENAI_FALLBACK_ENABLED: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { mountAuroraBffRoutes, __internal } = routeModule;
+      let geminiArgs = null;
+      try {
+        __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+          geminiArgs = args;
+          return {
+            ok: true,
+            json: {
+              verdict: {
+                one_liner: 'Niacinamide can support oil-control and post-breakout appearance concerns.',
+                evidence_grade: 'B',
+                irritation_risk: 'low',
+                confidence: 0.81,
+              },
+              benefits: [{ concern: 'acne', strength: 2, what_it_means: 'Often used to support blemish-prone routines.' }],
+              how_to_use: { frequency: 'daily', routine_step: 'serum', notes: ['Start with a leave-on step after cleansing.'] },
+              watchouts: [{ issue: 'Possible irritation in very sensitive users', likelihood: 'uncommon', what_to_do: 'Introduce gradually.' }],
+              evidence: { summary: 'Mocked research summary', citations: [{ title: 'Mock niacinamide reference', url: 'https://example.com/niacinamide' }] },
+              top_products: [],
+            },
+          };
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set({
+            'X-Aurora-UID': 'test_uid_ingredient_lookup_explicit_context',
+            'X-Trace-ID': 'test_trace_ingredient_lookup_explicit_context',
+            'X-Brief-ID': 'test_brief_ingredient_lookup_explicit_context',
+            'X-Lang': 'EN',
+          })
+          .send({
+            action: {
+              action_id: 'ingredient.lookup',
+              kind: 'action',
+              data: { ingredient_query: `niacinamide_context_${Date.now()}`, entry_source: 'ingredient_hub' },
+            },
+            session: {
+              profile: {
+                skinType: 'oily',
+                sensitivity: 'high',
+                goals: ['acne'],
+              },
+            },
+            language: 'EN',
+          });
+
+        assert.equal(resp.status, 200);
+        assert.equal(
+          Boolean(resp.body?.session_patch?.meta?.analysis_context_usage)
+            && typeof resp.body.session_patch.meta.analysis_context_usage === 'object'
+            && !Array.isArray(resp.body.session_patch.meta.analysis_context_usage),
+          true,
+        );
+        assert.equal(resp.body.session_patch.meta.analysis_context_usage.explicit_override_applied, true);
+        assert.equal(
+          Array.isArray(resp.body.session_patch.meta.analysis_context_usage.hard_context_fields_used),
+          true,
+        );
+        assert.ok(resp.body.session_patch.meta.analysis_context_usage.hard_context_fields_used.includes('active_goals'));
+        assert.ok(resp.body.session_patch.meta.analysis_context_usage.hard_context_fields_used.includes('sensitivity'));
+        assert.match(String(geminiArgs?.userPrompt || ''), /"analysis_context"\s*:/i);
+        assert.match(String(geminiArgs?.userPrompt || ''), /"active_goals"\s*:\s*\["acne"\]/i);
+        assert.match(String(geminiArgs?.userPrompt || ''), /"sensitivity"\s*:\s*"high"/i);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient reco opt-in first query already carries ingredient_context', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');

@@ -6,6 +6,7 @@ const {
   resolveAnalysisContextForTask,
   buildRoutineAnalysisContextFromSnapshot,
   buildProductAnalysisContextFromSnapshot,
+  buildIngredientAnalysisContextFromSnapshot,
   buildRecommendationAnalysisContextFromSnapshot,
   buildTravelAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
@@ -95,6 +96,7 @@ test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude bound
 
   const routineContext = buildRoutineAnalysisContextFromSnapshot(resolved);
   const productContext = buildProductAnalysisContextFromSnapshot(resolved);
+  const ingredientContext = buildIngredientAnalysisContextFromSnapshot(resolved);
   const recommendationContext = buildRecommendationAnalysisContextFromSnapshot(resolved);
   const travelContext = buildTravelAnalysisContextFromSnapshot(resolved);
 
@@ -106,6 +108,21 @@ test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude bound
   assert.deepEqual(productContext.task_hard_context.active_goals, ['wrinkles']);
   assert.equal(productContext.task_hard_context.skin_type, 'combination');
   assert.deepEqual(productContext.task_hard_context.ingredient_avoid, ['fragrance']);
+
+  assert.deepEqual(ingredientContext.task_hard_context.active_goals, ['wrinkles']);
+  assert.equal(ingredientContext.task_hard_context.sensitivity, 'medium');
+  assert.equal(ingredientContext.task_hard_context.barrier_status, 'healthy');
+  assert.deepEqual(ingredientContext.task_hard_context.ingredient_avoid, ['fragrance']);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(ingredientContext.task_hard_context, 'photo_findings'),
+    false,
+    'ingredient adapter should not promote photo findings into hard context',
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(ingredientContext.task_soft_context, 'photo_findings'),
+    false,
+    'ingredient adapter should exclude photo findings from ingredient analysis context',
+  );
 
   assert.deepEqual(recommendationContext.task_hard_context.ingredient_avoid, ['fragrance']);
   assert.equal(
