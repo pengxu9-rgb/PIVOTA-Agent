@@ -103,6 +103,17 @@
       "task_mode": "product_analysis"
     },
     {
+      "skill_id": "product.pipeline.audit_status",
+      "version": "1.0.0",
+      "phase": 2,
+      "description": "Read-only pipeline status for an external product seed, including audit findings and ingredient/KB coverage",
+      "output_card_types": ["text_response"],
+      "precondition_rule_ids": ["pre_has_product_url_or_seed_id"],
+      "quality_gate_id": "qg_product_pipeline_audit_status",
+      "requires_llm": false,
+      "task_mode": "product_pipeline_status"
+    },
+    {
       "skill_id": "ingredient.report",
       "version": "2.0.0",
       "phase": 2,

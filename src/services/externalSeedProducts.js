@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
@@ -84,7 +85,7 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.contentUrl);
 }
 
-function normalizeSeedImageUrls(seedData, row) {
+function collectSeedImageUrls(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
   const out = [];
   appendImageUrls(out, parsedSeedData.snapshot?.image_url);
@@ -94,6 +95,31 @@ function normalizeSeedImageUrls(seedData, row) {
   appendImageUrls(out, parsedSeedData.image_url);
   appendImageUrls(out, parsedSeedData.image_urls);
   appendImageUrls(out, parsedSeedData.images);
+  return out;
+}
+
+function resolveSeedImageOverride(seedData, row) {
+  const parsedSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsedSeedData.snapshot);
+  return lookupExternalSeedImageOverride(
+    snapshot.canonical_url,
+    snapshot.destination_url,
+    row?.canonical_url,
+    row?.destination_url,
+    parsedSeedData.canonical_url,
+    parsedSeedData.destination_url,
+  );
+}
+
+function normalizeSeedImageUrls(seedData, row) {
+  const out = collectSeedImageUrls(seedData, row);
+  if (out.length > 0) return out;
+
+  const override = resolveSeedImageOverride(seedData, row);
+  if (!override) return out;
+
+  appendImageUrls(out, override.image_urls);
+  appendImageUrls(out, override.image_url);
   return out;
 }
 
@@ -208,6 +234,9 @@ function normalizeSeedVariants(seedData, row) {
       const options = normalizeOptions(rawVariant, optionName, optionValue);
       const url = normalizeHttpUrl(rawVariant.url);
       const availability = normalizeSeedAvailability(rawAvailability);
+      const description = String(
+        rawVariant.description || rawVariant.description_html || rawVariant.summary || rawVariant.body_html || '',
+      ).trim();
 
       return {
         id: variantId,
@@ -225,6 +254,7 @@ function normalizeSeedVariants(seedData, row) {
         availability: availability || undefined,
         option_name: optionName || undefined,
         option_value: optionValue || undefined,
+        description: description || undefined,
         image_url: imageUrl || undefined,
         images: normalizedImageUrls,
         image_urls: normalizedImageUrls,
@@ -364,6 +394,7 @@ module.exports = {
   ensureJsonObject,
   normalizeSeedAvailability,
   availabilityToInStock,
+  collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
   buildExternalSeedProduct,

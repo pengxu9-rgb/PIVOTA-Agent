@@ -59,6 +59,15 @@
       "on_fail_message_zh": "请分享产品链接或产品名，我来帮你分析。"
     },
     {
+      "rule_id": "pre_has_product_url_or_seed_id",
+      "applies_to": ["product.pipeline.audit_status"],
+      "condition": "params.external_seed_id or params.product_url or params.product_anchor is non-null",
+      "on_fail_action": "request_input",
+      "on_fail_target": null,
+      "on_fail_message_en": "Please share an external seed id or product URL so I can inspect pipeline status.",
+      "on_fail_message_zh": "请提供 external seed id 或产品链接，我才能查看管线状态。"
+    },
+    {
       "rule_id": "pre_has_comparison_target",
       "applies_to": ["dupe.compare"],
       "condition": "params.comparison_targets is a non-empty array",

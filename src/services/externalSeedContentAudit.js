@@ -1,4 +1,4 @@
-const { ensureJsonObject, normalizeSeedImageUrls, normalizeSeedVariants } = require('./externalSeedProducts');
+const { collectSeedImageUrls, ensureJsonObject, normalizeSeedVariants } = require('./externalSeedProducts');
 
 const MARKET_LOCALE_SEGMENT = Object.freeze({
   US: 'en-us',
@@ -145,7 +145,7 @@ function getPrimaryDescription(row) {
 
 function getImageUrls(row) {
   const { seedData } = getSnapshot(row);
-  return normalizeSeedImageUrls(seedData, row);
+  return collectSeedImageUrls(seedData, row);
 }
 
 function getVariants(row) {

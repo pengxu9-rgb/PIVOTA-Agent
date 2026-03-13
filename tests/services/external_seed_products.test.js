@@ -143,4 +143,41 @@ describe('externalSeedProducts helper', () => {
     expect(availabilityToInStock('In Stock')).toBe(true);
     expect(availabilityToInStock('Out of Stock')).toBe(false);
   });
+
+  test('falls back to configured manual image overrides when a seed has no stored images', () => {
+    const row = {
+      id: 'eps_patyka_duo',
+      canonical_url: 'https://patyka.com/products/duo-mousse-nettoyante-detox-boutique-spa',
+      destination_url: 'https://patyka.com/products/duo-mousse-nettoyante-detox-boutique-spa',
+      domain: 'patyka.com',
+      title: 'Duo Mousse Nettoyante Detox - BOUTIQUE SPA',
+      seed_data: {
+        brand: 'Patyka',
+        snapshot: {
+          canonical_url: 'https://patyka.com/products/duo-mousse-nettoyante-detox-boutique-spa',
+          variants: [
+            {
+              sku: 'P0029-P0039',
+              variant_id: 'P0029-P0039',
+              price: '23.85',
+              currency: 'EUR',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.image_url).toBe(
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
+    );
+    expect(product.images.length).toBeGreaterThan(1);
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        image_url:
+          'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
+      }),
+    );
+  });
 });

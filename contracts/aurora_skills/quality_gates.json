@@ -99,6 +99,12 @@
       "rules": []
     },
     {
+      "gate_id": "qg_product_pipeline_audit_status",
+      "skill_id": "product.pipeline.audit_status",
+      "kb_ref": null,
+      "rules": []
+    },
+    {
       "gate_id": "qg_ingredient_report",
       "skill_id": "ingredient.report",
       "kb_ref": "ingredient_ontology.v0.json",

@@ -287,6 +287,67 @@
         "should_flag_retinoid_with_barrier_compromised": true,
         "compatibility_issues_should_exist": true
       }
+    },
+    {
+      "fixture_id": "gf_product_pipeline_audit_status_read_only",
+      "scenario": "Read-only product pipeline status uses provided snapshot and does not mutate state",
+      "skill_id": "product.pipeline.audit_status",
+      "request": {
+        "skill_id": "product.pipeline.audit_status",
+        "skill_version": "1.0.0",
+        "params": {
+          "external_seed_id": "eps_ole_1",
+          "audit_status_snapshot": {
+            "seed": {
+              "id": "eps_ole_1",
+              "title": "Banana Bright Vitamin C Serum",
+              "canonical_url": "https://olehenriksen.com/products/banana-bright-vitamin-c-serum",
+              "diagnostics": {
+                "failure_category": null,
+                "discovery_strategy": "shopify_json"
+              }
+            },
+            "audit": {
+              "findings": [
+                {
+                  "anomaly_type": "generic_template_description",
+                  "severity": "review"
+                }
+              ]
+            },
+            "audit_summary": {
+              "by_severity": {
+                "blocker": 0,
+                "review": 1,
+                "info": 0
+              }
+            },
+            "coverage": {
+              "ingredient_coverage_status": "ready_for_harvest",
+              "kb_coverage_status": "missing"
+            },
+            "gating": {
+              "audit_status": "needs_review"
+            }
+          }
+        },
+        "context": {
+          "profile": {},
+          "recent_logs": [],
+          "travel_plan": null,
+          "current_routine": null,
+          "inventory": [],
+          "locale": "en",
+          "safety_flags": []
+        },
+        "thread_state": {}
+      },
+      "assertions": {
+        "cards_must_include_types": ["text_response"],
+        "next_actions_min_count": 2,
+        "quality_ok": true,
+        "preconditions_met": true
+      }
     }
   ]
 }

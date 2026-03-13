@@ -8,6 +8,7 @@ const RecoStepBasedSkill = require('../skills/reco_step_based');
 const TrackerCheckinLogSkill = require('../skills/tracker_checkin_log');
 const TrackerCheckinInsightsSkill = require('../skills/tracker_checkin_insights');
 const ProductAnalyzeSkill = require('../skills/product_analyze');
+const ProductPipelineAuditStatusSkill = require('../skills/product_pipeline_audit_status');
 const IngredientReportSkill = require('../skills/ingredient_report');
 const DupeSuggestSkill = require('../skills/dupe_suggest');
 const DupeCompareSkill = require('../skills/dupe_compare');
@@ -27,6 +28,7 @@ const SKILL_MAP = Object.freeze({
   'tracker.checkin_log': TrackerCheckinLogSkill,
   'tracker.checkin_insights': TrackerCheckinInsightsSkill,
   'product.analyze': ProductAnalyzeSkill,
+  'product.pipeline.audit_status': ProductPipelineAuditStatusSkill,
   'ingredient.report': IngredientReportSkill,
   'dupe.suggest': DupeSuggestSkill,
   'dupe.compare': DupeCompareSkill,
@@ -46,6 +48,7 @@ const INTENT_TO_SKILL = Object.freeze({
   tracker_trends: 'tracker.checkin_insights',
   evaluate_product: 'product.analyze',
   product_analysis: 'product.analyze',
+  product_pipeline_audit_status: 'product.pipeline.audit_status',
   ingredient_report: 'ingredient.report',
   ingredient_science: 'ingredient.report',
   ingredient_query: 'ingredient.report',
@@ -60,6 +63,7 @@ const ENTRY_SOURCE_TO_SKILL = Object.freeze({
   'chip.start.diagnosis': 'diagnosis_v2.start',
   'chip_start_diagnosis': 'diagnosis_v2.start',
   'chip.action.apply_blueprint': 'routine.apply_blueprint',
+  'chip_start_diagnosis': 'diagnosis_v2.start',
   'chip.action.intake_products': 'routine.intake_products',
   'chip.action.audit_optimize': 'routine.audit_optimize',
   'chip.start.reco_products': 'reco.step_based',
