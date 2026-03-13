@@ -218,6 +218,49 @@ test('/v1/activity backfills historical skin_analysis from diagnosis artifact', 
   );
 });
 
+test('/v1/activity/:activity_id returns detail for backfilled skin_analysis artifact history', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_CHAT_RESPONSE_FORMAT: 'chatcards',
+    },
+    async () => {
+      const { app, cleanup } = createApp();
+      const uid = buildTestUid('activity_backfill_detail');
+      const headers = headersFor(uid, 'EN');
+
+      try {
+        const artifact = createDiagnosisArtifactFixture({
+          confidenceScore: 0.81,
+          analysisSource: 'rule_based_with_photo_qc',
+          qualityGrade: 'pass',
+          usePhoto: true,
+        });
+        await seedDiagnosisArtifactForUid(uid, artifact);
+
+        const listResp = await supertest(app)
+          .get('/v1/activity?types=skin_analysis&limit=10')
+          .set(headers)
+          .expect(200);
+        const item = (Array.isArray(listResp.body?.items) ? listResp.body.items : []).find((entry) => entry && entry.event_type === 'skin_analysis');
+        assert.ok(item);
+        assert.ok(String(item.activity_id || '').startsWith('artifact:'));
+
+        const detailResp = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(item.activity_id)}`)
+          .set(headers)
+          .expect(200);
+        assert.equal(detailResp.body?.detail?.kind, 'skin_analysis');
+        assert.equal(detailResp.body?.detail?.snapshot?.skin_type, 'oily');
+        assert.equal(detailResp.body?.detail?.snapshot?.confidence_level, 'high');
+      } finally {
+        cleanup();
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin success emits skin_analysis activity event', async () => {
   await withEnv(
     {
@@ -256,6 +299,55 @@ test('/v1/analysis/skin success emits skin_analysis activity event', async () =>
         assert.equal(typeof payload.used_photos, 'boolean');
         assert.equal(typeof payload.photos_provided, 'boolean');
         assert.equal(typeof payload.quality_grade, 'string');
+      } finally {
+        cleanup();
+      }
+    },
+  );
+});
+
+test('/v1/activity/:activity_id returns detail for explicit skin_analysis activity event', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_CHAT_RESPONSE_FORMAT: 'chatcards',
+      AURORA_DIAG_ARTIFACT_ENABLED: 'true',
+    },
+    async () => {
+      const { app, cleanup } = createApp();
+      const uid = buildTestUid('analysis_emit_activity_detail');
+      const headers = headersFor(uid, 'EN');
+
+      try {
+        await supertest(app)
+          .post('/v1/analysis/skin')
+          .set(headers)
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: [{ name: 'cleanser' }],
+              pm: [{ name: 'moisturizer' }],
+            },
+          })
+          .expect(200);
+
+        const listResp = await supertest(app)
+          .get('/v1/activity?types=skin_analysis&limit=10')
+          .set(headers)
+          .expect(200);
+        const item = (Array.isArray(listResp.body?.items) ? listResp.body.items : []).find((entry) => entry && entry.event_type === 'skin_analysis');
+        assert.ok(item);
+        assert.ok(String(item.activity_id || '').length > 0);
+
+        const detailResp = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(item.activity_id)}`)
+          .set(headers)
+          .expect(200);
+        assert.equal(detailResp.body?.detail?.kind, 'skin_analysis');
+        assert.equal(typeof detailResp.body?.detail?.snapshot?.artifact_id, 'string');
+        assert.equal(Array.isArray(detailResp.body?.detail?.actions), true);
+        assert.ok(detailResp.body.detail.actions.length >= 1);
       } finally {
         cleanup();
       }
