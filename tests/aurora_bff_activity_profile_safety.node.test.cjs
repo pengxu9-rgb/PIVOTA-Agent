@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const {
   withEnv,
@@ -348,6 +349,50 @@ test('/v1/activity/:activity_id returns detail for explicit skin_analysis activi
         assert.equal(typeof detailResp.body?.detail?.snapshot?.artifact_id, 'string');
         assert.equal(Array.isArray(detailResp.body?.detail?.actions), true);
         assert.ok(detailResp.body.detail.actions.length >= 1);
+      } finally {
+        cleanup();
+      }
+    },
+  );
+});
+
+test('/v1/activity list suppresses async skin_analysis kb snapshot duplicates when explicit event exists', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_CHAT_RESPONSE_FORMAT: 'chatcards',
+      AURORA_DIAG_ARTIFACT_ENABLED: 'true',
+    },
+    async () => {
+      const { app, cleanup } = createApp();
+      const uid = buildTestUid('analysis_emit_activity_dedupe');
+      const headers = headersFor(uid, 'EN');
+
+      try {
+        await supertest(app)
+          .post('/v1/analysis/skin')
+          .set(headers)
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: [{ name: 'cleanser' }],
+              pm: [{ name: 'moisturizer' }],
+            },
+          })
+          .expect(200);
+
+        await delay(20);
+
+        const listResp = await supertest(app)
+          .get('/v1/activity?types=skin_analysis&limit=10')
+          .set(headers)
+          .expect(200);
+        const items = Array.isArray(listResp.body?.items) ? listResp.body.items : [];
+        const skinItems = items.filter((item) => item && item.event_type === 'skin_analysis');
+
+        assert.equal(skinItems.length, 1);
+        assert.ok(String(skinItems[0]?.activity_id || '').startsWith('act_'));
       } finally {
         cleanup();
       }
