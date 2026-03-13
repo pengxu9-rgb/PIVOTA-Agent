@@ -11,7 +11,7 @@ const {
   parseCards,
 } = require('./aurora_bff_test_harness.cjs');
 
-test('/v1/chat: activity follow-up reads latest_artifact_id from session.meta and avoids diagnosis gate on saved-analysis follow-ups', async () => {
+test('/v1/chat: saved-analysis follow-up persists snapshot context and avoids legacy diagnosis gate on the next free-text turn', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -59,11 +59,10 @@ test('/v1/chat: activity follow-up reads latest_artifact_id from session.meta an
       });
 
       try {
-        const response = await harness.request
+        const deepDiveResponse = await harness.request
           .post('/v1/chat')
           .set(headersFor(uid, 'EN'))
           .send({
-            message: 'solve my acne problems',
             language: 'EN',
             session: {
               state: 'idle',
@@ -72,15 +71,39 @@ test('/v1/chat: activity follow-up reads latest_artifact_id from session.meta an
                 source_activity_id: 'act_saved_skin_1',
               },
             },
+            action: {
+              action_id: 'chip.aurora.next_action.deep_dive_skin',
+              data: {
+                reply_text: 'Continue from my saved skin analysis and tell me the next best steps.',
+              },
+            },
+          })
+          .expect(200);
+
+        const persistedMeta = deepDiveResponse.body?.session_patch?.meta || {};
+        assert.ok(String(persistedMeta.latest_artifact_id || '').trim());
+        assert.equal(persistedMeta.source_activity_id, 'act_saved_skin_1');
+        assert.equal(persistedMeta.analysis_context?.followup_mode, 'saved_analysis');
+        assert.ok(persistedMeta.analysis_context?.analysis_story_snapshot);
+
+        const response = await harness.request
+          .post('/v1/chat')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            message: 'solve my acne problems',
+            language: 'EN',
+            session: {
+              state: 'idle',
+              meta: persistedMeta,
+            },
           })
           .expect(200);
 
         const query = String(llmCalls[0]?.query || '');
         assert.equal(llmCalls.length, 1);
         assert.match(query, /saved skin analysis|skin analysis context|analysis context/i);
-        assert.match(query, /oily/i);
-        assert.match(query, /medium/i);
-        assert.match(query, /healthy/i);
+        assert.match(query, /breakouts|acne/i);
+        assert.match(query, /ingredient/i);
         assert.match(query, /acne/i);
         assert.equal(Boolean(findCard(parseCards(response.body), 'diagnosis_gate')), false);
       } finally {

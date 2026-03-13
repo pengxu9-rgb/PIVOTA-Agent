@@ -1404,6 +1404,69 @@ function hasReusableAnalysisContext({
   return false;
 }
 
+function isSavedAnalysisFollowupSession({
+  sessionMeta,
+  sessionAnalysisContext,
+} = {}) {
+  const meta = isPlainObject(sessionMeta) ? sessionMeta : {};
+  const context = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const followupMode = pickFirstTrimmed(context.followup_mode, meta.analysis_followup_mode);
+  const sourceActivityId = pickFirstTrimmed(meta.source_activity_id, context.source_activity_id);
+  return followupMode === 'saved_analysis' || Boolean(sourceActivityId);
+}
+
+function shouldBypassLegacyDiagnosisGateForSavedAnalysis({
+  sessionMeta,
+  sessionAnalysisContext,
+  lastAnalysis,
+  latestArtifactId,
+} = {}) {
+  if (!isSavedAnalysisFollowupSession({ sessionMeta, sessionAnalysisContext })) return false;
+  return hasReusableAnalysisContext({
+    sessionAnalysisContext,
+    lastAnalysis,
+    latestArtifactId,
+  });
+}
+
+function buildAnalysisFollowupSessionMeta({
+  existingMeta,
+  existingAnalysisContext,
+  followup,
+  actionId,
+  latestArtifactId,
+} = {}) {
+  const meta = isPlainObject(existingMeta) ? { ...existingMeta } : {};
+  const analysisContext = isPlainObject(existingAnalysisContext) ? { ...existingAnalysisContext } : {};
+  const cards = Array.isArray(followup && followup.cards) ? followup.cards : [];
+  const storyCard = cards.find((card) => (
+    isPlainObject(card) &&
+    String(card.type || '').trim().toLowerCase() === 'analysis_story_v2' &&
+    isPlainObject(card.payload)
+  ));
+  const snapshot = normalizeAnalysisStorySnapshotCandidate(
+    storyCard && isPlainObject(storyCard.payload) ? storyCard.payload : analysisContext.analysis_story_snapshot,
+  );
+  analysisContext.followup_mode = 'saved_analysis';
+  const normalizedActionId = String(actionId || '').trim();
+  if (normalizedActionId) analysisContext.followup_action_id = normalizedActionId;
+  const followupOrigin = pickFirstTrimmed(
+    followup && followup.analysis_origin,
+    analysisContext.analysis_origin,
+  );
+  if (followupOrigin) analysisContext.analysis_origin = followupOrigin;
+  if (snapshot) analysisContext.analysis_story_snapshot = snapshot;
+
+  const normalizedArtifactId = pickFirstTrimmed(
+    followup && followup.latest_artifact_id,
+    latestArtifactId,
+    meta.latest_artifact_id,
+  );
+  if (normalizedArtifactId) meta.latest_artifact_id = normalizedArtifactId;
+  if (Object.keys(analysisContext).length) meta.analysis_context = analysisContext;
+  return meta;
+}
+
 function resolveImplicitAnalysisFollowupActionId({
   actionId,
   message,
@@ -25022,53 +25085,6 @@ function mergeMissingProfilePatchFields(target, source) {
     base.goals = extra.goals.slice(0, 12);
   }
   return base;
-}
-
-function normalizeArtifactBackfillGoals(values, max = 8) {
-  const rows = Array.isArray(values) ? values : [];
-  const out = [];
-  const seen = new Set();
-  for (const raw of rows) {
-    const token = String(raw || '').trim();
-    if (!token) continue;
-    const lower = token.toLowerCase();
-    if (lower === 'unknown' || lower === 'unsure' || lower === 'n/a' || lower === 'none') continue;
-    if (seen.has(lower)) continue;
-    seen.add(lower);
-    out.push(token);
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
-function normalizeArtifactBackfillScalar(value) {
-  const token = pickFirstTrimmed(value);
-  if (!token) return null;
-  const lower = token.toLowerCase();
-  if (lower === 'unknown' || lower === 'unsure' || lower === 'unconfirmed' || lower === 'n/a' || lower === 'none') {
-    return null;
-  }
-  return token;
-}
-
-function buildProfilePatchFromTaskAnalysisContext(taskContext) {
-  const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : null;
-  if (!hard) return null;
-
-  const patch = {};
-  const skinType = normalizeArtifactBackfillScalar(hard.skin_type);
-  const sensitivity = normalizeArtifactBackfillScalar(hard.sensitivity);
-  const barrierStatus = normalizeArtifactBackfillScalar(hard.barrier_status);
-  const goals = normalizeArtifactBackfillGoals(hard.active_goals, 8);
-
-  if (skinType) patch.skinType = skinType;
-  if (sensitivity) patch.sensitivity = sensitivity;
-  if (barrierStatus) patch.barrierStatus = barrierStatus;
-  if (goals.length) patch.goals = goals;
-
-  const parsed = UserProfilePatchSchema.safeParse(patch);
-  if (!parsed.success) return null;
-  return Object.keys(parsed.data).length ? parsed.data : null;
 }
 
 function extractQuickProfileLightweightPatch(raw = null) {
@@ -57520,24 +57536,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskAnalysisContextCache.set(key, taskContext);
         return taskContext;
       };
-      const activityArtifactId = extractLatestArtifactIdFromSession(parsed.data.session);
-      if (activityArtifactId) {
-        const chatTaskContextForBackfill = await ensureTaskAnalysisContextForConversation('chat');
-        const artifactDerivedProfilePatch = buildProfilePatchFromTaskAnalysisContext(chatTaskContextForBackfill);
-        if (artifactDerivedProfilePatch) {
-          const mergedProfile = mergeMissingProfilePatchFields(
-            isPlainObject(profile) ? { ...profile } : {},
-            artifactDerivedProfilePatch,
-          );
-          if (Object.keys(mergedProfile).length) {
-            profile = mergedProfile;
-            profileSummaryForFollowup = summarizeChatProfileForContext(profile);
-            taskAnalysisContextCache.clear();
-            cachedAnalysisContextSnapshotForConversation = undefined;
-            cachedAnalysisContextSnapshotLoaded = false;
-          }
-        }
-      }
+      const parsedSessionAnalysisContext =
+        parsedSessionMetaForAnalysisFollowup.analysis_context &&
+        typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&
+        !Array.isArray(parsedSessionMetaForAnalysisFollowup.analysis_context)
+          ? parsedSessionMetaForAnalysisFollowup.analysis_context
+          : null;
+      const savedAnalysisFollowupGateBypassActive = shouldBypassLegacyDiagnosisGateForSavedAnalysis({
+        sessionMeta: parsedSessionMetaForAnalysisFollowup,
+        sessionAnalysisContext: parsedSessionAnalysisContext,
+        lastAnalysis: profile && profile.lastAnalysis ? profile.lastAnalysis : null,
+        latestArtifactId: extractLatestArtifactIdFromSession(parsedSessionForAnalysisFollowup),
+      });
       const buildIngredientProfileSummaryForResearch = ({ taskContext, ingredientContext }) => {
         const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : {};
         const soft = isPlainObject(taskContext && taskContext.task_soft_context) ? taskContext.task_soft_context : {};
@@ -57692,11 +57702,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           'metric',
         );
         skipRoutineRulesFallback = true;
+        const followupSessionMeta = buildAnalysisFollowupSessionMeta({
+          existingMeta: parsedSessionMeta,
+          existingAnalysisContext: sessionAnalysisContext,
+          followup,
+          actionId: normalizedActionId,
+          latestArtifactId: extractLatestArtifactIdFromSession(parsedSession),
+        });
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
           cards: Array.isArray(followup.cards) ? followup.cards : [],
-          session_patch: {},
+          session_patch: Object.keys(followupSessionMeta).length ? { meta: followupSessionMeta } : {},
           events: [
             makeEvent(ctx, 'analysis_followup_action_routed', {
               action_id: normalizedActionId,
@@ -61393,7 +61410,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
         // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (hardRequiredMissing.length > 0) {
+        if (hardRequiredMissing.length > 0 && !savedAnalysisFollowupGateBypassActive) {
           const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
@@ -61433,6 +61450,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               }
             }
           }
+        } else if (hardRequiredMissing.length > 0 && savedAnalysisFollowupGateBypassActive) {
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              missing_fields: hardRequiredMissing,
+            },
+            'aurora bff: bypassing legacy diagnosis-first gate due to saved analysis follow-up context',
+          );
         }
 
         const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
@@ -61641,7 +61667,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
-        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
+        if (
+          AURORA_PRODUCT_MATCHER_ENABLED &&
+          !artifactGate.ok &&
+          !allowLowRiskNonBlockingArtifactGate &&
+          !savedAnalysisFollowupGateBypassActive
+        ) {
           const chips = buildRecoEntryChips(ctx.lang);
           const decision = pushGateDecision('artifact_missing_gate', {
             reason_codes: ['artifact_missing'],
@@ -61667,15 +61698,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
-        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
+        if (
+          AURORA_PRODUCT_MATCHER_ENABLED &&
+          !artifactGate.ok &&
+          (allowLowRiskNonBlockingArtifactGate || savedAnalysisFollowupGateBypassActive)
+        ) {
           recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
           logger?.info(
             {
               request_id: ctx.request_id,
               trace_id: ctx.trace_id,
               reason: artifactGate.reason || 'artifact_missing',
+              bypass_reason: savedAnalysisFollowupGateBypassActive ? 'saved_analysis_followup' : 'low_risk',
             },
-            'aurora bff: bypassing artifact gate for low-risk skincare request',
+            'aurora bff: bypassing artifact gate without restarting diagnosis',
           );
         }
 
@@ -64191,6 +64227,7 @@ const __internal = {
   buildAnalysisDeepDiveContentWithLlm,
   loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
+  buildAnalysisFollowupSessionMeta,
   enrichIngredientPlanPayloadForCard,
   extractQuickProfileLightweightPatch,
   extractProfilePatchFromSession,

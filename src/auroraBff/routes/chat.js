@@ -700,6 +700,18 @@ async function handleChatStream(req, res) {
         const requestId = pickFirstTrimmed(req.get?.('x-request-id'), req.get?.('x-requestid')) || `stream_${Date.now()}`;
         const traceId = pickFirstTrimmed(req.get?.('x-trace-id')) || requestId;
         const lang = pickFirstTrimmed(body.language) || 'EN';
+        const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+        const analysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
+        const followupSessionMeta =
+          typeof internal.buildAnalysisFollowupSessionMeta === 'function'
+            ? internal.buildAnalysisFollowupSessionMeta({
+                existingMeta: sessionMeta,
+                existingAnalysisContext: analysisContext,
+                followup: followupResult,
+                actionId: analysisFollowupActionId,
+                latestArtifactId: extractLatestArtifactIdFromSession(session),
+              })
+            : {};
         const legacyEnvelope = {
           request_id: requestId,
           trace_id: traceId,
@@ -710,7 +722,7 @@ async function handleChatStream(req, res) {
           },
           suggested_chips: Array.isArray(followupResult.suggested_chips) ? followupResult.suggested_chips : [],
           cards: Array.isArray(followupResult.cards) ? followupResult.cards : [],
-          session_patch: {},
+          session_patch: Object.keys(followupSessionMeta).length ? { meta: followupSessionMeta } : {},
           events: [
             {
               event_name: 'analysis_followup_action_routed',
