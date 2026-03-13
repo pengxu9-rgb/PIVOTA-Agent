@@ -10,6 +10,124 @@ const {
   findCard,
 } = require('./aurora_bff_test_harness.cjs');
 
+function buildAuditProduct(productRef, overrides = {}) {
+  const inputLabel = overrides.input_label || overrides.inputLabel || 'Foaming cleanser';
+  const inferredProductType = overrides.inferred_product_type || overrides.inferredProductType || 'cleanser';
+  const likelyRole = overrides.likely_role || overrides.likelyRole || 'cleansing';
+  return {
+    product_ref: productRef,
+    slot: overrides.slot || 'am',
+    original_step_label: overrides.original_step_label || overrides.originalStepLabel || 'cleanser',
+    input_label: inputLabel,
+    resolved_name_or_null: Object.prototype.hasOwnProperty.call(overrides, 'resolved_name_or_null') ? overrides.resolved_name_or_null : null,
+    evidence_basis: overrides.evidence_basis || ['step_label'],
+    inferred_product_type: inferredProductType,
+    likely_role: likelyRole,
+    likely_key_ingredients_or_signals: overrides.likely_key_ingredients_or_signals || overrides.likelyKeyIngredientsOrSignals || [`${inferredProductType} signal`],
+    fit_for_skin_type: overrides.fit_for_skin_type || {
+      verdict: 'mixed',
+      reason: 'This looks usable for oily skin, but a foaming texture can feel stronger on a stressed barrier.',
+    },
+    fit_for_goals: overrides.fit_for_goals || [
+      {
+        goal: 'acne',
+        verdict: 'mixed',
+        reason: 'Cleansing can help reduce excess oil, but this is not a dedicated acne treatment step.',
+      },
+      {
+        goal: 'pores',
+        verdict: 'mixed',
+        reason: 'It can help remove surface oil, but pore appearance usually depends on leave-on treatment support too.',
+      },
+    ],
+    fit_for_season_or_climate: overrides.fit_for_season_or_climate || {
+      verdict: 'good',
+      reason: 'This category usually stays workable across seasons unless the cleanser feels stripping.',
+    },
+    potential_concerns: overrides.potential_concerns || [],
+    suggested_action: overrides.suggested_action || 'keep',
+    confidence: Object.prototype.hasOwnProperty.call(overrides, 'confidence') ? overrides.confidence : 0.72,
+    missing_info: overrides.missing_info || [],
+    concise_reasoning_en: overrides.concise_reasoning_en || 'This reads like a standard cleanser, so the main question is whether it feels too strong for the current barrier state.',
+  };
+}
+
+function buildStageAResult(products, overrides = {}) {
+  return {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products,
+    additional_items_needing_verification: overrides.additional_items_needing_verification || [],
+    missing_info: overrides.missing_info || [],
+    confidence: Object.prototype.hasOwnProperty.call(overrides, 'confidence') ? overrides.confidence : 0.72,
+    ...overrides,
+  };
+}
+
+function buildStageBResult(overrides = {}) {
+  return {
+    schema_version: 'aurora.routine_synthesis.v1',
+    current_routine_assessment: {
+      summary: 'The routine is directionally workable but needs a small adjustment.',
+      main_strengths: ['It already covers cleansing and moisturizing.'],
+      main_issues: ['Daytime protection still needs attention.'],
+    },
+    per_step_order_am: [],
+    per_step_order_pm: [],
+    overlap_or_gaps: [],
+    top_3_adjustments: [
+      {
+        adjustment_id: 'adj_spf',
+        priority_rank: 1,
+        title: 'Add a clear AM sunscreen step',
+        action_type: 'add_step',
+        affected_products: [],
+        why_this_first: 'AM protection is still missing.',
+        expected_outcome: 'More complete daytime protection.',
+      },
+    ],
+    improved_am_routine: [
+      {
+        step_order: 1,
+        what_to_use: 'Sunscreen',
+        frequency: 'daily',
+        note: 'Place it at the end of the AM routine.',
+        source_type: 'step_placeholder',
+      },
+    ],
+    improved_pm_routine: [],
+    rationale_for_each_adjustment: [
+      {
+        adjustment_id: 'adj_spf',
+        reasoning: 'The routine still lacks a dedicated sunscreen step.',
+        evidence: ['No audited AM product clearly reads as sunscreen.'],
+        tradeoff_or_caution: 'Keep the texture wearable enough for daily use.',
+      },
+    ],
+    recommendation_needs: [
+      {
+        adjustment_id: 'adj_spf',
+        need_state: 'fill_gap',
+        target_step: 'sunscreen',
+        why: 'AM protection is still missing.',
+        required_attributes: ['broad-spectrum protection'],
+        avoid_attributes: ['unclear SPF claims'],
+        timing: 'am',
+        texture_or_format: 'fluid',
+        priority: 'high',
+      },
+    ],
+    recommendation_queries: [
+      {
+        adjustment_id: 'adj_spf',
+        query_en: 'broad-spectrum sunscreen fluid daily',
+      },
+    ],
+    confidence: 0.74,
+    missing_info: [],
+    ...overrides,
+  };
+}
+
 test('/v1/analysis/skin: routine analysis v2 emits product-first cards with compatibility meta', async () => {
   await withEnv(
     {
@@ -115,568 +233,689 @@ test('routineAnalysisV2 recommendation groups: empty pool degrades to category g
   assert.ok(groups[0].category_guidance, 'guidance should exist when candidate pool is empty');
 });
 
-test('coerceSynthesisOutput removes false cleanser gaps when cleanser exists in deferred inventory', async () => {
-  const { coerceSynthesisOutput, buildRoutineInventory } = require('../src/auroraBff/routineAnalysisV2');
-  const audit = {
-    schema_version: 'aurora.routine_product_audit.v1',
+test('normalizeFallbackAuditOutput: quality gate replaces low-value cleanser reasoning with category-level fallback', () => {
+  const { normalizeFallbackAuditOutput } = require('../src/auroraBff/routineAnalysisV2');
+
+  const candidates = [
+    {
+      product_ref: 'prod_cleanser_1',
+      slot: 'am',
+      step: 'cleanser',
+      product_text: 'Foaming cleanser',
+    },
+  ];
+
+  const audit = normalizeFallbackAuditOutput(candidates, {
     products: [
       {
-        product_ref: 'routine_am_03',
+        product_ref: 'prod_cleanser_1',
         slot: 'am',
-        input_label: 'Vitamin C serum',
-        inferred_product_type: 'vitamin c serum',
-        concise_reasoning_en: 'This is fine in AM.',
-      },
-      {
-        product_ref: 'routine_pm_04',
-        slot: 'pm',
-        input_label: 'Retinol serum',
-        inferred_product_type: 'retinoid serum',
-        concise_reasoning_en: 'This is better kept in PM.',
-      },
-    ],
-    additional_items_needing_verification: [],
-    missing_info: [],
-    confidence: 0.7,
-  };
-  const routineInventory = buildRoutineInventory([
-    { slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
-    { slot: 'pm', step: 'cleanser', product_text: 'Gentle cleanser' },
-    { slot: 'am', step: 'treatment', product_text: 'Vitamin C serum' },
-    { slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
-  ]);
-  const synthesis = coerceSynthesisOutput({
-    schema_version: 'aurora.routine_synthesis.v1',
-    current_routine_assessment: {
-      summary: 'The routine needs cleansing support.',
-      main_strengths: ['There is treatment coverage.'],
-      main_issues: ['Add cleansing steps to AM and PM routines'],
-    },
-    per_step_order_am: [],
-    per_step_order_pm: [],
-    overlap_or_gaps: [
-      {
-        issue_type: 'gap',
-        title: 'Cleansing looks missing',
-        evidence: ['No cleanser was found in the current routine.'],
-        affected_products: [],
-      },
-    ],
-    top_3_adjustments: [
-      {
-        adjustment_id: 'adj_cleanser_gap',
-        priority_rank: 1,
-        title: 'Add cleansing steps to AM and PM routines',
-        action_type: 'add_step',
-        affected_products: [],
-        why_this_first: 'No cleanser appears present right now.',
-        expected_outcome: 'A cleaner baseline.',
-      },
-    ],
-    improved_am_routine: [
-      {
-        step_order: 1,
-        what_to_use: 'Add a cleanser',
-        frequency: 'daily',
-        note: 'Missing cleanser step.',
-        source_type: 'step_placeholder',
-      },
-    ],
-    improved_pm_routine: [],
-    rationale_for_each_adjustment: [
-      {
-        adjustment_id: 'adj_cleanser_gap',
-        reasoning: 'No cleanser appears present.',
-        evidence: ['No cleanser was found in the routine.'],
-        tradeoff_or_caution: 'Keep it simple.',
-      },
-    ],
-    recommendation_needs: [
-      {
-        adjustment_id: 'adj_cleanser_gap',
-        need_state: 'fill_gap',
-        target_step: 'cleanser',
-        why: 'Need a cleanser.',
-        required_attributes: ['gentle cleanse'],
-        avoid_attributes: ['stripping formula'],
-        timing: 'either',
-        texture_or_format: null,
-        priority: 'high',
-      },
-    ],
-    recommendation_queries: [
-      {
-        adjustment_id: 'adj_cleanser_gap',
-        query_en: 'gentle cleanser',
-      },
-    ],
-    confidence: 0.7,
-    missing_info: [],
-  }, audit, { routine_inventory: routineInventory });
-
-  assert.equal(synthesis.top_3_adjustments.length, 0);
-  assert.equal(synthesis.recommendation_needs.length, 0);
-  assert.equal(synthesis.recommendation_queries.length, 0);
-  assert.equal(synthesis.overlap_or_gaps.some((item) => /cleans/i.test(item.title)), false);
-  assert.equal(synthesis.improved_am_routine.some((item) => /add a cleanser/i.test(item.what_to_use)), false);
-});
-
-test('guidance-only serum upgrades stay hidden while core-gap guidance stays visible', async () => {
-  const { getVisibleRecommendationGroups } = require('../src/auroraBff/routineAnalysisV2');
-  const synthesis = {
-    top_3_adjustments: [
-      {
-        adjustment_id: 'adj_support_serum',
-        action_type: 'add_step',
-        title: 'Add a hydrating/soothing serum',
-      },
-      {
-        adjustment_id: 'adj_gap_spf',
-        action_type: 'add_step',
-        title: 'Add a clear AM sunscreen step',
-      },
-    ],
-  };
-  const visible = getVisibleRecommendationGroups([
-    {
-      adjustment_id: 'adj_support_serum',
-      need_state: 'fill_gap',
-      target_step: 'serum',
-      candidate_pool: [],
-      category_guidance: { what_to_look_for: ['hydrating serum'] },
-    },
-    {
-      adjustment_id: 'adj_gap_spf',
-      need_state: 'fill_gap',
-      target_step: 'sunscreen',
-      candidate_pool: [],
-      category_guidance: { what_to_look_for: ['daily sunscreen'] },
-    },
-  ], synthesis);
-
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
-});
-
-test('coerceSynthesisOutput removes dedicated eye-product adjustments and linked needs', async () => {
-  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
-  const audit = {
-    schema_version: 'aurora.routine_product_audit.v1',
-    products: [
-      {
-        product_ref: 'routine_am_01',
-        slot: 'am',
-        input_label: 'Gentle cleanser',
+        original_step_label: 'cleanser',
+        input_label: 'Foaming cleanser',
+        resolved_name_or_null: null,
+        evidence_basis: ['step_label'],
         inferred_product_type: 'cleanser',
-        concise_reasoning_en: 'Core cleanser step is already present.',
-      },
-      {
-        product_ref: 'routine_am_02',
-        slot: 'am',
-        input_label: 'Daily SPF 50',
-        inferred_product_type: 'sunscreen',
-        concise_reasoning_en: 'Daily sunscreen is already present.',
-      },
-    ],
-    additional_items_needing_verification: [],
-    missing_info: [],
-    confidence: 0.78,
-  };
-  const synthesis = coerceSynthesisOutput({
-    schema_version: 'aurora.routine_synthesis.v1',
-    current_routine_assessment: {
-      summary: 'The routine is fine but could use an eye product.',
-      main_strengths: ['Has sunscreen and cleanser.'],
-      main_issues: ['Incorporate a dedicated eye product'],
-    },
-    per_step_order_am: [],
-    per_step_order_pm: [],
-    overlap_or_gaps: [],
-    top_3_adjustments: [
-      {
-        adjustment_id: 'adj_eye_product',
-        priority_rank: 1,
-        title: 'Incorporate a dedicated eye product',
-        action_type: 'add_step',
-        affected_products: [],
-        why_this_first: 'A dedicated eye step could help with under-eye concerns.',
-        expected_outcome: 'More targeted eye care.',
+        likely_role: 'cleansing',
+        likely_key_ingredients_or_signals: ['cleanser signal'],
+        fit_for_skin_type: {
+          verdict: 'unknown',
+          reason: 'Without knowing the ingredients, it is hard to assess this cleanser for oily skin.',
+        },
+        fit_for_goals: [
+          {
+            goal: 'acne',
+            verdict: 'unknown',
+            reason: 'Without knowing the ingredients, it is hard to assess its impact on acne.',
+          },
+          {
+            goal: 'pores',
+            verdict: 'unknown',
+            reason: 'Without knowing the ingredients, it is hard to assess its impact on pores.',
+          },
+        ],
+        fit_for_season_or_climate: {
+          verdict: 'unknown',
+          reason: 'Need climate information to assess.',
+        },
+        potential_concerns: [],
+        suggested_action: 'keep',
+        confidence: 0.62,
+        missing_info: ['No ingredient list was provided.'],
+        concise_reasoning_en: 'This is a cleanser, which is a routine basic. Without an ingredients list, it is hard to assess its acne and pore fit.',
       },
     ],
-    improved_am_routine: [],
-    improved_pm_routine: [],
-    rationale_for_each_adjustment: [
-      {
-        adjustment_id: 'adj_eye_product',
-        reasoning: 'A dedicated eye product could help.',
-        evidence: ['Optional eye support.'],
-        tradeoff_or_caution: 'Extra step.',
-      },
-    ],
-    recommendation_needs: [
-      {
-        adjustment_id: 'adj_eye_product',
-        need_state: 'fill_gap',
-        target_step: 'eye product',
-        why: 'Need more targeted under-eye care.',
-        required_attributes: ['gentle eye hydration'],
-        avoid_attributes: ['irritating fragrance'],
-        timing: 'either',
-        texture_or_format: null,
-        priority: 'low',
-      },
-    ],
-    recommendation_queries: [
-      {
-        adjustment_id: 'adj_eye_product',
-        query_en: 'gentle eye product',
-      },
-    ],
-    confidence: 0.72,
-    missing_info: [],
-  }, audit, {});
+    confidence: 0.62,
+  }, {
+    goals: ['acne', 'pores'],
+    skinType: 'oily',
+    sensitivity: 'medium',
+    barrierStatus: 'impaired',
+  });
 
-  assert.equal(synthesis.top_3_adjustments.length, 0);
-  assert.equal(synthesis.recommendation_needs.length, 0);
-  assert.equal(synthesis.recommendation_queries.length, 0);
-});
-
-test('guidance-only secondary replace-current recommendations stay hidden', async () => {
-  const { getVisibleRecommendationGroups } = require('../src/auroraBff/routineAnalysisV2');
-  const synthesis = {
-    top_3_adjustments: [
-      {
-        adjustment_id: 'adj_gap_spf',
-        priority_rank: 1,
-        action_type: 'add_step',
-        title: 'Add Sunscreen to AM Routine',
-      },
-      {
-        adjustment_id: 'adj_cleanser_replace',
-        priority_rank: 2,
-        action_type: 'replace',
-        title: 'Consider a different cleanser for PM',
-      },
-    ],
-  };
-  const visible = getVisibleRecommendationGroups([
+  const product = audit.products[0];
+  assert.ok(product, 'expected a normalized product');
+  assert.doesNotMatch(product.fit_for_skin_type.reason, /without knowing the ingredients|hard to assess/i);
+  assert.doesNotMatch(product.fit_for_season_or_climate.reason, /need climate information to assess/i);
+  assert.doesNotMatch(product.concise_reasoning_en, /without an ingredients list|routine basic/i);
+  assert.equal(product.fit_for_goals.length, 2);
+  assert.notEqual(
+    String(product.fit_for_goals[0].reason).toLowerCase(),
+    String(product.fit_for_goals[1].reason).toLowerCase(),
+    'goal reasons should not stay duplicated boilerplate',
+  );
+  assert.equal(audit.quality_gate_meta.quality_gate_applied_count, 1);
+  assert.deepEqual(audit.quality_gate_meta.product_reason_sources, [
     {
-      adjustment_id: 'adj_gap_spf',
-      need_state: 'fill_gap',
-      target_step: 'sunscreen',
-      candidate_pool: [],
-      category_guidance: { what_to_look_for: ['daily sunscreen'] },
-      why: 'AM protection is missing.',
+      product_ref: 'prod_cleanser_1',
+      reason_source: 'quality_gate_replaced',
     },
-    {
-      adjustment_id: 'adj_cleanser_replace',
-      need_state: 'replace_current',
-      target_step: 'PM cleanser',
-      candidate_pool: [],
-      category_guidance: { what_to_look_for: ['gentler PM cleanser'] },
-      why: 'A different PM cleanser may be more comfortable.',
-    },
-  ], synthesis);
-
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].adjustment_id, 'adj_gap_spf');
-});
-
-test('coerceSynthesisOutput filters weak secondary routine adjustments behind a core gap', async () => {
-  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
-  const audit = {
-    schema_version: 'aurora.routine_product_audit.v1',
-    products: [
-      {
-        product_ref: 'routine_am_01',
-        slot: 'am',
-        input_label: 'CeraVe Hydrating Cleanser',
-        inferred_product_type: 'cleanser',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'This cleanser is directionally usable in both slots.',
-      },
-      {
-        product_ref: 'routine_am_02',
-        slot: 'am',
-        input_label: 'Vitamin C serum',
-        inferred_product_type: 'vitamin c serum',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'This is a normal AM treatment step.',
-      },
-      {
-        product_ref: 'routine_pm_04',
-        slot: 'pm',
-        input_label: 'Retinol serum',
-        inferred_product_type: 'retinoid serum',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'This is a valid PM treatment step.',
-      },
-    ],
-    additional_items_needing_verification: [],
-    missing_info: [],
-    confidence: 0.75,
-  };
-
-  const synthesis = coerceSynthesisOutput({
-    schema_version: 'aurora.routine_synthesis.v1',
-    current_routine_assessment: {
-      summary: 'AM sunscreen is missing.',
-      main_strengths: ['There is already treatment coverage.'],
-      main_issues: ['Missing Sunscreen', 'Consider a different PM cleanser', 'Monitor Vitamin C and Retinol'],
-    },
-    per_step_order_am: [],
-    per_step_order_pm: [],
-    overlap_or_gaps: [
-      { issue_type: 'gap', title: 'Missing Sunscreen', evidence: ['No AM SPF found.'], affected_products: [] },
-      { issue_type: 'overlap', title: 'CeraVe Hydrating Cleanser AM and PM', evidence: ['The same cleanser appears in AM and PM.'], affected_products: ['routine_am_01'] },
-    ],
-    top_3_adjustments: [
-      {
-        adjustment_id: 'add_sunscreen',
-        priority_rank: 1,
-        title: 'Add Sunscreen to AM Routine',
-        action_type: 'add_step',
-        affected_products: [],
-        why_this_first: 'AM protection is missing.',
-        expected_outcome: 'A more complete AM routine.',
-      },
-      {
-        adjustment_id: 'consider_pm_cleanser',
-        priority_rank: 2,
-        title: 'Consider a different PM cleanser',
-        action_type: 'replace',
-        affected_products: ['routine_am_01'],
-        why_this_first: 'A different PM cleanser may be more comfortable.',
-        expected_outcome: 'Potentially less friction at night.',
-      },
-      {
-        adjustment_id: 'monitor_actives',
-        priority_rank: 3,
-        title: 'Monitor Vitamin C and Retinol',
-        action_type: 'keep',
-        affected_products: ['routine_am_02', 'routine_pm_04'],
-        why_this_first: 'These are already directionally fine.',
-        expected_outcome: 'No major change needed.',
-      },
-    ],
-    improved_am_routine: [],
-    improved_pm_routine: [],
-    rationale_for_each_adjustment: [],
-    recommendation_needs: [
-      {
-        adjustment_id: 'add_sunscreen',
-        need_state: 'fill_gap',
-        target_step: 'sunscreen',
-        why: 'Need AM protection.',
-        required_attributes: ['daily UV protection'],
-        avoid_attributes: ['unclear SPF claims'],
-        timing: 'am',
-        texture_or_format: null,
-        priority: 'high',
-      },
-      {
-        adjustment_id: 'consider_pm_cleanser',
-        need_state: 'replace_current',
-        target_step: 'PM cleanser',
-        why: 'A different PM cleanser may be more comfortable.',
-        required_attributes: ['gentler cleanse'],
-        avoid_attributes: ['stripping finish'],
-        timing: 'pm',
-        texture_or_format: null,
-        priority: 'medium',
-      },
-    ],
-    recommendation_queries: [
-      { adjustment_id: 'add_sunscreen', query_en: 'daily sunscreen' },
-      { adjustment_id: 'consider_pm_cleanser', query_en: 'gentle pm cleanser' },
-    ],
-    confidence: 0.7,
-    missing_info: [],
-  }, audit, {});
-
-  assert.deepEqual(
-    synthesis.top_3_adjustments.map((item) => item.adjustment_id),
-    ['add_sunscreen'],
-  );
-  assert.deepEqual(
-    synthesis.recommendation_needs.map((item) => item.adjustment_id),
-    ['add_sunscreen'],
-  );
-});
-
-test('coerceSynthesisOutput filters ingredient-specific add-step noise', async () => {
-  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
-  const audit = {
-    schema_version: 'aurora.routine_product_audit.v1',
-    products: [
-      {
-        product_ref: 'routine_pm_07',
-        slot: 'pm',
-        input_label: 'Tretinoin cream',
-        inferred_product_type: 'retinoid serum',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'Tretinoin is already present at night.',
-      },
-      {
-        product_ref: 'routine_pm_08',
-        slot: 'pm',
-        input_label: 'Glycolic acid serum',
-        inferred_product_type: 'exfoliant treatment',
-        suggested_action: 'reduce_frequency',
-        concise_reasoning_en: 'This looks strong enough to reduce frequency.',
-      },
-    ],
-    additional_items_needing_verification: [],
-    missing_info: [],
-    confidence: 0.74,
-  };
-  const synthesis = coerceSynthesisOutput({
-    schema_version: 'aurora.routine_synthesis.v1',
-    current_routine_assessment: {
-      summary: 'The routine may be irritating.',
-      main_strengths: ['There is treatment coverage.'],
-      main_issues: ['Potential irritation from combining Tretinoin and Glycolic Acid'],
-    },
-    per_step_order_am: [],
-    per_step_order_pm: [],
-    overlap_or_gaps: [
-      {
-        issue_type: 'too_irritating',
-        title: 'Potential irritation from combining Tretinoin and Glycolic Acid',
-        evidence: ['These steps may stack too aggressively.'],
-        affected_products: ['routine_pm_07', 'routine_pm_08'],
-      },
-    ],
-    top_3_adjustments: [
-      {
-        adjustment_id: 'reduce_glycolic',
-        priority_rank: 1,
-        title: 'Reduce the frequency of Glycolic Acid serum',
-        action_type: 'reduce_frequency',
-        affected_products: ['routine_pm_08'],
-        why_this_first: 'This is the clearest irritation lever.',
-        expected_outcome: 'Lower irritation risk.',
-      },
-      {
-        adjustment_id: 'add_ceramide_np',
-        priority_rank: 2,
-        title: 'Add a Ceramide NP product',
-        action_type: 'add_step',
-        affected_products: [],
-        why_this_first: 'Extra ceramide support may help.',
-        expected_outcome: 'More barrier support.',
-      },
-    ],
-    improved_am_routine: [],
-    improved_pm_routine: [],
-    rationale_for_each_adjustment: [],
-    recommendation_needs: [
-      {
-        adjustment_id: 'add_ceramide_np',
-        need_state: 'fill_gap',
-        target_step: 'Ceramide NP product',
-        why: 'Extra ceramide support may help.',
-        required_attributes: ['ceramide support'],
-        avoid_attributes: ['heavy residue'],
-        timing: 'either',
-        texture_or_format: null,
-        priority: 'medium',
-      },
-    ],
-    recommendation_queries: [
-      { adjustment_id: 'add_ceramide_np', query_en: 'ceramide support product' },
-    ],
-    confidence: 0.72,
-    missing_info: [],
-  }, audit, {});
-
-  assert.deepEqual(
-    synthesis.top_3_adjustments.map((item) => item.adjustment_id),
-    ['reduce_glycolic'],
-  );
-  assert.equal(synthesis.recommendation_needs.length, 0);
-});
-
-test('buildUnresolvedRecommendationNotes deduplicates repeated adjustment ids', async () => {
-  const { buildUnresolvedRecommendationNotes } = require('../src/auroraBff/routineAnalysisV2');
-  const notes = buildUnresolvedRecommendationNotes({
-    recommendation_needs: [
-      { adjustment_id: 'adj_one' },
-      { adjustment_id: 'adj_one' },
-      { adjustment_id: 'adj_two' },
-    ],
-  }, []);
-
-  assert.deepEqual(notes, [
-    { adjustment_id: 'adj_one', note: 'Need identified, but no grounded product candidates are available yet.' },
-    { adjustment_id: 'adj_two', note: 'Need identified, but no grounded product candidates are available yet.' },
   ]);
 });
 
-test('coerceSynthesisOutput removes weak frequency adjustments without audit or conflict evidence', async () => {
-  const { coerceSynthesisOutput } = require('../src/auroraBff/routineAnalysisV2');
-  const audit = {
-    schema_version: 'aurora.routine_product_audit.v1',
-    products: [
-      {
-        product_ref: 'routine_am_02',
-        slot: 'am',
-        input_label: 'Vitamin C serum',
-        inferred_product_type: 'vitamin c serum',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'Normal AM antioxidant step.',
-      },
-      {
-        product_ref: 'routine_pm_06',
-        slot: 'pm',
-        input_label: 'Retinal serum',
-        inferred_product_type: 'retinoid serum',
-        suggested_action: 'keep',
-        concise_reasoning_en: 'Normal PM treatment step.',
-      },
-    ],
-    additional_items_needing_verification: [],
-    missing_info: [],
-    confidence: 0.76,
-  };
-  const synthesis = coerceSynthesisOutput({
-    schema_version: 'aurora.routine_synthesis.v1',
-    current_routine_assessment: {
-      summary: 'The routine is broadly fine.',
-      main_strengths: ['Has sunscreen and moisturizer.'],
-      main_issues: ['Monitor for irritation from Vitamin C and Retinal'],
-    },
-    per_step_order_am: [],
-    per_step_order_pm: [],
-    overlap_or_gaps: [
-      {
-        issue_type: 'overlap',
-        title: 'Duplication of cleanser and moisturizer in AM and PM',
-        evidence: ['Basics repeat in both slots.'],
-        affected_products: ['routine_am_01'],
-      },
-    ],
-    top_3_adjustments: [
-      {
-        adjustment_id: 'adj_monitor_vitc_retinal',
-        priority_rank: 1,
-        title: 'Reduce Retinal Serum Frequency',
-        action_type: 'reduce_frequency',
-        affected_products: ['Retinal serum'],
-        why_this_first: 'Retinal can cause irritation, especially when starting.',
-        expected_outcome: 'Potentially less irritation.',
-      },
-    ],
-    improved_am_routine: [],
-    improved_pm_routine: [],
-    rationale_for_each_adjustment: [],
-    recommendation_needs: [],
-    recommendation_queries: [],
-    confidence: 0.7,
-    missing_info: [],
-  }, audit, {});
+test('normalizeFallbackAuditOutput: moisturizer fallback stays useful when season context is missing', () => {
+  const { normalizeFallbackAuditOutput } = require('../src/auroraBff/routineAnalysisV2');
 
-  assert.equal(synthesis.top_3_adjustments.length, 0);
+  const audit = normalizeFallbackAuditOutput([
+    {
+      product_ref: 'prod_moisturizer_1',
+      slot: 'pm',
+      step: 'moisturizer',
+      product_text: 'Barrier cream',
+    },
+  ], null, {
+    goals: ['dehydration'],
+    skinType: 'dry',
+    sensitivity: 'medium',
+    barrierStatus: 'impaired',
+  });
+
+  const product = audit.products[0];
+  assert.ok(product, 'expected a fallback product audit');
+  assert.match(product.fit_for_skin_type.reason, /barrier-support step|barrier support/i);
+  assert.match(product.fit_for_goals[0].reason, /hydrating|dehydration/i);
+  assert.equal(product.fit_for_season_or_climate.verdict, 'unknown');
+  assert.doesNotMatch(product.fit_for_skin_type.reason, /hard to assess/i);
+  assert.deepEqual(audit.quality_gate_meta.product_reason_sources, [
+    {
+      product_ref: 'prod_moisturizer_1',
+      reason_source: 'fallback_substituted',
+    },
+  ]);
+});
+
+test('runRoutineAnalysisV2: debug meta records quality-gate replacements without changing recommendation behavior', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: {
+            schema_version: 'aurora.routine_product_audit.v1',
+            products: [
+              {
+                product_ref: 'routine_am_01',
+                slot: 'am',
+                original_step_label: 'cleanser',
+                input_label: 'Foaming cleanser',
+                resolved_name_or_null: null,
+                evidence_basis: ['step_label'],
+                inferred_product_type: 'cleanser',
+                likely_role: 'cleansing',
+                likely_key_ingredients_or_signals: ['cleanser signal'],
+                fit_for_skin_type: {
+                  verdict: 'unknown',
+                  reason: 'Without knowing the ingredients, it is hard to assess.',
+                },
+                fit_for_goals: [
+                  {
+                    goal: 'acne',
+                    verdict: 'unknown',
+                    reason: 'Without knowing the ingredients, it is hard to assess.',
+                  },
+                  {
+                    goal: 'pores',
+                    verdict: 'unknown',
+                    reason: 'Without knowing the ingredients, it is hard to assess.',
+                  },
+                ],
+                fit_for_season_or_climate: {
+                  verdict: 'unknown',
+                  reason: 'Need climate information to assess.',
+                },
+                potential_concerns: [],
+                suggested_action: 'keep',
+                confidence: 0.61,
+                missing_info: [],
+                concise_reasoning_en: 'This is a routine basic and hard to assess without ingredients.',
+              },
+            ],
+            additional_items_needing_verification: [],
+            missing_info: [],
+            confidence: 0.61,
+          },
+        };
+      }
+      return { parsed: null };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_quality_gate',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'impaired',
+      goals: ['acne', 'pores'],
+    },
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_a.quality_gate_applied_count, 1);
+  assert.deepEqual(result.debug_meta.stage_a.product_reason_sources, [
+      {
+        product_ref: 'routine_am_01',
+        reason_source: 'quality_gate_replaced',
+      },
+  ]);
+  assert.equal(result.cards[0].type, 'routine_product_audit_v1');
+  assert.ok(Array.isArray(result.recommendation_groups), 'recommendation groups should still be emitted consistently');
+});
+
+test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const { LlmQualityError } = require('../src/auroraBff/services/llm_gateway');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        throw new LlmQualityError('LLM output failed schema validation: RoutineProductAuditOutput', {
+          provider: 'gemini',
+          rawPresent: true,
+          rawLength: 742,
+          validationErrors: [
+            { path: '$.products[0].fit_for_skin_type.reason', reason: 'minLength' },
+            { path: '$.products[0].fit_for_goals[0].reason', reason: 'required' },
+          ],
+        });
+      }
+      return { parsed: null, raw: '{}', provider: 'stub' };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_validation',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'impaired',
+      goals: ['acne'],
+    },
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'fallback');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, 'schema_validation_failed');
+  assert.equal(result.debug_meta.stage_a.validation_error_count, 2);
+  assert.equal(result.debug_meta.stage_a.raw_present, true);
+  assert.equal(result.debug_meta.stage_a.raw_length, 742);
+  assert.equal(result.debug_meta.stage_a.provider, 'gemini');
+  assert.deepEqual(result.debug_meta.stage_a.validation_errors_preview, [
+    {
+      path: '$.products[0].fit_for_skin_type.reason',
+      reason: 'minLength',
+    },
+    {
+      path: '$.products[0].fit_for_goals[0].reason',
+      reason: 'required',
+    },
+  ]);
+});
+
+test('runRoutineAnalysisV2: stage A debug meta captures upstream error diagnostics', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        const err = new Error('Gemini API error: 503');
+        err.code = 'UPSTREAM_503';
+        err.statusCode = 503;
+        throw err;
+      }
+      return { parsed: null, raw: '{}', provider: 'stub' };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_upstream',
+    language: 'EN',
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'fallback');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, 'upstream_error');
+  assert.equal(result.debug_meta.stage_a.error_code, 'UPSTREAM_503');
+  assert.equal(result.debug_meta.stage_a.status_code, 503);
+  assert.equal(result.debug_meta.stage_a.validation_error_count, 0);
+  assert.equal(result.debug_meta.stage_a.raw_present, false);
+});
+
+test('LlmGateway.callWithSchemaDiagnostics retries invalid JSON once before succeeding', async () => {
+  const LlmGateway = require('../src/auroraBff/services/llm_gateway');
+  const gateway = new LlmGateway({ stubResponses: false });
+  let callCount = 0;
+  gateway._callStructuredProvider = async () => {
+    callCount += 1;
+    if (callCount === 1) return { text: '{"schema_version":' };
+    return {
+      text: JSON.stringify(buildStageAResult([
+        buildAuditProduct('routine_am_01'),
+      ])),
+    };
+  };
+
+  const result = await gateway.callWithSchemaDiagnostics({
+    templateId: 'routine_product_audit_v1',
+    taskMode: 'routine',
+    params: {
+      profile_context_json: { skin_type: 'oily' },
+      goal_context_json: { goals: ['acne'] },
+      season_climate_context_json: {},
+      deterministic_signals_json: { product_count: 1 },
+      routine_products_json: [
+        {
+          product_ref: 'routine_am_01',
+          slot: 'am',
+          original_step_label: 'cleanser',
+          input_label: 'Foaming cleanser',
+        },
+      ],
+    },
+    schema: 'RoutineProductAuditOutput',
+    maxOutputTokens: 2800,
+    retryStructuredFailure: true,
+  });
+
+  assert.equal(callCount, 2);
+  assert.equal(result.schemaValid, true);
+  assert.equal(result.attemptCount, 2);
+  assert.equal(result.retried, true);
+  assert.equal(result.parsed.products[0].product_ref, 'routine_am_01');
+});
+
+test('runRoutineAnalysisV2: one-product valid Stage A stays on the main path', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: buildStageAResult([buildAuditProduct('routine_am_01')]),
+          parsedCandidate: buildStageAResult([buildAuditProduct('routine_am_01')]),
+          raw: '{}',
+          provider: 'stub',
+          schemaValid: true,
+          validationErrors: [],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: buildStageBResult(),
+        parsedCandidate: buildStageBResult(),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_success',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'oily',
+      goals: ['acne'],
+    },
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'success');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, null);
+  assert.equal(result.debug_meta.stage_a.attempt_count, 1);
+  assert.equal(result.audit.products[0].product_ref, 'routine_am_01');
+});
+
+test('runRoutineAnalysisV2: Stage A salvages valid rows and only falls back malformed products', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const stageAProducts = [
+    buildAuditProduct('routine_am_01', { inputLabel: 'AM cleanser 1' }),
+    buildAuditProduct('routine_am_02', { inputLabel: 'AM cleanser 2' }),
+    buildAuditProduct('routine_am_03', { inputLabel: 'AM cleanser 3' }),
+    buildAuditProduct('routine_am_04', { inputLabel: 'AM cleanser 4' }),
+    buildAuditProduct('routine_pm_05', { slot: 'pm', inputLabel: 'PM serum 1', inferredProductType: 'serum', likelyRole: 'treatment' }),
+  ];
+  let stageACallCount = 0;
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        stageACallCount += 1;
+        if (stageACallCount === 1) {
+          return {
+            parsed: buildStageAResult(stageAProducts.slice(0, 4)),
+            parsedCandidate: buildStageAResult(stageAProducts.slice(0, 4)),
+            raw: '{}',
+            provider: 'stub',
+            schemaValid: true,
+            validationErrors: [],
+            attemptCount: 1,
+            retried: false,
+          };
+        }
+        return {
+          parsed: null,
+          parsedCandidate: buildStageAResult([
+            stageAProducts[4],
+            {
+              slot: 'pm',
+              input_label: 'PM serum 2',
+              inferred_product_type: 'serum',
+            },
+          ], { unexpected_top_level: true }),
+          raw: '{"schema_version":"aurora.routine_product_audit.v1"}',
+          provider: 'stub',
+          schemaValid: false,
+          validationErrors: [
+            { path: '$.products[1].product_ref', reason: 'missing_required_key' },
+          ],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        parsedCandidate: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_partial',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'oily',
+      goals: ['acne', 'pores'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'routine_am_01', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 1' },
+      { product_ref: 'routine_am_02', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 2' },
+      { product_ref: 'routine_am_03', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 3' },
+      { product_ref: 'routine_am_04', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 4' },
+      { product_ref: 'routine_pm_05', slot: 'pm', step: 'treatment', product_text: 'PM serum 1' },
+      { product_ref: 'routine_pm_06', slot: 'pm', step: 'treatment', product_text: 'PM serum 2' },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(stageACallCount, 2, 'Stage A should chunk the routine into two calls');
+  assert.equal(result.debug_meta.stage_a.llm_status, 'partial');
+  assert.equal(result.debug_meta.stage_a.chunk_count, 2);
+  assert.equal(result.debug_meta.stage_a.successful_chunk_count, 1);
+  assert.equal(result.debug_meta.stage_a.partial_chunk_count, 1);
+  assert.equal(result.debug_meta.stage_a.fallback_chunk_count, 0);
+  assert.equal(result.audit.products.length, 6);
+  assert.deepEqual(result.debug_meta.stage_a.product_reason_sources.slice(-2), [
+    { product_ref: 'routine_pm_05', reason_source: 'raw_llm_verbatim' },
+    { product_ref: 'routine_pm_06', reason_source: 'fallback_substituted' },
+  ]);
+});
+
+test('runRoutineAnalysisV2: Stage A keeps partial raw rows when schema only fails on extra properties', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const parsedCandidate = buildStageAResult([buildAuditProduct('routine_am_01')], {
+    extra_debug: { note: 'should not force full fallback' },
+  });
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: null,
+          parsedCandidate,
+          raw: JSON.stringify(parsedCandidate),
+          provider: 'stub',
+          schemaValid: false,
+          validationErrors: [
+            { path: '$.extra_debug', reason: 'unexpected_property' },
+          ],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        parsedCandidate: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_extra_prop',
+    language: 'EN',
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'partial');
+  assert.deepEqual(result.debug_meta.stage_a.product_reason_sources, [
+    {
+      product_ref: 'routine_am_01',
+      reason_source: 'raw_llm_verbatim',
+    },
+  ]);
+});
+
+test('runRoutineAnalysisV2: Stage B salvages valid sections when one section fails schema', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: buildStageAResult([buildAuditProduct('routine_am_01')]),
+          parsedCandidate: buildStageAResult([buildAuditProduct('routine_am_01')]),
+          raw: '{}',
+          provider: 'stub',
+          schemaValid: true,
+          validationErrors: [],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      const parsedCandidate = buildStageBResult({
+        improved_am_routine: [
+          {
+            step_order: 1,
+            frequency: 'daily',
+          },
+        ],
+      });
+      return {
+        parsed: null,
+        parsedCandidate,
+        raw: JSON.stringify(parsedCandidate),
+        provider: 'stub',
+        schemaValid: false,
+        validationErrors: [
+          { path: '$.improved_am_routine[0].what_to_use', reason: 'missing_required_key' },
+        ],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_b_partial',
+    language: 'EN',
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_b.llm_status, 'partial');
+  assert.match(result.synthesis.current_routine_assessment.summary, /Add a clear AM sunscreen step|clearest first fix/i);
+  assert.equal(result.synthesis.top_3_adjustments[0].title, 'Add a clear AM sunscreen step');
+  assert.ok(result.synthesis.improved_am_routine.length >= 1, 'fallback synthesis should backfill the malformed section');
+});
+
+test('runRoutineAnalysisV2: invalid JSON after one retry still falls back cleanly', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: null,
+          parsedCandidate: null,
+          raw: '{"schema_version":',
+          provider: 'stub',
+          schemaValid: false,
+          validationErrors: [{ path: '$', reason: 'invalid_json' }],
+          attemptCount: 2,
+          retried: true,
+        };
+      }
+      return {
+        parsed: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        parsedCandidate: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_invalid_json',
+    language: 'EN',
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'fallback');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, 'invalid_json');
+  assert.equal(result.debug_meta.stage_a.attempt_count, 2);
+  assert.equal(result.debug_meta.stage_a.retry_count, 1);
+  assert.equal(result.debug_meta.stage_a.product_reason_sources[0].reason_source, 'fallback_substituted');
 });
 
 test('normalizeFallbackAuditOutput: quality gate replaces low-value cleanser reasoning with category-level fallback', () => {

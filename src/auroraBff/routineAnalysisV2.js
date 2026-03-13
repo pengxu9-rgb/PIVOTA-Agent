@@ -1293,6 +1293,166 @@ function computeStageOutputBudget(stage, auditedCount) {
   return Math.min(3400, 2200 + ((count - 5) * 120));
 }
 
+function chunkArray(values, size) {
+  const list = asArray(values);
+  const chunkSize = Math.max(1, Math.trunc(Number(size) || 1));
+  if (!list.length) return [];
+  const chunks = [];
+  for (let index = 0; index < list.length; index += chunkSize) {
+    chunks.push(list.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function dedupeVerificationItems(items) {
+  const out = [];
+  const seen = new Set();
+  for (const row of asArray(items)) {
+    if (!isPlainObject(row)) continue;
+    const inputLabel = asString(row.input_label);
+    const reason = asString(row.reason);
+    if (!inputLabel || !reason) continue;
+    const key = `${inputLabel.toLowerCase()}::${reason.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ input_label: inputLabel, reason });
+  }
+  return out;
+}
+
+function mergeAuditOutputs(audits) {
+  const products = [];
+  const additionalItems = [];
+  const missingInfo = [];
+  const productReasonSources = [];
+  let qualityGateAppliedCount = 0;
+
+  for (const audit of asArray(audits)) {
+    products.push(...asArray(audit && audit.products));
+    additionalItems.push(...asArray(audit && audit.additional_items_needing_verification));
+    missingInfo.push(...uniqStrings(audit && audit.missing_info, 12));
+    const qualityMeta = isPlainObject(audit && audit.quality_gate_meta) ? audit.quality_gate_meta : null;
+    qualityGateAppliedCount += Number.isFinite(Number(qualityMeta && qualityMeta.quality_gate_applied_count))
+      ? Number(qualityMeta.quality_gate_applied_count)
+      : 0;
+    productReasonSources.push(...asArray(qualityMeta && qualityMeta.product_reason_sources)
+      .map((row) => isPlainObject(row) ? {
+        product_ref: asString(row.product_ref),
+        reason_source: asString(row.reason_source),
+      } : null)
+      .filter((row) => row && row.product_ref && row.reason_source));
+  }
+
+  return {
+    schema_version: 'aurora.routine_product_audit.v1',
+    products,
+    additional_items_needing_verification: dedupeVerificationItems(additionalItems),
+    missing_info: uniqStrings(missingInfo, 8),
+    confidence: averageConfidence(products),
+    quality_gate_meta: {
+      quality_gate_applied_count: qualityGateAppliedCount,
+      product_reason_sources: productReasonSources,
+    },
+  };
+}
+
+function primaryStructuredFailureReason(validationErrors, fallback = 'schema_validation_failed') {
+  const first = Array.isArray(validationErrors) && validationErrors[0] ? validationErrors[0] : null;
+  return asString(first && first.reason) === 'invalid_json' ? 'invalid_json' : fallback;
+}
+
+async function callRoutineStructuredWithDiagnostics(gateway, request) {
+  if (gateway && typeof gateway.callWithSchemaDiagnostics === 'function') {
+    return gateway.callWithSchemaDiagnostics({
+      ...request,
+      retryStructuredFailure: true,
+    });
+  }
+  const result = await gateway.call(request);
+  const parsed = result && result.parsed ? result.parsed : null;
+  return {
+    parsed,
+    parsedCandidate: parsed,
+    raw: result && typeof result.raw === 'string' ? result.raw : '',
+    promptHash: asString(result && result.promptHash) || null,
+    provider: asString(result && result.provider) || null,
+    schemaValid: Boolean(parsed),
+    validationErrors: [],
+    attemptCount: 1,
+    retried: false,
+  };
+}
+
+function buildStructuredStageMeta(result, fallbackReason = 'schema_validation_failed') {
+  const validationErrors = Array.isArray(result && result.validationErrors) ? result.validationErrors : [];
+  const parsedCandidate = result && result.parsedCandidate;
+  const parsedCandidateUsable = isPlainObject(parsedCandidate);
+  const schemaValid = Boolean(result && result.schemaValid);
+  return {
+    llm_status: schemaValid ? 'success' : parsedCandidateUsable ? 'partial' : 'fallback',
+    fallback_reason: schemaValid ? null : primaryStructuredFailureReason(validationErrors, fallbackReason),
+    error_name: null,
+    error_code: null,
+    status_code: null,
+    validation_error_count: validationErrors.length,
+    validation_errors_preview: validationErrors.slice(0, 3).map((row) => ({
+      path: asString(row && row.path) || '$',
+      reason: asString(row && row.reason) || fallbackReason,
+    })),
+    raw_present: Boolean(result && typeof result.raw === 'string' && pickFirstTrimmed(result.raw)),
+    raw_length: result && typeof result.raw === 'string' ? result.raw.length : 0,
+    provider: asString(result && result.provider) || null,
+    attempt_count: Number.isFinite(Number(result && result.attemptCount)) ? Number(result.attemptCount) : 1,
+    retry_count: result && result.retried ? Math.max(0, Number(result.attemptCount) - 1) : 0,
+  };
+}
+
+function prefixChunkValidationRows(rows, chunkIndex, chunkCount) {
+  return asArray(rows).map((row) => ({
+    path: chunkCount > 1 ? `chunk[${chunkIndex}] ${asString(row && row.path) || '$'}` : asString(row && row.path) || '$',
+    reason: asString(row && row.reason) || 'unknown',
+  }));
+}
+
+function aggregateStageChunkMeta(chunkMetas, chunkBudgets) {
+  const metas = asArray(chunkMetas);
+  const statuses = metas.map((meta) => asString(meta && meta.llm_status));
+  let llmStatus = 'fallback';
+  if (metas.length && statuses.every((status) => status === 'success')) {
+    llmStatus = 'success';
+  } else if (statuses.some((status) => status === 'success' || status === 'partial')) {
+    llmStatus = 'partial';
+  }
+
+  const validationRows = [];
+  metas.forEach((meta, index) => {
+    validationRows.push(...prefixChunkValidationRows(meta && meta.validation_errors_preview, index + 1, metas.length));
+  });
+
+  return {
+    llm_status: llmStatus,
+    fallback_reason: llmStatus === 'success'
+      ? null
+      : metas.map((meta) => asString(meta && meta.fallback_reason)).find(Boolean) || 'unknown',
+    error_name: metas.map((meta) => asString(meta && meta.error_name)).find(Boolean) || null,
+    error_code: metas.map((meta) => asString(meta && meta.error_code)).find(Boolean) || null,
+    status_code: metas.map((meta) => Number.isFinite(Number(meta && meta.status_code)) ? Number(meta.status_code) : null).find((value) => value != null) || null,
+    validation_error_count: metas.reduce((sum, meta) => sum + (Number.isFinite(Number(meta && meta.validation_error_count)) ? Number(meta.validation_error_count) : 0), 0),
+    validation_errors_preview: validationRows.slice(0, 3),
+    raw_present: metas.some((meta) => meta && meta.raw_present === true),
+    raw_length: metas.reduce((sum, meta) => sum + (Number.isFinite(Number(meta && meta.raw_length)) ? Number(meta.raw_length) : 0), 0),
+    provider: uniqStrings(metas.map((meta) => asString(meta && meta.provider)).filter(Boolean), 3).join(', ') || null,
+    attempt_count: metas.reduce((sum, meta) => sum + (Number.isFinite(Number(meta && meta.attempt_count)) ? Number(meta.attempt_count) : 1), 0),
+    retry_count: metas.reduce((sum, meta) => sum + (Number.isFinite(Number(meta && meta.retry_count)) ? Number(meta.retry_count) : 0), 0),
+    chunk_count: metas.length,
+    successful_chunk_count: statuses.filter((status) => status === 'success').length,
+    partial_chunk_count: statuses.filter((status) => status === 'partial').length,
+    fallback_chunk_count: statuses.filter((status) => status === 'fallback').length,
+    output_budget: asArray(chunkBudgets).reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0),
+    chunk_budgets: asArray(chunkBudgets).map((value) => Number(value)).filter((value) => Number.isFinite(value)),
+  };
+}
+
 async function resolveRecommendationGroups({
   recommendationNeeds,
   recommendationQueries,
@@ -1580,6 +1740,32 @@ function buildCards({ audit, synthesis, recommendationGroups, additionalCandidat
   return cards;
 }
 
+function buildStageFailureMeta(error, fallbackReason) {
+  const ctx = isPlainObject(error && error.context) ? error.context : {};
+  const validationErrors = Array.isArray(ctx.validationErrors) ? ctx.validationErrors : [];
+  return {
+    llm_status: 'fallback',
+    fallback_reason: asString(fallbackReason) || 'unknown',
+    error_name: asString(error && error.name) || null,
+    error_code: asString(error && error.code) || asString(ctx.errorCode) || null,
+    status_code: Number.isFinite(Number(error && error.statusCode))
+      ? Number(error.statusCode)
+      : Number.isFinite(Number(ctx.statusCode))
+        ? Number(ctx.statusCode)
+        : null,
+    validation_error_count: validationErrors.length,
+    validation_errors_preview: validationErrors.slice(0, 3).map((row) => ({
+      path: asString(row && row.path) || '$',
+      reason: asString(row && row.reason) || 'unknown',
+    })),
+    raw_present: ctx.rawPresent === true,
+    raw_length: Number.isFinite(Number(ctx.rawLength)) ? Number(ctx.rawLength) : 0,
+    provider: asString(ctx.provider) || null,
+    attempt_count: Number.isFinite(Number(ctx.attemptCount)) ? Number(ctx.attemptCount) : 1,
+    retry_count: Number.isFinite(Number(ctx.retryCount)) ? Number(ctx.retryCount) : 0,
+  };
+}
+
 async function runRoutineAnalysisV2({
   requestId,
   language = 'EN',
@@ -1618,27 +1804,12 @@ async function runRoutineAnalysisV2({
     ingredient_plan_present: Boolean(ingredientPlan),
   };
 
-  const stageABudget = computeStageOutputBudget('stage_a', prioritized.audited.length);
-  let stageARaw = null;
-  try {
-    const result = await gateway.call({
-      templateId: 'routine_product_audit_v1',
-      taskMode: 'routine',
-      params: {
-        profile_context_json: profileContext,
-        goal_context_json: goalContext,
-        season_climate_context_json: seasonClimateContext,
-        deterministic_signals_json: deterministicSignals,
-        routine_products_json: stageAInputProducts,
-      },
-      schema: 'RoutineProductAuditOutput',
-      maxOutputTokens: stageABudget,
-    });
-    stageARaw = result && result.parsed ? result.parsed : null;
-  } catch (error) {
-    logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage A failed, using fallback audit');
-  }
-  const audit = normalizeFallbackAuditOutput(prioritized.audited, stageARaw, {
+  const stageAChunkSize = prioritized.audited.length > 4 ? 4 : Math.max(1, stageAInputProducts.length || 1);
+  const stageAChunks = chunkArray(stageAInputProducts, stageAChunkSize);
+  const stageAChunkMetas = [];
+  const stageAChunkBudgets = [];
+  const stageAAuditOutputs = [];
+  const auditContext = {
     goals: goalContext.goals,
     concerns: goalContext.goals,
     skinType: profileContext.skin_type,
@@ -1646,12 +1817,82 @@ async function runRoutineAnalysisV2({
     barrierStatus: profileContext.barrier_status,
     season: seasonClimateContext.season,
     climate: seasonClimateContext.climate,
-  });
+  };
+
+  for (let chunkIndex = 0; chunkIndex < stageAChunks.length; chunkIndex += 1) {
+    const chunkProducts = stageAChunks[chunkIndex];
+    const chunkStart = chunkIndex * stageAChunkSize;
+    const chunkCandidates = prioritized.audited.slice(chunkStart, chunkStart + chunkProducts.length);
+    const chunkBudget = computeStageOutputBudget('stage_a', chunkProducts.length);
+    stageAChunkBudgets.push(chunkBudget);
+    const chunkSignals = {
+      ...deterministicSignals,
+      product_count: chunkProducts.length,
+      selected_product_refs: chunkProducts.map((item) => item.product_ref),
+      stage_a_chunk_index: chunkIndex + 1,
+      stage_a_chunk_count: stageAChunks.length,
+    };
+
+    try {
+      const result = await callRoutineStructuredWithDiagnostics(gateway, {
+        templateId: 'routine_product_audit_v1',
+        taskMode: 'routine',
+        params: {
+          profile_context_json: profileContext,
+          goal_context_json: goalContext,
+          season_climate_context_json: seasonClimateContext,
+          deterministic_signals_json: chunkSignals,
+          routine_products_json: chunkProducts,
+        },
+        schema: 'RoutineProductAuditOutput',
+        maxOutputTokens: chunkBudget,
+      });
+      const chunkMeta = buildStructuredStageMeta(
+        result,
+        primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
+      );
+      stageAChunkMetas.push(chunkMeta);
+      stageAAuditOutputs.push(normalizeFallbackAuditOutput(
+        chunkCandidates,
+        result && (result.schemaValid ? result.parsed : result.parsedCandidate),
+        auditContext,
+      ));
+    } catch (error) {
+      stageAChunkMetas.push(buildStageFailureMeta(
+        error,
+        error && error.name === 'LlmQualityError'
+          ? 'schema_validation_failed'
+          : error && error.code === 'MISSING_API_KEY'
+            ? 'missing_api_key'
+            : error && error.code === 'EMPTY_OUTPUT'
+              ? 'empty_output'
+              : 'upstream_error',
+      ));
+      stageAAuditOutputs.push(normalizeFallbackAuditOutput(chunkCandidates, null, auditContext));
+      logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error), chunk_index: chunkIndex + 1 }, 'routine analysis v2: stage A chunk failed, using fallback audit');
+    }
+  }
+  const audit = mergeAuditOutputs(stageAAuditOutputs);
+  const stageAMeta = aggregateStageChunkMeta(stageAChunkMetas, stageAChunkBudgets);
 
   const stageBBudget = computeStageOutputBudget('stage_b', audit.products.length);
   let stageBRaw = null;
+  let stageBMeta = {
+    llm_status: 'fallback',
+    fallback_reason: 'unknown',
+    error_name: null,
+    error_code: null,
+    status_code: null,
+    validation_error_count: 0,
+    validation_errors_preview: [],
+    raw_present: false,
+    raw_length: 0,
+    provider: null,
+    attempt_count: 1,
+    retry_count: 0,
+  };
   try {
-    const result = await gateway.call({
+    const result = await callRoutineStructuredWithDiagnostics(gateway, {
       templateId: 'routine_synthesis_v1',
       taskMode: 'routine',
       params: {
@@ -1680,8 +1921,22 @@ async function runRoutineAnalysisV2({
       schema: 'RoutineSynthesisOutput',
       maxOutputTokens: stageBBudget,
     });
-    stageBRaw = result && result.parsed ? result.parsed : null;
+    stageBRaw = result && (result.schemaValid ? result.parsed : result.parsedCandidate);
+    stageBMeta = buildStructuredStageMeta(
+      result,
+      primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
+    );
   } catch (error) {
+    stageBMeta = buildStageFailureMeta(
+      error,
+      error && error.name === 'LlmQualityError'
+        ? 'schema_validation_failed'
+        : error && error.code === 'MISSING_API_KEY'
+          ? 'missing_api_key'
+          : error && error.code === 'EMPTY_OUTPUT'
+            ? 'empty_output'
+            : 'upstream_error',
+    );
     logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage B failed, using deterministic synthesis');
   }
   const synthesis = coerceSynthesisOutput(stageBRaw, audit, {
@@ -1728,8 +1983,25 @@ async function runRoutineAnalysisV2({
       stage_a: {
         audited_product_count: audit.products.length,
         deferred_product_count: prioritized.additional.length,
-        output_budget: stageABudget,
+        output_budget: stageAMeta.output_budget,
+        chunk_count: Number.isFinite(Number(stageAMeta.chunk_count)) ? Number(stageAMeta.chunk_count) : 1,
+        successful_chunk_count: Number.isFinite(Number(stageAMeta.successful_chunk_count)) ? Number(stageAMeta.successful_chunk_count) : 0,
+        partial_chunk_count: Number.isFinite(Number(stageAMeta.partial_chunk_count)) ? Number(stageAMeta.partial_chunk_count) : 0,
+        fallback_chunk_count: Number.isFinite(Number(stageAMeta.fallback_chunk_count)) ? Number(stageAMeta.fallback_chunk_count) : 0,
+        chunk_budgets: asArray(stageAMeta.chunk_budgets),
         confidence: audit.confidence,
+        llm_status: stageAMeta.llm_status,
+        fallback_reason: stageAMeta.fallback_reason,
+        error_name: stageAMeta.error_name,
+        error_code: stageAMeta.error_code,
+        status_code: stageAMeta.status_code,
+        validation_error_count: stageAMeta.validation_error_count,
+        validation_errors_preview: stageAMeta.validation_errors_preview,
+        raw_present: stageAMeta.raw_present,
+        raw_length: stageAMeta.raw_length,
+        provider: stageAMeta.provider,
+        attempt_count: stageAMeta.attempt_count,
+        retry_count: stageAMeta.retry_count,
         quality_gate_applied_count:
           isPlainObject(audit.quality_gate_meta) && Number.isFinite(Number(audit.quality_gate_meta.quality_gate_applied_count))
             ? Number(audit.quality_gate_meta.quality_gate_applied_count)
@@ -1744,6 +2016,18 @@ async function runRoutineAnalysisV2({
         recommendation_need_count: asArray(synthesis.recommendation_needs).length,
         output_budget: stageBBudget,
         confidence: synthesis.confidence,
+        llm_status: stageBMeta.llm_status,
+        fallback_reason: stageBMeta.fallback_reason,
+        error_name: stageBMeta.error_name,
+        error_code: stageBMeta.error_code,
+        status_code: stageBMeta.status_code,
+        validation_error_count: stageBMeta.validation_error_count,
+        validation_errors_preview: stageBMeta.validation_errors_preview,
+        raw_present: stageBMeta.raw_present,
+        raw_length: stageBMeta.raw_length,
+        provider: stageBMeta.provider,
+        attempt_count: stageBMeta.attempt_count,
+        retry_count: stageBMeta.retry_count,
       },
       recommendation_groups: recommendationGroups.map((group) => ({
         adjustment_id: asString(group.adjustment_id),

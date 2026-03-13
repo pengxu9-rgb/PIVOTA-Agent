@@ -120,6 +120,20 @@ function pushValidationError(errors, path, reason, extra = {}) {
   return false;
 }
 
+function buildStructuredRetryAppendix(schemaId) {
+  const target = compactText(schemaId) || 'the requested schema';
+  return [
+    '',
+    '[SYSTEM_RETRY]',
+    `Retry: the previous response could not be accepted for ${target}.`,
+    'Return exactly one valid JSON object only.',
+    'Do not use markdown fences or commentary.',
+    'Keep every required key present, even when a value must be null, [] or {}.',
+    'Do not add extra keys.',
+    '[/SYSTEM_RETRY]',
+  ].join('\n');
+}
+
 function _validateNode(value, schema, path = '$', errors = null) {
   if (!schema || typeof schema !== 'object') return true;
 
@@ -793,7 +807,7 @@ function buildRoutineSynthesisPrompt() {
     '1. You MUST use Product Audit output as the evidence base. Do not ignore it.',
     '2. Do not start with generic principles, abstract target states, or vague skincare philosophy.',
     '3. Do not output empty adjustments with generic wording. Every adjustment must name affected_products and an explicit reason.',
-    '4. Do not assume missing PM or AM steps that were not provided. If a category appears in all_routine_products or deferred_products, do not label it as missing just because it was not fully audited.',
+    '4. Do not assume missing PM or AM steps that were not provided. If a category is absent, treat it as a gap; do not pretend it exists.',
     '5. Do not generate standalone recommendation content that is not tied to a top_3_adjustments.adjustment_id.',
     '6. Do not recommend unrelated products, unrelated ingredients, or broad shopping buckets.',
     '7. Do not output routine fit scores, ingredient match scores, conflict scores, or sensitivity scores. This contract does not require them.',
@@ -824,8 +838,6 @@ function buildRoutineSynthesisPrompt() {
     'season_climate_context={{season_climate_context_json}}',
     'deterministic_signals={{deterministic_signals_json}}',
     'routine_products={{routine_products_json}}',
-    'all_routine_products={{all_routine_products_json}}',
-    'deferred_products={{deferred_products_json}}',
     'product_audit={{product_audit_json}}',
     'ingredient_plan={{ingredient_plan_json}}',
     '[/INPUT_CONTEXT]',
@@ -1533,72 +1545,89 @@ class LlmGateway {
   }
 
   async call({ templateId, taskMode, params, schema, maxOutputTokens = null }) {
-    const template = this._promptRegistry.get(templateId);
-    if (!template) {
-      throw new Error(`LlmGateway: unknown template "${templateId}"`);
-    }
-
-    const prompt = this._interpolate(template.text, params);
-    const promptHash = this._hash(prompt);
-    const callId = uuidv4();
-    const startMs = Date.now();
-
-    const provider = this._useStubResponses ? 'stub' : this._provider;
-    const effectiveMaxOutputTokens =
-      Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
-        ? Math.max(64, Math.min(8192, Math.trunc(Number(maxOutputTokens))))
-        : Number.isFinite(Number(template.maxOutputTokens)) && Number(template.maxOutputTokens) > 0
-          ? Math.max(64, Math.min(8192, Math.trunc(Number(template.maxOutputTokens))))
-          : 2048;
-    let text;
-
-    if (this._useStubResponses) {
-      text = JSON.stringify(this._buildStubStructuredResponse({ templateId, taskMode, params }));
-    } else {
-      ({ text } = await this._callStructuredProvider(prompt, {
-        templateId,
-        schemaId: schema,
-        params,
-        maxOutputTokens: effectiveMaxOutputTokens,
-      }));
-    }
-
-    let parsed = null;
-    if (schema) {
-      const validation = this._validateAndParse(text, schema);
-      parsed = validation ? validation.parsed : null;
-      if (!parsed) {
-        throw new LlmQualityError(
-          `LLM output failed schema validation: ${schema}`,
-          {
-            templateId,
-            schema,
-            provider,
-            validationErrors: validation && Array.isArray(validation.errors) ? validation.errors : [],
-          }
-        );
-      }
-    } else {
-      parsed = this._tryParseJson(text);
-    }
-
-    this._callLog.push({
-      call_id: callId,
-      template_id: templateId,
-      prompt_hash: promptHash,
-      task_mode: taskMode || template.taskMode || null,
-      provider,
-      elapsed_ms: Date.now() - startMs,
-      schema_valid: parsed !== null,
-      max_output_tokens: effectiveMaxOutputTokens,
+    const result = await this._callStructuredTemplate({
+      templateId,
+      taskMode,
+      params,
+      schema,
+      maxOutputTokens,
     });
 
+    if (schema && !result.schemaValid) {
+      throw new LlmQualityError(
+        `LLM output failed schema validation: ${schema}`,
+        {
+          templateId,
+          schema,
+          provider: result.provider,
+          rawPresent: Boolean(compactText(result.raw)),
+          rawLength: rawText(result.raw).length,
+          validationErrors: Array.isArray(result.validationErrors) ? result.validationErrors : [],
+        }
+      );
+    }
+
     return {
-      parsed: parsed || {},
-      raw: text,
-      promptHash,
-      provider,
+      parsed: result.parsed || {},
+      raw: result.raw,
+      promptHash: result.promptHash,
+      provider: result.provider,
     };
+  }
+
+  async callWithSchemaDiagnostics({
+    templateId,
+    taskMode,
+    params,
+    schema,
+    maxOutputTokens = null,
+    retryStructuredFailure = false,
+  }) {
+    const maxAttempts = retryStructuredFailure ? 2 : 1;
+    let lastResult = null;
+    let lastError = null;
+
+    for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+      const promptSuffix = attemptIndex > 0 ? buildStructuredRetryAppendix(schema) : '';
+      try {
+        const result = await this._callStructuredTemplate({
+          templateId,
+          taskMode,
+          params,
+          schema,
+          maxOutputTokens,
+          promptSuffix,
+        });
+        const primaryReason = !result.parsedCandidate
+          ? 'invalid_json'
+          : result.schemaValid
+            ? null
+            : 'schema_validation_failed';
+        result.attemptCount = attemptIndex + 1;
+        result.retried = attemptIndex > 0;
+        result.retryReason = attemptIndex > 0 ? primaryReason : null;
+        lastResult = result;
+        if (result.schemaValid) return result;
+        if (!this._shouldRetryStructuredFailure(primaryReason, attemptIndex, maxAttempts)) {
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+        const code = compactText(error && error.code);
+        const nextContext = error && error.context && typeof error.context === 'object' ? { ...error.context } : {};
+        nextContext.attemptCount = attemptIndex + 1;
+        nextContext.retryCount = attemptIndex;
+        if (error && typeof error === 'object') {
+          error.context = nextContext;
+        }
+        if (!this._shouldRetryStructuredProviderError(code, attemptIndex, maxAttempts)) {
+          throw error;
+        }
+      }
+    }
+
+    if (lastResult) return lastResult;
+    throw lastError;
   }
 
   async chat({ userMessage, systemPrompt, context, locale, onChunk, priorMessages }) {
@@ -1919,6 +1948,97 @@ class LlmGateway {
 
   _hash(text) {
     return crypto.createHash('sha256').update(String(text || '')).digest('hex').slice(0, 16);
+  }
+
+  _resolveStructuredTemplateCall({ templateId, taskMode, params, maxOutputTokens = null, promptSuffix = '' }) {
+    const template = this._promptRegistry.get(templateId);
+    if (!template) {
+      throw new Error(`LlmGateway: unknown template "${templateId}"`);
+    }
+
+    const prompt = `${this._interpolate(template.text, params)}${promptSuffix || ''}`;
+    return {
+      template,
+      prompt,
+      promptHash: this._hash(prompt),
+      provider: this._useStubResponses ? 'stub' : this._provider,
+      effectiveMaxOutputTokens:
+        Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+          ? Math.max(64, Math.min(8192, Math.trunc(Number(maxOutputTokens))))
+          : Number.isFinite(Number(template.maxOutputTokens)) && Number(template.maxOutputTokens) > 0
+            ? Math.max(64, Math.min(8192, Math.trunc(Number(template.maxOutputTokens))))
+            : 2048,
+      taskMode: taskMode || template.taskMode || null,
+      callId: uuidv4(),
+      startMs: Date.now(),
+    };
+  }
+
+  async _callStructuredTemplate({
+    templateId,
+    taskMode,
+    params,
+    schema,
+    maxOutputTokens = null,
+    promptSuffix = '',
+  }) {
+    const prepared = this._resolveStructuredTemplateCall({
+      templateId,
+      taskMode,
+      params,
+      maxOutputTokens,
+      promptSuffix,
+    });
+
+    let text;
+    if (this._useStubResponses) {
+      text = JSON.stringify(this._buildStubStructuredResponse({ templateId, taskMode, params }));
+    } else {
+      ({ text } = await this._callStructuredProvider(prepared.prompt, {
+        templateId,
+        schemaId: schema,
+        params,
+        maxOutputTokens: prepared.effectiveMaxOutputTokens,
+      }));
+    }
+
+    const parsedCandidate = this._tryParseJson(text);
+    const validation = schema
+      ? this._validateAndParse(text, schema)
+      : { parsed: parsedCandidate, errors: [] };
+    const parsed = validation ? validation.parsed : parsedCandidate;
+    const schemaValid = schema ? Boolean(parsed) : parsedCandidate !== null;
+
+    this._callLog.push({
+      call_id: prepared.callId,
+      template_id: templateId,
+      prompt_hash: prepared.promptHash,
+      task_mode: prepared.taskMode,
+      provider: prepared.provider,
+      elapsed_ms: Date.now() - prepared.startMs,
+      schema_valid: schemaValid,
+      max_output_tokens: prepared.effectiveMaxOutputTokens,
+    });
+
+    return {
+      parsed: parsed || null,
+      parsedCandidate,
+      raw: text,
+      promptHash: prepared.promptHash,
+      provider: prepared.provider,
+      schemaValid,
+      validationErrors: validation && Array.isArray(validation.errors) ? validation.errors : [],
+    };
+  }
+
+  _shouldRetryStructuredFailure(reason, attemptIndex, maxAttempts) {
+    if (attemptIndex >= maxAttempts - 1) return false;
+    return ['invalid_json', 'schema_validation_failed', 'empty_output'].includes(compactText(reason));
+  }
+
+  _shouldRetryStructuredProviderError(code, attemptIndex, maxAttempts) {
+    if (attemptIndex >= maxAttempts - 1) return false;
+    return compactText(code) === 'EMPTY_OUTPUT';
   }
 
   _validateAndParse(text, schemaId) {
@@ -2827,25 +2947,7 @@ class LlmGateway {
               properties: {
                 question_en: { type: 'string' },
                 question_zh: { type: 'string', nullable: true },
-                options: {
-                  type: 'array',
-                  items: {
-                    anyOf: [
-                      { type: 'string' },
-                      {
-                        type: 'object',
-                        additionalProperties: true,
-                        properties: {
-                          id: { type: 'string' },
-                          label: { type: 'string' },
-                          label_en: { type: 'string' },
-                          label_zh: { type: 'string', nullable: true },
-                          value: { type: 'string' },
-                        },
-                      },
-                    ],
-                  },
-                },
+                options: { type: 'array', items: { type: 'string' } },
               },
             },
           },
