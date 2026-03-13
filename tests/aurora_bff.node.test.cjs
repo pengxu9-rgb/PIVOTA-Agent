@@ -190,6 +190,45 @@ test('normalizeClarificationField: never returns empty; falls back to stable has
   assert.ok(Number(snap.clarificationIdNormalizedEmptyCount) >= 3);
 });
 
+test('product anchor trust recovers skincare signals from nested sku candidates', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const nestedSkuCandidate = {
+      product_id: 'pid_cerave_cleanser',
+      merchant_id: 'm1',
+      category: 'product',
+      sku: {
+        product_id: 'pid_cerave_cleanser',
+        merchant_id: 'm1',
+        brand: 'CeraVe',
+        name: 'Hydrating Cleanser',
+        display_name: 'CeraVe Hydrating Cleanser',
+        category: 'Cleanser',
+      },
+    };
+
+    const trust = __internal.evaluateAnchorTrustForProductIntel({
+      candidate: nestedSkuCandidate,
+      inputText: 'CeraVe Hydrating Cleanser',
+      source: 'catalog_fallback',
+    });
+    assert.equal(trust?.trust_level, 'trusted');
+    assert.equal(trust?.usable_for_anchor_id, true);
+    assert.equal(Array.isArray(trust?.reason_codes), true);
+    assert.equal(trust.reason_codes.length, 0);
+    assert.equal(String(trust?.display_anchor?.brand || ''), 'CeraVe');
+    assert.match(String(trust?.display_anchor?.display_name || ''), /Hydrating Cleanser/i);
+
+    const mapped = __internal.mapCatalogProductToAnchorProduct(nestedSkuCandidate, {
+      fallbackName: 'CeraVe Hydrating Cleanser',
+    });
+    assert.equal(String(mapped?.brand || ''), 'CeraVe');
+    assert.match(String(mapped?.display_name || ''), /Hydrating Cleanser/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('ensureNonEmptyChatCardsEnvelope: reco-stage empty cards keep artifact_missing as primary reason even when timeout telemetry exists', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
