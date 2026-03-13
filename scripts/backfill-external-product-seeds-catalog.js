@@ -271,6 +271,8 @@ function comparableSeedData(value) {
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const manualOverrides = ensureJsonObject(seedData.manual_overrides);
+  const manualDescription = normalizeNonEmptyString(manualOverrides.description);
   const fallbackPollutedRow =
     looksLikeKnownNonProductUrl(row?.canonical_url || row?.destination_url) &&
     looksLikeDirectProductTargetUrl(targetUrl);
@@ -316,13 +318,23 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         ? 'in_stock'
         : 'out_of_stock'
       : normalizeSeedAvailability(row?.availability || seedData.availability || snapshot.availability) || '';
-  const description =
+  const failureCategory = normalizeNonEmptyString(response?.diagnostics?.failure_category || snapshot?.diagnostics?.failure_category);
+  const liveExtractedDescription = normalizeNonEmptyString(
+    representativeProduct?.variants?.find((variant) => variant.description)?.description ||
+      effectiveSnapshotVariants.find((variant) => variant.description)?.description,
+  );
+  const suppressStaleDescriptionFallback =
+    (failureCategory === 'no_product_urls' || failureCategory === 'non_product_fallback_page') &&
+    !manualDescription &&
+    !liveExtractedDescription;
+  const description = manualDescription ||
     normalizeNonEmptyString(
-      representativeProduct?.variants?.find((variant) => variant.description)?.description ||
-        effectiveSnapshotVariants.find((variant) => variant.description)?.description ||
-        (fallbackPollutedRow ? seedData.description : snapshot.description) ||
-        seedData.description,
-    ) || '';
+      liveExtractedDescription ||
+        (!suppressStaleDescriptionFallback
+          ? (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description
+          : ''),
+    ) ||
+    '';
   const title =
     normalizeNonEmptyString(representativeProduct?.title || seedData.title || snapshot.title || row?.title) || row?.id;
   const currency =
@@ -350,7 +362,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     extracted_at: new Date().toISOString(),
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
-    description: description || normalizeNonEmptyString(snapshot.description),
+    description:
+      manualDescription || liveExtractedDescription
+        ? liveExtractedDescription || normalizeNonEmptyString(snapshot.description)
+        : suppressStaleDescriptionFallback
+          ? ''
+          : description || normalizeNonEmptyString(snapshot.description),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
     image_urls: mergedImageUrls,
     images: mergedImageUrls,
@@ -371,11 +388,15 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
 
   const nextSeedData = {
     ...seedData,
+    ...(description ? { description } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),
     snapshot: nextSnapshot,
   };
+  if (!description && suppressStaleDescriptionFallback) {
+    delete nextSeedData.description;
+  }
 
   const nextRow = {
     title,

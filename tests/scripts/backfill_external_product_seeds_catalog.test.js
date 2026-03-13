@@ -229,6 +229,148 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.snapshot.diagnostics).toEqual({ failure_category: 'no_product_urls' });
   });
 
+  test('syncs top-level seed description to the refreshed variant description', () => {
+    const row = {
+      id: 'eps_salicylic',
+      title: 'Salicylic Acid 2% Solution',
+      canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+      destination_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+      image_url: 'https://example.com/salicylic.jpg',
+      price_amount: 6.7,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Salicylic Acid 2% Solution',
+        description: 'Ein gezieltes Serum für die zu Unreinheiten neigende Haut.',
+        snapshot: {
+          canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+          description: 'Ein gezieltes Serum für die zu Unreinheiten neigende Haut.',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Salicylic Acid 2% Solution',
+            url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+            variants: [
+              {
+                id: '769915231731',
+                sku: '769915231731',
+                description:
+                  'Formulated with Salicylic Acid for acne, this water-based Beta Hydroxy Acid (BHA) serum contains a 2% concentration to offer surface-level exfoliation.',
+              },
+            ],
+          },
+        ],
+        variants: [
+          {
+            id: '769915231731',
+            sku: '769915231731',
+            product_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+            url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+            description:
+              'Formulated with Salicylic Acid for acne, this water-based Beta Hydroxy Acid (BHA) serum contains a 2% concentration to offer surface-level exfoliation.',
+            image_url: 'https://example.com/salicylic.jpg',
+            image_urls: ['https://example.com/salicylic.jpg'],
+            price: '6.70',
+            currency: 'USD',
+            stock: 'In Stock',
+          },
+        ],
+        diagnostics: { failure_category: null },
+      },
+      'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+    );
+
+    expect(payload.nextRow.seed_data.description).toBe(
+      'Formulated with Salicylic Acid for acne, this water-based Beta Hydroxy Acid (BHA) serum contains a 2% concentration to offer surface-level exfoliation.',
+    );
+    expect(payload.nextRow.seed_data.snapshot.description).toBe(
+      'Formulated with Salicylic Acid for acne, this water-based Beta Hydroxy Acid (BHA) serum contains a 2% concentration to offer surface-level exfoliation.',
+    );
+  });
+
+  test('clears stale top-level seed description when a blocked seed still has no product URLs', () => {
+    const row = {
+      id: 'eps_blocked_collection',
+      title: 'The Hair & Scalp Collection',
+      canonical_url: 'https://theordinary.com/en-us/the-hair-and-scalp-collection-300127.html',
+      destination_url: 'https://theordinary.com/en-us/the-hair-and-scalp-collection-300127.html',
+      image_url: '',
+      price_amount: 0,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'The Hair & Scalp Collection',
+        description: 'Eine tägliche Kollektion für gesünder aussehendes Haar und Kopfhaut.',
+        snapshot: {
+          canonical_url: 'https://theordinary.com/en-us/the-hair-and-scalp-collection-300127.html',
+          description: 'Eine tägliche Kollektion für gesünder aussehendes Haar und Kopfhaut.',
+          diagnostics: { failure_category: 'no_product_urls' },
+        },
+        variants: [],
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [],
+        variants: [],
+        diagnostics: { failure_category: 'no_product_urls' },
+      },
+      'https://theordinary.com/en-us/the-hair-and-scalp-collection-300127.html',
+    );
+
+    expect(payload.nextRow.seed_data.description).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.description).toBe('');
+    expect(payload.nextRow.seed_data.snapshot.diagnostics).toEqual({ failure_category: 'no_product_urls' });
+  });
+
+  test('preserves manual description overrides even when the refreshed seed remains blocked', () => {
+    const row = {
+      id: 'eps_manual_clear_set',
+      title: 'The Clear Set',
+      canonical_url: 'https://theordinary.com/en-us/the-clear-set-100630.html',
+      destination_url: 'https://theordinary.com/en-us/the-clear-set-100630.html',
+      image_url: '',
+      price_amount: 0,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'The Clear Set',
+        description: 'A 3-step regimen with Salicylic Acid 2% Solution for clearer skin',
+        manual_overrides: {
+          description: 'A 3-step regimen with Salicylic Acid 2% Solution for clearer skin',
+        },
+        snapshot: {
+          canonical_url: 'https://theordinary.com/en-us/the-clear-set-100630.html',
+          description: '',
+          diagnostics: { failure_category: 'no_product_urls' },
+        },
+        variants: [],
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [],
+        variants: [],
+        diagnostics: { failure_category: 'no_product_urls' },
+      },
+      'https://theordinary.com/en-us/the-clear-set-100630.html',
+    );
+
+    expect(payload.nextRow.seed_data.description).toBe(
+      'A 3-step regimen with Salicylic Acid 2% Solution for clearer skin',
+    );
+  });
+
   test('applies manual image overrides when extraction and stored seed images are both empty', () => {
     const row = {
       id: 'eps_patyka_bundle',
