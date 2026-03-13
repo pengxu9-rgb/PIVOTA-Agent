@@ -9905,6 +9905,58 @@ test('/v1/product/analyze: returns verdict + enriched reasons', async () => {
   assert.ok(reasons.some((r) => /most impactful ingredient/i.test(String(r || ''))));
 });
 
+test('trusted anchor provisional bridge upgrades unknown cleanser verdict into a category-level judgment', async () => {
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const out = __internal.maybeApplyTrustedAnchorProvisionalProductAnalysis(
+    {
+      assessment: {
+        verdict: 'Unknown',
+        reasons: [
+          'Current evidence is insufficient for a high-confidence product verdict.',
+          'Treat this result as provisional until more complete evidence is available.',
+        ],
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        confidence: null,
+        missing_info: ['evidence_missing'],
+      },
+      confidence: null,
+      missing_info: ['analysis_limited'],
+    },
+    {
+      parsedProduct: {
+        product_id: 'nested-sku-1',
+        brand: 'CeraVe',
+        name: 'CeraVe Foaming Cleanser',
+        display_name: 'CeraVe Foaming Cleanser',
+        category: 'Cleanser',
+        url: 'https://example.com/p/cerave-foaming-cleanser',
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'impaired',
+        goals: ['acne', 'pores'],
+      },
+      lang: 'EN',
+      inputText: 'CeraVe Foaming Cleanser',
+      anchorTrustContext: { usable_for_anchor_id: true },
+    },
+  );
+
+  assert.ok(out && typeof out === 'object');
+  assert.equal(out.assessment?.verdict, 'Caution');
+  assert.ok(Array.isArray(out.assessment?.reasons));
+  assert.ok(out.assessment.reasons.some((line) => /cleanser/i.test(String(line || ''))));
+  assert.ok(Array.isArray(out.missing_info) && out.missing_info.includes('trusted_anchor_category_provisional'));
+  assert.equal(out.provenance?.trusted_anchor_provisional_verdict?.applied, true);
+  assert.equal(out.provenance?.trusted_anchor_provisional_verdict?.product_type, 'cleanser');
+});
+
 test('/v1/dupe/compare: returns tradeoffs (prefers structured alternatives)', async () => {
   const express = require('express');
   const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');

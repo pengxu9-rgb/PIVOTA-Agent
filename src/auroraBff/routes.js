@@ -26210,6 +26210,256 @@ function isProductIntelPayloadCandidateBetter(nextPayload, currentPayload) {
   return false;
 }
 
+function maybeApplyTrustedAnchorProvisionalProductAnalysis(
+  payload,
+  {
+    parsedProduct = null,
+    profileSummary = null,
+    lang = 'EN',
+    inputText = '',
+    anchorTrustContext = null,
+  } = {},
+) {
+  const base = isPlainObject(payload) ? payload : null;
+  if (!base || !isUnknownProductAnalysisPayload(base)) return payload;
+  if (!(anchorTrustContext && anchorTrustContext.usable_for_anchor_id === true) || !isPlainObject(parsedProduct)) return payload;
+
+  const descriptor = buildProductInputText(parsedProduct, parsedProduct.url) || String(inputText || '').trim();
+  const inferredInci = canonicalizeIngredientCandidates(
+    [
+      ...(Array.isArray(parsedProduct.ingredients) ? parsedProduct.ingredients : []),
+      ...(Array.isArray(parsedProduct.inci_list) ? parsedProduct.inci_list : []),
+      ...(Array.isArray(parsedProduct.inciList) ? parsedProduct.inciList : []),
+    ],
+    { max: 120 },
+  );
+  const classification = classifyProductType({
+    name: descriptor,
+    url: String(parsedProduct.url || '').trim(),
+    inciList: inferredInci,
+  });
+  const productType = String(classification.product_type || '').trim().toLowerCase();
+  const eligibleTypes = new Set(['cleanser', 'moisturizer', 'spf', 'spf_moisturizer']);
+  if (!eligibleTypes.has(productType)) return payload;
+
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const skinType = String(profileSummary?.skinType || '').trim().toLowerCase();
+  const sensitivity = String(profileSummary?.sensitivity || '').trim().toLowerCase();
+  const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
+  const goals = Array.isArray(profileSummary?.goals)
+    ? profileSummary.goals.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const joinedProductText = `${descriptor} ${String(parsedProduct?.category || '')} ${String(parsedProduct?.product_type || '')}`.toLowerCase();
+  const looksFoamingCleanser =
+    productType === 'cleanser' &&
+    /(foam|foaming|face wash|deep clean|oil control|gel cleanser|micellar|洁面|洗面|泡沫|深层清洁)/i.test(joinedProductText);
+  const highSensitivity = sensitivity === 'high' || barrier === 'impaired';
+  const mediumSensitivity = sensitivity === 'medium';
+
+  const verdict =
+    productType === 'cleanser' && looksFoamingCleanser && (highSensitivity || mediumSensitivity)
+      ? (isCn ? '谨慎' : 'Caution')
+      : (isCn ? '较适配' : 'Likely Suitable');
+  const verdictLevel = verdict === (isCn ? '谨慎' : 'Caution') ? 'needs_verification' : 'cautiously_ok';
+  const categoryLabel = (() => {
+    if (productType === 'cleanser') return isCn ? '洁面' : 'cleanser';
+    if (productType === 'moisturizer') return isCn ? '保湿产品' : 'moisturizer';
+    if (productType === 'spf' || productType === 'spf_moisturizer') return isCn ? '防晒产品' : 'sunscreen';
+    return isCn ? '护肤品' : 'skincare product';
+  })();
+
+  const topTakeaways = uniqCaseInsensitiveStrings(
+    [
+      isCn
+        ? `这更像一款${categoryLabel}，即使还没拿到完整 INCI，也能先做类别级判断。`
+        : `This reads like a ${categoryLabel}, so a category-level fit judgment is still possible before full INCI verification.`,
+      productType === 'cleanser' && goals.some((goal) => goal === 'acne' || goal === 'pores')
+        ? (isCn
+            ? '洁面的主要作用是去除油脂和残留，不会单独承担核心祛痘治疗。'
+            : 'A cleanser can help remove oil and residue, but it is not a primary acne treatment by itself.')
+        : '',
+      productType === 'spf' || productType === 'spf_moisturizer'
+        ? (isCn
+            ? '作为防晒类别，它对白天的 UV 保护依然是基础步骤。'
+            : 'As an SPF category product, it still fills an essential daytime UV-protection role.')
+        : '',
+      productType === 'moisturizer'
+        ? (isCn
+            ? '作为保湿类别，它更偏向补水和屏障支持，具体厚重度仍取决于配方版本。'
+            : 'As a moisturizer, it is directionally about hydration and barrier support, though the exact finish still depends on the formula version.')
+        : '',
+    ],
+    4,
+  );
+
+  const watchouts = [];
+  if (productType === 'cleanser' && looksFoamingCleanser && (highSensitivity || mediumSensitivity)) {
+    watchouts.push({
+      issue: isCn ? '这看起来像偏强一点的泡沫洁面，敏感或屏障不稳时可能偏刺激。' : 'This looks like a stronger foaming cleanser, which can feel stripping on sensitive or impaired-barrier days.',
+      status: 'possible',
+      what_to_do: isCn ? '先减少清洁强度和频率，避免早晚都长时间清洁。' : 'Reduce cleansing intensity and frequency first, and avoid long AM+PM cleansing sessions.',
+    });
+  } else if (productType === 'moisturizer' && skinType === 'oily') {
+    watchouts.push({
+      issue: isCn ? '如果你偏油皮，较厚重的面霜版本可能会有闷感。' : 'If you skew oily, richer cream versions may feel heavier than needed.',
+      status: 'possible',
+      what_to_do: isCn ? '优先观察是否闷、搓泥或白天厚重。' : 'Watch for heaviness, pilling, or daytime greasiness.',
+    });
+  } else if (productType === 'spf' || productType === 'spf_moisturizer') {
+    watchouts.push({
+      issue: isCn ? '具体耐受和成膜感仍取决于配方版本。' : 'The exact tolerance and finish still depend on the final formula version.',
+      status: 'possible',
+      what_to_do: isCn ? '先小范围试用，并留意刺痛、搓泥和泛白。' : 'Patch test first and watch for stinging, pilling, or white cast.',
+    });
+  }
+
+  const reasons = uniqCaseInsensitiveStrings(
+    [
+      ...topTakeaways,
+      productType === 'cleanser' && (highSensitivity || barrier === 'impaired')
+        ? (isCn
+            ? '你当前的敏感/屏障信号提示要更保守，尤其是看起来偏泡沫或清洁力更强的洁面。'
+            : 'Your sensitivity/barrier context calls for a more conservative read, especially for a foaming or stronger-cleansing cleanser.')
+        : '',
+      productType === 'moisturizer' && barrier === 'impaired'
+        ? (isCn
+            ? '从类别判断，它更符合修护和保湿方向，但是否足够温和仍需要 INCI 再确认。'
+            : 'Category-wise it points in a hydration and barrier-support direction, though full gentleness still needs INCI confirmation.')
+        : '',
+      productType === 'spf' || productType === 'spf_moisturizer'
+        ? (isCn
+            ? '这是一条先按类别做的暂定判断；具体滤剂和香精风险仍需要 INCI 进一步确认。'
+            : 'This is a provisional category-level judgment; exact filter and fragrance risk still need INCI confirmation.')
+        : (isCn
+            ? '这是类别级的暂定结论，不等于完整成分判定；后续核到 INCI 后应再升级判断。'
+            : 'This is a category-level provisional call, not a full ingredient verdict; upgrade the judgment once INCI is confirmed.'),
+    ],
+    5,
+  );
+
+  const provisionalPayload = normalizeProductAnalysis({
+    assessment: {
+      verdict,
+      verdict_level: verdictLevel,
+      top_takeaways: topTakeaways,
+      best_for:
+        productType === 'cleanser'
+          ? [isCn ? '日常清洁 / 去除油脂残留' : 'daily cleansing / removing oil and residue']
+          : productType === 'moisturizer'
+            ? [isCn ? '补水保湿 / 屏障支持' : 'hydration / barrier support']
+            : [isCn ? '白天防护 / 痘印与色沉管理' : 'daytime protection / protecting progress on marks and irritation'],
+      watchouts,
+      how_to_use:
+        productType === 'spf' || productType === 'spf_moisturizer'
+          ? {
+              when: 'am',
+              frequency: 'daily',
+              order_in_routine: isCn ? '护肤最后一步，彩妆前' : 'last skincare step before makeup',
+              pairing_rules: [
+                isCn ? '白天足量使用，外出补涂。' : 'Use a full amount in the morning and reapply when outdoors.',
+              ],
+              stop_signs: [
+                isCn ? '持续刺痛、泛红或明显搓泥。' : 'Persistent stinging, redness, or obvious pilling.',
+              ],
+            }
+          : {
+              when: 'am_or_pm',
+              frequency: 'daily',
+              order_in_routine:
+                productType === 'cleanser'
+                  ? (isCn ? '护肤第一步' : 'first step of the routine')
+                  : (isCn ? '精华后，防晒前' : 'after serums and before sunscreen'),
+              pairing_rules: [
+                productType === 'cleanser'
+                  ? (isCn ? '若洗后发紧，减少时长或改更温和清洁。' : 'If skin feels tight after cleansing, shorten contact time or switch gentler.')
+                  : (isCn ? '先观察白天厚重感，再决定是否叠加更多封闭型产品。' : 'Watch daytime heaviness before layering more occlusive products.'),
+              ],
+              stop_signs: [
+                isCn ? '持续刺痛、泛红或爆皮。' : 'Persistent stinging, redness, or visible barrier stress.',
+              ],
+            },
+      reasons,
+      anchor_product: parsedProduct,
+    },
+    evidence: {
+      science: {
+        key_ingredients: [],
+        mechanisms: [],
+        fit_notes: topTakeaways.slice(0, 2),
+        risk_notes: watchouts.map((item) => String(item.issue || '').trim()).filter(Boolean),
+      },
+      social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+      expert_notes: [
+        isCn
+          ? '已使用可信 anchor 做类别级暂定判断；这不是完整 INCI 级结论。'
+          : 'Used a trusted anchor to make a category-level provisional judgment; this is not a full INCI-level conclusion.',
+      ],
+      confidence: verdict === (isCn ? '谨慎' : 'Caution') ? 0.42 : 0.48,
+      missing_info: ['evidence_missing', 'trusted_anchor_category_provisional'],
+    },
+    confidence: verdict === (isCn ? '谨慎' : 'Caution') ? 0.42 : 0.48,
+    missing_info: ['trusted_anchor_category_provisional', 'version_verification_needed'],
+  }).payload;
+
+  const nextEvidence = isPlainObject(provisionalPayload?.evidence) ? { ...provisionalPayload.evidence } : {};
+  const nextScience = isPlainObject(nextEvidence.science) ? { ...nextEvidence.science } : {};
+  const prevEvidence = isPlainObject(base.evidence) ? base.evidence : {};
+  const prevScience = isPlainObject(prevEvidence.science) ? prevEvidence.science : {};
+  const prevSocial = isPlainObject(prevEvidence.social_signals || prevEvidence.socialSignals)
+    ? (prevEvidence.social_signals || prevEvidence.socialSignals)
+    : {};
+  const prevSources = Array.isArray(prevEvidence.sources) ? prevEvidence.sources : [];
+  nextEvidence.science = {
+    ...nextScience,
+    fit_notes: uniqCaseInsensitiveStrings(
+      [...asStringArray(nextScience.fit_notes || nextScience.fitNotes, 8), ...asStringArray(prevScience.fit_notes || prevScience.fitNotes, 8)],
+      8,
+    ),
+    risk_notes: uniqCaseInsensitiveStrings(
+      [...asStringArray(nextScience.risk_notes || nextScience.riskNotes, 8), ...asStringArray(prevScience.risk_notes || prevScience.riskNotes, 8)],
+      8,
+    ),
+  };
+  nextEvidence.social_signals = Object.keys(prevSocial).length
+    ? { ...prevSocial, ...(isPlainObject(nextEvidence.social_signals) ? nextEvidence.social_signals : {}) }
+    : nextEvidence.social_signals;
+  if (prevSources.length) nextEvidence.sources = prevSources.slice(0, 8);
+  nextEvidence.expert_notes = uniqCaseInsensitiveStrings(
+    [...asStringArray(nextEvidence.expert_notes || nextEvidence.expertNotes, 6), ...asStringArray(prevEvidence.expert_notes || prevEvidence.expertNotes, 6)],
+    6,
+  );
+  nextEvidence.missing_info = uniqCaseInsensitiveStrings(
+    [...asStringArray(nextEvidence.missing_info || nextEvidence.missingInfo, 12), ...asStringArray(prevEvidence.missing_info || prevEvidence.missingInfo, 12)],
+    12,
+  );
+
+  return applyProductAnalysisGapContract({
+    ...base,
+    ...provisionalPayload,
+    evidence: nextEvidence,
+    confidence: Math.max(
+      Number.isFinite(Number(base.confidence)) ? Number(base.confidence) : 0,
+      Number.isFinite(Number(provisionalPayload.confidence)) ? Number(provisionalPayload.confidence) : 0,
+    ),
+    missing_info: uniqCaseInsensitiveStrings(
+      [...asStringArray(base.missing_info, 24), ...asStringArray(provisionalPayload.missing_info, 24)],
+      24,
+    ),
+    internal_debug_codes: uniqCaseInsensitiveStrings(
+      [...getProductAnalysisInternalMissingCodes(base), 'trusted_anchor_provisional_category_verdict_used'],
+      32,
+    ),
+    provenance: {
+      ...(isPlainObject(base.provenance) ? base.provenance : {}),
+      trusted_anchor_provisional_verdict: {
+        applied: true,
+        reason: 'trusted_anchor_unknown_bridge_v1',
+        product_type: productType,
+      },
+    },
+  });
+}
+
 function appendProductIntelSourceChain(payload, chainEntries = []) {
   const p = isPlainObject(payload) ? payload : {};
   const provenance = isPlainObject(p.provenance) ? p.provenance : {};
@@ -26471,9 +26721,10 @@ function buildProductDeepScanPromptV3({
     '2. Do NOT repeat the same point across summary, formula_intent, reasons, and better_pairing.',
     '3. Do NOT fabricate scientific sources, clinical proof, or precise ingredient percentages.',
     '4. If the product is SPF/sunscreen, keep usage guidance daytime-only; do NOT suggest PM-first or 2-3 nights/week intro schedules.',
+    '5. If the product category is already identifiable (for example cleanser, moisturizer, or sunscreen), do NOT default to "Unknown" only because full INCI is incomplete. Give a cautious category-level provisional judgment and clearly label the remaining uncertainty.',
   ];
   if (strictFormulaIntent || strictNarrative) {
-    systemLines.push('5. If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.');
+    systemLines.push('6. If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.');
   }
   if (strictNarrative) {
     systemLines.push(
@@ -26562,11 +26813,12 @@ function buildProductDeepScanPromptV4({
     '   - Use "possible" for all other watchouts -- when there is textual evidence, brand claims, known ingredient categories, or LLM knowledge even if INCI is not fully cross-verified.',
     '   - Do NOT use "unknown" -- if there is enough evidence to raise a watchout, there is enough to call it "possible".',
     '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
+    '8. If product type is cleanser, moisturizer, spf, or spf_moisturizer, do NOT return verdict="Unknown" solely because full INCI is not verified. Use a cautious category-level provisional verdict plus explicit uncertainty.',
     ...(!anchorResolved
       ? [
-          '8. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
-          '9. Do NOT populate anchor_product in the response.',
-          '10. Keep the analysis generic to the product category/function, not a specific product formulation.',
+          '9. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
+          '10. Do NOT populate anchor_product in the response.',
+          '11. Keep the analysis generic to the product category/function, not a specific product formulation.',
         ]
       : []),
   ].join('\n');
@@ -49461,6 +49713,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
         }
       }
+      payload = maybeApplyTrustedAnchorProvisionalProductAnalysis(payload, {
+        parsedProduct,
+        profileSummary,
+        lang: ctx.lang,
+        inputText: String(parsed.data.name || input || '').trim(),
+        anchorTrustContext,
+      });
       payload = finalizeProductAnalysisRecoContract(payload, {
         logger,
         requestId: ctx.request_id,
@@ -63402,6 +63661,7 @@ const __internal = {
   buildIngredientLookupUpstreamPrompt,
   sanitizeIngredientResearchOutput,
   enrichIngredientReportCardsInEnvelope,
+  maybeApplyTrustedAnchorProvisionalProductAnalysis,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
   deriveProductsEmptyReason,
