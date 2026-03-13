@@ -276,9 +276,16 @@ function clampSuggestedChips(envelope) {
   return envelope;
 }
 
+function mergeEnvelopeMeta(inputMeta, authMeta) {
+  const meta = isPlainObject(inputMeta) ? { ...inputMeta } : {};
+  if (isPlainObject(authMeta)) meta.auth = authMeta;
+  return Object.keys(meta).length ? meta : null;
+}
+
 function buildEnvelope(ctx, input) {
   const requestId = safeString(ctx.request_id).trim() || randomUUID();
   const traceId = safeString(ctx.trace_id).trim() || randomUUID();
+  const meta = mergeEnvelopeMeta(input && input.meta, ctx && ctx.auth_meta);
 
   const envelope = {
     request_id: requestId,
@@ -292,6 +299,7 @@ function buildEnvelope(ctx, input) {
     ...(isPlainObject(input && input.recommendation_meta) ? { recommendation_meta: input.recommendation_meta } : {}),
     ...(isPlainObject(input && input.reco_refresh_hint) ? { reco_refresh_hint: input.reco_refresh_hint } : {}),
     ...(isPlainObject(input && input.telemetry) ? { telemetry: input.telemetry } : {}),
+    ...(meta ? { meta } : {}),
   };
 
   clampSuggestedChips(envelope);

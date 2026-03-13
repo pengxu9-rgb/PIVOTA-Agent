@@ -22542,7 +22542,14 @@ async function resolveIdentity(req, ctx) {
     session = null;
   }
 
-  if (!session) return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: true };
+  if (!session) {
+    ctx.auth_meta = {
+      state: 'invalid',
+      user: { email: null },
+      expires_at: null,
+    };
+    return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: true };
+  }
 
   if (ctx.aurora_uid) {
     try {
@@ -22552,6 +22559,11 @@ async function resolveIdentity(req, ctx) {
     }
   }
 
+  ctx.auth_meta = {
+    state: 'authenticated',
+    user: { email: session.email ? String(session.email) : null },
+    expires_at: session.expiresAt ? String(session.expiresAt) : null,
+  };
   return { auroraUid: ctx.aurora_uid, userId: session.userId, userEmail: session.email, token, auth_invalid: false };
 }
 
@@ -45754,6 +45766,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const session = await createSession({ userId: verification.userId });
+      ctx.auth_meta = {
+        state: 'authenticated',
+        user: { email: verification.email ? String(verification.email) : null },
+        expires_at: session.expiresAt ? String(session.expiresAt) : null,
+      };
 
       if (ctx.aurora_uid) {
         try {
@@ -45879,6 +45896,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const session = await createSession({ userId: verification.userId });
+      ctx.auth_meta = {
+        state: 'authenticated',
+        user: { email: verification.email ? String(verification.email) : null },
+        expires_at: session.expiresAt ? String(session.expiresAt) : null,
+      };
 
       if (ctx.aurora_uid) {
         try {
@@ -61182,6 +61204,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  resolveIdentity,
   normalizeClarificationField,
   detectBrandAvailabilityIntent,
   detectCatalogAvailabilityIntent,

@@ -531,6 +531,7 @@ function buildChatCardsResponse({
     cards,
     follow_up_questions: followUpQuestions,
     suggested_quick_replies: quickReplies,
+    ...(isPlainObject(base.meta) ? { meta: base.meta } : {}),
     session_patch: isPlainObject(base.session_patch) ? base.session_patch : {},
     ops,
     safety: {

@@ -11,6 +11,7 @@
     "smoke:layer2": "node scripts/smoke-layer2.js",
     "smoke:travel-plans:runtime": "bash scripts/smoke_travel_plans_runtime.sh",
     "probe:travel-plans:synthetic": "bash scripts/travel_plans_synthetic_probe.sh",
+    "smoke:aurora:auth-session": "bash scripts/smoke_aurora_auth_session_refresh.sh",
     "rollback:webhook": "bash scripts/trigger_rollback_webhook.sh",
     "diag:calibration:train": "node scripts/train_diag_calibration.js",
     "diag:calibration:eval": "node scripts/eval_calibration.js",

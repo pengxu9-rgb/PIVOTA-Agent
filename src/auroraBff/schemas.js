@@ -173,6 +173,24 @@ const ResponseTelemetrySchema = z
   })
   .passthrough();
 
+const AuthResponseMetaSchema = z
+  .object({
+    state: z.enum(['authenticated', 'invalid']),
+    user: z
+      .object({
+        email: z.string().nullable(),
+      })
+      .strict(),
+    expires_at: z.string().nullable(),
+  })
+  .strict();
+
+const ResponseMetaSchema = z
+  .object({
+    auth: AuthResponseMetaSchema.optional(),
+  })
+  .passthrough();
+
 const V1ResponseEnvelopeSchema = z
   .object({
     request_id: z.string().min(1),
@@ -186,6 +204,7 @@ const V1ResponseEnvelopeSchema = z
     recommendation_meta: RecommendationMetaSchema.optional(),
     reco_refresh_hint: RecoRefreshHintSchema.optional(),
     telemetry: ResponseTelemetrySchema.optional(),
+    meta: ResponseMetaSchema.optional(),
   })
   .strict();
 
