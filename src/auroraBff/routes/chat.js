@@ -170,7 +170,15 @@ function extractLastUserMessageFromMessages(messages) {
 
 function extractLatestArtifactIdFromSession(session) {
   const state = isPlainObject(session && session.state) ? session.state : null;
-  return pickFirstTrimmed(state && state.latest_artifact_id);
+  const meta = isPlainObject(session && session.meta) ? session.meta : null;
+  return pickFirstTrimmed(
+    state && state.latest_artifact_id,
+    meta && meta.latest_artifact_id,
+    session && session.latest_artifact_id,
+    state && state.artifact_id,
+    meta && meta.artifact_id,
+    session && session.artifact_id,
+  );
 }
 
 function omitLegacyActionAliases(value) {
