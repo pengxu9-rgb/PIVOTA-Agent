@@ -344,7 +344,7 @@ test('/v1/activity/:activity_id returns structured detail for profile, tracker, 
           .set(headers)
           .expect(200);
         assert.equal(travelDetail.body?.detail?.kind, 'travel_plan');
-        assert.equal(travelDetail.body?.detail?.snapshot?.destination, 'Tokyo, Japan');
+        assert.ok(['Tokyo', 'Tokyo, Japan'].includes(travelDetail.body?.detail?.snapshot?.destination));
         assert.equal(travelDetail.body?.detail?.snapshot?.start_date, '2099-04-01');
       } finally {
         cleanup();

@@ -145,8 +145,29 @@ function normalizeSkinAnalysisBool(value, fallback = false) {
   return fallback;
 }
 
+function isSyntheticSkinAnalysisArtifactEligible(artifactRow) {
+  if (!artifactRow || typeof artifactRow !== 'object') return false;
+  const artifact = artifactRow.artifact_json && typeof artifactRow.artifact_json === 'object'
+    ? artifactRow.artifact_json
+    : {};
+  const artifactType = String(artifact.artifact_type || artifact.type || '').trim().toLowerCase();
+  if (artifactType === 'skin_analysis_kb_snapshot_v1') return false;
+
+  return Boolean(
+    isPlainObject(artifact.analysis_context) ||
+    isPlainObject(artifact.overall_confidence) ||
+    isPlainObject(artifact.skinType) ||
+    isPlainObject(artifact.barrierStatus) ||
+    isPlainObject(artifact.sensitivity) ||
+    isPlainObject(artifact.goals) ||
+    Array.isArray(artifact.concerns) ||
+    Array.isArray(artifact.photos),
+  );
+}
+
 function buildSyntheticSkinAnalysisActivityFromArtifact(artifactRow) {
   if (!artifactRow || typeof artifactRow !== 'object') return null;
+  if (!isSyntheticSkinAnalysisArtifactEligible(artifactRow)) return null;
   const artifactId = String(artifactRow.artifact_id || '').trim();
   if (!artifactId) return null;
   const artifact = artifactRow.artifact_json && typeof artifactRow.artifact_json === 'object'
@@ -759,6 +780,7 @@ module.exports = {
   mountActivityRoutes,
   __internal: {
     toActivityStorageError,
+    isSyntheticSkinAnalysisArtifactEligible,
     buildSyntheticSkinAnalysisActivityFromArtifact,
     decodeActivityCursor,
     encodeActivityCursor,
