@@ -487,10 +487,19 @@ const {
   createArtifactId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
+  listDiagnosisArtifactsForIdentity,
+  getDiagnosisArtifactById,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
 } = require('./diagnosisArtifactStore');
+const {
+  appendActivityForIdentity,
+  listActivityForIdentity,
+  getActivityEventByIdForIdentity,
+  getActivityDetail,
+  upsertActivityDetail,
+} = require('./activityStore');
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
@@ -53481,6 +53490,100 @@ function mountAuroraBffRoutes(app, { logger }) {
                   }
                 : analysis,
             });
+            if (analysis && !shadowRun && persistLastAnalysis) {
+              try {
+                const deeplink = ctx.brief_id
+                  ? `/chat?brief_id=${encodeURIComponent(String(ctx.brief_id))}`
+                  : '/chat';
+                const payload = {
+                  artifact_id: latestArtifactId || null,
+                  analysis_source: String(renderedAnalysisSource || '').trim() || 'unknown',
+                  used_photos: Boolean(usedPhotos),
+                  photos_provided: Boolean(photosProvided),
+                  photo_failure_code: photoFailureCode || null,
+                  quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
+                  photos_count: photosSubmittedCount,
+                };
+                const activity = await appendActivityForIdentity({
+                  auroraUid: identity.auroraUid,
+                  userId: identity.userId,
+                  eventType: 'skin_analysis',
+                  payload,
+                  deeplink,
+                  source: 'analysis_skin',
+                  occurredAtMs: Date.now(),
+                });
+                if (activity && activity.activity_id) {
+                  await upsertActivityDetail({
+                    activityId: activity.activity_id,
+                    detailKind: 'skin_analysis',
+                    detailJson: {
+                      ...payload,
+                      confidence_score:
+                        diagnosisArtifact &&
+                        diagnosisArtifact.overall_confidence &&
+                        Number.isFinite(Number(diagnosisArtifact.overall_confidence.score))
+                          ? Number(diagnosisArtifact.overall_confidence.score)
+                          : null,
+                      confidence_level:
+                        diagnosisArtifact &&
+                        diagnosisArtifact.overall_confidence &&
+                        typeof diagnosisArtifact.overall_confidence.level === 'string'
+                          ? diagnosisArtifact.overall_confidence.level
+                          : null,
+                      source_mix:
+                        diagnosisArtifact && Array.isArray(diagnosisArtifact.source_mix)
+                          ? diagnosisArtifact.source_mix
+                          : [],
+                      skin_type:
+                        diagnosisArtifact && diagnosisArtifact.skinType && typeof diagnosisArtifact.skinType.value === 'string'
+                          ? diagnosisArtifact.skinType.value
+                          : null,
+                      barrier_status:
+                        diagnosisArtifact && diagnosisArtifact.barrierStatus && typeof diagnosisArtifact.barrierStatus.value === 'string'
+                          ? diagnosisArtifact.barrierStatus.value
+                          : null,
+                      sensitivity:
+                        diagnosisArtifact && diagnosisArtifact.sensitivity && typeof diagnosisArtifact.sensitivity.value === 'string'
+                          ? diagnosisArtifact.sensitivity.value
+                          : null,
+                      goals:
+                        diagnosisArtifact &&
+                        diagnosisArtifact.goals &&
+                        Array.isArray(diagnosisArtifact.goals.values)
+                          ? diagnosisArtifact.goals.values
+                          : [],
+                      concerns:
+                        diagnosisArtifact && Array.isArray(diagnosisArtifact.concerns)
+                          ? diagnosisArtifact.concerns
+                          : [],
+                      ingredient_plan:
+                        ingredientPlan && typeof ingredientPlan === 'object'
+                          ? {
+                              plan_id: typeof ingredientPlan.plan_id === 'string' ? ingredientPlan.plan_id : null,
+                              intensity:
+                                ingredientPlan.intensity && typeof ingredientPlan.intensity === 'object'
+                                  ? ingredientPlan.intensity.level || null
+                                  : ingredientPlan.intensity || null,
+                              targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets : [],
+                              avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid : [],
+                              conflicts: Array.isArray(ingredientPlan.conflicts) ? ingredientPlan.conflicts : [],
+                            }
+                          : null,
+                      created_at:
+                        diagnosisArtifact && typeof diagnosisArtifact.created_at === 'string'
+                          ? diagnosisArtifact.created_at
+                          : null,
+                    },
+                  });
+                }
+              } catch (activityErr) {
+                logger?.warn(
+                  { err: activityErr && activityErr.message ? activityErr.message : String(activityErr), request_id: ctx.request_id },
+                  'aurora bff: failed to append skin_analysis activity',
+                );
+              }
+            }
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -54566,6 +54669,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     requireAuroraUid,
     resolveIdentity,
     classifyStorageError,
+    appendActivityForIdentity,
+    upsertActivityDetail,
   });
 
   mountActivityRoutes(app, {
@@ -54573,6 +54678,13 @@ function mountAuroraBffRoutes(app, { logger }) {
     requireAuroraUid,
     resolveIdentity,
     classifyStorageError,
+    appendActivityForIdentity,
+    listActivityForIdentity,
+    getActivityEventByIdForIdentity,
+    getActivityDetail,
+    listDiagnosisArtifactsForIdentity,
+    getDiagnosisArtifactById,
+    getIngredientPlanByArtifactId,
   });
 
   try {
@@ -54710,7 +54822,52 @@ function mountAuroraBffRoutes(app, { logger }) {
         const routineState = normalizeRoutineStateValue(cleanPatch.currentRoutine);
         cleanPatch.currentRoutine = routineState.current_routine_struct || routineState.current_routine_text || null;
       }
+      const previousProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
       const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, cleanPatch);
+      try {
+        const changedFields = Object.keys(cleanPatch || {}).slice(0, 20);
+        const previousSummary = summarizeProfileForContext(previousProfile) || {};
+        const updatedSummary = summarizeProfileForContext(updated) || {};
+        const values = {};
+        const previous_values = {};
+        for (const field of changedFields) {
+          values[field] = Object.prototype.hasOwnProperty.call(updatedSummary, field) ? updatedSummary[field] : null;
+          previous_values[field] = Object.prototype.hasOwnProperty.call(previousSummary, field) ? previousSummary[field] : null;
+        }
+        const payload = {
+          changed_fields: changedFields,
+          values,
+        };
+        const activity = await appendActivityForIdentity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'profile_updated',
+          payload,
+          deeplink: '/profile',
+          source: 'profile_update_api',
+          occurredAtMs: Date.now(),
+        });
+        if (activity && activity.activity_id) {
+          await upsertActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'profile_updated',
+            detailJson: {
+              changed_fields: changedFields,
+              values,
+              previous_values,
+            },
+          });
+        }
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'profile update activity append failed',
+        );
+      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -54862,6 +55019,47 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const saved = await upsertSkinLogForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
       const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+      try {
+        const payload = {
+          date: saved && typeof saved.date === 'string' ? saved.date : null,
+          redness: saved && Number.isFinite(Number(saved.redness)) ? Number(saved.redness) : null,
+          acne: saved && Number.isFinite(Number(saved.acne)) ? Number(saved.acne) : null,
+          hydration: saved && Number.isFinite(Number(saved.hydration)) ? Number(saved.hydration) : null,
+          notes_excerpt:
+            saved && typeof saved.notes === 'string' && saved.notes.trim()
+              ? saved.notes.trim().slice(0, 220)
+              : null,
+          routine_id: saved && typeof saved.routine_id === 'string' ? saved.routine_id : null,
+          target_product: saved && typeof saved.targetProduct === 'string' ? saved.targetProduct : null,
+          sensation: saved && typeof saved.sensation === 'string' ? saved.sensation : null,
+          has_notes: Boolean(saved && typeof saved.notes === 'string' && saved.notes.trim()),
+        };
+        const activity = await appendActivityForIdentity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'tracker_logged',
+          payload,
+          deeplink: '/chat?open=checkin',
+          source: 'tracker_log_api',
+          occurredAtMs: Date.now(),
+        });
+        if (activity && activity.activity_id) {
+          await upsertActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'tracker_logged',
+            detailJson: payload,
+          });
+        }
+      } catch (activityErr) {
+        logger?.warn?.(
+          {
+            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+          },
+          'tracker log activity append failed',
+        );
+      }
       const recoRefreshHint = {
         should_refresh: true,
         reason: 'checkin_logged',

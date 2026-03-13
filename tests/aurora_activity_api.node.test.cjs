@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const supertest = require('supertest');
+const { __internal: activityRouteInternal } = require('../src/auroraBff/routes/activityRoutes');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
@@ -223,4 +224,165 @@ test('/v1/activity: retention=0 path keeps read/write available without database
       }
     },
   );
+});
+
+test('/v1/activity/:activity_id returns chat_started detail without persisted snapshot rows', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+    },
+    async () => {
+      const { app, cleanup } = buildApp();
+      const uid = `activity_detail_chat_${Date.now()}`;
+      const headers = buildHeaders(uid);
+
+      try {
+        const logResp = await supertest(app)
+          .post('/v1/activity/log')
+          .set(headers)
+          .send({
+            event_type: 'chat_started',
+            payload: { title: 'Skin Diagnosis', chip_id: 'chip.start.diagnosis' },
+            deeplink: '/chat?chip_id=chip.start.diagnosis',
+            occurred_at_ms: 1234,
+          })
+          .expect(200);
+
+        const detailResp = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(logResp.body.activity_id)}`)
+          .set(headers)
+          .expect(200);
+
+        assert.equal(detailResp.body?.detail?.kind, 'chat_started');
+        assert.equal(detailResp.body?.detail?.snapshot?.title, 'Skin Diagnosis');
+        assert.equal(Array.isArray(detailResp.body?.detail?.actions), true);
+        assert.ok(detailResp.body.detail.actions.length >= 1);
+      } finally {
+        cleanup();
+      }
+    },
+  );
+});
+
+test('/v1/activity/:activity_id returns structured detail for profile, tracker, and travel activities', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+    },
+    async () => {
+      const { app, cleanup } = buildApp();
+      const uid = `activity_detail_structured_${Date.now()}`;
+      const headers = buildHeaders(uid);
+
+      try {
+        await supertest(app)
+          .post('/v1/profile/update')
+          .set(headers)
+          .send({
+            skinType: 'combination',
+            sensitivity: 'medium',
+            barrierStatus: 'stable',
+            goals: ['hydration'],
+          })
+          .expect(200);
+
+        await supertest(app)
+          .post('/v1/tracker/log')
+          .set(headers)
+          .send({
+            date: '2099-03-01',
+            redness: 2,
+            acne: 1,
+            hydration: 4,
+            notes: 'Skin felt calmer than last week.',
+            routine_id: 'routine_alpha',
+          })
+          .expect(200);
+
+        await supertest(app)
+          .post('/v1/travel-plans')
+          .set(headers)
+          .send({
+            destination: 'Tokyo',
+            departure_region: 'Shanghai',
+            start_date: '2099-04-01',
+            end_date: '2099-04-06',
+          })
+          .expect(200);
+
+        const listResp = await supertest(app).get('/v1/activity?limit=20').set(headers).expect(200);
+        const items = Array.isArray(listResp.body?.items) ? listResp.body.items : [];
+
+        const profileItem = items.find((item) => item && item.event_type === 'profile_updated');
+        const trackerItem = items.find((item) => item && item.event_type === 'tracker_logged');
+        const travelItem = items.find((item) => item && String(item.event_type || '').startsWith('travel_plan_'));
+        assert.ok(profileItem);
+        assert.ok(trackerItem);
+        assert.ok(travelItem);
+
+        const profileDetail = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(profileItem.activity_id)}`)
+          .set(headers)
+          .expect(200);
+        assert.equal(profileDetail.body?.detail?.kind, 'profile_updated');
+        assert.deepEqual(profileDetail.body?.detail?.snapshot?.changed_fields, ['skinType', 'sensitivity', 'barrierStatus', 'goals']);
+        assert.equal(profileDetail.body?.detail?.snapshot?.values?.skinType, 'combination');
+
+        const trackerDetail = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(trackerItem.activity_id)}`)
+          .set(headers)
+          .expect(200);
+        assert.equal(trackerDetail.body?.detail?.kind, 'tracker_logged');
+        assert.equal(trackerDetail.body?.detail?.snapshot?.redness, 2);
+        assert.equal(trackerDetail.body?.detail?.snapshot?.routine_id, 'routine_alpha');
+
+        const travelDetail = await supertest(app)
+          .get(`/v1/activity/${encodeURIComponent(travelItem.activity_id)}`)
+          .set(headers)
+          .expect(200);
+        assert.equal(travelDetail.body?.detail?.kind, 'travel_plan');
+        assert.equal(travelDetail.body?.detail?.snapshot?.destination, 'Tokyo, Japan');
+        assert.equal(travelDetail.body?.detail?.snapshot?.start_date, '2099-04-01');
+      } finally {
+        cleanup();
+      }
+    },
+  );
+});
+
+test('activity detail snapshot helpers normalize concern objects and preserve null ratio', () => {
+  const skinSnapshot = activityRouteInternal.buildSkinAnalysisSnapshot({
+    item: {
+      payload: {},
+    },
+    artifactRow: {
+      artifact_id: 'da_helper',
+      artifact_json: {
+        concerns: [
+          { type: 'dryness', evidence_text: 'Visible dehydration around cheeks' },
+          { type: 'barrier_damage' },
+        ],
+      },
+    },
+    ingredientPlanRow: null,
+    storedSnapshot: null,
+  });
+  assert.deepEqual(skinSnapshot.concerns, [
+    'Visible dehydration around cheeks',
+    'Barrier Damage',
+  ]);
+
+  const travelSnapshot = activityRouteInternal.buildTravelPlanSnapshot(
+    {
+      payload: {
+        destination: 'Seoul',
+        indoor_outdoor_ratio: null,
+      },
+    },
+    null,
+  );
+  assert.equal(travelSnapshot.indoor_outdoor_ratio, null);
 });

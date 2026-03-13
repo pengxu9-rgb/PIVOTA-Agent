@@ -883,6 +883,7 @@ async function upsertSkinLog(auroraUid, log) {
     const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
     const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
     const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+    const routineId = log && typeof log.routine_id === 'string' ? log.routine_id.slice(0, 120) : null;
 
     const key = profileKeyFor({ kind: 'guest', id: uid });
     const logsKey = key ? `${key}:logs` : null;
@@ -899,6 +900,7 @@ async function upsertSkinLog(auroraUid, log) {
       notes,
       targetProduct,
       sensation,
+      routine_id: routineId,
       updated_at: now,
       created_at: now,
     };
@@ -954,6 +956,7 @@ async function upsertAccountSkinLog(userId, log) {
     const notes = log && typeof log.notes === 'string' ? log.notes.slice(0, 4000) : null;
     const targetProduct = log && typeof log.targetProduct === 'string' ? log.targetProduct.slice(0, 500) : null;
     const sensation = log && typeof log.sensation === 'string' ? log.sensation.slice(0, 500) : null;
+    const routineId = log && typeof log.routine_id === 'string' ? log.routine_id.slice(0, 120) : null;
 
     const key = profileKeyFor({ kind: 'account', id: uid });
     const logsKey = key ? `${key}:logs` : null;
@@ -970,6 +973,7 @@ async function upsertAccountSkinLog(userId, log) {
       notes,
       targetProduct,
       sensation,
+      routine_id: routineId,
       updated_at: now,
       created_at: now,
     };

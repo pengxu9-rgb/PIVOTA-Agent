@@ -43,6 +43,10 @@ function buildTravelPlanActivityPayload(plan) {
     start_date: typeof target.start_date === 'string' ? target.start_date : null,
     end_date: typeof target.end_date === 'string' ? target.end_date : null,
     is_archived: Boolean(target.is_archived),
+    itinerary: typeof target.itinerary === 'string' ? target.itinerary.slice(0, 220) : null,
+    indoor_outdoor_ratio: Number.isFinite(Number(target.indoor_outdoor_ratio))
+      ? Number(target.indoor_outdoor_ratio)
+      : null,
   };
 }
 
@@ -165,9 +169,29 @@ function mountTravelPlansRoutes(app, deps = {}) {
   const requireAuroraUid = ensureDependency('requireAuroraUid', deps.requireAuroraUid);
   const resolveIdentity = ensureDependency('resolveIdentity', deps.resolveIdentity);
   const classifyStorageError = ensureDependency('classifyStorageError', deps.classifyStorageError);
-  const appendActivity = typeof deps.appendActivityEventForIdentity === 'function'
-    ? deps.appendActivityEventForIdentity
-    : appendActivityEventForIdentity;
+  const appendActivity = typeof deps.appendActivityForIdentity === 'function'
+    ? deps.appendActivityForIdentity
+    : async ({
+        auroraUid,
+        userId,
+        eventType,
+        payload,
+        deeplink,
+        source,
+        occurredAtMs,
+      }) => appendActivityEventForIdentity(
+        { auroraUid, userId },
+        {
+          event_type: eventType,
+          payload,
+          deeplink,
+          source,
+          occurred_at_ms: occurredAtMs,
+        },
+      );
+  const saveActivityDetail = typeof deps.upsertActivityDetail === 'function'
+    ? deps.upsertActivityDetail
+    : null;
 
   mountTravelPlansResponseObserver(app, { logger });
 
@@ -347,16 +371,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
         createdPlan = listOut.plans[0];
       }
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_created',
-            payload: buildTravelPlanActivityPayload(createdPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(createdPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_created',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
@@ -491,16 +522,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_updated',
-            payload: buildTravelPlanActivityPayload(nextPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(nextPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_updated',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
@@ -575,16 +613,23 @@ function mountTravelPlansRoutes(app, deps = {}) {
       const nextPlan = findTravelPlanByTripId(listOut.plans, tripId);
       if (!nextPlan) return res.status(404).json({ error: 'PLAN_NOT_FOUND' });
       try {
-        await appendActivity(
-          { auroraUid: identity.auroraUid, userId: identity.userId },
-          {
-            event_type: 'travel_plan_archived',
-            payload: buildTravelPlanActivityPayload(nextPlan),
-            deeplink: '/plans',
-            source: 'travel_plans_api',
-            occurred_at_ms: nowMs,
-          },
-        );
+        const payload = buildTravelPlanActivityPayload(nextPlan);
+        const activity = await appendActivity({
+          auroraUid: identity.auroraUid,
+          userId: identity.userId,
+          eventType: 'travel_plan_archived',
+          payload,
+          deeplink: payload.trip_id ? `/plans/${encodeURIComponent(payload.trip_id)}` : '/plans',
+          source: 'travel_plans_api',
+          occurredAtMs: nowMs,
+        });
+        if (saveActivityDetail && activity && activity.activity_id) {
+          await saveActivityDetail({
+            activityId: activity.activity_id,
+            detailKind: 'travel_plan',
+            detailJson: payload,
+          });
+        }
       } catch (activityErr) {
         logger?.warn?.(
           {
