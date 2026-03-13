@@ -22871,9 +22871,17 @@ function sensitivityConfidence(profileSummary) {
 function extractLatestArtifactIdFromSession(session) {
   if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
   const state = session.state && typeof session.state === 'object' && !Array.isArray(session.state) ? session.state : null;
-  if (!state) return null;
-  const artifactId = String(state.latest_artifact_id || '').trim();
-  return artifactId || null;
+  const meta = session.meta && typeof session.meta === 'object' && !Array.isArray(session.meta) ? session.meta : null;
+  return (
+    pickFirstTrimmed(
+      state && state.latest_artifact_id,
+      meta && meta.latest_artifact_id,
+      session.latest_artifact_id,
+      state && state.artifact_id,
+      meta && meta.artifact_id,
+      session.artifact_id,
+    ) || null
+  );
 }
 
 function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
@@ -25014,6 +25022,53 @@ function mergeMissingProfilePatchFields(target, source) {
     base.goals = extra.goals.slice(0, 12);
   }
   return base;
+}
+
+function normalizeArtifactBackfillGoals(values, max = 8) {
+  const rows = Array.isArray(values) ? values : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of rows) {
+    const token = String(raw || '').trim();
+    if (!token) continue;
+    const lower = token.toLowerCase();
+    if (lower === 'unknown' || lower === 'unsure' || lower === 'n/a' || lower === 'none') continue;
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(token);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeArtifactBackfillScalar(value) {
+  const token = pickFirstTrimmed(value);
+  if (!token) return null;
+  const lower = token.toLowerCase();
+  if (lower === 'unknown' || lower === 'unsure' || lower === 'unconfirmed' || lower === 'n/a' || lower === 'none') {
+    return null;
+  }
+  return token;
+}
+
+function buildProfilePatchFromTaskAnalysisContext(taskContext) {
+  const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : null;
+  if (!hard) return null;
+
+  const patch = {};
+  const skinType = normalizeArtifactBackfillScalar(hard.skin_type);
+  const sensitivity = normalizeArtifactBackfillScalar(hard.sensitivity);
+  const barrierStatus = normalizeArtifactBackfillScalar(hard.barrier_status);
+  const goals = normalizeArtifactBackfillGoals(hard.active_goals, 8);
+
+  if (skinType) patch.skinType = skinType;
+  if (sensitivity) patch.sensitivity = sensitivity;
+  if (barrierStatus) patch.barrierStatus = barrierStatus;
+  if (goals.length) patch.goals = goals;
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  return Object.keys(parsed.data).length ? parsed.data : null;
 }
 
 function extractQuickProfileLightweightPatch(raw = null) {
@@ -57421,7 +57476,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      const profileSummaryForFollowup = summarizeChatProfileForContext(profile);
+      let profileSummaryForFollowup = summarizeChatProfileForContext(profile);
       const requestScopedProfileOverride = mergeMissingProfilePatchFields(
         mergeMissingProfilePatchFields({}, profilePatchFromSession),
         appliedProfilePatch || textDerivedProfilePatch,
@@ -57465,6 +57520,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskAnalysisContextCache.set(key, taskContext);
         return taskContext;
       };
+      const activityArtifactId = extractLatestArtifactIdFromSession(parsed.data.session);
+      if (activityArtifactId) {
+        const chatTaskContextForBackfill = await ensureTaskAnalysisContextForConversation('chat');
+        const artifactDerivedProfilePatch = buildProfilePatchFromTaskAnalysisContext(chatTaskContextForBackfill);
+        if (artifactDerivedProfilePatch) {
+          const mergedProfile = mergeMissingProfilePatchFields(
+            isPlainObject(profile) ? { ...profile } : {},
+            artifactDerivedProfilePatch,
+          );
+          if (Object.keys(mergedProfile).length) {
+            profile = mergedProfile;
+            profileSummaryForFollowup = summarizeChatProfileForContext(profile);
+            taskAnalysisContextCache.clear();
+            cachedAnalysisContextSnapshotForConversation = undefined;
+            cachedAnalysisContextSnapshotLoaded = false;
+          }
+        }
+      }
       const buildIngredientProfileSummaryForResearch = ({ taskContext, ingredientContext }) => {
         const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : {};
         const soft = isPlainObject(taskContext && taskContext.task_soft_context) ? taskContext.task_soft_context : {};

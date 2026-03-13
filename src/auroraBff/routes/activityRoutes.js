@@ -363,10 +363,11 @@ function buildSkinAnalysisSnapshot({ item, artifactRow, ingredientPlanRow, store
 function buildSkinAnalysisActions(lang, item, snapshot) {
   const prompt = pickLang(
     lang,
-    '跟进我这次 skin analysis，告诉我下一步该怎么做',
-    'Follow up on this skin analysis and tell me the next best steps.',
+    '基于我保存的 skin analysis 继续，不要让我重复目标，直接告诉我下一步该怎么做。',
+    'Continue from my saved skin analysis. Do not ask me to restate my goals. Tell me the next best steps.',
   );
   const continueChat = withQuery('/chat', {
+    chip_id: 'chip.aurora.next_action.deep_dive_skin',
     q: prompt,
     activity_id: item.activity_id,
     artifact_id: snapshot && snapshot.artifact_id,
@@ -787,6 +788,7 @@ module.exports = {
     mapActivityItem,
     activityKindForEventType,
     buildSkinAnalysisSnapshot,
+    buildSkinAnalysisActions,
     buildTrackerSnapshot,
     buildProfileSnapshot,
     buildTravelPlanSnapshot,
