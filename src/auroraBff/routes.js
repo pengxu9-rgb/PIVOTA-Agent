@@ -45855,6 +45855,15 @@ async function generateProductRecommendations({
         ? Number(catalogDebug?.query_count)
         : 0,
       llm_trace: llmTrace,
+      analysis_context_usage: {
+        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
+        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
+        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
+        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+      },
     },
   };
   const recoContract = buildRecoMainlineContract({
@@ -51086,8 +51095,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
 	      const identity = await resolveIdentity(req, ctx);
-	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+	      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
 	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+        const requestProfileOverlay = extractAnalysisProfileContextOverlay(
+          extractProfilePatchFromSession(parsed.data.session),
+          extractProfilePatchFromRequestContextPayload(req.body || {}),
+        );
+        const requestProfileOverlayKeys =
+          requestProfileOverlay && typeof requestProfileOverlay === 'object'
+            ? Object.keys(requestProfileOverlay).sort()
+            : [];
+        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
 	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
 	        identity,
 	        session:
@@ -51099,9 +51117,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 	      });
 	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
 	        latestArtifact,
-	        profile,
+	        profile: storedProfile,
 	        recentLogs,
 	      });
+        const profile =
+          requestProfileOverlay && typeof requestProfileOverlay === 'object'
+            ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
+            : storedProfile;
 	      const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
@@ -51139,7 +51161,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	        recentLogs,
 	        message: requestText,
 	        analysisContextSnapshot,
-        requestOverride: extractProfilePatchFromSession(parsed.data.session),
+        requestOverride: requestProfileOverlay,
         includeAlternatives: false,
         logger,
         recoTriggerSource: 'goal_driven',
@@ -51274,10 +51296,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       const directNoRecoReason = deriveRecoEmptyReason(payload, finalDirectContract);
       const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
-      const envelope = buildEnvelope(ctx, {
-        assistant_message: null,
-        suggested_chips: suggestedChips,
-        cards: [
+        const recommendationAnalysisContextMeta =
+          upstreamReco &&
+          upstreamReco.upstreamDebug &&
+          isPlainObject(upstreamReco.upstreamDebug.analysis_context_usage)
+            ? upstreamReco.upstreamDebug.analysis_context_usage
+            : null;
+	      const envelope = buildEnvelope(ctx, {
+	        assistant_message: null,
+	        suggested_chips: suggestedChips,
+	        cards: [
           {
             card_id: `reco_${ctx.request_id}`,
             type: 'recommendations',
@@ -51286,8 +51314,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
-        session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
-        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
+	        session_patch: {
+            ...((payload.recommendations && payload.recommendations.length) ? { next_state: 'S7_PRODUCT_RECO' } : {}),
+            meta: {
+              profile_context_source: requestProfileContextSource,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+              ...(recommendationAnalysisContextMeta ? { analysis_context_usage: recommendationAnalysisContextMeta } : {}),
+            },
+          },
+	        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
           ctx: { ...ctx, trigger_source: 'action' },
           emitIfMissing: true,
           eventData: buildRecoRequestedEventData({

@@ -6262,6 +6262,107 @@ test('/v1/reco/generate: empty catalog-grounded payload is not reported as groun
     },
   );
 });
+
+test('/v1/reco/generate: quick-profile request context is consumed as explicit-only analysis context', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[decisionModuleId];
+      const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+      const originalAuroraChat = decisionModule.auroraChat;
+      decisionModule.auroraChat = async () => ({
+        answer: JSON.stringify({
+          recommendations: [
+            {
+              product_type: 'cleanser',
+              use_case: 'gentle oily-skin cleanse',
+              concern_match: ['acne'],
+              skin_fit: ['oily', 'sensitive'],
+              constraint_notes: ['fragrance_free_preferred'],
+              query_terms: ['gentle cleanser'],
+              reasons: ['A simple cleanser plan for oily skin with acne goals.'],
+            },
+          ],
+          confidence: 0.8,
+          missing_info: [],
+          warnings: [],
+        }),
+      });
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_quick_profile',
+            'X-Trace-ID': 'test_trace_reco_generate_quick_profile',
+            'X-Brief-ID': 'test_brief_reco_generate_quick_profile',
+            'X-Lang': 'EN',
+          })
+          .send({
+            focus: 'breakouts',
+            context: {
+              skin_feel: 'oily',
+              goal_primary: 'breakouts',
+              sensitivity_flag: 'yes',
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        const meta =
+          resp.body &&
+          resp.body.session_patch &&
+          resp.body.session_patch.meta &&
+          typeof resp.body.session_patch.meta === 'object' &&
+          !Array.isArray(resp.body.session_patch.meta)
+            ? resp.body.session_patch.meta
+            : {};
+        assert.equal(meta.profile_context_source, 'request_overlay_applied');
+        assert.deepEqual(meta.request_profile_overlay_keys, ['goals', 'sensitivity', 'skinType']);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
+        const recoMeta =
+          recoCard &&
+          recoCard.payload &&
+          recoCard.payload.recommendation_meta &&
+          typeof recoCard.payload.recommendation_meta === 'object' &&
+          !Array.isArray(recoCard.payload.recommendation_meta)
+            ? recoCard.payload.recommendation_meta
+            : {};
+        assert.ok(['explicit_only', 'snapshot_hard', 'snapshot_mixed'].includes(String(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.context_mode || '')));
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.explicit_override_applied, true);
+        assert.deepEqual(
+          Array.isArray(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.hard_context_fields_used)
+            ? recoMeta.analysis_context_usage.hard_context_fields_used.sort()
+            : [],
+          ['active_goals', 'sensitivity', 'skin_type'],
+        );
+      } finally {
+        decisionModule.auroraChat = originalAuroraChat;
+        delete require.cache[moduleId];
+        delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/chat: ingredient.by_goal returns ingredient_goal_match even when client_state=RECO_GATE', async () => {
   return withEnv({ AURORA_BFF_RETENTION_DAYS: '0', DATABASE_URL: undefined }, async () => {
     const moduleId = require.resolve('../src/auroraBff/routes');
