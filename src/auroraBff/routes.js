@@ -684,7 +684,7 @@ const AURORA_ROUTINE_SOFT_GATE_DELAY_RECO = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_ROUTINE_ANALYSIS_V2_ENABLED = (() => {
-  const raw = String(process.env.AURORA_ROUTINE_ANALYSIS_V2_ENABLED || 'false')
+  const raw = String(process.env.AURORA_ROUTINE_ANALYSIS_V2_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';

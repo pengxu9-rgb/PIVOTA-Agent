@@ -191,6 +191,54 @@ test('/v1/analysis/skin: routine analysis v2 emits product-first cards with comp
   );
 });
 
+test('/v1/analysis/skin: routine analysis v2 stays enabled when env flag is absent', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: undefined,
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_analysis_v2_default_on');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Foaming cleanser',
+                moisturizer: 'Gel moisturizer',
+              },
+              pm: {
+                cleanser: 'Foaming cleanser',
+                treatment: 'Retinol serum',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.equal(cards[0] && cards[0].type, 'routine_product_audit_v1');
+        assert.equal(cards[1] && cards[1].type, 'routine_adjustment_plan_v1');
+        assert.equal(Boolean(findCard(cards, 'analysis_story_v2')), false);
+        assert.equal(Boolean(findCard(cards, 'routine_fit_summary')), false);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.routine_analysis_version, 'v2');
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('routineAnalysisV2 recommendation groups: empty pool degrades to category guidance instead of empty products', async () => {
   const { resolveRecommendationGroups } = require('../src/auroraBff/routineAnalysisV2');
   const groups = await resolveRecommendationGroups({
