@@ -5492,10 +5492,16 @@ function extractUrlAnchorSignals(inputUrl) {
   }
 }
 
-function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbackUrl = '' } = {}) {
-  const row =
+function normalizeAnchorCandidateForTrust(candidate) {
+  return (
+    coerceRecoCandidateForGuardrail(candidate) ||
     normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null)
+  );
+}
+
+function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbackUrl = '' } = {}) {
+  const row = normalizeAnchorCandidateForTrust(candidate);
   if (!row || typeof row !== 'object') return null;
   const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
   const name = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title, fallbackName);
@@ -5532,9 +5538,7 @@ function evaluateAnchorTrustForProductIntel({
   strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
   policy = PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY,
 } = {}) {
-  const row =
-    normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+  const row = normalizeAnchorCandidateForTrust(candidate);
   if (!row || typeof row !== 'object') {
     return {
       trusted_anchor: null,
@@ -5632,7 +5636,7 @@ function evaluateAnchorTrustForProductIntel({
 }
 
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
-  const normalized = normalizeRecoCatalogProduct(rawProduct);
+  const normalized = normalizeAnchorCandidateForTrust(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
   const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
   if (!productId) return null;
@@ -49031,10 +49035,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
         if (primaryAnchorResolution.ok && primaryAnchorResolution.product) {
-          const resolvedAnchor = mapCatalogProductToAnchorProduct(primaryAnchorResolution.product, {
-            fallbackName: String(input || ''),
+          applyAnchorCandidateGuard(primaryAnchorResolution.product, 'catalog_primary_resolve', {
+            preferDisplay: true,
           });
-          applyAnchorCandidateGuard(resolvedAnchor, 'catalog_primary_resolve');
         }
       }
 
@@ -49048,8 +49051,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
         if (catalogFallback.ok && catalogFallback.product) {
-          const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
-          applyAnchorCandidateGuard(fallbackAnchor, 'catalog_fallback');
+          applyAnchorCandidateGuard(catalogFallback.product, 'catalog_fallback', {
+            preferDisplay: true,
+          });
         }
       }
 
