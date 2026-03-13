@@ -119,6 +119,70 @@ function inferKeySignals(candidate, inferredProductType) {
   return uniqStrings(out, 4);
 }
 
+const LOW_VALUE_REASON_PATTERNS = [
+  /without (?:knowing|having).*(?:ingredient|formula|skin type|climate|season)/i,
+  /\bhard to assess\b/i,
+  /\bneed(?: more| explicit)? (?:season|climate|ingredient|formula|skin type) information(?: to assess)?\b/i,
+  /\broutine basic\b/i,
+  /\b(?:goal )?fit is unclear\b/i,
+  /\binsufficient (?:evidence|context|detail).*(?:assess|judge|call)/i,
+  /\bunclear from the available product signals\b/i,
+];
+
+function normalizeSkinTypeToken(value) {
+  const token = asString(value).toLowerCase();
+  if (!token) return '';
+  if (token.includes('comb')) return 'combination';
+  if (token.includes('oil')) return 'oily';
+  if (token.includes('dry')) return 'dry';
+  if (token.includes('normal')) return 'normal';
+  if (token.includes('sensitive')) return 'sensitive';
+  return token;
+}
+
+function hasElevatedSensitivity(context = {}) {
+  const token = asString(context.sensitivity).toLowerCase();
+  return token === 'medium' || token === 'high' || token === 'sensitive';
+}
+
+function isBarrierImpaired(context = {}) {
+  return /(impaired|compromised|damaged|weak|fragile|sensitized)/i.test(asString(context.barrierStatus));
+}
+
+function isHydrationSupportType(inferredProductType, text = '') {
+  const type = String(inferredProductType || '').toLowerCase();
+  const lower = String(text || '').toLowerCase();
+  if (type === 'essence') return true;
+  if (type !== 'serum' && type !== 'treatment') return false;
+  return /hyaluronic|hyaluronate|hydrat|ceramide|panthenol|beta glucan|glycerin|cica|centella|soothing|repair|barrier/i.test(lower);
+}
+
+function isLowValueReason(text) {
+  const value = asString(text);
+  if (!value) return true;
+  return LOW_VALUE_REASON_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function preserveOrFallbackVerdict(rawVerdict, fallbackVerdict) {
+  const token = asString(rawVerdict);
+  if (token === 'good' || token === 'mixed' || token === 'poor' || token === 'unknown') return token;
+  return fallbackVerdict;
+}
+
+function replaceLowValueReason(rawReason, fallbackReason) {
+  const reason = asString(rawReason);
+  if (!reason || isLowValueReason(reason)) {
+    return {
+      reason: asString(fallbackReason),
+      replaced: true,
+    };
+  }
+  return {
+    reason,
+    replaced: false,
+  };
+}
+
 function isStrongActiveType(type, text = '') {
   const token = String(type || '').toLowerCase();
   const lower = String(text || '').toLowerCase();
@@ -135,35 +199,52 @@ function looksHeavyForDaytime(type, text = '') {
     && /balm|sleeping|night cream|repair cream|rich cream|heavy cream|ointment/i.test(lower);
 }
 
-function goalVerdictForType(goal, inferredProductType) {
+function goalVerdictForType(goal, inferredProductType, productText = '', context = {}) {
   const key = asString(goal).toLowerCase();
   const type = String(inferredProductType || '').toLowerCase();
+  const lower = String(productText || '').toLowerCase();
+  const hydratingSupport = isHydrationSupportType(type, lower);
+  const barrierAware = hasElevatedSensitivity(context) || isBarrierImpaired(context);
   if (!key) return { verdict: 'unknown', reason: 'Goal was not provided.' };
   if (key.includes('wrinkle') || key.includes('aging') || key.includes('fine line')) {
     if (type.includes('retinoid')) return { verdict: 'good', reason: 'Retinoid-like products usually align with wrinkle-focused goals.' };
     if (type === 'sunscreen') return { verdict: 'good', reason: 'Daily UV protection supports long-term wrinkle prevention.' };
-    if (type.includes('moisturizer') || type.includes('serum')) return { verdict: 'mixed', reason: 'Supportive hydration can help, but this is not a primary wrinkle treatment.' };
-    return { verdict: 'unknown', reason: 'Goal fit is unclear from the available product signals.' };
+    if (type.includes('moisturizer') || type.includes('serum') || hydratingSupport) {
+      return { verdict: 'mixed', reason: 'This can support comfort and smoother skin texture, but it is not a primary wrinkle-treatment step on its own.' };
+    }
+    if (type === 'cleanser') return { verdict: 'mixed', reason: 'A cleanser supports routine tolerability, but wrinkle benefit depends on the leave-on steps around it.' };
+    return { verdict: 'unknown', reason: 'This product category is not enough on its own to judge wrinkle impact precisely.' };
   }
   if (key.includes('dehydrat') || key.includes('hydrat') || key.includes('dry')) {
-    if (type.includes('moisturizer') || type.includes('essence') || type.includes('serum')) {
+    if (type.includes('moisturizer') || type.includes('essence') || hydratingSupport) {
       return { verdict: 'good', reason: 'Hydrating or barrier-support steps usually align with dehydration goals.' };
     }
-    if (type.includes('cleanser')) return { verdict: 'mixed', reason: 'Cleanser fit depends on how stripping the formula is.' };
+    if (type === 'cleanser') return { verdict: 'mixed', reason: 'This can fit dehydration goals if it cleans without leaving the skin tight or overly stripped.' };
     if (isStrongActiveType(type)) return { verdict: 'mixed', reason: 'Strong actives can help some goals but may worsen dehydration if the routine is already drying.' };
-    return { verdict: 'unknown', reason: 'Hydration fit is unclear from the available product signals.' };
+    return { verdict: 'unknown', reason: 'Hydration support depends on the exact formula, but this product type is not a clear dehydration-focused step.' };
   }
   if (key.includes('acne') || key.includes('breakout') || key.includes('blemish')) {
     if (type.includes('benzoyl') || type.includes('exfoliant')) return { verdict: 'good', reason: 'This looks like a direct acne-treatment step.' };
+    if (type.includes('retinoid')) return { verdict: barrierAware ? 'mixed' : 'good', reason: 'Retinoid-style steps can support acne goals, but they may need slower ramp-up when sensitivity or barrier stress is already present.' };
+    if (type === 'cleanser') return { verdict: 'mixed', reason: 'A cleanser can help reduce oil, residue, and congestion pressure, but it is not a standalone acne-treatment step.' };
+    if (type.includes('moisturizer') || hydratingSupport) return { verdict: 'mixed', reason: 'Barrier or hydration support can make acne routines easier to tolerate, but this is not the main acne-fighting step.' };
     if (type === 'sunscreen') return { verdict: 'mixed', reason: 'Daily sunscreen matters, but it is not a direct breakout treatment.' };
-    return { verdict: 'unknown', reason: 'Acne fit is unclear from the available product signals.' };
+    return { verdict: 'unknown', reason: 'This product category does not tell us enough to call it a clear acne-focused step.' };
+  }
+  if (key.includes('pore') || key.includes('texture') || key.includes('congestion')) {
+    if (type.includes('exfoliant') || type.includes('retinoid')) return { verdict: 'good', reason: 'This type of leave-on active often maps to pore or texture refinement goals.' };
+    if (type === 'cleanser') return { verdict: 'mixed', reason: 'A cleanser can help clear oil and residue, but pore improvement usually depends on the broader leave-on routine too.' };
+    if (type.includes('moisturizer') || hydratingSupport) return { verdict: 'mixed', reason: 'This can support tolerance and smoother feel, but it is not the main pore-refining step.' };
+    return { verdict: 'unknown', reason: 'Pore or texture fit depends on the actives and finish, which are only partly visible from this label.' };
   }
   if (key.includes('barrier') || key.includes('sensitive') || key.includes('redness')) {
-    if (type.includes('moisturizer') || type === 'cleanser') return { verdict: 'good', reason: 'Barrier-support basics usually align with sensitivity-focused goals.' };
+    if (type.includes('moisturizer') || hydratingSupport) return { verdict: 'good', reason: 'This reads like a support step that usually helps barrier comfort and recovery.' };
+    if (type === 'cleanser') return { verdict: 'good', reason: 'A gentle cleanser is often part of a sensitivity-friendly routine because it removes residue without adding another strong active.' };
+    if (type === 'sunscreen') return { verdict: 'mixed', reason: 'Daily UV protection can help reactive skin, but comfort depends on texture and filter tolerability.' };
     if (isStrongActiveType(type)) return { verdict: 'poor', reason: 'This looks like a stronger active that may need caution for sensitive-barrier goals.' };
-    return { verdict: 'unknown', reason: 'Barrier fit is unclear from the available product signals.' };
+    return { verdict: 'unknown', reason: 'Barrier fit depends on formula comfort, but this category is not obviously barrier-first.' };
   }
-  return { verdict: 'unknown', reason: 'No deterministic goal mapping was available.' };
+  return { verdict: 'unknown', reason: 'This goal is broader than the visible category signals, so the fit remains tentative.' };
 }
 
 function buildEvidenceBasis(candidate) {
@@ -412,6 +493,10 @@ function buildFallbackProductAudit(candidate, context = {}) {
   const step = normalizeStep(candidate && candidate.step);
   const goals = uniqStrings([...(asArray(context.goals)), ...(asArray(context.concerns))], 4);
   const productText = asString(candidate && candidate.product_text);
+  const skinType = normalizeSkinTypeToken(context.skinType);
+  const elevatedSensitivity = hasElevatedSensitivity(context);
+  const barrierImpaired = isBarrierImpaired(context);
+  const hydratingSupport = isHydrationSupportType(inferredProductType, productText);
   const potentialConcerns = [];
   let suggestedAction = 'keep';
 
@@ -429,41 +514,95 @@ function buildFallbackProductAudit(candidate, context = {}) {
     potentialConcerns.push('The exact product type is still unclear from the provided label.');
   }
 
-  if (context.sensitivity && String(context.sensitivity).toLowerCase() !== 'low' && isStrongActiveType(inferredProductType, productText)) {
+  if (elevatedSensitivity && isStrongActiveType(inferredProductType, productText)) {
     potentialConcerns.push('Sensitivity context suggests this step may need slower onboarding or lower frequency.');
+  }
+  if (barrierImpaired && inferredProductType === 'cleanser') {
+    potentialConcerns.push('Barrier-stressed skin often needs a cleanser that removes buildup without leaving the skin tight.');
+  }
+  if ((skinType === 'oily' || skinType === 'combination') && inferredProductType === 'moisturizer' && looksHeavyForDaytime(inferredProductType, productText)) {
+    potentialConcerns.push('A richer moisturizer can feel heavy on oil-prone skin, especially in the daytime.');
   }
 
   const fitForSkinType = (() => {
-    if (context.sensitivity && String(context.sensitivity).toLowerCase() !== 'low' && isStrongActiveType(inferredProductType, productText)) {
+    if (elevatedSensitivity && isStrongActiveType(inferredProductType, productText)) {
       return {
         verdict: 'mixed',
         reason: 'This may fit, but the current sensitivity context suggests a more cautious cadence.',
       };
     }
-    if (inferredProductType === 'cleanser' || inferredProductType === 'moisturizer' || inferredProductType === 'sunscreen') {
+    if (inferredProductType === 'cleanser') {
+      if (barrierImpaired || elevatedSensitivity) {
+        return {
+          verdict: 'mixed',
+          reason: 'As a cleanser, this can help clear oil and residue, but the main watch-out is whether it feels too stripping for the current sensitivity or barrier context.',
+        };
+      }
+      if (skinType === 'oily' || skinType === 'combination') {
+        return {
+          verdict: 'good',
+          reason: 'As a cleanser, this is directionally aligned with removing excess oil and daily buildup for oily or combination skin, assuming it does not leave the skin tight.',
+        };
+      }
+      if (skinType === 'dry') {
+        return {
+          verdict: 'mixed',
+          reason: 'As a cleanser, this can fit, but dry-leaning skin usually does better with a gentler, non-stripping formula.',
+        };
+      }
       return {
         verdict: 'good',
-        reason: 'This product type is usually a core support step when the formula is tolerable.',
+        reason: 'This reads like a core cleansing step, so the main fit question is whether it cleans comfortably without over-stripping.',
+      };
+    }
+    if (inferredProductType === 'moisturizer') {
+      if ((skinType === 'oily' || skinType === 'combination') && looksHeavyForDaytime(inferredProductType, productText)) {
+        return {
+          verdict: 'mixed',
+          reason: 'This looks like barrier support, but richer moisturizer signals can feel heavy on oil-prone skin, especially for AM wear.',
+        };
+      }
+      return {
+        verdict: 'good',
+        reason: 'This reads like a barrier-support step, which is usually useful as long as the texture feels comfortable for the user\'s skin type.',
+      };
+    }
+    if (inferredProductType === 'sunscreen' || inferredProductType === 'spf moisturizer') {
+      return {
+        verdict: elevatedSensitivity
+          ? 'mixed'
+          : 'good',
+        reason: elevatedSensitivity
+          ? 'Daily UV protection is valuable, but the exact finish and filter feel still matter when sensitivity is in the picture.'
+          : 'This looks like a practical daytime protection step, and that category usually fits well when the finish is wearable.',
+      };
+    }
+    if (hydratingSupport) {
+      return {
+        verdict: 'good',
+        reason: 'This reads like a hydration-support leave-on step, which is usually compatible with most skin types when the texture is comfortable.',
       };
     }
     return {
       verdict: inferredProductType === 'other' ? 'unknown' : 'mixed',
       reason: inferredProductType === 'other'
         ? 'The exact product type is unclear, so fit is still tentative.'
-        : 'Fit depends on the exact formula strength and the rest of the routine.',
+        : 'This category can fit, but the exact formula strength and the surrounding routine will decide how well it lands.',
     };
   })();
 
   const fitForGoals = goals.map((goal) => ({
     goal,
-    ...goalVerdictForType(goal, inferredProductType),
+    ...goalVerdictForType(goal, inferredProductType, productText, context),
   }));
 
   const fitForSeasonOrClimate = {
     verdict: 'unknown',
     reason: context.season || context.climate
-      ? 'Season or climate context was limited, so this is a tentative fit call.'
-      : 'No explicit season or climate context was provided.',
+      ? looksHeavyForDaytime(inferredProductType, productText)
+        ? 'Season or climate context is limited, but richer texture signals are usually easier to manage in cooler or drier conditions than in hot humid weather.'
+        : 'Season or climate context is limited, so this remains a tentative wearability call rather than a formula verdict.'
+      : 'No explicit season or climate context was provided, so this remains a neutral seasonal fit call.',
   };
 
   const missingInfo = [];
@@ -497,6 +636,18 @@ function buildFallbackProductAudit(candidate, context = {}) {
     if (suggestedAction === 'unknown') {
       return 'The product label is still too vague to make a precise slot recommendation, so this is a tentative category-level read.';
     }
+    if (inferredProductType === 'cleanser') {
+      return 'This reads as a cleansing step, so the practical question is whether it clears oil and residue without feeling too stripping for the current skin and barrier context.';
+    }
+    if (inferredProductType === 'moisturizer') {
+      return 'This looks like a barrier-support step, and the main fit question is whether the texture feels comfortable in the current slot and climate.';
+    }
+    if (inferredProductType === 'sunscreen' || inferredProductType === 'spf moisturizer') {
+      return 'This looks like a daytime protection step, so success depends more on daily wearability and tolerance than on having a perfectly confirmed INCI list.';
+    }
+    if (hydratingSupport) {
+      return 'This reads like a hydration-support leave-on, so it is more useful for comfort and barrier support than as a primary acne-treatment step.';
+    }
     return 'This looks directionally usable in the current slot, with the biggest unknowns tied to exact formula version and strength.';
   })();
 
@@ -522,6 +673,63 @@ function buildFallbackProductAudit(candidate, context = {}) {
   };
 }
 
+function normalizeGoalRowsWithQualityGate(rawRows, fallbackRows) {
+  const fallbackByGoal = new Map(
+    asArray(fallbackRows)
+      .map((row) => isPlainObject(row) ? [asString(row.goal).toLowerCase(), row] : null)
+      .filter(Boolean),
+  );
+  const normalizedRaw = asArray(rawRows)
+    .map((row) => isPlainObject(row) ? {
+      goal: asString(row.goal),
+      verdict: preserveOrFallbackVerdict(row.verdict, 'unknown'),
+      reason: asString(row.reason),
+    } : null)
+    .filter((row) => row && row.goal);
+
+  if (!normalizedRaw.length) {
+    return {
+      rows: asArray(fallbackRows),
+      replaced: asArray(fallbackRows).length > 0,
+    };
+  }
+
+  const reasonCounts = new Map();
+  for (const row of normalizedRaw) {
+    const key = asString(row.reason).toLowerCase();
+    if (!key) continue;
+    reasonCounts.set(key, (reasonCounts.get(key) || 0) + 1);
+  }
+
+  let replaced = false;
+  const rows = normalizedRaw.map((row) => {
+    const fallback = fallbackByGoal.get(asString(row.goal).toLowerCase()) || null;
+    const duplicateReason = asString(row.reason) && (reasonCounts.get(asString(row.reason).toLowerCase()) || 0) > 1;
+    if (fallback && (isLowValueReason(row.reason) || duplicateReason)) {
+      replaced = true;
+      return {
+        goal: row.goal,
+        verdict: preserveOrFallbackVerdict(row.verdict, fallback.verdict),
+        reason: fallback.reason,
+      };
+    }
+    if (!row.reason && fallback) {
+      replaced = true;
+      return {
+        goal: row.goal,
+        verdict: preserveOrFallbackVerdict(row.verdict, fallback.verdict),
+        reason: fallback.reason,
+      };
+    }
+    return row;
+  });
+
+  return {
+    rows,
+    replaced,
+  };
+}
+
 function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}) {
   const rawProducts = Array.isArray(rawOutput && rawOutput.products) ? rawOutput.products : [];
   const productsByRef = new Map(
@@ -529,11 +737,33 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
       .filter((row) => isPlainObject(row) && asString(row.product_ref))
       .map((row) => [asString(row.product_ref), row]),
   );
+  const productReasonSources = [];
+  let qualityGateAppliedCount = 0;
   const products = auditedCandidates.map((candidate) => {
     const fallback = buildFallbackProductAudit(candidate, context);
     const raw = productsByRef.get(fallback.product_ref);
-    if (!isPlainObject(raw)) return fallback;
-    return {
+    if (!isPlainObject(raw)) {
+      productReasonSources.push({
+        product_ref: fallback.product_ref,
+        reason_source: 'fallback_substituted',
+      });
+      return fallback;
+    }
+    let qualityGateApplied = false;
+    const skinTypeReason = isPlainObject(raw.fit_for_skin_type)
+      ? replaceLowValueReason(raw.fit_for_skin_type.reason, fallback.fit_for_skin_type.reason)
+      : { reason: fallback.fit_for_skin_type.reason, replaced: true };
+    if (skinTypeReason.replaced) qualityGateApplied = true;
+    const seasonReason = isPlainObject(raw.fit_for_season_or_climate)
+      ? replaceLowValueReason(raw.fit_for_season_or_climate.reason, fallback.fit_for_season_or_climate.reason)
+      : { reason: fallback.fit_for_season_or_climate.reason, replaced: true };
+    if (seasonReason.replaced) qualityGateApplied = true;
+    const conciseReasoning = replaceLowValueReason(raw.concise_reasoning_en, fallback.concise_reasoning_en);
+    if (conciseReasoning.replaced) qualityGateApplied = true;
+    const normalizedGoals = normalizeGoalRowsWithQualityGate(raw.fit_for_goals, fallback.fit_for_goals);
+    if (normalizedGoals.replaced) qualityGateApplied = true;
+
+    const normalized = {
       ...fallback,
       slot: ['am', 'pm', 'unknown'].includes(asString(raw.slot)) ? asString(raw.slot) : fallback.slot,
       original_step_label: raw.original_step_label == null ? fallback.original_step_label : asString(raw.original_step_label) || null,
@@ -546,21 +776,13 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
         ? uniqStrings(raw.likely_key_ingredients_or_signals, 6)
         : fallback.likely_key_ingredients_or_signals,
       fit_for_skin_type: isPlainObject(raw.fit_for_skin_type) ? {
-        verdict: ['good', 'mixed', 'poor', 'unknown'].includes(asString(raw.fit_for_skin_type.verdict)) ? asString(raw.fit_for_skin_type.verdict) : fallback.fit_for_skin_type.verdict,
-        reason: asString(raw.fit_for_skin_type.reason) || fallback.fit_for_skin_type.reason,
+        verdict: preserveOrFallbackVerdict(raw.fit_for_skin_type.verdict, fallback.fit_for_skin_type.verdict),
+        reason: skinTypeReason.reason || fallback.fit_for_skin_type.reason,
       } : fallback.fit_for_skin_type,
-      fit_for_goals: Array.isArray(raw.fit_for_goals) && raw.fit_for_goals.length
-        ? raw.fit_for_goals
-          .map((row) => isPlainObject(row) ? {
-            goal: asString(row.goal),
-            verdict: ['good', 'mixed', 'poor', 'unknown'].includes(asString(row.verdict)) ? asString(row.verdict) : 'unknown',
-            reason: asString(row.reason),
-          } : null)
-          .filter(Boolean)
-        : fallback.fit_for_goals,
+      fit_for_goals: normalizedGoals.rows.length ? normalizedGoals.rows : fallback.fit_for_goals,
       fit_for_season_or_climate: isPlainObject(raw.fit_for_season_or_climate) ? {
-        verdict: ['good', 'mixed', 'poor', 'unknown'].includes(asString(raw.fit_for_season_or_climate.verdict)) ? asString(raw.fit_for_season_or_climate.verdict) : fallback.fit_for_season_or_climate.verdict,
-        reason: asString(raw.fit_for_season_or_climate.reason) || fallback.fit_for_season_or_climate.reason,
+        verdict: preserveOrFallbackVerdict(raw.fit_for_season_or_climate.verdict, fallback.fit_for_season_or_climate.verdict),
+        reason: seasonReason.reason || fallback.fit_for_season_or_climate.reason,
       } : fallback.fit_for_season_or_climate,
       potential_concerns: uniqStrings(raw.potential_concerns, 6).length ? uniqStrings(raw.potential_concerns, 6) : fallback.potential_concerns,
       suggested_action: ['keep', 'move_to_am', 'move_to_pm', 'reduce_frequency', 'replace', 'remove', 'unknown'].includes(asString(raw.suggested_action))
@@ -568,8 +790,14 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
         : fallback.suggested_action,
       confidence: clampNumber(raw.confidence, 0, 1, fallback.confidence),
       missing_info: uniqStrings(raw.missing_info, 6).length ? uniqStrings(raw.missing_info, 6) : fallback.missing_info,
-      concise_reasoning_en: asString(raw.concise_reasoning_en) || fallback.concise_reasoning_en,
+      concise_reasoning_en: conciseReasoning.reason || fallback.concise_reasoning_en,
     };
+    if (qualityGateApplied) qualityGateAppliedCount += 1;
+    productReasonSources.push({
+      product_ref: normalized.product_ref,
+      reason_source: qualityGateApplied ? 'quality_gate_replaced' : 'raw_llm_verbatim',
+    });
+    return normalized;
   });
 
   const additionalItems = Array.isArray(rawOutput && rawOutput.additional_items_needing_verification)
@@ -587,6 +815,10 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
     additional_items_needing_verification: additionalItems,
     missing_info: uniqStrings(rawOutput && rawOutput.missing_info, 8),
     confidence: clampNumber(rawOutput && rawOutput.confidence, 0, 1, averageConfidence(products)),
+    quality_gate_meta: {
+      quality_gate_applied_count: qualityGateAppliedCount,
+      product_reason_sources: productReasonSources,
+    },
   };
 }
 
@@ -1409,7 +1641,9 @@ async function runRoutineAnalysisV2({
   const audit = normalizeFallbackAuditOutput(prioritized.audited, stageARaw, {
     goals: goalContext.goals,
     concerns: goalContext.goals,
+    skinType: profileContext.skin_type,
     sensitivity: profileContext.sensitivity,
+    barrierStatus: profileContext.barrier_status,
     season: seasonClimateContext.season,
     climate: seasonClimateContext.climate,
   });
@@ -1496,6 +1730,14 @@ async function runRoutineAnalysisV2({
         deferred_product_count: prioritized.additional.length,
         output_budget: stageABudget,
         confidence: audit.confidence,
+        quality_gate_applied_count:
+          isPlainObject(audit.quality_gate_meta) && Number.isFinite(Number(audit.quality_gate_meta.quality_gate_applied_count))
+            ? Number(audit.quality_gate_meta.quality_gate_applied_count)
+            : 0,
+        product_reason_sources:
+          isPlainObject(audit.quality_gate_meta) && Array.isArray(audit.quality_gate_meta.product_reason_sources)
+            ? audit.quality_gate_meta.product_reason_sources
+            : [],
       },
       stage_b: {
         adjustment_count: asArray(synthesis.top_3_adjustments).length,
