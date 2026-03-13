@@ -13,6 +13,7 @@ const {
   listRecentDiagnosisArtifacts,
   saveDiagnosisArtifact,
 } = require('./diagnosisArtifactStore');
+const { buildAnalysisContextSnapshotV1 } = require('./analysisContextSnapshot');
 
 function generateDiagnosisId() {
   return crypto.randomUUID();
@@ -950,11 +951,25 @@ async function runDiagnosisV2({
     throw err;
   }
 
+  let analysisContextSnapshot = null;
   if (ctx.userId) {
     try {
-      await saveDiagnosisArtifact({
+      const savedArtifact = await saveDiagnosisArtifact({
         userId: ctx.userId,
         artifact: { schema: 'aurora.skin_diagnosis.v2', data: validation.data },
+      });
+      const latestArtifact =
+        savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
+          ? {
+              ...savedArtifact.artifact_json,
+              artifact_id: savedArtifact.artifact_id || null,
+              created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at || null,
+            }
+          : { schema: 'aurora.skin_diagnosis.v2', data: validation.data };
+      analysisContextSnapshot = buildAnalysisContextSnapshotV1({
+        latestArtifact,
+        profile: ctx.profile || null,
+        recentLogs: Array.isArray(ctx.recentLogs) ? ctx.recentLogs : [],
       });
     } catch (_) {
       // Persistence failure should not break the diagnosis flow.
@@ -963,6 +978,7 @@ async function runDiagnosisV2({
 
   return {
     resultPayload: validation.data,
+    analysisContextSnapshot,
     warnings: validation.warnings,
     promptVersion: PROMPT_VERSION,
   };

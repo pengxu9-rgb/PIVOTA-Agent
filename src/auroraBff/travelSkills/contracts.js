@@ -11,6 +11,11 @@ const { getTravelContextKbEntry, upsertTravelContextKbEntry } = require('../trav
 const { evaluateTravelKbBackfill, buildTravelKbUpsertEntry } = require('../travelKbPolicy');
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../productMatcherV1');
 const {
+  buildAnalysisContextSnapshotV1,
+  resolveAnalysisContextForTask,
+  buildTravelAnalysisContextFromSnapshot,
+} = require('../analysisContextSnapshot');
+const {
   recordAuroraTravelLlmCall,
   recordAuroraTravelLlmTrigger,
   recordAuroraTravelLlmSkip,
@@ -1323,6 +1328,18 @@ async function runTravelPipeline(input = {}) {
 
   const llmStartedAt = Date.now();
   const llmDecision = decideLlmCalibrationTrigger({ destination });
+  const travelAnalysisSnapshot = buildAnalysisContextSnapshotV1({
+    latestArtifact: null,
+    lastAnalysis: isPlainObject(profile) && isPlainObject(profile.lastAnalysis) ? profile.lastAnalysis : null,
+    profile,
+    recentLogs: Array.isArray(input.recentLogs) ? input.recentLogs : [],
+  });
+  const travelAnalysisTaskContext = buildTravelAnalysisContextFromSnapshot(resolveAnalysisContextForTask({
+    task: 'travel',
+    snapshot: travelAnalysisSnapshot,
+    profile,
+    recentLogs: Array.isArray(input.recentLogs) ? input.recentLogs : [],
+  }));
   const travelLlmInput = {
     destination,
     start_date: startDate,
@@ -1353,6 +1370,18 @@ async function runTravelPipeline(input = {}) {
     alerts_source: normalizeText(alertsPayload && alertsPayload.source, 40) || null,
     kb_hit: kbHit,
     question: message,
+    analysis_context_hard: isPlainObject(travelAnalysisTaskContext.task_hard_context)
+      ? travelAnalysisTaskContext.task_hard_context
+      : {},
+    analysis_context_soft: isPlainObject(travelAnalysisTaskContext.task_soft_context)
+      ? travelAnalysisTaskContext.task_soft_context
+      : {},
+    analysis_context_evidence: Array.isArray(travelAnalysisTaskContext.evidence_summary)
+      ? travelAnalysisTaskContext.evidence_summary
+      : [],
+    analysis_context_conflicts: Array.isArray(travelAnalysisTaskContext.analysis_context_conflicts)
+      ? travelAnalysisTaskContext.analysis_context_conflicts
+      : [],
   };
 
   if (llmDecision.triggered) {

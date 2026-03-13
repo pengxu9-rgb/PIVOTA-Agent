@@ -853,7 +853,10 @@ test('runRoutineAnalysisV2: Stage B salvages valid sections when one section fai
   });
 
   assert.equal(result.debug_meta.stage_b.llm_status, 'partial');
-  assert.match(result.synthesis.current_routine_assessment.summary, /Add a clear AM sunscreen step|clearest first fix/i);
+  assert.match(
+    result.synthesis.current_routine_assessment.summary,
+    /directionally workable but needs a small adjustment|clearest first fix is "Add a clear AM sunscreen step"/i,
+  );
   assert.equal(result.synthesis.top_3_adjustments[0].title, 'Add a clear AM sunscreen step');
   assert.ok(result.synthesis.improved_am_routine.length >= 1, 'fallback synthesis should backfill the malformed section');
 });
@@ -917,7 +920,6 @@ test('runRoutineAnalysisV2: invalid JSON after one retry still falls back cleanl
   assert.equal(result.debug_meta.stage_a.retry_count, 1);
   assert.equal(result.debug_meta.stage_a.product_reason_sources[0].reason_source, 'fallback_substituted');
 });
-
 test('normalizeFallbackAuditOutput: quality gate replaces low-value cleanser reasoning with category-level fallback', () => {
   const { normalizeFallbackAuditOutput } = require('../src/auroraBff/routineAnalysisV2');
 

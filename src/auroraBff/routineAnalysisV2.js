@@ -2,6 +2,11 @@ const crypto = require('crypto');
 
 const LlmGateway = require('./services/llm_gateway');
 const { runRecoHybridResolveCandidates } = require('./usecases/recoHybridResolveCandidates');
+const {
+  buildAnalysisContextSnapshotV1,
+  resolveAnalysisContextForTask,
+  buildRoutineAnalysisContextFromSnapshot,
+} = require('./analysisContextSnapshot');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -1204,6 +1209,32 @@ function buildGoalContext(profile, profileSummary) {
   };
 }
 
+function mergeRoutineProfileContext(baseContext = {}, taskContext = {}) {
+  const base = isPlainObject(baseContext) ? { ...baseContext } : {};
+  const hard = isPlainObject(taskContext.task_hard_context) ? taskContext.task_hard_context : {};
+  if (!base.skin_type && asString(hard.skin_type)) base.skin_type = asString(hard.skin_type);
+  if (!base.sensitivity && asString(hard.sensitivity)) base.sensitivity = asString(hard.sensitivity);
+  if (!base.barrier_status && asString(hard.barrier_status)) base.barrier_status = asString(hard.barrier_status);
+  return base;
+}
+
+function mergeRoutineGoalContext(baseContext = {}, taskContext = {}) {
+  const base = isPlainObject(baseContext) ? { ...baseContext } : {};
+  const hard = isPlainObject(taskContext.task_hard_context) ? taskContext.task_hard_context : {};
+  const soft = isPlainObject(taskContext.task_soft_context) ? taskContext.task_soft_context : {};
+  const activeGoals = uniqStrings(hard.active_goals, 3);
+  const backgroundGoals = uniqStrings(soft.background_goals, 3);
+  const goals = uniqStrings([
+    ...asArray(base.goals),
+    ...activeGoals,
+    ...backgroundGoals,
+  ], 6);
+  return {
+    goals,
+    primary_goals: goals.slice(0, 3),
+  };
+}
+
 function scoreCandidatePriority(candidate, goalContext = {}) {
   const text = asString(candidate && candidate.product_text).toLowerCase();
   const type = inferProductType(candidate);
@@ -1773,13 +1804,30 @@ async function runRoutineAnalysisV2({
   profileSummary = null,
   routineProductCandidates = [],
   ingredientPlan = null,
+  analysisContextSnapshot = null,
+  requestProfileOverride = null,
   logger = null,
   llmGateway = null,
   recommendationResolverDeps = {},
 } = {}) {
   const normalizedLanguage = normalizeLanguage(language);
-  const profileContext = buildProfileContext(profile, profileSummary);
-  const goalContext = buildGoalContext(profile, profileSummary);
+  const resolvedSnapshot = analysisContextSnapshot || buildAnalysisContextSnapshotV1({
+    latestArtifact: null,
+    lastAnalysis: profile && profile.lastAnalysis ? profile.lastAnalysis : null,
+    profile,
+  });
+  const routineTaskContext = buildRoutineAnalysisContextFromSnapshot(resolveAnalysisContextForTask({
+    task: 'routine',
+    snapshot: resolvedSnapshot,
+    profile,
+    requestOverride: requestProfileOverride,
+  }));
+  const analysisContextHard = isPlainObject(routineTaskContext.task_hard_context) ? routineTaskContext.task_hard_context : {};
+  const analysisContextSoft = isPlainObject(routineTaskContext.task_soft_context) ? routineTaskContext.task_soft_context : {};
+  const analysisContextEvidence = asArray(routineTaskContext.evidence_summary);
+  const analysisContextConflicts = asArray(routineTaskContext.analysis_context_conflicts);
+  const profileContext = mergeRoutineProfileContext(buildProfileContext(profile, profileSummary), routineTaskContext);
+  const goalContext = mergeRoutineGoalContext(buildGoalContext(profile, profileSummary), routineTaskContext);
   const seasonClimateContext = buildSeasonClimateContext(profile, profileSummary);
   const prioritized = prioritizeRoutineCandidates(routineProductCandidates, goalContext);
   const gateway = llmGateway || getGateway();
@@ -1841,6 +1889,10 @@ async function runRoutineAnalysisV2({
           profile_context_json: profileContext,
           goal_context_json: goalContext,
           season_climate_context_json: seasonClimateContext,
+          analysis_context_hard_json: analysisContextHard,
+          analysis_context_soft_json: analysisContextSoft,
+          analysis_context_evidence_json: analysisContextEvidence,
+          analysis_context_conflicts_json: analysisContextConflicts,
           deterministic_signals_json: chunkSignals,
           routine_products_json: chunkProducts,
         },
@@ -1858,7 +1910,7 @@ async function runRoutineAnalysisV2({
         auditContext,
       ));
     } catch (error) {
-      stageAChunkMetas.push(buildStageFailureMeta(
+      const chunkMeta = buildStageFailureMeta(
         error,
         error && error.name === 'LlmQualityError'
           ? 'schema_validation_failed'
@@ -1867,7 +1919,8 @@ async function runRoutineAnalysisV2({
             : error && error.code === 'EMPTY_OUTPUT'
               ? 'empty_output'
               : 'upstream_error',
-      ));
+      );
+      stageAChunkMetas.push(chunkMeta);
       stageAAuditOutputs.push(normalizeFallbackAuditOutput(chunkCandidates, null, auditContext));
       logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error), chunk_index: chunkIndex + 1 }, 'routine analysis v2: stage A chunk failed, using fallback audit');
     }
@@ -1899,6 +1952,10 @@ async function runRoutineAnalysisV2({
         profile_context_json: profileContext,
         goal_context_json: goalContext,
         season_climate_context_json: seasonClimateContext,
+        analysis_context_hard_json: analysisContextHard,
+        analysis_context_soft_json: analysisContextSoft,
+        analysis_context_evidence_json: analysisContextEvidence,
+        analysis_context_conflicts_json: analysisContextConflicts,
         deterministic_signals_json: deterministicSignals,
         routine_products_json: stageAInputProducts,
         deferred_products_json: prioritized.additional.map((candidate) => ({
@@ -2034,6 +2091,26 @@ async function runRoutineAnalysisV2({
         candidate_count: asArray(group.candidate_pool).length,
         guidance_only: asArray(group.candidate_pool).length === 0 && isPlainObject(group.category_guidance),
       })),
+      analysis_context: {
+        snapshot_present: isPlainObject(resolvedSnapshot),
+        snapshot_id: isPlainObject(resolvedSnapshot) ? asString(resolvedSnapshot.snapshot_id) : null,
+        source_mix_summary: isPlainObject(resolvedSnapshot) ? asArray(resolvedSnapshot.source_mix_summary) : [],
+        derived_from_artifact_signature: isPlainObject(resolvedSnapshot) ? asString(resolvedSnapshot.derived_from_artifact_signature) : null,
+        snapshot_fields_used: asArray(routineTaskContext.snapshot_fields_used),
+        hard_context_fields_used: asArray(routineTaskContext.hard_context_fields_used),
+        soft_context_fields_used: asArray(routineTaskContext.soft_context_fields_used),
+        explicit_override_applied: Boolean(routineTaskContext.explicit_override_applied),
+        adapter_version: asString(routineTaskContext.adapter_version) || null,
+        context_mode: asString(routineTaskContext.context_mode) || 'no_context',
+        degraded_fields_due_to_freshness: asArray(routineTaskContext.task_exclusions)
+          .filter((item) => isPlainObject(item) && asString(item.reason) === 'stale_for_task')
+          .map((item) => asString(item.field))
+          .filter(Boolean),
+        conflicted_fields_downgraded: asArray(routineTaskContext.task_exclusions)
+          .filter((item) => isPlainObject(item) && asString(item.reason) === 'conflicted')
+          .map((item) => asString(item.field))
+          .filter(Boolean),
+      },
     },
     persist_payload: {
       product_audit: {

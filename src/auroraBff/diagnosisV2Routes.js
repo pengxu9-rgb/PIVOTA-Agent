@@ -207,6 +207,11 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
           type: 'diagnosis_v2_result',
           payload: result.resultPayload,
         },
+        session_patch: {
+          meta: result.analysisContextSnapshot
+            ? { analysis_context_snapshot: result.analysisContextSnapshot }
+            : {},
+        },
         warnings: result.warnings,
         prompt_version: result.promptVersion,
       });

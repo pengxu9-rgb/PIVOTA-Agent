@@ -467,6 +467,9 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     '- For masks, specify exact scenario trigger and ingredient rationale, not generic "hydrating mask."\n\n' +
     'PERSONALIZATION:\n' +
     '- Use skin_type, sensitivity, barrier_status, goals, contraindications, current_routine to differentiate.\n' +
+    '- analysis_context_hard contains strong user-relevant context. analysis_context_soft contains supportive but uncertainty-bearing context.\n' +
+    '- If explicit profile input conflicts with analysis_context_* signals, explicit profile wins.\n' +
+    '- Treat stale, low-quality, or conflicting analysis-context signals conservatively. Do not restate them as if the user explicitly said them.\n' +
     '- If goals include dark_spots/brightening → add travel brightening protocol (lower vitamin C concentration during travel, resume post-trip).\n' +
     '- If goals include acne → prioritize non-comedogenic, add salicylic acid spot treatment.\n' +
     '- If goals include wrinkles/anti-aging → add antioxidant emphasis, retinoid travel pause note.\n' +

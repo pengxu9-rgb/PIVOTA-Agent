@@ -197,6 +197,14 @@ const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2 } = require('./routineAnalysisV2');
+const {
+  buildAnalysisContextSnapshotV1,
+  resolveAnalysisContextForTask,
+  buildProductAnalysisContextFromSnapshot,
+  buildRecommendationAnalysisContextFromSnapshot,
+  buildChatAnalysisContextFromSnapshot,
+  buildAnalysisContextPromptBlock,
+} = require('./analysisContextSnapshot');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
 const {
@@ -25185,6 +25193,74 @@ function extractAnalysisProfileContextOverlay(...sources) {
   return Object.keys(clean).length ? clean : null;
 }
 
+function extractProfilePatchFromRequestContextPayload(payload) {
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!root) return null;
+
+  const candidates = [];
+  const visited = new Set();
+  const visit = (node, depth = 0) => {
+    if (depth > 1 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
+    visited.add(node);
+    candidates.push(node);
+    for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
+      visit(node[key], depth + 1);
+    }
+  };
+  visit(root);
+
+  const readString = (...aliases) => {
+    for (const node of candidates) {
+      for (const alias of aliases) {
+        const value = node && typeof node === 'object' ? node[alias] : null;
+        if (typeof value !== 'string') continue;
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        return trimmed;
+      }
+    }
+    return '';
+  };
+
+  const readGoalArray = () => {
+    const out = [];
+    const seen = new Set();
+    const pushGoal = (value) => {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(normalized);
+    };
+
+    for (const node of candidates) {
+      for (const alias of ['goals', 'selected_goals', 'selectedGoals', 'pending_goals', 'pendingGoals']) {
+        const values = node && typeof node === 'object' ? node[alias] : null;
+        if (!Array.isArray(values)) continue;
+        values.forEach(pushGoal);
+      }
+    }
+
+    return out.slice(0, 12);
+  };
+
+  const patch = {};
+  const skinType = readString('skinType', 'skin_type', 'skin_type_tendency', 'skinTypeTendency');
+  if (skinType) patch.skinType = skinType;
+  const sensitivity = readString('sensitivity', 'sensitivity_level', 'sensitivityLevel', 'sensitivity_tendency', 'sensitivityTendency');
+  if (sensitivity) patch.sensitivity = sensitivity;
+  const barrierStatus = readString('barrierStatus', 'barrier_status', 'barrier', 'barrier_state', 'barrierState');
+  if (barrierStatus) patch.barrierStatus = barrierStatus;
+  const goals = readGoalArray();
+  if (goals.length) patch.goals = goals;
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
 function extractProfilePatchFromRoutinePayload(routineInput) {
   const routineRoot = (isPlainObject(routineInput) ? routineInput : null) || tryParseRoutineObject(routineInput);
   if (!routineRoot) return null;
@@ -26762,6 +26838,48 @@ function buildSkinAnalysisContextForPrefix(profile) {
     }
   }
   return parts.length ? parts.join('\n') : null;
+}
+
+function buildAnalysisContextSnapshotForRoute({
+  latestArtifact = null,
+  profile = null,
+  recentLogs = [],
+  lastAnalysis = null,
+} = {}) {
+  return buildAnalysisContextSnapshotV1({
+    latestArtifact,
+    lastAnalysis:
+      lastAnalysis && typeof lastAnalysis === 'object'
+        ? lastAnalysis
+        : profile && typeof profile === 'object' && profile.lastAnalysis && typeof profile.lastAnalysis === 'object'
+          ? profile.lastAnalysis
+          : null,
+    profile,
+    recentLogs,
+  });
+}
+
+function buildTaskAnalysisContextForPrefix({
+  task,
+  snapshot = null,
+  profile = null,
+  requestOverride = null,
+  recentLogs = [],
+} = {}) {
+  const resolved = resolveAnalysisContextForTask({
+    task,
+    snapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
+  if (task === 'product_analyze') {
+    return buildProductAnalysisContextFromSnapshot(resolved);
+  }
+  if (task === 'recommendation') {
+    return buildRecommendationAnalysisContextFromSnapshot(resolved);
+  }
+  return buildChatAnalysisContextFromSnapshot(resolved);
 }
 
 function buildRoutineFitRetryPrompt(basePrompt = '', language = 'EN') {
@@ -44741,6 +44859,8 @@ async function generateProductRecommendations({
   recentLogs,
   message,
   ingredientContext,
+  analysisContextSnapshot = null,
+  requestOverride = null,
   includeAlternatives,
   debug,
   logger,
@@ -44753,6 +44873,19 @@ async function generateProductRecommendations({
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
+  const effectiveAnalysisContextSnapshot =
+    analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs });
+  const recommendationTaskContext = buildTaskAnalysisContextForPrefix({
+    task: 'recommendation',
+    snapshot: effectiveAnalysisContextSnapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
+  const analysisContextBlock = buildAnalysisContextPromptBlock({
+    taskLabel: 'recommendation',
+    taskContext: recommendationTaskContext,
+  });
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -44764,6 +44897,7 @@ async function generateProductRecommendations({
     ...(ingredientContext && typeof ingredientContext === 'object' ? { ingredient_context: ingredientContext } : {}),
     ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
     ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
+    ...(analysisContextBlock ? { skin_analysis_context: analysisContextBlock } : {}),
   });
   const userAsk =
     String(message || '').trim() ||
@@ -45032,6 +45166,15 @@ async function generateProductRecommendations({
           ? 'catalog_grounded_primary'
           : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
+      analysis_context_usage: {
+        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
+        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
+        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
+        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+      },
     }
     : null;
   let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -48119,6 +48262,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         req?.body?.session?.id,
       ),
     );
+    let productAnalysisContextMeta = null;
     const sendProductAnalyzeEnvelope = async (envelope, statusCode = 200, mode = 'main_path') => {
       const qualityGated = applyUnknownVerdictQualityGateToEnvelope(envelope, {
         lang: ctx.lang,
@@ -48156,6 +48300,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profile_context_source: productAnalyzeProfileContextSource,
             request_profile_overlay_applied: productAnalyzeRequestOverlayKeys.length > 0,
             ...(productAnalyzeRequestOverlayKeys.length ? { request_profile_overlay_keys: productAnalyzeRequestOverlayKeys } : {}),
+            ...(productAnalysisContextMeta ? { analysis_context_usage: productAnalysisContextMeta } : {}),
           },
         },
       };
@@ -48281,6 +48426,46 @@ function mountAuroraBffRoutes(app, { logger }) {
           : storedProfile;
       const profileSummary = summarizeProfileForContext(profile);
       productAnalyzeSessionProfileSummary = productAnalyzeRequestOverlayKeys.length ? profileSummary : null;
+      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+        identity,
+        session: incomingSession,
+        ctx,
+        logger,
+      });
+      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      });
+      const analysisTaskContext = buildTaskAnalysisContextForPrefix({
+        task: 'product_analyze',
+        snapshot: analysisContextSnapshot,
+        profile,
+        requestOverride: requestProfileOverlay,
+        recentLogs,
+      });
+      const analysisContextBlock = buildAnalysisContextPromptBlock({
+        taskLabel: 'product_analyze',
+        taskContext: analysisTaskContext,
+      });
+      productAnalysisContextMeta = {
+        snapshot_present: Boolean(analysisContextSnapshot),
+        snapshot_id: analysisContextSnapshot ? String(analysisContextSnapshot.snapshot_id || '').trim() || null : null,
+        source_mix_summary:
+          analysisContextSnapshot && Array.isArray(analysisContextSnapshot.source_mix_summary)
+            ? analysisContextSnapshot.source_mix_summary
+            : [],
+        derived_from_artifact_signature:
+          analysisContextSnapshot
+            ? String(analysisContextSnapshot.derived_from_artifact_signature || '').trim() || null
+            : null,
+        snapshot_fields_used: Array.isArray(analysisTaskContext.snapshot_fields_used) ? analysisTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(analysisTaskContext.hard_context_fields_used) ? analysisTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(analysisTaskContext.soft_context_fields_used) ? analysisTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(analysisTaskContext.explicit_override_applied),
+        adapter_version: String(analysisTaskContext.adapter_version || '').trim() || null,
+        context_mode: String(analysisTaskContext.context_mode || '').trim() || 'no_context',
+      };
       const commonMeta = {
         profile: profileSummary,
         recentLogs,
@@ -48289,7 +48474,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_source: ctx.trigger_source,
       };
       const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
-      const prefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
+      const prefix = buildContextPrefix({
+        ...commonMeta,
+        intent: 'product_analyze',
+        action_id: 'chip.action.analyze_product',
+        skin_analysis_context: analysisContextBlock,
+      });
 
       const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
       const anchorTrustDiagnostics = [];
@@ -49366,16 +49556,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
       }
       return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
-    } catch (err) {
-      logger.error({
-        event: 'aurora_product_analyze_failed',
-        request_id: ctx.request_id,
-        trace_id: ctx.trace_id,
-        path: '/v1/product/analyze',
-        error: err?.message || String(err),
-        stack: err?.stack || null,
-      });
-      const status = err.status || 500;
+	    } catch (err) {
+	      if (logger && typeof logger.error === 'function') {
+	        logger.error({
+	          event: 'aurora_product_analyze_failed',
+	          request_id: ctx.request_id,
+	          trace_id: ctx.trace_id,
+	          path: '/v1/product/analyze',
+	          error: err?.message || String(err),
+	          stack: err?.stack || null,
+	        });
+	      }
+	      const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to analyze product.'),
         suggested_chips: [],
@@ -49706,6 +49898,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: parsed.data.session, ctx, logger });
+      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      });
       const profileSummary = summarizeProfileForContext(profile);
       // Use minimal upstream context for stability: dupe_compare should not depend on per-user logs/profile size.
       const upstreamMeta = {
@@ -50589,10 +50787,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const profileSummary = summarizeProfileForContext(profile);
+	      const identity = await resolveIdentity(req, ctx);
+	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+	        identity,
+	        session:
+	          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+	            ? parsed.data.session
+	            : null,
+	        ctx,
+	        logger,
+	      });
+	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+	        latestArtifact,
+	        profile,
+	        recentLogs,
+	      });
+	      const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
       let gateAdvisoryCard = null;
@@ -50623,11 +50835,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         constraints: parsed.data.constraints || {},
         lang: ctx.lang,
       });
-      const upstreamReco = await generateProductRecommendations({
-        ctx,
-        profile,
-        recentLogs,
-        message: requestText,
+	      const upstreamReco = await generateProductRecommendations({
+	        ctx,
+	        profile,
+	        recentLogs,
+	        message: requestText,
+	        analysisContextSnapshot,
+        requestOverride: extractProfilePatchFromSession(parsed.data.session),
         includeAlternatives: false,
         logger,
         recoTriggerSource: 'goal_driven',
@@ -51968,6 +52182,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
         }
+        const snapshotProfileBase =
+          profile && typeof profile === 'object' && !Array.isArray(profile)
+            ? { ...profile }
+            : profile;
 
         const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
         const photoQcParts = [];
@@ -53157,6 +53375,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let diagnosisArtifact = null;
         let ingredientPlan = null;
+        let analysisContextSnapshot = null;
         let recommendationReady = false;
         let latestArtifactId = null;
         let artifactGate = null;
@@ -53248,6 +53467,20 @@ function mountAuroraBffRoutes(app, { logger }) {
                 // non-critical: ingredient plan context will still work from ingredient plan card
               }
             }
+            analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+              latestArtifact: diagnosisArtifact,
+              profile: snapshotProfileBase,
+              recentLogs: recentLogsSummary,
+              lastAnalysis: ingredientPlan && analysis
+                ? {
+                    ...analysis,
+                    ingredient_plan: {
+                      targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets : [],
+                      avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid : [],
+                    },
+                  }
+                : analysis,
+            });
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -53289,7 +53522,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
-          routine_analysis_version: 'legacy',
+          routine_analysis_version: routineAnalysisV2Result ? 'v2' : 'legacy',
           profile_context_source: requestProfileContextSource,
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
@@ -53389,6 +53622,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               profileSummary,
               routineProductCandidates,
               ingredientPlan,
+              analysisContextSnapshot,
+              requestProfileOverride: requestProfileOverlay,
               logger,
             });
             analysisMeta.routine_analysis_version = 'v2';
@@ -53429,6 +53664,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (routineAnalysisV2Result) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
             routine_analysis_v2: {
               ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
               profile_context_source: requestProfileContextSource,
@@ -53436,6 +53672,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
             },
             routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+          };
+        } else if (analysisContextSnapshot) {
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            analysis_context_snapshot: analysisContextSnapshot,
           };
         }
 
@@ -54366,17 +54607,27 @@ function mountAuroraBffRoutes(app, { logger }) {
       requireAuroraUid(ctx);
       let profile = null;
       let recentLogs = [];
+      let latestArtifact = null;
       let dbError = null;
       const identity = await resolveIdentity(req, ctx);
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
       } catch (err) {
         dbError = err;
       }
 
       const isReturning = Boolean(profile) || recentLogs.length > 0;
       const checkinDue = isCheckinDue(recentLogs);
+      const latestAnalysisContext =
+        !dbError
+          ? buildAnalysisContextSnapshotForRoute({
+              latestArtifact,
+              profile,
+              recentLogs,
+            })
+          : null;
 
       const cards = [
         {
@@ -54388,6 +54639,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             checkin_due: checkinDue,
             is_returning: isReturning,
             db_ready: !dbError,
+            latest_analysis_context: latestAnalysisContext,
           },
           ...(dbError
             ? { field_missing: [{ field: 'profile', reason: 'db_not_configured_or_unavailable' }] }
@@ -54405,6 +54657,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recent_logs: recentLogs,
           checkin_due: checkinDue,
           is_returning: isReturning,
+          ...(latestAnalysisContext ? { meta: { analysis_context_snapshot: latestAnalysisContext } } : {}),
         },
         events,
       });
@@ -60599,6 +60852,22 @@ function mountAuroraBffRoutes(app, { logger }) {
                 created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
               }
             : latestArtifact;
+        const requestScopedProfileOverride = mergeMissingProfilePatchFields(
+          mergeMissingProfilePatchFields({}, profilePatchFromSession),
+          appliedProfilePatch || textDerivedProfilePatch,
+        );
+        const analysisContextSnapshotForConversation = buildAnalysisContextSnapshotForRoute({
+          latestArtifact: latestArtifactForGate,
+          profile,
+          recentLogs,
+        });
+        const chatAnalysisTaskContext = buildTaskAnalysisContextForPrefix({
+          task: 'chat',
+          snapshot: analysisContextSnapshotForConversation,
+          profile,
+          requestOverride: requestScopedProfileOverride,
+          recentLogs,
+        });
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
@@ -60774,6 +61043,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               recentLogs,
               message,
               ingredientContext: recoIngredientContext,
+              analysisContextSnapshot: analysisContextSnapshotForConversation,
+              requestOverride: requestScopedProfileOverride,
               includeAlternatives,
               debug: debugUpstream,
               logger,
@@ -61674,7 +61945,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ].filter(Boolean);
         return parts.join('\n');
       })();
-      const skinAnalysisContextForPrefix = buildSkinAnalysisContextForPrefix(profile);
+      const skinAnalysisContextForPrefix =
+        analysisContextSnapshotForConversation
+          ? buildAnalysisContextPromptBlock({
+              taskLabel: 'chat',
+              taskContext: chatAnalysisTaskContext,
+            })
+          : buildSkinAnalysisContextForPrefix(profile);
 
       const prefix = buildContextPrefix({
         profile: profileSummary,
@@ -63163,6 +63440,8 @@ const __internal = {
   collectRoutineFitLowDimensions,
   resolveRoutineFitAnalysisPlan,
   buildSkinAnalysisContextForPrefix,
+  buildAnalysisContextSnapshotForRoute,
+  buildTaskAnalysisContextForPrefix,
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
