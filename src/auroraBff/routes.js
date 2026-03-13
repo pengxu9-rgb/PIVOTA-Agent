@@ -24967,6 +24967,21 @@ function parseProfilePatchFromAction(action) {
   return null;
 }
 
+function mergeMissingProfilePatchFields(target, source) {
+  const base = target && typeof target === 'object' ? target : {};
+  const extra = source && typeof source === 'object' ? source : null;
+  if (!extra) return base;
+  if (!base.skinType && typeof extra.skinType === 'string' && extra.skinType.trim()) base.skinType = extra.skinType.trim();
+  if (!base.sensitivity && typeof extra.sensitivity === 'string' && extra.sensitivity.trim()) base.sensitivity = extra.sensitivity.trim();
+  if (!base.barrierStatus && typeof extra.barrierStatus === 'string' && extra.barrierStatus.trim()) {
+    base.barrierStatus = extra.barrierStatus.trim();
+  }
+  if ((!Array.isArray(base.goals) || base.goals.length === 0) && Array.isArray(extra.goals) && extra.goals.length) {
+    base.goals = extra.goals.slice(0, 12);
+  }
+  return base;
+}
+
 function extractProfilePatchFromSession(session) {
   const s = session && typeof session === 'object' ? session : null;
   if (!s) return null;
@@ -24979,20 +24994,6 @@ function extractProfilePatchFromSession(session) {
   if (!rawProfile) return null;
 
   const patch = {};
-  const mergeMissingPatchFields = (target, source) => {
-    const base = target && typeof target === 'object' ? target : {};
-    const extra = source && typeof source === 'object' ? source : null;
-    if (!extra) return base;
-    if (!base.skinType && typeof extra.skinType === 'string' && extra.skinType.trim()) base.skinType = extra.skinType.trim();
-    if (!base.sensitivity && typeof extra.sensitivity === 'string' && extra.sensitivity.trim()) base.sensitivity = extra.sensitivity.trim();
-    if (!base.barrierStatus && typeof extra.barrierStatus === 'string' && extra.barrierStatus.trim()) {
-      base.barrierStatus = extra.barrierStatus.trim();
-    }
-    if ((!Array.isArray(base.goals) || base.goals.length === 0) && Array.isArray(extra.goals) && extra.goals.length) {
-      base.goals = extra.goals.slice(0, 12);
-    }
-    return base;
-  };
 
   // Strings
   const copyString = (toKey, ...fromKeys) => {
@@ -25065,6 +25066,74 @@ function extractProfilePatchFromSession(session) {
     patch.travel_plan = rawProfile.travelPlan;
   }
   mergeMissingPatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function extractProfilePatchFromRequestContextPayload(payload) {
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!root) return null;
+
+  const candidates = [];
+  const visited = new Set();
+  const visit = (node, depth = 0) => {
+    if (depth > 1 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
+    visited.add(node);
+    candidates.push(node);
+    for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
+      visit(node[key], depth + 1);
+    }
+  };
+  visit(root);
+
+  const readString = (...aliases) => {
+    for (const node of candidates) {
+      for (const alias of aliases) {
+        const value = node && typeof node === 'object' ? node[alias] : null;
+        if (typeof value !== 'string') continue;
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        return trimmed;
+      }
+    }
+    return '';
+  };
+
+  const readGoalArray = () => {
+    const out = [];
+    const seen = new Set();
+    const pushGoal = (value) => {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(normalized);
+    };
+
+    for (const node of candidates) {
+      for (const alias of ['goals', 'selected_goals', 'selectedGoals', 'pending_goals', 'pendingGoals']) {
+        const values = node && typeof node === 'object' ? node[alias] : null;
+        if (!Array.isArray(values)) continue;
+        values.forEach(pushGoal);
+      }
+    }
+
+    return out.slice(0, 12);
+  };
+
+  const patch = {};
+  const skinType = readString('skinType', 'skin_type', 'skin_type_tendency', 'skinTypeTendency');
+  if (skinType) patch.skinType = skinType;
+  const sensitivity = readString('sensitivity', 'sensitivity_level', 'sensitivityLevel', 'sensitivity_tendency', 'sensitivityTendency');
+  if (sensitivity) patch.sensitivity = sensitivity;
+  const barrierStatus = readString('barrierStatus', 'barrier_status', 'barrier', 'barrier_state', 'barrierState');
+  if (barrierStatus) patch.barrierStatus = barrierStatus;
+  const goals = readGoalArray();
+  if (goals.length) patch.goals = goals;
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -51843,6 +51912,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         const photosProvided = photosSubmittedCount > 0;
         let photoQuality = classifyPhotoQuality(photos);
 
+        const requestProfileOverlay = extractProfilePatchFromRequestContextPayload(parsed.data);
+        const requestProfileOverlayKeys = requestProfileOverlay && typeof requestProfileOverlay === 'object'
+          ? Object.keys(requestProfileOverlay).sort()
+          : [];
+        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
+        const applyRequestProfileOverlay = (profileValue, { fillOnly = false } = {}) => {
+          if (!requestProfileOverlay || typeof requestProfileOverlay !== 'object') return profileValue;
+          const base = profileValue && typeof profileValue === 'object' && !Array.isArray(profileValue)
+            ? { ...profileValue }
+            : {};
+          return fillOnly ? mergeMissingProfilePatchFields(base, requestProfileOverlay) : { ...base, ...requestProfileOverlay };
+        };
+        profile = applyRequestProfileOverlay(profile);
         let profileSummary = summarizeProfileForContext(profile);
         const previousRoutineState = normalizeRoutineStateFromProfile(profile);
         const previousRoutine = previousRoutineState.current_routine_struct;
@@ -51881,6 +51963,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist current routine for analysis');
             }
           }
+          profile = applyRequestProfileOverlay(profile, { fillOnly: true });
           profileSummary = summarizeProfileForContext(profile);
         }
 
@@ -53128,6 +53211,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
           routine_analysis_version: 'legacy',
+          profile_context_source: requestProfileContextSource,
+          request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+          ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
           gate_relax_mode: AURORA_RULE_RELAX_MODE,
           low_quality_tolerated: Boolean(
@@ -53264,7 +53350,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (routineAnalysisV2Result) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
-            routine_analysis_v2: routineAnalysisV2Result.debug_meta,
+            routine_analysis_v2: {
+              ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
+              profile_context_source: requestProfileContextSource,
+              request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+            },
             routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
           };
         }
@@ -53589,6 +53680,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientPlan,
               routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
             });
+        if (profileSummary) {
+          sessionPatch.profile = profileSummary;
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
@@ -53635,6 +53729,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             photos_provided: Boolean(photosProvided),
             used_photos: Boolean(usedPhotos),
             photo_quality_grade: photoQuality && typeof photoQuality.grade === 'string' ? photoQuality.grade : 'unknown',
+            profile_context_source: requestProfileContextSource,
+            request_profile_overlay_keys: requestProfileOverlayKeys,
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,
             stages: report.stages,
