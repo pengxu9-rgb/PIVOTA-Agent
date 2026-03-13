@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { kbQuery } = require('./pciKbClient');
 const { auditExternalSeedRow, summarizeAuditResults } = require('./externalSeedContentAudit');
 const { buildExternalSeedHarvesterCandidates } = require('./externalSeedHarvesterBridge');
 const { ensureJsonObject } = require('./externalSeedProducts');
@@ -115,17 +116,20 @@ async function fetchKbCoverage(candidateIds) {
   }
 
   try {
-    const tableCheck = await query(`SELECT to_regclass('pci_kb.sku_ingredients') AS table_name`);
+    const runQuery = async (text, params) => (await kbQuery(text, params)) || query(text, params);
+    const tableCheck = await runQuery(`SELECT to_regclass('pci_kb.sku_ingredients') AS table_name`);
     const available = Boolean(tableCheck.rows?.[0]?.table_name);
     if (!available) return { tableAvailable: false, rows: [] };
 
-    const res = await query(
+    const res = await runQuery(
       `
         SELECT
           sku_key,
           market,
           parse_status,
           review_status,
+          audit_status,
+          ingest_allowed,
           raw_ingredient_text_clean,
           inci_list
         FROM pci_kb.sku_ingredients

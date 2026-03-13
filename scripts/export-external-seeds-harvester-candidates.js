@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { query } = require('../src/db');
+const { kbQuery } = require('../src/services/pciKbClient');
 const { buildExternalSeedHarvesterCandidates, filterCandidatesForHarvester } = require('../src/services/externalSeedHarvesterBridge');
 
 function argValue(name) {
@@ -92,12 +93,13 @@ async function fetchExistingKbKeys(candidateIds) {
   if (!candidateIds.length) return { tableAvailable: false, keys: new Set() };
 
   try {
-    const tableCheck = await query(`SELECT to_regclass('pci_kb.sku_ingredients') AS table_name`);
+    const runQuery = async (text, params) => (await kbQuery(text, params)) || query(text, params);
+    const tableCheck = await runQuery(`SELECT to_regclass('pci_kb.sku_ingredients') AS table_name`);
     if (!tableCheck.rows?.[0]?.table_name) {
       return { tableAvailable: false, keys: new Set() };
     }
 
-    const res = await query(
+    const res = await runQuery(
       `
         SELECT sku_key
         FROM pci_kb.sku_ingredients
