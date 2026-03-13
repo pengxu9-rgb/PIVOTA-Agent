@@ -155,6 +155,21 @@ function compactStringArray(value) {
     .filter(Boolean);
 }
 
+function uniqTrimmedStrings(values, limit = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 function extractLastUserMessageFromMessages(messages) {
   const rows = Array.isArray(messages) ? messages : [];
   for (let index = rows.length - 1; index >= 0; index -= 1) {
@@ -214,6 +229,107 @@ function normalizeProfileShape(value) {
   }
 
   return normalized;
+}
+
+function extractGoalsFromGoalProfile(value) {
+  const row = isPlainObject(value) ? value : null;
+  if (!row) return [];
+  return uniqTrimmedStrings([
+    ...(Array.isArray(row.selected_goals) ? row.selected_goals : []),
+    ...(Array.isArray(row.selectedGoals) ? row.selectedGoals : []),
+    ...(Array.isArray(row.goals) ? row.goals : []),
+    ...(Array.isArray(row.concerns) ? row.concerns : []),
+  ], 6);
+}
+
+function extractProfileOverlayFromParams(...sources) {
+  const patch = {};
+  const mergeFrom = (node) => {
+    const row = isPlainObject(node) ? node : null;
+    if (!row) return;
+    const profilePatch = isPlainObject(row.profile_patch)
+      ? row.profile_patch
+      : isPlainObject(row.profilePatch)
+        ? row.profilePatch
+        : null;
+    const profileLike = isPlainObject(row.profile)
+      ? row.profile
+      : isPlainObject(row.context)
+        ? row.context
+        : null;
+    const goalProfile = isPlainObject(row.goal_profile)
+      ? row.goal_profile
+      : isPlainObject(row.goalProfile)
+        ? row.goalProfile
+        : null;
+    const quickProfileNode = profilePatch || profileLike || row;
+    const skinType = pickFirstTrimmed(
+      quickProfileNode?.skinType,
+      quickProfileNode?.skin_type,
+      quickProfileNode?.skin_feel,
+    );
+    const sensitivity = pickFirstTrimmed(
+      quickProfileNode?.sensitivity,
+      quickProfileNode?.sensitivity_flag,
+      quickProfileNode?.sensitivityFlag,
+    );
+    const barrierStatus = pickFirstTrimmed(
+      quickProfileNode?.barrierStatus,
+      quickProfileNode?.barrier_status,
+    );
+    const goals = uniqTrimmedStrings([
+      ...(Array.isArray(quickProfileNode?.goals) ? quickProfileNode.goals : []),
+      ...(Array.isArray(quickProfileNode?.concerns) ? quickProfileNode.concerns : []),
+      ...(quickProfileNode?.goal_primary ? [quickProfileNode.goal_primary] : []),
+      ...extractGoalsFromGoalProfile(goalProfile),
+    ], 6);
+    if (skinType) patch.skinType = skinType;
+    if (sensitivity) patch.sensitivity = sensitivity;
+    if (barrierStatus) patch.barrierStatus = barrierStatus;
+    if (goals.length) patch.goals = goals;
+  };
+
+  for (const source of sources) mergeFrom(source);
+  return Object.keys(patch).length ? patch : null;
+}
+
+function normalizeGoalLabel(value) {
+  const token = String(value || '').trim();
+  if (!token) return '';
+  return token
+    .replace(/[_-]+/g, ' ')
+    .replace(/\bface\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shouldSynthesizeDiagnosisRecoMessage(actionId, actionData, userMessage) {
+  if (String(actionId || '').trim() !== 'chip.start.reco_products') return false;
+  if (pickFirstTrimmed(actionData?.trigger_source, actionData?.entry_source) !== 'diagnosis_v2') return false;
+  const normalized = String(userMessage || '').trim().toLowerCase();
+  if (!normalized) return true;
+  return [
+    'see recommendations',
+    'see product recommendations',
+    'recommend products',
+    'recommend a few products',
+    'show recommendations',
+    'show product recommendations',
+    'get recommendations',
+    'get product recommendations',
+  ].includes(normalized);
+}
+
+function buildDiagnosisRecoMessage(goals = [], locale = 'en-US') {
+  const isCn = String(locale || '').toLowerCase().startsWith('zh');
+  const normalizedGoals = uniqTrimmedStrings(goals.map(normalizeGoalLabel), 3);
+  if (!normalizedGoals.length) {
+    return isCn ? '根据我的诊断结果给我推荐护肤产品。' : 'Recommend skincare products based on my diagnosis.';
+  }
+  if (isCn) {
+    return `根据我的诊断结果，推荐适合${normalizedGoals.join('、')}的护肤产品。`;
+  }
+  return `Recommend skincare products for ${normalizedGoals.join(', ')} based on my diagnosis.`;
 }
 
 function normalizeRoutineProducts(value) {
@@ -795,7 +911,7 @@ function buildSkillRequest(req) {
   const actionData = isPlainObject(action.data) ? action.data : {};
   const normalizedActionData = omitLegacyActionAliases(actionData);
   const actionId = pickFirstTrimmed(body.action_id, action.action_id);
-  const userMessage = pickFirstTrimmed(
+  const rawUserMessage = pickFirstTrimmed(
     body.message,
     body.text,
     bodyParams.user_message,
@@ -806,7 +922,19 @@ function buildSkillRequest(req) {
   );
   const priorMessages = Array.isArray(body.messages) ? body.messages : [];
   const locale = resolveRequestLocale(body, req.headers || {}, bodyContext);
-  const resolvedProfile = normalizeProfileShape(bodyContext.profile || req._userProfile || sessionProfile || {});
+  const profileOverlay = extractProfileOverlayFromParams(bodyParams, normalizedActionData);
+  const resolvedProfile = normalizeProfileShape({
+    ...(bodyContext.profile || req._userProfile || sessionProfile || {}),
+    ...(profileOverlay || {}),
+  });
+  const diagnosisGoals = uniqTrimmedStrings([
+    ...extractGoalsFromGoalProfile(normalizedActionData.goal_profile),
+    ...extractGoalsFromGoalProfile(normalizedActionData.goalProfile),
+    ...(Array.isArray(profileOverlay?.goals) ? profileOverlay.goals : []),
+  ], 6);
+  const userMessage = shouldSynthesizeDiagnosisRecoMessage(actionId, normalizedActionData, rawUserMessage)
+    ? buildDiagnosisRecoMessage(diagnosisGoals, locale)
+    : rawUserMessage;
   const currentRoutine = resolveCurrentRoutine(bodyContext, [
     bodyContext.profile,
     req._userProfile,
@@ -862,6 +990,7 @@ function buildSkillRequest(req) {
       ...(comparisonTargets ? { comparison_targets: comparisonTargets } : {}),
       ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
       ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
+      ...(!normalizedBodyParams._extracted_concerns && diagnosisGoals.length > 0 ? { _extracted_concerns: diagnosisGoals } : {}),
       ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),
     },
     context: {
