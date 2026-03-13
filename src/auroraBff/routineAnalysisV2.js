@@ -1270,6 +1270,30 @@ function buildCards({ audit, synthesis, recommendationGroups, additionalCandidat
   return cards;
 }
 
+function buildStageFailureMeta(error, fallbackReason) {
+  const ctx = isPlainObject(error && error.context) ? error.context : {};
+  const validationErrors = Array.isArray(ctx.validationErrors) ? ctx.validationErrors : [];
+  return {
+    llm_status: 'fallback',
+    fallback_reason: asString(fallbackReason) || 'unknown',
+    error_name: asString(error && error.name) || null,
+    error_code: asString(error && error.code) || asString(ctx.errorCode) || null,
+    status_code: Number.isFinite(Number(error && error.statusCode))
+      ? Number(error.statusCode)
+      : Number.isFinite(Number(ctx.statusCode))
+        ? Number(ctx.statusCode)
+        : null,
+    validation_error_count: validationErrors.length,
+    validation_errors_preview: validationErrors.slice(0, 3).map((row) => ({
+      path: asString(row && row.path) || '$',
+      reason: asString(row && row.reason) || 'unknown',
+    })),
+    raw_present: ctx.rawPresent === true,
+    raw_length: Number.isFinite(Number(ctx.rawLength)) ? Number(ctx.rawLength) : 0,
+    provider: asString(ctx.provider) || null,
+  };
+}
+
 async function runRoutineAnalysisV2({
   requestId,
   language = 'EN',
@@ -1308,6 +1332,18 @@ async function runRoutineAnalysisV2({
 
   const stageABudget = computeStageOutputBudget('stage_a', prioritized.audited.length);
   let stageARaw = null;
+  let stageAMeta = {
+    llm_status: 'fallback',
+    fallback_reason: 'unknown',
+    error_name: null,
+    error_code: null,
+    status_code: null,
+    validation_error_count: 0,
+    validation_errors_preview: [],
+    raw_present: false,
+    raw_length: 0,
+    provider: null,
+  };
   try {
     const result = await gateway.call({
       templateId: 'routine_product_audit_v1',
@@ -1323,7 +1359,29 @@ async function runRoutineAnalysisV2({
       maxOutputTokens: stageABudget,
     });
     stageARaw = result && result.parsed ? result.parsed : null;
+    stageAMeta = {
+      llm_status: stageARaw ? 'success' : 'fallback',
+      fallback_reason: stageARaw ? null : 'parsed_missing',
+      error_name: null,
+      error_code: null,
+      status_code: null,
+      validation_error_count: 0,
+      validation_errors_preview: [],
+      raw_present: Boolean(result && typeof result.raw === 'string' && compactText(result.raw)),
+      raw_length: result && typeof result.raw === 'string' ? result.raw.length : 0,
+      provider: asString(result && result.provider) || null,
+    };
   } catch (error) {
+    stageAMeta = buildStageFailureMeta(
+      error,
+      error && error.name === 'LlmQualityError'
+        ? 'schema_validation_failed'
+        : error && error.code === 'MISSING_API_KEY'
+          ? 'missing_api_key'
+          : error && error.code === 'EMPTY_OUTPUT'
+            ? 'empty_output'
+            : 'upstream_error',
+    );
     logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage A failed, using fallback audit');
   }
   const audit = normalizeFallbackAuditOutput(prioritized.audited, stageARaw, {
@@ -1338,6 +1396,18 @@ async function runRoutineAnalysisV2({
 
   const stageBBudget = computeStageOutputBudget('stage_b', audit.products.length);
   let stageBRaw = null;
+  let stageBMeta = {
+    llm_status: 'fallback',
+    fallback_reason: 'unknown',
+    error_name: null,
+    error_code: null,
+    status_code: null,
+    validation_error_count: 0,
+    validation_errors_preview: [],
+    raw_present: false,
+    raw_length: 0,
+    provider: null,
+  };
   try {
     const result = await gateway.call({
       templateId: 'routine_synthesis_v1',
@@ -1355,7 +1425,29 @@ async function runRoutineAnalysisV2({
       maxOutputTokens: stageBBudget,
     });
     stageBRaw = result && result.parsed ? result.parsed : null;
+    stageBMeta = {
+      llm_status: stageBRaw ? 'success' : 'fallback',
+      fallback_reason: stageBRaw ? null : 'parsed_missing',
+      error_name: null,
+      error_code: null,
+      status_code: null,
+      validation_error_count: 0,
+      validation_errors_preview: [],
+      raw_present: Boolean(result && typeof result.raw === 'string' && compactText(result.raw)),
+      raw_length: result && typeof result.raw === 'string' ? result.raw.length : 0,
+      provider: asString(result && result.provider) || null,
+    };
   } catch (error) {
+    stageBMeta = buildStageFailureMeta(
+      error,
+      error && error.name === 'LlmQualityError'
+        ? 'schema_validation_failed'
+        : error && error.code === 'MISSING_API_KEY'
+          ? 'missing_api_key'
+          : error && error.code === 'EMPTY_OUTPUT'
+            ? 'empty_output'
+            : 'upstream_error',
+    );
     logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage B failed, using deterministic synthesis');
   }
   const synthesis = coerceSynthesisOutput(stageBRaw, audit, {
@@ -1398,6 +1490,16 @@ async function runRoutineAnalysisV2({
         deferred_product_count: prioritized.additional.length,
         output_budget: stageABudget,
         confidence: audit.confidence,
+        llm_status: stageAMeta.llm_status,
+        fallback_reason: stageAMeta.fallback_reason,
+        error_name: stageAMeta.error_name,
+        error_code: stageAMeta.error_code,
+        status_code: stageAMeta.status_code,
+        validation_error_count: stageAMeta.validation_error_count,
+        validation_errors_preview: stageAMeta.validation_errors_preview,
+        raw_present: stageAMeta.raw_present,
+        raw_length: stageAMeta.raw_length,
+        provider: stageAMeta.provider,
         quality_gate_applied_count:
           isPlainObject(audit.quality_gate_meta) && Number.isFinite(Number(audit.quality_gate_meta.quality_gate_applied_count))
             ? Number(audit.quality_gate_meta.quality_gate_applied_count)
@@ -1412,6 +1514,16 @@ async function runRoutineAnalysisV2({
         recommendation_need_count: asArray(synthesis.recommendation_needs).length,
         output_budget: stageBBudget,
         confidence: synthesis.confidence,
+        llm_status: stageBMeta.llm_status,
+        fallback_reason: stageBMeta.fallback_reason,
+        error_name: stageBMeta.error_name,
+        error_code: stageBMeta.error_code,
+        status_code: stageBMeta.status_code,
+        validation_error_count: stageBMeta.validation_error_count,
+        validation_errors_preview: stageBMeta.validation_errors_preview,
+        raw_present: stageBMeta.raw_present,
+        raw_length: stageBMeta.raw_length,
+        provider: stageBMeta.provider,
       },
       recommendation_groups: recommendationGroups.map((group) => ({
         adjustment_id: asString(group.adjustment_id),

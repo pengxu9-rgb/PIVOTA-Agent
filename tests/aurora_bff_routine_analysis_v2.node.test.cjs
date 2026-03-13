@@ -315,3 +315,97 @@ test('runRoutineAnalysisV2: debug meta records quality-gate replacements without
   assert.equal(result.cards[0].type, 'routine_product_audit_v1');
   assert.ok(Array.isArray(result.recommendation_groups), 'recommendation groups should still be emitted consistently');
 });
+
+test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const { LlmQualityError } = require('../src/auroraBff/services/llm_gateway');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        throw new LlmQualityError('LLM output failed schema validation: RoutineProductAuditOutput', {
+          provider: 'gemini',
+          rawPresent: true,
+          rawLength: 742,
+          validationErrors: [
+            { path: '$.products[0].fit_for_skin_type.reason', reason: 'minLength' },
+            { path: '$.products[0].fit_for_goals[0].reason', reason: 'required' },
+          ],
+        });
+      }
+      return { parsed: null, raw: '{}', provider: 'stub' };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_validation',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'impaired',
+      goals: ['acne'],
+    },
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'fallback');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, 'schema_validation_failed');
+  assert.equal(result.debug_meta.stage_a.validation_error_count, 2);
+  assert.equal(result.debug_meta.stage_a.raw_present, true);
+  assert.equal(result.debug_meta.stage_a.raw_length, 742);
+  assert.equal(result.debug_meta.stage_a.provider, 'gemini');
+  assert.deepEqual(result.debug_meta.stage_a.validation_errors_preview, [
+    {
+      path: '$.products[0].fit_for_skin_type.reason',
+      reason: 'minLength',
+    },
+    {
+      path: '$.products[0].fit_for_goals[0].reason',
+      reason: 'required',
+    },
+  ]);
+});
+
+test('runRoutineAnalysisV2: stage A debug meta captures upstream error diagnostics', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        const err = new Error('Gemini API error: 503');
+        err.code = 'UPSTREAM_503';
+        err.statusCode = 503;
+        throw err;
+      }
+      return { parsed: null, raw: '{}', provider: 'stub' };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_upstream',
+    language: 'EN',
+    routineProductCandidates: [
+      {
+        product_ref: 'routine_am_01',
+        slot: 'am',
+        step: 'cleanser',
+        product_text: 'Foaming cleanser',
+      },
+    ],
+    llmGateway,
+  });
+
+  assert.equal(result.debug_meta.stage_a.llm_status, 'fallback');
+  assert.equal(result.debug_meta.stage_a.fallback_reason, 'upstream_error');
+  assert.equal(result.debug_meta.stage_a.error_code, 'UPSTREAM_503');
+  assert.equal(result.debug_meta.stage_a.status_code, 503);
+  assert.equal(result.debug_meta.stage_a.validation_error_count, 0);
+  assert.equal(result.debug_meta.stage_a.raw_present, false);
+});

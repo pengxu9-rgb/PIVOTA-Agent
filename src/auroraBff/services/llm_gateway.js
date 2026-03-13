@@ -1572,6 +1572,8 @@ class LlmGateway {
             templateId,
             schema,
             provider,
+            rawPresent: Boolean(compactText(text)),
+            rawLength: rawText(text).length,
             validationErrors: validation && Array.isArray(validation.errors) ? validation.errors : [],
           }
         );
