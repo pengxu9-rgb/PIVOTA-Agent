@@ -178,6 +178,8 @@ test('hybrid resolver keeps external raw seed when exact and fuzzy both miss', a
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].match_state, 'llm_seed');
   assert.equal(result.rows[0].pdp_open?.path, 'external');
+  assert.equal(result.rows[0].pdp_open?.resolve_reason_code, 'NO_CANDIDATES');
+  assert.equal(result.rows[0].metadata?.resolve_reason_code, 'NO_CANDIDATES');
   assert.equal(result.recommendation_meta.unresolved_seed_count, 1);
 });
 

@@ -197,6 +197,28 @@ const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2 } = require('./routineAnalysisV2');
+const {
+  buildAnalysisContextSnapshotV1,
+  resolveAnalysisContextForTask,
+  buildProductAnalysisContextFromSnapshot,
+  buildIngredientAnalysisContextFromSnapshot,
+  buildRecommendationAnalysisContextFromSnapshot,
+  buildChatAnalysisContextFromSnapshot,
+  buildAnalysisContextPromptBlock,
+} = require('./analysisContextSnapshot');
+const { normalizeRecoTargetStep } = require('./recoTargetStep');
+const {
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  CANDIDATE_POOL_SIGNATURE_VERSION,
+  GROUP_SEMANTICS_VERSION,
+  resolveRecommendationTargetContext,
+  buildSameFamilyQueryLevels,
+  finalizeRecommendationCandidatePools,
+  shouldStopStepAwareBroadening,
+  deriveStepAwareEmptyReason,
+  inferSlotForStep,
+} = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
 const {
@@ -661,7 +683,7 @@ const AURORA_ROUTINE_SOFT_GATE_DELAY_RECO = (() => {
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 const AURORA_ROUTINE_ANALYSIS_V2_ENABLED = (() => {
-  const raw = String(process.env.AURORA_ROUTINE_ANALYSIS_V2_ENABLED || 'false')
+  const raw = String(process.env.AURORA_ROUTINE_ANALYSIS_V2_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -1296,6 +1318,20 @@ function shouldDelegateV1ChatToV2(body) {
   if (canDelegateActionToV2) return true;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
+  if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
+    const requestLang = pickFirstTrimmed(
+      payload.language,
+      payload.lang,
+      payload.locale,
+      isPlainObject(payload.context) ? payload.context.locale : null,
+    );
+    const message = pickFirstTrimmed(payload.message, payload.text) || '';
+    const availabilityIntent = detectCatalogAvailabilityIntent(message, requestLang || 'EN');
+    const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
+      ? shouldAllowCatalogAvailabilityShortCircuit(message)
+      : true;
+    if (availabilityIntent && allowCatalogShortCircuit) return false;
+  }
   if (hasMessage) return true;
 
   const hasV2Context = isPlainObject(payload.context);
@@ -13726,6 +13762,95 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
   return deduped;
 }
 
+function buildRecoCatalogQueryLevels({
+  targetContext,
+  profileSummary,
+  ingredientContext,
+  lang,
+  seedTerms = [],
+} = {}) {
+  if (targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step) {
+    return buildSameFamilyQueryLevels({
+      targetContext,
+      profileSummary,
+      ingredientContext,
+      lang,
+      seedTerms,
+    });
+  }
+  const queries = buildRecoCatalogQueries({ profileSummary, lang, ingredientContext });
+  return queries.length
+    ? [
+        {
+          level_index: 0,
+          ladder_level: 'generic_catalog',
+          queries,
+        },
+      ]
+    : [];
+}
+
+async function collectRecoCandidatesFromQueryLevels({
+  queryLevels,
+  targetContext,
+  logger,
+  timeoutMs,
+  limit = 6,
+  usePurchasableFallback = false,
+  allowExternalSeed = false,
+  externalSeedStrategy = 'on_empty_only',
+} = {}) {
+  const rawCandidates = [];
+  const searchResults = [];
+  let candidateState = finalizeRecommendationCandidatePools([], { targetContext });
+  let stopLevel = null;
+
+  for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
+    const queries = Array.isArray(level?.queries) ? level.queries : [];
+    for (const queryEntry of queries) {
+      const out = usePurchasableFallback
+        ? await buildPurchasableFallbackCandidates({
+            query: queryEntry.query,
+            limit,
+            logger,
+            timeoutMs,
+            allowExternalSeed,
+            externalSeedStrategy,
+          })
+        : await searchPivotaBackendProducts({
+            query: queryEntry.query,
+            limit,
+            logger,
+            timeoutMs,
+            allowExternalSeed: false,
+            fastMode: true,
+          });
+      searchResults.push({
+        ...queryEntry,
+        ...out,
+      });
+      const products = Array.isArray(out?.products) ? out.products : [];
+      for (const product of products) {
+        const normalized = normalizeRecoCatalogProduct(product);
+        if (!isPlainObject(normalized)) continue;
+        rawCandidates.push(normalized);
+      }
+    }
+    candidateState = finalizeRecommendationCandidatePools(rawCandidates, { targetContext });
+    if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
+      stopLevel = String(level?.ladder_level || '').trim() || null;
+      break;
+    }
+  }
+
+  return {
+    rawCandidates,
+    searchResults,
+    candidateState,
+    stopLevel,
+  };
+}
+
 function normalizeRecoGroundingStatus(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (token === 'grounded' || token === 'partially_grounded' || token === 'ungrounded') return token;
@@ -13928,6 +14053,7 @@ async function groundRecoRecommendationsFromCatalog({
   recommendations,
   ctx,
   logger,
+  defaultTargetContext = null,
 } = {}) {
   const recs = (Array.isArray(recommendations) ? recommendations : [])
     .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
@@ -13999,60 +14125,90 @@ async function groundRecoRecommendationsFromCatalog({
   let candidateCountAfterFilter = 0;
   let candidatesRejected = 0;
   let timeoutCount = 0;
+  let exactStepViableCount = 0;
+  let sameFamilyViableCount = 0;
+  let softMismatchCount = 0;
+  let hardRejectCount = 0;
 
   for (const rec of recs) {
-    const queries = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
-    let groundedProduct = null;
-    for (const query of queries) {
-      queryCount += 1;
-      const out = await searchPivotaBackendProducts({
-        query,
-        limit: 6,
-        logger,
-        timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
-        allowExternalSeed: false,
-        fastMode: true,
-      });
-      const reason = String(out && out.reason ? out.reason : '').trim().toLowerCase();
+    const seedTerms = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
+    const itemTargetContext = resolveRecommendationTargetContext({
+      explicitStep: pickFirstTrimmed(rec.product_type, rec.step, defaultTargetContext && defaultTargetContext.resolved_target_step),
+      focus: pickFirstTrimmed(rec.use_case, rec.step, rec.product_type),
+      text: [pickFirstTrimmed(rec.display_name, rec.name, rec.title), ...seedTerms].filter(Boolean).join(' '),
+      entryType: 'grounding',
+    });
+    const queryLevels = buildRecoCatalogQueryLevels({
+      targetContext: itemTargetContext,
+      profileSummary: null,
+      ingredientContext: null,
+      lang: ctx && ctx.lang ? ctx.lang : 'EN',
+      seedTerms,
+    });
+    const collected = await collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext: itemTargetContext,
+      logger,
+      timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+    const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+    const poolState = isPlainObject(collected.candidateState) ? collected.candidateState : finalizeRecommendationCandidatePools([], { targetContext: itemTargetContext });
+    queryCount += results.length;
+    exactStepViableCount += Number(poolState.exact_step_viable_count || 0);
+    sameFamilyViableCount += Number(poolState.same_family_viable_count || 0);
+    softMismatchCount += Number(poolState.soft_mismatch_count || 0);
+    hardRejectCount += Number(poolState.hard_reject_count || 0);
+    for (const result of results) {
+      const reason = String(result && result.reason ? result.reason : '').trim().toLowerCase();
       if (reason === 'upstream_timeout') timeoutCount += 1;
-      const products = Array.isArray(out && out.products) ? out.products : [];
+      const products = Array.isArray(result && result.products) ? result.products : [];
       candidateCountBeforeFilter += products.length;
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
-        if (productId && usedProductIds.has(productId)) continue;
-        if (isBlacklistedCategoryOrTitle(normalized) || !isSkincareCategory(normalized)) {
-          candidatesRejected += 1;
-          continue;
-        }
-        groundedProduct = normalized;
-        if (productId) usedProductIds.add(productId);
-        candidateCountAfterFilter += 1;
-        break;
-      }
-      if (groundedProduct) break;
+    }
+    const viableCandidates = Array.isArray(poolState.selected_recommendations) ? poolState.selected_recommendations : [];
+    let groundedProduct = null;
+    for (const candidate of viableCandidates) {
+      const normalized = normalizeRecoCatalogProduct(candidate);
+      if (!isPlainObject(normalized)) continue;
+      const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
+      if (productId && usedProductIds.has(productId)) continue;
+      groundedProduct = normalized;
+      if (productId) usedProductIds.add(productId);
+      candidateCountAfterFilter += 1;
+      break;
+    }
+    if (!groundedProduct) {
+      candidatesRejected += Number(poolState.hard_reject_count || 0) + Number(poolState.soft_mismatch_count || 0);
     }
     next.push(groundedProduct ? mergeRecoPlanWithGroundedCandidate(rec, groundedProduct) : rec);
   }
 
-  const groundedCount = next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
-  const ungroundedCount = Math.max(0, next.length - groundedCount);
+  const nextForDisplay =
+    defaultTargetContext && defaultTargetContext.step_aware_intent
+      ? next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded')
+      : next;
+  const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
+  const ungroundedCount = Math.max(0, nextForDisplay.length - groundedCount);
   const groundingStatus =
     groundedCount === 0
       ? 'ungrounded'
-      : groundedCount === next.length
+      : groundedCount === nextForDisplay.length
         ? 'grounded'
         : 'partially_grounded';
   const mainlineStatus =
-    groundingStatus === 'grounded'
-      ? 'grounded_success'
-      : groundingStatus === 'partially_grounded'
-        ? 'partially_grounded'
-        : 'ungrounded_success';
+    defaultTargetContext && defaultTargetContext.step_aware_intent
+      ? groundingStatus === 'grounded'
+        ? 'grounded_success'
+        : 'needs_more_context'
+      : groundingStatus === 'grounded'
+        ? 'grounded_success'
+        : groundingStatus === 'partially_grounded'
+          ? 'partially_grounded'
+          : 'ungrounded_success';
 
   return {
-    recommendations: next,
+    recommendations: nextForDisplay,
     grounding_status: groundingStatus,
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,
@@ -14066,6 +14222,12 @@ async function groundRecoRecommendationsFromCatalog({
       candidate_count_after_filter: candidateCountAfterFilter,
       candidates_rejected: candidatesRejected,
       timeout_count: timeoutCount,
+      exact_step_viable_count: exactStepViableCount,
+      same_family_viable_count: sameFamilyViableCount,
+      soft_mismatch_count: softMismatchCount,
+      hard_reject_count: hardRejectCount,
+      step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+      viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     },
   };
 }
@@ -14329,7 +14491,7 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
-async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, debug, logger } = {}) {
+async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, targetContext = null, debug, logger } = {}) {
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
@@ -14369,42 +14531,42 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
-  const queries = buildRecoCatalogQueries({
+  const queryLevels = buildRecoCatalogQueryLevels({
+    targetContext,
     profileSummary,
-    lang: ctx && ctx.lang ? ctx.lang : 'EN',
     ingredientContext,
+    lang: ctx && ctx.lang ? ctx.lang : 'EN',
   });
-  if (!queries.length) {
+  if (!queryLevels.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
 
-  const results = await mapWithConcurrency(queries, RECO_CATALOG_SEARCH_CONCURRENCY, async (q) => {
-    const out = fallbackEnabled
-      ? await buildPurchasableFallbackCandidates({
-          query: q.query,
-          limit: 6,
-          logger,
-          timeoutMs: searchTimeoutEffectiveMs,
-          allowExternalSeed: allowExternalSeedSupplement,
-          // Keep catalog pass single-call when primary search already returned products.
-          externalSeedStrategy: 'on_empty_only',
-        })
-      : await searchPivotaBackendProducts({
-          query: q.query,
-          limit: 6,
-          logger,
-          timeoutMs: searchTimeoutEffectiveMs,
-        });
-    return { ...q, ...out };
+  const collected = await collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    logger,
+    timeoutMs: searchTimeoutEffectiveMs,
+    limit: 6,
+    usePurchasableFallback: fallbackEnabled,
+    allowExternalSeed: allowExternalSeedSupplement,
+    externalSeedStrategy: 'on_empty_only',
   });
+  const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+  const candidateState = isPlainObject(collected.candidateState)
+    ? collected.candidateState
+    : finalizeRecommendationCandidatePools([], { targetContext });
+  const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
+    ? candidateState.selected_recommendations
+    : [];
 
-  const usedProductIds = new Set();
-  const recos = [];
-  for (const r of results) {
-    const products = Array.isArray(r?.products) ? r.products : [];
-    const picked = products.find((p) => p && p.product_id && !usedProductIds.has(p.product_id));
-    if (!picked) continue;
-    usedProductIds.add(picked.product_id);
+  const recos = selectedCandidates.map((picked, index) => {
+    const stepToken = pickFirstTrimmed(
+      targetContext && targetContext.resolved_target_step,
+      picked.product_type,
+      picked.category,
+      'other',
+    );
+    const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
     const canonicalRef = normalizeCanonicalProductRef(
       {
         product_id: pickFirstString(picked.product_id, picked.productId),
@@ -14412,10 +14574,10 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       },
       { requireMerchant: true, allowOpaqueProductId: false },
     );
-    recos.push({
-      slot: r.slot || 'other',
-      step: r.step || (ctx && ctx.lang === 'CN' ? '推荐' : 'Recommendation'),
-      score: 95,
+    return {
+      slot: inferSlotForStep(normalizedStep),
+      step: humanizeRecoProductType(normalizedStep, ctx && ctx.lang ? ctx.lang : 'EN'),
+      score: Math.max(72, 95 - index * 3),
       product_id: pickFirstString(picked.product_id, picked.productId),
       merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
       brand: pickFirstString(picked.brand, picked.brand_name, picked.brandName),
@@ -14428,8 +14590,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
         picked.product_type,
         picked.productType,
         picked.type,
-        r.step,
-        r.slot,
+        normalizedStep,
       ),
       retrieval_source: pickFirstString(picked.retrieval_source, picked.retrievalSource, 'catalog'),
       retrieval_reason: pickFirstString(picked.retrieval_reason, picked.retrievalReason, 'catalog_search_match'),
@@ -14440,14 +14601,14 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       sku: picked,
       ...(debug
         ? {
-          notes:
-            ctx && ctx.lang === 'CN'
-              ? ['来自 Pivota 商品库（PDP 测试模式）']
-              : ['From Pivota catalog (PDP test mode)'],
-        }
+            notes:
+              ctx && ctx.lang === 'CN'
+                ? ['来自 Pivota 商品库（step-aware viable pool）']
+                : ['From Pivota catalog (step-aware viable pool)'],
+          }
         : {}),
-    });
-  }
+    };
+  });
 
   const statusCounts = {};
   const sourceCounts = {};
@@ -14482,7 +14643,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
 
   const debugPayload = {
     ...debugInfo,
-    query_count: queries.length,
+    query_count: results.length,
     ok_count: okCount,
     picked_count: recos.length,
     probe_while_open: probeWhileOpen,
@@ -14494,6 +14655,24 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     selected_source_counts: sourceCounts,
     external_seed_used_count: externalSeedUsedCount,
     external_seed_used_rate: results.length > 0 ? Number((externalSeedUsedCount / results.length).toFixed(4)) : 0,
+    resolved_target_step: targetContext && targetContext.resolved_target_step ? targetContext.resolved_target_step : null,
+    resolved_target_step_confidence: targetContext && targetContext.resolved_target_step_confidence ? targetContext.resolved_target_step_confidence : 'none',
+    resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
+    step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
+    step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+    viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+    candidate_pool_signature: candidateState.candidate_pool_signature,
+    raw_candidate_pool_debug_signature: candidateState.raw_candidate_pool_debug_signature,
+    raw_candidate_count: Number(candidateState.raw_candidate_count || 0),
+    viable_candidate_count: Number(candidateState.viable_candidate_count || 0),
+    exact_step_viable_count: Number(candidateState.exact_step_viable_count || 0),
+    same_family_viable_count: Number(candidateState.same_family_viable_count || 0),
+    soft_mismatch_count: Number(candidateState.soft_mismatch_count || 0),
+    hard_reject_count: Number(candidateState.hard_reject_count || 0),
+    selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
+    weak_viable_pool: Boolean(candidateState.weak_viable_pool),
+    overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
+    stop_level: collected.stopLevel || null,
     ...(debug
       ? {
         empty_count: emptyCount,
@@ -14501,20 +14680,15 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       : {}),
   };
 
-  const candidatePool = [];
-  for (const r of results) {
-    const products = Array.isArray(r?.products) ? r.products : [];
-    for (const product of products) {
-      candidatePool.push(product);
-      if (candidatePool.length >= 24) break;
-    }
-    if (candidatePool.length >= 24) break;
-  }
+  const candidatePool = Array.isArray(candidateState.viable_candidate_pool)
+    ? candidateState.viable_candidate_pool.slice(0, 24)
+    : [];
 
-  if (!recos.length) {
+  if (!recos.length || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
     return {
       structured: null,
       candidate_pool: candidatePool,
+      candidate_pool_state: candidateState,
       debug: debugPayload,
     };
   }
@@ -14528,6 +14702,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       warnings: [],
     },
     candidate_pool: candidatePool,
+    candidate_pool_state: candidateState,
     debug: debugPayload,
   };
 }
@@ -22686,6 +22861,7 @@ function deriveRecoEmptyReason(payload, contract) {
       ? Number(contractObj.ungrounded_count)
       : 0;
   if (groundedCount > 0 || ungroundedCount > 0) return '';
+  if (productsEmptyReason && productsEmptyReason !== 'strict_filter_fallback_only') return productsEmptyReason;
   if (productsEmptyReason === 'strict_filter_fallback_only') return 'strict_filter_dropped';
   return pickFirstTrimmed(contractObj.primary_failure_reason, 'artifact_missing') || 'artifact_missing';
 }
@@ -23823,6 +23999,21 @@ function parseProfilePatchFromAction(action) {
   return null;
 }
 
+function mergeMissingProfilePatchFields(target, source) {
+  const base = target && typeof target === 'object' ? target : {};
+  const extra = source && typeof source === 'object' ? source : null;
+  if (!extra) return base;
+  if (!base.skinType && typeof extra.skinType === 'string' && extra.skinType.trim()) base.skinType = extra.skinType.trim();
+  if (!base.sensitivity && typeof extra.sensitivity === 'string' && extra.sensitivity.trim()) base.sensitivity = extra.sensitivity.trim();
+  if (!base.barrierStatus && typeof extra.barrierStatus === 'string' && extra.barrierStatus.trim()) {
+    base.barrierStatus = extra.barrierStatus.trim();
+  }
+  if ((!Array.isArray(base.goals) || base.goals.length === 0) && Array.isArray(extra.goals) && extra.goals.length) {
+    base.goals = extra.goals.slice(0, 12);
+  }
+  return base;
+}
+
 function extractProfilePatchFromSession(session) {
   const s = session && typeof session === 'object' ? session : null;
   if (!s) return null;
@@ -23835,20 +24026,6 @@ function extractProfilePatchFromSession(session) {
   if (!rawProfile) return null;
 
   const patch = {};
-  const mergeMissingPatchFields = (target, source) => {
-    const base = target && typeof target === 'object' ? target : {};
-    const extra = source && typeof source === 'object' ? source : null;
-    if (!extra) return base;
-    if (!base.skinType && typeof extra.skinType === 'string' && extra.skinType.trim()) base.skinType = extra.skinType.trim();
-    if (!base.sensitivity && typeof extra.sensitivity === 'string' && extra.sensitivity.trim()) base.sensitivity = extra.sensitivity.trim();
-    if (!base.barrierStatus && typeof extra.barrierStatus === 'string' && extra.barrierStatus.trim()) {
-      base.barrierStatus = extra.barrierStatus.trim();
-    }
-    if ((!Array.isArray(base.goals) || base.goals.length === 0) && Array.isArray(extra.goals) && extra.goals.length) {
-      base.goals = extra.goals.slice(0, 12);
-    }
-    return base;
-  };
 
   // Strings
   const copyString = (toKey, ...fromKeys) => {
@@ -23920,7 +24097,75 @@ function extractProfilePatchFromSession(session) {
   if (rawProfile.travelPlan && typeof rawProfile.travelPlan === 'object' && !Array.isArray(rawProfile.travelPlan)) {
     patch.travel_plan = rawProfile.travelPlan;
   }
-  mergeMissingPatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+  mergeMissingProfilePatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function extractProfilePatchFromRequestContextPayload(payload) {
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!root) return null;
+
+  const candidates = [];
+  const visited = new Set();
+  const visit = (node, depth = 0) => {
+    if (depth > 1 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
+    visited.add(node);
+    candidates.push(node);
+    for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
+      visit(node[key], depth + 1);
+    }
+  };
+  visit(root);
+
+  const readString = (...aliases) => {
+    for (const node of candidates) {
+      for (const alias of aliases) {
+        const value = node && typeof node === 'object' ? node[alias] : null;
+        if (typeof value !== 'string') continue;
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        return trimmed;
+      }
+    }
+    return '';
+  };
+
+  const readGoalArray = () => {
+    const out = [];
+    const seen = new Set();
+    const pushGoal = (value) => {
+      const normalized = typeof value === 'string' ? value.trim() : '';
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(normalized);
+    };
+
+    for (const node of candidates) {
+      for (const alias of ['goals', 'selected_goals', 'selectedGoals', 'pending_goals', 'pendingGoals']) {
+        const values = node && typeof node === 'object' ? node[alias] : null;
+        if (!Array.isArray(values)) continue;
+        values.forEach(pushGoal);
+      }
+    }
+
+    return out.slice(0, 12);
+  };
+
+  const patch = {};
+  const skinType = readString('skinType', 'skin_type', 'skin_type_tendency', 'skinTypeTendency');
+  if (skinType) patch.skinType = skinType;
+  const sensitivity = readString('sensitivity', 'sensitivity_level', 'sensitivityLevel', 'sensitivity_tendency', 'sensitivityTendency');
+  if (sensitivity) patch.sensitivity = sensitivity;
+  const barrierStatus = readString('barrierStatus', 'barrier_status', 'barrier', 'barrier_state', 'barrierState');
+  if (barrierStatus) patch.barrierStatus = barrierStatus;
+  const goals = readGoalArray();
+  if (goals.length) patch.goals = goals;
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -25505,6 +25750,51 @@ function buildSkinAnalysisContextForPrefix(profile) {
     }
   }
   return parts.length ? parts.join('\n') : null;
+}
+
+function buildAnalysisContextSnapshotForRoute({
+  latestArtifact = null,
+  profile = null,
+  recentLogs = [],
+  lastAnalysis = null,
+} = {}) {
+  return buildAnalysisContextSnapshotV1({
+    latestArtifact,
+    lastAnalysis:
+      lastAnalysis && typeof lastAnalysis === 'object'
+        ? lastAnalysis
+        : profile && typeof profile === 'object' && profile.lastAnalysis && typeof profile.lastAnalysis === 'object'
+          ? profile.lastAnalysis
+          : null,
+    profile,
+    recentLogs,
+  });
+}
+
+function buildTaskAnalysisContextForPrefix({
+  task,
+  snapshot = null,
+  profile = null,
+  requestOverride = null,
+  recentLogs = [],
+} = {}) {
+  const resolved = resolveAnalysisContextForTask({
+    task,
+    snapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
+  if (task === 'product_analyze') {
+    return buildProductAnalysisContextFromSnapshot(resolved);
+  }
+  if (task === 'ingredient') {
+    return buildIngredientAnalysisContextFromSnapshot(resolved);
+  }
+  if (task === 'recommendation') {
+    return buildRecommendationAnalysisContextFromSnapshot(resolved);
+  }
+  return buildChatAnalysisContextFromSnapshot(resolved);
 }
 
 function buildRoutineFitRetryPrompt(basePrompt = '', language = 'EN') {
@@ -36510,10 +36800,13 @@ function extractIngredientLookupQuery(action) {
   return String(raw || '').trim().slice(0, 120);
 }
 
-function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
+function buildIngredientLookupUpstreamPrompt({ query, language, analysisContext = null } = {}) {
   const target = String(query || '').trim();
   if (!target) return '';
   const promptVersion = 'inline_lookup_v2';
+  const analysisContextBlock = analysisContext
+    ? buildAnalysisContextPromptBlock({ taskLabel: 'ingredient', taskContext: analysisContext })
+    : '';
   if (language === 'CN') {
     return [
       `[PROMPT_VERSION=${promptVersion}]`,
@@ -36526,6 +36819,7 @@ function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
       '- 如果成分有歧义或信息不足，要明确说明不确定性，并给出保守表述。',
       '- 不要做疾病诊断、处方建议或夸大疗效。',
       '- 不要输出长篇论文式解释；优先给清晰结论和关键注意事项。',
+      analysisContextBlock,
     ].join('\n');
   }
   return [
@@ -36539,6 +36833,7 @@ function buildIngredientLookupUpstreamPrompt({ query, language } = {}) {
     '- If the ingredient is ambiguous or the evidence is weak, state the uncertainty explicitly and stay conservative.',
     '- Do not provide diagnosis, prescription-style instructions, or exaggerated efficacy claims.',
     '- Do not turn this into a long essay; lead with the practical takeaway.',
+    analysisContextBlock,
   ].join('\n');
 }
 
@@ -36587,7 +36882,7 @@ function extractIngredientRecoContext(action) {
   };
 }
 
-function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
+function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext = null } = {}) {
   const promptVersion = 'inline_ingredient_reco_v2';
   const c = context && typeof context === 'object' ? context : {};
   const goal = String(c.goal || '').trim();
@@ -36600,6 +36895,9 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
     .map((p) => pickFirstTrimmed(p.display_name, p.name, p.brand))
     .filter(Boolean)
     .slice(0, 8);
+  const analysisContextBlock = analysisContext
+    ? buildAnalysisContextPromptBlock({ taskLabel: 'ingredient', taskContext: analysisContext })
+    : '';
   if (language === 'CN') {
     return [
       `[PROMPT_VERSION=${promptVersion}]`,
@@ -36618,6 +36916,7 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
         ? `产品候选（只能从中选择）：${productCandidateNames.join('、')}`
         : '产品候选：无——请返回空推荐结果。',
       '要求：推荐结果需明确对应上述目标/成分；若无匹配结果，请返回空结果并解释原因。',
+      analysisContextBlock,
     ]
       .filter(Boolean)
       .join('\n');
@@ -36641,6 +36940,7 @@ function buildIngredientRecoUpstreamPrompt({ language, context } = {}) {
       ? `Product candidates (select ONLY from these): ${productCandidateNames.join(', ')}`
       : 'Product candidates: NONE — return empty recommendations with an explanation.',
     'Rule: every recommendation must align with the goal/candidates; if no constrained match exists, return an explainable empty result.',
+    analysisContextBlock,
   ]
     .filter(Boolean)
     .join('\n');
@@ -38000,6 +38300,7 @@ function buildIngredientResearchPrompts({
   goal = null,
   sensitivity = null,
   profileSummary = null,
+  analysisContext = null,
   sources = [],
 } = {}) {
   const normalizedLanguage = language === 'CN' ? 'CN' : 'EN';
@@ -38010,6 +38311,17 @@ function buildIngredientResearchPrompts({
     ...(goal ? { goal: String(goal).trim().toLowerCase() } : {}),
     ...(sensitivity ? { sensitivity: String(sensitivity).trim().toLowerCase() } : {}),
     ...(profileSummary && typeof profileSummary === 'object' ? { profile_summary: profileSummary } : {}),
+    ...(analysisContext && typeof analysisContext === 'object'
+      ? {
+          analysis_context: {
+            hard: analysisContext.task_hard_context || {},
+            soft: analysisContext.task_soft_context || {},
+            evidence: Array.isArray(analysisContext.evidence_summary) ? analysisContext.evidence_summary.slice(0, 5) : [],
+            conflicts: Array.isArray(analysisContext.analysis_context_conflicts) ? analysisContext.analysis_context_conflicts.slice(0, 4) : [],
+            context_mode: String(analysisContext.context_mode || '').trim() || 'no_context',
+          },
+        }
+      : {}),
     ...(Array.isArray(sources) && sources.length ? { sources } : {}),
   };
 
@@ -38020,6 +38332,8 @@ function buildIngredientResearchPrompts({
     'Follow the requested schema exactly. Do not add extra keys or rename fields.',
     'Use ONLY context.sources for citations. Never invent studies, journals, URLs, years, or evidence grades.',
     'Stay non-medical, conservative, and brief.',
+    'If context.analysis_context is present, treat hard signals as strong context and soft signals as uncertainty-bearing hints only.',
+    'Do not restate analysis_context as if the user explicitly said it.',
   ].join('\n');
 
   const userPrompt = [
@@ -38044,6 +38358,7 @@ function buildIngredientResearchPrompts({
     '4) Cite ONLY context.sources entries. If there are no allowed sources, evidence.citations MUST be [] and evidence.grade MUST be null.',
     '5) Do NOT fabricate product picks. top_products is optional and may be empty.',
     '6) Keep benefits, watchouts, usage notes, and evidence summary non-repetitive.',
+    '7) Respect context.analysis_context: hard context may shape stronger fit calls; soft context must stay uncertainty-bearing.',
     '',
     'Limits (to control latency):',
     '- benefits: max 3 items',
@@ -38352,6 +38667,7 @@ async function runIngredientResearchSync({
   goal = null,
   sensitivity = null,
   profileSummary = null,
+  analysisContext = null,
   sources = [],
   logger = null,
 } = {}) {
@@ -38394,6 +38710,7 @@ async function runIngredientResearchSync({
     goal,
     sensitivity,
     profileSummary,
+    analysisContext,
     sources,
   });
   const maxAttempts = 2;
@@ -40061,6 +40378,7 @@ async function buildIngredientReportPayloadWithResearch({
   goal = null,
   sensitivity = null,
   profileSummary = null,
+  analysisContext = null,
   sources = [],
   meta = null,
   logger = null,
@@ -40085,6 +40403,7 @@ async function buildIngredientReportPayloadWithResearch({
       goal: goal || null,
       sensitivity: sensitivity || null,
       profileSummary: isPlainObject(profileSummary) ? profileSummary : null,
+      analysisContext: isPlainObject(analysisContext) ? analysisContext : null,
       sources: Array.isArray(sources) ? sources : [],
       logger,
     });
@@ -43102,19 +43421,36 @@ async function generateProductRecommendations({
   profile,
   recentLogs,
   message,
+  focus = '',
   ingredientContext,
+  analysisContextSnapshot = null,
+  requestOverride = null,
   includeAlternatives,
   debug,
   logger,
   recoTriggerSource = null,
   recomputeFromProfileUpdate = false,
   budgetMs = null,
+  entryType = 'chat',
 }) {
   const profileSummary = summarizeProfileForContext(profile);
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
+  const effectiveAnalysisContextSnapshot =
+    analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs });
+  const recommendationTaskContext = buildTaskAnalysisContextForPrefix({
+    task: 'recommendation',
+    snapshot: effectiveAnalysisContextSnapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
+  const analysisContextBlock = buildAnalysisContextPromptBlock({
+    taskLabel: 'recommendation',
+    taskContext: recommendationTaskContext,
+  });
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
     recentLogs: Array.isArray(recentLogs) ? recentLogs : [],
@@ -43126,10 +43462,20 @@ async function generateProductRecommendations({
     ...(ingredientContext && typeof ingredientContext === 'object' ? { ingredient_context: ingredientContext } : {}),
     ...(analysisSummary ? { analysis_summary: analysisSummary } : {}),
     ...(analysisSummaryAt ? { analysis_summary_at: analysisSummaryAt } : {}),
+    ...(analysisContextBlock ? { skin_analysis_context: analysisContextBlock } : {}),
   });
   const userAsk =
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
+  const targetContext = resolveRecommendationTargetContext({
+    explicitStep: pickFirstTrimmed(
+      normalizedIngredientContext && normalizedIngredientContext.target_step,
+      normalizedIngredientContext && normalizedIngredientContext.step,
+    ),
+    focus,
+    text: userAsk,
+    entryType,
+  });
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
   );
@@ -43143,6 +43489,7 @@ async function generateProductRecommendations({
   let llmLatencyMs = null;
   let catalogStructured = null;
   let catalogCandidatePool = [];
+  let catalogCandidateState = null;
   let catalogDebug = null;
   let pdpFastFallbackReasonCode = null;
   let pdpFastExternalFallbackReasonCode = null;
@@ -43291,6 +43638,7 @@ async function generateProductRecommendations({
       ctx,
       profileSummary,
       ingredientContext: normalizedIngredientContext,
+      targetContext,
       debug,
       logger,
     });
@@ -43302,6 +43650,10 @@ async function generateProductRecommendations({
       catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
         ? catalogOut.candidate_pool
         : [];
+    catalogCandidateState =
+      catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
+        ? catalogOut.candidate_pool_state
+        : null;
     catalogDebug =
       catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
         ? catalogOut.debug
@@ -43309,7 +43661,7 @@ async function generateProductRecommendations({
     pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
     pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
     const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
-    catalogTransientFallbackStructured = useCatalogTransientFallback
+    catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
       ? buildRecoCatalogTransientFallbackStructured({ ctx })
       : null;
   }
@@ -43394,6 +43746,28 @@ async function generateProductRecommendations({
           ? 'catalog_grounded_primary'
           : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
+      resolved_target_step: targetContext.resolved_target_step || null,
+      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
+      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      step_resolution_version: targetContext.step_resolution_version || null,
+      candidate_pool_signature: pickFirstTrimmed(catalogDebug?.candidate_pool_signature) || null,
+      raw_candidate_count: Number(catalogDebug?.raw_candidate_count || 0),
+      viable_candidate_count: Number(catalogDebug?.viable_candidate_count || 0),
+      exact_step_viable_count: Number(catalogDebug?.exact_step_viable_count || 0),
+      same_family_viable_count: Number(catalogDebug?.same_family_viable_count || 0),
+      soft_mismatch_count: Number(catalogDebug?.soft_mismatch_count || 0),
+      hard_reject_count: Number(catalogDebug?.hard_reject_count || 0),
+      weak_viable_pool: Boolean(catalogDebug?.weak_viable_pool),
+      overall_target_fidelity_satisfied: Boolean(catalogDebug?.overall_target_fidelity_satisfied),
+      analysis_context_usage: {
+        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
+        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
+        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
+        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+      },
     }
     : null;
   let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -43403,6 +43777,7 @@ async function generateProductRecommendations({
       recommendations: mapped.recommendations,
       ctx,
       logger,
+      defaultTargetContext: targetContext,
     });
     mapped = {
       ...mapped,
@@ -43420,6 +43795,16 @@ async function generateProductRecommendations({
   }
 
   const norm = normalizeRecoGenerate(mapped);
+  const viablePoolState = isPlainObject(catalogCandidateState)
+    ? catalogCandidateState
+    : finalizeRecommendationCandidatePools(
+        Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
+        { targetContext },
+      );
+  if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
+    norm.payload.recommendations = [];
+    norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
+  }
   const effectiveGroundingStatus =
     normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
     || (structuredSource === 'catalog_grounded'
@@ -43438,6 +43823,7 @@ async function generateProductRecommendations({
   const effectiveMainlineStatus = pickFirstTrimmed(
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
+    targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     structuredSource === 'catalog_grounded'
       ? 'grounded_success'
       : structuredSource === 'catalog_transient_fallback'
@@ -43783,6 +44169,24 @@ async function generateProductRecommendations({
         ? Number(catalogDebug?.query_count)
         : 0,
       llm_trace: llmTrace,
+      resolved_target_step: targetContext.resolved_target_step || null,
+      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
+      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      step_resolution_version: targetContext.step_resolution_version || null,
+      step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+      viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+      candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
+      group_semantics_version: GROUP_SEMANTICS_VERSION,
+      raw_candidate_count: Number(viablePoolState.raw_candidate_count || 0),
+      viable_candidate_count: Number(viablePoolState.viable_candidate_count || 0),
+      exact_step_viable_count: Number(viablePoolState.exact_step_viable_count || 0),
+      same_family_viable_count: Number(viablePoolState.same_family_viable_count || 0),
+      soft_mismatch_count: Number(viablePoolState.soft_mismatch_count || 0),
+      hard_reject_count: Number(viablePoolState.hard_reject_count || 0),
+      selected_candidate_count: Number(viablePoolState.selected_candidate_count || 0),
+      overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
+      weak_viable_pool: Boolean(viablePoolState.weak_viable_pool),
+      candidate_pool_signature: viablePoolState.candidate_pool_signature,
     },
   };
   const recoContract = buildRecoMainlineContract({
@@ -46478,6 +46882,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         req?.body?.session?.id,
       ),
     );
+    let productAnalysisContextMeta = null;
     const sendProductAnalyzeEnvelope = async (envelope, statusCode = 200, mode = 'main_path') => {
       const qualityGated = applyUnknownVerdictQualityGateToEnvelope(envelope, {
         lang: ctx.lang,
@@ -46509,6 +46914,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           meta: {
             ...sessionPatchMeta,
             retrieval_path_version: 'aurora_retrieval_v2',
+            ...(productAnalysisContextMeta ? { analysis_context_usage: productAnalysisContextMeta } : {}),
           },
         },
       };
@@ -46617,7 +47023,47 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+        identity,
+        session: incomingSession,
+        ctx,
+        logger,
+      });
       const profileSummary = summarizeProfileForContext(profile);
+      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      });
+      const analysisTaskContext = buildTaskAnalysisContextForPrefix({
+        task: 'product_analyze',
+        snapshot: analysisContextSnapshot,
+        profile,
+        requestOverride: extractProfilePatchFromSession(incomingSession),
+        recentLogs,
+      });
+      const analysisContextBlock = buildAnalysisContextPromptBlock({
+        taskLabel: 'product_analyze',
+        taskContext: analysisTaskContext,
+      });
+      productAnalysisContextMeta = {
+        snapshot_present: Boolean(analysisContextSnapshot),
+        snapshot_id: analysisContextSnapshot ? String(analysisContextSnapshot.snapshot_id || '').trim() || null : null,
+        source_mix_summary:
+          analysisContextSnapshot && Array.isArray(analysisContextSnapshot.source_mix_summary)
+            ? analysisContextSnapshot.source_mix_summary
+            : [],
+        derived_from_artifact_signature:
+          analysisContextSnapshot
+            ? String(analysisContextSnapshot.derived_from_artifact_signature || '').trim() || null
+            : null,
+        snapshot_fields_used: Array.isArray(analysisTaskContext.snapshot_fields_used) ? analysisTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(analysisTaskContext.hard_context_fields_used) ? analysisTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(analysisTaskContext.soft_context_fields_used) ? analysisTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(analysisTaskContext.explicit_override_applied),
+        adapter_version: String(analysisTaskContext.adapter_version || '').trim() || null,
+        context_mode: String(analysisTaskContext.context_mode || '').trim() || 'no_context',
+      };
       const commonMeta = {
         profile: profileSummary,
         recentLogs,
@@ -46626,7 +47072,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         trigger_source: ctx.trigger_source,
       };
       const parsePrefix = buildContextPrefix({ ...commonMeta, intent: 'product_parse', action_id: 'chip.action.parse_product' });
-      const prefix = buildContextPrefix({ ...commonMeta, intent: 'product_analyze', action_id: 'chip.action.analyze_product' });
+      const prefix = buildContextPrefix({
+        ...commonMeta,
+        intent: 'product_analyze',
+        action_id: 'chip.action.analyze_product',
+        skin_analysis_context: analysisContextBlock,
+      });
 
       const input = parsed.data.url || parsed.data.name || JSON.stringify(parsed.data.product || {});
       const anchorTrustDiagnostics = [];
@@ -47703,16 +48154,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
       }
       return sendProductAnalyzeEnvelope(envelope, 200, 'main_path');
-    } catch (err) {
-      logger.error({
-        event: 'aurora_product_analyze_failed',
-        request_id: ctx.request_id,
-        trace_id: ctx.trace_id,
-        path: '/v1/product/analyze',
-        error: err?.message || String(err),
-        stack: err?.stack || null,
-      });
-      const status = err.status || 500;
+	    } catch (err) {
+	      if (logger && typeof logger.error === 'function') {
+	        logger.error({
+	          event: 'aurora_product_analyze_failed',
+	          request_id: ctx.request_id,
+	          trace_id: ctx.trace_id,
+	          path: '/v1/product/analyze',
+	          error: err?.message || String(err),
+	          stack: err?.stack || null,
+	        });
+	      }
+	      const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to analyze product.'),
         suggested_chips: [],
@@ -48041,6 +48494,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: parsed.data.session, ctx, logger });
+      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      });
       const profileSummary = summarizeProfileForContext(profile);
       // Use minimal upstream context for stability: dupe_compare should not depend on per-user logs/profile size.
       const upstreamMeta = {
@@ -48924,10 +49383,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
-      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const profileSummary = summarizeProfileForContext(profile);
+	      const identity = await resolveIdentity(req, ctx);
+	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+	        identity,
+	        session:
+	          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+	            ? parsed.data.session
+	            : null,
+	        ctx,
+	        logger,
+	      });
+	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+	        latestArtifact,
+	        profile,
+	        recentLogs,
+	      });
+	      const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
       let gateAdvisoryCard = null;
@@ -48958,14 +49431,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         constraints: parsed.data.constraints || {},
         lang: ctx.lang,
       });
-      const upstreamReco = await generateProductRecommendations({
-        ctx,
-        profile,
-        recentLogs,
-        message: requestText,
+	      const upstreamReco = await generateProductRecommendations({
+	        ctx,
+	        profile,
+	        recentLogs,
+	        message: requestText,
+	        focus: parsed.data.focus,
+	        analysisContextSnapshot,
+        requestOverride: extractProfilePatchFromSession(parsed.data.session),
         includeAlternatives: false,
         logger,
         recoTriggerSource: 'goal_driven',
+        entryType: 'direct',
       });
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
@@ -49094,7 +49571,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           }),
         );
       }
-      const directNoRecoReason = deriveRecoEmptyReason(payload, finalDirectContract);
+      const directNoRecoReason = pickFirstTrimmed(
+        finalDirectContract.products_empty_reason,
+        payload?.products_empty_reason,
+        deriveRecoEmptyReason(payload, finalDirectContract),
+      );
       const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
       const envelope = buildEnvelope(ctx, {
@@ -50303,6 +50784,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
           }
         }
+        const snapshotProfileBase =
+          profile && typeof profile === 'object' && !Array.isArray(profile)
+            ? { ...profile }
+            : profile;
 
         const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
         const photoQcParts = [];
@@ -50326,6 +50811,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         const photosProvided = photosSubmittedCount > 0;
         let photoQuality = classifyPhotoQuality(photos);
 
+        const requestProfileOverlay = extractProfilePatchFromRequestContextPayload(parsed.data);
+        const requestProfileOverlayKeys = requestProfileOverlay && typeof requestProfileOverlay === 'object'
+          ? Object.keys(requestProfileOverlay).sort()
+          : [];
+        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
+        const applyRequestProfileOverlay = (profileValue, { fillOnly = false } = {}) => {
+          if (!requestProfileOverlay || typeof requestProfileOverlay !== 'object') return profileValue;
+          const base = profileValue && typeof profileValue === 'object' && !Array.isArray(profileValue)
+            ? { ...profileValue }
+            : {};
+          return fillOnly ? mergeMissingProfilePatchFields(base, requestProfileOverlay) : { ...base, ...requestProfileOverlay };
+        };
+        profile = applyRequestProfileOverlay(profile);
         let profileSummary = summarizeProfileForContext(profile);
         const previousRoutineState = normalizeRoutineStateFromProfile(profile);
         const previousRoutine = previousRoutineState.current_routine_struct;
@@ -50368,6 +50866,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist current routine for analysis');
             }
           }
+          profile = applyRequestProfileOverlay(profile, { fillOnly: true });
           profileSummary = summarizeProfileForContext(profile);
         }
 
@@ -51482,6 +51981,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let diagnosisArtifact = null;
         let ingredientPlan = null;
+        let analysisContextSnapshot = null;
         let recommendationReady = false;
         let latestArtifactId = null;
         let artifactGate = null;
@@ -51565,6 +52065,20 @@ function mountAuroraBffRoutes(app, { logger }) {
                 // non-critical: ingredient plan context will still work from ingredient plan card
               }
             }
+            analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+              latestArtifact: diagnosisArtifact,
+              profile: snapshotProfileBase,
+              recentLogs: recentLogsSummary,
+              lastAnalysis: ingredientPlan && analysis
+                ? {
+                    ...analysis,
+                    ingredient_plan: {
+                      targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets : [],
+                      avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid : [],
+                    },
+                  }
+                : analysis,
+            });
           } catch (err) {
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
@@ -51607,6 +52121,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
           routine_analysis_version: routineAnalysisV2Result ? 'v2' : 'legacy',
+          profile_context_source: requestProfileContextSource,
+          request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+          ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
           gate_relax_mode: AURORA_RULE_RELAX_MODE,
           low_quality_tolerated: Boolean(
@@ -51703,6 +52220,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               profileSummary,
               routineProductCandidates,
               ingredientPlan,
+              analysisContextSnapshot,
+              requestProfileOverride: requestProfileOverlay,
               logger,
             });
             analysisMeta.routine_analysis_version = 'v2';
@@ -51740,8 +52259,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (routineAnalysisV2Result) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
-            routine_analysis_v2: routineAnalysisV2Result.debug_meta,
+            ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
+            routine_analysis_v2: {
+              ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
+              profile_context_source: requestProfileContextSource,
+              request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+            },
             routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+          };
+        } else if (analysisContextSnapshot) {
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            analysis_context_snapshot: analysisContextSnapshot,
           };
         }
 
@@ -52065,6 +52595,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientPlan,
               routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
             });
+        if (profileSummary) {
+          sessionPatch.profile = profileSummary;
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
@@ -52111,6 +52644,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             photos_provided: Boolean(photosProvided),
             used_photos: Boolean(usedPhotos),
             photo_quality_grade: photoQuality && typeof photoQuality.grade === 'string' ? photoQuality.grade : 'unknown',
+            profile_context_source: requestProfileContextSource,
+            request_profile_overlay_keys: requestProfileOverlayKeys,
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,
             stages: report.stages,
@@ -52644,17 +53179,27 @@ function mountAuroraBffRoutes(app, { logger }) {
       requireAuroraUid(ctx);
       let profile = null;
       let recentLogs = [];
+      let latestArtifact = null;
       let dbError = null;
       const identity = await resolveIdentity(req, ctx);
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
+        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
       } catch (err) {
         dbError = err;
       }
 
       const isReturning = Boolean(profile) || recentLogs.length > 0;
       const checkinDue = isCheckinDue(recentLogs);
+      const latestAnalysisContext =
+        !dbError
+          ? buildAnalysisContextSnapshotForRoute({
+              latestArtifact,
+              profile,
+              recentLogs,
+            })
+          : null;
 
       const cards = [
         {
@@ -52666,6 +53211,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             checkin_due: checkinDue,
             is_returning: isReturning,
             db_ready: !dbError,
+            latest_analysis_context: latestAnalysisContext,
           },
           ...(dbError
             ? { field_missing: [{ field: 'profile', reason: 'db_not_configured_or_unavailable' }] }
@@ -52683,6 +53229,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recent_logs: recentLogs,
           checkin_due: checkinDue,
           is_returning: isReturning,
+          ...(latestAnalysisContext ? { meta: { analysis_context_snapshot: latestAnalysisContext } } : {}),
         },
         events,
       });
@@ -54872,6 +55419,128 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const profileSummaryForFollowup = summarizeChatProfileForContext(profile);
+      const requestScopedProfileOverride = mergeMissingProfilePatchFields(
+        mergeMissingProfilePatchFields({}, profilePatchFromSession),
+        appliedProfilePatch || textDerivedProfilePatch,
+      );
+      let cachedLatestArtifactForConversation;
+      let cachedLatestArtifactLoaded = false;
+      let cachedAnalysisContextSnapshotForConversation;
+      let cachedAnalysisContextSnapshotLoaded = false;
+      const taskAnalysisContextCache = new Map();
+      const ensureLatestArtifactForConversation = async () => {
+        if (cachedLatestArtifactLoaded) return cachedLatestArtifactForConversation;
+        cachedLatestArtifactLoaded = true;
+        cachedLatestArtifactForConversation = await loadLatestDiagnosisArtifactForRoute({
+          identity,
+          session: parsed.data.session,
+          ctx,
+          logger,
+        });
+        return cachedLatestArtifactForConversation;
+      };
+      const ensureAnalysisContextSnapshotForConversation = async () => {
+        if (cachedAnalysisContextSnapshotLoaded) return cachedAnalysisContextSnapshotForConversation;
+        cachedAnalysisContextSnapshotLoaded = true;
+        const latestArtifact = await ensureLatestArtifactForConversation();
+        cachedAnalysisContextSnapshotForConversation = buildAnalysisContextSnapshotForRoute({
+          latestArtifact,
+          profile,
+          recentLogs,
+        });
+        return cachedAnalysisContextSnapshotForConversation;
+      };
+      const ensureTaskAnalysisContextForConversation = async (task = 'chat') => {
+        const key = String(task || 'chat').trim() || 'chat';
+        if (taskAnalysisContextCache.has(key)) return taskAnalysisContextCache.get(key);
+        const taskContext = buildTaskAnalysisContextForPrefix({
+          task: key,
+          snapshot: await ensureAnalysisContextSnapshotForConversation(),
+          profile,
+          requestOverride: requestScopedProfileOverride,
+          recentLogs,
+        });
+        taskAnalysisContextCache.set(key, taskContext);
+        return taskContext;
+      };
+      const buildIngredientProfileSummaryForResearch = ({ taskContext, ingredientContext }) => {
+        const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : {};
+        const soft = isPlainObject(taskContext && taskContext.task_soft_context) ? taskContext.task_soft_context : {};
+        const hardGoals = Array.isArray(hard.active_goals) ? hard.active_goals : [];
+        const softGoals = Array.isArray(soft.background_goals) ? soft.background_goals : [];
+        const hardTargets = Array.isArray(hard.ingredient_targets) ? hard.ingredient_targets : [];
+        const softTargets = Array.isArray(soft.ingredient_targets) ? soft.ingredient_targets : [];
+        const hardAvoid = Array.isArray(hard.ingredient_avoid) ? hard.ingredient_avoid : [];
+        const softAvoid = Array.isArray(soft.ingredient_avoid) ? soft.ingredient_avoid : [];
+        return {
+          skin_type: pickFirstTrimmed(hard.skin_type, soft.skin_type, profile && (profile.skinType || profile.skin_type)) || null,
+          sensitivity:
+            pickFirstTrimmed(
+              ingredientContext && ingredientContext.sensitivity,
+              hard.sensitivity,
+              soft.sensitivity,
+              profile && (profile.sensitivity || profile.skin_sensitivity),
+            ) || null,
+          barrier_status:
+            pickFirstTrimmed(
+              hard.barrier_status,
+              soft.barrier_status,
+              profile && (profile.barrierStatus || profile.barrier_status),
+            ) || null,
+          concerns: normalizeIngredientCandidateList(
+            [
+              ...hardGoals,
+              ...softGoals,
+              ...(Array.isArray(profile && profile.goals) ? profile.goals : []),
+            ],
+            4,
+          ),
+          ingredient_targets: normalizeIngredientCandidateList([...hardTargets, ...softTargets], 4),
+          ingredient_avoid: normalizeIngredientCandidateList([...hardAvoid, ...softAvoid], 4),
+        };
+      };
+      const mergeIngredientRecoContextFromAnalysis = (baseContext, taskContext) => {
+        const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : {};
+        const soft = isPlainObject(taskContext && taskContext.task_soft_context) ? taskContext.task_soft_context : {};
+        const hardGoals = Array.isArray(hard.active_goals) ? hard.active_goals : [];
+        const softGoals = Array.isArray(soft.background_goals) ? soft.background_goals : [];
+        const hardTargets = Array.isArray(hard.ingredient_targets) ? hard.ingredient_targets : [];
+        const softTargets = Array.isArray(soft.ingredient_targets) ? soft.ingredient_targets : [];
+        const derivedGoal = pickFirstTrimmed(
+          ...hardGoals,
+          ...softGoals,
+        );
+        const derivedCandidates = normalizeIngredientCandidateList([...hardTargets, ...softTargets], 8);
+        return mergeIngredientRecoContextValue(
+          {
+            ...(derivedGoal ? { goal: derivedGoal } : {}),
+            ...(pickFirstTrimmed(hard.sensitivity, soft.sensitivity) ? { sensitivity: pickFirstTrimmed(hard.sensitivity, soft.sensitivity) } : {}),
+            ...(derivedCandidates.length ? { candidates: derivedCandidates, ingredient_candidates: derivedCandidates } : {}),
+            source: 'analysis_context',
+            updated_at_ms: Date.now(),
+          },
+          baseContext,
+        );
+      };
+      const attachAnalysisContextUsageToSessionPatch = (sessionPatch, taskContext) => {
+        if (!isPlainObject(taskContext)) return sessionPatch;
+        const patch = isPlainObject(sessionPatch) ? { ...sessionPatch } : {};
+        const meta =
+          patch.meta && typeof patch.meta === 'object' && !Array.isArray(patch.meta)
+            ? { ...patch.meta }
+            : {};
+        meta.analysis_context_usage = {
+          snapshot_present: Boolean(taskContext.snapshot_present),
+          snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used : [],
+          hard_context_fields_used: Array.isArray(taskContext.hard_context_fields_used) ? taskContext.hard_context_fields_used : [],
+          soft_context_fields_used: Array.isArray(taskContext.soft_context_fields_used) ? taskContext.soft_context_fields_used : [],
+          explicit_override_applied: Boolean(taskContext.explicit_override_applied),
+          context_mode: String(taskContext.context_mode || '').trim() || 'no_context',
+          adapter_version: String(taskContext.adapter_version || '').trim() || null,
+        };
+        patch.meta = meta;
+        return patch;
+      };
       const hasPlannerAnchor = hasMeaningfulFitCheckAnchor({
         message,
         anchorProductId,
@@ -56030,6 +56699,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         ),
         updated_at_ms: Date.now(),
       });
+      let ingredientAnalysisTaskContext = null;
+      if (
+        ingredientScienceIntentEffective ||
+        ingredientEntryRequested ||
+        ingredientLookupRequested ||
+        ingredientByGoalRequested ||
+        ingredientRecoOptInRequested ||
+        ingredientResearchPollRequested
+      ) {
+        ingredientAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('ingredient');
+        ingredientRecoContext = mergeIngredientRecoContextFromAnalysis(
+          ingredientRecoContext,
+          ingredientAnalysisTaskContext,
+        );
+      }
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
         starter_action: Boolean(
@@ -56124,6 +56808,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       } = {}) => {
         const target = String(lookupTarget || '').trim().slice(0, 120);
         if (!target) return null;
+        const currentIngredientAnalysisTaskContext =
+          ingredientAnalysisTaskContext || await ensureTaskAnalysisContextForConversation('ingredient');
         const normalizedQuery = normalizeIngredientResearchKey(target);
         const entityMatch = ingredientEntityMatchFromText(target, ctx.lang);
         const routeReasons = Array.isArray(explicitRouteReasons)
@@ -56132,11 +56818,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         const lookupGoal =
           pickFirstTrimmed(
             ingredientRecoContext && ingredientRecoContext.goal,
+            currentIngredientAnalysisTaskContext &&
+              currentIngredientAnalysisTaskContext.task_hard_context &&
+              Array.isArray(currentIngredientAnalysisTaskContext.task_hard_context.active_goals)
+              ? currentIngredientAnalysisTaskContext.task_hard_context.active_goals[0]
+              : '',
             ingredientGoalRequest && ingredientGoalRequest.goal,
           ) || '';
         const lookupSensitivity =
           pickFirstTrimmed(
             ingredientRecoContext && ingredientRecoContext.sensitivity,
+            currentIngredientAnalysisTaskContext &&
+              currentIngredientAnalysisTaskContext.task_hard_context &&
+              currentIngredientAnalysisTaskContext.task_hard_context.sensitivity,
+            currentIngredientAnalysisTaskContext &&
+              currentIngredientAnalysisTaskContext.task_soft_context &&
+              currentIngredientAnalysisTaskContext.task_soft_context.sensitivity,
             ingredientGoalRequest && ingredientGoalRequest.sensitivity,
           ) || '';
         if (entityMatch.entity_match_type && entityMatch.entity_match_type !== 'none') {
@@ -56201,11 +56898,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         ) {
           const profileSummaryForResearch =
             profile && typeof profile === 'object'
-              ? {
-                skin_type: pickFirstTrimmed(profile.skinType, profile.skin_type) || null,
-                sensitivity: pickFirstTrimmed(profile.sensitivity, profile.skin_sensitivity) || null,
-                concerns: Array.isArray(profile.goals) ? profile.goals.slice(0, 4) : [],
-              }
+              ? buildIngredientProfileSummaryForResearch({
+                  taskContext: currentIngredientAnalysisTaskContext,
+                  ingredientContext: ingredientRecoContext,
+                })
               : null;
           syncResearch = await runIngredientResearchSync({
             query: target,
@@ -56214,6 +56910,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             goal: lookupGoal || null,
             sensitivity: lookupSensitivity || null,
             profileSummary: profileSummaryForResearch,
+            analysisContext: currentIngredientAnalysisTaskContext,
             sources: [],
             logger,
           });
@@ -56325,6 +57022,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             updated_at_ms: Date.now(),
           }),
         );
+        sessionPatch = attachAnalysisContextUsageToSessionPatch(sessionPatch, currentIngredientAnalysisTaskContext);
         const events = [
           makeEvent(ctx, readyAfterSync ? 'ingredient_kb_hit' : 'ingredient_kb_miss', {
             query: String(target || '').slice(0, 120),
@@ -56383,12 +57081,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         skipRoutineRulesFallback = true;
       }
       if (ingredientLookupRequested && !message && ingredientLookupQuery) {
-        upstreamMessage = buildIngredientLookupUpstreamPrompt({ query: ingredientLookupQuery, language: ctx.lang });
+        upstreamMessage = buildIngredientLookupUpstreamPrompt({
+          query: ingredientLookupQuery,
+          language: ctx.lang,
+          analysisContext: ingredientAnalysisTaskContext,
+        });
       }
       if (ingredientRecoOptInRequested && ingredientRecoContext) {
         upstreamMessage = buildIngredientRecoUpstreamPrompt({
           language: ctx.lang,
           context: ingredientRecoContext,
+          analysisContext: ingredientAnalysisTaskContext,
         });
       }
       const conflictIntentRequested = looksLikeCompatibilityOrConflictQuestion(message);
@@ -56607,13 +57310,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           session_patch: attachIngredientContextMetaToSessionPatch(
-            attachIngredientRouteMetaToSessionPatch(
-              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-              {
-                routeSource: 'chip',
-                routeDecisionReasons: ['hub_entry', ...ingredientRouteDecisionReasons],
-                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-              },
+            attachAnalysisContextUsageToSessionPatch(
+              attachIngredientRouteMetaToSessionPatch(
+                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+                {
+                  routeSource: 'chip',
+                  routeDecisionReasons: ['hub_entry', ...ingredientRouteDecisionReasons],
+                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+                },
+              ),
+              ingredientAnalysisTaskContext,
             ),
             ingredientRecoContext,
           ),
@@ -56667,13 +57373,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           session_patch: attachIngredientContextMetaToSessionPatch(
-            attachIngredientRouteMetaToSessionPatch(
-              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-              {
-                routeSource: 'chip',
-                routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
-                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-              },
+            attachAnalysisContextUsageToSessionPatch(
+              attachIngredientRouteMetaToSessionPatch(
+                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+                {
+                  routeSource: 'chip',
+                  routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
+                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+                },
+              ),
+              ingredientAnalysisTaskContext,
             ),
             ingredientRecoContext,
           ),
@@ -56700,13 +57409,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           ],
           session_patch: attachIngredientContextMetaToSessionPatch(
-            attachIngredientRouteMetaToSessionPatch(
-              nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-              {
-                routeSource: 'chip',
-                routeDecisionReasons: ['lookup_missing_query', ...ingredientRouteDecisionReasons],
-                routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-              },
+            attachAnalysisContextUsageToSessionPatch(
+              attachIngredientRouteMetaToSessionPatch(
+                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+                {
+                  routeSource: 'chip',
+                  routeDecisionReasons: ['lookup_missing_query', ...ingredientRouteDecisionReasons],
+                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+                },
+              ),
+              ingredientAnalysisTaskContext,
             ),
             ingredientRecoContext,
           ),
@@ -56757,7 +57469,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             ],
             session_patch: attachIngredientRouteMetaToSessionPatch(
-              {},
+              attachAnalysisContextUsageToSessionPatch({}, ingredientAnalysisTaskContext),
               {
                 routeSource: ingredientTextTrigger ? 'text' : 'chip',
                 routeDecisionReasons: ['poll_missing_query', ...ingredientRouteDecisionReasons],
@@ -58818,35 +59530,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
 
-        const preferredArtifactId = extractLatestArtifactIdFromSession(parsed.data.session);
-        let latestArtifact = null;
-        let artifactLookupError = null;
-        try {
-          latestArtifact = await getLatestDiagnosisArtifact({
-            auroraUid: identity.auroraUid,
-            userId: identity.userId,
-            sessionId: ctx.brief_id || null,
-            maxAgeDays: 30,
-            preferArtifactId: preferredArtifactId,
-          });
-        } catch (err) {
-          artifactLookupError = err;
-          logger?.warn(
-            { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
-            'aurora bff: failed to load latest diagnosis artifact',
-          );
-        }
-
-        const latestArtifactForGate =
-          latestArtifact &&
-          latestArtifact.artifact_json &&
-          typeof latestArtifact.artifact_json === 'object'
-            ? {
-                ...latestArtifact.artifact_json,
-                artifact_id: latestArtifact.artifact_id,
-                created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
-              }
-            : latestArtifact;
+        const latestArtifactForGate = await ensureLatestArtifactForConversation();
+        const latestArtifact = latestArtifactForGate;
+        const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
+        const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
@@ -58903,7 +59590,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
               };
             } else {
-              const builtPlan = buildIngredientPlan({ artifact: latestArtifact.artifact_json || latestArtifact, profile });
+              const builtPlan = buildIngredientPlan({ artifact: latestArtifact, profile });
               if (latestArtifactId) {
                 const savedPlan = await saveIngredientPlan({
                   artifactId: latestArtifactId,
@@ -58933,7 +59620,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherBundle = null;
         let matcherPayload = null;
         let matcherComputed = false;
-        const hasRecoArtifact = Boolean(latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object');
+        const hasRecoArtifact = Boolean(latestArtifact && typeof latestArtifact === 'object' && !Array.isArray(latestArtifact));
         const artifactConfidenceLevel =
           hasRecoArtifact && artifactGate && artifactGate.confidence_level
             ? artifactGate.confidence_level
@@ -58941,9 +59628,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         const lowConfidenceArtifact = hasRecoArtifact && artifactConfidenceLevel === 'low';
         const artifactConfidenceScoreRaw = Number(
           latestArtifact &&
-          latestArtifact.artifact_json &&
-          latestArtifact.artifact_json.overall_confidence &&
-          latestArtifact.artifact_json.overall_confidence.score,
+          latestArtifact.overall_confidence &&
+          latestArtifact.overall_confidence.score,
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
 
@@ -58956,13 +59642,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             return { matcherBundle, matcherPayload };
           }
           try {
-            const artifactPayload = latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
-              ? {
-                  ...latestArtifact.artifact_json,
-                  artifact_id: latestArtifact.artifact_id,
-                  created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
-                }
-              : latestArtifact;
+            const artifactPayload = latestArtifact;
             const planForMatcher =
               mappedIngredientPlan ||
               buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
@@ -59006,11 +59686,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               profile,
               recentLogs,
               message,
+              focus: '',
               ingredientContext: recoIngredientContext,
+              analysisContextSnapshot: analysisContextSnapshotForConversation,
+              requestOverride: requestScopedProfileOverride,
               includeAlternatives,
               debug: debugUpstream,
               logger,
               budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              entryType: 'chat',
             });
             norm = upstreamReco.norm;
             upstreamDebug = upstreamReco.upstreamDebug;
@@ -59249,10 +59933,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           const llmTraceRef = buildRecoLlmTraceRef(recoLlmTrace);
           const confNode =
             latestArtifact &&
-            latestArtifact.artifact_json &&
-            latestArtifact.artifact_json.overall_confidence &&
-            typeof latestArtifact.artifact_json.overall_confidence === 'object'
-              ? latestArtifact.artifact_json.overall_confidence
+            latestArtifact.overall_confidence &&
+            typeof latestArtifact.overall_confidence === 'object'
+              ? latestArtifact.overall_confidence
               : { score: 0.45, level: 'low', rationale: ['reco_budget_timeout'] };
           const cards = [
             {
@@ -59285,6 +59968,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ingredient_query: recoContextIngredientQuery || '',
             goal: recoContextGoal || '',
           });
+          attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
@@ -59495,6 +60179,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           profile,
         });
+        const stepAwareNeedsMoreContext =
+          !finalHasRecs
+          && pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step)
+          && pickFirstTrimmed(payload?.mainline_status, payload?.recommendation_meta?.mainline_status) === 'needs_more_context';
+        const requestedStepLabel = humanizeRecoProductType(
+          pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step),
+          ctx.lang,
+        );
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
@@ -59506,6 +60198,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? '我已经把核心结果整理成结构化卡片（见下方）。'
                 : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
               : 'I summarized the key results into structured cards below.'))
+          : stepAwareNeedsMoreContext
+            ? (ctx.lang === 'CN'
+              ? `我还不能稳定地锁定适合你的${requestedStepLabel || '这一步'}候选。告诉我你更偏向轻薄、屏障修护、无香，或你想避开的成分，我再继续缩窄。`
+              : `I can't confidently lock a ${requestedStepLabel || 'step-specific'} shortlist yet. Tell me whether you want lightweight texture, barrier support, fragrance-free options, or ingredients to avoid, and I'll narrow it down.`)
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
@@ -59600,16 +60296,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
         }
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
-          appendLatestRecoContextToSessionPatch(sessionPatch, {
-            intent: 'reco_products',
-            source_detail: recoEntrySourceDetail,
-            trigger_source: ctx.trigger_source,
-            action_id: actionId || '',
-            message: recoRequestMessage,
-            include_alternatives: includeAlternatives === true,
-            ingredient_query: recoContextIngredientQuery || '',
-            goal: recoContextGoal || '',
-          });
+        appendLatestRecoContextToSessionPatch(sessionPatch, {
+          intent: 'reco_products',
+          source_detail: recoEntrySourceDetail,
+          trigger_source: ctx.trigger_source,
+          action_id: actionId || '',
+          message: recoRequestMessage,
+          include_alternatives: includeAlternatives === true,
+          ingredient_query: recoContextIngredientQuery || '',
+          goal: recoContextGoal || '',
+        });
+        attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
 
         const baseRecoRunContext = {
           request_id: ctx.request_id,
@@ -59895,7 +60592,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ].filter(Boolean);
         return parts.join('\n');
       })();
-      const skinAnalysisContextForPrefix = buildSkinAnalysisContextForPrefix(profile);
+      const skinAnalysisContextForPrefix =
+        analysisContextSnapshotForConversation
+          ? buildAnalysisContextPromptBlock({
+              taskLabel: 'chat',
+              taskContext: chatAnalysisTaskContext,
+            })
+          : buildSkinAnalysisContextForPrefix(profile);
 
       const prefix = buildContextPrefix({
         profile: profileSummary,
@@ -61381,6 +62084,8 @@ const __internal = {
   collectRoutineFitLowDimensions,
   resolveRoutineFitAnalysisPlan,
   buildSkinAnalysisContextForPrefix,
+  buildAnalysisContextSnapshotForRoute,
+  buildTaskAnalysisContextForPrefix,
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
