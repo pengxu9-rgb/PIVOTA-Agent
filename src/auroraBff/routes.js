@@ -44427,14 +44427,14 @@ async function generateProductRecommendations({
         : catalogTransientFallbackStructured
           ? 'catalog_transient_fallback'
           : null;
-  if (!stepAwareCatalogFirstEnabled && promptContract.ok && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
-    if (llmFailureClass === 'empty_structured' && isPlainObject(llmTrace)) {
-      const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
-      llmTrace = nextTrace;
+    if (!stepAwareCatalogFirstEnabled && promptContract.ok && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
+      if (llmFailureClass === 'empty_structured' && isPlainObject(llmTrace)) {
+        const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
+        llmTrace = nextTrace;
+      }
+      llmFailureClass = '';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
     }
-    llmFailureClass = '';
-    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
-  }
   }
 
   const upstreamDebug = debug

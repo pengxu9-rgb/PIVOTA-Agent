@@ -2,9 +2,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  runRecommendationSharedStack,
+  REQUEST_CONTEXT_SIGNATURE_VERSION,
+  CANDIDATE_POOL_SIGNATURE_VERSION,
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  GROUP_SEMANTICS_VERSION,
   resolveRecommendationTargetContext,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
+  shouldStopStepAwareBroadening,
+  deriveStepAwareEmptyReason,
+  inferSlotForStep,
 } = require('../src/auroraBff/recommendationSharedStack');
 
 test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
@@ -49,10 +58,44 @@ test('same-family ladder never broadens moisturizer into cleanser or sunscreen f
     ingredientContext: { query: 'ceramide' },
     lang: 'EN',
   });
-  const queries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
-  assert.ok(queries.some((query) => query.includes('moisturizer') || query.includes('cream')));
-  assert.ok(!queries.some((query) => query.includes('cleanser')));
-  assert.ok(!queries.some((query) => query.includes('sunscreen')));
+  const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
+  const poolState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'cream_1',
+      merchant_id: 'm1',
+      brand: 'GoodSkin',
+      name: 'Barrier Cream',
+      display_name: 'Barrier Cream',
+      category: 'skincare',
+    },
+    {
+      product_id: 'brush_1',
+      merchant_id: 'm2',
+      brand: 'BrushCo',
+      name: 'Small Eyeshadow Brush',
+      category: 'makeup brush',
+      product_type: 'tool',
+    },
+  ], { targetContext });
+
+  assert.equal(RECOMMENDATION_STEP_QUERY_POLICY_V1, 'recommendation_step_query_policy_v1');
+  assert.equal(RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1, 'recommendation_viable_threshold_policy_v1');
+  assert.equal(GROUP_SEMANTICS_VERSION, 'recommendation_group_semantics_v1');
+  assert.equal(inferSlotForStep('moisturizer'), 'other');
+  assert.equal(flattenedQueries.some((query) => query.includes('cleanser') || query.includes('sunscreen')), false);
+  assert.equal(poolState.viable_candidate_count, 1);
+  assert.equal(poolState.hard_reject_count, 1);
+  assert.equal(poolState.selected_candidate_count, 1);
+  assert.equal(poolState.pre_llm_selected_candidate_count, 1);
+  assert.equal(poolState.final_selected_candidate_count, 1);
+  assert.equal(poolState.overall_target_fidelity_satisfied, true);
+  assert.equal(poolState.viable_pool_strength, 'strong');
+  assert.equal(poolState.target_fidelity_level, 'satisfied');
+  assert.equal(poolState.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
+  assert.equal(poolState.viable[0].candidate_step, 'moisturizer');
+  assert.equal(poolState.viable[0].candidate_step_source, 'title_or_tag_alias');
+  assert.ok(poolState.candidate_pool_signature);
+  assert.ok(poolState.raw_candidate_pool_debug_signature);
 });
 
 test('viability stage rejects non-skincare and preserves moisturizer candidates', () => {
@@ -194,4 +237,108 @@ test('medium-confidence target only succeeds when same-family viable candidates 
   assert.equal(clarifyPool.weak_viable_pool, true);
   assert.equal(clarifyPool.viable_pool_strength, 'weak');
   assert.equal(clarifyPool.same_family_success_threshold_met, false);
+});
+
+test('soft-target mainline only succeeds with same-family viable candidates', () => {
+  const successTargetContext = resolveRecommendationTargetContext({
+    focus: 'barrier cream',
+    entryType: 'chat',
+  });
+  const successState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'cream_1',
+      merchant_id: 'm1',
+      brand: 'GoodSkin',
+      name: 'Barrier Cream',
+      category: 'face cream',
+      product_type: 'cream',
+    },
+  ], { targetContext: successTargetContext });
+  const weakState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'mask_1',
+      merchant_id: 'm2',
+      brand: 'GoodSkin',
+      name: 'Sleeping Mask',
+      category: 'sleeping mask',
+      product_type: 'mask',
+    },
+  ], { targetContext: successTargetContext });
+
+  assert.equal(successTargetContext.mainline_mode, 'soft_target');
+  assert.equal(successState.terminal_success, true);
+  assert.equal(shouldStopStepAwareBroadening(successState, { targetContext: successTargetContext }), true);
+  assert.equal(weakState.terminal_success, false);
+  assert.equal(weakState.weak_viable_pool, true);
+  assert.equal(weakState.viable_pool_strength, 'weak');
+  assert.equal(weakState.same_family_success_threshold_met, false);
+  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool_for_target');
+});
+
+test('runRecommendationSharedStack clarifies generic chat reco when minimum context is unsatisfied', async () => {
+  let coreRunnerCalled = false;
+  const out = await runRecommendationSharedStack({
+    entryType: 'chat',
+    message: 'Recommend a few products',
+    profile: { goals: ['hydration'] },
+    coreRunner: async () => {
+      coreRunnerCalled = true;
+      throw new Error('coreRunner should not be called for clarify-first chat reco');
+    },
+    coreInput: {},
+  });
+
+  assert.equal(coreRunnerCalled, false);
+  assert.equal(out.needs_more_context, true);
+  assert.equal(out.request_context.context_source_mode, 'explicit_only');
+  assert.equal(out.request_context.analysis_context_available, true);
+  assert.equal(out.request_context.minimum_recommendation_context_satisfied, false);
+  assert.ok(out.request_context.request_context_signature);
+  assert.equal(out.request_context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
+  assert.ok(out.candidate_pool.candidate_pool_signature);
+  assert.equal(out.candidate_pool.candidate_pool_signature_version, CANDIDATE_POOL_SIGNATURE_VERSION);
+  assert.equal(out.core_result.fallback_mode, 'chat_clarify_needed_for_missing_target_need');
+  assert.equal(out.core_result.debug_meta.mainline_status, 'needs_more_context');
+});
+
+test('runRecommendationSharedStack executes when explicit-only context satisfies readiness', async () => {
+  const out = await runRecommendationSharedStack({
+    entryType: 'chat',
+    message: 'Recommend a few products',
+    profile: {
+      skinType: 'dry',
+      sensitivity: 'high',
+      goals: ['hydration'],
+    },
+    coreRunner: async (input) => {
+      assert.equal(input.sharedRequestContext.minimum_recommendation_context_satisfied, true);
+      return {
+        norm: {
+          payload: {
+            recommendations: [{ brand: 'CeraVe', name: 'Hydrating Cleanser' }],
+            recommendation_meta: {
+              source_mode: 'catalog_grounded',
+              analysis_context_usage: input.sharedRequestContext.context_usage,
+            },
+          },
+        },
+        mainlineStatus: 'grounded_success',
+        candidatePool: [{ product_id: 'sku_1', brand: 'CeraVe', name: 'Hydrating Cleanser' }],
+        poolSource: 'catalog_candidates',
+      };
+    },
+    coreInput: {},
+  });
+
+  assert.equal(out.needs_more_context, false);
+  assert.equal(out.request_context.context_source_mode, 'explicit_only');
+  assert.equal(out.request_context.analysis_context_available, true);
+  assert.equal(out.request_context.minimum_recommendation_context_satisfied, true);
+  assert.equal(out.request_context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
+  assert.equal(out.candidate_pool.candidate_pool_signature_version, CANDIDATE_POOL_SIGNATURE_VERSION);
+  assert.equal(out.core_result.debug_meta.mainline_status, 'grounded_success');
+  assert.equal(
+    out.raw.norm.payload.recommendation_meta.analysis_context_usage.minimum_recommendation_context_satisfied,
+    true,
+  );
 });
