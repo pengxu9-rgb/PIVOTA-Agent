@@ -22,6 +22,7 @@
         "triage",
         "skin_status",
         "effect_review",
+        "recommendations",
         "travel",
         "nudge",
         "aurora_ingredient_report",
@@ -147,6 +148,9 @@
         "current_routine": {
           "type": ["object", "null"]
         },
+        "analysis_context_snapshot": {
+          "type": ["object", "null"]
+        },
         "inventory": {
           "type": "array",
           "items": { "type": "object" }
@@ -185,6 +189,9 @@
           "type": "array",
           "items": { "$ref": "#/$defs/NextAction" },
           "minItems": 1
+        },
+        "meta": {
+          "type": ["object", "null"]
         }
       }
     }

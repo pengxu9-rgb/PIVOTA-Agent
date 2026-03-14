@@ -60,10 +60,10 @@
     },
     {
       "skill_id": "reco.step_based",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "phase": 1,
       "description": "Recommend products from routine, concerns, or ingredient context",
-      "output_card_types": ["effect_review", "text_response"],
+      "output_card_types": ["recommendations", "text_response"],
       "precondition_rule_ids": [],
       "quality_gate_id": "qg_reco_step",
       "requires_llm": true,
