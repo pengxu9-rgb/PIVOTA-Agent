@@ -283,3 +283,87 @@ test('/v1/chat: saved-analysis free-text stays on analysis-followup path even wh
     },
   );
 });
+
+test('/v1/chat: saved-analysis first turn infers acne framing from stored concerns even without an explicit goal prompt', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const uid = buildTestUid('activity_followup_first_turn_goal_inference');
+      const artifactId = `da_${uid}`;
+
+      await seedDiagnosisArtifactForUid(uid, {
+        artifact_id: artifactId,
+        created_at: new Date().toISOString(),
+        use_photo: false,
+        overall_confidence: { level: 'medium', score: 0.76 },
+        skinType: { value: 'oily', confidence: { score: 0.84, level: 'high' } },
+        sensitivity: { value: 'medium', confidence: { score: 0.82, level: 'high' } },
+        barrierStatus: { value: 'healthy', confidence: { score: 0.8, level: 'high' } },
+        goals: {
+          values: [],
+          confidence: { score: 0.3, level: 'low' },
+        },
+        concerns: [
+          { type: 'breakouts', title: 'Recurring breakouts' },
+          { type: 'pores', title: 'Visible pores' },
+        ],
+        analysis_context: {
+          analysis_source: 'rule_based',
+          used_photos: false,
+          quality_grade: 'unknown',
+        },
+        source_mix: ['rule', 'profile'],
+      });
+
+      const harness = createAppWithPatchedAuroraChat();
+
+      try {
+        const response = await harness.request
+          .post('/v1/chat')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            language: 'EN',
+            session: {
+              state: 'idle',
+              meta: {
+                latest_artifact_id: artifactId,
+                source_activity_id: `artifact:${artifactId}`,
+              },
+            },
+            action: {
+              action_id: 'chip.aurora.next_action.solution_next_steps',
+              data: {
+                reply_text: 'Continue from my saved skin analysis. Tell me the next best steps.',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(response.body);
+        const summaryCard = findCard(cards, 'analysis_summary');
+        assert.ok(summaryCard, 'saved-analysis first turn should return analysis_summary');
+        assert.match(
+          String(summaryCard?.payload?.title || ''),
+          /Acne next steps from your saved analysis|基于历史分析的控痘下一步/i,
+        );
+        assert.match(
+          String(summaryCard?.payload?.primary_cta_label || ''),
+          /acne-safe product recommendations|控痘产品推荐/i,
+        );
+        assert.match(
+          String(summaryCard?.payload?.analysis?.features?.[0]?.observation || ''),
+          /Acne \+ congestion control|控痘 \+ 疏通毛孔/i,
+        );
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});

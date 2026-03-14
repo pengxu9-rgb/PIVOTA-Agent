@@ -22466,13 +22466,23 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
   };
 
   if (actionId === 'chip.aurora.next_action.solution_next_steps') {
-    const normalizedGoal = inferRecoGoalSignalFromText(followupFocus) || extractResolvedRecoGoals(skinProfile.goals || analysis.goals)[0] || '';
+    const concernSummary = findingLines.slice(0, 2);
     const targets = Array.isArray(ingredientPlan && ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 3) : [];
     const avoid = Array.isArray(ingredientPlan && ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 2) : [];
     const nextSteps = guidanceBrief.slice(0, 2);
     const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType);
     const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity);
-    const concernSummary = findingLines.slice(0, 2);
+    const normalizedGoal =
+      inferRecoGoalSignalFromText(followupFocus) ||
+      extractResolvedRecoGoals(skinProfile.goals || analysis.goals)[0] ||
+      inferRecoGoalSignalFromText(concernSummary.join(' ')) ||
+      inferRecoGoalSignalFromText(
+        [
+          ...(Array.isArray(analysis && analysis.concerns) ? analysis.concerns.map((item) => pickFirstTrimmed(item && item.title, item && item.type)) : []),
+          ...(Array.isArray(skinProfile && skinProfile.concerns) ? skinProfile.concerns : []),
+        ].filter(Boolean).join(' '),
+      ) ||
+      '';
     const ingredientSummary = targets
       .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
       .filter(Boolean)
@@ -22499,6 +22509,36 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       }
       return lang === 'CN' ? '先按历史分析推进' : 'Continue from your saved analysis';
     })();
+    const priorityObservation = (() => {
+      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
+        return lang === 'CN'
+          ? `当前重点：${goalHeading} -> 先降低堵塞和刺激，再谈更强活性`
+          : `Priority now: ${goalHeading} -> reduce congestion without stripping your barrier`;
+      }
+      if (normalizedGoal === 'barrier_repair') {
+        return lang === 'CN'
+          ? `当前重点：${goalHeading} -> 先减少刺激源，再慢慢加回有效成分`
+          : `Priority now: ${goalHeading} -> reduce triggers first, then layer actives back slowly`;
+      }
+      if (normalizedGoal === 'dark_spots') {
+        return lang === 'CN'
+          ? `当前重点：${goalHeading} -> 先稳住炎症和耐受，再推进淡印提亮`
+          : `Priority now: ${goalHeading} -> calm inflammation first, then work on tone correction`;
+      }
+      if (normalizedGoal === 'dehydration') {
+        return lang === 'CN'
+          ? `当前重点：${goalHeading} -> 先补水稳态，再决定是否加更强活性`
+          : `Priority now: ${goalHeading} -> restore hydration and stability before stronger actives`;
+      }
+      if (normalizedGoal === 'wrinkles') {
+        return lang === 'CN'
+          ? `当前重点：${goalHeading} -> 先建立耐受，再逐步推进抗老活性`
+          : `Priority now: ${goalHeading} -> build tolerance first, then step into anti-aging actives`;
+      }
+      return lang === 'CN'
+        ? '当前重点：先沿用你上次分析里最明确的问题和结论，直接往解决方案推进。'
+        : 'Priority now: keep working from the top issues already identified in your saved analysis.';
+    })();
     const productDirectionLine = (() => {
       if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
         return lang === 'CN'
@@ -22516,10 +22556,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     })();
     const customTakeaways = [
       {
-        observation:
-          lang === 'CN'
-            ? `当前重点：${goalHeading} -> 先降低堵塞和刺激，再谈更强活性`
-            : `Priority now: ${goalHeading} -> reduce congestion without stripping your barrier`,
+        observation: priorityObservation,
         confidence: 'pretty_sure',
       },
       ...(ingredientSummary.length
