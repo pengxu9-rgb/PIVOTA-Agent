@@ -163,6 +163,21 @@ test('/v1/chat: saved-analysis follow-up persists snapshot context and turns sec
         assert.equal(llmCalls.length, 0);
         const cards = parseCards(response.body);
         assert.equal(Boolean(findCard(cards, 'diagnosis_gate')), false);
+        const summaryCard = findCard(cards, 'analysis_summary');
+        assert.ok(summaryCard, 'saved-analysis solution should return analysis_summary');
+        assert.match(
+          String(summaryCard?.payload?.title || ''),
+          /Acne next steps from your saved analysis|基于历史分析的控痘下一步/i,
+        );
+        assert.match(
+          String(summaryCard?.payload?.primary_cta_label || ''),
+          /acne-safe product recommendations|控痘产品推荐/i,
+        );
+        assert.equal(summaryCard?.payload?.primary_action_id, 'analysis_continue_products');
+        assert.equal(
+          Array.isArray(summaryCard?.payload?.analysis?.features) && summaryCard.payload.analysis.features.length > 0,
+          true,
+        );
         assert.match(
           String(response.body?.assistant_message?.content || response.body?.assistant_text || ''),
           /ingredients to prioritize|product recommendations next/i,
@@ -253,6 +268,9 @@ test('/v1/chat: saved-analysis free-text stays on analysis-followup path even wh
 
         const cards = parseCards(response.body);
         assert.equal(Boolean(findCard(cards, 'diagnosis_gate')), false);
+        const summaryCard = findCard(cards, 'analysis_summary');
+        assert.ok(summaryCard, 'saved-analysis solution should return analysis_summary under router v2');
+        assert.equal(summaryCard?.payload?.primary_action_id, 'analysis_continue_products');
         assert.match(
           String(response.body?.assistant_message?.content || response.body?.assistant_text || ''),
           /ingredients to prioritize|product recommendations next/i,

@@ -22360,6 +22360,7 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
 
 function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
   const {
     skinProfile,
     guidanceBrief,
@@ -22370,6 +22371,11 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     strengths,
   } = extractAnalysisFollowupSignals(lastAnalysis);
   const lowConfidence = String(confidence.level || '').trim().toLowerCase() === 'low';
+  const savedAnalysisUsesPhotos =
+    analysis && (
+      analysis.use_photo === true ||
+      /vision|photo/.test(String(pickFirstTrimmed(analysis.analysis_source, analysis.analysis_origin) || '').toLowerCase())
+    );
   const followupFocus = String(replyText || '').trim();
   const focusLine =
     followupFocus && followupFocus.length > 6
@@ -22475,6 +22481,97 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
       .filter(Boolean)
       .slice(0, 2);
+    const goalHeading = (() => {
+      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
+        return lang === 'CN' ? '控痘 + 疏通毛孔' : 'Acne + congestion control';
+      }
+      if (normalizedGoal === 'barrier_repair') {
+        return lang === 'CN' ? '先修护屏障' : 'Barrier repair first';
+      }
+      if (normalizedGoal === 'dark_spots') {
+        return lang === 'CN' ? '先稳住再淡印提亮' : 'Stabilize first, then brighten';
+      }
+      if (normalizedGoal === 'dehydration') {
+        return lang === 'CN' ? '先补水稳态' : 'Hydration + stability first';
+      }
+      if (normalizedGoal === 'wrinkles') {
+        return lang === 'CN' ? '先稳住耐受再抗老' : 'Build tolerance before anti-aging';
+      }
+      return lang === 'CN' ? '先按历史分析推进' : 'Continue from your saved analysis';
+    })();
+    const productDirectionLine = (() => {
+      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
+        return lang === 'CN'
+          ? '温和洁面 + 单一控痘活性 + 轻量保湿 + 日间防晒'
+          : 'gentle cleanser + one acne active + lightweight moisturizer + daily SPF';
+      }
+      if (ingredientSummary.length) {
+        return lang === 'CN'
+          ? '优先找能明确命中这些关键成分的产品组合'
+          : 'prioritize products that clearly match these key ingredients';
+      }
+      return lang === 'CN'
+        ? '先按保守基础线，再进入更个性化的产品推荐'
+        : 'hold a conservative baseline first, then move into more targeted product picks';
+    })();
+    const customTakeaways = [
+      {
+        observation:
+          lang === 'CN'
+            ? `当前重点：${goalHeading} -> 先降低堵塞和刺激，再谈更强活性`
+            : `Priority now: ${goalHeading} -> reduce congestion without stripping your barrier`,
+        confidence: 'pretty_sure',
+      },
+      ...(ingredientSummary.length
+        ? [{
+            observation:
+              lang === 'CN'
+                ? `优先成分：${ingredientSummary.join('、')}`
+                : `Priority ingredients: ${ingredientSummary.join(', ')}`,
+            confidence: 'pretty_sure',
+          }]
+        : []),
+      {
+        observation:
+          lang === 'CN'
+            ? `产品方向：${productDirectionLine}`
+            : `Product direction: ${productDirectionLine}`,
+        confidence: 'somewhat_sure',
+      },
+      ...(avoidSummary.length
+        ? [{
+            observation:
+              lang === 'CN'
+                ? `谨慎叠加：${avoidSummary.join('、')}`
+                : `Use caution: ${avoidSummary.join(', ')}`,
+            confidence: 'somewhat_sure',
+          }]
+        : []),
+    ].slice(0, 4);
+    const numberedPlan = (
+      nextSteps.length
+        ? nextSteps
+        : [
+            lang === 'CN'
+              ? '先用温和洁面、保湿和防晒维持 7 天基础线。'
+              : 'Keep a gentle cleanser, moisturizer, and SPF baseline for 7 days.',
+            ingredientSummary.length
+              ? (
+                lang === 'CN'
+                  ? `只加一个重点活性，优先从 ${ingredientSummary[0]} 开始。`
+                  : `Add only one focused active first, ideally starting with ${ingredientSummary[0]}.`
+              )
+              : (
+                lang === 'CN'
+                  ? '一次只加一个重点活性，先看耐受。'
+                  : 'Introduce only one focused active at a time and watch tolerance.'
+              ),
+            lang === 'CN'
+              ? '耐受稳定后，再继续到具体产品推荐。'
+              : 'Once tolerance looks stable, move into targeted product recommendations.',
+          ]
+    ).map((step, index) => `${index + 1}) ${String(step || '').trim()}`).filter(Boolean).join('\n');
+    const recoChip = buildSavedAnalysisRecoEntryChip({ language: lang, goal: normalizedGoal });
     const solutionText =
       lang === 'CN'
         ? [
@@ -22511,7 +22608,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     const nextChips = filterAnalysisFollowupChips(
       [
-        buildSavedAnalysisRecoEntryChip({ language: lang, goal: normalizedGoal }),
+        recoChip,
         ...suggestedChips,
       ],
       actionId,
@@ -22542,11 +22639,60 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     const cards = [{
       card_id: `saved_analysis_next_steps_${requestId}`,
       type: 'analysis_summary',
-      title: lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis',
+      title:
+        normalizedGoal === 'acne' || normalizedGoal === 'pores'
+          ? (lang === 'CN' ? '基于历史分析的控痘下一步' : 'Acne next steps from your saved analysis')
+          : (lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis'),
       payload: {
-        title: lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis',
+        title:
+          normalizedGoal === 'acne' || normalizedGoal === 'pores'
+            ? (lang === 'CN' ? '基于历史分析的控痘下一步' : 'Acne next steps from your saved analysis')
+            : (lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis'),
+        subtitle:
+          savedAnalysisUsesPhotos
+            ? (lang === 'CN' ? '基于你上次保存的照片分析结果' : 'Based on your saved photo analysis')
+            : (lang === 'CN' ? '基于你上次保存的肤况分析' : 'Based on your saved skin analysis'),
+        key_takeaways_title: lang === 'CN' ? '现在重点看什么' : 'What to focus on now',
+        plan_title:
+          normalizedGoal === 'acne' || normalizedGoal === 'pores'
+            ? (lang === 'CN' ? '接下来怎么控痘' : 'How to approach acne next')
+            : (lang === 'CN' ? '接下来怎么推进' : 'What to do next'),
+        hide_quick_check: true,
+        hide_tuning_actions: true,
+        primary_cta_label:
+          normalizedGoal === 'acne' || normalizedGoal === 'pores'
+            ? (lang === 'CN' ? '查看控痘产品推荐' : 'See acne-safe product recommendations')
+            : (lang === 'CN' ? '查看产品推荐' : 'See product recommendations'),
+        primary_action_id: 'analysis_continue_products',
+        primary_action_data: {
+          ...(isPlainObject(recoChip.data) ? recoChip.data : {}),
+        },
+        caution_text:
+          avoidSummary.length
+            ? (
+              lang === 'CN'
+                ? `现阶段先避免或谨慎叠加：${avoidSummary.join('、')}。`
+                : `For now, be careful stacking: ${avoidSummary.join(', ')}.`
+            )
+            : (
+              lang === 'CN'
+                ? '先维持温和基础线，再一步一步加活性。'
+                : 'Keep the routine gentle first, then add actives step by step.'
+            ),
+        analysis: {
+          features: customTakeaways,
+          strategy: numberedPlan,
+          needs_risk_check: false,
+        },
         sections: cardSections,
         tags: [lang === 'CN' ? '历史分析延续' : 'Saved analysis continuation'],
+        photos_provided: savedAnalysisUsesPhotos,
+        analysis_source:
+          pickFirstTrimmed(
+            analysis && analysis.analysis_source,
+            analysis && analysis.analysis_meta && analysis.analysis_meta.detector_source,
+          ) || 'saved_analysis',
+        used_photos: savedAnalysisUsesPhotos,
       },
     }];
     return {
@@ -32700,9 +32846,16 @@ async function applyAnalysisStoryAndRoutineSoftGate(
   if (!list.length) return list;
 
   const analysisSummaryCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_summary');
-  if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard) {
+  const analysisSummaryPayload = analysisSummaryCard && isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
+  const preserveAnalysisSummaryCard =
+    pickFirstTrimmed(
+      analysisSummaryPayload.primary_action_id,
+      analysisSummaryPayload.source_mode,
+    ) === 'analysis_continue_products' ||
+    asStringArray(analysisSummaryPayload.tags, 6).some((tag) => /saved analysis continuation|历史分析延续/i.test(String(tag || '')));
+  if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard && !preserveAnalysisSummaryCard) {
     const existingStory = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2');
-    const summaryPayload = isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
+    const summaryPayload = analysisSummaryPayload;
     const fallbackStory = buildAnalysisStoryFallbackPayload({ analysisSummaryPayload: summaryPayload, profile, language });
     const evidence = buildAnalysisEvidence({
       analysisSummaryPayload: summaryPayload,
