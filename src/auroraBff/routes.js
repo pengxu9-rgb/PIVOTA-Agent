@@ -45773,9 +45773,58 @@ async function generateProductRecommendations({
   const requestContextSignature = pickFirstTrimmed(
     normalizedSharedRequestContext && normalizedSharedRequestContext.request_context_signature,
   ) || null;
+  const requestContextSignatureVersion = pickFirstTrimmed(
+    normalizedSharedRequestContext && normalizedSharedRequestContext.request_context_signature_version,
+  ) || null;
   const strictnessSource = pickFirstTrimmed(
     normalizedSharedRequestContext && normalizedSharedRequestContext.strictness_source,
-  ) || 'default';
+  ) || 'entry_default';
+  const sharedAnalysisContextUsage =
+    normalizedSharedRequestContext &&
+    isPlainObject(normalizedSharedRequestContext.context_usage)
+      ? normalizedSharedRequestContext.context_usage
+      : null;
+  const buildNormalizedAnalysisContextUsage = ({
+    candidatePoolSignature: finalizedCandidatePoolSignature = null,
+    candidatePoolSignatureVersion: finalizedCandidatePoolSignatureVersion = null,
+  } = {}) => {
+    const snapshotPresent =
+      sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'snapshot_present')
+        ? Boolean(sharedAnalysisContextUsage.snapshot_present)
+        : Boolean(recommendationTaskContext.snapshot_present);
+    const contextSourceMode = pickFirstTrimmed(
+      sharedAnalysisContextUsage && sharedAnalysisContextUsage.context_source_mode,
+      recommendationTaskContext.context_source_mode,
+      'none',
+    ) || 'none';
+    const analysisContextAvailable =
+      sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'analysis_context_available')
+        ? Boolean(sharedAnalysisContextUsage.analysis_context_available)
+        : Boolean(recommendationTaskContext.analysis_context_available);
+    const usage = {
+      snapshot_present: snapshotPresent,
+      context_source_mode: contextSourceMode,
+      analysis_context_available: analysisContextAvailable,
+      snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
+      hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
+      soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
+      explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
+      context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
+      adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+      ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
+      ...(requestContextSignatureVersion ? { request_context_signature_version: requestContextSignatureVersion } : {}),
+      ...(finalizedCandidatePoolSignature ? { candidate_pool_signature: finalizedCandidatePoolSignature } : {}),
+      ...(finalizedCandidatePoolSignatureVersion ? { candidate_pool_signature_version: finalizedCandidatePoolSignatureVersion } : {}),
+      strictness_source: strictnessSource,
+    };
+    if (sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'minimum_recommendation_context_satisfied')) {
+      usage.minimum_recommendation_context_satisfied = Boolean(sharedAnalysisContextUsage.minimum_recommendation_context_satisfied);
+    }
+    if (sharedAnalysisContextUsage && pickFirstTrimmed(sharedAnalysisContextUsage.min_context_rule_version)) {
+      usage.min_context_rule_version = pickFirstTrimmed(sharedAnalysisContextUsage.min_context_rule_version);
+    }
+    return usage;
+  };
   const analysisContextBlock = buildAnalysisContextPromptBlock({
     taskLabel: 'recommendation',
     taskContext: recommendationTaskContext,
@@ -46077,18 +46126,7 @@ async function generateProductRecommendations({
           ? 'catalog_grounded_primary'
           : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
-      analysis_context_usage: {
-        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
-        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
-        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
-        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
-        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
-        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
-        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
-        ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
-        ...(candidatePoolSignature ? { candidate_pool_signature: candidatePoolSignature } : {}),
-        strictness_source: strictnessSource,
-      },
+      analysis_context_usage: buildNormalizedAnalysisContextUsage(),
     }
     : null;
   let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -46478,18 +46516,7 @@ async function generateProductRecommendations({
         ? Number(catalogDebug?.query_count)
         : 0,
       llm_trace: llmTrace,
-      analysis_context_usage: {
-        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
-        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
-        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
-        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
-        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
-        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
-        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
-        ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
-        ...(candidatePoolSignature ? { candidate_pool_signature: candidatePoolSignature } : {}),
-        strictness_source: strictnessSource,
-      },
+      analysis_context_usage: buildNormalizedAnalysisContextUsage(),
     },
   };
   const recoContract = buildRecoMainlineContract({
@@ -49380,7 +49407,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskContext: analysisTaskContext,
       });
       productAnalysisContextMeta = {
-        snapshot_present: Boolean(analysisContextSnapshot),
+        snapshot_present: Boolean(analysisTaskContext.snapshot_present),
+        context_source_mode: String(analysisTaskContext.context_source_mode || '').trim() || 'none',
+        analysis_context_available: Boolean(analysisTaskContext.analysis_context_available),
         snapshot_id: analysisContextSnapshot ? String(analysisContextSnapshot.snapshot_id || '').trim() || null : null,
         source_mix_summary:
           analysisContextSnapshot && Array.isArray(analysisContextSnapshot.source_mix_summary)
@@ -51807,6 +51836,106 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoTriggerSource: 'goal_driven',
         },
       });
+      if (sharedReco.needs_more_context) {
+        const recommendationAnalysisContextMeta = {
+          ...(isPlainObject(sharedReco.request_context && sharedReco.request_context.context_usage)
+            ? sharedReco.request_context.context_usage
+            : {}),
+          request_context_signature: sharedReco.request_context && sharedReco.request_context.request_context_signature
+            ? sharedReco.request_context.request_context_signature
+            : null,
+          request_context_signature_version: sharedReco.request_context && sharedReco.request_context.request_context_signature_version
+            ? sharedReco.request_context.request_context_signature_version
+            : null,
+          candidate_pool_signature: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature
+            ? sharedReco.candidate_pool.candidate_pool_signature
+            : null,
+          candidate_pool_signature_version: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature_version
+            ? sharedReco.candidate_pool.candidate_pool_signature_version
+            : null,
+          strictness_source: pickFirstTrimmed(
+            sharedReco.request_context && sharedReco.request_context.strictness_source,
+            sharedReco.core_result && sharedReco.core_result.debug_meta && sharedReco.core_result.debug_meta.strictness_source,
+            'entry_default',
+          ),
+        };
+        const envelope = buildEnvelope(ctx, {
+          assistant_message: null,
+          suggested_chips: gateAdvisoryChips.length ? gateAdvisoryChips : buildRecoEntryChips(ctx.lang),
+          cards: [
+            {
+              card_id: `conf_${ctx.request_id}_needs_more_context`,
+              type: 'confidence_notice',
+              payload: buildConfidenceNoticeCardPayload({
+                language: ctx.lang,
+                reason: 'default',
+                confidence: {
+                  score: 0.3,
+                  level: 'low',
+                  rationale: ['minimum_recommendation_context_unsatisfied'],
+                },
+                actions: ['refine_profile'],
+                details: Array.isArray(sharedReco.core_result && sharedReco.core_result.missing_context)
+                  ? sharedReco.core_result.missing_context
+                  : [],
+              }),
+            },
+            ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
+          ],
+          session_patch: {
+            meta: {
+              profile_context_source: requestProfileContextSource,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+              analysis_context_usage: recommendationAnalysisContextMeta,
+              recommendation_state: {
+                needs_more_context: true,
+                missing_context: Array.isArray(sharedReco.core_result && sharedReco.core_result.missing_context)
+                  ? sharedReco.core_result.missing_context
+                  : [],
+                fallback_mode: pickFirstTrimmed(sharedReco.core_result && sharedReco.core_result.fallback_mode) || null,
+                mainline_status: 'needs_more_context',
+                request_context_signature: sharedReco.request_context && sharedReco.request_context.request_context_signature
+                  ? sharedReco.request_context.request_context_signature
+                  : null,
+                request_context_signature_version: sharedReco.request_context && sharedReco.request_context.request_context_signature_version
+                  ? sharedReco.request_context.request_context_signature_version
+                  : null,
+                candidate_pool_signature: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature
+                  ? sharedReco.candidate_pool.candidate_pool_signature
+                  : null,
+                candidate_pool_signature_version: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature_version
+                  ? sharedReco.candidate_pool.candidate_pool_signature_version
+                  : null,
+                strictness_source: recommendationAnalysisContextMeta.strictness_source,
+              },
+            },
+          },
+          events: applyRecoContractToRecoRequestedEvents([], {
+            source_mode: 'needs_more_context',
+            source: 'needs_more_context',
+            failure_class: null,
+            telemetry_failure_reason: pickFirstTrimmed(sharedReco.core_result && sharedReco.core_result.fallback_mode, 'needs_more_context'),
+            catalog_skip_reason: null,
+            products_empty_reason: 'needs_more_context',
+            grounding_status: null,
+            grounded_count: 0,
+            ungrounded_count: 0,
+            mainline_status: 'needs_more_context',
+            prompt_template_id: null,
+          }, {
+            ctx: { ...ctx, trigger_source: 'action' },
+            emitIfMissing: true,
+            eventData: buildRecoRequestedEventData({
+              explicit: true,
+              payload: null,
+              source: 'needs_more_context',
+              failureClass: null,
+              reason: 'needs_more_context',
+            }),
+          }).events,
+        });
+        return res.json(envelope);
+      }
 	      const upstreamReco = sharedReco && sharedReco.raw ? sharedReco.raw : null;
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
@@ -58131,6 +58260,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {};
         meta.analysis_context_usage = {
           snapshot_present: Boolean(taskContext.snapshot_present),
+          context_source_mode: String(taskContext.context_source_mode || '').trim() || 'none',
+          analysis_context_available: Boolean(taskContext.analysis_context_available),
           snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used : [],
           hard_context_fields_used: Array.isArray(taskContext.hard_context_fields_used) ? taskContext.hard_context_fields_used : [],
           soft_context_fields_used: Array.isArray(taskContext.soft_context_fields_used) ? taskContext.soft_context_fields_used : [],

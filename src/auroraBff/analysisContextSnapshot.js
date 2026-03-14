@@ -25,6 +25,12 @@ const CONTEXT_MODE = Object.freeze([
   'snapshot_stale_fallback',
   'no_context',
 ]);
+const CONTEXT_SOURCE_MODE = Object.freeze([
+  'artifact',
+  'artifact_compat_fallback',
+  'explicit_only',
+  'none',
+]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -860,6 +866,64 @@ function normalizeRequestOverride(requestOverride = null) {
   };
 }
 
+function hasExplicitProfileSignals(profile = null) {
+  const normalized = isPlainObject(profile) ? profile : {};
+  return Boolean(
+    normalized.skinType ||
+      normalized.sensitivity ||
+      normalized.barrierStatus ||
+      asArray(normalized.goals).length ||
+      asArray(normalized.contraindications).length,
+  );
+}
+
+function hasArtifactSnapshot(snapshot = null) {
+  return isPlainObject(snapshot) && asArray(snapshot.derived_from_artifact_ids).length > 0;
+}
+
+function hasCompatLastAnalysis(profile = null) {
+  const row = isPlainObject(profile) ? profile : {};
+  return isPlainObject(row.lastAnalysis) || isPlainObject(row.last_analysis);
+}
+
+function deriveContextSourceMode({
+  snapshot = null,
+  profile = null,
+  requestOverride = null,
+  recentLogs = [],
+} = {}) {
+  if (hasArtifactSnapshot(snapshot)) return 'artifact';
+  if (hasCompatLastAnalysis(profile) && isPlainObject(snapshot)) return 'artifact_compat_fallback';
+  if (
+    isPlainObject(snapshot) ||
+    hasExplicitProfileSignals(normalizeProfileForSnapshot(profile)) ||
+    hasExplicitProfileSignals(normalizeRequestOverride(requestOverride)) ||
+    asArray(recentLogs).length > 0
+  ) {
+    return 'explicit_only';
+  }
+  return 'none';
+}
+
+function buildResolvedContextMeta({
+  snapshot = null,
+  profile = null,
+  requestOverride = null,
+  recentLogs = [],
+} = {}) {
+  const contextSourceMode = deriveContextSourceMode({
+    snapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
+  return {
+    context_source_mode: CONTEXT_SOURCE_MODE.includes(contextSourceMode) ? contextSourceMode : 'none',
+    analysis_context_available: contextSourceMode !== 'none',
+    snapshot_present: contextSourceMode === 'artifact' || contextSourceMode === 'artifact_compat_fallback',
+  };
+}
+
 function resolveAnalysisContextForTask({
   task,
   snapshot = null,
@@ -867,12 +931,23 @@ function resolveAnalysisContextForTask({
   requestOverride = null,
   recentLogs = [],
 } = {}) {
+  const normalizedSnapshot = isPlainObject(snapshot) ? snapshot : null;
+  const explicitProfile = normalizeProfileForSnapshot(profile);
+  const normalizedOverride = normalizeRequestOverride(requestOverride);
+  const contextMeta = buildResolvedContextMeta({
+    snapshot: normalizedSnapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
   return {
     task: asString(task) || 'unknown',
-    snapshot_present: isPlainObject(snapshot),
-    snapshot: isPlainObject(snapshot) ? snapshot : null,
-    explicit_profile: normalizeProfileForSnapshot(profile),
-    request_override: normalizeRequestOverride(requestOverride),
+    snapshot_present: contextMeta.snapshot_present,
+    context_source_mode: contextMeta.context_source_mode,
+    analysis_context_available: contextMeta.analysis_context_available,
+    snapshot: normalizedSnapshot,
+    explicit_profile: explicitProfile,
+    request_override: normalizedOverride,
     recent_log_extraction_signature: buildRecentLogExtractionSignature(recentLogs),
   };
 }
@@ -1125,7 +1200,9 @@ function buildRoutineAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
-    snapshot_present: Boolean(snapshot),
+    snapshot_present: Boolean(resolved.snapshot_present),
+    context_source_mode: asString(resolved.context_source_mode) || 'none',
+    analysis_context_available: Boolean(resolved.analysis_context_available),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1215,6 +1292,9 @@ function buildProductAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
+    snapshot_present: Boolean(resolved.snapshot_present),
+    context_source_mode: asString(resolved.context_source_mode) || 'none',
+    analysis_context_available: Boolean(resolved.analysis_context_available),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1335,7 +1415,9 @@ function buildIngredientAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
-    snapshot_present: Boolean(snapshot),
+    snapshot_present: Boolean(resolved.snapshot_present),
+    context_source_mode: asString(resolved.context_source_mode) || 'none',
+    analysis_context_available: Boolean(resolved.analysis_context_available),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1430,7 +1512,9 @@ function buildChatAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 5));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
-    snapshot_present: Boolean(snapshot),
+    snapshot_present: Boolean(resolved.snapshot_present),
+    context_source_mode: asString(resolved.context_source_mode) || 'none',
+    analysis_context_available: Boolean(resolved.analysis_context_available),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,
@@ -1497,7 +1581,9 @@ function buildTravelAnalysisContextFromSnapshot(resolved = {}) {
   evidence.push(...uniqStrings(snapshot && snapshot.evidence_summary, 4));
   return {
     adapter_version: DEFAULT_TASK_ADAPTER_VERSION,
-    snapshot_present: Boolean(snapshot),
+    snapshot_present: Boolean(resolved.snapshot_present),
+    context_source_mode: asString(resolved.context_source_mode) || 'none',
+    analysis_context_available: Boolean(resolved.analysis_context_available),
     task_hard_context: hard,
     task_soft_context: soft,
     task_exclusions: exclusions,

@@ -4831,6 +4831,9 @@ test('/v1/chat: ingredient.lookup consumes explicit profile lane and emits analy
           true,
         );
         assert.equal(resp.body.session_patch.meta.analysis_context_usage.explicit_override_applied, true);
+        assert.equal(resp.body.session_patch.meta.analysis_context_usage.snapshot_present, false);
+        assert.equal(resp.body.session_patch.meta.analysis_context_usage.context_source_mode, 'explicit_only');
+        assert.equal(resp.body.session_patch.meta.analysis_context_usage.analysis_context_available, true);
         assert.equal(
           Array.isArray(resp.body.session_patch.meta.analysis_context_usage.hard_context_fields_used),
           true,
@@ -6438,6 +6441,14 @@ test('/v1/reco/generate: quick-profile request context is consumed as explicit-o
           !Array.isArray(recoCard.payload.recommendation_meta)
             ? recoCard.payload.recommendation_meta
             : {};
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.snapshot_present, false);
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.context_source_mode, 'explicit_only');
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.analysis_context_available, true);
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.minimum_recommendation_context_satisfied, true);
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.request_context_signature_version, 'request_context_signature_v1');
+        assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.strictness_source, 'entry_default');
+        assert.equal(recoMeta.request_context_signature_version, 'request_context_signature_v1');
+        assert.equal(recoMeta.candidate_pool_signature_version, 'candidate_pool_signature_v1');
         assert.ok(['explicit_only', 'snapshot_hard', 'snapshot_mixed'].includes(String(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.context_mode || '')));
         assert.equal(recoMeta.analysis_context_usage && recoMeta.analysis_context_usage.explicit_override_applied, true);
         assert.deepEqual(
@@ -6450,6 +6461,75 @@ test('/v1/reco/generate: quick-profile request context is consumed as explicit-o
         decisionModule.auroraChat = originalAuroraChat;
         delete require.cache[moduleId];
         delete require.cache[decisionModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/reco/generate: insufficient explicit-only context returns structured needs_more_context', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/reco/generate')
+          .set({
+            'X-Aurora-UID': 'test_uid_reco_generate_needs_more_context',
+            'X-Trace-ID': 'test_trace_reco_generate_needs_more_context',
+            'X-Brief-ID': 'test_brief_reco_generate_needs_more_context',
+            'X-Lang': 'EN',
+          })
+          .send({
+            session: {
+              profile: {
+                goals: ['hydration'],
+              },
+            },
+          });
+
+        assert.equal(resp.status, 200);
+        const meta =
+          resp.body &&
+          resp.body.session_patch &&
+          resp.body.session_patch.meta &&
+          typeof resp.body.session_patch.meta === 'object' &&
+          !Array.isArray(resp.body.session_patch.meta)
+            ? resp.body.session_patch.meta
+            : {};
+        assert.equal(meta.recommendation_state && meta.recommendation_state.needs_more_context, true);
+        assert.deepEqual(meta.recommendation_state && meta.recommendation_state.missing_context, ['minimum_recommendation_context']);
+        assert.equal(meta.recommendation_state && meta.recommendation_state.mainline_status, 'needs_more_context');
+        assert.equal(meta.analysis_context_usage?.snapshot_present, false);
+        assert.equal(meta.analysis_context_usage?.context_source_mode, 'explicit_only');
+        assert.equal(meta.analysis_context_usage?.analysis_context_available, true);
+        assert.equal(meta.analysis_context_usage?.minimum_recommendation_context_satisfied, false);
+        assert.equal(meta.analysis_context_usage?.strictness_source, 'entry_default');
+        assert.equal(meta.recommendation_state && meta.recommendation_state.request_context_signature_version, 'request_context_signature_v1');
+        assert.equal(meta.recommendation_state && meta.recommendation_state.candidate_pool_signature_version, 'candidate_pool_signature_v1');
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
+        const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+        assert.equal(Boolean(recoCard), false);
+        assert.ok(confidenceCard);
+      } finally {
+        delete require.cache[moduleId];
       }
     },
   );
@@ -10222,6 +10302,9 @@ test('/v1/product/analyze: quick-profile request context is consumed as explicit
 
   assert.equal(meta.profile_context_source, 'request_overlay_applied');
   assert.deepEqual(meta.request_profile_overlay_keys, ['goals', 'sensitivity', 'skinType']);
+  assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.snapshot_present, false);
+  assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.context_source_mode, 'explicit_only');
+  assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.analysis_context_available, true);
   assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.context_mode, 'explicit_only');
   assert.equal(meta.analysis_context_usage && meta.analysis_context_usage.explicit_override_applied, true);
   assert.deepEqual(

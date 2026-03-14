@@ -155,6 +155,13 @@ class RecoStepBasedSkill extends BaseSkill {
             ? `给我推荐几款${localizeStepLabel(targetStep, lang)}`
             : `Recommend a few ${localizeStepLabel(targetStep, lang)}`)
           : (lang === 'CN' ? '给我推荐几款护肤产品' : 'Recommend a few skincare products'));
+    let terminalState = 'pending';
+    const transitionTerminalState = (nextState) => {
+      if (terminalState !== 'pending' && terminalState !== nextState) {
+        throw new Error(`reco.step_based terminal state already resolved as ${terminalState}`);
+      }
+      terminalState = nextState;
+    };
 
     let sharedReco;
     try {
@@ -181,6 +188,7 @@ class RecoStepBasedSkill extends BaseSkill {
         },
       });
     } catch (err) {
+      transitionTerminalState('safe_failure');
       console.error('[reco.step_based] shared core failed:', err?.message || err);
       const fallbackMessage = this._buildNoResultMessage({
         language: lang,
@@ -193,6 +201,9 @@ class RecoStepBasedSkill extends BaseSkill {
         cards: [
           {
             card_type: 'text_response',
+            metadata: {
+              terminal_state: terminalState,
+            },
             sections: [
               {
                 type: 'text_answer',
@@ -222,15 +233,24 @@ class RecoStepBasedSkill extends BaseSkill {
         _meta: {
           fallback_mode: 'severe_parse_or_prompt_failure',
           mainline_status: 'shared_core_error',
+          strictness_source: 'policy_forced',
         },
       };
     }
 
     if (sharedReco.needs_more_context) {
+      transitionTerminalState('clarify');
       return {
         cards: [
           {
             card_type: 'text_response',
+            metadata: {
+              terminal_state: terminalState,
+              request_context_signature: sharedReco.request_context.request_context_signature,
+              request_context_signature_version: sharedReco.request_context.request_context_signature_version,
+              candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+              candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+            },
             sections: [
               {
                 type: 'text_answer',
@@ -260,7 +280,9 @@ class RecoStepBasedSkill extends BaseSkill {
         _meta: {
           analysis_context_usage: sharedReco.request_context.context_usage,
           request_context_signature: sharedReco.request_context.request_context_signature,
+          request_context_signature_version: sharedReco.request_context.request_context_signature_version,
           candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+          candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
           fallback_mode: sharedReco.core_result.fallback_mode,
           mainline_status: 'needs_more_context',
           strictness_source: sharedReco.request_context.strictness_source,
@@ -277,8 +299,12 @@ class RecoStepBasedSkill extends BaseSkill {
     const cards = [];
 
     if (recommendations.length > 0) {
+      transitionTerminalState('recommendation');
       cards.push({
         card_type: 'text_response',
+        metadata: {
+          terminal_state: terminalState,
+        },
         sections: [
           {
             type: 'text_answer',
@@ -296,7 +322,10 @@ class RecoStepBasedSkill extends BaseSkill {
           target_step: targetStep || null,
           target_ingredient: targetIngredient || null,
           request_context_signature: sharedReco.request_context.request_context_signature,
+          request_context_signature_version: sharedReco.request_context.request_context_signature_version,
           candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+          candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+          terminal_state: terminalState,
         },
       });
       return {
@@ -324,7 +353,9 @@ class RecoStepBasedSkill extends BaseSkill {
         _meta: {
           analysis_context_usage: recommendationMeta.analysis_context_usage || sharedReco.request_context.context_usage,
           request_context_signature: sharedReco.request_context.request_context_signature,
+          request_context_signature_version: sharedReco.request_context.request_context_signature_version,
           candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+          candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
           fallback_mode: sharedReco.core_result.fallback_mode,
           mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
           strictness_source: sharedReco.request_context.strictness_source,
@@ -332,6 +363,7 @@ class RecoStepBasedSkill extends BaseSkill {
       };
     }
 
+    transitionTerminalState('safe_failure');
     const noResultMessage = this._buildNoResultMessage({
       language: lang,
       targetStep,
@@ -345,6 +377,13 @@ class RecoStepBasedSkill extends BaseSkill {
       cards: [
         {
           card_type: 'text_response',
+          metadata: {
+            terminal_state: terminalState,
+            request_context_signature: sharedReco.request_context.request_context_signature,
+            request_context_signature_version: sharedReco.request_context.request_context_signature_version,
+            candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+            candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+          },
           sections: [
             {
               type: 'text_answer',
@@ -377,7 +416,9 @@ class RecoStepBasedSkill extends BaseSkill {
       _meta: {
         analysis_context_usage: recommendationMeta.analysis_context_usage || sharedReco.request_context.context_usage,
         request_context_signature: sharedReco.request_context.request_context_signature,
+        request_context_signature_version: sharedReco.request_context.request_context_signature_version,
         candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+        candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
         fallback_mode: sharedReco.core_result.fallback_mode,
         mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
         strictness_source: sharedReco.request_context.strictness_source,
