@@ -23410,6 +23410,32 @@ function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
   sessionPatch.state = state;
 }
 
+function normalizeArtifactPersistenceMeta(value) {
+  const row = isPlainObject(value) ? value : {};
+  const storageMode = pickFirstTrimmed(row.storage_mode, row.storageMode) || null;
+  const artifactId = pickFirstTrimmed(row.artifact_id, row.artifactId) || null;
+  return {
+    persisted: row.persisted === true,
+    storage_mode: storageMode,
+    persistence_error_code: pickFirstTrimmed(row.persistence_error_code, row.persistenceErrorCode) || null,
+    artifact_id: artifactId,
+  };
+}
+
+function isReadableArtifactPersistence(meta) {
+  const normalized = normalizeArtifactPersistenceMeta(meta);
+  return normalized.persisted === true && (normalized.storage_mode === 'db' || normalized.storage_mode === 'ephemeral');
+}
+
+function extractAnalysisContextSnapshotFromSession(session) {
+  if (!isPlainObject(session)) return null;
+  const meta = isPlainObject(session.meta) ? session.meta : null;
+  const snapshot = isPlainObject(meta && meta.analysis_context_snapshot)
+    ? meta.analysis_context_snapshot
+    : null;
+  return snapshot || null;
+}
+
 async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
   const preferredArtifactId = extractLatestArtifactIdFromSession(session);
   try {
@@ -23430,6 +23456,9 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
         ...latestArtifact.artifact_json,
         artifact_id: latestArtifact.artifact_id,
         created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+        persisted: latestArtifact.persisted === true,
+        storage_mode: latestArtifact.storage_mode || null,
+        persistence_error_code: latestArtifact.persistence_error_code || null,
       };
     }
     return latestArtifact || null;
@@ -23440,6 +23469,90 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
     );
     return null;
   }
+}
+
+async function resolveArtifactBackedSnapshotForRoute({
+  identity,
+  session,
+  profile = null,
+  recentLogs = [],
+  ctx,
+  logger,
+  allowRequestSnapshot = true,
+} = {}) {
+  const latestArtifactId = extractLatestArtifactIdFromSession(session);
+  const forwardedSnapshot = allowRequestSnapshot ? extractAnalysisContextSnapshotFromSession(session) : null;
+  const forwardedPersistence = allowRequestSnapshot && isPlainObject(session) && isPlainObject(session.meta)
+    ? normalizeArtifactPersistenceMeta(session.meta.artifact_persistence)
+    : normalizeArtifactPersistenceMeta(null);
+
+  if (forwardedSnapshot && isReadableArtifactPersistence(forwardedPersistence)) {
+    return {
+      analysis_context_snapshot: forwardedSnapshot,
+      latest_artifact: null,
+      latest_artifact_id: latestArtifactId || forwardedPersistence.artifact_id || null,
+      artifact_persistence: forwardedPersistence,
+      artifact_readback_source: 'request_snapshot',
+      artifact_readback_hit: true,
+    };
+  }
+
+  let latestArtifact = null;
+  if (latestArtifactId) {
+    latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+      identity,
+      session,
+      ctx,
+      logger,
+    });
+    if (latestArtifact) {
+      return {
+        analysis_context_snapshot: buildAnalysisContextSnapshotForRoute({
+          latestArtifact,
+          profile,
+          recentLogs,
+        }),
+        latest_artifact: latestArtifact,
+        latest_artifact_id: latestArtifactId,
+        artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
+        artifact_readback_source:
+          String(latestArtifact.artifact_id || '').trim() === latestArtifactId
+            ? 'request_artifact_id'
+            : 'db_latest',
+        artifact_readback_hit: true,
+      };
+    }
+  }
+
+  latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+    identity,
+    session: null,
+    ctx,
+    logger,
+  });
+  if (latestArtifact) {
+    return {
+      analysis_context_snapshot: buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      }),
+      latest_artifact: latestArtifact,
+      latest_artifact_id: pickFirstTrimmed(latestArtifact.artifact_id, latestArtifactId) || null,
+      artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
+      artifact_readback_source: 'db_latest',
+      artifact_readback_hit: true,
+    };
+  }
+
+  return {
+    analysis_context_snapshot: null,
+    latest_artifact: null,
+    latest_artifact_id: latestArtifactId || null,
+    artifact_persistence: isReadableArtifactPersistence(forwardedPersistence) ? forwardedPersistence : null,
+    artifact_readback_source: 'none',
+    artifact_readback_hit: false,
+  };
 }
 
 function normalizeRecoSourceDetail(raw) {
@@ -51766,20 +51879,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? Object.keys(requestProfileOverlay).sort()
             : [];
         const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
-	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
-	        identity,
-	        session:
-	          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
-	            ? parsed.data.session
-	            : null,
-	        ctx,
-	        logger,
-	      });
-	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
-	        latestArtifact,
-	        profile: storedProfile,
-	        recentLogs,
-	      });
+        const sessionForReadback =
+          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+            ? parsed.data.session
+            : null;
+        const artifactReadback = await resolveArtifactBackedSnapshotForRoute({
+          identity,
+          session: sessionForReadback,
+          profile: storedProfile,
+          recentLogs,
+          ctx,
+          logger,
+          allowRequestSnapshot: true,
+        });
+	      const analysisContextSnapshot = artifactReadback.analysis_context_snapshot;
         const profile =
           requestProfileOverlay && typeof requestProfileOverlay === 'object'
             ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
@@ -51823,6 +51936,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         recentLogs,
         analysisContextSnapshot,
         requestOverride: requestProfileOverlay,
+        contextUsageOverrides: {
+          artifact_readback_source: artifactReadback.artifact_readback_source,
+          artifact_readback_hit: artifactReadback.artifact_readback_hit,
+        },
         coreRunner: (coreInput) => generateProductRecommendations(coreInput),
         coreInput: {
           ctx,
@@ -52072,7 +52189,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           upstreamReco.upstreamDebug &&
           isPlainObject(upstreamReco.upstreamDebug.analysis_context_usage)
             ? upstreamReco.upstreamDebug.analysis_context_usage
-            : null;
+            : isPlainObject(payload?.recommendation_meta?.analysis_context_usage)
+              ? payload.recommendation_meta.analysis_context_usage
+              : null;
 	      const envelope = buildEnvelope(ctx, {
 	        assistant_message: null,
 	        suggested_chips: suggestedChips,
@@ -54483,6 +54602,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recommendationReady = false;
         let latestArtifactId = null;
         let artifactGate = null;
+        let artifactPersistence = null;
         if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
           try {
             const artifactCandidate = buildDiagnosisArtifactV1({
@@ -54511,8 +54631,18 @@ function mountAuroraBffRoutes(app, { logger }) {
                   created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
                 }
               : artifactCandidate;
+            artifactPersistence = savedArtifact
+              ? {
+                  persisted: savedArtifact.persisted === true,
+                  storage_mode: savedArtifact.storage_mode || (savedArtifact.persisted === true ? 'db' : 'response_only'),
+                  persistence_error_code: savedArtifact.persistence_error_code || null,
+                  artifact_id: savedArtifact.artifact_id || null,
+                }
+              : null;
             logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
             recordAuroraSkinFlowMetric({ stage: 'artifact_created', hit: Boolean(diagnosisArtifact) });
+            logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_persisted_rate', value: artifactPersistence && artifactPersistence.persisted ? 1 : 0 }, 'metric');
+            recordAuroraSkinFlowMetric({ stage: 'artifact_persisted', hit: Boolean(artifactPersistence && artifactPersistence.persisted) });
             latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
               ? String(diagnosisArtifact.artifact_id).trim()
               : null;
@@ -54680,6 +54810,12 @@ function mountAuroraBffRoutes(app, { logger }) {
               }
             }
           } catch (err) {
+            artifactPersistence = {
+              persisted: false,
+              storage_mode: 'response_only',
+              persistence_error_code: err && err.code ? err.code : 'ARTIFACT_BUILD_FAILED',
+              artifact_id: latestArtifactId || null,
+            };
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: diagnosis artifact/plan generation failed',
@@ -54863,6 +54999,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
+            ...(artifactPersistence ? { artifact_persistence: artifactPersistence } : {}),
             routine_analysis_v2: {
               ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
               profile_context_source: requestProfileContextSource,
@@ -54875,6 +55012,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             analysis_context_snapshot: analysisContextSnapshot,
+            ...(artifactPersistence ? { artifact_persistence: artifactPersistence } : {}),
+          };
+        } else if (artifactPersistence) {
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            artifact_persistence: artifactPersistence,
           };
         }
 
@@ -55820,7 +55963,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
+        const artifactReadback = await resolveArtifactBackedSnapshotForRoute({
+          identity,
+          session: null,
+          profile,
+          recentLogs,
+          ctx,
+          logger,
+          allowRequestSnapshot: false,
+        });
+        latestArtifact = artifactReadback.latest_artifact;
       } catch (err) {
         dbError = err;
       }
@@ -64890,6 +65042,7 @@ const __internal = {
   buildAnalysisDeepDiveContentWithLlm,
   buildSavedAnalysisSolutionContent,
   loadLatestDiagnosisArtifactForRoute,
+  resolveArtifactBackedSnapshotForRoute,
   buildAnalysisFollowupContent,
   buildAnalysisFollowupSessionMeta,
   enrichIngredientPlanPayloadForCard,

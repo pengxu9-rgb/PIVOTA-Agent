@@ -11,7 +11,13 @@ const {
 } = require('../src/auroraBff/recommendationSharedStack');
 const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
 const { mapSkillResponseToStreamEnvelope } = require('../src/auroraBff/mappers/card_mapper');
-const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+const {
+  buildSkillRequest,
+  handleChatStream,
+  __setRouterForTests,
+  __resetRouterForTests,
+  __setTravelPipelineForTests,
+} = require('../src/auroraBff/routes/chat');
 
 test('normalizeRecommendationIntent falls back to unknown exploratory contract', () => {
   const result = normalizeRecommendationIntent({ entryType: 'direct', message: '', directRequest: {} });
@@ -254,4 +260,93 @@ test('buildSkillRequest carries session analysis_context_snapshot into skill con
   });
 
   assert.deepEqual(request.context.analysis_context_snapshot, { snapshot_id: 'snap_1' });
+});
+
+test('handleChatStream enriches reco requests with forwarded artifact-backed snapshot', async () => {
+  const routesModuleId = require.resolve('../src/auroraBff/routes');
+  const originalRoutesModule = require.cache[routesModuleId];
+  require.cache[routesModuleId] = {
+    id: routesModuleId,
+    filename: routesModuleId,
+    loaded: true,
+    exports: {
+      __internal: {
+        resolveArtifactBackedSnapshotForRoute: async () => ({
+          analysis_context_snapshot: {
+            snapshot_id: 'snap_forwarded',
+            derived_from_artifact_ids: ['da_forwarded'],
+          },
+          latest_artifact_id: 'da_forwarded',
+          artifact_readback_source: 'request_snapshot',
+          artifact_readback_hit: true,
+        }),
+      },
+    },
+  };
+
+  const writes = [];
+  __setTravelPipelineForTests(async () => null);
+  __setRouterForTests({
+    async routeStream(skillRequest, onEvent) {
+      assert.deepEqual(skillRequest.context.artifact_analysis_context_snapshot, {
+        snapshot_id: 'snap_forwarded',
+        derived_from_artifact_ids: ['da_forwarded'],
+      });
+      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_source, 'request_snapshot');
+      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_hit, true);
+      onEvent({
+        type: 'result',
+        data: {
+          cards: [],
+          ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
+          quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
+          telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
+          next_actions: [],
+        },
+      });
+      return {
+        cards: [],
+        ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
+        quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
+        telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
+        next_actions: [],
+      };
+    },
+  });
+
+  try {
+    await handleChatStream(
+      {
+        body: {
+          message: 'Recommend a few products',
+          session: {
+            profile: { goals: ['hydration'] },
+            meta: {
+              analysis_context_snapshot: { snapshot_id: 'ignored_raw' },
+              artifact_persistence: {
+                persisted: true,
+                storage_mode: 'db',
+                artifact_id: 'da_forwarded',
+              },
+            },
+            state: { latest_artifact_id: 'da_forwarded' },
+          },
+          language: 'EN',
+        },
+        headers: {},
+        get() { return null; },
+      },
+      {
+        writeHead() {},
+        write(chunk) { writes.push(String(chunk)); },
+        end() {},
+      },
+    );
+    assert.match(writes.join(''), /event: result/);
+  } finally {
+    __resetRouterForTests();
+    __setTravelPipelineForTests(async () => null);
+    if (originalRoutesModule) require.cache[routesModuleId] = originalRoutesModule;
+    else delete require.cache[routesModuleId];
+  }
 });

@@ -7,6 +7,7 @@ const {
 } = require('./diagnosisV2Orchestrator');
 const { DIAGNOSIS_V2_ENABLED } = require('./gating');
 const { ThinkingStepEvent } = require('./diagnosisV2Schema');
+const { getBearerToken, resolveSessionFromToken } = require('./authStore');
 
 const StartRequestSchema = z.object({
   goals: z.array(z.string()).min(1),
@@ -29,15 +30,25 @@ function extractAuroraUid(req) {
 }
 
 function extractAuthToken(req) {
-  const auth = String(req.get('Authorization') || '').trim();
-  if (auth.startsWith('Bearer ')) return auth.slice(7);
-  return auth || null;
+  return String(getBearerToken(req) || '').trim() || null;
 }
 
-function buildCtxFromRequest(req, body) {
+async function buildCtxFromRequest(req, body) {
+  const auroraUid = extractAuroraUid(req);
+  const authToken = extractAuthToken(req);
+  let accountUserId = null;
+  if (authToken) {
+    try {
+      const session = await resolveSessionFromToken(authToken);
+      accountUserId = session && session.userId ? String(session.userId).trim() || null : null;
+    } catch {
+      accountUserId = null;
+    }
+  }
   return {
-    userId: extractAuroraUid(req),
-    authToken: extractAuthToken(req),
+    auroraUid,
+    accountUserId,
+    authToken,
     language: body.language || 'EN',
     goals: body.goals,
     skipLogin: body.skip_login === true,
@@ -95,7 +106,7 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
       }
 
       const body = parsed.data;
-      const ctx = buildCtxFromRequest(req, body);
+      const ctx = await buildCtxFromRequest(req, body);
       const loginCheck = checkLoginGate(ctx);
       if (loginCheck.needsLogin) {
         return res.status(200).json({
@@ -152,7 +163,7 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
       }
 
       const body = parsed.data;
-      const ctx = buildCtxFromRequest(req, body);
+      const ctx = await buildCtxFromRequest(req, body);
 
       if (!body.skip_photo && !body.photo_findings) {
         const photoCheck = checkPhotoGate(ctx);
@@ -208,9 +219,11 @@ function mountDiagnosisV2Routes(app, { logger, llmProvider }) {
           payload: result.resultPayload,
         },
         session_patch: {
-          meta: result.analysisContextSnapshot
-            ? { analysis_context_snapshot: result.analysisContextSnapshot }
-            : {},
+          ...(result.latestArtifactId ? { state: { latest_artifact_id: result.latestArtifactId } } : {}),
+          meta: {
+            ...(result.analysisContextSnapshot ? { analysis_context_snapshot: result.analysisContextSnapshot } : {}),
+            ...(result.artifactPersistence ? { artifact_persistence: result.artifactPersistence } : {}),
+          },
         },
         warnings: result.warnings,
         prompt_version: result.promptVersion,

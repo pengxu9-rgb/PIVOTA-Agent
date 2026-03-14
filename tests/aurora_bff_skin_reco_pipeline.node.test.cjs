@@ -17,6 +17,12 @@ const { buildIngredientPlan } = require('../src/auroraBff/ingredientMapperV1');
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../src/auroraBff/productMatcherV1');
 const { evaluateSafetyBoundary } = require('../src/auroraBff/safetyBoundary');
 
+function loadRouteInternals() {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  return require('../src/auroraBff/routes').__internal;
+}
+
 function makeArtifact({
   usePhoto = true,
   score = 0.8,
@@ -52,6 +58,9 @@ test('artifact store: in-memory persistence works when retention is disabled', a
   const saved = await saveDiagnosisArtifact({ auroraUid, artifact });
 
   assert.ok(saved && saved.artifact_id);
+  assert.equal(saved.persisted, true);
+  assert.equal(saved.storage_mode, 'ephemeral');
+  assert.equal(saved.persistence_error_code, null);
   const latest = await getLatestDiagnosisArtifact({ auroraUid, maxAgeDays: 30 });
   assert.equal(latest && latest.artifact_id, saved.artifact_id);
 
@@ -121,6 +130,71 @@ test('artifact store: session pointer preference and explicit artifact pointer b
     maxAgeDays: 30,
   });
   assert.equal(byPointer && byPointer.artifact_id, artifactA.artifact_id);
+});
+
+test('artifact readback helper resolves forwarded latest_artifact_id into artifact-backed snapshot', async (t) => {
+  const prev = process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
+  process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
+  t.after(() => {
+    if (prev === undefined) delete process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
+    else process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = prev;
+  });
+
+  const auroraUid = `uid_readback_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const saved = await saveDiagnosisArtifact({
+    auroraUid,
+    sessionId: `brief_${Date.now()}`,
+    artifact: makeArtifact({ score: 0.84, goals: ['barrier_repair'] }),
+  });
+  const internal = loadRouteInternals();
+  const result = await internal.resolveArtifactBackedSnapshotForRoute({
+    identity: { auroraUid, userId: null },
+    session: {
+      state: { latest_artifact_id: saved.artifact_id },
+      meta: {},
+    },
+    profile: null,
+    recentLogs: [],
+    ctx: { brief_id: null, request_id: 'test_readback_helper' },
+    logger: console,
+    allowRequestSnapshot: true,
+  });
+
+  assert.equal(result.artifact_readback_hit, true);
+  assert.equal(result.artifact_readback_source, 'request_artifact_id');
+  assert.equal(result.latest_artifact_id, saved.artifact_id);
+  assert.ok(result.analysis_context_snapshot);
+  assert.deepEqual(result.analysis_context_snapshot.derived_from_artifact_ids, [saved.artifact_id]);
+});
+
+test('artifact readback helper ignores response-only forwarded snapshot', async () => {
+  const internal = loadRouteInternals();
+  const result = await internal.resolveArtifactBackedSnapshotForRoute({
+    identity: { auroraUid: `uid_response_only_${Date.now()}`, userId: null },
+    session: {
+      meta: {
+        analysis_context_snapshot: {
+          snapshot_id: 'snap_response_only',
+          derived_from_artifact_ids: ['da_response_only'],
+        },
+        artifact_persistence: {
+          persisted: false,
+          storage_mode: 'response_only',
+          artifact_id: 'da_response_only',
+        },
+      },
+      state: { latest_artifact_id: 'da_response_only' },
+    },
+    profile: null,
+    recentLogs: [],
+    ctx: { brief_id: null, request_id: 'test_response_only_snapshot' },
+    logger: console,
+    allowRequestSnapshot: true,
+  });
+
+  assert.equal(result.artifact_readback_hit, false);
+  assert.equal(result.artifact_readback_source, 'none');
+  assert.equal(result.analysis_context_snapshot, null);
 });
 
 test('artifact store: stale preferArtifactId is ignored when it falls outside max age window', async (t) => {

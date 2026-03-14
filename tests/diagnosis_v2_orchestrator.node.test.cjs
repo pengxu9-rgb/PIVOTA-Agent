@@ -41,7 +41,8 @@ function makeFailingProvider(err) {
 
 function makeCtx(overrides = {}) {
   return {
-    userId: null,
+    auroraUid: null,
+    accountUserId: null,
     authToken: null,
     language: 'EN',
     goals: ['barrier_repair'],
@@ -328,6 +329,74 @@ describe('runDiagnosisV2 full pipeline', () => {
     assert.ok(validation.ok, `Validation should pass: ${JSON.stringify(validation.errors)}`);
     assert.strictEqual(result.resultPayload.strategies[0].title, 'Gentle repair');
     assert.ok(thinkingSteps.length >= 4, 'should have thinking steps from all stages');
+  });
+
+  it('persists guest diagnosis artifacts by auroraUid and exposes persistence metadata', async () => {
+    const previousRetention = process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
+    process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
+    try {
+      let callCount = 0;
+      const responses = [
+        JSON.stringify({
+          goal_profile: { constraints: [] },
+          followup_questions: [
+            { id: 'q1', question: 'Skin state?', options: [{ id: 'a', label: 'Good' }, { id: 'b', label: 'Bad' }] },
+          ],
+        }),
+        JSON.stringify({
+          inferred_state: {
+            axes: [
+              { axis: 'barrier_irritation_risk', level: 'moderate', confidence: 0.4, evidence: ['user reports redness'], trend: 'new' },
+            ],
+          },
+          data_quality: { overall: 'medium', limits_banner: 'Enough data.' },
+        }),
+        JSON.stringify({
+          strategies: [
+            {
+              title: 'Gentle repair',
+              why: 'Repair barrier',
+              timeline: '2-4 weeks',
+              do_list: ['Barrier cream'],
+              avoid_list: ['Strong acids'],
+            },
+          ],
+          routine_blueprint: {
+            am_steps: ['Gentle cleanser', 'Moisturizer', 'SPF'],
+            pm_steps: ['Gentle cleanser', 'Barrier serum', 'Moisturizer'],
+            conflict_rules: [],
+          },
+          next_actions: [{ type: 'direct_reco', label: 'See recommendations' }],
+          improvement_path: [{ tip: 'Add a photo', action_type: 'take_photo', action_label: 'Add photo' }],
+        }),
+      ];
+      const provider = {
+        isAvailable: () => true,
+        generate: async () => ({ provider: 'mock', text: responses[callCount++] }),
+      };
+      const ctx = makeCtx({
+        auroraUid: `uid_diag_guest_${Date.now()}`,
+        userId: null,
+      });
+      const result = await runDiagnosisV2({
+        goals: ['barrier_repair'],
+        customInput: '',
+        followupAnswers: {},
+        photoFindings: null,
+        ctx,
+        llmProvider: provider,
+        onThinkingStep: () => {},
+      });
+
+      assert.ok(String(result.latestArtifactId || '').trim());
+      assert.equal(result.artifactPersistence && result.artifactPersistence.persisted, true);
+      assert.equal(result.artifactPersistence && result.artifactPersistence.storage_mode, 'ephemeral');
+      assert.equal(result.artifactPersistence && result.artifactPersistence.artifact_id, result.latestArtifactId);
+      assert.ok(result.analysisContextSnapshot);
+    } finally {
+      if (previousRetention === undefined) delete process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
+      else process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = previousRetention;
+    }
   });
 });
 
