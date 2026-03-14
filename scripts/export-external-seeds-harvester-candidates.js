@@ -151,12 +151,16 @@ async function main() {
     limit: Math.max(1, Math.min(Number(argValue('limit') || 200), 5000)),
     offset: Math.max(0, Number(argValue('offset') || 0)),
     includeBlocked: hasFlag('include-blocked'),
+    includeNonSkincare: hasFlag('include-non-skincare'),
     includeExistingKb: hasFlag('include-existing-kb'),
     out: argValue('out') || path.join(process.cwd(), 'artifacts', 'external_seed_harvester_candidates.csv'),
   };
 
   const rows = await fetchRows(options);
-  const filtered = filterCandidatesForHarvester(rows, { includeBlocked: options.includeBlocked });
+  const filtered = filterCandidatesForHarvester(rows, {
+    includeBlocked: options.includeBlocked,
+    includeNonSkincare: options.includeNonSkincare,
+  });
   const allCandidates = filtered.exported.flatMap((item) => item.candidates);
   const kbKeys = await fetchExistingKbKeys(allCandidates.map((candidate) => candidate.candidate_id));
   const exportRows = options.includeExistingKb

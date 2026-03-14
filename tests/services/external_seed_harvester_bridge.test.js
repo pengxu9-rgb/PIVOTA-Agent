@@ -1,6 +1,7 @@
 const {
   buildExternalSeedHarvesterCandidates,
   buildVariantSourceUrl,
+  classifyIngredientScope,
   extractRawIngredientText,
   filterCandidatesForHarvester,
   shouldExcludeCandidate,
@@ -102,12 +103,13 @@ describe('externalSeedHarvesterBridge', () => {
         domain: 'example.com',
         market: 'US',
         canonical_url: 'https://example.com/en-us/good-product.html',
-        title: 'Good Product',
+        title: 'Good Cleanser',
         seed_data: {
           brand: 'Example',
           snapshot: {
             canonical_url: 'https://example.com/en-us/good-product.html',
-            title: 'Good Product',
+            title: 'Good Cleanser',
+            category: 'Skincare',
             variants: [
               {
                 sku: 'GOOD-1',
@@ -146,7 +148,46 @@ describe('externalSeedHarvesterBridge', () => {
     );
   });
 
-  test('excludes gift cards, kits, bundles, collections, and default title candidates from harvester export', () => {
+  test('classifies skincare vs non-skincare ingredient scope conservatively', () => {
+    const skincareRow = {
+      title: 'Banana Bright Vitamin C Serum',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+      seed_data: {
+        snapshot: {
+          category: 'Skincare',
+        },
+      },
+    };
+    const skincareCandidate = {
+      product_name: 'Banana Bright Vitamin C Serum - 30ml',
+      source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum?variant=41609',
+    };
+    expect(classifyIngredientScope(skincareRow, skincareCandidate)).toEqual(
+      expect.objectContaining({ decision: 'allow' }),
+    );
+
+    const makeupRow = {
+      title: 'On-the-Glow Blush',
+      canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+    };
+    const makeupCandidate = {
+      product_name: 'On-the-Glow Blush - Cassis',
+      source_ref: 'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+    };
+    expect(classifyIngredientScope(makeupRow, makeupCandidate)).toEqual(
+      expect.objectContaining({ decision: 'block', reason: 'non_skincare_product_class' }),
+    );
+
+    const lipCandidate = {
+      product_name: 'Pout Preserve Peptide Lip Treatment - Sweet Macaron',
+      source_ref: 'https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment?variant=45276839575724',
+    };
+    expect(classifyIngredientScope({}, lipCandidate)).toEqual(
+      expect.objectContaining({ decision: 'review' }),
+    );
+  });
+
+  test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
     expect(
       shouldExcludeCandidate({
         product_name: 'Pixi E-Gift Card 200 - Default Title',
@@ -214,6 +255,68 @@ describe('externalSeedHarvesterBridge', () => {
         expect.objectContaining({
           row_id: 'eps_bundle_1',
           reason: 'candidate_policy_filtered',
+        }),
+      ]),
+    );
+  });
+
+  test('blocks makeup candidates from default harvester export while allowing skincare candidates', () => {
+    const rows = [
+      {
+        id: 'eps_skin_1',
+        domain: 'olehenriksen.com',
+        market: 'US',
+        canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+        title: 'Banana Bright Vitamin C Serum',
+        seed_data: {
+          brand: 'Ole Henriksen',
+          snapshot: {
+            category: 'Skincare',
+            canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+            title: 'Banana Bright Vitamin C Serum',
+            variants: [
+              {
+                sku: '41609',
+                variant_id: '41609',
+                option_value: '30ml',
+                url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+              },
+            ],
+          },
+        },
+      },
+      {
+        id: 'eps_makeup_1',
+        domain: 'pixibeauty.com',
+        market: 'US',
+        canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+        title: 'On-the-Glow Blush',
+        seed_data: {
+          brand: 'Pixi Beauty',
+          snapshot: {
+            canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+            title: 'On-the-Glow Blush',
+            variants: [
+              {
+                sku: 'PIXI-CASSIS',
+                variant_id: '42457583845472',
+                option_value: 'Cassis',
+                url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(1);
+    expect(result.exported[0].row.id).toBe('eps_skin_1');
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          row_id: 'eps_makeup_1',
+          reason: 'non_skincare_candidate',
         }),
       ]),
     );

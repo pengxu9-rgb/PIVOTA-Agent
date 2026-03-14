@@ -52,6 +52,57 @@ const EXCLUDED_PRODUCT_PATTERNS = [
   /\bmystery\s+box\b/i,
 ];
 
+const SKINCARE_ALLOW_PATTERNS = [
+  /\bcleanser\b/i,
+  /\bface\s+wash\b/i,
+  /\bserum\b/i,
+  /\bessence\b/i,
+  /\btoner\b/i,
+  /\bmoisturi[sz]er\b/i,
+  /\bcream\b/i,
+  /\blotion\b/i,
+  /\bface\s+oil\b/i,
+  /\boil\b/i,
+  /\bmask\b/i,
+  /\bsunscreen\b/i,
+  /\bspf\b/i,
+  /\btreatment\b/i,
+  /\bexfoliant\b/i,
+  /\bpeel\b/i,
+  /\bmist\b/i,
+  /\beye\s+cream\b/i,
+  /\beye\s+serum\b/i,
+  /\bpatches?\b/i,
+];
+
+const NON_SKINCARE_BLOCK_PATTERNS = [
+  /\bblush\b/i,
+  /\bbronzer?\b/i,
+  /\bpowder\b/i,
+  /\bfoundation\b/i,
+  /\bskin\s*tint\b/i,
+  /\bskinveil\b/i,
+  /\bconcealer\b/i,
+  /\bhighlighter\b/i,
+  /\bcontour\b/i,
+  /\bmascara\b/i,
+  /\beyeliner\b/i,
+  /\beye\s*shadow\b/i,
+  /\bpalette\b/i,
+  /\bbrow\b/i,
+  /\blash\b/i,
+  /\blipstick\b/i,
+  /\blip\s*gloss\b/i,
+];
+
+const SKINCARE_REVIEW_PATTERNS = [
+  /\blip\b/i,
+  /\bbalm\b/i,
+  /\bprimer\b/i,
+  /\bbase\b/i,
+  /\btint\b/i,
+];
+
 function extractRawIngredientText(description) {
   const text = normalizeNonEmptyString(description);
   if (!text) return '';
@@ -92,6 +143,51 @@ function shouldExcludeCandidate(candidate) {
   const productName = normalizeNonEmptyString(candidate?.product_name);
   if (!productName) return false;
   return EXCLUDED_PRODUCT_PATTERNS.some((pattern) => pattern.test(productName));
+}
+
+function candidateScopeText(row, candidate) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const parts = [
+    candidate?.product_name,
+    candidate?.source_ref,
+    candidate?.url,
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    row?.domain,
+    seedData?.product_type,
+    snapshot?.product_type,
+    seedData?.category,
+    snapshot?.category,
+    Array.isArray(seedData?.categories) ? seedData.categories.join(' ') : '',
+    Array.isArray(snapshot?.categories) ? snapshot.categories.join(' ') : '',
+  ];
+  return parts
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function classifyIngredientScope(row, candidate) {
+  const haystack = candidateScopeText(row, candidate);
+  if (!haystack) {
+    return { decision: 'review', reason: 'missing_scope_signals' };
+  }
+
+  if (NON_SKINCARE_BLOCK_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { decision: 'block', reason: 'non_skincare_product_class' };
+  }
+
+  if (SKINCARE_REVIEW_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { decision: 'review', reason: 'ambiguous_non_face_scope' };
+  }
+
+  if (SKINCARE_ALLOW_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { decision: 'allow', reason: 'skincare_signals_present' };
+  }
+
+  return { decision: 'review', reason: 'missing_explicit_skincare_signals' };
 }
 
 function buildExternalSeedHarvesterCandidates(row, options = {}) {
@@ -162,6 +258,7 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
 
 function filterCandidatesForHarvester(rows, options = {}) {
   const includeBlocked = options.includeBlocked === true;
+  const includeNonSkincare = options.includeNonSkincare === true;
   const out = [];
   const skipped = [];
 
@@ -178,11 +275,35 @@ function filterCandidatesForHarvester(rows, options = {}) {
     }
 
     const candidates = buildExternalSeedHarvesterCandidates(row, options);
-    if (candidates.length === 0) {
+    const scopedCandidates = candidates
+      .map((candidate) => ({
+        candidate,
+        scope: classifyIngredientScope(row, candidate),
+      }));
+    const allowedCandidates = includeNonSkincare
+      ? scopedCandidates.map((item) => item.candidate)
+      : scopedCandidates.filter((item) => item.scope.decision === 'allow').map((item) => item.candidate);
+
+    if (allowedCandidates.length === 0) {
       skipped.push({
         row_id: normalizeNonEmptyString(row?.id),
-        reason: 'candidate_policy_filtered',
-        findings: [],
+        reason:
+          scopedCandidates.length > 0
+            ? 'non_skincare_candidate'
+            : 'candidate_policy_filtered',
+        findings:
+          scopedCandidates.length > 0
+            ? scopedCandidates.map((item) => ({
+                anomaly_type: 'non_skincare_candidate',
+                severity: item.scope.decision === 'block' ? 'blocker' : 'review',
+                evidence: {
+                  product_name: normalizeNonEmptyString(item.candidate?.product_name),
+                  source_ref: normalizeNonEmptyString(item.candidate?.source_ref),
+                  scope_reason: item.scope.reason,
+                  scope_decision: item.scope.decision,
+                },
+              }))
+            : [],
       });
       continue;
     }
@@ -190,7 +311,7 @@ function filterCandidatesForHarvester(rows, options = {}) {
     out.push({
       row,
       audit,
-      candidates,
+      candidates: allowedCandidates,
     });
   }
 
@@ -204,6 +325,7 @@ module.exports = {
   buildCandidateId,
   buildVariantSourceUrl,
   buildExternalSeedHarvesterCandidates,
+  classifyIngredientScope,
   extractRawIngredientText,
   filterCandidatesForHarvester,
   shouldExcludeCandidate,
