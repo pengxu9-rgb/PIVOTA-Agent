@@ -117,6 +117,7 @@
     "external-seeds:audit:content": "node scripts/audit-external-product-seeds-content.js",
     "external-seeds:correct": "node scripts/correct-external-product-seeds.js",
     "external-seeds:export:harvester": "node scripts/export-external-seeds-harvester-candidates.js",
+    "kb:audit:ingredient-scope": "node scripts/audit-pci-kb-scope.js",
     "ingredient-harvester:batch": "node scripts/ingredient-harvester-batch.js",
     "ingredient:ingest": "node scripts/ingest_ingredient_sources.js",
     "ingredient:ingest:dry": "node scripts/ingest_ingredient_sources.js --dry-run --fail-on-audit",
