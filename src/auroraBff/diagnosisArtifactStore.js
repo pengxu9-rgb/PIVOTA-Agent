@@ -12,6 +12,7 @@ const ephemeral = {
   plans: new Map(),
   recoRuns: new Map(),
 };
+const NON_PRIMARY_ARTIFACT_TYPES = new Set(['skin_analysis_kb_snapshot_v1']);
 
 function nowIso() {
   return new Date().toISOString();
@@ -123,6 +124,25 @@ function safeJson(value, fallback = {}) {
   } catch {
     return fallback;
   }
+}
+
+function artifactPayloadFromRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  if (record.artifact_json && typeof record.artifact_json === 'object' && !Array.isArray(record.artifact_json)) {
+    return record.artifact_json;
+  }
+  return record;
+}
+
+function getArtifactType(record) {
+  const payload = artifactPayloadFromRecord(record);
+  return String(payload && (payload.artifact_type || payload.type) || '').trim().toLowerCase();
+}
+
+function isPrimaryDiagnosisArtifact(record) {
+  const artifactType = getArtifactType(record);
+  if (!artifactType) return true;
+  return !NON_PRIMARY_ARTIFACT_TYPES.has(artifactType);
 }
 
 function isStorageUnavailableError(err) {
@@ -377,7 +397,7 @@ async function getLatestDiagnosisArtifact({
 } = {}) {
   const maxAge = parseMaxArtifactAgeDays(maxAgeDays);
   const preferred = await getDiagnosisArtifactById({ artifactId: preferArtifactId, auroraUid, userId });
-  if (preferred && isWithinDays(preferred.created_at, maxAge)) return preferred;
+  if (preferred && isPrimaryDiagnosisArtifact(preferred) && isWithinDays(preferred.created_at, maxAge)) return preferred;
 
   const user = normalizeIdentityValue(userId);
   const guest = normalizeIdentityValue(auroraUid);
@@ -386,7 +406,7 @@ async function getLatestDiagnosisArtifact({
 
   if (key) {
     const local = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key) : [];
-    const filtered = local.filter((item) => isWithinDays(item.created_at, maxAge));
+    const filtered = local.filter((item) => isPrimaryDiagnosisArtifact(item) && isWithinDays(item.created_at, maxAge));
     if (sess) {
       const hit = filtered.find((item) => String(item.session_id || '') === sess);
       if (hit) return hit;
@@ -419,6 +439,7 @@ async function getLatestDiagnosisArtifact({
         SELECT artifact_id, aurora_uid, user_id, session_id, artifact_json, confidence_score, confidence_level, source_mix, created_at
         FROM aurora_skin_diagnosis_artifacts
         WHERE ${where.join(' AND ')}
+          AND COALESCE(artifact_json->>'artifact_type', '') <> 'skin_analysis_kb_snapshot_v1'
           AND created_at >= now() - ($${ageIdx}::int || ' days')::interval
         ORDER BY
           ${
@@ -470,7 +491,7 @@ async function listDiagnosisArtifactsForIdentity({
   const maxAge = parseMaxArtifactAgeDays(maxAgeDays, 365);
   const key = identityKey({ auroraUid: guest, userId: user });
   const localRows = key && Array.isArray(ephemeral.artifacts.get(key))
-    ? ephemeral.artifacts.get(key).filter((item) => isWithinDays(item.created_at, maxAge))
+    ? ephemeral.artifacts.get(key).filter((item) => isPrimaryDiagnosisArtifact(item) && isWithinDays(item.created_at, maxAge))
     : [];
 
   if (persistenceDisabled()) return localRows.slice(0, n);
@@ -495,6 +516,7 @@ async function listDiagnosisArtifactsForIdentity({
         SELECT artifact_id, aurora_uid, user_id, session_id, artifact_json, confidence_score, confidence_level, source_mix, created_at
         FROM aurora_skin_diagnosis_artifacts
         WHERE ${where.join(' AND ')}
+          AND COALESCE(artifact_json->>'artifact_type', '') <> 'skin_analysis_kb_snapshot_v1'
           AND created_at >= now() - ($${ageIdx}::int || ' days')::interval
         ORDER BY created_at DESC
         LIMIT $${limitIdx}
