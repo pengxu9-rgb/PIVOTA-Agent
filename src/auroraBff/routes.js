@@ -1295,6 +1295,7 @@ function shouldDelegateV1ChatToV2(body) {
   const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
     actionId,
     message: pickFirstTrimmed(payload.message, extractLastUserMessageFromChatRequestMessages(payload.messages)),
+    sessionMeta,
     sessionAnalysisContext: isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null,
     lastAnalysis: sessionProfile.lastAnalysis || null,
     latestArtifactId: extractLatestArtifactIdFromSession(session),
@@ -1371,6 +1372,16 @@ const IMPLICIT_DEEP_DIVE_PROMPT_TOKENS = new Set(
 function looksLikeImplicitDeepDivePrompt(value) {
   const token = normalizeImplicitAnalysisFollowupPrompt(value);
   return Boolean(token) && IMPLICIT_DEEP_DIVE_PROMPT_TOKENS.has(token);
+}
+
+function looksLikeSavedAnalysisContinuationMessage(value) {
+  const raw = pickFirstTrimmed(value);
+  if (!raw) return false;
+  if (PRODUCT_INTEL_HTTP_URL_RE.test(String(raw).trim())) return false;
+  if (looksLikeImplicitDeepDivePrompt(raw)) return true;
+  if (/\b(travel|trip|flight|destination|weather|humidity|uv)\b/i.test(raw)) return false;
+  if (/\b(dupe|dupes|compare|comparison|versus|vs\.?)\b/i.test(raw)) return false;
+  return /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|ingredient|ingredients|retinol|retinoid|salicylic|niacinamide|azelaic|benzoyl|routine|step|steps|product|products|next best steps|next steps|what should i use|what should i do|help my skin|my skin|solve)\b/i.test(raw);
 }
 
 function hasMeaningfulAnalysisStorySnapshot(value) {
@@ -1470,6 +1481,7 @@ function buildAnalysisFollowupSessionMeta({
 function resolveImplicitAnalysisFollowupActionId({
   actionId,
   message,
+  sessionMeta,
   sessionAnalysisContext,
   lastAnalysis,
   latestArtifactId,
@@ -1477,6 +1489,21 @@ function resolveImplicitAnalysisFollowupActionId({
   const normalizedActionId = String(actionId || '').trim();
   if (normalizedActionId && ANALYSIS_FOLLOWUP_ACTION_IDS.has(normalizedActionId)) {
     return normalizedActionId;
+  }
+  const savedAnalysisFollowupActive = isSavedAnalysisFollowupSession({
+    sessionMeta,
+    sessionAnalysisContext,
+  });
+  if (
+    savedAnalysisFollowupActive &&
+    looksLikeSavedAnalysisContinuationMessage(message) &&
+    hasReusableAnalysisContext({
+      sessionAnalysisContext,
+      lastAnalysis,
+      latestArtifactId,
+    })
+  ) {
+    return 'chip.aurora.next_action.deep_dive_skin';
   }
   if (!looksLikeImplicitDeepDivePrompt(message)) return null;
   if (
@@ -57292,6 +57319,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
         actionId: explicitActionId,
         message,
+        sessionMeta: parsedSessionMetaForAnalysisFollowup,
         sessionAnalysisContext:
           parsedSessionMetaForAnalysisFollowup.analysis_context &&
           typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&

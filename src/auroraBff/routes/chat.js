@@ -730,6 +730,7 @@ function resolveAnalysisFollowupActionId(req, internal = {}) {
     const implicitActionId = internal.resolveImplicitAnalysisFollowupActionId({
       actionId: explicitActionId,
       message,
+      sessionMeta,
       sessionAnalysisContext,
       lastAnalysis: isPlainObject(session.profile) ? session.profile.lastAnalysis || null : null,
       latestArtifactId: extractLatestArtifactIdFromSession(session),

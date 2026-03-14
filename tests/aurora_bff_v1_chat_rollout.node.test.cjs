@@ -493,7 +493,7 @@ test('/v1/chat delegates chip.action.add_to_routine to v2 when skill_router_v2 i
   );
 });
 
-test('/v1/chat delegates chip.start.diagnosis to v2 and returns diagnosis_gate', async () => {
+test('/v1/chat keeps chip.start.diagnosis on legacy interactive diagnosis flow when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
@@ -515,11 +515,9 @@ test('/v1/chat delegates chip.start.diagnosis to v2 and returns diagnosis_gate',
         .expect(200);
 
       assert.equal(Array.isArray(res.body.cards), true);
-      assert.equal(res.body.cards[0]?.card_type, 'diagnosis_gate');
-      assert.equal(
-        res.body.cards[0]?.sections?.some((section) => section.type === 'goal_selection'),
-        true,
-      );
+      assert.equal(res.body.cards[0]?.type, 'diagnosis_gate');
+      assert.equal(Array.isArray(res.body.suggested_quick_replies), true);
+      assert.equal(res.body.session_patch?.next_state, 'DIAG_PROFILE');
     },
   );
 });
