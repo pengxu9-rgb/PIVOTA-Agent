@@ -11,6 +11,9 @@ process.env.AURORA_PRODUCT_MATCHER_ENABLED = 'false';
 process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'false';
 process.env.AURORA_BFF_PDP_CORE_PREFETCH_ENABLED = 'false';
 process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
+process.env.AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = 'true';
+process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = 'true';
+process.env.AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED = 'false';
 
 const axios = require('axios');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
@@ -124,10 +127,10 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
             product_id: `cream_${observedQueries.length}`,
             merchant_id: 'mid_cream',
             brand: 'GoodSkin',
-            name: 'Barrier Cream',
-            display_name: 'Barrier Cream',
-            category: 'face cream',
-            product_type: 'cream',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
           },
         ],
       },
@@ -162,6 +165,7 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
     assert.equal(payload.recommendation_meta?.resolved_target_step_confidence, 'high');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.ok(typeof payload.recommendation_meta?.candidate_pool_signature === 'string' && payload.recommendation_meta.candidate_pool_signature.length > 0);
+    assert.ok(observedQueries.some((query) => query.includes('barrier')));
     assert.ok(!observedQueries.some((query) => query.includes('cleanser') || query.includes('sunscreen')));
   } finally {
     axios.get = originalGet;
@@ -217,11 +221,14 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
       cards.find((card) => card && card.type === 'confidence_notice' && /viable|artifact|candidate/i.test(String(card?.payload?.reason || '')))
       || null;
     assert.ok(confidenceNotice);
+    assert.equal(confidenceNotice?.payload?.reason, 'no_viable_candidates_for_target');
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
+    assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
   } finally {
     axios.get = originalGet;
   }
@@ -250,8 +257,8 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
             brand: 'GoodSkin',
             name: 'Moisture Barrier Cream',
             display_name: 'Moisture Barrier Cream',
-            category: 'face cream',
-            product_type: 'cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
           },
         ],
       },
@@ -300,6 +307,66 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
     assert.equal(payload.recommendation_meta?.resolved_target_step, 'moisturizer');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
   } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/reco/generate: deterministic selection can succeed in degraded mode when LLM prompt contract fails', async () => {
+  const originalGet = axios.get;
+  const originalPromptMismatch = process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
+  process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = 'true';
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'cream_degraded_1',
+            merchant_id: 'mid_cream',
+            brand: 'GoodSkin',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'face cream',
+            product_type: 'cream',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'reco_degraded_uid', briefId: 'reco_degraded_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_degraded_uid',
+        'X-Trace-ID': 'trace_reco_degraded',
+        'X-Brief-ID': 'reco_degraded_brief',
+      },
+      body: {
+        focus: 'moisturizer',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.effective_failure_class, 'none');
+    assert.equal(payload.recommendation_meta?.success_mode, 'degraded_success');
+    assert.equal(payload.recommendation_meta?.presentation_mode, 'deterministic_degraded');
+    assert.equal(payload.recommendation_meta?.initial_llm_outcome, 'prompt_contract_mismatch');
+    assert.equal(payload.recommendation_meta?.llm_invoked, false);
+  } finally {
+    if (originalPromptMismatch == null) delete process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
+    else process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = originalPromptMismatch;
     axios.get = originalGet;
   }
 });

@@ -210,6 +210,7 @@ const { normalizeRecoTargetStep } = require('./recoTargetStep');
 const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  RECOMMENDATION_RECO_POLICY_V1,
   CANDIDATE_POOL_SIGNATURE_VERSION,
   GROUP_SEMANTICS_VERSION,
   resolveRecommendationTargetContext,
@@ -218,7 +219,6 @@ const {
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,
-  runRecommendationSharedStack,
 } = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
@@ -228,6 +228,21 @@ const {
   buildDupeCompareDeepScanPrompt,
   mergeCompareProductContext,
 } = require('./dupeCompareContract');
+
+const AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED || 'false').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED || 'false').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED || 'false').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
 
 function resolveSkinDeepeningPromptVersion(promptVersion) {
   const token = String(promptVersion || '').trim().toLowerCase();
@@ -3099,6 +3114,15 @@ function normalizeRecoCatalogProduct(raw) {
 
   const ingredientTokens = collectCandidateIngredientTokens(base);
   const skinTypeTags = collectCandidateSkinTypeTags(base);
+  const tagTokens = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(base.tags) ? base.tags : []),
+      ...(Array.isArray(base.tag_tokens) ? base.tag_tokens : []),
+      ...(Array.isArray(base.tagTokens) ? base.tagTokens : []),
+      ...(Array.isArray(base.labels) ? base.labels : []),
+    ].map((item) => String(item || '').trim()).filter(Boolean),
+    16,
+  );
   const socialRef = extractCandidateSocialReference(base);
   const price = extractCatalogCandidatePrice(base);
 
@@ -3121,6 +3145,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(pdpOpen ? { pdp_open: pdpOpen } : {}),
     ...(price ? { price } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(tagTokens.length ? { tag_tokens: tagTokens } : {}),
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
     ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
     ...(socialRef.support_count != null ? { social_ref_support_count: Math.trunc(socialRef.support_count) } : {}),
@@ -13767,6 +13792,7 @@ function buildRecoCatalogQueryLevels({
   targetContext,
   profileSummary,
   ingredientContext,
+  recommendationTaskContext = null,
   lang,
   seedTerms = [],
 } = {}) {
@@ -13775,6 +13801,7 @@ function buildRecoCatalogQueryLevels({
       targetContext,
       profileSummary,
       ingredientContext,
+      recoContext: recommendationTaskContext,
       lang,
       seedTerms,
     });
@@ -13794,6 +13821,7 @@ function buildRecoCatalogQueryLevels({
 async function collectRecoCandidatesFromQueryLevels({
   queryLevels,
   targetContext,
+  recommendationTaskContext = null,
   logger,
   timeoutMs,
   limit = 6,
@@ -13803,7 +13831,7 @@ async function collectRecoCandidatesFromQueryLevels({
 } = {}) {
   const rawCandidates = [];
   const searchResults = [];
-  let candidateState = finalizeRecommendationCandidatePools([], { targetContext });
+  let candidateState = finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   let stopLevel = null;
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
@@ -13834,10 +13862,19 @@ async function collectRecoCandidatesFromQueryLevels({
       for (const product of products) {
         const normalized = normalizeRecoCatalogProduct(product);
         if (!isPlainObject(normalized)) continue;
-        rawCandidates.push(normalized);
+        rawCandidates.push({
+          ...normalized,
+          retrieval_query: queryEntry.query,
+          retrieval_step: queryEntry.step,
+          retrieval_slot: queryEntry.slot,
+          retrieval_ladder_level: queryEntry.ladder_level,
+        });
       }
     }
-    candidateState = finalizeRecommendationCandidatePools(rawCandidates, { targetContext });
+    candidateState = finalizeRecommendationCandidatePools(rawCandidates, {
+      targetContext,
+      recoContext: recommendationTaskContext,
+    });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
       break;
@@ -14492,7 +14529,15 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
-async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, targetContext = null, debug, logger } = {}) {
+async function buildRecoGenerateFromCatalog({
+  ctx,
+  profileSummary,
+  ingredientContext,
+  recommendationTaskContext = null,
+  targetContext = null,
+  debug,
+  logger,
+} = {}) {
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
@@ -14536,6 +14581,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     targetContext,
     profileSummary,
     ingredientContext,
+    recommendationTaskContext,
     lang: ctx && ctx.lang ? ctx.lang : 'EN',
   });
   if (!queryLevels.length) {
@@ -14545,6 +14591,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
   const collected = await collectRecoCandidatesFromQueryLevels({
     queryLevels,
     targetContext,
+    recommendationTaskContext,
     logger,
     timeoutMs: searchTimeoutEffectiveMs,
     limit: 6,
@@ -14555,7 +14602,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   const candidateState = isPlainObject(collected.candidateState)
     ? collected.candidateState
-    : finalizeRecommendationCandidatePools([], { targetContext });
+    : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
@@ -14660,6 +14707,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     resolved_target_step_confidence: targetContext && targetContext.resolved_target_step_confidence ? targetContext.resolved_target_step_confidence : 'none',
     resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
+    artifact_context_applied: Boolean(candidateState.artifact_context_applied),
     step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
     viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     candidate_pool_signature: candidateState.candidate_pool_signature,
@@ -14672,6 +14720,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     hard_reject_count: Number(candidateState.hard_reject_count || 0),
     selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
     weak_viable_pool: Boolean(candidateState.weak_viable_pool),
+    average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
     stop_level: collected.stopLevel || null,
     ...(debug
@@ -18372,6 +18421,7 @@ function scheduleSkinAnalysisKbBackfill({
   const artifact = {
     artifact_id: createArtifactId(),
     created_at: new Date().toISOString(),
+    artifact_use: 'kb_backfill',
     artifact_type: 'skin_analysis_kb_snapshot_v1',
     analysis_summary: snapshot,
     overall_confidence: {
@@ -20529,6 +20579,7 @@ function buildDiagnosisArtifactV1({
   const artifact = {
     artifact_id: createArtifactId(),
     created_at: new Date().toISOString(),
+    artifact_use: 'reco_context',
     use_photo: Boolean(usePhoto),
     overall_confidence: overallConfidence,
     skinType: buildArtifactValueNode({
@@ -20612,6 +20663,14 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '上游没有返回可落地的产品清单，已改为保守提示。可补充当前 routine 或稍后重试。'
         : 'Upstream did not return a grounded product shortlist, so this was downgraded to a conservative notice. Add your current routine or retry shortly.',
+    no_viable_candidates_for_target:
+      lang === 'CN'
+        ? '我还不能稳定地锁定这个品类的合适候选。补充你想要的肤感、修护目标或想避开的成分后，我会继续缩窄。'
+        : "I can't confidently lock a stable shortlist for this step yet. Tell me the texture you want, your repair goal, or ingredients to avoid and I’ll narrow it down.",
+    weak_viable_pool:
+      lang === 'CN'
+        ? '当前只拿到边缘匹配候选，我先不硬推商品。补充更明确的限制条件后，我再继续缩窄。'
+        : "I only found borderline matches right now, so I’m not forcing a product pick. Add clearer constraints and I’ll narrow it down.",
     upstream_schema_invalid:
       lang === 'CN'
         ? '上游推荐结果结构不完整，已改为保守提示。可稍后重试，或先补充更多上下文。'
@@ -20656,6 +20715,8 @@ function collectRecoContractReasonTokens({ payload, fieldMissing } = {}) {
 
 function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
+  if (tokens.includes('no_viable_candidates_for_target')) return 'no_viable_candidates_for_target';
+  if (tokens.includes('weak_viable_pool')) return 'weak_viable_pool';
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
   if (tokens.includes('low_confidence')) return 'low_confidence';
   if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
@@ -20676,6 +20737,8 @@ function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
     upstream_empty_recommendations: ['retry_recommendations', 'update_current_routine'],
     upstream_schema_invalid: ['retry_recommendations', 'update_current_routine', 'upload_daylight_and_indoor_white'],
     ingredient_constraint_no_match: ['broaden_to_goal', 'check_product_inci', 'search_category'],
+    no_viable_candidates_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
+    weak_viable_pool: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     low_confidence_treatment_filtered: ['upload_daylight_and_indoor_white', 'update_current_routine', 'retry_recommendations'],
     artifact_missing: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
   };
@@ -21762,9 +21825,20 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
       sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
       maxAgeDays: 30,
       preferArtifactId: preferredArtifactId,
+      artifactUse: 'reco_context',
     });
     if (latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object' && !Array.isArray(latestArtifact.artifact_json)) {
-      return { ...latestArtifact.artifact_json, artifact_id: latestArtifact.artifact_id, created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at };
+      return {
+        ...latestArtifact.artifact_json,
+        artifact_id: latestArtifact.artifact_id,
+        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
+        ...(latestArtifact.artifact_use ? { artifact_use: latestArtifact.artifact_use } : {}),
+        ...(latestArtifact.artifact_readback_kind ? { artifact_readback_kind: latestArtifact.artifact_readback_kind } : {}),
+        ...(latestArtifact.artifact_readback_reason ? { artifact_readback_reason: latestArtifact.artifact_readback_reason } : {}),
+        ...(Number.isFinite(Number(latestArtifact.artifact_readback_filtered_count))
+          ? { artifact_readback_filtered_count: Number(latestArtifact.artifact_readback_filtered_count) }
+          : {}),
+      };
     }
     return latestArtifact || null;
   } catch (err) {
@@ -22276,6 +22350,11 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     } else {
       delete data.products_empty_reason;
     }
+    if (contractObj.surface_reason) {
+      data.surface_reason = contractObj.surface_reason;
+    } else {
+      delete data.surface_reason;
+    }
     if (contractObj.upstream_status) {
       data.upstream_status = contractObj.upstream_status;
     } else {
@@ -22303,6 +22382,7 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
       ...(Number.isFinite(Number(contractObj.ungrounded_count)) ? { ungrounded_count: Number(contractObj.ungrounded_count) } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
       ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
+      ...(contractObj.surface_reason ? { surface_reason: contractObj.surface_reason } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
     };
@@ -22419,177 +22499,9 @@ function sensitivityConfidence(profileSummary) {
 function extractLatestArtifactIdFromSession(session) {
   if (!session || typeof session !== 'object' || Array.isArray(session)) return null;
   const state = session.state && typeof session.state === 'object' && !Array.isArray(session.state) ? session.state : null;
-  const meta = session.meta && typeof session.meta === 'object' && !Array.isArray(session.meta) ? session.meta : null;
-  return (
-    pickFirstTrimmed(
-      state && state.latest_artifact_id,
-      meta && meta.latest_artifact_id,
-      session.latest_artifact_id,
-      state && state.artifact_id,
-      meta && meta.artifact_id,
-      session.artifact_id,
-    ) || null
-  );
-}
-
-function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
-  if (!sessionPatch || typeof sessionPatch !== 'object') return;
-  const id = String(artifactId || '').trim();
-  if (!id) return;
-  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
-  state.latest_artifact_id = id;
-  sessionPatch.state = state;
-}
-
-function normalizeArtifactPersistenceMeta(value) {
-  const row = isPlainObject(value) ? value : {};
-  const storageMode = pickFirstTrimmed(row.storage_mode, row.storageMode) || null;
-  const artifactId = pickFirstTrimmed(row.artifact_id, row.artifactId) || null;
-  return {
-    persisted: row.persisted === true,
-    storage_mode: storageMode,
-    persistence_error_code: pickFirstTrimmed(row.persistence_error_code, row.persistenceErrorCode) || null,
-    artifact_id: artifactId,
-  };
-}
-
-function isReadableArtifactPersistence(meta) {
-  const normalized = normalizeArtifactPersistenceMeta(meta);
-  return normalized.persisted === true && (normalized.storage_mode === 'db' || normalized.storage_mode === 'ephemeral');
-}
-
-function extractAnalysisContextSnapshotFromSession(session) {
-  if (!isPlainObject(session)) return null;
-  const meta = isPlainObject(session.meta) ? session.meta : null;
-  const snapshot = isPlainObject(meta && meta.analysis_context_snapshot)
-    ? meta.analysis_context_snapshot
-    : null;
-  return snapshot || null;
-}
-
-async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
-  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
-  try {
-    const latestArtifact = await getLatestDiagnosisArtifact({
-      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
-      userId: identity && identity.userId ? identity.userId : null,
-      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
-      maxAgeDays: 30,
-      preferArtifactId: preferredArtifactId,
-    });
-    if (
-      latestArtifact &&
-      latestArtifact.artifact_json &&
-      typeof latestArtifact.artifact_json === 'object' &&
-      !Array.isArray(latestArtifact.artifact_json)
-    ) {
-      return {
-        ...latestArtifact.artifact_json,
-        artifact_id: latestArtifact.artifact_id,
-        created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at,
-        persisted: latestArtifact.persisted === true,
-        storage_mode: latestArtifact.storage_mode || null,
-        persistence_error_code: latestArtifact.persistence_error_code || null,
-      };
-    }
-    return latestArtifact || null;
-  } catch (err) {
-    logger?.warn?.(
-      { err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null },
-      'aurora bff: failed to load latest diagnosis artifact for route',
-    );
-    return null;
-  }
-}
-
-async function resolveArtifactBackedSnapshotForRoute({
-  identity,
-  session,
-  profile = null,
-  recentLogs = [],
-  ctx,
-  logger,
-  allowRequestSnapshot = true,
-} = {}) {
-  const latestArtifactId = extractLatestArtifactIdFromSession(session);
-  const forwardedSnapshot = allowRequestSnapshot ? extractAnalysisContextSnapshotFromSession(session) : null;
-  const forwardedPersistence = allowRequestSnapshot && isPlainObject(session) && isPlainObject(session.meta)
-    ? normalizeArtifactPersistenceMeta(session.meta.artifact_persistence)
-    : normalizeArtifactPersistenceMeta(null);
-
-  if (forwardedSnapshot && isReadableArtifactPersistence(forwardedPersistence)) {
-    return {
-      analysis_context_snapshot: forwardedSnapshot,
-      latest_artifact: null,
-      latest_artifact_id: latestArtifactId || forwardedPersistence.artifact_id || null,
-      artifact_persistence: forwardedPersistence,
-      artifact_readback_source: 'request_snapshot',
-      artifact_readback_hit: true,
-    };
-  }
-
-  let latestArtifact = null;
-  if (latestArtifactId) {
-    latestArtifact = await loadLatestDiagnosisArtifactForRoute({
-      identity,
-      session,
-      ctx,
-      logger,
-    });
-    const requestArtifactSnapshot = latestArtifact
-      ? buildAnalysisContextSnapshotForRoute({
-          latestArtifact,
-          profile,
-          recentLogs,
-        })
-      : null;
-    if (latestArtifact && requestArtifactSnapshot) {
-      return {
-        analysis_context_snapshot: requestArtifactSnapshot,
-        latest_artifact: latestArtifact,
-        latest_artifact_id: latestArtifactId,
-        artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
-        artifact_readback_source:
-          String(latestArtifact.artifact_id || '').trim() === latestArtifactId
-            ? 'request_artifact_id'
-            : 'db_latest',
-        artifact_readback_hit: true,
-      };
-    }
-  }
-
-  latestArtifact = await loadLatestDiagnosisArtifactForRoute({
-    identity,
-    session: null,
-    ctx,
-    logger,
-  });
-  const latestDbSnapshot = latestArtifact
-    ? buildAnalysisContextSnapshotForRoute({
-        latestArtifact,
-        profile,
-        recentLogs,
-      })
-    : null;
-  if (latestArtifact && latestDbSnapshot) {
-    return {
-      analysis_context_snapshot: latestDbSnapshot,
-      latest_artifact: latestArtifact,
-      latest_artifact_id: pickFirstTrimmed(latestArtifact.artifact_id, latestArtifactId) || null,
-      artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
-      artifact_readback_source: 'db_latest',
-      artifact_readback_hit: true,
-    };
-  }
-
-  return {
-    analysis_context_snapshot: null,
-    latest_artifact: null,
-    latest_artifact_id: latestArtifactId || null,
-    artifact_persistence: isReadableArtifactPersistence(forwardedPersistence) ? forwardedPersistence : null,
-    artifact_readback_source: 'none',
-    artifact_readback_hit: false,
-  };
+  if (!state) return null;
+  const artifactId = String(state.latest_artifact_id || '').trim();
+  return artifactId || null;
 }
 
 function normalizeRecoSourceDetail(raw) {
@@ -23013,9 +22925,341 @@ function normalizeRecoProductsEmptyReason(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeRecoEffectiveFailureClass(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (
+    token === 'none' ||
+    token === 'intent_resolution_failure' ||
+    token === 'context_resolution_failure' ||
+    token === 'prompt_contract_mismatch' ||
+    token === 'schema_invalid' ||
+    token === 'upstream_timeout' ||
+    token === 'upstream_dependency_failure' ||
+    token === 'catalog_contract_invalid' ||
+    token === 'no_viable_candidates_for_target' ||
+    token === 'weak_viable_pool' ||
+    token === 'post_processing_eliminated_candidates'
+  ) {
+    return token;
+  }
+  return '';
+}
+
+function normalizeRecoFailureOrigin(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'user_input' || token === 'internal_contract' || token === 'upstream_dependency' || token === 'none') {
+    return token;
+  }
+  return 'none';
+}
+
+function normalizeRecoPresentationMode(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'full_llm' || token === 'deterministic_degraded') return token;
+  return '';
+}
+
+function normalizeRecoSuccessMode(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'full_success' || token === 'degraded_success') return token;
+  return '';
+}
+
+function normalizeRecoViablePoolStrength(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'strong' || token === 'weak' || token === 'empty') return token;
+  return '';
+}
+
+function normalizeRecoTargetFidelityLevel(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'satisfied' || token === 'partial' || token === 'failed') return token;
+  return '';
+}
+
+function getRecoMetaScalar(meta, key) {
+  if (!isPlainObject(meta)) return null;
+  if (typeof meta[key] === 'boolean') return meta[key];
+  if (meta[key] == null) return null;
+  const numeric = Number(meta[key]);
+  if (Number.isFinite(numeric)) return numeric;
+  const text = String(meta[key]).trim();
+  return text || null;
+}
+
+function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const fallbackObj = isPlainObject(fallback) ? fallback : {};
+  const resolvedTargetStep = pickFirstTrimmed(
+    typeof meta.resolved_target_step === 'string' ? meta.resolved_target_step : '',
+    typeof fallbackObj.resolved_target_step === 'string' ? fallbackObj.resolved_target_step : '',
+  );
+  const resolvedTargetConfidence = String(
+    pickFirstTrimmed(
+      typeof meta.resolved_target_step_confidence === 'string' ? meta.resolved_target_step_confidence : '',
+      typeof fallbackObj.resolved_target_step_confidence === 'string' ? fallbackObj.resolved_target_step_confidence : '',
+      'none',
+    ),
+  ).trim().toLowerCase();
+  const stepAwareSignal = Boolean(resolvedTargetStep) && (resolvedTargetConfidence === 'high' || resolvedTargetConfidence === 'medium');
+  const toCount = (value, fallbackValue = null) => {
+    if (Number.isFinite(Number(value))) return Math.max(0, Math.trunc(Number(value)));
+    if (Number.isFinite(Number(fallbackValue))) return Math.max(0, Math.trunc(Number(fallbackValue)));
+    return null;
+  };
+  const terminalSuccessRaw = getRecoMetaScalar(meta, 'terminal_success');
+  if (!stepAwareSignal && !normalizeRecoEffectiveFailureClass(fallbackObj.effective_failure_class || fallbackObj.failure_class)) {
+    return {
+      effectiveFailureClass: null,
+      failureOrigin: 'none',
+      terminalSuccess: null,
+      viablePoolStrength: null,
+      targetFidelityLevel: null,
+      presentationMode: null,
+      successMode: null,
+      preLlmSelectedCandidateCount: null,
+      finalSelectedCandidateCount: null,
+      postGuardrailCount: null,
+    };
+  }
+  return {
+    effectiveFailureClass: normalizeRecoEffectiveFailureClass(
+      pickFirstTrimmed(
+        typeof meta.effective_failure_class === 'string' ? meta.effective_failure_class : '',
+        typeof fallbackObj.effective_failure_class === 'string' ? fallbackObj.effective_failure_class : '',
+        typeof fallbackObj.failure_class === 'string' ? fallbackObj.failure_class : '',
+      ),
+    ) || null,
+    failureOrigin: normalizeRecoFailureOrigin(
+      pickFirstTrimmed(
+        typeof meta.failure_origin === 'string' ? meta.failure_origin : '',
+        typeof fallbackObj.failure_origin === 'string' ? fallbackObj.failure_origin : '',
+      ),
+    ),
+    terminalSuccess:
+      typeof terminalSuccessRaw === 'boolean'
+        ? terminalSuccessRaw
+        : typeof fallbackObj.terminal_success === 'boolean'
+          ? fallbackObj.terminal_success
+          : null,
+    viablePoolStrength: normalizeRecoViablePoolStrength(
+      pickFirstTrimmed(
+        typeof meta.viable_pool_strength === 'string' ? meta.viable_pool_strength : '',
+        typeof fallbackObj.viable_pool_strength === 'string' ? fallbackObj.viable_pool_strength : '',
+      ),
+    ) || null,
+    targetFidelityLevel: normalizeRecoTargetFidelityLevel(
+      pickFirstTrimmed(
+        typeof meta.target_fidelity_level === 'string' ? meta.target_fidelity_level : '',
+        typeof fallbackObj.target_fidelity_level === 'string' ? fallbackObj.target_fidelity_level : '',
+      ),
+    ) || null,
+    presentationMode: normalizeRecoPresentationMode(
+      pickFirstTrimmed(
+        typeof meta.presentation_mode === 'string' ? meta.presentation_mode : '',
+        typeof fallbackObj.presentation_mode === 'string' ? fallbackObj.presentation_mode : '',
+      ),
+    ) || null,
+    successMode: normalizeRecoSuccessMode(
+      pickFirstTrimmed(
+        typeof meta.success_mode === 'string' ? meta.success_mode : '',
+        typeof fallbackObj.success_mode === 'string' ? fallbackObj.success_mode : '',
+      ),
+    ) || null,
+    preLlmSelectedCandidateCount: toCount(meta.pre_llm_selected_candidate_count, fallbackObj.pre_llm_selected_candidate_count),
+    finalSelectedCandidateCount: toCount(meta.final_selected_candidate_count, fallbackObj.final_selected_candidate_count),
+    postGuardrailCount: toCount(meta.post_guardrail_count, fallbackObj.post_guardrail_count),
+  };
+}
+
+function deriveRecoCatalogDependencyFailure(catalogDebug) {
+  const debugObj = isPlainObject(catalogDebug) ? catalogDebug : null;
+  if (!debugObj) return { effective_failure_class: '', failure_origin: 'none' };
+  const skippedReason = String(debugObj.skipped_reason || '').trim().toLowerCase();
+  if (skippedReason === 'disabled' || skippedReason === 'pivota_backend_not_configured') {
+    return {
+      effective_failure_class: 'catalog_contract_invalid',
+      failure_origin: 'internal_contract',
+    };
+  }
+  if (skippedReason === 'fail_fast_open') {
+    return {
+      effective_failure_class: 'upstream_timeout',
+      failure_origin: 'upstream_dependency',
+    };
+  }
+  const queryCount = Number.isFinite(Number(debugObj.query_count)) ? Math.max(0, Math.trunc(Number(debugObj.query_count))) : 0;
+  const okCount = Number.isFinite(Number(debugObj.ok_count)) ? Math.max(0, Math.trunc(Number(debugObj.ok_count))) : 0;
+  const statusCounts = isPlainObject(debugObj.status_counts) ? debugObj.status_counts : {};
+  const timeoutCount = Number.isFinite(Number(statusCounts.upstream_timeout)) ? Math.max(0, Math.trunc(Number(statusCounts.upstream_timeout))) : 0;
+  const upstreamErrorCount = Number.isFinite(Number(statusCounts.upstream_error)) ? Math.max(0, Math.trunc(Number(statusCounts.upstream_error))) : 0;
+  const rateLimitedCount = Number.isFinite(Number(statusCounts.rate_limited)) ? Math.max(0, Math.trunc(Number(statusCounts.rate_limited))) : 0;
+  if (queryCount > 0 && okCount === 0) {
+    if (timeoutCount >= queryCount) {
+      return {
+        effective_failure_class: 'upstream_timeout',
+        failure_origin: 'upstream_dependency',
+      };
+    }
+    if ((upstreamErrorCount + rateLimitedCount) >= queryCount) {
+      return {
+        effective_failure_class: 'upstream_dependency_failure',
+        failure_origin: 'upstream_dependency',
+      };
+    }
+  }
+  return { effective_failure_class: '', failure_origin: 'none' };
+}
+
+function resolveRecoEffectiveFailure({
+  targetContext,
+  viablePoolState,
+  catalogDebug,
+  intentResolutionFailed = false,
+  contextResolutionFailureOrigin = 'none',
+  postGuardrailCount = null,
+} = {}) {
+  const poolState = isPlainObject(viablePoolState) ? viablePoolState : {};
+  const catalogFailure = deriveRecoCatalogDependencyFailure(catalogDebug);
+  const preLlmSelectedCandidateCount = Number.isFinite(Number(poolState.pre_llm_selected_candidate_count))
+    ? Math.max(0, Math.trunc(Number(poolState.pre_llm_selected_candidate_count)))
+    : Number.isFinite(Number(poolState.selected_candidate_count))
+      ? Math.max(0, Math.trunc(Number(poolState.selected_candidate_count)))
+      : 0;
+  const finalCount = Number.isFinite(Number(postGuardrailCount))
+    ? Math.max(0, Math.trunc(Number(postGuardrailCount)))
+    : Number.isFinite(Number(poolState.final_selected_candidate_count))
+      ? Math.max(0, Math.trunc(Number(poolState.final_selected_candidate_count)))
+      : preLlmSelectedCandidateCount;
+  if (preLlmSelectedCandidateCount > 0 && finalCount === 0) {
+    return {
+      effective_failure_class: 'post_processing_eliminated_candidates',
+      failure_origin: 'internal_contract',
+    };
+  }
+  if (intentResolutionFailed) {
+    return {
+      effective_failure_class: 'intent_resolution_failure',
+      failure_origin: 'user_input',
+    };
+  }
+  if (normalizeRecoFailureOrigin(contextResolutionFailureOrigin) !== 'none') {
+    return {
+      effective_failure_class: 'context_resolution_failure',
+      failure_origin: normalizeRecoFailureOrigin(contextResolutionFailureOrigin),
+    };
+  }
+  if (catalogFailure.effective_failure_class) {
+    return catalogFailure;
+  }
+  if (normalizeRecoViablePoolStrength(poolState.viable_pool_strength) === 'weak' || poolState.weak_viable_pool === true) {
+    return {
+      effective_failure_class: 'weak_viable_pool',
+      failure_origin: 'user_input',
+    };
+  }
+  if (targetContext?.step_aware_intent && preLlmSelectedCandidateCount <= 0) {
+    return {
+      effective_failure_class: 'no_viable_candidates_for_target',
+      failure_origin: 'user_input',
+    };
+  }
+  return {
+    effective_failure_class: 'none',
+    failure_origin: 'none',
+  };
+}
+
+function resolveRecoCentralOutcome({
+  entryType = 'chat',
+  effectiveFailureClass,
+  failureOrigin = 'none',
+  terminalSuccess = false,
+  viablePoolStrength = '',
+  targetFidelityLevel = '',
+  presentationMode = '',
+  successMode = '',
+  sourceMode = '',
+  groundingStatus = '',
+} = {}) {
+  const effective = normalizeRecoEffectiveFailureClass(effectiveFailureClass) || 'none';
+  const origin = normalizeRecoFailureOrigin(failureOrigin);
+  const normalizedSuccessMode = normalizeRecoSuccessMode(successMode)
+    || (terminalSuccess ? (normalizeRecoPresentationMode(presentationMode) === 'deterministic_degraded' ? 'degraded_success' : 'full_success') : '');
+  const normalizedPresentationMode = normalizeRecoPresentationMode(presentationMode)
+    || (normalizedSuccessMode === 'degraded_success' ? 'deterministic_degraded' : terminalSuccess ? 'full_llm' : '');
+  const normalizedSourceMode = String(sourceMode || '').trim().toLowerCase();
+  const normalizedGroundingStatus = normalizeRecoGroundingStatus(groundingStatus);
+  if (terminalSuccess) {
+    const successStatus = normalizedGroundingStatus === 'partially_grounded'
+      ? 'partially_grounded'
+      : normalizedGroundingStatus === 'ungrounded'
+        ? 'ungrounded_success'
+        : normalizedSourceMode === 'catalog_grounded' || normalizedSourceMode === 'catalog_transient_fallback'
+          ? 'grounded_success'
+          : 'grounded_success';
+    return {
+      surface_kind: 'success',
+      surface_reason: null,
+      mainline_status: successStatus,
+      telemetry_reason: null,
+      products_empty_reason: null,
+      user_fixable: false,
+      effective_failure_class: 'none',
+      failure_origin: 'none',
+      presentation_mode: normalizedPresentationMode || 'full_llm',
+      success_mode: normalizedSuccessMode || 'full_success',
+    };
+  }
+  if (
+    origin === 'user_input' &&
+    (
+      effective === 'intent_resolution_failure'
+      || effective === 'context_resolution_failure'
+      || effective === 'no_viable_candidates_for_target'
+      || effective === 'weak_viable_pool'
+    )
+  ) {
+    return {
+      surface_kind: entryType === 'chat' ? 'clarify' : 'needs_more_context',
+      surface_reason: effective,
+      mainline_status: 'needs_more_context',
+      telemetry_reason: effective,
+      products_empty_reason: effective,
+      user_fixable: true,
+      effective_failure_class: effective,
+      failure_origin: origin,
+      presentation_mode: normalizedPresentationMode || null,
+      success_mode: normalizedSuccessMode || null,
+    };
+  }
+  const safeFailureStatus = effective === 'upstream_timeout' ? 'upstream_timeout' : 'severe_parse_or_prompt_failure';
+  const telemetryReason = effective === 'schema_invalid'
+    ? 'upstream_schema_invalid'
+    : effective || null;
+  return {
+    surface_kind: 'safe_failure',
+    surface_reason: effective || 'artifact_missing',
+    mainline_status: safeFailureStatus,
+    telemetry_reason: telemetryReason,
+    products_empty_reason: effective || 'artifact_missing',
+    user_fixable: false,
+    effective_failure_class: effective,
+    failure_origin: origin,
+    presentation_mode: normalizedPresentationMode || null,
+    success_mode: normalizedSuccessMode || null,
+  };
+}
+
 function deriveRecoEmptyReason(payload, contract) {
   const payloadObj = isPlainObject(payload) ? payload : {};
   const contractObj = isPlainObject(contract) ? contract : {};
+  const surfaceReason = pickFirstTrimmed(
+    contractObj.surface_reason,
+    payloadObj.recommendation_meta && payloadObj.recommendation_meta.surface_reason,
+  );
+  if (surfaceReason) return surfaceReason;
   const productsEmptyReason = normalizeRecoProductsEmptyReason(
     payloadObj.products_empty_reason || contractObj.products_empty_reason,
   );
@@ -23139,6 +23383,18 @@ function buildRecoMainlineContract({
   ungroundedCount = null,
   mainlineStatusOverride = null,
   promptTemplateId = null,
+  entryType = 'chat',
+  effectiveFailureClass = null,
+  failureOrigin = 'none',
+  terminalSuccess = null,
+  viablePoolStrength = null,
+  targetFidelityLevel = null,
+  presentationMode = null,
+  successMode = null,
+  preLlmSelectedCandidateCount = null,
+  finalSelectedCandidateCount = null,
+  postGuardrailCount = null,
+  surfaceReason = null,
 } = {}) {
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
@@ -23156,6 +23412,99 @@ function buildRecoMainlineContract({
     fieldMissing,
     productsEmptyReason: normalizedProductsEmptyReason,
   });
+  const normalizedEffectiveFailureClass = normalizeRecoEffectiveFailureClass(
+    effectiveFailureClass || llmFailureClass,
+  );
+  const normalizedFailureOrigin = normalizeRecoFailureOrigin(failureOrigin);
+  const normalizedPresentationMode = normalizeRecoPresentationMode(presentationMode);
+  const normalizedSuccessMode = normalizeRecoSuccessMode(successMode);
+  const normalizedViablePoolStrength = normalizeRecoViablePoolStrength(viablePoolStrength);
+  const normalizedTargetFidelityLevel = normalizeRecoTargetFidelityLevel(targetFidelityLevel);
+  const normalizedTerminalSuccess =
+    typeof terminalSuccess === 'boolean'
+      ? terminalSuccess
+      : hasRecommendations;
+  const useCentralizedFailureMapping = Boolean(
+    AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED
+      && (
+        normalizedEffectiveFailureClass
+        || normalizedPresentationMode
+        || normalizedSuccessMode
+        || normalizedViablePoolStrength
+      ),
+  );
+  if (useCentralizedFailureMapping) {
+    const outcome = resolveRecoCentralOutcome({
+      entryType,
+      effectiveFailureClass: normalizedEffectiveFailureClass || 'none',
+      failureOrigin: normalizedFailureOrigin,
+      terminalSuccess: normalizedTerminalSuccess,
+      viablePoolStrength: normalizedViablePoolStrength,
+      targetFidelityLevel: normalizedTargetFidelityLevel,
+      presentationMode: normalizedPresentationMode,
+      successMode: normalizedSuccessMode,
+      sourceMode: normalizedSourceMode,
+      groundingStatus,
+    });
+    return {
+      ok: normalizedTerminalSuccess,
+      contract_status: normalizedTerminalSuccess
+        ? 'recommendations_ready'
+        : outcome.user_fixable
+          ? 'recommendations_empty'
+          : outcome.effective_failure_class === 'prompt_contract_mismatch'
+            ? 'prompt_contract_mismatch'
+            : outcome.effective_failure_class === 'schema_invalid'
+              ? 'schema_invalid'
+              : outcome.effective_failure_class === 'upstream_timeout'
+                ? 'upstream_timeout'
+                : 'upstream_missing_or_unstructured',
+      source_mode: normalizedSourceMode,
+      source: String(source || '').trim() || null,
+      primary_failure_reason: normalizedTerminalSuccess ? null : outcome.products_empty_reason || 'artifact_missing',
+      telemetry_failure_reason: outcome.telemetry_reason || null,
+      failure_class: normalizedTerminalSuccess ? null : (outcome.effective_failure_class || null),
+      effective_failure_class: outcome.effective_failure_class || 'none',
+      failure_origin: outcome.failure_origin || 'none',
+      upstream_status: normalizedTerminalSuccess
+        ? 'ok'
+        : outcome.effective_failure_class === 'upstream_timeout'
+          ? 'timeout'
+          : outcome.effective_failure_class === 'schema_invalid'
+            ? 'schema_invalid'
+            : outcome.effective_failure_class === 'prompt_contract_mismatch'
+              ? 'prompt_contract_mismatch'
+              : outcome.effective_failure_class === 'upstream_dependency_failure'
+                ? 'upstream_dependency_failure'
+                : outcome.effective_failure_class === 'catalog_contract_invalid'
+                  ? 'catalog_contract_invalid'
+                  : 'artifact_missing',
+      mainline_status: outcome.mainline_status,
+      surface_kind: outcome.surface_kind,
+      surface_reason: pickFirstTrimmed(surfaceReason, outcome.surface_reason) || null,
+      user_fixable: outcome.user_fixable,
+      catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
+      products_empty_reason: normalizedTerminalSuccess ? null : (outcome.products_empty_reason || null),
+      grounding_status: normalizedGroundingStatus || null,
+      grounded_count: groundedCountValue,
+      ungrounded_count: ungroundedCountValue,
+      prompt_template_id: pickFirstTrimmed(promptTemplateId) || null,
+      viable_pool_strength: normalizedViablePoolStrength || null,
+      target_fidelity_level: normalizedTargetFidelityLevel || null,
+      terminal_success: normalizedTerminalSuccess,
+      presentation_mode: outcome.presentation_mode || null,
+      success_mode: outcome.success_mode || null,
+      pre_llm_selected_candidate_count: Number.isFinite(Number(preLlmSelectedCandidateCount))
+        ? Math.max(0, Math.trunc(Number(preLlmSelectedCandidateCount)))
+        : null,
+      final_selected_candidate_count: Number.isFinite(Number(finalSelectedCandidateCount))
+        ? Math.max(0, Math.trunc(Number(finalSelectedCandidateCount)))
+        : null,
+      post_guardrail_count: Number.isFinite(Number(postGuardrailCount))
+        ? Math.max(0, Math.trunc(Number(postGuardrailCount)))
+        : null,
+    };
+  }
   let normalizedTelemetryReason = normalizeRecoContractTelemetryReason(
     deriveRecoTelemetryFailureReason({
       llmFailureClass: failureClass,
@@ -23218,6 +23567,7 @@ function buildRecoMainlineContract({
     failure_class: failureClass || null,
     upstream_status: upstreamStatus,
     mainline_status: mainlineStatus,
+    surface_reason: pickFirstTrimmed(surfaceReason, normalizedProductsEmptyReason, primaryFailureReason) || null,
     catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
     products_empty_reason: normalizedProductsEmptyReason || null,
     grounding_status: normalizedGroundingStatus || null,
@@ -23245,11 +23595,24 @@ function attachRecoContractMeta(payload, contract) {
       ...(contractObj.primary_failure_reason ? { primary_failure_reason: contractObj.primary_failure_reason } : {}),
       ...(contractObj.telemetry_failure_reason ? { telemetry_failure_reason: contractObj.telemetry_failure_reason } : {}),
       ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
+      ...(contractObj.effective_failure_class ? { effective_failure_class: contractObj.effective_failure_class } : {}),
+      ...(contractObj.failure_origin ? { failure_origin: contractObj.failure_origin } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
+      ...(contractObj.surface_kind ? { surface_kind: contractObj.surface_kind } : {}),
+      ...(contractObj.surface_reason ? { surface_reason: contractObj.surface_reason } : {}),
+      ...(typeof contractObj.user_fixable === 'boolean' ? { user_fixable: contractObj.user_fixable } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
       ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
       ...(contractObj.grounding_status ? { grounding_status: contractObj.grounding_status } : {}),
+      ...(contractObj.viable_pool_strength ? { viable_pool_strength: contractObj.viable_pool_strength } : {}),
+      ...(contractObj.target_fidelity_level ? { target_fidelity_level: contractObj.target_fidelity_level } : {}),
+      ...(typeof contractObj.terminal_success === 'boolean' ? { terminal_success: contractObj.terminal_success } : {}),
+      ...(contractObj.presentation_mode ? { presentation_mode: contractObj.presentation_mode } : {}),
+      ...(contractObj.success_mode ? { success_mode: contractObj.success_mode } : {}),
+      ...(Number.isFinite(Number(contractObj.pre_llm_selected_candidate_count)) ? { pre_llm_selected_candidate_count: Number(contractObj.pre_llm_selected_candidate_count) } : {}),
+      ...(Number.isFinite(Number(contractObj.final_selected_candidate_count)) ? { final_selected_candidate_count: Number(contractObj.final_selected_candidate_count) } : {}),
+      ...(Number.isFinite(Number(contractObj.post_guardrail_count)) ? { post_guardrail_count: Number(contractObj.post_guardrail_count) } : {}),
       ...(Number.isFinite(Number(contractObj.grounded_count)) ? { grounded_count: Number(contractObj.grounded_count) } : {}),
       ...(Number.isFinite(Number(contractObj.ungrounded_count)) ? { ungrounded_count: Number(contractObj.ungrounded_count) } : {}),
       ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
@@ -24267,38 +24630,6 @@ function extractProfilePatchFromSession(session) {
     patch.travel_plan = rawProfile.travelPlan;
   }
   mergeMissingProfilePatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
-
-  const parsed = UserProfilePatchSchema.safeParse(patch);
-  if (!parsed.success) return null;
-  const clean = parsed.data;
-  return Object.keys(clean).length ? clean : null;
-}
-
-function extractAnalysisProfileContextOverlay(...sources) {
-  const patch = {};
-  const assignString = (key, value) => {
-    if (typeof value !== 'string') return;
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    patch[key] = trimmed;
-  };
-  const assignGoals = (value) => {
-    if (!Array.isArray(value)) return;
-    const goals = value
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
-      .filter(Boolean)
-      .slice(0, 12);
-    if (goals.length) patch.goals = goals;
-  };
-
-  for (const source of sources) {
-    const node = source && typeof source === 'object' && !Array.isArray(source) ? source : null;
-    if (!node) continue;
-    assignString('skinType', node.skinType);
-    assignString('sensitivity', node.sensitivity);
-    assignString('barrierStatus', node.barrierStatus);
-    assignGoals(node.goals);
-  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -43617,6 +43948,202 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   return { norm, suggestedChips };
 }
 
+function buildRecoLlmPromptState({
+  prefix = '',
+  profileSummary = null,
+  recentLogs = [],
+  requestText = '',
+  lang = 'EN',
+  globalStatus = null,
+  ingredientContext = null,
+  candidates = [],
+} = {}) {
+  const promptBundle = buildAuroraProductRecommendationsPromptBundle({
+    profile: profileSummary || {},
+    requestText,
+    lang,
+    globalStatus: isPlainObject(globalStatus) ? globalStatus : {},
+    candidates: Array.isArray(candidates) ? candidates : [],
+    ingredientContext,
+  });
+  const query = `${prefix}${promptBundle.query}`;
+  const llmTraceCoverage = buildRecoInputCoverage({
+    profileSummary,
+    recentLogs,
+    requestText,
+  });
+  const llmTraceSeed = buildRecoPromptTrace({
+    templateId: promptBundle.prompt_spec.template_id,
+    query,
+    latencyMs: null,
+    cacheHit: false,
+    provider: 'aurora',
+    model: null,
+    coverage: llmTraceCoverage,
+  });
+  llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
+  llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
+  llmTraceSeed.candidate_count = Array.isArray(candidates) ? candidates.length : 0;
+  const promptContractBase = validateRecoPromptContract({
+    query,
+    expectedTemplateId: promptBundle.prompt_spec.template_id,
+    expectedPromptHash: llmTraceSeed.prompt_hash,
+  });
+  const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
+    ? {
+      ...promptContractBase,
+      ok: false,
+      issues: Array.from(new Set([...(Array.isArray(promptContractBase.issues) ? promptContractBase.issues : []), 'forced_mismatch'])),
+    }
+    : promptContractBase;
+  return {
+    promptBundle,
+    query,
+    llmTraceSeed,
+    promptContract,
+  };
+}
+
+async function runRecoLlmPrimary({
+  ctx,
+  logger,
+  promptState,
+  profileSummary = null,
+} = {}) {
+  const state = isPlainObject(promptState) ? promptState : {};
+  const promptBundle = isPlainObject(state.promptBundle) ? state.promptBundle : { prompt_spec: {}, schema_chars: 0 };
+  const query = typeof state.query === 'string' ? state.query : '';
+  const promptContract = isPlainObject(state.promptContract) ? state.promptContract : { ok: true, issues: [] };
+  const llmTraceSeed = isPlainObject(state.llmTraceSeed) ? state.llmTraceSeed : {};
+  let upstream = null;
+  let contextMeta = {};
+  let upstreamFailureCode = '';
+  let llmFailureClass = '';
+  let llmLatencyMs = null;
+  let answerJson = null;
+  let llmStructured = null;
+  let llmStructuredSource = null;
+  let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
+  let llmInvoked = false;
+
+  if (!promptContract.ok) {
+    llmLatencyMs = 0;
+    upstreamFailureCode = 'PROMPT_CONTRACT_MISMATCH';
+    llmFailureClass = 'precheck_fail';
+    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'prompt_contract_mismatch' });
+    recordPromptContractMismatch();
+    recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
+    logger?.warn(
+      {
+        request_id: ctx?.request_id,
+        trace_id: ctx?.trace_id,
+        prompt_contract_issues: promptContract.issues,
+        expected_template_id: promptBundle.prompt_spec?.template_id,
+        actual_template_id: promptContract.template_id,
+        expected_prompt_hash: promptContract.prompt_hash_expected,
+        actual_prompt_hash: promptContract.prompt_hash_actual,
+      },
+      'aurora bff: reco prompt contract mismatch; skip upstream call',
+    );
+  } else {
+    const llmStartedAtMs = Date.now();
+    try {
+      llmInvoked = true;
+      upstream = await auroraChat({
+        baseUrl: AURORA_DECISION_BASE_URL,
+        query,
+        timeoutMs: RECO_UPSTREAM_TIMEOUT_MS,
+        trace_id: ctx?.trace_id,
+        request_id: ctx?.request_id,
+        prompt_hash: llmTraceSeed.prompt_hash,
+        prompt_template_id: llmTraceSeed.template_id,
+      });
+      llmLatencyMs = Date.now() - llmStartedAtMs;
+    } catch (err) {
+      llmLatencyMs = Date.now() - llmStartedAtMs;
+      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
+      if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
+        llmFailureClass = 'timeout';
+      }
+      if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
+        logger?.warn(
+          {
+            err: err && err.message ? err.message : String(err),
+            code: err && err.code ? err.code : null,
+            normalized_code: upstreamFailureCode || null,
+          },
+          'aurora bff: product reco upstream failed',
+        );
+      }
+    }
+
+    const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
+    const routine = contextObj ? contextObj.routine : null;
+    contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
+    if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
+      contextMeta.budget = profileSummary.budgetTier;
+    }
+    answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
+    const structuredFallback = getUpstreamStructuredOrJson(upstream);
+    llmStructured = answerJson;
+    llmStructuredSource = answerJson ? 'llm_answer_json' : null;
+    if (!llmStructured && routine) {
+      llmStructured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
+      llmStructuredSource = 'llm_context_routine';
+    }
+    if (!llmStructured) {
+      llmStructured = structuredFallback;
+      llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
+    }
+    if (
+      promptContract.ok &&
+      !llmFailureClass &&
+      llmStructured &&
+      typeof llmStructured === 'object' &&
+      !Array.isArray(llmStructured) &&
+      !Array.isArray(llmStructured.recommendations)
+    ) {
+      llmFailureClass = 'schema_invalid';
+      initialLlmOutcome = 'schema_invalid';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'schema_invalid' });
+    } else if (!llmFailureClass && llmStructured) {
+      initialLlmOutcome = 'success';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
+    } else if (!llmFailureClass && llmInvoked) {
+      initialLlmOutcome = 'empty_structured';
+      llmFailureClass = 'empty_structured';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    }
+  }
+
+  const llmTrace = {
+    ...llmTraceSeed,
+    latency_ms: llmLatencyMs,
+    cache_hit: false,
+    prompt_contract_ok: promptContract.ok,
+    ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
+    ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
+  };
+
+  return {
+    promptBundle,
+    query,
+    promptContract,
+    llmTrace,
+    upstream,
+    contextMeta,
+    upstreamFailureCode,
+    llmFailureClass,
+    llmLatencyMs,
+    answerJson,
+    llmStructured,
+    llmStructuredSource,
+    initialLlmOutcome,
+    llmInvoked,
+  };
+}
+
 async function generateProductRecommendations({
   ctx,
   profile,
@@ -43697,148 +44224,46 @@ async function generateProductRecommendations({
   let catalogTransientFallbackStructured = null;
 
   let answerJson = null;
+  let structured = null;
+  let structuredSource = null;
+  let llmStructured = null;
+  let llmStructuredSource = null;
+  let promptBundle = {
+    prompt_spec: {
+      template_id: RECO_MAIN_PROMPT_TEMPLATE_ID,
+      llm_mode: null,
+    },
+    schema_chars: 0,
+  };
+  let query = '';
+  let promptContract = { ok: true, issues: [] };
+  let llmTrace = null;
+  let llmInvoked = false;
+  let initialLlmOutcome = 'not_invoked';
+  let presentationMode = 'full_llm';
+  let nonBlockingLlmIssue = 'none';
+  let successMode = 'full_success';
+  let effectiveFailureClass = 'none';
+  let failureOrigin = 'none';
+  let preLlmSelectedCandidateCount = null;
+  let finalSelectedCandidateCount = null;
+  let postGuardrailCount = null;
   const globalStatus = {
     budget_known: Boolean(normalizeBudgetHint(profileSummary && profileSummary.budgetTier)),
     itinerary_provided: hasItineraryContextForReco(profileSummary),
     recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
   };
-  const promptBundle = buildAuroraProductRecommendationsPromptBundle({
-    profile: profileSummary || {},
-    requestText: userAsk,
-    lang: ctx.lang,
-    globalStatus,
-    candidates: catalogCandidatePool,
-    ingredientContext: normalizedIngredientContext,
-  });
-  const query = `${prefix}${promptBundle.query}`;
-  const llmTraceCoverage = buildRecoInputCoverage({
-    profileSummary,
-    recentLogs,
-    requestText: userAsk,
-  });
-  const llmTraceSeed = buildRecoPromptTrace({
-    templateId: promptBundle.prompt_spec.template_id,
-    query,
-    latencyMs: null,
-    cacheHit: false,
-    provider: 'aurora',
-    model: null,
-    coverage: llmTraceCoverage,
-  });
-  llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
-  llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
-  llmTraceSeed.candidate_count = Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0;
-  const promptContractBase = validateRecoPromptContract({
-    query,
-    expectedTemplateId: promptBundle.prompt_spec.template_id,
-    expectedPromptHash: llmTraceSeed.prompt_hash,
-  });
-  const promptContract = AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH
-    ? {
-      ...promptContractBase,
-      ok: false,
-      issues: Array.from(new Set([...(Array.isArray(promptContractBase.issues) ? promptContractBase.issues : []), 'forced_mismatch'])),
-    }
-    : promptContractBase;
+  const stepAwareCatalogFirstEnabled = Boolean(
+    AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
+      && targetContext.step_aware_intent,
+  );
 
-  let llmStructured = null;
-  let llmStructuredSource = null;
-  const llmStartedAtMs = Date.now();
-  if (!promptContract.ok) {
-    llmLatencyMs = 0;
-    upstreamFailureCode = 'PROMPT_CONTRACT_MISMATCH';
-    llmFailureClass = 'precheck_fail';
-    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'prompt_contract_mismatch' });
-    recordPromptContractMismatch();
-    recordAuroraSkinFlowMetric({ stage: 'reco_prompt_contract_mismatch', hit: true });
-    logger?.warn(
-      {
-        request_id: ctx.request_id,
-        trace_id: ctx.trace_id,
-        prompt_contract_issues: promptContract.issues,
-        expected_template_id: promptBundle.prompt_spec.template_id,
-        actual_template_id: promptContract.template_id,
-        expected_prompt_hash: promptContract.prompt_hash_expected,
-        actual_prompt_hash: promptContract.prompt_hash_actual,
-      },
-      'aurora bff: reco prompt contract mismatch; skip upstream call',
-    );
-  } else {
-    try {
-      upstream = await auroraChat({
-        baseUrl: AURORA_DECISION_BASE_URL,
-        query,
-        timeoutMs: RECO_UPSTREAM_TIMEOUT_MS,
-        trace_id: ctx.trace_id,
-        request_id: ctx.request_id,
-        prompt_hash: llmTraceSeed.prompt_hash,
-        prompt_template_id: llmTraceSeed.template_id,
-      });
-      llmLatencyMs = Date.now() - llmStartedAtMs;
-    } catch (err) {
-      llmLatencyMs = Date.now() - llmStartedAtMs;
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
-      if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
-        llmFailureClass = 'timeout';
-      }
-      if (err && err.code !== 'AURORA_NOT_CONFIGURED') {
-        logger?.warn(
-          {
-            err: err && err.message ? err.message : String(err),
-            code: err && err.code ? err.code : null,
-            normalized_code: upstreamFailureCode || null,
-          },
-          'aurora bff: product reco upstream failed',
-        );
-      }
-    }
-
-    const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
-    const routine = contextObj ? contextObj.routine : null;
-    contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
-    if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
-      contextMeta.budget = profileSummary.budgetTier;
-    }
-
-    answerJson = upstream && typeof upstream.answer === 'string' ? extractJsonObjectByKeys(upstream.answer, ['recommendations']) : null;
-    const structuredFallback = getUpstreamStructuredOrJson(upstream);
-    llmStructured = answerJson;
-    llmStructuredSource = answerJson ? 'llm_answer_json' : null;
-    if (!llmStructured && routine) {
-      llmStructured = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
-      llmStructuredSource = 'llm_context_routine';
-    }
-    if (!llmStructured) {
-      llmStructured = structuredFallback;
-      llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
-    }
-    if (
-      promptContract.ok &&
-      !llmFailureClass &&
-      llmStructured &&
-      typeof llmStructured === 'object' &&
-      !Array.isArray(llmStructured) &&
-      !Array.isArray(llmStructured.recommendations)
-    ) {
-      llmFailureClass = 'schema_invalid';
-      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'schema_invalid' });
-    }
-  }
-
-  let llmTrace = {
-    ...llmTraceSeed,
-    latency_ms: llmLatencyMs,
-    cache_hit: false,
-    prompt_contract_ok: promptContract.ok,
-    ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
-    ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
-  };
-
-  if (!llmStructured) {
+  if (stepAwareCatalogFirstEnabled) {
     const catalogOut = await buildRecoGenerateFromCatalog({
       ctx,
       profileSummary,
       ingredientContext: normalizedIngredientContext,
+      recommendationTaskContext,
       targetContext,
       debug,
       logger,
@@ -43854,38 +44279,162 @@ async function generateProductRecommendations({
     catalogCandidateState =
       catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
         ? catalogOut.candidate_pool_state
-        : null;
+        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
     catalogDebug =
       catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
         ? catalogOut.debug
         : null;
     pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
     pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
-    const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
-    catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
-      ? buildRecoCatalogTransientFallbackStructured({ ctx })
-      : null;
-  }
 
-  let structured = llmStructured || catalogStructured || catalogTransientFallbackStructured;
-  let structuredSource = llmStructured
-    ? 'llm_primary'
-    : catalogStructured
-      ? 'catalog_grounded'
-      : catalogTransientFallbackStructured
-      ? 'catalog_transient_fallback'
-        : null;
-  if (promptContract.ok && !llmFailureClass) {
-    if (catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
-      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
-    } else {
-      const llmOutcome = llmStructured ? 'success' : 'empty_structured';
-      recordAuroraRecoLlmCall({ stage: 'main', outcome: llmOutcome });
-      if (llmOutcome !== 'success') {
-        llmFailureClass = 'empty_structured';
-        llmTrace = { ...llmTrace, error_class: llmFailureClass };
+    const promptState = buildRecoLlmPromptState({
+      prefix,
+      profileSummary,
+      recentLogs,
+      requestText: userAsk,
+      lang: ctx.lang,
+      globalStatus,
+      ingredientContext: normalizedIngredientContext,
+      candidates: catalogCandidatePool,
+    });
+    promptBundle = promptState.promptBundle;
+    query = promptState.query;
+    promptContract = promptState.promptContract;
+    llmTrace = {
+      ...promptState.llmTraceSeed,
+      latency_ms: null,
+      cache_hit: false,
+      prompt_contract_ok: promptState.promptContract.ok,
+      ...(promptState.promptContract.ok ? {} : { prompt_contract_issues: promptState.promptContract.issues.slice(0, 6) }),
+    };
+
+    preLlmSelectedCandidateCount = Number.isFinite(Number(catalogCandidateState?.pre_llm_selected_candidate_count))
+      ? Math.max(0, Math.trunc(Number(catalogCandidateState.pre_llm_selected_candidate_count)))
+      : Number.isFinite(Number(catalogCandidateState?.selected_candidate_count))
+        ? Math.max(0, Math.trunc(Number(catalogCandidateState.selected_candidate_count)))
+        : 0;
+    finalSelectedCandidateCount = preLlmSelectedCandidateCount;
+    structured = catalogStructured;
+    structuredSource = catalogStructured ? 'catalog_grounded' : null;
+
+    if (preLlmSelectedCandidateCount > 0 && catalogCandidateState?.terminal_success === true) {
+      const llmPrimary = await runRecoLlmPrimary({
+        ctx,
+        logger,
+        promptState,
+        profileSummary,
+      });
+      upstream = llmPrimary.upstream;
+      contextMeta = llmPrimary.contextMeta;
+      upstreamFailureCode = llmPrimary.upstreamFailureCode;
+      llmFailureClass = llmPrimary.llmFailureClass;
+      llmLatencyMs = llmPrimary.llmLatencyMs;
+      answerJson = llmPrimary.answerJson;
+      llmStructured = llmPrimary.llmStructured;
+      llmStructuredSource = llmPrimary.llmStructuredSource;
+      llmTrace = llmPrimary.llmTrace;
+      llmInvoked = llmPrimary.llmInvoked;
+      initialLlmOutcome = llmPrimary.initialLlmOutcome;
+      if (initialLlmOutcome === 'success') {
+        presentationMode = 'full_llm';
+        successMode = 'full_success';
+      } else {
+        presentationMode = 'deterministic_degraded';
+        successMode = 'degraded_success';
+        nonBlockingLlmIssue = String(initialLlmOutcome || '').trim().toLowerCase() || 'empty_structured';
+        llmFailureClass = '';
       }
+    } else {
+      presentationMode = '';
+      successMode = '';
     }
+    const failureSignals = resolveRecoEffectiveFailure({
+      targetContext,
+      viablePoolState: catalogCandidateState,
+      catalogDebug,
+    });
+    effectiveFailureClass = failureSignals.effective_failure_class || 'none';
+    failureOrigin = failureSignals.failure_origin || 'none';
+  } else {
+    const promptState = buildRecoLlmPromptState({
+      prefix,
+      profileSummary,
+      recentLogs,
+      requestText: userAsk,
+      lang: ctx.lang,
+      globalStatus,
+      ingredientContext: normalizedIngredientContext,
+      candidates: catalogCandidatePool,
+    });
+    promptBundle = promptState.promptBundle;
+    query = promptState.query;
+    promptContract = promptState.promptContract;
+    const llmPrimary = await runRecoLlmPrimary({
+      ctx,
+      logger,
+      promptState,
+      profileSummary,
+    });
+    upstream = llmPrimary.upstream;
+    contextMeta = llmPrimary.contextMeta;
+    upstreamFailureCode = llmPrimary.upstreamFailureCode;
+    llmFailureClass = llmPrimary.llmFailureClass;
+    llmLatencyMs = llmPrimary.llmLatencyMs;
+    answerJson = llmPrimary.answerJson;
+    llmStructured = llmPrimary.llmStructured;
+    llmStructuredSource = llmPrimary.llmStructuredSource;
+    llmTrace = llmPrimary.llmTrace;
+    llmInvoked = llmPrimary.llmInvoked;
+    initialLlmOutcome = llmPrimary.initialLlmOutcome;
+    if (!llmStructured) {
+      const catalogOut = await buildRecoGenerateFromCatalog({
+        ctx,
+        profileSummary,
+        ingredientContext: normalizedIngredientContext,
+        recommendationTaskContext,
+        targetContext,
+        debug,
+        logger,
+      });
+      catalogStructured =
+        catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
+          ? catalogOut.structured
+          : null;
+      catalogCandidatePool =
+        catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
+          ? catalogOut.candidate_pool
+          : [];
+      catalogCandidateState =
+        catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
+          ? catalogOut.candidate_pool_state
+          : null;
+      catalogDebug =
+        catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
+          ? catalogOut.debug
+          : null;
+      pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
+      pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
+      const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
+      catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
+        ? buildRecoCatalogTransientFallbackStructured({ ctx })
+        : null;
+    }
+    structured = llmStructured || catalogStructured || catalogTransientFallbackStructured;
+    structuredSource = llmStructured
+      ? 'llm_primary'
+      : catalogStructured
+        ? 'catalog_grounded'
+        : catalogTransientFallbackStructured
+          ? 'catalog_transient_fallback'
+          : null;
+  if (!stepAwareCatalogFirstEnabled && promptContract.ok && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
+    if (llmFailureClass === 'empty_structured' && isPlainObject(llmTrace)) {
+      const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
+      llmTrace = nextTrace;
+    }
+    llmFailureClass = '';
+    recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
+  }
   }
 
   const upstreamDebug = debug
@@ -43937,13 +44486,18 @@ async function generateProductRecommendations({
       ingredient_context: normalizedIngredientContext || null,
       llm_structured_source: llmStructuredSource,
       llm_failure_class: llmFailureClass || null,
+      llm_invoked: llmInvoked,
+      initial_llm_outcome: initialLlmOutcome,
+      presentation_mode: presentationMode,
+      success_mode: successMode,
+      non_blocking_llm_issue: nonBlockingLlmIssue !== 'none' ? nonBlockingLlmIssue : null,
       llm_prompt_trace: llmTrace,
       llm_prompt_query_chars: typeof query === 'string' ? query.length : 0,
       llm_prompt_template_id: promptBundle.prompt_spec.template_id,
       llm_prompt_schema_chars: Number(promptBundle.schema_chars || 0),
       llm_prompt_mode: promptBundle.prompt_spec.llm_mode,
       llm_skipped_reason:
-        !llmStructured && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0
+        !llmInvoked && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0
           ? 'catalog_grounded_primary'
           : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
@@ -43958,8 +44512,15 @@ async function generateProductRecommendations({
       same_family_viable_count: Number(catalogDebug?.same_family_viable_count || 0),
       soft_mismatch_count: Number(catalogDebug?.soft_mismatch_count || 0),
       hard_reject_count: Number(catalogDebug?.hard_reject_count || 0),
+      pre_llm_selected_candidate_count: Number(catalogCandidateState?.pre_llm_selected_candidate_count || 0),
       weak_viable_pool: Boolean(catalogDebug?.weak_viable_pool),
+      viable_pool_strength: pickFirstTrimmed(catalogCandidateState?.viable_pool_strength) || null,
+      target_fidelity_level: pickFirstTrimmed(catalogCandidateState?.target_fidelity_level) || null,
+      reco_policy_version: pickFirstTrimmed(catalogCandidateState?.reco_policy_version, RECOMMENDATION_RECO_POLICY_V1) || null,
+      same_family_success_threshold_met: Boolean(catalogCandidateState?.same_family_success_threshold_met),
       overall_target_fidelity_satisfied: Boolean(catalogDebug?.overall_target_fidelity_satisfied),
+      effective_failure_class: effectiveFailureClass || null,
+      failure_origin: failureOrigin || null,
       analysis_context_usage: {
         snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
         snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
@@ -44000,8 +44561,15 @@ async function generateProductRecommendations({
     ? catalogCandidateState
     : finalizeRecommendationCandidatePools(
         Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
-        { targetContext },
+        { targetContext, recoContext: recommendationTaskContext },
       );
+  if (!Number.isFinite(Number(preLlmSelectedCandidateCount))) {
+    preLlmSelectedCandidateCount = Number.isFinite(Number(viablePoolState.pre_llm_selected_candidate_count))
+      ? Math.max(0, Math.trunc(Number(viablePoolState.pre_llm_selected_candidate_count)))
+      : Number.isFinite(Number(viablePoolState.selected_candidate_count))
+        ? Math.max(0, Math.trunc(Number(viablePoolState.selected_candidate_count)))
+        : 0;
+  }
   if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
@@ -44289,6 +44857,21 @@ async function generateProductRecommendations({
     },
   };
   const finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
+  finalSelectedCandidateCount = finalRecommendations.length;
+  postGuardrailCount = finalSelectedCandidateCount;
+  if (stepAwareCatalogFirstEnabled) {
+    const failureSignals = resolveRecoEffectiveFailure({
+      targetContext,
+      viablePoolState: {
+        ...viablePoolState,
+        final_selected_candidate_count: finalSelectedCandidateCount,
+      },
+      catalogDebug,
+      postGuardrailCount,
+    });
+    effectiveFailureClass = failureSignals.effective_failure_class || 'none';
+    failureOrigin = failureSignals.failure_origin || 'none';
+  }
   const sourceMode = finalRecommendations.length > 0
     ? structuredSource === 'llm_primary'
     ? 'llm_primary'
@@ -44332,7 +44915,19 @@ async function generateProductRecommendations({
     upstreamDebug.grounded_count = effectiveGroundedCount;
     upstreamDebug.ungrounded_count = effectiveUngroundedCount;
     upstreamDebug.prompt_template_id = promptBundle.prompt_spec.template_id;
+    upstreamDebug.final_selected_candidate_count = finalSelectedCandidateCount;
+    upstreamDebug.post_guardrail_count = postGuardrailCount;
+    upstreamDebug.effective_failure_class = effectiveFailureClass || null;
+    upstreamDebug.failure_origin = failureOrigin || null;
   }
+  const terminalSuccess = finalRecommendations.length > 0
+    && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
+  const normalizedViablePoolStrength =
+    normalizeRecoViablePoolStrength(viablePoolState?.viable_pool_strength)
+    || (terminalSuccess ? 'strong' : finalRecommendations.length > 0 ? 'weak' : 'empty');
+  const normalizedTargetFidelityLevel =
+    normalizeRecoTargetFidelityLevel(viablePoolState?.target_fidelity_level)
+    || (Boolean(viablePoolState?.overall_target_fidelity_satisfied) ? 'satisfied' : finalRecommendations.length > 0 ? 'partial' : 'failed');
   let nextPayload = {
     ...norm.payload,
     source: sourceMode === 'llm_primary'
@@ -44353,7 +44948,16 @@ async function generateProductRecommendations({
       prompt_contract_ok: promptContract.ok,
       primary_failure_reason: primaryFailureReason || null,
       telemetry_failure_reason: telemetryFailureReason || null,
-      failure_class: llmFailureClass || null,
+      failure_class:
+        AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') !== 'none'
+          ? effectiveFailureClass
+          : llmFailureClass || null,
+      ...(stepAwareCatalogFirstEnabled
+        ? {
+          effective_failure_class: normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') || 'none',
+          failure_origin: normalizeRecoFailureOrigin(failureOrigin || 'none'),
+        }
+        : {}),
       contract_status: contractStatus,
       catalog_skip_reason: catalogSkipReason,
       upstream_failure_code: upstreamFailureCode || null,
@@ -44378,13 +44982,36 @@ async function generateProductRecommendations({
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
       candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
       group_semantics_version: GROUP_SEMANTICS_VERSION,
+      ...(stepAwareCatalogFirstEnabled
+        ? { reco_policy_version: pickFirstTrimmed(viablePoolState.reco_policy_version, RECOMMENDATION_RECO_POLICY_V1) || null }
+        : {}),
       raw_candidate_count: Number(viablePoolState.raw_candidate_count || 0),
       viable_candidate_count: Number(viablePoolState.viable_candidate_count || 0),
       exact_step_viable_count: Number(viablePoolState.exact_step_viable_count || 0),
       same_family_viable_count: Number(viablePoolState.same_family_viable_count || 0),
       soft_mismatch_count: Number(viablePoolState.soft_mismatch_count || 0),
       hard_reject_count: Number(viablePoolState.hard_reject_count || 0),
+      ...(stepAwareCatalogFirstEnabled
+        ? {
+          pre_llm_selected_candidate_count: Number(preLlmSelectedCandidateCount || 0),
+          final_selected_candidate_count: Number(finalSelectedCandidateCount || 0),
+          post_guardrail_count: Number(postGuardrailCount || 0),
+        }
+        : {}),
       selected_candidate_count: Number(viablePoolState.selected_candidate_count || 0),
+      ...(stepAwareCatalogFirstEnabled
+        ? {
+          llm_invoked: llmInvoked,
+          initial_llm_outcome: initialLlmOutcome,
+          ...(presentationMode ? { presentation_mode: presentationMode } : {}),
+          ...(successMode ? { success_mode: successMode } : {}),
+          ...(nonBlockingLlmIssue !== 'none' ? { non_blocking_llm_issue: nonBlockingLlmIssue } : {}),
+          terminal_success: terminalSuccess,
+          viable_pool_strength: normalizedViablePoolStrength,
+          target_fidelity_level: normalizedTargetFidelityLevel,
+          same_family_success_threshold_met: Boolean(viablePoolState.same_family_success_threshold_met),
+        }
+        : {}),
       overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
       weak_viable_pool: Boolean(viablePoolState.weak_viable_pool),
       candidate_pool_signature: viablePoolState.candidate_pool_signature,
@@ -44394,7 +45021,10 @@ async function generateProductRecommendations({
     recommendations: nextPayload.recommendations,
     sourceMode,
     source: nextPayload.source,
-    llmFailureClass,
+    llmFailureClass:
+      AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') !== 'none'
+        ? effectiveFailureClass
+        : llmFailureClass,
     upstreamFailureCode,
     promptContractOk: promptContract.ok,
     fieldMissing: norm.field_missing,
@@ -44406,6 +45036,17 @@ async function generateProductRecommendations({
     ungroundedCount: effectiveUngroundedCount,
     mainlineStatusOverride: mainlineStatus,
     promptTemplateId: promptBundle.prompt_spec.template_id,
+    entryType,
+    effectiveFailureClass,
+    failureOrigin,
+    terminalSuccess,
+    viablePoolStrength: normalizedViablePoolStrength,
+    targetFidelityLevel: normalizedTargetFidelityLevel,
+    presentationMode,
+    successMode,
+    preLlmSelectedCandidateCount,
+    finalSelectedCandidateCount,
+    postGuardrailCount,
   });
   const warningContract = applyRecoWarningVisibilityContract(nextPayload);
   nextPayload = {
@@ -49585,35 +50226,22 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
 	      const identity = await resolveIdentity(req, ctx);
-	      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
 	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-        const requestProfileOverlay = extractAnalysisProfileContextOverlay(
-          extractProfilePatchFromSession(parsed.data.session),
-          extractProfilePatchFromRequestContextPayload(req.body || {}),
-        );
-        const requestProfileOverlayKeys =
-          requestProfileOverlay && typeof requestProfileOverlay === 'object'
-            ? Object.keys(requestProfileOverlay).sort()
-            : [];
-        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
-        const sessionForReadback =
-          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
-            ? parsed.data.session
-            : null;
-        const artifactReadback = await resolveArtifactBackedSnapshotForRoute({
-          identity,
-          session: sessionForReadback,
-          profile: storedProfile,
-          recentLogs,
-          ctx,
-          logger,
-          allowRequestSnapshot: true,
-        });
-	      const analysisContextSnapshot = artifactReadback.analysis_context_snapshot;
-        const profile =
-          requestProfileOverlay && typeof requestProfileOverlay === 'object'
-            ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
-            : storedProfile;
+	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
+	        identity,
+	        session:
+	          parsed.data.session && typeof parsed.data.session === 'object' && !Array.isArray(parsed.data.session)
+	            ? parsed.data.session
+	            : null,
+	        ctx,
+	        logger,
+	      });
+	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
+	        latestArtifact,
+	        profile,
+	        recentLogs,
+	      });
 	      const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
@@ -49645,132 +50273,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         constraints: parsed.data.constraints || {},
         lang: ctx.lang,
       });
-      const sharedReco = await runRecommendationSharedStack({
+	      const upstreamReco = await generateProductRecommendations({
+	        ctx,
+	        profile,
+	        recentLogs,
+	        message: requestText,
+	        focus: parsed.data.focus,
+	        analysisContextSnapshot,
+        requestOverride: extractProfilePatchFromSession(parsed.data.session),
+        includeAlternatives: false,
+        logger,
+        recoTriggerSource: 'goal_driven',
         entryType: 'direct',
-        message: requestText,
-        directRequest: parsed.data,
-        profile,
-        recentLogs,
-        analysisContextSnapshot,
-        requestOverride: requestProfileOverlay,
-        contextUsageOverrides: {
-          artifact_readback_source: artifactReadback.artifact_readback_source,
-          artifact_readback_hit: artifactReadback.artifact_readback_hit,
-        },
-        coreRunner: (coreInput) => generateProductRecommendations(coreInput),
-        coreInput: {
-          ctx,
-          profile,
-          recentLogs,
-          message: requestText,
-          analysisContextSnapshot,
-          requestOverride: requestProfileOverlay,
-          includeAlternatives: parsed.data.include_alternatives === true,
-          logger,
-          recoTriggerSource: 'goal_driven',
-        },
       });
-      if (sharedReco.needs_more_context) {
-        const recommendationAnalysisContextMeta = {
-          ...(isPlainObject(sharedReco.request_context && sharedReco.request_context.context_usage)
-            ? sharedReco.request_context.context_usage
-            : {}),
-          request_context_signature: sharedReco.request_context && sharedReco.request_context.request_context_signature
-            ? sharedReco.request_context.request_context_signature
-            : null,
-          request_context_signature_version: sharedReco.request_context && sharedReco.request_context.request_context_signature_version
-            ? sharedReco.request_context.request_context_signature_version
-            : null,
-          candidate_pool_signature: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature
-            ? sharedReco.candidate_pool.candidate_pool_signature
-            : null,
-          candidate_pool_signature_version: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature_version
-            ? sharedReco.candidate_pool.candidate_pool_signature_version
-            : null,
-          strictness_source: pickFirstTrimmed(
-            sharedReco.request_context && sharedReco.request_context.strictness_source,
-            sharedReco.core_result && sharedReco.core_result.debug_meta && sharedReco.core_result.debug_meta.strictness_source,
-            'entry_default',
-          ),
-        };
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: null,
-          suggested_chips: gateAdvisoryChips.length ? gateAdvisoryChips : buildRecoEntryChips(ctx.lang),
-          cards: [
-            {
-              card_id: `conf_${ctx.request_id}_needs_more_context`,
-              type: 'confidence_notice',
-              payload: buildConfidenceNoticeCardPayload({
-                language: ctx.lang,
-                reason: 'default',
-                confidence: {
-                  score: 0.3,
-                  level: 'low',
-                  rationale: ['minimum_recommendation_context_unsatisfied'],
-                },
-                actions: ['refine_profile'],
-                details: Array.isArray(sharedReco.core_result && sharedReco.core_result.missing_context)
-                  ? sharedReco.core_result.missing_context
-                  : [],
-              }),
-            },
-            ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
-          ],
-          session_patch: {
-            meta: {
-              profile_context_source: requestProfileContextSource,
-              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
-              analysis_context_usage: recommendationAnalysisContextMeta,
-              recommendation_state: {
-                needs_more_context: true,
-                missing_context: Array.isArray(sharedReco.core_result && sharedReco.core_result.missing_context)
-                  ? sharedReco.core_result.missing_context
-                  : [],
-                fallback_mode: pickFirstTrimmed(sharedReco.core_result && sharedReco.core_result.fallback_mode) || null,
-                mainline_status: 'needs_more_context',
-                request_context_signature: sharedReco.request_context && sharedReco.request_context.request_context_signature
-                  ? sharedReco.request_context.request_context_signature
-                  : null,
-                request_context_signature_version: sharedReco.request_context && sharedReco.request_context.request_context_signature_version
-                  ? sharedReco.request_context.request_context_signature_version
-                  : null,
-                candidate_pool_signature: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature
-                  ? sharedReco.candidate_pool.candidate_pool_signature
-                  : null,
-                candidate_pool_signature_version: sharedReco.candidate_pool && sharedReco.candidate_pool.candidate_pool_signature_version
-                  ? sharedReco.candidate_pool.candidate_pool_signature_version
-                  : null,
-                strictness_source: recommendationAnalysisContextMeta.strictness_source,
-              },
-            },
-          },
-          events: applyRecoContractToRecoRequestedEvents([], {
-            source_mode: 'needs_more_context',
-            source: 'needs_more_context',
-            failure_class: null,
-            telemetry_failure_reason: pickFirstTrimmed(sharedReco.core_result && sharedReco.core_result.fallback_mode, 'needs_more_context'),
-            catalog_skip_reason: null,
-            products_empty_reason: 'needs_more_context',
-            grounding_status: null,
-            grounded_count: 0,
-            ungrounded_count: 0,
-            mainline_status: 'needs_more_context',
-            prompt_template_id: null,
-          }, {
-            ctx: { ...ctx, trigger_source: 'action' },
-            emitIfMissing: true,
-            eventData: buildRecoRequestedEventData({
-              explicit: true,
-              payload: null,
-              source: 'needs_more_context',
-              failureClass: null,
-              reason: 'needs_more_context',
-            }),
-          }).events,
-        });
-        return res.json(envelope);
-      }
-	      const upstreamReco = sharedReco && sharedReco.raw ? sharedReco.raw : null;
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
         : normalizeRecoGenerate(null);
@@ -49793,6 +50308,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungroundedCount: norm?.payload?.ungrounded_count || norm?.payload?.recommendation_meta?.ungrounded_count,
             mainlineStatusOverride: norm?.payload?.mainline_status || norm?.payload?.recommendation_meta?.mainline_status,
             promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
+            entryType: 'direct',
+            ...extractRecoOutcomeContractArgsFromPayload(norm?.payload, upstreamReco?.contract),
           });
       if (parsed.data.include_alternatives) {
         try {
@@ -49844,6 +50361,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         ungroundedCount: payload?.ungrounded_count || payload?.recommendation_meta?.ungrounded_count,
         mainlineStatusOverride: payload?.mainline_status || payload?.recommendation_meta?.mainline_status,
         promptTemplateId: payload?.recommendation_meta?.prompt_template_id,
+        entryType: 'direct',
+        ...extractRecoOutcomeContractArgsFromPayload(payload, baseContract),
       });
       finalDirectContract.mainline_status = pickFirstTrimmed(
         payload?.mainline_status,
@@ -49895,28 +50414,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungroundedCount: payload?.ungrounded_count || payload?.recommendation_meta?.ungrounded_count,
             mainlineStatusOverride: payload?.mainline_status || payload?.recommendation_meta?.mainline_status,
             promptTemplateId: payload?.prompt_template_id || payload?.recommendation_meta?.prompt_template_id,
+            entryType: 'direct',
+            ...extractRecoOutcomeContractArgsFromPayload(payload, finalDirectContract),
           }),
         );
       }
       const directNoRecoReason = pickFirstTrimmed(
+        finalDirectContract.surface_reason,
+        payload?.recommendation_meta?.surface_reason,
         finalDirectContract.products_empty_reason,
         payload?.products_empty_reason,
         deriveRecoEmptyReason(payload, finalDirectContract),
       );
       const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
-        const recommendationAnalysisContextMeta =
-          upstreamReco &&
-          upstreamReco.upstreamDebug &&
-          isPlainObject(upstreamReco.upstreamDebug.analysis_context_usage)
-            ? upstreamReco.upstreamDebug.analysis_context_usage
-            : isPlainObject(payload?.recommendation_meta?.analysis_context_usage)
-              ? payload.recommendation_meta.analysis_context_usage
-              : null;
-	      const envelope = buildEnvelope(ctx, {
-	        assistant_message: null,
-	        suggested_chips: suggestedChips,
-	        cards: [
+      const envelope = buildEnvelope(ctx, {
+        assistant_message: null,
+        suggested_chips: suggestedChips,
+        cards: [
           {
             card_id: `reco_${ctx.request_id}`,
             type: 'recommendations',
@@ -49982,6 +50497,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       const guardedRecommendations = Array.isArray(guardedRecoCard && guardedRecoCard.payload && guardedRecoCard.payload.recommendations)
         ? guardedRecoCard.payload.recommendations
         : [];
+      if (isPlainObject(guardedRecoCard?.payload)) {
+        const guardedMeta = isPlainObject(guardedRecoCard.payload.recommendation_meta) ? guardedRecoCard.payload.recommendation_meta : {};
+        guardedRecoCard.payload.recommendation_meta = {
+          ...guardedMeta,
+          final_selected_candidate_count: guardedRecommendations.length,
+          post_guardrail_count: guardedRecommendations.length,
+        };
+      }
       const hasGuardedRecommendations = guardedRecommendations.length > 0;
       const finalContract = buildRecoMainlineContract({
         recommendations: guardedRecommendations,
@@ -49999,6 +50522,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         ungroundedCount: guardedRecoCard?.payload?.ungrounded_count || guardedRecoCard?.payload?.recommendation_meta?.ungrounded_count,
         mainlineStatusOverride: guardedRecoCard?.payload?.mainline_status || guardedRecoCard?.payload?.recommendation_meta?.mainline_status,
         promptTemplateId: guardedRecoCard?.payload?.prompt_template_id || guardedRecoCard?.payload?.recommendation_meta?.prompt_template_id,
+        entryType: 'direct',
+        ...extractRecoOutcomeContractArgsFromPayload(guardedRecoCard?.payload, baseContract),
       });
       finalContract.mainline_status = pickFirstTrimmed(
         guardedRecoCard?.payload?.mainline_status,
@@ -50050,6 +50575,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungroundedCount: guardedRecoCard.payload?.ungrounded_count || guardedRecoCard.payload?.recommendation_meta?.ungrounded_count,
             mainlineStatusOverride: guardedRecoCard.payload?.mainline_status || guardedRecoCard.payload?.recommendation_meta?.mainline_status,
             promptTemplateId: guardedRecoCard.payload?.prompt_template_id || guardedRecoCard.payload?.recommendation_meta?.prompt_template_id,
+            entryType: 'direct',
+            ...extractRecoOutcomeContractArgsFromPayload(guardedRecoCard.payload, finalContract),
           }),
         );
       }
@@ -52320,7 +52847,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recommendationReady = false;
         let latestArtifactId = null;
         let artifactGate = null;
-        let artifactPersistence = null;
         if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
           try {
             const artifactCandidate = buildDiagnosisArtifactV1({
@@ -52349,18 +52875,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
                 }
               : artifactCandidate;
-            artifactPersistence = savedArtifact
-              ? {
-                  persisted: savedArtifact.persisted === true,
-                  storage_mode: savedArtifact.storage_mode || (savedArtifact.persisted === true ? 'db' : 'response_only'),
-                  persistence_error_code: savedArtifact.persistence_error_code || null,
-                  artifact_id: savedArtifact.artifact_id || null,
-                }
-              : null;
             logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
             recordAuroraSkinFlowMetric({ stage: 'artifact_created', hit: Boolean(diagnosisArtifact) });
-            logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_persisted_rate', value: artifactPersistence && artifactPersistence.persisted ? 1 : 0 }, 'metric');
-            recordAuroraSkinFlowMetric({ stage: 'artifact_persisted', hit: Boolean(artifactPersistence && artifactPersistence.persisted) });
             latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
               ? String(diagnosisArtifact.artifact_id).trim()
               : null;
@@ -52426,12 +52942,6 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : analysis,
             });
           } catch (err) {
-            artifactPersistence = {
-              persisted: false,
-              storage_mode: 'response_only',
-              persistence_error_code: err && err.code ? err.code : 'ARTIFACT_BUILD_FAILED',
-              artifact_id: latestArtifactId || null,
-            };
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: diagnosis artifact/plan generation failed',
@@ -52612,7 +53122,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
-            ...(artifactPersistence ? { artifact_persistence: artifactPersistence } : {}),
             routine_analysis_v2: {
               ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
               profile_context_source: requestProfileContextSource,
@@ -52625,12 +53134,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             analysis_context_snapshot: analysisContextSnapshot,
-            ...(artifactPersistence ? { artifact_persistence: artifactPersistence } : {}),
-          };
-        } else if (artifactPersistence) {
-          sessionPatch.meta = {
-            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
-            artifact_persistence: artifactPersistence,
           };
         }
 
@@ -53544,16 +54047,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-        const artifactReadback = await resolveArtifactBackedSnapshotForRoute({
-          identity,
-          session: null,
-          profile,
-          recentLogs,
-          ctx,
-          logger,
-          allowRequestSnapshot: false,
-        });
-        latestArtifact = artifactReadback.latest_artifact;
+        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
       } catch (err) {
         dbError = err;
       }
@@ -60117,6 +60611,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungroundedCount: norm?.payload?.ungrounded_count || norm?.payload?.recommendation_meta?.ungrounded_count,
             mainlineStatusOverride: norm?.payload?.mainline_status || norm?.payload?.recommendation_meta?.mainline_status,
             promptTemplateId: norm?.payload?.recommendation_meta?.prompt_template_id,
+            entryType: 'chat',
+            ...extractRecoOutcomeContractArgsFromPayload(norm?.payload, upstreamReco?.contract),
           });
         }
         if (!recoMainlineStatus && isPlainObject(norm?.payload?.recommendation_meta)) {
@@ -60419,6 +60915,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
           payload.source = String(payload.source || '').trim() || recoSource;
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+          const payloadOutcomeArgs = extractRecoOutcomeContractArgsFromPayload(payload, recoContract);
           const derivedSourceMode = pickFirstTrimmed(
             metaExisting.source_mode,
             matcherFallbackUsed
@@ -60440,13 +60937,23 @@ function mountAuroraBffRoutes(app, { logger }) {
             used_safety_flags: lowConfidenceArtifact,
             primary_failure_reason: payloadHasRecs ? null : 'artifact_missing',
             telemetry_failure_reason: recoTelemetryFailureReason || null,
-            failure_class: llmFailureClass || null,
+            failure_class: llmFailureClass || metaExisting.failure_class || recoContract?.failure_class || null,
+            effective_failure_class: payloadOutcomeArgs.effectiveFailureClass || metaExisting.effective_failure_class || 'none',
+            failure_origin: payloadOutcomeArgs.failureOrigin || metaExisting.failure_origin || 'none',
             catalog_skip_reason: recoCatalogSkipReason || null,
             upstream_failure_code: upstreamFailureCode || null,
             mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
             grounding_status: pickFirstTrimmed(payload.grounding_status, metaExisting.grounding_status) || null,
             grounded_count: Number.isFinite(Number(payload.grounded_count)) ? Number(payload.grounded_count) : Number(metaExisting.grounded_count || 0) || 0,
             ungrounded_count: Number.isFinite(Number(payload.ungrounded_count)) ? Number(payload.ungrounded_count) : Number(metaExisting.ungrounded_count || 0) || 0,
+            ...(payloadOutcomeArgs.viablePoolStrength ? { viable_pool_strength: payloadOutcomeArgs.viablePoolStrength } : {}),
+            ...(payloadOutcomeArgs.targetFidelityLevel ? { target_fidelity_level: payloadOutcomeArgs.targetFidelityLevel } : {}),
+            ...(typeof payloadOutcomeArgs.terminalSuccess === 'boolean' ? { terminal_success: payloadOutcomeArgs.terminalSuccess } : {}),
+            ...(payloadOutcomeArgs.presentationMode ? { presentation_mode: payloadOutcomeArgs.presentationMode } : {}),
+            ...(payloadOutcomeArgs.successMode ? { success_mode: payloadOutcomeArgs.successMode } : {}),
+            ...(Number.isFinite(Number(payloadOutcomeArgs.preLlmSelectedCandidateCount)) ? { pre_llm_selected_candidate_count: Number(payloadOutcomeArgs.preLlmSelectedCandidateCount) } : {}),
+            ...(Number.isFinite(Number(payloadOutcomeArgs.finalSelectedCandidateCount)) ? { final_selected_candidate_count: Number(payloadOutcomeArgs.finalSelectedCandidateCount) } : {}),
+            ...(Number.isFinite(Number(payloadOutcomeArgs.postGuardrailCount)) ? { post_guardrail_count: Number(payloadOutcomeArgs.postGuardrailCount) } : {}),
             prompt_template_id: pickFirstTrimmed(
               payload.prompt_template_id,
               recoMetaPromptTemplateId,
@@ -60477,6 +60984,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
             mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
             promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            entryType: 'chat',
+            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
           });
           finalRecoContract.mainline_status = pickFirstTrimmed(
             payload.mainline_status,
@@ -60525,6 +61034,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
               mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
               promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+              entryType: 'chat',
+              ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
             });
             Object.assign(payload, attachRecoContractMeta(payload, recoContract));
           }
@@ -62276,8 +62787,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 const __internal = {
   resolveIdentity,
-  getProfileForIdentity,
-  getRecentSkinLogsForIdentity,
   normalizeClarificationField,
   detectBrandAvailabilityIntent,
   detectCatalogAvailabilityIntent,
@@ -62439,7 +62948,6 @@ const __internal = {
   buildDeepDiveAssistantText,
   buildAnalysisDeepDiveContentWithLlm,
   loadLatestDiagnosisArtifactForRoute,
-  resolveArtifactBackedSnapshotForRoute,
   buildAnalysisFollowupContent,
   fetchRecoAlternativesForProduct,
   extractProfilePatchFromRoutinePayload,

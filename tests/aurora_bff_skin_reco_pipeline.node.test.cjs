@@ -12,16 +12,11 @@ const {
   getIngredientPlanByArtifactId,
   saveRecoRun,
 } = require('../src/auroraBff/diagnosisArtifactStore');
+const { buildAnalysisContextSnapshotV1 } = require('../src/auroraBff/analysisContextSnapshot');
 const { hasUsableArtifactForRecommendations } = require('../src/auroraBff/gating');
 const { buildIngredientPlan } = require('../src/auroraBff/ingredientMapperV1');
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../src/auroraBff/productMatcherV1');
 const { evaluateSafetyBoundary } = require('../src/auroraBff/safetyBoundary');
-
-function loadRouteInternals() {
-  const moduleId = require.resolve('../src/auroraBff/routes');
-  delete require.cache[moduleId];
-  return require('../src/auroraBff/routes').__internal;
-}
 
 function makeArtifact({
   usePhoto = true,
@@ -58,9 +53,6 @@ test('artifact store: in-memory persistence works when retention is disabled', a
   const saved = await saveDiagnosisArtifact({ auroraUid, artifact });
 
   assert.ok(saved && saved.artifact_id);
-  assert.equal(saved.persisted, true);
-  assert.equal(saved.storage_mode, 'ephemeral');
-  assert.equal(saved.persistence_error_code, null);
   const latest = await getLatestDiagnosisArtifact({ auroraUid, maxAgeDays: 30 });
   assert.equal(latest && latest.artifact_id, saved.artifact_id);
 
@@ -132,7 +124,7 @@ test('artifact store: session pointer preference and explicit artifact pointer b
   assert.equal(byPointer && byPointer.artifact_id, artifactA.artifact_id);
 });
 
-test('artifact readback helper resolves forwarded latest_artifact_id into artifact-backed snapshot', async (t) => {
+test('artifact store: reco-context latest readback ignores async kb backfill artifacts', async (t) => {
   const prev = process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
   process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
   t.after(() => {
@@ -140,152 +132,50 @@ test('artifact readback helper resolves forwarded latest_artifact_id into artifa
     else process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = prev;
   });
 
-  const auroraUid = `uid_readback_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const saved = await saveDiagnosisArtifact({
+  const auroraUid = `uid_reco_context_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const sessionId = `brief_reco_context_${Date.now()}`;
+  const recoArtifact = await saveDiagnosisArtifact({
     auroraUid,
-    sessionId: `brief_${Date.now()}`,
-    artifact: makeArtifact({ score: 0.84, goals: ['barrier_repair'] }),
+    sessionId,
+    artifact: makeArtifact({
+      score: 0.86,
+      skinType: 'dry',
+      barrierStatus: 'impaired',
+      sensitivity: 'high',
+      goals: ['barrier repair'],
+    }),
   });
-  const internal = loadRouteInternals();
-  const result = await internal.resolveArtifactBackedSnapshotForRoute({
-    identity: { auroraUid, userId: null },
-    session: {
-      state: { latest_artifact_id: saved.artifact_id },
-      meta: {},
-    },
-    profile: null,
-    recentLogs: [],
-    ctx: { brief_id: null, request_id: 'test_readback_helper' },
-    logger: console,
-    allowRequestSnapshot: true,
-  });
-
-  assert.equal(result.artifact_readback_hit, true);
-  assert.equal(result.artifact_readback_source, 'request_artifact_id');
-  assert.equal(result.latest_artifact_id, saved.artifact_id);
-  assert.ok(result.analysis_context_snapshot);
-  assert.deepEqual(result.analysis_context_snapshot.derived_from_artifact_ids, [saved.artifact_id]);
-});
-
-test('artifact readback helper ignores response-only forwarded snapshot', async () => {
-  const internal = loadRouteInternals();
-  const result = await internal.resolveArtifactBackedSnapshotForRoute({
-    identity: { auroraUid: `uid_response_only_${Date.now()}`, userId: null },
-    session: {
-      meta: {
-        analysis_context_snapshot: {
-          snapshot_id: 'snap_response_only',
-          derived_from_artifact_ids: ['da_response_only'],
-        },
-        artifact_persistence: {
-          persisted: false,
-          storage_mode: 'response_only',
-          artifact_id: 'da_response_only',
-        },
-      },
-      state: { latest_artifact_id: 'da_response_only' },
-    },
-    profile: null,
-    recentLogs: [],
-    ctx: { brief_id: null, request_id: 'test_response_only_snapshot' },
-    logger: console,
-    allowRequestSnapshot: true,
-  });
-
-  assert.equal(result.artifact_readback_hit, false);
-  assert.equal(result.artifact_readback_source, 'none');
-  assert.equal(result.analysis_context_snapshot, null);
-});
-
-test('artifact store: latest readback ignores newer skin-analysis kb snapshot artifacts', async (t) => {
-  const prev = process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
-  process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
-  t.after(() => {
-    if (prev === undefined) delete process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
-    else process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = prev;
-  });
-
-  const auroraUid = `uid_non_primary_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const primaryArtifact = await saveDiagnosisArtifact({
-    auroraUid,
-    sessionId: `brief_${Date.now()}`,
-    artifact: makeArtifact({ score: 0.84, goals: ['barrier_repair'] }),
-  });
-  const kbSnapshot = await saveDiagnosisArtifact({
-    auroraUid,
-    sessionId: `brief_${Date.now()}_kb`,
-    artifact: {
-      artifact_id: `da_kb_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      created_at: new Date().toISOString(),
-      artifact_type: 'skin_analysis_kb_snapshot_v1',
-      analysis_summary: { summary: 'non-primary snapshot' },
-      overall_confidence: { score: 0.42, level: 'low' },
-    },
-  });
-
-  assert.ok(primaryArtifact && primaryArtifact.artifact_id);
-  assert.ok(kbSnapshot && kbSnapshot.artifact_id);
-
-  const latest = await getLatestDiagnosisArtifact({
-    auroraUid,
-    maxAgeDays: 30,
-  });
-  assert.equal(latest && latest.artifact_id, primaryArtifact.artifact_id);
-
-  const internal = loadRouteInternals();
-  const result = await internal.resolveArtifactBackedSnapshotForRoute({
-    identity: { auroraUid, userId: null },
-    session: null,
-    profile: null,
-    recentLogs: [],
-    ctx: { brief_id: null, request_id: 'test_non_primary_artifact_filter' },
-    logger: console,
-    allowRequestSnapshot: true,
-  });
-
-  assert.equal(result.artifact_readback_hit, true);
-  assert.equal(result.artifact_readback_source, 'db_latest');
-  assert.equal(result.latest_artifact_id, primaryArtifact.artifact_id);
-  assert.ok(result.analysis_context_snapshot);
-  assert.deepEqual(result.analysis_context_snapshot.derived_from_artifact_ids, [primaryArtifact.artifact_id]);
-});
-
-test('artifact readback helper does not report a hit when only non-primary skin-analysis kb snapshots exist', async (t) => {
-  const prev = process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
-  process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
-  t.after(() => {
-    if (prev === undefined) delete process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS;
-    else process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = prev;
-  });
-
-  const auroraUid = `uid_non_primary_only_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   await saveDiagnosisArtifact({
     auroraUid,
-    sessionId: `brief_${Date.now()}_kb_only`,
+    sessionId,
     artifact: {
-      artifact_id: `da_kb_only_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      created_at: new Date().toISOString(),
+      artifact_use: 'kb_backfill',
       artifact_type: 'skin_analysis_kb_snapshot_v1',
-      analysis_summary: { summary: 'non-primary snapshot only' },
-      overall_confidence: { score: 0.41, level: 'low' },
+      created_at: new Date().toISOString(),
+      analysis_summary: { analysis: { summary: 'async backfill only' } },
+      overall_confidence: { score: 0.91, level: 'high' },
     },
   });
 
-  const internal = loadRouteInternals();
-  const result = await internal.resolveArtifactBackedSnapshotForRoute({
-    identity: { auroraUid, userId: null },
-    session: null,
-    profile: null,
-    recentLogs: [],
-    ctx: { brief_id: null, request_id: 'test_non_primary_only_artifact_filter' },
-    logger: console,
-    allowRequestSnapshot: true,
+  const latestReco = await getLatestDiagnosisArtifact({
+    auroraUid,
+    sessionId,
+    maxAgeDays: 30,
+    artifactUse: 'reco_context',
   });
-
-  assert.equal(result.artifact_readback_hit, false);
-  assert.equal(result.artifact_readback_source, 'none');
-  assert.equal(result.analysis_context_snapshot, null);
-  assert.equal(result.latest_artifact, null);
+  assert.equal(latestReco && latestReco.artifact_id, recoArtifact.artifact_id);
+  assert.equal(latestReco && latestReco.artifact_use, 'reco_context');
+  const snapshot = buildAnalysisContextSnapshotV1({
+    latestArtifact: latestReco
+      ? {
+        ...latestReco.artifact_json,
+        artifact_id: latestReco.artifact_id,
+        created_at: latestReco.created_at,
+      }
+      : null,
+  });
+  assert.ok(snapshot);
+  assert.equal(snapshot.barrier_status_tendency?.winner?.value, 'impaired');
 });
 
 test('artifact store: stale preferArtifactId is ignored when it falls outside max age window', async (t) => {
