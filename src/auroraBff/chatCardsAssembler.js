@@ -21,9 +21,34 @@ function hasAnalysisFollowupRoutedEvent(envelope) {
   });
 }
 
-function buildAnalysisFollowupStoryFallbackCard({ requestId, language = 'EN', assistantText = '' } = {}) {
+function getAnalysisFollowupActionId(envelope) {
+  const event = asArray(envelope && envelope.events).find((evt) => (
+    isPlainObject(evt) && asString(evt.event_name).toLowerCase() === 'analysis_followup_action_routed'
+  ));
+  const data = isPlainObject(event && event.data) ? event.data : {};
+  return asString(data.action_id);
+}
+
+function buildAnalysisFollowupStoryFallbackCard({ requestId, language = 'EN', assistantText = '', actionId = '' } = {}) {
   const text = asString(assistantText);
   const fallbackText = text || (language === 'CN' ? '我会先基于最近一次分析继续解释。' : 'I will continue from your latest analysis.');
+  if (actionId === 'chip.aurora.next_action.solution_next_steps') {
+    return {
+      id: `analysis_followup_${requestId}`,
+      type: 'analysis_summary',
+      priority: 1,
+      title: language === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis',
+      tags: [language === 'CN' ? '历史分析延续' : 'Saved analysis continuation'],
+      sections: [
+        {
+          kind: 'bullets',
+          title: language === 'CN' ? '这次追问的建议' : 'Saved-analysis follow-up',
+          items: [fallbackText],
+        },
+      ],
+      actions: [],
+    };
+  }
   return {
     id: `analysis_followup_${requestId}`,
     type: 'analysis_story_v2',
@@ -413,6 +438,7 @@ function normalizeCards({ envelope, requestId, language, assistantText = '' }) {
         requestId,
         language,
         assistantText,
+        actionId: getAnalysisFollowupActionId(envelope),
       }),
     ];
   }

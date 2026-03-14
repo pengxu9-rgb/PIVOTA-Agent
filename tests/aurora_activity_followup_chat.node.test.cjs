@@ -12,9 +12,29 @@ const {
 } = require('./aurora_bff_test_harness.cjs');
 const { __internal } = require('../src/auroraBff/routes');
 
-test('resolveImplicitAnalysisFollowupActionId upgrades saved-analysis free text into deep_dive_skin', () => {
+test('resolveImplicitAnalysisFollowupActionId upgrades saved-analysis solution asks into solution_next_steps', () => {
   const actionId = __internal.resolveImplicitAnalysisFollowupActionId({
     message: 'solve my acne problems',
+    sessionMeta: {
+      source_activity_id: 'artifact:da_saved_1',
+    },
+    sessionAnalysisContext: {
+      followup_mode: 'saved_analysis',
+      analysis_story_snapshot: {
+        schema_version: 'aurora.analysis_story.v2',
+        priority_findings: [{ title: 'Recurring breakouts' }],
+        ui_card_v1: { headline: 'Focus on breakouts first' },
+      },
+    },
+    latestArtifactId: 'da_saved_1',
+  });
+
+  assert.equal(actionId, 'chip.aurora.next_action.solution_next_steps');
+});
+
+test('resolveImplicitAnalysisFollowupActionId keeps tell-me-more prompts on deep_dive_skin', () => {
+  const actionId = __internal.resolveImplicitAnalysisFollowupActionId({
+    message: 'Tell me more about my skin',
     sessionMeta: {
       source_activity_id: 'artifact:da_saved_1',
     },
@@ -52,7 +72,7 @@ test('resolveImplicitAnalysisFollowupActionId does not hijack product URL reques
   assert.equal(actionId, null);
 });
 
-test('/v1/chat: saved-analysis follow-up persists snapshot context and avoids legacy diagnosis gate on the next free-text turn', async () => {
+test('/v1/chat: saved-analysis follow-up persists snapshot context and turns second free-text into a solution follow-up', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -143,7 +163,12 @@ test('/v1/chat: saved-analysis follow-up persists snapshot context and avoids le
         assert.equal(llmCalls.length, 0);
         const cards = parseCards(response.body);
         assert.equal(Boolean(findCard(cards, 'diagnosis_gate')), false);
-        assert.equal(Boolean(findCard(cards, 'analysis_story_v2')), true);
+        assert.match(
+          String(response.body?.assistant_message?.content || response.body?.assistant_text || ''),
+          /ingredients to prioritize|product recommendations next/i,
+        );
+        const quickReplies = Array.isArray(response.body?.suggested_quick_replies) ? response.body.suggested_quick_replies : [];
+        assert.equal(quickReplies.some((item) => String(item?.id || '') === 'chip.start.reco_products'), true);
       } finally {
         harness.restore();
       }
@@ -228,7 +253,12 @@ test('/v1/chat: saved-analysis free-text stays on analysis-followup path even wh
 
         const cards = parseCards(response.body);
         assert.equal(Boolean(findCard(cards, 'diagnosis_gate')), false);
-        assert.equal(Boolean(findCard(cards, 'analysis_story_v2')), true);
+        assert.match(
+          String(response.body?.assistant_message?.content || response.body?.assistant_text || ''),
+          /ingredients to prioritize|product recommendations next/i,
+        );
+        const quickReplies = Array.isArray(response.body?.suggested_quick_replies) ? response.body.suggested_quick_replies : [];
+        assert.equal(quickReplies.some((item) => String(item?.id || '') === 'chip.start.reco_products'), true);
       } finally {
         harness.restore();
       }

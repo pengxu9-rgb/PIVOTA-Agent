@@ -1384,6 +1384,17 @@ function looksLikeSavedAnalysisContinuationMessage(value) {
   return /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|ingredient|ingredients|retinol|retinoid|salicylic|niacinamide|azelaic|benzoyl|routine|step|steps|product|products|next best steps|next steps|what should i use|what should i do|help my skin|my skin|solve)\b/i.test(raw);
 }
 
+function looksLikeSavedAnalysisSolutionRequest(value) {
+  const raw = pickFirstTrimmed(value);
+  if (!raw) return false;
+  if (looksLikeImplicitDeepDivePrompt(raw)) return false;
+  if (looksLikeRecommendationRequest(raw)) return false;
+  return (
+    /\b(solve|fix|treat|clear|get rid of|address|improve|help|plan|next best steps|next steps|what should i do|what do i do|how should i|how do i)\b/i.test(raw) &&
+    /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|my skin|skin)\b/i.test(raw)
+  );
+}
+
 function hasMeaningfulAnalysisStorySnapshot(value) {
   if (!isPlainObject(value)) return false;
   if (Array.isArray(value.priority_findings) && value.priority_findings.filter(Boolean).length > 0) return true;
@@ -1490,20 +1501,53 @@ function resolveImplicitAnalysisFollowupActionId({
   if (normalizedActionId && ANALYSIS_FOLLOWUP_ACTION_IDS.has(normalizedActionId)) {
     return normalizedActionId;
   }
-  const savedAnalysisFollowupActive = isSavedAnalysisFollowupSession({
-    sessionMeta,
-    sessionAnalysisContext,
-  });
+  const savedAnalysisFollowupActive = (
+    pickFirstTrimmed(
+      sessionAnalysisContext && sessionAnalysisContext.followup_mode,
+      sessionMeta && sessionMeta.analysis_followup_mode,
+    ) === 'saved_analysis'
+  ) || Boolean(
+    pickFirstTrimmed(
+      sessionMeta && sessionMeta.source_activity_id,
+      sessionAnalysisContext && sessionAnalysisContext.source_activity_id,
+    ),
+  );
+  const savedAnalysisReusableContext = Boolean(
+    pickFirstTrimmed(
+      latestArtifactId,
+      sessionMeta && sessionMeta.latest_artifact_id,
+      sessionAnalysisContext && sessionAnalysisContext.latest_artifact_id,
+    ) ||
+    hasMeaningfulAnalysisStorySnapshot(sessionAnalysisContext && sessionAnalysisContext.analysis_story_snapshot) ||
+    hasMeaningfulAnalysisStorySnapshot(lastAnalysis && lastAnalysis.analysis_story_snapshot) ||
+    (Array.isArray(lastAnalysis && lastAnalysis.priority_findings) && lastAnalysis.priority_findings.filter(Boolean).length > 0)
+  );
+  const normalizedMessage = pickFirstTrimmed(message);
+  const shouldRouteSavedAnalysisToSolution =
+    Boolean(normalizedMessage) &&
+    !looksLikeImplicitDeepDivePrompt(normalizedMessage) &&
+    /\b(solve|fix|treat|clear|get rid of|address|improve|help|plan|next best steps|next steps|what should i do|what do i do|how should i|how do i)\b/i.test(normalizedMessage) &&
+    /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|my skin|skin)\b/i.test(normalizedMessage);
   if (
     savedAnalysisFollowupActive &&
-    looksLikeSavedAnalysisContinuationMessage(message) &&
-    hasReusableAnalysisContext({
-      sessionAnalysisContext,
-      lastAnalysis,
-      latestArtifactId,
-    })
+    savedAnalysisReusableContext
   ) {
-    return 'chip.aurora.next_action.deep_dive_skin';
+    if (shouldRouteSavedAnalysisToSolution) {
+      return 'chip.aurora.next_action.solution_next_steps';
+    }
+    if (looksLikeRecommendationRequest(message)) return null;
+    if (looksLikeCompatibilityOrConflictQuestion(message) || /\b(watch out|avoid|caution|risk|warning)\b/i.test(String(message || ''))) {
+      return 'chip.aurora.next_action.safety_concerns';
+    }
+    if (looksLikeRoutineRequest(message, null)) {
+      return 'chip.aurora.next_action.routine_deep_dive';
+    }
+    if (looksLikeIngredientScienceIntent(message, null)) {
+      return 'chip.aurora.next_action.ingredient_plan';
+    }
+    if (looksLikeSavedAnalysisContinuationMessage(message)) {
+      return 'chip.aurora.next_action.deep_dive_skin';
+    }
   }
   if (!looksLikeImplicitDeepDivePrompt(message)) return null;
   if (
@@ -20847,6 +20891,41 @@ function buildAnalysisSuggestedChips({ language, lowConfidence, hasIngredientPla
   return chips;
 }
 
+function buildSavedAnalysisRecoEntryChip({ language, goal } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const normalizedGoal = normalizeRecoGoalToken(goal);
+  const goalLabelMap = {
+    acne: { EN: 'acne', CN: '控痘' },
+    pores: { EN: 'pores', CN: '毛孔' },
+    dark_spots: { EN: 'dark spots', CN: '淡印提亮' },
+    dehydration: { EN: 'hydration', CN: '保湿补水' },
+    barrier_repair: { EN: 'barrier repair', CN: '屏障修护' },
+    wrinkles: { EN: 'anti-aging', CN: '抗老' },
+    sunscreen: { EN: 'sunscreen', CN: '防晒' },
+  };
+  const goalLabel = goalLabelMap[normalizedGoal] || null;
+  return {
+    chip_id: 'chip.start.reco_products',
+    label: goalLabel
+      ? (lang === 'CN' ? `推荐${goalLabel.CN}产品` : `Recommend ${goalLabel.EN} products`)
+      : (lang === 'CN' ? '给我产品推荐' : 'Recommend products'),
+    kind: 'follow_up',
+    data: {
+      action_id: 'chip.start.reco_products',
+      reply_text: goalLabel
+        ? (lang === 'CN'
+          ? `基于我保存的 skin analysis，给我${goalLabel.CN}方向的产品推荐。`
+          : `Based on my saved skin analysis, recommend products for ${goalLabel.EN}.`)
+        : (lang === 'CN'
+          ? '基于我保存的 skin analysis，给我产品推荐。'
+          : 'Based on my saved skin analysis, recommend products for me.'),
+      trigger_source: 'saved_analysis_solution',
+      include_alternatives: true,
+      ...(normalizedGoal ? { profile_patch: { goals: [normalizedGoal] } } : {}),
+    },
+  };
+}
+
 function buildAnalysisAssistantMessage({ language, skinProfile, lowConfidence, ingredientPlan, routineFit } = {}) {
   const isCn = language === 'CN';
   const lines = [];
@@ -22380,6 +22459,105 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     return coerceAnalysisStoryV2(story, story);
   };
 
+  if (actionId === 'chip.aurora.next_action.solution_next_steps') {
+    const normalizedGoal = inferRecoGoalSignalFromText(followupFocus) || extractResolvedRecoGoals(skinProfile.goals || analysis.goals)[0] || '';
+    const targets = Array.isArray(ingredientPlan && ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 3) : [];
+    const avoid = Array.isArray(ingredientPlan && ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 2) : [];
+    const nextSteps = guidanceBrief.slice(0, 2);
+    const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType);
+    const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity);
+    const concernSummary = findingLines.slice(0, 2);
+    const ingredientSummary = targets
+      .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
+      .filter(Boolean)
+      .slice(0, 3);
+    const avoidSummary = avoid
+      .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
+      .filter(Boolean)
+      .slice(0, 2);
+    const solutionText =
+      lang === 'CN'
+        ? [
+          focusLine,
+          normalizedGoal === 'acne' || normalizedGoal === 'pores'
+            ? '基于你这次保存的分析，优先目标不是重新诊断，而是先控堵塞、降刺激，并避免把屏障越洗越薄。'
+            : '基于你这次保存的分析，先按已有结论推进，不需要重新走一遍诊断问题。',
+          skinType || sensitivity
+            ? `你当前的基础背景是${skinType ? ` ${skinType} 肤质倾向` : ''}${skinType && sensitivity ? '，' : ''}${sensitivity ? `敏感度 ${sensitivity}` : ''}。`
+            : '',
+          concernSummary.length ? `这次最优先处理的是：${concernSummary.join('；')}。` : '',
+          nextSteps.length ? `接下来先做：${nextSteps.join('；')}。` : '',
+          ingredientSummary.length ? `更值得优先看的有效成分是：${ingredientSummary.join('、')}。` : '',
+          avoidSummary.length ? `现阶段先避免或谨慎叠加：${avoidSummary.join('、')}。` : '',
+          ingredientSummary.length
+            ? '如果你愿意，我下一步可以直接把这些成分对应到具体产品。'
+            : '如果你愿意，我下一步可以直接继续到具体产品推荐。',
+        ].filter(Boolean).join(' ')
+        : [
+          focusLine,
+          normalizedGoal === 'acne' || normalizedGoal === 'pores'
+            ? 'Based on your saved analysis, the priority now is not to restart diagnosis, but to reduce congestion, calm irritation, and avoid stripping your barrier.'
+            : 'Based on your saved analysis, we can keep moving forward without restarting diagnosis.',
+          skinType || sensitivity
+            ? `Your current baseline is${skinType ? ` ${skinType}-leaning skin` : ''}${skinType && sensitivity ? ' with ' : ''}${sensitivity ? `${sensitivity} sensitivity` : ''}.`
+            : '',
+          concernSummary.length ? `The top problems to address first are: ${concernSummary.join('; ')}.` : '',
+          nextSteps.length ? `Next best steps: ${nextSteps.join('; ')}.` : '',
+          ingredientSummary.length ? `The most useful ingredients to prioritize are: ${ingredientSummary.join(', ')}.` : '',
+          avoidSummary.length ? `For now, avoid or be careful stacking: ${avoidSummary.join(', ')}.` : '',
+          ingredientSummary.length
+            ? 'If you want, I can map those ingredients straight into product options next.'
+            : 'If you want, I can move straight into product recommendations next.',
+        ].filter(Boolean).join(' ');
+    const nextChips = filterAnalysisFollowupChips(
+      [
+        buildSavedAnalysisRecoEntryChip({ language: lang, goal: normalizedGoal }),
+        ...suggestedChips,
+      ],
+      actionId,
+    );
+    const cardSections = [
+      {
+        kind: 'bullets',
+        title: lang === 'CN' ? '现在先做什么' : 'Do this first',
+        items: nextSteps.length
+          ? nextSteps
+          : [lang === 'CN' ? '先稳定清洁、保湿和耐受，再决定是否加更强的活性。' : 'Stabilize cleansing, hydration, and tolerance first before adding stronger actives.'],
+      },
+      ...(ingredientSummary.length
+        ? [{
+            kind: 'bullets',
+            title: lang === 'CN' ? '优先成分' : 'Priority ingredients',
+            items: ingredientSummary,
+          }]
+        : []),
+      ...(avoidSummary.length
+        ? [{
+            kind: 'bullets',
+            title: lang === 'CN' ? '先避开/谨慎叠加' : 'Use caution with',
+            items: avoidSummary,
+          }]
+        : []),
+    ];
+    const cards = [{
+      card_id: `saved_analysis_next_steps_${requestId}`,
+      type: 'analysis_summary',
+      title: lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis',
+      payload: {
+        title: lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis',
+        sections: cardSections,
+        tags: [lang === 'CN' ? '历史分析延续' : 'Saved analysis continuation'],
+      },
+    }];
+    return {
+      assistant_text: solutionText,
+      cards,
+      suggested_chips: nextChips,
+      missing_context: false,
+      used_last_analysis: true,
+    };
+  }
+
   if (actionId === 'chip.aurora.next_action.deep_dive_skin') {
     const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) || (lang === 'CN' ? '待确认' : 'unconfirmed');
     const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) || (lang === 'CN' ? '待确认' : 'unconfirmed');
@@ -22561,6 +22739,69 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     suggested_chips: suggestedChips,
     missing_context: false,
     used_last_analysis: true,
+  };
+}
+
+async function buildSavedAnalysisSolutionContent({
+  lastAnalysis,
+  diagnosisArtifact,
+  profile,
+  language,
+  requestId,
+  replyText,
+  actionData,
+  sessionAnalysisContext,
+} = {}) {
+  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
+  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
+  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  const resolvedSnapshot = resolveAnalysisStorySnapshotForDeepDive({
+    actionData: normalizedActionData,
+    sessionAnalysisContext: normalizedSessionContext,
+    lastAnalysis,
+  });
+  const baseAnalysis = isPlainObject(lastAnalysis) && Object.keys(lastAnalysis).length
+    ? lastAnalysis
+    : buildLastAnalysisFromDiagnosisArtifact(normalizedArtifact, resolvedSnapshot);
+  let resolvedLastAnalysis = mergeAnalysisSnapshotIntoLastAnalysis(baseAnalysis, resolvedSnapshot);
+  if (
+    (!isPlainObject(resolvedLastAnalysis.ingredient_plan) || !Array.isArray(resolvedLastAnalysis.ingredient_plan.targets)) &&
+    normalizedArtifact &&
+    AURORA_INGREDIENT_PLAN_ENABLED
+  ) {
+    try {
+      resolvedLastAnalysis = {
+        ...resolvedLastAnalysis,
+        ingredient_plan: buildIngredientPlan({ artifact: normalizedArtifact, profile }),
+      };
+    } catch {
+      // ignore plan build failures and keep the saved analysis flow moving
+    }
+  }
+  const photoRefs = normalizeAnalysisPhotoRefs([
+    ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
+    ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
+    ...normalizeAnalysisPhotoRefs(normalizedArtifact && normalizedArtifact.photos),
+  ]);
+  const requestedOrigin = pickFirstTrimmed(normalizedActionData.analysis_origin, normalizedSessionContext.analysis_origin);
+  const analysisOrigin =
+    photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
+      ? 'photo'
+      : 'profile';
+  const followup = buildAnalysisFollowupContent({
+    actionId: 'chip.aurora.next_action.solution_next_steps',
+    lastAnalysis: resolvedLastAnalysis,
+    language,
+    requestId,
+    replyText,
+  });
+  return {
+    ...followup,
+    analysis_origin: analysisOrigin,
+    photo_ref_count: photoRefs.length,
+    used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
+    used_analysis_story_snapshot: Boolean(resolvedSnapshot),
+    latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
   };
 }
 
@@ -27141,6 +27382,7 @@ const ROUTINE_FIT_DIMENSION_KEYS = [
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
   'chip.aurora.next_action.deep_dive_skin',
+  'chip.aurora.next_action.solution_next_steps',
   'chip.aurora.next_action.ingredient_plan',
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
@@ -57668,6 +57910,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (isAnalysisFollowupAction) {
         const normalizedActionId = String(actionId || '').trim();
         const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
+        const isSolutionAction = normalizedActionId === 'chip.aurora.next_action.solution_next_steps';
         const actionData =
           normalizedActionPayload &&
           typeof normalizedActionPayload === 'object' &&
@@ -57685,7 +57928,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? parsedSessionMeta.analysis_context
             : null;
         let latestDiagnosisArtifact = null;
-        if (isDeepDiveAction) {
+        if (isDeepDiveAction || isSolutionAction) {
           try {
             latestDiagnosisArtifact = await loadLatestDiagnosisArtifactForRoute({
               identity,
@@ -57710,6 +57953,17 @@ function mountAuroraBffRoutes(app, { logger }) {
               sessionAnalysisContext,
               logger,
             })
+          : isSolutionAction
+            ? await buildSavedAnalysisSolutionContent({
+                lastAnalysis: profile && profile.lastAnalysis,
+                diagnosisArtifact: latestDiagnosisArtifact,
+                profile,
+                language: ctx.lang,
+                requestId: ctx.request_id,
+                replyText: followupReplyText,
+                actionData,
+                sessionAnalysisContext,
+              })
           : buildAnalysisFollowupContent({
               actionId: normalizedActionId,
               lastAnalysis: profile && profile.lastAnalysis,
@@ -57749,13 +58003,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               used_last_analysis: Boolean(followup.used_last_analysis),
               missing_context: Boolean(followup.missing_context),
               fell_back_to_generic: false,
-              ...(isDeepDiveAction ? {
+              ...((isDeepDiveAction || isSolutionAction) ? {
                 analysis_origin: followup.analysis_origin || null,
                 photo_ref_count: Number(followup.photo_ref_count || 0),
                 used_diagnosis_artifact: Boolean(followup.used_diagnosis_artifact),
                 used_analysis_story_snapshot: Boolean(followup.used_analysis_story_snapshot),
-                fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
-                llm_used: Boolean(followup.llm_used),
+                ...(isDeepDiveAction ? {
+                  fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
+                  llm_used: Boolean(followup.llm_used),
+                } : {}),
               } : {}),
             }),
           ],
@@ -64253,6 +64509,7 @@ const __internal = {
   isDeepDiveStoryWeakerThanFallback,
   buildDeepDiveAssistantText,
   buildAnalysisDeepDiveContentWithLlm,
+  buildSavedAnalysisSolutionContent,
   loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
   buildAnalysisFollowupSessionMeta,

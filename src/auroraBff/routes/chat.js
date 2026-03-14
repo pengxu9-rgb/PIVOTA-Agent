@@ -18,6 +18,7 @@ let travelPipelineImpl = runTravelPipeline;
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
+  'chip.aurora.next_action.solution_next_steps',
   'chip.aurora.next_action.ingredient_plan',
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
@@ -777,32 +778,44 @@ async function handleChatStream(req, res) {
       );
 
       const isDeepDive = analysisFollowupActionId === 'chip.aurora.next_action.deep_dive_skin';
+      const isSolutionAction = analysisFollowupActionId === 'chip.aurora.next_action.solution_next_steps';
       let followupResult;
 
-      if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
+      if ((isDeepDive || isSolutionAction) && typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
         const lastAnalysis = sessionProfile.lastAnalysis || null;
         const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
         const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
         let diagnosisArtifact = null;
-        if (typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
-          diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
-            identity: req._identity || {},
-            session,
-            ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
-            logger: console,
-          });
-        }
-        followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
-          lastAnalysis,
-          diagnosisArtifact,
-          profile: sessionProfile,
-          language: body.language || 'EN',
-          requestId: req.get?.('x-request-id') || 'stream',
-          replyText,
-          actionData,
-          sessionAnalysisContext,
+        diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
+          identity: req._identity || {},
+          session,
+          ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
           logger: console,
         });
+        if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
+          followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
+            lastAnalysis,
+            diagnosisArtifact,
+            profile: sessionProfile,
+            language: body.language || 'EN',
+            requestId: req.get?.('x-request-id') || 'stream',
+            replyText,
+            actionData,
+            sessionAnalysisContext,
+            logger: console,
+          });
+        } else if (isSolutionAction && typeof internal.buildSavedAnalysisSolutionContent === 'function') {
+          followupResult = await internal.buildSavedAnalysisSolutionContent({
+            lastAnalysis,
+            diagnosisArtifact,
+            profile: sessionProfile,
+            language: body.language || 'EN',
+            requestId: req.get?.('x-request-id') || 'stream',
+            replyText,
+            actionData,
+            sessionAnalysisContext,
+          });
+        }
       } else if (typeof internal.buildAnalysisFollowupContent === 'function') {
         followupResult = internal.buildAnalysisFollowupContent({
           actionId: analysisFollowupActionId,
@@ -849,13 +862,15 @@ async function handleChatStream(req, res) {
                 used_last_analysis: Boolean(followupResult.used_last_analysis),
                 missing_context: Boolean(followupResult.missing_context),
                 fell_back_to_generic: false,
-                ...(isDeepDive ? {
+                ...((isDeepDive || isSolutionAction) ? {
                   analysis_origin: followupResult.analysis_origin || null,
                   photo_ref_count: Number(followupResult.photo_ref_count || 0),
                   used_diagnosis_artifact: Boolean(followupResult.used_diagnosis_artifact),
                   used_analysis_story_snapshot: Boolean(followupResult.used_analysis_story_snapshot),
-                  fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
-                  llm_used: Boolean(followupResult.llm_used),
+                  ...(isDeepDive ? {
+                    fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
+                    llm_used: Boolean(followupResult.llm_used),
+                  } : {}),
                 } : {}),
               },
             },
