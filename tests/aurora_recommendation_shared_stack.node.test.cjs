@@ -350,3 +350,108 @@ test('handleChatStream enriches reco requests with forwarded artifact-backed sna
     else delete require.cache[routesModuleId];
   }
 });
+
+test('handleChatStream loads stored profile and recent logs before artifact snapshot readback', async () => {
+  const routesModuleId = require.resolve('../src/auroraBff/routes');
+  const originalRoutesModule = require.cache[routesModuleId];
+  let capturedProfile = null;
+  let capturedRecentLogs = null;
+  require.cache[routesModuleId] = {
+    id: routesModuleId,
+    filename: routesModuleId,
+    loaded: true,
+    exports: {
+      __internal: {
+        getProfileForIdentity: async () => ({
+          skinType: 'dry',
+          sensitivity: 'high',
+          goals: ['hydration'],
+        }),
+        getRecentSkinLogsForIdentity: async () => ([
+          { created_at: '2026-03-01T00:00:00.000Z', note: 'tightness after cleanser' },
+        ]),
+        resolveArtifactBackedSnapshotForRoute: async ({ profile, recentLogs }) => {
+          capturedProfile = profile;
+          capturedRecentLogs = recentLogs;
+          return {
+            analysis_context_snapshot: {
+              snapshot_id: 'snap_db_latest',
+              derived_from_artifact_ids: ['da_db_latest'],
+            },
+            latest_artifact_id: 'da_db_latest',
+            artifact_readback_source: 'db_latest',
+            artifact_readback_hit: true,
+          };
+        },
+      },
+    },
+  };
+
+  const writes = [];
+  __setTravelPipelineForTests(async () => null);
+  __setRouterForTests({
+    async routeStream(skillRequest, onEvent) {
+      assert.equal(skillRequest.context.profile.skinType, 'dry');
+      assert.equal(skillRequest.context.profile.sensitivity, 'high');
+      assert.deepEqual(skillRequest.context.profile.goals, ['hydration']);
+      assert.equal(Array.isArray(skillRequest.context.recent_logs), true);
+      assert.equal(skillRequest.context.recent_logs.length, 1);
+      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_source, 'db_latest');
+      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_hit, true);
+      onEvent({
+        type: 'result',
+        data: {
+          cards: [],
+          ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
+          quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
+          telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
+          next_actions: [],
+        },
+      });
+      return {
+        cards: [],
+        ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
+        quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
+        telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
+        next_actions: [],
+      };
+    },
+  });
+
+  try {
+    await handleChatStream(
+      {
+        body: {
+          message: 'Recommend a moisturizer for me',
+          session: {},
+          language: 'EN',
+        },
+        headers: { 'x-aurora-uid': 'uid_chat_db_context' },
+        get(name) {
+          return this.headers[String(name || '').toLowerCase()] || null;
+        },
+      },
+      {
+        writeHead() {},
+        write(chunk) { writes.push(String(chunk)); },
+        end() {},
+      },
+    );
+
+    assert.deepEqual(capturedProfile, {
+      skinType: 'dry',
+      skin_type: 'dry',
+      sensitivity: 'high',
+      goals: ['hydration'],
+      concerns: ['hydration'],
+    });
+    assert.equal(Array.isArray(capturedRecentLogs), true);
+    assert.equal(capturedRecentLogs.length, 1);
+    assert.match(writes.join(''), /event: result/);
+  } finally {
+    __resetRouterForTests();
+    __setTravelPipelineForTests(async () => null);
+    if (originalRoutesModule) require.cache[routesModuleId] = originalRoutesModule;
+    else delete require.cache[routesModuleId];
+  }
+});

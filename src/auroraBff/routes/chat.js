@@ -717,11 +717,29 @@ async function enrichSkillRequestWithArtifactSnapshot(req, skillRequest, ctx) {
   const identity = isPlainObject(req._identity)
     ? req._identity
     : { auroraUid: ctx && ctx.aurora_uid ? ctx.aurora_uid : null, userId: null };
+  const requestProfile = isPlainObject(skillRequest.context.profile) ? skillRequest.context.profile : {};
+  const requestRecentLogs = Array.isArray(skillRequest.context.recent_logs) ? skillRequest.context.recent_logs : [];
+  const storedProfile =
+    typeof internal.getProfileForIdentity === 'function'
+      ? await internal.getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null)
+      : null;
+  const storedRecentLogs =
+    typeof internal.getRecentSkinLogsForIdentity === 'function'
+      ? await internal.getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => [])
+      : [];
+  const resolvedProfile = normalizeProfileShape({
+    ...(isPlainObject(storedProfile) ? storedProfile : {}),
+    ...requestProfile,
+  });
+  const resolvedRecentLogs = requestRecentLogs.length > 0 ? requestRecentLogs : storedRecentLogs;
+
+  skillRequest.context.profile = resolvedProfile;
+  skillRequest.context.recent_logs = resolvedRecentLogs;
   const readback = await internal.resolveArtifactBackedSnapshotForRoute({
     identity,
     session,
-    profile: skillRequest.context.profile || null,
-    recentLogs: Array.isArray(skillRequest.context.recent_logs) ? skillRequest.context.recent_logs : [],
+    profile: resolvedProfile || null,
+    recentLogs: Array.isArray(resolvedRecentLogs) ? resolvedRecentLogs : [],
     ctx: {
       brief_id: session && typeof session.brief_id === 'string' ? session.brief_id : null,
       request_id:

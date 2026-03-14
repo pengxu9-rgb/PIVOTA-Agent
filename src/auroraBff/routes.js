@@ -64881,6 +64881,8 @@ function mountAuroraBffRoutes(app, { logger }) {
 
 const __internal = {
   resolveIdentity,
+  getProfileForIdentity,
+  getRecentSkinLogsForIdentity,
   normalizeClarificationField,
   detectBrandAvailabilityIntent,
   detectCatalogAvailabilityIntent,
