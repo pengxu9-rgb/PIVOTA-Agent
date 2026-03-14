@@ -45,10 +45,14 @@ function toCsv(rows) {
   const headers = [
     'sku_key',
     'external_seed_id',
+    'domain',
     'brand',
+    'seed_title',
     'product_name',
     'scope_decision',
     'scope_reason',
+    'review_priority',
+    'recommended_action',
     'candidate_found',
     'source_ref',
     'canonical_url',
@@ -59,6 +63,37 @@ function toCsv(rows) {
     lines.push(headers.map((header) => csvEscape(row[header])).join(','));
   }
   return `${lines.join('\n')}\n`;
+}
+
+function buildReviewPriority(scopeDecision, scopeReason) {
+  if (scopeDecision === 'block') return 'p0_remove';
+  if (scopeDecision === 'missing_seed') return 'p0_seed_missing';
+  if (scopeReason === 'candidate_not_rebuilt') return 'p1_rebuild_candidate';
+  if (scopeReason === 'ambiguous_non_face_scope') return 'p1_manual_scope_decision';
+  return 'p2_manual_scope_review';
+}
+
+function buildRecommendedAction(scopeDecision, scopeReason) {
+  if (scopeDecision === 'allow') return 'keep_in_kb';
+  if (scopeDecision === 'block') return 'remove_from_kb';
+  if (scopeDecision === 'missing_seed') return 'investigate_missing_seed';
+  if (scopeReason === 'candidate_not_rebuilt') return 'rebuild_seed_candidate_then_reaudit';
+  if (scopeReason === 'ambiguous_non_face_scope') return 'manual_product_scope_review';
+  return 'manual_scope_review';
+}
+
+function buildReviewQueue(rows) {
+  return rows
+    .filter((row) => row.scope_decision === 'review' || row.scope_decision === 'missing_seed')
+    .sort((left, right) => {
+      const priorityCompare = normalizeNonEmptyString(left.review_priority).localeCompare(
+        normalizeNonEmptyString(right.review_priority),
+      );
+      if (priorityCompare !== 0) return priorityCompare;
+      const brandCompare = normalizeNonEmptyString(left.brand).localeCompare(normalizeNonEmptyString(right.brand));
+      if (brandCompare !== 0) return brandCompare;
+      return normalizeNonEmptyString(left.product_name).localeCompare(normalizeNonEmptyString(right.product_name));
+    });
 }
 
 function classifyKbRows(kbRows, seedRows) {
@@ -75,10 +110,14 @@ function classifyKbRows(kbRows, seedRows) {
       scopedRows.push({
         sku_key: skuKey,
         external_seed_id: seedId,
+        domain: '',
         brand: normalizeNonEmptyString(kbRow.brand),
+        seed_title: '',
         product_name: normalizeNonEmptyString(kbRow.product_name),
         scope_decision: 'missing_seed',
         scope_reason: 'missing_seed',
+        review_priority: buildReviewPriority('missing_seed', 'missing_seed'),
+        recommended_action: buildRecommendedAction('missing_seed', 'missing_seed'),
         candidate_found: false,
         source_ref: normalizeNonEmptyString(kbRow.source_ref),
         canonical_url: '',
@@ -98,10 +137,14 @@ function classifyKbRows(kbRows, seedRows) {
       scopedRows.push({
         sku_key: skuKey,
         external_seed_id: seedId,
+        domain: normalizeNonEmptyString(seedRow.domain),
         brand: normalizeNonEmptyString(kbRow.brand || seedRow.seed_data?.brand || seedRow.domain),
+        seed_title: normalizeNonEmptyString(seedRow.title),
         product_name: normalizeNonEmptyString(kbRow.product_name),
         scope_decision: 'review',
         scope_reason: 'candidate_not_rebuilt',
+        review_priority: buildReviewPriority('review', 'candidate_not_rebuilt'),
+        recommended_action: buildRecommendedAction('review', 'candidate_not_rebuilt'),
         candidate_found: false,
         source_ref: normalizeNonEmptyString(kbRow.source_ref),
         canonical_url: normalizeNonEmptyString(seedRow.canonical_url),
@@ -115,10 +158,14 @@ function classifyKbRows(kbRows, seedRows) {
     scopedRows.push({
       sku_key: skuKey,
       external_seed_id: seedId,
+      domain: normalizeNonEmptyString(seedRow.domain),
       brand: normalizeNonEmptyString(kbRow.brand || candidate.brand),
+      seed_title: normalizeNonEmptyString(seedRow.title),
       product_name: normalizeNonEmptyString(candidate.product_name || kbRow.product_name),
       scope_decision: scope.decision,
       scope_reason: scope.reason,
+      review_priority: buildReviewPriority(scope.decision, scope.reason),
+      recommended_action: buildRecommendedAction(scope.decision, scope.reason),
       candidate_found: true,
       source_ref: normalizeNonEmptyString(candidate.source_ref || kbRow.source_ref),
       canonical_url: normalizeNonEmptyString(seedRow.canonical_url),
@@ -211,6 +258,7 @@ async function main() {
 
   const allJsonPath = path.join(outDir, 'pci_kb_scope_audit.json');
   const reviewCsvPath = path.join(outDir, 'pci_kb_scope_review.csv');
+  const reviewQueueCsvPath = path.join(outDir, 'pci_kb_scope_review_queue.csv');
   const blockCsvPath = path.join(outDir, 'pci_kb_scope_block.csv');
 
   ensureParentDir(allJsonPath);
@@ -233,6 +281,11 @@ async function main() {
     'utf8',
   );
   fs.writeFileSync(
+    reviewQueueCsvPath,
+    toCsv(buildReviewQueue(audit.scopedRows)),
+    'utf8',
+  );
+  fs.writeFileSync(
     blockCsvPath,
     toCsv(audit.scopedRows.filter((row) => row.scope_decision === 'block')),
     'utf8',
@@ -249,6 +302,7 @@ async function main() {
         outputs: {
           audit_json: allJsonPath,
           review_csv: reviewCsvPath,
+          review_queue_csv: reviewQueueCsvPath,
           block_csv: blockCsvPath,
         },
       },
@@ -267,6 +321,9 @@ if (require.main === module) {
 
 module.exports = {
   classifyKbRows,
+  buildRecommendedAction,
+  buildReviewPriority,
+  buildReviewQueue,
   extractSeedIdFromSkuKey,
   toCsv,
 };

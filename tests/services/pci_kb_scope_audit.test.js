@@ -1,4 +1,11 @@
-const { classifyKbRows, extractSeedIdFromSkuKey, toCsv } = require('../../scripts/audit-pci-kb-scope');
+const {
+  buildRecommendedAction,
+  buildReviewPriority,
+  buildReviewQueue,
+  classifyKbRows,
+  extractSeedIdFromSkuKey,
+  toCsv,
+} = require('../../scripts/audit-pci-kb-scope');
 
 describe('pci kb scope audit', () => {
   test('extracts seed id from sku keys', () => {
@@ -127,17 +134,54 @@ describe('pci kb scope audit', () => {
       {
         sku_key: 'extseed:eps_serum:41609',
         external_seed_id: 'eps_serum',
+        domain: 'olehenriksen.com',
         brand: 'Ole Henriksen',
+        seed_title: 'Banana Bright Vitamin C Serum',
         product_name: 'Banana Bright Vitamin C Serum - 30ml',
         scope_decision: 'allow',
         scope_reason: 'skincare_signals_present',
+        review_priority: 'p2_manual_scope_review',
+        recommended_action: 'keep_in_kb',
         candidate_found: true,
         source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum?variant=41609',
         canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
         market: 'US',
       },
     ]);
-    expect(csv).toContain('sku_key,external_seed_id,brand,product_name,scope_decision');
+    expect(csv).toContain('sku_key,external_seed_id,domain,brand,seed_title,product_name');
     expect(csv).toContain('extseed:eps_serum:41609');
+  });
+
+  test('builds review priority, recommended action, and sorted review queue', () => {
+    expect(buildReviewPriority('block', 'non_skincare_product_class')).toBe('p0_remove');
+    expect(buildRecommendedAction('block', 'non_skincare_product_class')).toBe('remove_from_kb');
+    expect(buildReviewPriority('review', 'candidate_not_rebuilt')).toBe('p1_rebuild_candidate');
+    expect(buildRecommendedAction('review', 'candidate_not_rebuilt')).toBe('rebuild_seed_candidate_then_reaudit');
+
+    const queue = buildReviewQueue([
+      {
+        sku_key: '3',
+        brand: 'Beta',
+        product_name: 'B product',
+        scope_decision: 'review',
+        review_priority: 'p2_manual_scope_review',
+      },
+      {
+        sku_key: '1',
+        brand: 'Alpha',
+        product_name: 'A product',
+        scope_decision: 'missing_seed',
+        review_priority: 'p0_seed_missing',
+      },
+      {
+        sku_key: '2',
+        brand: 'Alpha',
+        product_name: 'B product',
+        scope_decision: 'review',
+        review_priority: 'p1_rebuild_candidate',
+      },
+    ]);
+
+    expect(queue.map((row) => row.sku_key)).toEqual(['1', '2', '3']);
   });
 });
