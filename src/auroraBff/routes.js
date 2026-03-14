@@ -206,7 +206,18 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
+const { normalizeRecoTargetStep } = require('./recoTargetStep');
 const {
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  CANDIDATE_POOL_SIGNATURE_VERSION,
+  GROUP_SEMANTICS_VERSION,
+  resolveRecommendationTargetContext,
+  buildSameFamilyQueryLevels,
+  finalizeRecommendationCandidatePools,
+  shouldStopStepAwareBroadening,
+  deriveStepAwareEmptyReason,
+  inferSlotForStep,
   runRecommendationSharedStack,
 } = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
@@ -470,12 +481,7 @@ const {
 const { computeAuroraChatRolloutContext } = require('./rollout');
 const { auroraChat, buildContextPrefix } = require('./auroraDecisionClient');
 const { extractJsonObject, extractJsonObjectByKeys, parseJsonOnlyObject } = require('./jsonExtract');
-const {
-  normalizeKey: normalizeDupeKbKey,
-  getDupeKbEntry,
-  upsertDupeKbEntry,
-  purgeDupeKbEntriesByContractVersion,
-} = require('./dupeKbStore');
+const { normalizeKey: normalizeDupeKbKey, getDupeKbEntry, upsertDupeKbEntry } = require('./dupeKbStore');
 const {
   normalizeKey: normalizeProductIntelKbKey,
   getProductIntelKbEntry,
@@ -491,19 +497,10 @@ const {
   createArtifactId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
-  listDiagnosisArtifactsForIdentity,
-  getDiagnosisArtifactById,
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
 } = require('./diagnosisArtifactStore');
-const {
-  appendActivityForIdentity,
-  listActivityForIdentity,
-  getActivityEventByIdForIdentity,
-  getActivityDetail,
-  upsertActivityDetail,
-} = require('./activityStore');
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
@@ -561,12 +558,12 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
-const RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID = 'reco_alternatives_open_world_v1';
-const RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE = 'reco_alternatives_open_world_v1.system.txt';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
-const CONFLICT_HEATMAP_V1_ENABLED = String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+function isConflictHeatmapV1Enabled() {
+  return String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
+}
 const AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED = (() => {
   const raw = String(process.env.AURORA_CHAT_CATALOG_AVAIL_FAST_PATH || 'true')
     .trim()
@@ -1298,7 +1295,6 @@ function shouldDelegateV1ChatToV2(body) {
   const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
     actionId,
     message: pickFirstTrimmed(payload.message, extractLastUserMessageFromChatRequestMessages(payload.messages)),
-    sessionMeta,
     sessionAnalysisContext: isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null,
     lastAnalysis: sessionProfile.lastAnalysis || null,
     latestArtifactId: extractLatestArtifactIdFromSession(session),
@@ -1323,6 +1319,20 @@ function shouldDelegateV1ChatToV2(body) {
   if (canDelegateActionToV2) return true;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
+  if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
+    const requestLang = pickFirstTrimmed(
+      payload.language,
+      payload.lang,
+      payload.locale,
+      isPlainObject(payload.context) ? payload.context.locale : null,
+    );
+    const message = pickFirstTrimmed(payload.message, payload.text) || '';
+    const availabilityIntent = detectCatalogAvailabilityIntent(message, requestLang || 'EN');
+    const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
+      ? shouldAllowCatalogAvailabilityShortCircuit(message)
+      : true;
+    if (availabilityIntent && allowCatalogShortCircuit) return false;
+  }
   if (hasMessage) return true;
 
   const hasV2Context = isPlainObject(payload.context);
@@ -1377,27 +1387,6 @@ function looksLikeImplicitDeepDivePrompt(value) {
   return Boolean(token) && IMPLICIT_DEEP_DIVE_PROMPT_TOKENS.has(token);
 }
 
-function looksLikeSavedAnalysisContinuationMessage(value) {
-  const raw = pickFirstTrimmed(value);
-  if (!raw) return false;
-  if (PRODUCT_INTEL_HTTP_URL_RE.test(String(raw).trim())) return false;
-  if (looksLikeImplicitDeepDivePrompt(raw)) return true;
-  if (/\b(travel|trip|flight|destination|weather|humidity|uv)\b/i.test(raw)) return false;
-  if (/\b(dupe|dupes|compare|comparison|versus|vs\.?)\b/i.test(raw)) return false;
-  return /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|ingredient|ingredients|retinol|retinoid|salicylic|niacinamide|azelaic|benzoyl|routine|step|steps|product|products|next best steps|next steps|what should i use|what should i do|help my skin|my skin|solve)\b/i.test(raw);
-}
-
-function looksLikeSavedAnalysisSolutionRequest(value) {
-  const raw = pickFirstTrimmed(value);
-  if (!raw) return false;
-  if (looksLikeImplicitDeepDivePrompt(raw)) return false;
-  if (looksLikeRecommendationRequest(raw)) return false;
-  return (
-    /\b(solve|fix|treat|clear|get rid of|address|improve|help|plan|next best steps|next steps|what should i do|what do i do|how should i|how do i)\b/i.test(raw) &&
-    /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|my skin|skin)\b/i.test(raw)
-  );
-}
-
 function hasMeaningfulAnalysisStorySnapshot(value) {
   if (!isPlainObject(value)) return false;
   if (Array.isArray(value.priority_findings) && value.priority_findings.filter(Boolean).length > 0) return true;
@@ -1429,73 +1418,9 @@ function hasReusableAnalysisContext({
   return false;
 }
 
-function isSavedAnalysisFollowupSession({
-  sessionMeta,
-  sessionAnalysisContext,
-} = {}) {
-  const meta = isPlainObject(sessionMeta) ? sessionMeta : {};
-  const context = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
-  const followupMode = pickFirstTrimmed(context.followup_mode, meta.analysis_followup_mode);
-  const sourceActivityId = pickFirstTrimmed(meta.source_activity_id, context.source_activity_id);
-  return followupMode === 'saved_analysis' || Boolean(sourceActivityId);
-}
-
-function shouldBypassLegacyDiagnosisGateForSavedAnalysis({
-  sessionMeta,
-  sessionAnalysisContext,
-  lastAnalysis,
-  latestArtifactId,
-} = {}) {
-  if (!isSavedAnalysisFollowupSession({ sessionMeta, sessionAnalysisContext })) return false;
-  return hasReusableAnalysisContext({
-    sessionAnalysisContext,
-    lastAnalysis,
-    latestArtifactId,
-  });
-}
-
-function buildAnalysisFollowupSessionMeta({
-  existingMeta,
-  existingAnalysisContext,
-  followup,
-  actionId,
-  latestArtifactId,
-} = {}) {
-  const meta = isPlainObject(existingMeta) ? { ...existingMeta } : {};
-  const analysisContext = isPlainObject(existingAnalysisContext) ? { ...existingAnalysisContext } : {};
-  const cards = Array.isArray(followup && followup.cards) ? followup.cards : [];
-  const storyCard = cards.find((card) => (
-    isPlainObject(card) &&
-    String(card.type || '').trim().toLowerCase() === 'analysis_story_v2' &&
-    isPlainObject(card.payload)
-  ));
-  const snapshot = normalizeAnalysisStorySnapshotCandidate(
-    storyCard && isPlainObject(storyCard.payload) ? storyCard.payload : analysisContext.analysis_story_snapshot,
-  );
-  analysisContext.followup_mode = 'saved_analysis';
-  const normalizedActionId = String(actionId || '').trim();
-  if (normalizedActionId) analysisContext.followup_action_id = normalizedActionId;
-  const followupOrigin = pickFirstTrimmed(
-    followup && followup.analysis_origin,
-    analysisContext.analysis_origin,
-  );
-  if (followupOrigin) analysisContext.analysis_origin = followupOrigin;
-  if (snapshot) analysisContext.analysis_story_snapshot = snapshot;
-
-  const normalizedArtifactId = pickFirstTrimmed(
-    followup && followup.latest_artifact_id,
-    latestArtifactId,
-    meta.latest_artifact_id,
-  );
-  if (normalizedArtifactId) meta.latest_artifact_id = normalizedArtifactId;
-  if (Object.keys(analysisContext).length) meta.analysis_context = analysisContext;
-  return meta;
-}
-
 function resolveImplicitAnalysisFollowupActionId({
   actionId,
   message,
-  sessionMeta,
   sessionAnalysisContext,
   lastAnalysis,
   latestArtifactId,
@@ -1503,54 +1428,6 @@ function resolveImplicitAnalysisFollowupActionId({
   const normalizedActionId = String(actionId || '').trim();
   if (normalizedActionId && ANALYSIS_FOLLOWUP_ACTION_IDS.has(normalizedActionId)) {
     return normalizedActionId;
-  }
-  const savedAnalysisFollowupActive = (
-    pickFirstTrimmed(
-      sessionAnalysisContext && sessionAnalysisContext.followup_mode,
-      sessionMeta && sessionMeta.analysis_followup_mode,
-    ) === 'saved_analysis'
-  ) || Boolean(
-    pickFirstTrimmed(
-      sessionMeta && sessionMeta.source_activity_id,
-      sessionAnalysisContext && sessionAnalysisContext.source_activity_id,
-    ),
-  );
-  const savedAnalysisReusableContext = Boolean(
-    pickFirstTrimmed(
-      latestArtifactId,
-      sessionMeta && sessionMeta.latest_artifact_id,
-      sessionAnalysisContext && sessionAnalysisContext.latest_artifact_id,
-    ) ||
-    hasMeaningfulAnalysisStorySnapshot(sessionAnalysisContext && sessionAnalysisContext.analysis_story_snapshot) ||
-    hasMeaningfulAnalysisStorySnapshot(lastAnalysis && lastAnalysis.analysis_story_snapshot) ||
-    (Array.isArray(lastAnalysis && lastAnalysis.priority_findings) && lastAnalysis.priority_findings.filter(Boolean).length > 0)
-  );
-  const normalizedMessage = pickFirstTrimmed(message);
-  const shouldRouteSavedAnalysisToSolution =
-    Boolean(normalizedMessage) &&
-    !looksLikeImplicitDeepDivePrompt(normalizedMessage) &&
-    /\b(solve|fix|treat|clear|get rid of|address|improve|help|plan|next best steps|next steps|what should i do|what do i do|how should i|how do i)\b/i.test(normalizedMessage) &&
-    /\b(acne|breakout|breakouts|pore|pores|oily|oil|sensitivity|sensitive|barrier|hydration|hydrate|moisturi[sz]|brighten|pigment|dark spot|texture|redness|wrinkle|firmness|my skin|skin)\b/i.test(normalizedMessage);
-  if (
-    savedAnalysisFollowupActive &&
-    savedAnalysisReusableContext
-  ) {
-    if (shouldRouteSavedAnalysisToSolution) {
-      return 'chip.aurora.next_action.solution_next_steps';
-    }
-    if (looksLikeRecommendationRequest(message)) return null;
-    if (looksLikeCompatibilityOrConflictQuestion(message) || /\b(watch out|avoid|caution|risk|warning)\b/i.test(String(message || ''))) {
-      return 'chip.aurora.next_action.safety_concerns';
-    }
-    if (looksLikeRoutineRequest(message, null)) {
-      return 'chip.aurora.next_action.routine_deep_dive';
-    }
-    if (looksLikeIngredientScienceIntent(message, null)) {
-      return 'chip.aurora.next_action.ingredient_plan';
-    }
-    if (looksLikeSavedAnalysisContinuationMessage(message)) {
-      return 'chip.aurora.next_action.deep_dive_skin';
-    }
   }
   if (!looksLikeImplicitDeepDivePrompt(message)) return null;
   if (
@@ -1907,12 +1784,6 @@ function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
     callPath,
   }).effectiveModel;
 }
-
-function resolveAuroraGeminiModelRaw(keys, fallbackModel) {
-  const picked = pickConfiguredEnv(keys);
-  const raw = String(picked.value || fallbackModel || '').trim();
-  return raw || String(fallbackModel || '').trim();
-}
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
   'gpt-4o-mini';
@@ -1923,17 +1794,17 @@ const ANALYSIS_STORY_MODEL_OPENAI =
   'gpt-4o-mini';
 const ANALYSIS_STORY_MODEL_GEMINI =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_analysis_story');
-const AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI =
-  resolveAuroraGeminiModel(
-    ['AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI'],
-    'gemini-3-pro-preview',
-    'aurora_skin_deep_dive',
-  );
 const ROUTINE_FIT_MODEL_GEMINI =
   resolveAuroraGeminiModel(
     ['AURORA_ROUTINE_FIT_MODEL_GEMINI', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL'],
     'gemini-3-flash-preview',
     'aurora_routine_fit',
+  );
+const AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI =
+  resolveAuroraGeminiModel(
+    ['AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI'],
+    'gemini-3-pro-preview',
+    'aurora_skin_deep_dive',
   );
 const AURORA_DIAG_FORCE_GEMINI_MODEL = getDiagForceGeminiModel();
 const AURORA_RUNTIME_QA_GEMINI_MODEL =
@@ -1944,20 +1815,6 @@ const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
 const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
   resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
-const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL =
-  resolveAuroraGeminiModelRaw(
-    ['AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL', 'AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL', 'AURORA_RUNTIME_QA_GEMINI_MODEL'],
-    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
-      process.env.AURORA_RUNTIME_QA_GEMINI_MODEL ||
-      AURORA_RUNTIME_QA_GEMINI_MODEL ||
-      ANALYSIS_STORY_MODEL_GEMINI ||
-      'gemini-3-flash-preview',
-  );
-const AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS = Math.max(
-  256,
-  Math.min(2048, Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS || 2048)),
-);
 const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
   String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
@@ -5639,16 +5496,10 @@ function extractUrlAnchorSignals(inputUrl) {
   }
 }
 
-function normalizeAnchorCandidateForTrust(candidate) {
-  return (
-    coerceRecoCandidateForGuardrail(candidate) ||
-    normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null)
-  );
-}
-
 function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbackUrl = '' } = {}) {
-  const row = normalizeAnchorCandidateForTrust(candidate);
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
   if (!row || typeof row !== 'object') return null;
   const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
   const name = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title, fallbackName);
@@ -5685,7 +5536,9 @@ function evaluateAnchorTrustForProductIntel({
   strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
   policy = PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY,
 } = {}) {
-  const row = normalizeAnchorCandidateForTrust(candidate);
+  const row =
+    normalizeRecoCatalogProduct(candidate) ||
+    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
   if (!row || typeof row !== 'object') {
     return {
       trusted_anchor: null,
@@ -5783,7 +5636,7 @@ function evaluateAnchorTrustForProductIntel({
 }
 
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
-  const normalized = normalizeAnchorCandidateForTrust(rawProduct);
+  const normalized = normalizeRecoCatalogProduct(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
   const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
   if (!productId) return null;
@@ -13910,6 +13763,95 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
   return deduped;
 }
 
+function buildRecoCatalogQueryLevels({
+  targetContext,
+  profileSummary,
+  ingredientContext,
+  lang,
+  seedTerms = [],
+} = {}) {
+  if (targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step) {
+    return buildSameFamilyQueryLevels({
+      targetContext,
+      profileSummary,
+      ingredientContext,
+      lang,
+      seedTerms,
+    });
+  }
+  const queries = buildRecoCatalogQueries({ profileSummary, lang, ingredientContext });
+  return queries.length
+    ? [
+        {
+          level_index: 0,
+          ladder_level: 'generic_catalog',
+          queries,
+        },
+      ]
+    : [];
+}
+
+async function collectRecoCandidatesFromQueryLevels({
+  queryLevels,
+  targetContext,
+  logger,
+  timeoutMs,
+  limit = 6,
+  usePurchasableFallback = false,
+  allowExternalSeed = false,
+  externalSeedStrategy = 'on_empty_only',
+} = {}) {
+  const rawCandidates = [];
+  const searchResults = [];
+  let candidateState = finalizeRecommendationCandidatePools([], { targetContext });
+  let stopLevel = null;
+
+  for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
+    const queries = Array.isArray(level?.queries) ? level.queries : [];
+    for (const queryEntry of queries) {
+      const out = usePurchasableFallback
+        ? await buildPurchasableFallbackCandidates({
+            query: queryEntry.query,
+            limit,
+            logger,
+            timeoutMs,
+            allowExternalSeed,
+            externalSeedStrategy,
+          })
+        : await searchPivotaBackendProducts({
+            query: queryEntry.query,
+            limit,
+            logger,
+            timeoutMs,
+            allowExternalSeed: false,
+            fastMode: true,
+          });
+      searchResults.push({
+        ...queryEntry,
+        ...out,
+      });
+      const products = Array.isArray(out?.products) ? out.products : [];
+      for (const product of products) {
+        const normalized = normalizeRecoCatalogProduct(product);
+        if (!isPlainObject(normalized)) continue;
+        rawCandidates.push(normalized);
+      }
+    }
+    candidateState = finalizeRecommendationCandidatePools(rawCandidates, { targetContext });
+    if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
+      stopLevel = String(level?.ladder_level || '').trim() || null;
+      break;
+    }
+  }
+
+  return {
+    rawCandidates,
+    searchResults,
+    candidateState,
+    stopLevel,
+  };
+}
+
 function normalizeRecoGroundingStatus(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (token === 'grounded' || token === 'partially_grounded' || token === 'ungrounded') return token;
@@ -14112,6 +14054,7 @@ async function groundRecoRecommendationsFromCatalog({
   recommendations,
   ctx,
   logger,
+  defaultTargetContext = null,
 } = {}) {
   const recs = (Array.isArray(recommendations) ? recommendations : [])
     .map((item, index) => normalizeRecoPlanRecommendation(item, { lang: ctx && ctx.lang ? ctx.lang : 'EN', index }))
@@ -14183,60 +14126,90 @@ async function groundRecoRecommendationsFromCatalog({
   let candidateCountAfterFilter = 0;
   let candidatesRejected = 0;
   let timeoutCount = 0;
+  let exactStepViableCount = 0;
+  let sameFamilyViableCount = 0;
+  let softMismatchCount = 0;
+  let hardRejectCount = 0;
 
   for (const rec of recs) {
-    const queries = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
-    let groundedProduct = null;
-    for (const query of queries) {
-      queryCount += 1;
-      const out = await searchPivotaBackendProducts({
-        query,
-        limit: 6,
-        logger,
-        timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
-        allowExternalSeed: false,
-        fastMode: true,
-      });
-      const reason = String(out && out.reason ? out.reason : '').trim().toLowerCase();
+    const seedTerms = buildRecoGroundingQueriesFromPlanItem(rec, { lang: ctx && ctx.lang ? ctx.lang : 'EN' });
+    const itemTargetContext = resolveRecommendationTargetContext({
+      explicitStep: pickFirstTrimmed(rec.product_type, rec.step, defaultTargetContext && defaultTargetContext.resolved_target_step),
+      focus: pickFirstTrimmed(rec.use_case, rec.step, rec.product_type),
+      text: [pickFirstTrimmed(rec.display_name, rec.name, rec.title), ...seedTerms].filter(Boolean).join(' '),
+      entryType: 'grounding',
+    });
+    const queryLevels = buildRecoCatalogQueryLevels({
+      targetContext: itemTargetContext,
+      profileSummary: null,
+      ingredientContext: null,
+      lang: ctx && ctx.lang ? ctx.lang : 'EN',
+      seedTerms,
+    });
+    const collected = await collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext: itemTargetContext,
+      logger,
+      timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+    const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+    const poolState = isPlainObject(collected.candidateState) ? collected.candidateState : finalizeRecommendationCandidatePools([], { targetContext: itemTargetContext });
+    queryCount += results.length;
+    exactStepViableCount += Number(poolState.exact_step_viable_count || 0);
+    sameFamilyViableCount += Number(poolState.same_family_viable_count || 0);
+    softMismatchCount += Number(poolState.soft_mismatch_count || 0);
+    hardRejectCount += Number(poolState.hard_reject_count || 0);
+    for (const result of results) {
+      const reason = String(result && result.reason ? result.reason : '').trim().toLowerCase();
       if (reason === 'upstream_timeout') timeoutCount += 1;
-      const products = Array.isArray(out && out.products) ? out.products : [];
+      const products = Array.isArray(result && result.products) ? result.products : [];
       candidateCountBeforeFilter += products.length;
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
-        if (productId && usedProductIds.has(productId)) continue;
-        if (isBlacklistedCategoryOrTitle(normalized) || !isSkincareCategory(normalized)) {
-          candidatesRejected += 1;
-          continue;
-        }
-        groundedProduct = normalized;
-        if (productId) usedProductIds.add(productId);
-        candidateCountAfterFilter += 1;
-        break;
-      }
-      if (groundedProduct) break;
+    }
+    const viableCandidates = Array.isArray(poolState.selected_recommendations) ? poolState.selected_recommendations : [];
+    let groundedProduct = null;
+    for (const candidate of viableCandidates) {
+      const normalized = normalizeRecoCatalogProduct(candidate);
+      if (!isPlainObject(normalized)) continue;
+      const productId = pickFirstTrimmed(normalized.product_id, normalized.productId);
+      if (productId && usedProductIds.has(productId)) continue;
+      groundedProduct = normalized;
+      if (productId) usedProductIds.add(productId);
+      candidateCountAfterFilter += 1;
+      break;
+    }
+    if (!groundedProduct) {
+      candidatesRejected += Number(poolState.hard_reject_count || 0) + Number(poolState.soft_mismatch_count || 0);
     }
     next.push(groundedProduct ? mergeRecoPlanWithGroundedCandidate(rec, groundedProduct) : rec);
   }
 
-  const groundedCount = next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
-  const ungroundedCount = Math.max(0, next.length - groundedCount);
+  const nextForDisplay =
+    defaultTargetContext && defaultTargetContext.step_aware_intent
+      ? next.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded')
+      : next;
+  const groundedCount = nextForDisplay.filter((item) => normalizeRecoGroundingStatus(item.grounding_status) === 'grounded').length;
+  const ungroundedCount = Math.max(0, nextForDisplay.length - groundedCount);
   const groundingStatus =
     groundedCount === 0
       ? 'ungrounded'
-      : groundedCount === next.length
+      : groundedCount === nextForDisplay.length
         ? 'grounded'
         : 'partially_grounded';
   const mainlineStatus =
-    groundingStatus === 'grounded'
-      ? 'grounded_success'
-      : groundingStatus === 'partially_grounded'
-        ? 'partially_grounded'
-        : 'ungrounded_success';
+    defaultTargetContext && defaultTargetContext.step_aware_intent
+      ? groundingStatus === 'grounded'
+        ? 'grounded_success'
+        : 'needs_more_context'
+      : groundingStatus === 'grounded'
+        ? 'grounded_success'
+        : groundingStatus === 'partially_grounded'
+          ? 'partially_grounded'
+          : 'ungrounded_success';
 
   return {
-    recommendations: next,
+    recommendations: nextForDisplay,
     grounding_status: groundingStatus,
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,
@@ -14250,6 +14223,12 @@ async function groundRecoRecommendationsFromCatalog({
       candidate_count_after_filter: candidateCountAfterFilter,
       candidates_rejected: candidatesRejected,
       timeout_count: timeoutCount,
+      exact_step_viable_count: exactStepViableCount,
+      same_family_viable_count: sameFamilyViableCount,
+      soft_mismatch_count: softMismatchCount,
+      hard_reject_count: hardRejectCount,
+      step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+      viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     },
   };
 }
@@ -14513,7 +14492,7 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
-async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, debug, logger } = {}) {
+async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientContext, targetContext = null, debug, logger } = {}) {
   const startedAt = Date.now();
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
@@ -14553,42 +14532,42 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
-  const queries = buildRecoCatalogQueries({
+  const queryLevels = buildRecoCatalogQueryLevels({
+    targetContext,
     profileSummary,
-    lang: ctx && ctx.lang ? ctx.lang : 'EN',
     ingredientContext,
+    lang: ctx && ctx.lang ? ctx.lang : 'EN',
   });
-  if (!queries.length) {
+  if (!queryLevels.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
 
-  const results = await mapWithConcurrency(queries, RECO_CATALOG_SEARCH_CONCURRENCY, async (q) => {
-    const out = fallbackEnabled
-      ? await buildPurchasableFallbackCandidates({
-          query: q.query,
-          limit: 6,
-          logger,
-          timeoutMs: searchTimeoutEffectiveMs,
-          allowExternalSeed: allowExternalSeedSupplement,
-          // Keep catalog pass single-call when primary search already returned products.
-          externalSeedStrategy: 'on_empty_only',
-        })
-      : await searchPivotaBackendProducts({
-          query: q.query,
-          limit: 6,
-          logger,
-          timeoutMs: searchTimeoutEffectiveMs,
-        });
-    return { ...q, ...out };
+  const collected = await collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    logger,
+    timeoutMs: searchTimeoutEffectiveMs,
+    limit: 6,
+    usePurchasableFallback: fallbackEnabled,
+    allowExternalSeed: allowExternalSeedSupplement,
+    externalSeedStrategy: 'on_empty_only',
   });
+  const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+  const candidateState = isPlainObject(collected.candidateState)
+    ? collected.candidateState
+    : finalizeRecommendationCandidatePools([], { targetContext });
+  const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
+    ? candidateState.selected_recommendations
+    : [];
 
-  const usedProductIds = new Set();
-  const recos = [];
-  for (const r of results) {
-    const products = Array.isArray(r?.products) ? r.products : [];
-    const picked = products.find((p) => p && p.product_id && !usedProductIds.has(p.product_id));
-    if (!picked) continue;
-    usedProductIds.add(picked.product_id);
+  const recos = selectedCandidates.map((picked, index) => {
+    const stepToken = pickFirstTrimmed(
+      targetContext && targetContext.resolved_target_step,
+      picked.product_type,
+      picked.category,
+      'other',
+    );
+    const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
     const canonicalRef = normalizeCanonicalProductRef(
       {
         product_id: pickFirstString(picked.product_id, picked.productId),
@@ -14596,10 +14575,10 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       },
       { requireMerchant: true, allowOpaqueProductId: false },
     );
-    recos.push({
-      slot: r.slot || 'other',
-      step: r.step || (ctx && ctx.lang === 'CN' ? '推荐' : 'Recommendation'),
-      score: 95,
+    return {
+      slot: inferSlotForStep(normalizedStep),
+      step: humanizeRecoProductType(normalizedStep, ctx && ctx.lang ? ctx.lang : 'EN'),
+      score: Math.max(72, 95 - index * 3),
       product_id: pickFirstString(picked.product_id, picked.productId),
       merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
       brand: pickFirstString(picked.brand, picked.brand_name, picked.brandName),
@@ -14612,8 +14591,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
         picked.product_type,
         picked.productType,
         picked.type,
-        r.step,
-        r.slot,
+        normalizedStep,
       ),
       retrieval_source: pickFirstString(picked.retrieval_source, picked.retrievalSource, 'catalog'),
       retrieval_reason: pickFirstString(picked.retrieval_reason, picked.retrievalReason, 'catalog_search_match'),
@@ -14624,14 +14602,14 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       sku: picked,
       ...(debug
         ? {
-          notes:
-            ctx && ctx.lang === 'CN'
-              ? ['来自 Pivota 商品库（PDP 测试模式）']
-              : ['From Pivota catalog (PDP test mode)'],
-        }
+            notes:
+              ctx && ctx.lang === 'CN'
+                ? ['来自 Pivota 商品库（step-aware viable pool）']
+                : ['From Pivota catalog (step-aware viable pool)'],
+          }
         : {}),
-    });
-  }
+    };
+  });
 
   const statusCounts = {};
   const sourceCounts = {};
@@ -14666,7 +14644,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
 
   const debugPayload = {
     ...debugInfo,
-    query_count: queries.length,
+    query_count: results.length,
     ok_count: okCount,
     picked_count: recos.length,
     probe_while_open: probeWhileOpen,
@@ -14678,6 +14656,24 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
     selected_source_counts: sourceCounts,
     external_seed_used_count: externalSeedUsedCount,
     external_seed_used_rate: results.length > 0 ? Number((externalSeedUsedCount / results.length).toFixed(4)) : 0,
+    resolved_target_step: targetContext && targetContext.resolved_target_step ? targetContext.resolved_target_step : null,
+    resolved_target_step_confidence: targetContext && targetContext.resolved_target_step_confidence ? targetContext.resolved_target_step_confidence : 'none',
+    resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
+    step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
+    step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+    viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+    candidate_pool_signature: candidateState.candidate_pool_signature,
+    raw_candidate_pool_debug_signature: candidateState.raw_candidate_pool_debug_signature,
+    raw_candidate_count: Number(candidateState.raw_candidate_count || 0),
+    viable_candidate_count: Number(candidateState.viable_candidate_count || 0),
+    exact_step_viable_count: Number(candidateState.exact_step_viable_count || 0),
+    same_family_viable_count: Number(candidateState.same_family_viable_count || 0),
+    soft_mismatch_count: Number(candidateState.soft_mismatch_count || 0),
+    hard_reject_count: Number(candidateState.hard_reject_count || 0),
+    selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
+    weak_viable_pool: Boolean(candidateState.weak_viable_pool),
+    overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
+    stop_level: collected.stopLevel || null,
     ...(debug
       ? {
         empty_count: emptyCount,
@@ -14685,20 +14681,15 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       : {}),
   };
 
-  const candidatePool = [];
-  for (const r of results) {
-    const products = Array.isArray(r?.products) ? r.products : [];
-    for (const product of products) {
-      candidatePool.push(product);
-      if (candidatePool.length >= 24) break;
-    }
-    if (candidatePool.length >= 24) break;
-  }
+  const candidatePool = Array.isArray(candidateState.viable_candidate_pool)
+    ? candidateState.viable_candidate_pool.slice(0, 24)
+    : [];
 
-  if (!recos.length) {
+  if (!recos.length || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
     return {
       structured: null,
       candidate_pool: candidatePool,
+      candidate_pool_state: candidateState,
       debug: debugPayload,
     };
   }
@@ -14712,6 +14703,7 @@ async function buildRecoGenerateFromCatalog({ ctx, profileSummary, ingredientCon
       warnings: [],
     },
     candidate_pool: candidatePool,
+    candidate_pool_state: candidateState,
     debug: debugPayload,
   };
 }
@@ -15106,16 +15098,11 @@ const ANALYSIS_DEEP_DIVE_RESPONSE_JSON_SCHEMA = Object.freeze({
   properties: {
     conclusion: { type: 'string' },
     key_signals: { type: 'array', items: { type: 'string' } },
-    deeper_findings: { type: 'array', items: { type: 'string' } },
-    target_state: { type: 'array', items: { type: 'string' } },
-    core_principles: { type: 'array', items: { type: 'string' } },
-    am_focus: { type: 'array', items: { type: 'string' } },
-    pm_focus: { type: 'array', items: { type: 'string' } },
     actions_now: { type: 'array', items: { type: 'string' } },
     avoid_now: { type: 'array', items: { type: 'string' } },
     confidence_note: { type: 'string' },
   },
-  required: ['conclusion', 'key_signals', 'deeper_findings', 'target_state', 'core_principles', 'am_focus', 'pm_focus', 'actions_now', 'avoid_now', 'confidence_note'],
+  required: ['conclusion', 'key_signals', 'actions_now', 'avoid_now', 'confidence_note'],
 });
 const ANALYSIS_STORY_REVIEW_ISSUE_CODES = Object.freeze([
   'headline_generic',
@@ -15288,6 +15275,7 @@ async function callGeminiJsonObject({
   queueTimeoutMs = 0,
   upstreamTimeoutMs = 0,
   ignoreForceModel = false,
+  thinkingBudget = undefined,
 } = {}) {
   const gemini = getGeminiClient();
   if (!gemini || !gemini.client) {
@@ -15347,7 +15335,10 @@ async function callGeminiJsonObject({
           config: {
             temperature,
             responseMimeType: 'application/json',
-            thinkingConfig: { includeThoughts: false },
+            thinkingConfig: {
+              includeThoughts: false,
+              ...(Number.isFinite(thinkingBudget) ? { thinkingBudget: Math.max(0, Math.trunc(thinkingBudget)) } : {}),
+            },
             ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
             ...(INGREDIENT_STRUCTURED_OUTPUT_STRICT_ENABLED && sanitizedSchema ? { responseSchema: sanitizedSchema } : {}),
           },
@@ -15479,24 +15470,6 @@ function resolveStoryReviewGeminiModel(model) {
   if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
   const lower = configured.toLowerCase();
   if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
-  return configured;
-}
-
-function resolveRecoAlternativesOpenWorldGeminiModel(model) {
-  const configured = String(model || AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL || '').trim()
-    || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL
-    || 'gemini-3-flash-preview';
-  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
-  const lower = configured.toLowerCase();
-  if (lower === 'gemini-3-flash-preview') {
-    const preferredStable = String(
-      process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL ||
-      process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL ||
-      '',
-    ).trim();
-    return preferredStable || AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL || configured;
-  }
   return configured;
 }
 
@@ -20894,41 +20867,6 @@ function buildAnalysisSuggestedChips({ language, lowConfidence, hasIngredientPla
   return chips;
 }
 
-function buildSavedAnalysisRecoEntryChip({ language, goal } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const normalizedGoal = normalizeRecoGoalToken(goal);
-  const goalLabelMap = {
-    acne: { EN: 'acne', CN: '控痘' },
-    pores: { EN: 'pores', CN: '毛孔' },
-    dark_spots: { EN: 'dark spots', CN: '淡印提亮' },
-    dehydration: { EN: 'hydration', CN: '保湿补水' },
-    barrier_repair: { EN: 'barrier repair', CN: '屏障修护' },
-    wrinkles: { EN: 'anti-aging', CN: '抗老' },
-    sunscreen: { EN: 'sunscreen', CN: '防晒' },
-  };
-  const goalLabel = goalLabelMap[normalizedGoal] || null;
-  return {
-    chip_id: 'chip.start.reco_products',
-    label: goalLabel
-      ? (lang === 'CN' ? `推荐${goalLabel.CN}产品` : `Recommend ${goalLabel.EN} products`)
-      : (lang === 'CN' ? '给我产品推荐' : 'Recommend products'),
-    kind: 'follow_up',
-    data: {
-      action_id: 'chip.start.reco_products',
-      reply_text: goalLabel
-        ? (lang === 'CN'
-          ? `基于我保存的 skin analysis，给我${goalLabel.CN}方向的产品推荐。`
-          : `Based on my saved skin analysis, recommend products for ${goalLabel.EN}.`)
-        : (lang === 'CN'
-          ? '基于我保存的 skin analysis，给我产品推荐。'
-          : 'Based on my saved skin analysis, recommend products for me.'),
-      trigger_source: 'saved_analysis_solution',
-      include_alternatives: true,
-      ...(normalizedGoal ? { profile_patch: { goals: [normalizedGoal] } } : {}),
-    },
-  };
-}
-
 function buildAnalysisAssistantMessage({ language, skinProfile, lowConfidence, ingredientPlan, routineFit } = {}) {
   const isCn = language === 'CN';
   const lines = [];
@@ -21347,11 +21285,7 @@ function buildDeepDiveAnalysisEvidence({
     .map((item, idx) => {
       const title = pickFirstTrimmed(item && item.title, item && item.concern_id, item && item.id);
       if (!title) return null;
-      return {
-        rank: idx + 1,
-        observation: title,
-        source: 'artifact',
-      };
+      return { rank: idx + 1, observation: title, source: 'artifact' };
     })
     .filter(Boolean);
   const followupEvidence = findingLines
@@ -21387,12 +21321,7 @@ function buildDeepDiveAnalysisEvidence({
     ) || null,
     quality_grade: pickFirstTrimmed(artifact && artifact.analysis_context && artifact.analysis_context.quality_grade) || null,
     profile: {
-      skinType: pickFirstTrimmed(
-        profile && profile.skinType,
-        skinProfile.skin_type_tendency,
-        skinProfile.skin_type,
-        skinProfile.skinType,
-      ),
+      skinType: pickFirstTrimmed(profile && profile.skinType, skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType),
       sensitivity: pickFirstTrimmed(profile && profile.sensitivity, skinProfile.sensitivity_tendency, skinProfile.sensitivity),
       barrierStatus: pickFirstTrimmed(profile && profile.barrierStatus),
       goals: normalizeArrayOfStrings(profile && profile.goals, { max: 6, maxLen: 80 }),
@@ -21439,196 +21368,8 @@ function buildDeepDiveAnalysisEvidence({
 
 const ANALYSIS_DEEP_DIVE_PROMPT_VERSION = 'aurora.analysis_story.v2.deep_dive_v2';
 
-function buildDeterministicDeepDiveDelta({ evidence, fallbackStory, language } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const safeEvidence = isPlainObject(evidence) ? evidence : {};
-  const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
-  const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
-  const routineActives = normalizeArrayOfStrings(routineContext.actives_detected, { max: 6, maxLen: 40 })
-    .map((token) => String(token || '').trim().toLowerCase())
-    .filter(Boolean);
-  const baselineFindingLines = normalizeArrayOfStrings(
-    [
-      ...(Array.isArray(baselineStory.priority_findings)
-        ? baselineStory.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
-        : []),
-      ...(Array.isArray(safeEvidence.finding_evidence)
-        ? safeEvidence.finding_evidence.map((item) => pickFirstTrimmed(item && item.observation))
-        : []),
-    ],
-    { max: 8, maxLen: 120 },
-  );
-  const baselineText = baselineFindingLines.join(' | ').toLowerCase();
-  const qualityGrade = pickFirstTrimmed(safeEvidence.quality_grade).toLowerCase();
-  const hasDryness =
-    /(dry|dryness|tight|flak|peel|dehydrat|barrier|repair|stinging|redness|irritation)/.test(baselineText);
-  const hasCongestion = /(congestion|clog|acne|bump|comed|blackhead)/.test(baselineText);
-  const hasTexture = /(texture|rough|pore)/.test(baselineText);
-  const hasShine = /(oil|oily|shine|sebum)/.test(baselineText);
-  const hasRedness = /(redness|red|stinging|reactiv|irritat)/.test(baselineText);
-  const hasRetinoid = routineActives.some((token) => /retinoid|retinol|adapalene|tretinoin/.test(token));
-  const hasExfoliant = routineActives.some((token) => /bha|aha|pha|salicylic|glycolic|lactic|acid|exfol/.test(token));
-  const hasStrongVitaminC = routineActives.some((token) => /vitamin_c|ascorb/.test(token));
-  const hasActiveOverlap =
-    (hasRetinoid && hasExfoliant) ||
-    (hasRetinoid && hasStrongVitaminC) ||
-    routineActives.filter((token) => /retinoid|retinol|adapalene|tretinoin|bha|aha|pha|salicylic|glycolic|lactic|acid|exfol|benzoyl|vitamin_c|ascorb/.test(token)).length >= 2;
-
-  const deeperFindings = [];
-  const targetState = [];
-  const corePrinciples = [];
-  const amFocus = [];
-  const pmFocus = [];
-  const actionsNow = [];
-  const avoidNow = [];
-
-  if (qualityGrade === 'degraded') {
-    deeperFindings.push(
-      lang === 'CN'
-        ? '这次照片质量一般，出油/反光判断要更保守，因此更应优先看屏障与耐受线索。'
-        : 'Photo quality is degraded, so shine/oil cues are less reliable; barrier and tolerance clues deserve more weight.',
-    );
-  }
-  if (hasActiveOverlap && (hasDryness || hasRedness) && (hasCongestion || hasTexture)) {
-    deeperFindings.push(
-      lang === 'CN'
-        ? '当前更像是活性叠加在拉高屏障压力，同时闭口/质地只得到部分改善。'
-        : 'Current active overlap may be increasing barrier stress while congestion/texture is only partly improving.',
-    );
-  } else if ((hasDryness || hasRedness) && (hasCongestion || hasTexture || hasShine)) {
-    deeperFindings.push(
-      lang === 'CN'
-        ? '这更像“缺水/屏障压力 + 轻度堵塞”的混合模式，不是单纯出油过多。'
-        : 'This looks more like dehydration/barrier stress plus mild congestion, not pure oil overload.',
-    );
-  } else if (hasTexture && hasCongestion) {
-    deeperFindings.push(
-      lang === 'CN'
-        ? '这次更像毛孔堵塞驱动的粗糙感，而不是大范围炎症。'
-        : 'The roughness here looks more pore-congestion driven than broadly inflammatory.',
-    );
-  } else if (hasRedness || hasDryness) {
-    deeperFindings.push(
-      lang === 'CN'
-        ? '当前真正限制治疗节奏的更像是耐受和屏障状态。'
-        : 'Tolerance and barrier status appear to be the main factors limiting how fast treatment can escalate.',
-    );
-  }
-
-  if (hasActiveOverlap || hasDryness || hasRedness) {
-    targetState.push(
-      lang === 'CN'
-        ? '先把屏障压力压下来，再逐步推进痘痘/质地处理。'
-        : 'Bring barrier stress down first, then step up acne/texture treatment gradually.',
-    );
-  }
-  if (hasCongestion || hasTexture) {
-    targetState.push(
-      lang === 'CN'
-        ? '在不加重干燥的前提下慢慢降低堵塞与粗糙。'
-        : 'Reduce congestion and roughness without increasing dryness.',
-    );
-  }
-
-  if (hasActiveOverlap) {
-    corePrinciples.push(
-      lang === 'CN'
-        ? '不要同晚叠加多种强活性，把刺激预算留给一个核心步骤。'
-        : 'Do not stack multiple strong actives on the same night; spend irritation budget on one core step.',
-    );
-  }
-  if (hasDryness || hasRedness || qualityGrade === 'degraded') {
-    corePrinciples.push(
-      lang === 'CN'
-        ? '当照片线索偏保守时，用“先稳后进”的节奏比加量更重要。'
-        : 'When the read is conservative, stability-first pacing matters more than adding intensity.',
-    );
-  }
-
-  if (hasDryness || hasRedness) {
-    amFocus.push(
-      lang === 'CN'
-        ? '早上先把保湿/修护层做扎实，再接防晒。'
-        : 'Lock in hydration/repair before sunscreen in the morning.',
-    );
-  }
-  if (hasActiveOverlap || hasCongestion || hasTexture) {
-    pmFocus.push(
-      lang === 'CN'
-        ? '晚间一次只保留一个核心活性，观察耐受再调整频率。'
-        : 'Keep only one core active at night until tolerance is stable, then adjust frequency.',
-    );
-  }
-
-  if (hasActiveOverlap) {
-    actionsNow.push(
-      lang === 'CN'
-        ? '把维A、酸类、高浓 VC 错开，不要同晚并用。'
-        : 'Separate retinoid, exfoliating acids, and high-strength vitamin C instead of combining them on one night.',
-    );
-  }
-  if (hasCongestion || hasTexture) {
-    actionsNow.push(
-      lang === 'CN'
-        ? '控痘/控纹理先走低频稳定路线，不要急着加频率。'
-        : 'Keep acne/texture control slow and steady instead of escalating frequency too quickly.',
-    );
-  }
-  if (hasActiveOverlap || hasDryness || hasRedness) {
-    avoidNow.push(
-      lang === 'CN'
-        ? '避免同晚叠加多个高刺激活性。'
-        : 'Avoid stacking multiple higher-irritation actives on the same night.',
-    );
-  }
-
-  const conclusion = pickFirstTrimmed(deeperFindings[0], targetState[0]);
-  const confidenceNote =
-    qualityGrade === 'degraded'
-      ? (lang === 'CN'
-          ? '由于照片质量一般，这次深挖更侧重治疗节奏与耐受判断。'
-          : 'Because photo quality is degraded, this deep dive leans more on treatment pacing and tolerance interpretation.')
-      : '';
-
-  return {
-    conclusion,
-    key_signals: deeperFindings.slice(0, 2),
-    deeper_findings: deeperFindings.slice(0, 2),
-    target_state: targetState.slice(0, 2),
-    core_principles: corePrinciples.slice(0, 2),
-    am_focus: amFocus.slice(0, 2),
-    pm_focus: pmFocus.slice(0, 2),
-    actions_now: actionsNow.slice(0, 2),
-    avoid_now: avoidNow.slice(0, 1),
-    confidence_note: confidenceNote,
-  };
-}
-
-function mergeDeepDiveSignalPayload(primary, secondary) {
-  const base = isPlainObject(primary) ? primary : {};
-  const fallback = isPlainObject(secondary) ? secondary : {};
-  return {
-    conclusion: pickFirstTrimmed(base.conclusion, fallback.conclusion) || '',
-    key_signals: normalizeArrayOfStrings([...(Array.isArray(base.key_signals) ? base.key_signals : []), ...(Array.isArray(fallback.key_signals) ? fallback.key_signals : [])], { max: 2, maxLen: 120 }),
-    deeper_findings: normalizeArrayOfStrings([...(Array.isArray(base.deeper_findings) ? base.deeper_findings : []), ...(Array.isArray(fallback.deeper_findings) ? fallback.deeper_findings : [])], { max: 2, maxLen: 120 }),
-    target_state: normalizeArrayOfStrings([...(Array.isArray(base.target_state) ? base.target_state : []), ...(Array.isArray(fallback.target_state) ? fallback.target_state : [])], { max: 2, maxLen: 120 }),
-    core_principles: normalizeArrayOfStrings([...(Array.isArray(base.core_principles) ? base.core_principles : []), ...(Array.isArray(fallback.core_principles) ? fallback.core_principles : [])], { max: 2, maxLen: 120 }),
-    am_focus: normalizeArrayOfStrings([...(Array.isArray(base.am_focus) ? base.am_focus : []), ...(Array.isArray(fallback.am_focus) ? fallback.am_focus : [])], { max: 2, maxLen: 120 }),
-    pm_focus: normalizeArrayOfStrings([...(Array.isArray(base.pm_focus) ? base.pm_focus : []), ...(Array.isArray(fallback.pm_focus) ? fallback.pm_focus : [])], { max: 2, maxLen: 120 }),
-    actions_now: normalizeArrayOfStrings([...(Array.isArray(base.actions_now) ? base.actions_now : []), ...(Array.isArray(fallback.actions_now) ? fallback.actions_now : [])], { max: 2, maxLen: 120 }),
-    avoid_now: normalizeArrayOfStrings([...(Array.isArray(base.avoid_now) ? base.avoid_now : []), ...(Array.isArray(fallback.avoid_now) ? fallback.avoid_now : [])], { max: 1, maxLen: 120 }),
-    confidence_note: pickFirstTrimmed(base.confidence_note, fallback.confidence_note) || '',
-  };
-}
-
 function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
-  const baselineStory = isPlainObject(fallbackStory) ? fallbackStory : {};
-  const deterministicDelta = buildDeterministicDeepDiveDelta({
-    evidence: safeEvidence,
-    fallbackStory: baselineStory,
-    language: safeEvidence.language,
-  });
   const routineContext = isPlainObject(safeEvidence.routine_context) ? safeEvidence.routine_context : {};
   const routineFit = isPlainObject(safeEvidence.routine_fit) ? safeEvidence.routine_fit : {};
   const lowestDimensions = Array.isArray(routineFit.lowest_dimensions) ? routineFit.lowest_dimensions : [];
@@ -21645,18 +21386,6 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
     activeRoutineProducts.length ? activeRoutineProducts : routineProducts,
     { max: 2, maxLen: 70 },
   );
-  const baselineFindings = normalizeArrayOfStrings(
-    Array.isArray(baselineStory.priority_findings)
-      ? baselineStory.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
-      : [],
-    { max: 4, maxLen: 90 },
-  );
-  const baselineActions = normalizeArrayOfStrings(
-    isPlainObject(baselineStory.ui_card_v1) ? baselineStory.ui_card_v1.actions_now : [],
-    { max: 2, maxLen: 90 },
-  );
-  const baselineTargetState = normalizeArrayOfStrings(baselineStory.target_state, { max: 2, maxLen: 90 });
-  const baselinePrinciples = normalizeArrayOfStrings(baselineStory.core_principles, { max: 2, maxLen: 90 });
   return compactQaPromptValue({
     q: pickFirstTrimmed(safeEvidence.followup_focus) || null,
     photo_backed: safeEvidence.use_photo === true || normalizeAnalysisPhotoRefs(safeEvidence.photo_refs).length > 0,
@@ -21680,12 +21409,6 @@ function buildDeepDiveAnalysisPromptDigest({ evidence, fallbackStory } = {}) {
       { max: 2, maxLen: 40 },
     ),
     goals: normalizeArrayOfStrings(safeEvidence.profile && safeEvidence.profile.goals, { max: 2, maxLen: 30 }),
-    baseline_findings: baselineFindings,
-    baseline_actions: baselineActions,
-    baseline_target_state: baselineTargetState,
-    baseline_core_principles: baselinePrinciples,
-    derived_second_pass: normalizeArrayOfStrings(deterministicDelta.deeper_findings, { max: 2, maxLen: 90 }),
-    derived_actions: normalizeArrayOfStrings(deterministicDelta.actions_now, { max: 2, maxLen: 90 }),
   }, { maxItems: 5, maxString: 100 });
 }
 
@@ -21697,12 +21420,6 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
   const findings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.findings, { max: 3, maxLen: 90 });
   const routine = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.routine, { max: 3, maxLen: 70 });
   const risk = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.risk, { max: 2, maxLen: 90 });
-  const baselineFindings = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_findings, { max: 4, maxLen: 90 });
-  const baselineActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_actions, { max: 2, maxLen: 90 });
-  const baselineTargetState = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_target_state, { max: 2, maxLen: 90 });
-  const baselinePrinciples = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.baseline_core_principles, { max: 2, maxLen: 90 });
-  const derivedSecondPass = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.derived_second_pass, { max: 2, maxLen: 90 });
-  const derivedActions = normalizeArrayOfStrings(evidenceDigest && evidenceDigest.derived_actions, { max: 2, maxLen: 90 });
   const evidenceParts = [
     findings.length ? `${findings.join(' + ')} on photos` : '',
     confidence ? `${confidence} confidence` : '',
@@ -21715,25 +21432,13 @@ function buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory } 
     photoBacked ? 'Photo-backed context already exists.' : 'Profile-based context only.',
     question ? `Question: ${question}` : '',
     evidenceParts.length ? `Evidence: ${evidenceParts.join('; ')}.` : '',
-    baselineFindings.length ? `Baseline findings already shown: ${baselineFindings.join('; ')}.` : '',
-    baselineTargetState.length ? `Baseline target state: ${baselineTargetState.join('; ')}.` : '',
-    baselinePrinciples.length ? `Baseline principles: ${baselinePrinciples.join('; ')}.` : '',
-    baselineActions.length ? `Baseline actions: ${baselineActions.join('; ')}.` : '',
-    derivedSecondPass.length ? `Deterministic second-pass hints: ${derivedSecondPass.join('; ')}.` : '',
-    derivedActions.length ? `Deterministic next-step hints: ${derivedActions.join('; ')}.` : '',
-    'Rules: do not say you cannot analyze photos; answer as a true second-pass read; do not restate baseline findings verbatim; use deeper_findings only for net-new interpretation, hidden pattern, interaction, priority shift, or likely driver; if nothing new can be supported, explain what constraint keeps the read conservative and how management priority changes; keep each string under 120 chars; preserve conservative wording like more consistent with.',
-    'Prioritize what changes when looking more closely: barrier-vs-oil tradeoff, irritation-vs-congestion sequencing, routine interaction risk, and what should move up or down in treatment priority.',
-    'Keep baseline continuity but make visible sections feel different from the first card: deeper_findings should surface first, while target_state/core_principles/actions should describe the next-step strategy rather than repeat baseline.',
-    'Limits: deeper_findings max 2; key_signals max 2; target_state/core_principles/am_focus/pm_focus/actions_now max 2; avoid_now max 1.',
-    'Output JSON schema:',
-    '{"conclusion":"","key_signals":[],"deeper_findings":[],"target_state":[],"core_principles":[],"am_focus":[],"pm_focus":[],"actions_now":[],"avoid_now":[],"confidence_note":""}',
+    'Rules: do not say you cannot analyze photos; use cautious wording like more consistent with; keep each string under 120 chars; key_signals/actions_now max 2; avoid_now max 1.',
   ].filter(Boolean).join('\n');
 }
 
 function tryRecoverDeepDiveResponseFromTruncatedText(text) {
   const raw = String(text || '').trim();
   if (!raw) return null;
-
   const findFieldValueStart = (key, expectedStartChar) => {
     const keyToken = `"${String(key || '').trim()}"`;
     const keyIndex = raw.indexOf(keyToken);
@@ -21745,7 +21450,6 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
     if (!expectedStartChar) return cursor;
     return raw[cursor] === expectedStartChar ? cursor : -1;
   };
-
   const readJsonStringField = (key) => {
     const start = findFieldValueStart(key, '"');
     if (start < 0) return null;
@@ -21753,21 +21457,13 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
     let escapeNext = false;
     for (let i = start + 1; i < raw.length; i += 1) {
       const ch = raw[i];
-      if (escapeNext) {
-        value += ch;
-        escapeNext = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escapeNext = true;
-        continue;
-      }
+      if (escapeNext) { value += ch; escapeNext = false; continue; }
+      if (ch === '\\') { escapeNext = true; continue; }
       if (ch === '"') return value.trim() || null;
       value += ch;
     }
     return null;
   };
-
   const readJsonStringArrayField = (key, max = 2) => {
     const start = findFieldValueStart(key, '[');
     if (start < 0) return [];
@@ -21777,15 +21473,8 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
     let escapeNext = false;
     for (let i = start + 1; i < raw.length; i += 1) {
       const ch = raw[i];
-      if (escapeNext) {
-        if (inString) value += ch;
-        escapeNext = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escapeNext = true;
-        continue;
-      }
+      if (escapeNext) { if (inString) value += ch; escapeNext = false; continue; }
+      if (ch === '\\') { escapeNext = true; continue; }
       if (inString) {
         if (ch === '"') {
           const normalized = value.trim();
@@ -21793,44 +21482,24 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
           value = '';
           inString = false;
           if (out.length >= max) break;
-        } else {
-          value += ch;
-        }
+        } else { value += ch; }
         continue;
       }
-      if (ch === '"') {
-        inString = true;
-        value = '';
-        continue;
-      }
+      if (ch === '"') { inString = true; value = ''; continue; }
       if (ch === ']') break;
     }
     return out;
   };
-
   const recovered = {
     conclusion: readJsonStringField('conclusion'),
     key_signals: readJsonStringArrayField('key_signals', 2),
-    deeper_findings: readJsonStringArrayField('deeper_findings', 2),
-    target_state: readJsonStringArrayField('target_state', 2),
-    core_principles: readJsonStringArrayField('core_principles', 2),
-    am_focus: readJsonStringArrayField('am_focus', 2),
-    pm_focus: readJsonStringArrayField('pm_focus', 2),
     actions_now: readJsonStringArrayField('actions_now', 2),
     avoid_now: readJsonStringArrayField('avoid_now', 1),
     confidence_note: readJsonStringField('confidence_note'),
   };
   const hasMeaningfulField = Boolean(
-    recovered.conclusion ||
-    recovered.confidence_note ||
-    recovered.key_signals.length ||
-    recovered.deeper_findings.length ||
-    recovered.target_state.length ||
-    recovered.core_principles.length ||
-    recovered.am_focus.length ||
-    recovered.pm_focus.length ||
-    recovered.actions_now.length ||
-    recovered.avoid_now.length,
+    recovered.conclusion || recovered.confidence_note ||
+    recovered.key_signals.length || recovered.actions_now.length || recovered.avoid_now.length,
   );
   if (!hasMeaningfulField) return null;
   return recovered;
@@ -21839,104 +21508,21 @@ function tryRecoverDeepDiveResponseFromTruncatedText(text) {
 function applyDeepDiveLlmResponseToStory({ responsePayload, fallbackStory } = {}) {
   const safePayload = isPlainObject(responsePayload) ? responsePayload : {};
   const baseline = coerceAnalysisStoryV2(fallbackStory, fallbackStory);
-  const story = {
-    ...baseline,
-    ui_card_v1: isPlainObject(baseline.ui_card_v1) ? { ...baseline.ui_card_v1 } : {},
-  };
-  const prependUniquePlanSteps = (rows, additions) => {
-    const next = [];
-    const seen = new Set();
-    for (const entry of normalizeArrayOfStrings(additions, { max: 2, maxLen: 120 })) {
-      const key = entry.toLowerCase();
-      if (!key) continue;
-      seen.add(key);
-      next.push({ step: entry, purpose: '' });
-    }
-    for (const item of normalizeDeepDivePlanSteps(rows)) {
-      const key = pickFirstTrimmed(item && item.step).toLowerCase();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      next.push(item);
-      if (next.length >= 5) break;
-    }
-    return next.slice(0, 5);
-  };
-  const mergeFrontLoadedStrings = (primary, secondary, { max = 4, maxLen = 120 } = {}) =>
-    normalizeArrayOfStrings([...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])], {
-      max,
-      maxLen,
-    });
+  const story = { ...baseline, ui_card_v1: isPlainObject(baseline.ui_card_v1) ? { ...baseline.ui_card_v1 } : {} };
   const headline = pickFirstTrimmed(safePayload.conclusion, safePayload.headline);
   const keySignals = normalizeArrayOfStrings(safePayload.key_signals, { max: 2, maxLen: 120 });
-  const deeperFindings = normalizeArrayOfStrings(safePayload.deeper_findings, { max: 2, maxLen: 120 });
-  const targetState = normalizeArrayOfStrings(safePayload.target_state, { max: 2, maxLen: 120 });
-  const corePrinciples = normalizeArrayOfStrings(safePayload.core_principles, { max: 2, maxLen: 120 });
-  const amFocus = normalizeArrayOfStrings(safePayload.am_focus, { max: 2, maxLen: 120 });
-  const pmFocus = normalizeArrayOfStrings(safePayload.pm_focus, { max: 2, maxLen: 120 });
   const actionsNow = normalizeArrayOfStrings(safePayload.actions_now, { max: 2, maxLen: 120 });
   const avoidNow = normalizeArrayOfStrings(safePayload.avoid_now, { max: 1, maxLen: 120 });
   const uiPatch = {};
-  if (headline) story.ui_card_v1.headline = headline;
-  if (headline) uiPatch.headline = headline;
-  const baselineFindings = Array.isArray(story.priority_findings) ? story.priority_findings : [];
-  const baselineFindingLines = baselineFindings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail)).filter(Boolean);
-  const visibleDeepDiveLines = normalizeArrayOfStrings([...deeperFindings, ...keySignals], { max: 3, maxLen: 120 });
-  const mergedFindings = normalizeArrayOfStrings(
-    [
-      ...visibleDeepDiveLines,
-      ...baselineFindingLines,
-    ],
-    { max: 6, maxLen: 120 },
-  );
-  if (mergedFindings.length) {
-    story.priority_findings = mergedFindings.map((item, idx) => ({
-      priority: idx + 1,
-      title: item,
-      detail: item,
-      evidence_region_or_module: [],
-    }));
-    const preferredKeyPoints = visibleDeepDiveLines.length ? visibleDeepDiveLines : mergedFindings;
-    story.ui_card_v1.key_points = preferredKeyPoints.slice(0, 3);
-    uiPatch.key_points = preferredKeyPoints.slice(0, 3);
+  if (headline) { story.ui_card_v1.headline = headline; uiPatch.headline = headline; }
+  if (keySignals.length) {
+    story.ui_card_v1.key_points = keySignals;
+    uiPatch.key_points = keySignals;
+    story.priority_findings = keySignals.map((item, idx) => ({ priority: idx + 1, title: item, detail: item, evidence_region_or_module: [] }));
   }
-  if (targetState.length) {
-    story.target_state = mergeFrontLoadedStrings(targetState, Array.isArray(story.target_state) ? story.target_state : [], {
-      max: 4,
-      maxLen: 120,
-    });
-  }
-  if (corePrinciples.length) {
-    story.core_principles = mergeFrontLoadedStrings(
-      corePrinciples,
-      Array.isArray(story.core_principles) ? story.core_principles : [],
-      { max: 4, maxLen: 120 },
-    );
-  }
-  if (amFocus.length) {
-    story.am_plan = prependUniquePlanSteps(story.am_plan, amFocus);
-  }
-  if (pmFocus.length) {
-    story.pm_plan = prependUniquePlanSteps(story.pm_plan, pmFocus);
-  }
-  if (actionsNow.length) {
-    const mergedActions = mergeFrontLoadedStrings(
-      actionsNow,
-      Array.isArray(story.ui_card_v1.actions_now) ? story.ui_card_v1.actions_now : [],
-      { max: 3, maxLen: 120 },
-    );
-    story.ui_card_v1.actions_now = mergedActions;
-    uiPatch.actions_now = mergedActions;
-  }
-  if (avoidNow.length) {
-    story.ui_card_v1.avoid_now = avoidNow;
-    uiPatch.avoid_now = avoidNow;
-    story.safety_notes = avoidNow;
-  }
-  return {
-    story,
-    ui_patch: uiPatch,
-    confidence_note: pickFirstTrimmed(safePayload.confidence_note) || null,
-  };
+  if (actionsNow.length) { story.ui_card_v1.actions_now = actionsNow; uiPatch.actions_now = actionsNow; }
+  if (avoidNow.length) { story.ui_card_v1.avoid_now = avoidNow; uiPatch.avoid_now = avoidNow; story.safety_notes = avoidNow; }
+  return { story, ui_patch: uiPatch, confidence_note: pickFirstTrimmed(safePayload.confidence_note) || null };
 }
 
 function applyNonWeakeningDeepDiveUiPatch({ story, fallbackStory, uiPatch } = {}) {
@@ -21960,83 +21546,6 @@ function applyNonWeakeningDeepDiveUiPatch({ story, fallbackStory, uiPatch } = {}
     restored.safety_notes = patch.avoid_now.slice(0, 2);
   }
   return restored;
-}
-
-function canonicalizeDeepDiveLine(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .replace(/^\s*\d+\s*[.)\-:：·]\s*/, '')
-    .replace(/[，,。.!！？;；:：()[\]{}]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function applyDeterministicDeepDiveSurfacePatch({ story, fallbackStory, deterministicDelta } = {}) {
-  const candidate = isPlainObject(story) ? story : {};
-  const fallback = isPlainObject(fallbackStory) ? fallbackStory : {};
-  const delta = isPlainObject(deterministicDelta) ? deterministicDelta : {};
-  if (!isPlainObject(candidate.ui_card_v1)) return candidate;
-
-  const patched = {
-    ...candidate,
-    ui_card_v1: { ...candidate.ui_card_v1 },
-  };
-  const baselineFindingLines = normalizeArrayOfStrings(
-    Array.isArray(fallback.priority_findings)
-      ? fallback.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
-      : [],
-    { max: 6, maxLen: 120 },
-  );
-  const baselineFindingKeys = new Set(baselineFindingLines.map(canonicalizeDeepDiveLine).filter(Boolean));
-  const candidateFindingLines = normalizeArrayOfStrings(
-    Array.isArray(candidate.priority_findings)
-      ? candidate.priority_findings.map((item) => pickFirstTrimmed(item && item.title, item && item.detail))
-      : [],
-    { max: 6, maxLen: 120 },
-  );
-  const novelDeltaFindings = normalizeArrayOfStrings(delta.deeper_findings, { max: 2, maxLen: 120 }).filter((line) => {
-    const key = canonicalizeDeepDiveLine(line);
-    return key && !baselineFindingKeys.has(key);
-  });
-  const topCandidateFindingKeys = new Set(candidateFindingLines.slice(0, 2).map(canonicalizeDeepDiveLine).filter(Boolean));
-  const hasVisibleNovelFinding = Array.from(topCandidateFindingKeys).some((key) => key && !baselineFindingKeys.has(key));
-  if (!hasVisibleNovelFinding && novelDeltaFindings.length) {
-    const mergedFindings = normalizeArrayOfStrings([...novelDeltaFindings, ...candidateFindingLines], { max: 6, maxLen: 120 });
-    patched.priority_findings = mergedFindings.map((item, idx) => ({
-      priority: idx + 1,
-      title: item,
-      detail: item,
-      evidence_region_or_module: [],
-    }));
-    patched.ui_card_v1.key_points = mergedFindings.slice(0, 3);
-  }
-
-  const frontLoadNovelStrings = (currentRows, baselineRows, novelRows, { max = 4 } = {}) => {
-    const baselineKeys = new Set(normalizeArrayOfStrings(baselineRows, { max, maxLen: 120 }).map(canonicalizeDeepDiveLine).filter(Boolean));
-    const current = normalizeArrayOfStrings(currentRows, { max, maxLen: 120 });
-    const front = normalizeArrayOfStrings(novelRows, { max, maxLen: 120 }).filter((line) => {
-      const key = canonicalizeDeepDiveLine(line);
-      return key && !baselineKeys.has(key);
-    });
-    if (!front.length) return current;
-    const currentHasNovel = current.slice(0, 2).some((line) => {
-      const key = canonicalizeDeepDiveLine(line);
-      return key && !baselineKeys.has(key);
-    });
-    if (currentHasNovel) return current;
-    return normalizeArrayOfStrings([...front, ...current], { max, maxLen: 120 });
-  };
-
-  patched.target_state = frontLoadNovelStrings(candidate.target_state, fallback.target_state, delta.target_state, { max: 4 });
-  patched.core_principles = frontLoadNovelStrings(candidate.core_principles, fallback.core_principles, delta.core_principles, { max: 4 });
-  patched.ui_card_v1.actions_now = frontLoadNovelStrings(
-    candidate.ui_card_v1.actions_now,
-    isPlainObject(fallback.ui_card_v1) ? fallback.ui_card_v1.actions_now : [],
-    delta.actions_now,
-    { max: 3 },
-  );
-
-  return patched;
 }
 
 function isDeepDiveStoryWeakerThanFallback({ story, fallbackStory } = {}) {
@@ -22073,12 +21582,8 @@ function buildDeepDiveAssistantText({ story, language, replyText, analysisOrigin
       ? (isCn ? '这次解释继续基于你最近一次照片分析。' : 'This explanation stays grounded in your latest photo-based analysis.')
       : (isCn ? '这次解释继续基于你最近一次分析。' : 'This explanation stays grounded in your latest analysis.'),
     pickFirstTrimmed(ui.headline, Array.isArray(story && story.target_state) ? story.target_state[0] : ''),
-    findings.length
-      ? (isCn ? `关键信号：${findings.join('；')}。` : `Key signals: ${findings.join('; ')}.`)
-      : '',
-    actions.length
-      ? (isCn ? `下一步：${actions.join('；')}。` : `Next steps: ${actions.join('; ')}.`)
-      : '',
+    findings.length ? (isCn ? `关键信号：${findings.join('；')}。` : `Key signals: ${findings.join('; ')}.`) : '',
+    actions.length ? (isCn ? `下一步：${actions.join('；')}。` : `Next steps: ${actions.join('; ')}.`) : '',
     note ? (isCn ? `判断边界：${note}。` : `Confidence note: ${note}.`) : '',
     confidenceLabel ? (isCn ? `当前置信度：${confidenceLabel}。` : `Current confidence: ${confidenceLabel}.`) : '',
   ].filter(Boolean).join(' ');
@@ -22098,15 +21603,7 @@ function resolveAnalysisStorySnapshotForDeepDive({ actionData, sessionAnalysisCo
 }
 
 async function buildAnalysisDeepDiveContentWithLlm({
-  lastAnalysis,
-  diagnosisArtifact,
-  profile,
-  language,
-  requestId,
-  replyText,
-  actionData,
-  sessionAnalysisContext,
-  logger,
+  lastAnalysis, diagnosisArtifact, profile, language, requestId, replyText, actionData, sessionAnalysisContext, logger,
 } = {}) {
   const normalizedActionData = isPlainObject(actionData) ? actionData : {};
   const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
@@ -22149,26 +21646,12 @@ async function buildAnalysisDeepDiveContentWithLlm({
   const requestedOrigin = pickFirstTrimmed(normalizedActionData.analysis_origin, normalizedSessionContext.analysis_origin);
   const analysisOrigin =
     photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
-      ? 'photo'
-      : 'profile';
+      ? 'photo' : 'profile';
   const fallbackStory = buildDeepDiveFallbackStoryPayload({ lastAnalysis: resolvedLastAnalysis, language });
   const evidence = buildDeepDiveAnalysisEvidence({
-    lastAnalysis: resolvedLastAnalysis,
-    diagnosisArtifact: normalizedArtifact,
-    profile,
-    language,
-    replyText,
-    analysisOrigin,
-    photoRefs,
-    sourceCardType: pickFirstTrimmed(normalizedActionData.source_card_type, normalizedSessionContext.source_card_type),
-    fallbackStory,
+    lastAnalysis: resolvedLastAnalysis, diagnosisArtifact: normalizedArtifact, profile, language, replyText, analysisOrigin, photoRefs,
+    sourceCardType: pickFirstTrimmed(normalizedActionData.source_card_type, normalizedSessionContext.source_card_type), fallbackStory,
   });
-  const deterministicDelta = buildDeterministicDeepDiveDelta({
-    evidence,
-    fallbackStory,
-    language,
-  });
-
   let storyPayload = fallbackStory;
   let llmUsed = false;
   let llmFailureReason = null;
@@ -22176,8 +21659,7 @@ async function buildAnalysisDeepDiveContentWithLlm({
   let llmUiPatch = null;
   try {
     const llmResult = await callRuntimeQaJson({
-      kind: 'story_review',
-      model: AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
+      kind: 'story_review', model: AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
       systemPrompt: 'You are a skincare deep-dive assistant. Output strict JSON only.',
       userPrompt: buildDeepDiveAnalysisStoryGenerationPrompt({ evidence, fallbackStory }),
       timeoutMs: AURORA_SKIN_DEEP_DIVE_GEMINI_TIMEOUT_MS,
@@ -22189,27 +21671,16 @@ async function buildAnalysisDeepDiveContentWithLlm({
     });
     if (llmResult && llmResult.ok && isPlainObject(llmResult.json)) {
       llmUsed = true;
-      const merged = applyDeepDiveLlmResponseToStory({
-        responsePayload: mergeDeepDiveSignalPayload(llmResult.json, deterministicDelta),
-        fallbackStory,
-      });
+      const merged = applyDeepDiveLlmResponseToStory({ responsePayload: llmResult.json, fallbackStory });
       storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
       llmConfidenceNote = pickFirstTrimmed(merged && merged.confidence_note) || null;
       llmUiPatch = isPlainObject(merged && merged.ui_patch) ? merged.ui_patch : null;
     } else {
-      const recoveredPayload =
-        llmResult &&
-        llmResult.reason === 'PARSE_TRUNCATED_JSON' &&
-        typeof llmResult.raw_text === 'string'
-          ? tryRecoverDeepDiveResponseFromTruncatedText(llmResult.raw_text)
-          : null;
+      const recoveredPayload = llmResult && llmResult.reason === 'PARSE_TRUNCATED_JSON' && typeof llmResult.raw_text === 'string'
+        ? tryRecoverDeepDiveResponseFromTruncatedText(llmResult.raw_text) : null;
       if (recoveredPayload) {
-        llmUsed = true;
-        llmFailureReason = 'PARSE_TRUNCATED_JSON_RECOVERED';
-        const merged = applyDeepDiveLlmResponseToStory({
-          responsePayload: mergeDeepDiveSignalPayload(recoveredPayload, deterministicDelta),
-          fallbackStory,
-        });
+        llmUsed = true; llmFailureReason = 'PARSE_TRUNCATED_JSON_RECOVERED';
+        const merged = applyDeepDiveLlmResponseToStory({ responsePayload: recoveredPayload, fallbackStory });
         storyPayload = isPlainObject(merged && merged.story) ? merged.story : fallbackStory;
         llmConfidenceNote = pickFirstTrimmed(merged && merged.confidence_note) || null;
         llmUiPatch = isPlainObject(merged && merged.ui_patch) ? merged.ui_patch : null;
@@ -22219,50 +21690,25 @@ async function buildAnalysisDeepDiveContentWithLlm({
     }
   } catch (err) {
     llmFailureReason = err && err.message ? String(err.message) : 'deep_dive_llm_exception';
-      logger?.warn?.(
-        { err: llmFailureReason, request_id: requestId },
-        'aurora bff: skin deep-dive llm failed, using deterministic fallback',
-    );
+    logger?.warn?.({ err: llmFailureReason, request_id: requestId }, 'aurora bff: skin deep-dive llm failed, using deterministic fallback');
   }
-  if (storyPayload === fallbackStory) {
-    const deterministicMerged = applyDeepDiveLlmResponseToStory({
-      responsePayload: deterministicDelta,
-      fallbackStory,
-    });
-    storyPayload = isPlainObject(deterministicMerged && deterministicMerged.story) ? deterministicMerged.story : fallbackStory;
-    llmConfidenceNote = pickFirstTrimmed(llmConfidenceNote, deterministicMerged && deterministicMerged.confidence_note) || null;
-    if (!llmUiPatch && isPlainObject(deterministicMerged && deterministicMerged.ui_patch)) {
-      llmUiPatch = deterministicMerged.ui_patch;
-    }
-  }
-
   const safeCoerce = (candidate, fb) => {
     const coerced = coerceAnalysisStoryV2(candidate, fb);
     if (isDeepDiveStoryWeakerThanFallback({ story: coerced, fallbackStory: fb })) return fb;
     return coerced;
   };
   let reviewedStory = reviewAnalysisStoryV2Json({ story: storyPayload, evidence });
-  let repairedStory = safeCoerce(
-    reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : storyPayload,
-    fallbackStory,
-  );
+  let repairedStory = safeCoerce(reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : storyPayload, fallbackStory);
   if (isDeepDiveStoryWeakerThanFallback({ story: repairedStory, fallbackStory })) {
     repairedStory = fallbackStory;
   }
   reviewedStory = reviewAnalysisStoryV2Json({ story: repairedStory, evidence });
-  let finalStory = safeCoerce(
-    reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : repairedStory,
-    fallbackStory,
-  );
-  finalStory = applyAnalysisStoryProfilePatch(finalStory, {
-    profileSummary: profile,
-    diagnosisArtifact: normalizedArtifact,
-    lastAnalysis: resolvedLastAnalysis,
-  });
+  const finalStory = safeCoerce(reviewedStory && reviewedStory.repaired ? reviewedStory.repaired : repairedStory, fallbackStory);
   if (llmUiPatch && isPlainObject(finalStory.ui_card_v1)) {
-    if (Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length) {
-      finalStory.safety_notes = llmUiPatch.avoid_now.slice(0, 2);
+    if (Array.isArray(llmUiPatch.key_points) && llmUiPatch.key_points.length) {
+      finalStory.priority_findings = llmUiPatch.key_points.map((item, idx) => ({ priority: idx + 1, title: item, detail: item, evidence_region_or_module: [] }));
     }
+    if (Array.isArray(llmUiPatch.avoid_now) && llmUiPatch.avoid_now.length) { finalStory.safety_notes = llmUiPatch.avoid_now.slice(0, 2); }
     finalStory.ui_card_v1 = {
       ...finalStory.ui_card_v1,
       ...(pickFirstTrimmed(llmUiPatch.headline) ? { headline: pickFirstTrimmed(llmUiPatch.headline) } : {}),
@@ -22276,51 +21722,55 @@ async function buildAnalysisDeepDiveContentWithLlm({
     fallbackStory,
     uiPatch: llmUiPatch,
   });
-  const surfacedFinalStory = applyDeterministicDeepDiveSurfacePatch({
-    story: stabilizedFinalStory,
-    fallbackStory,
-    deterministicDelta,
-  });
-  const assistantText = buildDeepDiveAssistantText({
-    story: surfacedFinalStory,
-    language,
-    replyText,
-    analysisOrigin,
-    confidenceNote: llmConfidenceNote,
-  });
+  const assistantText = buildDeepDiveAssistantText({ story: stabilizedFinalStory, language, replyText, analysisOrigin, confidenceNote: llmConfidenceNote });
   const fellBackToSnapshot = Boolean(
     resolvedSnapshot && (
       isDeepDiveStoryWeakerThanFallback({ story: storyPayload, fallbackStory }) ||
-      surfacedFinalStory === fallbackStory ||
-      isDeepDiveStoryWeakerThanFallback({ story: surfacedFinalStory, fallbackStory })
+      stabilizedFinalStory === fallbackStory ||
+      isDeepDiveStoryWeakerThanFallback({ story: stabilizedFinalStory, fallbackStory })
     ),
   );
-
   return {
     assistant_text: assistantText,
-    cards: [
-      {
-        card_id: `analysis_followup_story_${requestId}`,
-        type: 'analysis_story_v2',
-        payload: {
-          ...surfacedFinalStory,
-          summary: assistantText,
-        },
-      },
-    ],
+    cards: [{ card_id: `analysis_followup_story_${requestId}`, type: 'analysis_story_v2', payload: { ...stabilizedFinalStory, summary: assistantText } }],
     suggested_chips: Array.isArray(fallback.suggested_chips) ? fallback.suggested_chips : [],
-    missing_context: false,
-    used_last_analysis: true,
+    missing_context: false, used_last_analysis: true,
     used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
     used_analysis_story_snapshot: Boolean(resolvedSnapshot),
     fell_back_to_snapshot: fellBackToSnapshot,
     latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
-    analysis_origin: analysisOrigin,
-    photo_ref_count: photoRefs.length,
-    llm_used: llmUsed,
-    llm_model: llmUsed ? AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI : null,
-    llm_failure_reason: llmFailureReason,
+    analysis_origin: analysisOrigin, photo_ref_count: photoRefs.length,
+    llm_used: llmUsed, llm_model: llmUsed ? AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI : null, llm_failure_reason: llmFailureReason,
   };
+}
+
+function appendLatestArtifactToSessionPatch(sessionPatch, artifactId) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const id = String(artifactId || '').trim();
+  if (!id) return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.latest_artifact_id = id;
+  sessionPatch.state = state;
+}
+
+async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, logger } = {}) {
+  const preferredArtifactId = extractLatestArtifactIdFromSession(session);
+  try {
+    const latestArtifact = await getLatestDiagnosisArtifact({
+      auroraUid: identity && identity.auroraUid ? identity.auroraUid : null,
+      userId: identity && identity.userId ? identity.userId : null,
+      sessionId: ctx && ctx.brief_id ? ctx.brief_id : null,
+      maxAgeDays: 30,
+      preferArtifactId: preferredArtifactId,
+    });
+    if (latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object' && !Array.isArray(latestArtifact.artifact_json)) {
+      return { ...latestArtifact.artifact_json, artifact_id: latestArtifact.artifact_id, created_at: latestArtifact.created_at || latestArtifact.artifact_json.created_at };
+    }
+    return latestArtifact || null;
+  } catch (err) {
+    logger?.warn?.({ err: err && err.message ? err.message : String(err), request_id: ctx && ctx.request_id ? ctx.request_id : null }, 'aurora bff: failed to load latest diagnosis artifact for route');
+    return null;
+  }
 }
 
 function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
@@ -22363,7 +21813,6 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
 
 function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, requestId, replyText } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : {};
   const {
     skinProfile,
     guidanceBrief,
@@ -22374,11 +21823,6 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     strengths,
   } = extractAnalysisFollowupSignals(lastAnalysis);
   const lowConfidence = String(confidence.level || '').trim().toLowerCase() === 'low';
-  const savedAnalysisUsesPhotos =
-    analysis && (
-      analysis.use_photo === true ||
-      /vision|photo/.test(String(pickFirstTrimmed(analysis.analysis_source, analysis.analysis_origin) || '').toLowerCase())
-    );
   const followupFocus = String(replyText || '').trim();
   const focusLine =
     followupFocus && followupFocus.length > 6
@@ -22468,282 +21912,6 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
     return coerceAnalysisStoryV2(story, story);
   };
 
-  if (actionId === 'chip.aurora.next_action.solution_next_steps') {
-    const concernSummary = findingLines.slice(0, 2);
-    const targets = Array.isArray(ingredientPlan && ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 3) : [];
-    const avoid = Array.isArray(ingredientPlan && ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 2) : [];
-    const nextSteps = guidanceBrief.slice(0, 2);
-    const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType);
-    const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity);
-    const normalizedGoal =
-      inferRecoGoalSignalFromText(followupFocus) ||
-      extractResolvedRecoGoals(skinProfile.goals || analysis.goals)[0] ||
-      inferRecoGoalSignalFromText(concernSummary.join(' ')) ||
-      inferRecoGoalSignalFromText(
-        [
-          ...(Array.isArray(analysis && analysis.concerns) ? analysis.concerns.map((item) => pickFirstTrimmed(item && item.title, item && item.type)) : []),
-          ...(Array.isArray(skinProfile && skinProfile.concerns) ? skinProfile.concerns : []),
-        ].filter(Boolean).join(' '),
-      ) ||
-      '';
-    const ingredientSummary = targets
-      .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
-      .filter(Boolean)
-      .slice(0, 3);
-    const avoidSummary = avoid
-      .map((item) => pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id))
-      .filter(Boolean)
-      .slice(0, 2);
-    const goalHeading = (() => {
-      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
-        return lang === 'CN' ? '控痘 + 疏通毛孔' : 'Acne + congestion control';
-      }
-      if (normalizedGoal === 'barrier_repair') {
-        return lang === 'CN' ? '先修护屏障' : 'Barrier repair first';
-      }
-      if (normalizedGoal === 'dark_spots') {
-        return lang === 'CN' ? '先稳住再淡印提亮' : 'Stabilize first, then brighten';
-      }
-      if (normalizedGoal === 'dehydration') {
-        return lang === 'CN' ? '先补水稳态' : 'Hydration + stability first';
-      }
-      if (normalizedGoal === 'wrinkles') {
-        return lang === 'CN' ? '先稳住耐受再抗老' : 'Build tolerance before anti-aging';
-      }
-      return lang === 'CN' ? '先按历史分析推进' : 'Continue from your saved analysis';
-    })();
-    const priorityObservation = (() => {
-      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
-        return lang === 'CN'
-          ? `当前重点：${goalHeading} -> 先降低堵塞和刺激，再谈更强活性`
-          : `Priority now: ${goalHeading} -> reduce congestion without stripping your barrier`;
-      }
-      if (normalizedGoal === 'barrier_repair') {
-        return lang === 'CN'
-          ? `当前重点：${goalHeading} -> 先减少刺激源，再慢慢加回有效成分`
-          : `Priority now: ${goalHeading} -> reduce triggers first, then layer actives back slowly`;
-      }
-      if (normalizedGoal === 'dark_spots') {
-        return lang === 'CN'
-          ? `当前重点：${goalHeading} -> 先稳住炎症和耐受，再推进淡印提亮`
-          : `Priority now: ${goalHeading} -> calm inflammation first, then work on tone correction`;
-      }
-      if (normalizedGoal === 'dehydration') {
-        return lang === 'CN'
-          ? `当前重点：${goalHeading} -> 先补水稳态，再决定是否加更强活性`
-          : `Priority now: ${goalHeading} -> restore hydration and stability before stronger actives`;
-      }
-      if (normalizedGoal === 'wrinkles') {
-        return lang === 'CN'
-          ? `当前重点：${goalHeading} -> 先建立耐受，再逐步推进抗老活性`
-          : `Priority now: ${goalHeading} -> build tolerance first, then step into anti-aging actives`;
-      }
-      return lang === 'CN'
-        ? '当前重点：先沿用你上次分析里最明确的问题和结论，直接往解决方案推进。'
-        : 'Priority now: keep working from the top issues already identified in your saved analysis.';
-    })();
-    const productDirectionLine = (() => {
-      if (normalizedGoal === 'acne' || normalizedGoal === 'pores') {
-        return lang === 'CN'
-          ? '温和洁面 + 单一控痘活性 + 轻量保湿 + 日间防晒'
-          : 'gentle cleanser + one acne active + lightweight moisturizer + daily SPF';
-      }
-      if (ingredientSummary.length) {
-        return lang === 'CN'
-          ? '优先找能明确命中这些关键成分的产品组合'
-          : 'prioritize products that clearly match these key ingredients';
-      }
-      return lang === 'CN'
-        ? '先按保守基础线，再进入更个性化的产品推荐'
-        : 'hold a conservative baseline first, then move into more targeted product picks';
-    })();
-    const customTakeaways = [
-      {
-        observation: priorityObservation,
-        confidence: 'pretty_sure',
-      },
-      ...(ingredientSummary.length
-        ? [{
-            observation:
-              lang === 'CN'
-                ? `优先成分：${ingredientSummary.join('、')}`
-                : `Priority ingredients: ${ingredientSummary.join(', ')}`,
-            confidence: 'pretty_sure',
-          }]
-        : []),
-      {
-        observation:
-          lang === 'CN'
-            ? `产品方向：${productDirectionLine}`
-            : `Product direction: ${productDirectionLine}`,
-        confidence: 'somewhat_sure',
-      },
-      ...(avoidSummary.length
-        ? [{
-            observation:
-              lang === 'CN'
-                ? `谨慎叠加：${avoidSummary.join('、')}`
-                : `Use caution: ${avoidSummary.join(', ')}`,
-            confidence: 'somewhat_sure',
-          }]
-        : []),
-    ].slice(0, 4);
-    const numberedPlan = (
-      nextSteps.length
-        ? nextSteps
-        : [
-            lang === 'CN'
-              ? '先用温和洁面、保湿和防晒维持 7 天基础线。'
-              : 'Keep a gentle cleanser, moisturizer, and SPF baseline for 7 days.',
-            ingredientSummary.length
-              ? (
-                lang === 'CN'
-                  ? `只加一个重点活性，优先从 ${ingredientSummary[0]} 开始。`
-                  : `Add only one focused active first, ideally starting with ${ingredientSummary[0]}.`
-              )
-              : (
-                lang === 'CN'
-                  ? '一次只加一个重点活性，先看耐受。'
-                  : 'Introduce only one focused active at a time and watch tolerance.'
-              ),
-            lang === 'CN'
-              ? '耐受稳定后，再继续到具体产品推荐。'
-              : 'Once tolerance looks stable, move into targeted product recommendations.',
-          ]
-    ).map((step, index) => `${index + 1}) ${String(step || '').trim()}`).filter(Boolean).join('\n');
-    const recoChip = buildSavedAnalysisRecoEntryChip({ language: lang, goal: normalizedGoal });
-    const solutionText =
-      lang === 'CN'
-        ? [
-          focusLine,
-          normalizedGoal === 'acne' || normalizedGoal === 'pores'
-            ? '基于你这次保存的分析，优先目标不是重新诊断，而是先控堵塞、降刺激，并避免把屏障越洗越薄。'
-            : '基于你这次保存的分析，先按已有结论推进，不需要重新走一遍诊断问题。',
-          skinType || sensitivity
-            ? `你当前的基础背景是${skinType ? ` ${skinType} 肤质倾向` : ''}${skinType && sensitivity ? '，' : ''}${sensitivity ? `敏感度 ${sensitivity}` : ''}。`
-            : '',
-          concernSummary.length ? `这次最优先处理的是：${concernSummary.join('；')}。` : '',
-          nextSteps.length ? `接下来先做：${nextSteps.join('；')}。` : '',
-          ingredientSummary.length ? `更值得优先看的有效成分是：${ingredientSummary.join('、')}。` : '',
-          avoidSummary.length ? `现阶段先避免或谨慎叠加：${avoidSummary.join('、')}。` : '',
-          ingredientSummary.length
-            ? '如果你愿意，我下一步可以直接把这些成分对应到具体产品。'
-            : '如果你愿意，我下一步可以直接继续到具体产品推荐。',
-        ].filter(Boolean).join(' ')
-        : [
-          focusLine,
-          normalizedGoal === 'acne' || normalizedGoal === 'pores'
-            ? 'Based on your saved analysis, the priority now is not to restart diagnosis, but to reduce congestion, calm irritation, and avoid stripping your barrier.'
-            : 'Based on your saved analysis, we can keep moving forward without restarting diagnosis.',
-          skinType || sensitivity
-            ? `Your current baseline is${skinType ? ` ${skinType}-leaning skin` : ''}${skinType && sensitivity ? ' with ' : ''}${sensitivity ? `${sensitivity} sensitivity` : ''}.`
-            : '',
-          concernSummary.length ? `The top problems to address first are: ${concernSummary.join('; ')}.` : '',
-          nextSteps.length ? `Next best steps: ${nextSteps.join('; ')}.` : '',
-          ingredientSummary.length ? `The most useful ingredients to prioritize are: ${ingredientSummary.join(', ')}.` : '',
-          avoidSummary.length ? `For now, avoid or be careful stacking: ${avoidSummary.join(', ')}.` : '',
-          ingredientSummary.length
-            ? 'If you want, I can map those ingredients straight into product options next.'
-            : 'If you want, I can move straight into product recommendations next.',
-        ].filter(Boolean).join(' ');
-    const nextChips = filterAnalysisFollowupChips(
-      [
-        recoChip,
-        ...suggestedChips,
-      ],
-      actionId,
-    );
-    const cardSections = [
-      {
-        kind: 'bullets',
-        title: lang === 'CN' ? '现在先做什么' : 'Do this first',
-        items: nextSteps.length
-          ? nextSteps
-          : [lang === 'CN' ? '先稳定清洁、保湿和耐受，再决定是否加更强的活性。' : 'Stabilize cleansing, hydration, and tolerance first before adding stronger actives.'],
-      },
-      ...(ingredientSummary.length
-        ? [{
-            kind: 'bullets',
-            title: lang === 'CN' ? '优先成分' : 'Priority ingredients',
-            items: ingredientSummary,
-          }]
-        : []),
-      ...(avoidSummary.length
-        ? [{
-            kind: 'bullets',
-            title: lang === 'CN' ? '先避开/谨慎叠加' : 'Use caution with',
-            items: avoidSummary,
-          }]
-        : []),
-    ];
-    const cards = [{
-      card_id: `saved_analysis_next_steps_${requestId}`,
-      type: 'analysis_summary',
-      title:
-        normalizedGoal === 'acne' || normalizedGoal === 'pores'
-          ? (lang === 'CN' ? '基于历史分析的控痘下一步' : 'Acne next steps from your saved analysis')
-          : (lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis'),
-      payload: {
-        title:
-          normalizedGoal === 'acne' || normalizedGoal === 'pores'
-            ? (lang === 'CN' ? '基于历史分析的控痘下一步' : 'Acne next steps from your saved analysis')
-            : (lang === 'CN' ? '基于历史分析的下一步建议' : 'Next best steps from your saved analysis'),
-        subtitle:
-          savedAnalysisUsesPhotos
-            ? (lang === 'CN' ? '基于你上次保存的照片分析结果' : 'Based on your saved photo analysis')
-            : (lang === 'CN' ? '基于你上次保存的肤况分析' : 'Based on your saved skin analysis'),
-        key_takeaways_title: lang === 'CN' ? '现在重点看什么' : 'What to focus on now',
-        plan_title:
-          normalizedGoal === 'acne' || normalizedGoal === 'pores'
-            ? (lang === 'CN' ? '接下来怎么控痘' : 'How to approach acne next')
-            : (lang === 'CN' ? '接下来怎么推进' : 'What to do next'),
-        hide_quick_check: true,
-        hide_tuning_actions: true,
-        primary_cta_label:
-          normalizedGoal === 'acne' || normalizedGoal === 'pores'
-            ? (lang === 'CN' ? '查看控痘产品推荐' : 'See acne-safe product recommendations')
-            : (lang === 'CN' ? '查看产品推荐' : 'See product recommendations'),
-        primary_action_id: 'analysis_continue_products',
-        primary_action_data: {
-          ...(isPlainObject(recoChip.data) ? recoChip.data : {}),
-        },
-        caution_text:
-          avoidSummary.length
-            ? (
-              lang === 'CN'
-                ? `现阶段先避免或谨慎叠加：${avoidSummary.join('、')}。`
-                : `For now, be careful stacking: ${avoidSummary.join(', ')}.`
-            )
-            : (
-              lang === 'CN'
-                ? '先维持温和基础线，再一步一步加活性。'
-                : 'Keep the routine gentle first, then add actives step by step.'
-            ),
-        analysis: {
-          features: customTakeaways,
-          strategy: numberedPlan,
-          needs_risk_check: false,
-        },
-        sections: cardSections,
-        tags: [lang === 'CN' ? '历史分析延续' : 'Saved analysis continuation'],
-        photos_provided: savedAnalysisUsesPhotos,
-        analysis_source:
-          pickFirstTrimmed(
-            analysis && analysis.analysis_source,
-            analysis && analysis.analysis_meta && analysis.analysis_meta.detector_source,
-          ) || 'saved_analysis',
-        used_photos: savedAnalysisUsesPhotos,
-      },
-    }];
-    return {
-      assistant_text: solutionText,
-      cards,
-      suggested_chips: nextChips,
-      missing_context: false,
-      used_last_analysis: true,
-    };
-  }
-
   if (actionId === 'chip.aurora.next_action.deep_dive_skin') {
     const skinType = pickFirstTrimmed(skinProfile.skin_type_tendency, skinProfile.skin_type, skinProfile.skinType) || (lang === 'CN' ? '待确认' : 'unconfirmed');
     const sensitivity = pickFirstTrimmed(skinProfile.sensitivity_tendency, skinProfile.sensitivity) || (lang === 'CN' ? '待确认' : 'unconfirmed');
@@ -22828,7 +21996,7 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
         ].filter(Boolean).join(' ');
     return {
       assistant_text: assistantText,
-      cards: [buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language })],
+      cards: [buildIngredientPlanCard(ingredientPlan, requestId)],
       suggested_chips: suggestedChips,
       missing_context: false,
       used_last_analysis: true,
@@ -22918,76 +22086,13 @@ function buildAnalysisFollowupContent({ actionId, lastAnalysis, language, reques
       },
     }]
     : [];
-  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId, { catalogPath: DIAG_PRODUCT_CATALOG_PATH, language }));
+  if (ingredientPlan) cards.push(buildIngredientPlanCard(ingredientPlan, requestId));
   return {
     assistant_text: safetyMessage,
     cards,
     suggested_chips: suggestedChips,
     missing_context: false,
     used_last_analysis: true,
-  };
-}
-
-async function buildSavedAnalysisSolutionContent({
-  lastAnalysis,
-  diagnosisArtifact,
-  profile,
-  language,
-  requestId,
-  replyText,
-  actionData,
-  sessionAnalysisContext,
-} = {}) {
-  const normalizedActionData = isPlainObject(actionData) ? actionData : {};
-  const normalizedSessionContext = isPlainObject(sessionAnalysisContext) ? sessionAnalysisContext : {};
-  const normalizedArtifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
-  const resolvedSnapshot = resolveAnalysisStorySnapshotForDeepDive({
-    actionData: normalizedActionData,
-    sessionAnalysisContext: normalizedSessionContext,
-    lastAnalysis,
-  });
-  const baseAnalysis = isPlainObject(lastAnalysis) && Object.keys(lastAnalysis).length
-    ? lastAnalysis
-    : buildLastAnalysisFromDiagnosisArtifact(normalizedArtifact, resolvedSnapshot);
-  let resolvedLastAnalysis = mergeAnalysisSnapshotIntoLastAnalysis(baseAnalysis, resolvedSnapshot);
-  if (
-    (!isPlainObject(resolvedLastAnalysis.ingredient_plan) || !Array.isArray(resolvedLastAnalysis.ingredient_plan.targets)) &&
-    normalizedArtifact &&
-    AURORA_INGREDIENT_PLAN_ENABLED
-  ) {
-    try {
-      resolvedLastAnalysis = {
-        ...resolvedLastAnalysis,
-        ingredient_plan: buildIngredientPlan({ artifact: normalizedArtifact, profile }),
-      };
-    } catch {
-      // ignore plan build failures and keep the saved analysis flow moving
-    }
-  }
-  const photoRefs = normalizeAnalysisPhotoRefs([
-    ...normalizeAnalysisPhotoRefs(normalizedActionData.photo_refs),
-    ...normalizeAnalysisPhotoRefs(normalizedSessionContext.photo_refs),
-    ...normalizeAnalysisPhotoRefs(normalizedArtifact && normalizedArtifact.photos),
-  ]);
-  const requestedOrigin = pickFirstTrimmed(normalizedActionData.analysis_origin, normalizedSessionContext.analysis_origin);
-  const analysisOrigin =
-    photoRefs.length > 0 || (normalizedArtifact && normalizedArtifact.use_photo === true) || requestedOrigin === 'photo'
-      ? 'photo'
-      : 'profile';
-  const followup = buildAnalysisFollowupContent({
-    actionId: 'chip.aurora.next_action.solution_next_steps',
-    lastAnalysis: resolvedLastAnalysis,
-    language,
-    requestId,
-    replyText,
-  });
-  return {
-    ...followup,
-    analysis_origin: analysisOrigin,
-    photo_ref_count: photoRefs.length,
-    used_diagnosis_artifact: Boolean(normalizedArtifact && normalizedArtifact.artifact_id),
-    used_analysis_story_snapshot: Boolean(resolvedSnapshot),
-    latest_artifact_id: normalizedArtifact && normalizedArtifact.artifact_id ? String(normalizedArtifact.artifact_id).trim() : null,
   };
 }
 
@@ -23037,80 +22142,6 @@ function isTransientRecoUpstreamFailureCode(code) {
     token === 'UND_ERR_SOCKET' ||
     token === 'DNS'
   );
-}
-
-function classifyAlternativesUpstreamFailure(err) {
-  const status = Number(err && err.status);
-  const code = String((err && err.code) || '').trim().toUpperCase();
-  const messageRaw = String((err && err.message) || '').trim();
-  const message = messageRaw.toLowerCase();
-  if (code === 'AURORA_NOT_CONFIGURED') {
-    return {
-      failure_class: 'precheck_fail',
-      upstream_status: Number.isFinite(status) ? status : null,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (status === 429 || code === 'ERR_RATE_LIMIT' || message.includes('rate limit')) {
-    return {
-      failure_class: 'rate_limited',
-      upstream_status: Number.isFinite(status) ? status : null,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (
-    code === 'ECONNABORTED' ||
-    code === 'ETIMEDOUT' ||
-    code === 'UND_ERR_CONNECT_TIMEOUT' ||
-    message.includes('timeout')
-  ) {
-    return {
-      failure_class: 'upstream_timeout',
-      upstream_status: Number.isFinite(status) ? status : null,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (Number.isFinite(status) && status >= 500) {
-    return {
-      failure_class: 'upstream_5xx',
-      upstream_status: status,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (Number.isFinite(status) && status >= 400) {
-    return {
-      failure_class: 'upstream_4xx',
-      upstream_status: status,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (code === 'ECONNRESET' || code === 'EPIPE' || code === 'UND_ERR_SOCKET') {
-    return {
-      failure_class: 'upstream_connection_error',
-      upstream_status: Number.isFinite(status) ? status : null,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
-    return {
-      failure_class: 'upstream_dns_error',
-      upstream_status: Number.isFinite(status) ? status : null,
-      upstream_error_code: code || null,
-      upstream_error_message: messageRaw || null,
-    };
-  }
-  return {
-    failure_class: 'upstream_error',
-    upstream_status: Number.isFinite(status) ? status : null,
-    upstream_error_code: code || null,
-    upstream_error_message: messageRaw || null,
-  };
 }
 function inferCardGuardReasonFromEvents(events) {
   const rows = Array.isArray(events) ? events : [];
@@ -23714,322 +22745,36 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
-function isMeaningfulAnalysisStoryProfileToken(value) {
-  const token = String(value || '').trim().toLowerCase();
-  if (!token) return false;
-  return token !== 'pending' && token !== 'unknown' && token !== 'unconfirmed' && token !== '待确认';
-}
-
-function deriveAnalysisStoryProfilePatch({
-  story = null,
-  profileSummary = null,
-  requestRoutineProfilePatch = null,
-  analysisPayload = null,
-  diagnosisArtifact = null,
-  lastAnalysis = null,
-} = {}) {
-  const storyProfile = isPlainObject(story && story.skin_profile) ? story.skin_profile : {};
-  const analysisRoot = isPlainObject(analysisPayload) && isPlainObject(analysisPayload.analysis)
-    ? analysisPayload.analysis
-    : isPlainObject(analysisPayload)
-      ? analysisPayload
-      : {};
-  const analysisProfile = isPlainObject(analysisRoot.skin_profile)
-    ? analysisRoot.skin_profile
-    : isPlainObject(analysisRoot.skinProfile)
-      ? analysisRoot.skinProfile
-      : {};
-  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : {};
-  const artifactProfile = {
-    skin_type_tendency: pickFirstTrimmed(artifact && artifact.skinType && artifact.skinType.value),
-    sensitivity_tendency: pickFirstTrimmed(artifact && artifact.sensitivity && artifact.sensitivity.value),
-  };
-  const lastProfile = isPlainObject(lastAnalysis && lastAnalysis.skin_profile)
-    ? lastAnalysis.skin_profile
-    : isPlainObject(lastAnalysis && lastAnalysis.skinProfile)
-      ? lastAnalysis.skinProfile
-      : {};
-  const profileForStory = {
-    ...(isPlainObject(profileSummary) ? profileSummary : {}),
-    ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
-  };
-
-  const skinType = pickFirstTrimmed(
-    profileForStory.skinType,
-    analysisProfile.skin_type_tendency,
-    analysisProfile.skin_type,
-    analysisProfile.skinType,
-    artifactProfile.skin_type_tendency,
-    lastProfile.skin_type_tendency,
-    lastProfile.skin_type,
-    lastProfile.skinType,
-  );
-  const sensitivity = pickFirstTrimmed(
-    profileForStory.sensitivity,
-    analysisProfile.sensitivity_tendency,
-    analysisProfile.sensitivity,
-    artifactProfile.sensitivity_tendency,
-    lastProfile.sensitivity_tendency,
-    lastProfile.sensitivity,
-  );
-  const currentStrengths = normalizeArrayOfStrings(
-    [
-      ...(Array.isArray(storyProfile.current_strengths) ? storyProfile.current_strengths : []),
-      ...(Array.isArray(analysisProfile.current_strengths) ? analysisProfile.current_strengths : []),
-      ...(Array.isArray(lastProfile.current_strengths) ? lastProfile.current_strengths : []),
-    ],
-    { max: 4, maxLen: 120 },
-  );
-
-  const patch = {};
-  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.skin_type_tendency) && skinType) {
-    patch.skin_type_tendency = skinType;
-  }
-  if (!isMeaningfulAnalysisStoryProfileToken(storyProfile.sensitivity_tendency) && sensitivity) {
-    patch.sensitivity_tendency = sensitivity;
-  }
-  if ((!Array.isArray(storyProfile.current_strengths) || storyProfile.current_strengths.length === 0) && currentStrengths.length) {
-    patch.current_strengths = currentStrengths;
-  }
-  return Object.keys(patch).length ? patch : null;
-}
-
-function applyAnalysisStoryProfilePatch(story, options = {}) {
-  if (!isPlainObject(story)) return story;
-  const patch = deriveAnalysisStoryProfilePatch({ story, ...options });
-  if (!patch) return story;
-  return {
-    ...story,
-    skin_profile: {
-      ...(isPlainObject(story.skin_profile) ? story.skin_profile : {}),
-      ...patch,
-    },
-  };
-}
-
-function isIngredientPlanV2Payload(plan) {
-  return isPlainObject(plan) && String(plan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
-}
-
-function coerceIngredientPlanForDiagnosisCard(plan, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH } = {}) {
+function normalizeIngredientPlanForV2Upgrade(plan) {
   if (!isPlainObject(plan)) return null;
-  return upgradeIngredientPlanToV2({
-    plan,
-    profile: isPlainObject(profile) ? profile : null,
-    catalogPath,
-  });
-}
-
-function formatIngredientPlanRoutineStepLabel(stepToken, language = 'EN') {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const token = String(stepToken || '').trim().toLowerCase();
-  if (!token) return '';
-  const map = lang === 'CN'
-    ? {
-        cream: '修护面霜/保湿霜',
-        moisturizer: '保湿霜/屏障霜',
-        serum: '精华',
-        sunscreen: '防晒',
-        treatment: '功能型精华/局部护理',
-        cleanser: '洁面',
-        toner: '化妆水/精华水',
-      }
-    : {
-        cream: 'barrier creams or moisturizers',
-        moisturizer: 'moisturizers or barrier creams',
-        serum: 'serums',
-        sunscreen: 'sunscreens',
-        treatment: 'treatment serums or spot products',
-        cleanser: 'cleansers',
-        toner: 'toners or essence lotions',
-      };
-  return map[token] || token.replace(/_/g, ' ');
-}
-
-function isUsefulIngredientEducationText(value) {
-  const text = String(value || '').trim();
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  if (lower.startsWith('rule signal:')) return false;
-  if (lower === 'limited evidence' || lower === '信息不足') return false;
-  if (lower.includes('quick brief') || lower.includes('enhanced evidence can be refreshed')) return false;
-  if (lower.includes('minimal readable card') || lower.includes('pending/unavailable')) return false;
-  if (lower.includes('matched by profile + concern signals')) return false;
-  return true;
-}
-
-function buildIngredientPlanEducationLinesFromRuleSignals(ruleSignals, { language = 'EN' } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const rows = normalizeArrayOfStrings(ruleSignals, { max: 3, maxLen: 160 });
-  const out = [];
-  for (const row of rows) {
-    const token = String(row || '').trim().toLowerCase();
-    if (!token) continue;
-    if (token.includes('low_confidence_gentle_only')) {
-      out.push(
-        lang === 'CN'
-          ? '当前分析仍偏保守，因此优先保留耐受度更高、屏障友好的成分。'
-          : 'This read is still conservative, so the plan favors lower-irritation, barrier-friendly ingredients first.',
-      );
-      continue;
-    }
-    if (token.includes('barrier') || token.includes('repair')) {
-      out.push(lang === 'CN' ? '这类成分更偏向修护和稳定屏障。' : 'This ingredient is being used here for barrier support and stability.');
-      continue;
-    }
-    if (token.includes('oil') || token.includes('sebum')) {
-      out.push(lang === 'CN' ? '它更适合油脂管理和毛孔相关诉求。' : 'It is being prioritized for oil-control and pore-related concerns.');
-      continue;
-    }
-    if (token.includes('acne')) {
-      out.push(lang === 'CN' ? '这类成分更偏向痘痘/堵塞管理。' : 'It is being prioritized for acne or congestion management.');
-      continue;
-    }
-  }
-  return normalizeArrayOfStrings(out, { max: 2, maxLen: 180 });
-}
-
-function buildIngredientPlanResearchSummary(reportPayload, language = 'EN') {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const report = isPlainObject(reportPayload) ? reportPayload : {};
-  const ingredient = isPlainObject(report.ingredient) ? report.ingredient : {};
-  const verdict = isPlainObject(report.verdict) ? report.verdict : {};
-  const usage = isPlainObject(report.how_to_use) ? report.how_to_use : isPlainObject(report.usage) ? report.usage : {};
-  const benefits = (Array.isArray(report.benefits) ? report.benefits : [])
-    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.what_it_means, row.concern) : ''))
-    .filter(isUsefulIngredientEducationText)
-    .slice(0, 2);
-  const summary = pickFirstTrimmed(
-    ingredient.what_it_is,
-    report.what_it_is,
-    verdict.one_liner,
-    report.overview,
-  );
-  const stepLabel = formatIngredientPlanRoutineStepLabel(
-    pickFirstTrimmed(usage.routine_step, report.usage && report.usage.routine_step),
-    language,
-  );
-  const timeLabel = pickFirstTrimmed(usage.time, report.usage && report.usage.time);
-  const frequencyLabel = pickFirstTrimmed(usage.frequency, report.usage && report.usage.frequency);
-  const pairWell = normalizeArrayOfStrings(usage.pair_well, { max: 2, maxLen: 40 });
-  const topProducts = (Array.isArray(report.top_products) ? report.top_products : [])
-    .map((row) => (isPlainObject(row) ? pickFirstTrimmed(row.name) : pickFirstTrimmed(row)))
-    .filter(Boolean)
-    .slice(0, 3);
-
-  const why = normalizeArrayOfStrings(
-    [
-      isUsefulIngredientEducationText(summary) ? summary : '',
-      ...benefits,
-      isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
-    ],
-    { max: 3, maxLen: 180 },
-  );
-
-  const usageLines = [];
-  if (timeLabel || frequencyLabel || stepLabel) {
-    usageLines.push(
-      lang === 'CN'
-        ? [timeLabel && `时段：${timeLabel}`, frequencyLabel && `频率：${frequencyLabel}`, stepLabel && `常见形态：${stepLabel}`].filter(Boolean).join('；')
-        : [timeLabel && `Time: ${timeLabel}`, frequencyLabel && `Frequency: ${frequencyLabel}`, stepLabel && `Typical formats: ${stepLabel}`].filter(Boolean).join('; '),
-    );
-  }
-  if (pairWell.length) {
-    usageLines.push(lang === 'CN' ? `常见搭配：${pairWell.join('、')}` : `Pairs well with ${pairWell.join(', ')}`);
-  }
-  if (topProducts.length) {
-    usageLines.push(lang === 'CN' ? `典型产品：${topProducts.join('、')}` : `Typical products: ${topProducts.join(', ')}`);
-  }
-
+  const normalizeIngredientRows = (rows) => {
+    if (!Array.isArray(rows)) return [];
+    return rows
+      .map((raw) => {
+        if (!isPlainObject(raw)) return raw;
+        const ingredientId = pickFirstTrimmed(raw.ingredient_id, raw.ingredientId, raw.ingredient_name, raw.ingredientName);
+        return ingredientId ? { ...raw, ingredient_id: ingredientId } : { ...raw };
+      })
+      .filter(Boolean);
+  };
   return {
-    why,
-    usage_guidance: normalizeArrayOfStrings(usageLines, { max: 3, maxLen: 180 }),
-    ingredient_summary: isUsefulIngredientEducationText(summary) ? summary : '',
-    benefit_highlights: benefits,
-    evidence_summary: isUsefulIngredientEducationText(report.evidence && report.evidence.summary) ? report.evidence.summary : '',
-    typical_products: topProducts,
-    report_state: isPlainObject(report.report_state) ? report.report_state : null,
+    ...plan,
+    targets: normalizeIngredientRows(plan.targets),
+    avoid: normalizeIngredientRows(plan.avoid),
   };
 }
 
-function enrichIngredientPlanPayloadForCard(plan, { language = 'EN' } = {}) {
-  if (!isIngredientPlanV2Payload(plan)) return plan;
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const targets = Array.isArray(plan.targets) ? plan.targets : [];
-  if (!targets.length) return plan;
-  const nextTargets = targets.map((target) => {
-    if (!isPlainObject(target)) return target;
-    const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredient, target.display_name);
-    const existingWhy = normalizeArrayOfStrings(
-      (Array.isArray(target.why) ? target.why : []).filter(isUsefulIngredientEducationText),
-      { max: 3, maxLen: 180 },
-    );
-    const existingUsage = normalizeArrayOfStrings(target.usage_guidance, { max: 3, maxLen: 180 });
-    if (!ingredientName) {
-      return {
-        ...target,
-        why: existingWhy,
-        usage_guidance: existingUsage,
-      };
-    }
-    const reportPayload = buildIngredientReportPayload({
-      language: lang,
-      query: ingredientName,
-      research: getIngredientResearchCache(ingredientName) || null,
-      meta: {
-        normalized_query: normalizeIngredientResearchKey(ingredientName),
-        route_decision_reasons: ['ingredient_plan_card_enrichment'],
-        route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
-      },
-    });
-    const researchSummary = buildIngredientPlanResearchSummary(reportPayload, lang);
-    const fallbackRuleLines = buildIngredientPlanEducationLinesFromRuleSignals(target.rationale, { language: lang });
-    return {
-      ...target,
-      why: normalizeArrayOfStrings(
-        [
-          ...researchSummary.why,
-          ...existingWhy,
-          ...fallbackRuleLines,
-        ],
-        { max: 4, maxLen: 180 },
-      ),
-      usage_guidance: normalizeArrayOfStrings(
-        [
-          ...existingUsage,
-          ...researchSummary.usage_guidance,
-        ],
-        { max: 4, maxLen: 180 },
-      ),
-      ingredient_summary: researchSummary.ingredient_summary || undefined,
-      benefit_highlights: researchSummary.benefit_highlights,
-      evidence_summary: researchSummary.evidence_summary || undefined,
-      typical_products: researchSummary.typical_products,
-      report_state: researchSummary.report_state || undefined,
-      ingredient_report: reportPayload && typeof reportPayload === 'object'
-        ? {
-            ingredient: reportPayload.ingredient,
-            verdict: reportPayload.verdict,
-            benefits: reportPayload.benefits,
-            how_to_use: reportPayload.how_to_use,
-            top_products: reportPayload.top_products,
-            evidence: reportPayload.evidence,
-            report_state: reportPayload.report_state,
-          }
-        : undefined,
-    };
-  });
-  return { ...plan, targets: nextTargets };
-}
-
-function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath = DIAG_PRODUCT_CATALOG_PATH, language = 'EN' } = {}) {
-  const normalizedPlan = coerceIngredientPlanForDiagnosisCard(plan, { profile, catalogPath }) || plan;
-  const enrichedPlan = enrichIngredientPlanPayloadForCard(normalizedPlan, { language });
-  if (isIngredientPlanV2Payload(normalizedPlan)) {
+function buildIngredientPlanCard(plan, requestId, profile = null) {
+  const normalizedPlan = normalizeIngredientPlanForV2Upgrade(plan) || plan;
+  const upgradedPlan = upgradeIngredientPlanToV2({ plan: normalizedPlan, profile });
+  const isV2Plan =
+    isPlainObject(upgradedPlan) &&
+    String(upgradedPlan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
+  if (isV2Plan) {
     return {
       card_id: `ing_plan_${requestId}`,
       type: 'ingredient_plan_v2',
-      payload: enrichedPlan,
+      payload: upgradedPlan,
     };
   }
   return {
@@ -24041,7 +22786,9 @@ function buildIngredientPlanCard(plan, requestId, { profile = null, catalogPath 
       targets: Array.isArray(normalizedPlan && normalizedPlan.targets) ? normalizedPlan.targets : [],
       avoid: Array.isArray(normalizedPlan && normalizedPlan.avoid) ? normalizedPlan.avoid : [],
       conflicts: Array.isArray(normalizedPlan && normalizedPlan.conflicts) ? normalizedPlan.conflicts : [],
-      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object' ? normalizedPlan.confidence : null,
+      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object'
+        ? normalizedPlan.confidence
+        : null,
     },
   };
 }
@@ -24283,6 +23030,7 @@ function deriveRecoEmptyReason(payload, contract) {
       ? Number(contractObj.ungrounded_count)
       : 0;
   if (groundedCount > 0 || ungroundedCount > 0) return '';
+  if (productsEmptyReason && productsEmptyReason !== 'strict_filter_fallback_only') return productsEmptyReason;
   if (productsEmptyReason === 'strict_filter_fallback_only') return 'strict_filter_dropped';
   return pickFirstTrimmed(contractObj.primary_failure_reason, 'artifact_missing') || 'artifact_missing';
 }
@@ -25338,231 +24086,6 @@ function inferGoalFromClarificationText(raw) {
   return '';
 }
 
-function normalizeRecoGoalToken(raw) {
-  const token = String(raw || '').trim().toLowerCase();
-  if (!token) return '';
-  if (token === 'breakout' || token === 'breakouts' || token === 'blemish' || token === 'blemishes') return 'acne';
-  if (token === 'brightening' || token === 'tone') return 'dark_spots';
-  if (token === 'antiaging' || token === 'anti-aging' || token === 'anti_aging' || token === 'fine_lines') return 'wrinkles';
-  if (token === 'barrier' || token === 'barrier repair' || token === 'barrier_repair') return 'barrier_repair';
-  if (token === 'spf' || token === 'sun' || token === 'sunscreen' || token === 'uv_protection') return 'sunscreen';
-  return token;
-}
-
-function extractResolvedRecoGoals(raw) {
-  const values = Array.isArray(raw) ? raw : raw == null ? [] : [raw];
-  const out = [];
-  for (const value of values) {
-    const normalized = normalizeRecoGoalToken(value);
-    if (!normalized || normalized === 'unknown' || normalized === 'other') continue;
-    out.push(normalized);
-    if (out.length >= 6) break;
-  }
-  return out;
-}
-
-function inferRecoGoalSignalFromText(raw) {
-  const text = String(raw || '').trim().toLowerCase();
-  if (!text) return '';
-  if (/(barrier repair|repair barrier|skin barrier|barrier support|修护屏障|屏障修护|屏障受损|屏障)/.test(text)) {
-    return 'barrier_repair';
-  }
-  if (/(spf|sunscreen|sun screen|uv protect|sun protect|防晒)/.test(text)) {
-    return 'sunscreen';
-  }
-  const inferred = inferGoalFromClarificationText(text);
-  if (inferred) return inferred;
-  if (/(pore|pores|毛孔)/.test(text)) return 'pores';
-  return '';
-}
-
-function inferRecoCategoryHintFromText(raw) {
-  const text = String(raw || '').trim().toLowerCase();
-  if (!text) return '';
-  if (/(cleanser|cleanse|face wash|洁面|洗面)/.test(text)) return 'cleanser';
-  if (/(serum|essence|ampoule|booster|精华)/.test(text)) return 'serum';
-  if (/(moisturizer|moisturiser|cream|lotion|gel cream|保湿霜|面霜|乳液)/.test(text)) return 'moisturizer';
-  if (/(sunscreen|sun screen|sunblock|spf|防晒)/.test(text)) return 'sunscreen';
-  if (/(toner|lotion toner|爽肤水|化妆水)/.test(text)) return 'toner';
-  if (/(mask|面膜)/.test(text)) return 'mask';
-  return '';
-}
-
-function isCannedGenericRecoRequestText(raw) {
-  const text = String(raw || '').trim().toLowerCase();
-  if (!text) return false;
-  return (
-    /^get product recommendations?$/.test(text) ||
-    /^recommend products?$/.test(text) ||
-    /^recommend a few products\b/.test(text) ||
-    /^get recommendations$/.test(text) ||
-    /^show full skincare product recommendations\.?$/.test(text) ||
-    /^recommend a few skincare products for my profile and goals\.?$/.test(text) ||
-    /^获取产品推荐$/.test(text) ||
-    /^给我(一些)?产品推荐$/.test(text) ||
-    /^推荐一些产品/.test(text) ||
-    /^请给我完整护肤产品推荐/.test(text)
-  );
-}
-
-function hasResolvedRecoGoal({
-  profile = null,
-  action = null,
-  message = '',
-  ingredientContext = null,
-  travelRecoHandoff = false,
-} = {}) {
-  if (travelRecoHandoff) return true;
-  if (extractResolvedRecoGoals(profile && profile.goals).length > 0) return true;
-
-  const actionObj = action && typeof action === 'object' && !Array.isArray(action) ? action : null;
-  const actionData =
-    actionObj && actionObj.data && typeof actionObj.data === 'object' && !Array.isArray(actionObj.data)
-      ? actionObj.data
-      : null;
-  const actionProfilePatch =
-    actionData && actionData.profile_patch && typeof actionData.profile_patch === 'object' && !Array.isArray(actionData.profile_patch)
-      ? actionData.profile_patch
-      : actionData && actionData.profilePatch && typeof actionData.profilePatch === 'object' && !Array.isArray(actionData.profilePatch)
-        ? actionData.profilePatch
-        : null;
-
-  if (extractResolvedRecoGoals(actionProfilePatch && actionProfilePatch.goals).length > 0) return true;
-  if (extractResolvedRecoGoals(actionData && actionData.goals).length > 0) return true;
-  if (extractResolvedRecoGoals(actionData && actionData.goal).length > 0) return true;
-
-  const ingredientQuery = pickFirstTrimmed(
-    actionData && actionData.ingredient_query,
-    actionData && actionData.ingredientQuery,
-    actionData && actionData.inci,
-    actionData && actionData.ingredient_name,
-    ingredientContext && (ingredientContext.query || ingredientContext.ingredient_query),
-  );
-  if (ingredientQuery) return true;
-
-  const ingredientGoal = pickFirstTrimmed(
-    actionData && actionData.ingredient_goal,
-    actionData && actionData.ingredientGoal,
-    ingredientContext && (ingredientContext.goal || ingredientContext.ingredient_goal),
-  );
-  if (ingredientGoal) return true;
-
-  const ingredientCandidates = Array.isArray(actionData && actionData.ingredient_candidates)
-    ? actionData.ingredient_candidates
-    : Array.isArray(actionData && actionData.ingredientCandidates)
-      ? actionData.ingredientCandidates
-      : Array.isArray(ingredientContext && ingredientContext.candidates)
-        ? ingredientContext.candidates
-        : [];
-  if (ingredientCandidates.length > 0) return true;
-
-  const productCandidates = Array.isArray(actionData && actionData.product_candidates)
-    ? actionData.product_candidates
-    : Array.isArray(actionData && actionData.productCandidates)
-      ? actionData.productCandidates
-      : Array.isArray(ingredientContext && ingredientContext.product_candidates)
-        ? ingredientContext.product_candidates
-        : [];
-  if (productCandidates.length > 0) return true;
-
-  const textCandidates = [
-    message,
-    actionData && actionData.reply_text,
-    actionData && actionData.goal,
-    actionData && actionData.ingredient_goal,
-    actionData && actionData.category,
-    actionData && actionData.product_type,
-    actionData && actionData.productType,
-  ];
-
-  for (const candidate of textCandidates) {
-    if (!candidate || isCannedGenericRecoRequestText(candidate)) continue;
-    if (inferRecoGoalSignalFromText(candidate)) return true;
-    if (inferRecoCategoryHintFromText(candidate)) return true;
-  }
-
-  return false;
-}
-
-function buildRecoGoalClarificationChips(language) {
-  const isCn = language === 'CN';
-  const goalChips = [
-    {
-      chip_id: 'chip.reco_goal.breakouts',
-      label: isCn ? '控痘/闭口' : 'Breakouts',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '给我控痘/闭口方向的产品推荐。' : 'Recommend products for breakouts / clogged pores.',
-        profile_patch: { goals: ['acne'] },
-        trigger_source: 'reco_goal_clarify',
-        include_alternatives: true,
-      },
-    },
-    {
-      chip_id: 'chip.reco_goal.brightening',
-      label: isCn ? '提亮/淡斑' : 'Brightening',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '给我提亮/淡斑方向的产品推荐。' : 'Recommend products for brightening / dark spots.',
-        profile_patch: { goals: ['dark_spots'] },
-        trigger_source: 'reco_goal_clarify',
-        include_alternatives: true,
-      },
-    },
-    {
-      chip_id: 'chip.reco_goal.antiaging',
-      label: isCn ? '抗老' : 'Anti-aging',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '给我抗老方向的产品推荐。' : 'Recommend products for anti-aging / fine lines.',
-        profile_patch: { goals: ['wrinkles'] },
-        trigger_source: 'reco_goal_clarify',
-        include_alternatives: true,
-      },
-    },
-    {
-      chip_id: 'chip.reco_goal.barrier',
-      label: isCn ? '修护屏障' : 'Barrier repair',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '给我修护屏障方向的产品推荐。' : 'Recommend products for barrier repair.',
-        profile_patch: { goals: ['barrier_repair'] },
-        trigger_source: 'reco_goal_clarify',
-        include_alternatives: true,
-      },
-    },
-    {
-      chip_id: 'chip.reco_goal.spf',
-      label: isCn ? '防晒' : 'SPF / sun',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '给我日常防晒方向的产品推荐。' : 'Recommend sunscreen / daily SPF products.',
-        profile_patch: { goals: ['sunscreen'] },
-        trigger_source: 'reco_goal_clarify',
-        include_alternatives: true,
-      },
-    },
-    {
-      chip_id: 'chip.reco_goal.other',
-      label: isCn ? '其他' : 'Other',
-      kind: 'quick_reply',
-      data: {
-        action_id: 'chip.start.reco_products',
-        reply_text: isCn ? '告诉我你这次最想解决的目标或想看的品类。' : 'Tell me your top goal or product type first.',
-        trigger_source: 'reco_goal_clarify',
-        reco_goal: 'other',
-        v2_freeform_fallback: true,
-      },
-    },
-  ];
-  return goalChips;
-}
-
 function inferProfilePatchFromClarification({ clarificationId, replyText }) {
   const field = normalizeClarificationField(clarificationId);
   const raw = String(replyText || '').trim();
@@ -25660,34 +24183,6 @@ function mergeMissingProfilePatchFields(target, source) {
   return base;
 }
 
-function extractQuickProfileLightweightPatch(raw = null) {
-  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
-  if (!node) return null;
-
-  const patch = {};
-  const skinFeel = pickFirstTrimmed(node.skin_feel, node.skinFeel).toLowerCase();
-  if (skinFeel === 'oily' || skinFeel === 'dry' || skinFeel === 'combination') patch.skinType = skinFeel;
-  else if (skinFeel === 'unsure') patch.skinType = 'unknown';
-
-  const goalPrimary = pickFirstTrimmed(node.goal_primary, node.goalPrimary).toLowerCase();
-  if (goalPrimary === 'breakouts') patch.goals = ['acne'];
-  else if (goalPrimary === 'brightening') patch.goals = ['brightening'];
-  else if (goalPrimary === 'antiaging') patch.goals = ['wrinkles'];
-  else if (goalPrimary === 'barrier') patch.goals = ['barrier'];
-  else if (goalPrimary === 'spf') patch.goals = ['uv_protection'];
-  else if (goalPrimary === 'other') patch.goals = ['other'];
-
-  const sensitivityFlag = pickFirstTrimmed(node.sensitivity_flag, node.sensitivityFlag).toLowerCase();
-  if (sensitivityFlag === 'yes') patch.sensitivity = 'high';
-  else if (sensitivityFlag === 'no') patch.sensitivity = 'low';
-  else if (sensitivityFlag === 'unsure') patch.sensitivity = 'unknown';
-
-  const parsed = UserProfilePatchSchema.safeParse(patch);
-  if (!parsed.success) return null;
-  const clean = parsed.data;
-  return Object.keys(clean).length ? clean : null;
-}
-
 function extractProfilePatchFromSession(session) {
   const s = session && typeof session === 'object' ? session : null;
   if (!s) return null;
@@ -25772,78 +24267,6 @@ function extractProfilePatchFromSession(session) {
     patch.travel_plan = rawProfile.travelPlan;
   }
   mergeMissingProfilePatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
-  mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(rawProfile));
-
-  const parsed = UserProfilePatchSchema.safeParse(patch);
-  if (!parsed.success) return null;
-  const clean = parsed.data;
-  return Object.keys(clean).length ? clean : null;
-}
-
-function extractProfilePatchFromRequestContextPayload(payload) {
-  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
-  if (!root) return null;
-
-  const candidates = [];
-  const visited = new Set();
-  const visit = (node, depth = 0) => {
-    if (depth > 1 || !node || typeof node !== 'object' || Array.isArray(node) || visited.has(node)) return;
-    visited.add(node);
-    candidates.push(node);
-    for (const key of ['profile', 'profile_patch', 'profilePatch', 'skin_profile', 'skinProfile', 'goal_profile', 'goalProfile', 'meta', 'metadata', 'context']) {
-      visit(node[key], depth + 1);
-    }
-  };
-  visit(root);
-
-  const readString = (...aliases) => {
-    for (const node of candidates) {
-      for (const alias of aliases) {
-        const value = node && typeof node === 'object' ? node[alias] : null;
-        if (typeof value !== 'string') continue;
-        const trimmed = value.trim();
-        if (!trimmed) continue;
-        return trimmed;
-      }
-    }
-    return '';
-  };
-
-  const readGoalArray = () => {
-    const out = [];
-    const seen = new Set();
-    const pushGoal = (value) => {
-      const normalized = typeof value === 'string' ? value.trim() : '';
-      if (!normalized) return;
-      const key = normalized.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(normalized);
-    };
-
-    for (const node of candidates) {
-      for (const alias of ['goals', 'selected_goals', 'selectedGoals', 'pending_goals', 'pendingGoals']) {
-        const values = node && typeof node === 'object' ? node[alias] : null;
-        if (!Array.isArray(values)) continue;
-        values.forEach(pushGoal);
-      }
-    }
-
-    return out.slice(0, 12);
-  };
-
-  const patch = {};
-  const skinType = readString('skinType', 'skin_type', 'skin_type_tendency', 'skinTypeTendency');
-  if (skinType) patch.skinType = skinType;
-  const sensitivity = readString('sensitivity', 'sensitivity_level', 'sensitivityLevel', 'sensitivity_tendency', 'sensitivityTendency');
-  if (sensitivity) patch.sensitivity = sensitivity;
-  const barrierStatus = readString('barrierStatus', 'barrier_status', 'barrier', 'barrier_state', 'barrierState');
-  if (barrierStatus) patch.barrierStatus = barrierStatus;
-  const goals = readGoalArray();
-  if (goals.length) patch.goals = goals;
-  for (const node of candidates) {
-    mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
-  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -25944,9 +24367,6 @@ function extractProfilePatchFromRequestContextPayload(payload) {
   if (barrierStatus) patch.barrierStatus = barrierStatus;
   const goals = readGoalArray();
   if (goals.length) patch.goals = goals;
-  for (const node of candidates) {
-    mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
-  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -26899,256 +25319,6 @@ function isProductIntelPayloadCandidateBetter(nextPayload, currentPayload) {
   return false;
 }
 
-function maybeApplyTrustedAnchorProvisionalProductAnalysis(
-  payload,
-  {
-    parsedProduct = null,
-    profileSummary = null,
-    lang = 'EN',
-    inputText = '',
-    anchorTrustContext = null,
-  } = {},
-) {
-  const base = isPlainObject(payload) ? payload : null;
-  if (!base || !isUnknownProductAnalysisPayload(base)) return payload;
-  if (!(anchorTrustContext && anchorTrustContext.usable_for_anchor_id === true) || !isPlainObject(parsedProduct)) return payload;
-
-  const descriptor = buildProductInputText(parsedProduct, parsedProduct.url) || String(inputText || '').trim();
-  const inferredInci = canonicalizeIngredientCandidates(
-    [
-      ...(Array.isArray(parsedProduct.ingredients) ? parsedProduct.ingredients : []),
-      ...(Array.isArray(parsedProduct.inci_list) ? parsedProduct.inci_list : []),
-      ...(Array.isArray(parsedProduct.inciList) ? parsedProduct.inciList : []),
-    ],
-    { max: 120 },
-  );
-  const classification = classifyProductType({
-    name: descriptor,
-    url: String(parsedProduct.url || '').trim(),
-    inciList: inferredInci,
-  });
-  const productType = String(classification.product_type || '').trim().toLowerCase();
-  const eligibleTypes = new Set(['cleanser', 'moisturizer', 'spf', 'spf_moisturizer']);
-  if (!eligibleTypes.has(productType)) return payload;
-
-  const isCn = String(lang || '').toUpperCase() === 'CN';
-  const skinType = String(profileSummary?.skinType || '').trim().toLowerCase();
-  const sensitivity = String(profileSummary?.sensitivity || '').trim().toLowerCase();
-  const barrier = String(profileSummary?.barrierStatus || '').trim().toLowerCase();
-  const goals = Array.isArray(profileSummary?.goals)
-    ? profileSummary.goals.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean)
-    : [];
-  const joinedProductText = `${descriptor} ${String(parsedProduct?.category || '')} ${String(parsedProduct?.product_type || '')}`.toLowerCase();
-  const looksFoamingCleanser =
-    productType === 'cleanser' &&
-    /(foam|foaming|face wash|deep clean|oil control|gel cleanser|micellar|洁面|洗面|泡沫|深层清洁)/i.test(joinedProductText);
-  const highSensitivity = sensitivity === 'high' || barrier === 'impaired';
-  const mediumSensitivity = sensitivity === 'medium';
-
-  const verdict =
-    productType === 'cleanser' && looksFoamingCleanser && (highSensitivity || mediumSensitivity)
-      ? (isCn ? '谨慎' : 'Caution')
-      : (isCn ? '较适配' : 'Likely Suitable');
-  const verdictLevel = verdict === (isCn ? '谨慎' : 'Caution') ? 'needs_verification' : 'cautiously_ok';
-  const categoryLabel = (() => {
-    if (productType === 'cleanser') return isCn ? '洁面' : 'cleanser';
-    if (productType === 'moisturizer') return isCn ? '保湿产品' : 'moisturizer';
-    if (productType === 'spf' || productType === 'spf_moisturizer') return isCn ? '防晒产品' : 'sunscreen';
-    return isCn ? '护肤品' : 'skincare product';
-  })();
-
-  const topTakeaways = uniqCaseInsensitiveStrings(
-    [
-      isCn
-        ? `这更像一款${categoryLabel}，即使还没拿到完整 INCI，也能先做类别级判断。`
-        : `This reads like a ${categoryLabel}, so a category-level fit judgment is still possible before full INCI verification.`,
-      productType === 'cleanser' && goals.some((goal) => goal === 'acne' || goal === 'pores')
-        ? (isCn
-            ? '洁面的主要作用是去除油脂和残留，不会单独承担核心祛痘治疗。'
-            : 'A cleanser can help remove oil and residue, but it is not a primary acne treatment by itself.')
-        : '',
-      productType === 'spf' || productType === 'spf_moisturizer'
-        ? (isCn
-            ? '作为防晒类别，它对白天的 UV 保护依然是基础步骤。'
-            : 'As an SPF category product, it still fills an essential daytime UV-protection role.')
-        : '',
-      productType === 'moisturizer'
-        ? (isCn
-            ? '作为保湿类别，它更偏向补水和屏障支持，具体厚重度仍取决于配方版本。'
-            : 'As a moisturizer, it is directionally about hydration and barrier support, though the exact finish still depends on the formula version.')
-        : '',
-    ],
-    4,
-  );
-
-  const watchouts = [];
-  if (productType === 'cleanser' && looksFoamingCleanser && (highSensitivity || mediumSensitivity)) {
-    watchouts.push({
-      issue: isCn ? '这看起来像偏强一点的泡沫洁面，敏感或屏障不稳时可能偏刺激。' : 'This looks like a stronger foaming cleanser, which can feel stripping on sensitive or impaired-barrier days.',
-      status: 'possible',
-      what_to_do: isCn ? '先减少清洁强度和频率，避免早晚都长时间清洁。' : 'Reduce cleansing intensity and frequency first, and avoid long AM+PM cleansing sessions.',
-    });
-  } else if (productType === 'moisturizer' && skinType === 'oily') {
-    watchouts.push({
-      issue: isCn ? '如果你偏油皮，较厚重的面霜版本可能会有闷感。' : 'If you skew oily, richer cream versions may feel heavier than needed.',
-      status: 'possible',
-      what_to_do: isCn ? '优先观察是否闷、搓泥或白天厚重。' : 'Watch for heaviness, pilling, or daytime greasiness.',
-    });
-  } else if (productType === 'spf' || productType === 'spf_moisturizer') {
-    watchouts.push({
-      issue: isCn ? '具体耐受和成膜感仍取决于配方版本。' : 'The exact tolerance and finish still depend on the final formula version.',
-      status: 'possible',
-      what_to_do: isCn ? '先小范围试用，并留意刺痛、搓泥和泛白。' : 'Patch test first and watch for stinging, pilling, or white cast.',
-    });
-  }
-
-  const reasons = uniqCaseInsensitiveStrings(
-    [
-      ...topTakeaways,
-      productType === 'cleanser' && (highSensitivity || barrier === 'impaired')
-        ? (isCn
-            ? '你当前的敏感/屏障信号提示要更保守，尤其是看起来偏泡沫或清洁力更强的洁面。'
-            : 'Your sensitivity/barrier context calls for a more conservative read, especially for a foaming or stronger-cleansing cleanser.')
-        : '',
-      productType === 'moisturizer' && barrier === 'impaired'
-        ? (isCn
-            ? '从类别判断，它更符合修护和保湿方向，但是否足够温和仍需要 INCI 再确认。'
-            : 'Category-wise it points in a hydration and barrier-support direction, though full gentleness still needs INCI confirmation.')
-        : '',
-      productType === 'spf' || productType === 'spf_moisturizer'
-        ? (isCn
-            ? '这是一条先按类别做的暂定判断；具体滤剂和香精风险仍需要 INCI 进一步确认。'
-            : 'This is a provisional category-level judgment; exact filter and fragrance risk still need INCI confirmation.')
-        : (isCn
-            ? '这是类别级的暂定结论，不等于完整成分判定；后续核到 INCI 后应再升级判断。'
-            : 'This is a category-level provisional call, not a full ingredient verdict; upgrade the judgment once INCI is confirmed.'),
-    ],
-    5,
-  );
-
-  const provisionalPayload = normalizeProductAnalysis({
-    assessment: {
-      verdict,
-      verdict_level: verdictLevel,
-      top_takeaways: topTakeaways,
-      best_for:
-        productType === 'cleanser'
-          ? [isCn ? '日常清洁 / 去除油脂残留' : 'daily cleansing / removing oil and residue']
-          : productType === 'moisturizer'
-            ? [isCn ? '补水保湿 / 屏障支持' : 'hydration / barrier support']
-            : [isCn ? '白天防护 / 痘印与色沉管理' : 'daytime protection / protecting progress on marks and irritation'],
-      watchouts,
-      how_to_use:
-        productType === 'spf' || productType === 'spf_moisturizer'
-          ? {
-              when: 'am',
-              frequency: 'daily',
-              order_in_routine: isCn ? '护肤最后一步，彩妆前' : 'last skincare step before makeup',
-              pairing_rules: [
-                isCn ? '白天足量使用，外出补涂。' : 'Use a full amount in the morning and reapply when outdoors.',
-              ],
-              stop_signs: [
-                isCn ? '持续刺痛、泛红或明显搓泥。' : 'Persistent stinging, redness, or obvious pilling.',
-              ],
-            }
-          : {
-              when: 'am_or_pm',
-              frequency: 'daily',
-              order_in_routine:
-                productType === 'cleanser'
-                  ? (isCn ? '护肤第一步' : 'first step of the routine')
-                  : (isCn ? '精华后，防晒前' : 'after serums and before sunscreen'),
-              pairing_rules: [
-                productType === 'cleanser'
-                  ? (isCn ? '若洗后发紧，减少时长或改更温和清洁。' : 'If skin feels tight after cleansing, shorten contact time or switch gentler.')
-                  : (isCn ? '先观察白天厚重感，再决定是否叠加更多封闭型产品。' : 'Watch daytime heaviness before layering more occlusive products.'),
-              ],
-              stop_signs: [
-                isCn ? '持续刺痛、泛红或爆皮。' : 'Persistent stinging, redness, or visible barrier stress.',
-              ],
-            },
-      reasons,
-      anchor_product: parsedProduct,
-    },
-    evidence: {
-      science: {
-        key_ingredients: [],
-        mechanisms: [],
-        fit_notes: topTakeaways.slice(0, 2),
-        risk_notes: watchouts.map((item) => String(item.issue || '').trim()).filter(Boolean),
-      },
-      social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
-      expert_notes: [
-        isCn
-          ? '已使用可信 anchor 做类别级暂定判断；这不是完整 INCI 级结论。'
-          : 'Used a trusted anchor to make a category-level provisional judgment; this is not a full INCI-level conclusion.',
-      ],
-      confidence: verdict === (isCn ? '谨慎' : 'Caution') ? 0.42 : 0.48,
-      missing_info: ['evidence_missing', 'trusted_anchor_category_provisional'],
-    },
-    confidence: verdict === (isCn ? '谨慎' : 'Caution') ? 0.42 : 0.48,
-    missing_info: ['trusted_anchor_category_provisional', 'version_verification_needed'],
-  }).payload;
-
-  const nextEvidence = isPlainObject(provisionalPayload?.evidence) ? { ...provisionalPayload.evidence } : {};
-  const nextScience = isPlainObject(nextEvidence.science) ? { ...nextEvidence.science } : {};
-  const prevEvidence = isPlainObject(base.evidence) ? base.evidence : {};
-  const prevScience = isPlainObject(prevEvidence.science) ? prevEvidence.science : {};
-  const prevSocial = isPlainObject(prevEvidence.social_signals || prevEvidence.socialSignals)
-    ? (prevEvidence.social_signals || prevEvidence.socialSignals)
-    : {};
-  const prevSources = Array.isArray(prevEvidence.sources) ? prevEvidence.sources : [];
-  nextEvidence.science = {
-    ...nextScience,
-    fit_notes: uniqCaseInsensitiveStrings(
-      [...asStringArray(nextScience.fit_notes || nextScience.fitNotes, 8), ...asStringArray(prevScience.fit_notes || prevScience.fitNotes, 8)],
-      8,
-    ),
-    risk_notes: uniqCaseInsensitiveStrings(
-      [...asStringArray(nextScience.risk_notes || nextScience.riskNotes, 8), ...asStringArray(prevScience.risk_notes || prevScience.riskNotes, 8)],
-      8,
-    ),
-  };
-  nextEvidence.social_signals = Object.keys(prevSocial).length
-    ? { ...prevSocial, ...(isPlainObject(nextEvidence.social_signals) ? nextEvidence.social_signals : {}) }
-    : nextEvidence.social_signals;
-  if (prevSources.length) nextEvidence.sources = prevSources.slice(0, 8);
-  nextEvidence.expert_notes = uniqCaseInsensitiveStrings(
-    [...asStringArray(nextEvidence.expert_notes || nextEvidence.expertNotes, 6), ...asStringArray(prevEvidence.expert_notes || prevEvidence.expertNotes, 6)],
-    6,
-  );
-  nextEvidence.missing_info = uniqCaseInsensitiveStrings(
-    [...asStringArray(nextEvidence.missing_info || nextEvidence.missingInfo, 12), ...asStringArray(prevEvidence.missing_info || prevEvidence.missingInfo, 12)],
-    12,
-  );
-
-  return applyProductAnalysisGapContract({
-    ...base,
-    ...provisionalPayload,
-    evidence: nextEvidence,
-    confidence: Math.max(
-      Number.isFinite(Number(base.confidence)) ? Number(base.confidence) : 0,
-      Number.isFinite(Number(provisionalPayload.confidence)) ? Number(provisionalPayload.confidence) : 0,
-    ),
-    missing_info: uniqCaseInsensitiveStrings(
-      [...asStringArray(base.missing_info, 24), ...asStringArray(provisionalPayload.missing_info, 24)],
-      24,
-    ),
-    internal_debug_codes: uniqCaseInsensitiveStrings(
-      [...getProductAnalysisInternalMissingCodes(base), 'trusted_anchor_provisional_category_verdict_used'],
-      32,
-    ),
-    provenance: {
-      ...(isPlainObject(base.provenance) ? base.provenance : {}),
-      trusted_anchor_provisional_verdict: {
-        applied: true,
-        reason: 'trusted_anchor_unknown_bridge_v1',
-        product_type: productType,
-      },
-    },
-  });
-}
-
 function appendProductIntelSourceChain(payload, chainEntries = []) {
   const p = isPlainObject(payload) ? payload : {};
   const provenance = isPlainObject(p.provenance) ? p.provenance : {};
@@ -27410,10 +25580,9 @@ function buildProductDeepScanPromptV3({
     '2. Do NOT repeat the same point across summary, formula_intent, reasons, and better_pairing.',
     '3. Do NOT fabricate scientific sources, clinical proof, or precise ingredient percentages.',
     '4. If the product is SPF/sunscreen, keep usage guidance daytime-only; do NOT suggest PM-first or 2-3 nights/week intro schedules.',
-    '5. If the product category is already identifiable (for example cleanser, moisturizer, or sunscreen), do NOT default to "Unknown" only because full INCI is incomplete. Give a cautious category-level provisional judgment and clearly label the remaining uncertainty.',
   ];
   if (strictFormulaIntent || strictNarrative) {
-    systemLines.push('6. If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.');
+    systemLines.push('5. If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.');
   }
   if (strictNarrative) {
     systemLines.push(
@@ -27502,12 +25671,11 @@ function buildProductDeepScanPromptV4({
     '   - Use "possible" for all other watchouts -- when there is textual evidence, brand claims, known ingredient categories, or LLM knowledge even if INCI is not fully cross-verified.',
     '   - Do NOT use "unknown" -- if there is enough evidence to raise a watchout, there is enough to call it "possible".',
     '7. key_ingredients_by_function items MUST have: {function: string, ingredients: string[], confidence: "high"|"medium"|"low"}.',
-    '8. If product type is cleanser, moisturizer, spf, or spf_moisturizer, do NOT return verdict="Unknown" solely because full INCI is not verified. Use a cautious category-level provisional verdict plus explicit uncertainty.',
     ...(!anchorResolved
       ? [
-          '9. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
-          '10. Do NOT populate anchor_product in the response.',
-          '11. Keep the analysis generic to the product category/function, not a specific product formulation.',
+          '8. Do NOT guess or assume a specific brand or SKU when no catalog anchor is resolved.',
+          '9. Do NOT populate anchor_product in the response.',
+          '10. Keep the analysis generic to the product category/function, not a specific product formulation.',
         ]
       : []),
   ].join('\n');
@@ -27687,7 +25855,6 @@ const ROUTINE_FIT_DIMENSION_KEYS = [
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
   'chip.aurora.next_action.deep_dive_skin',
-  'chip.aurora.next_action.solution_next_steps',
   'chip.aurora.next_action.ingredient_plan',
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
@@ -33005,16 +31172,9 @@ async function applyAnalysisStoryAndRoutineSoftGate(
   if (!list.length) return list;
 
   const analysisSummaryCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_summary');
-  const analysisSummaryPayload = analysisSummaryCard && isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
-  const preserveAnalysisSummaryCard =
-    pickFirstTrimmed(
-      analysisSummaryPayload.primary_action_id,
-      analysisSummaryPayload.source_mode,
-    ) === 'analysis_continue_products' ||
-    asStringArray(analysisSummaryPayload.tags, 6).some((tag) => /saved analysis continuation|历史分析延续/i.test(String(tag || '')));
-  if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard && !preserveAnalysisSummaryCard) {
+  if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard) {
     const existingStory = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2');
-    const summaryPayload = analysisSummaryPayload;
+    const summaryPayload = isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
     const fallbackStory = buildAnalysisStoryFallbackPayload({ analysisSummaryPayload: summaryPayload, profile, language });
     const evidence = buildAnalysisEvidence({
       analysisSummaryPayload: summaryPayload,
@@ -33193,7 +31353,6 @@ async function applyProductIntelGuardrailsToEnvelope({
       dropped: sanitized.dropped,
       externalized: sanitized.externalized,
       rejected: sanitized.rejected,
-      lookup_meta: sanitized.lookup_meta,
     };
   }
   const withStoryAndGate = await applyAnalysisStoryAndRoutineSoftGate(sanitized.cards, {
@@ -38842,10 +37001,13 @@ function extractIngredientLookupQuery(action) {
   return String(raw || '').trim().slice(0, 120);
 }
 
-function buildIngredientLookupUpstreamPrompt({ query, language, analysisContext } = {}) {
+function buildIngredientLookupUpstreamPrompt({ query, language, analysisContext = null } = {}) {
   const target = String(query || '').trim();
   if (!target) return '';
   const promptVersion = 'inline_lookup_v2';
+  const analysisContextBlock = analysisContext
+    ? buildAnalysisContextPromptBlock({ taskLabel: 'ingredient', taskContext: analysisContext })
+    : '';
   if (language === 'CN') {
     return [
       `[PROMPT_VERSION=${promptVersion}]`,
@@ -38858,11 +37020,8 @@ function buildIngredientLookupUpstreamPrompt({ query, language, analysisContext 
       '- 如果成分有歧义或信息不足，要明确说明不确定性，并给出保守表述。',
       '- 不要做疾病诊断、处方建议或夸大疗效。',
       '- 不要输出长篇论文式解释；优先给清晰结论和关键注意事项。',
-      buildAnalysisContextPromptBlock({
-        taskLabel: 'ingredient',
-        taskContext: analysisContext,
-      }),
-    ].filter(Boolean).join('\n');
+      analysisContextBlock,
+    ].join('\n');
   }
   return [
     `[PROMPT_VERSION=${promptVersion}]`,
@@ -38875,11 +37034,8 @@ function buildIngredientLookupUpstreamPrompt({ query, language, analysisContext 
     '- If the ingredient is ambiguous or the evidence is weak, state the uncertainty explicitly and stay conservative.',
     '- Do not provide diagnosis, prescription-style instructions, or exaggerated efficacy claims.',
     '- Do not turn this into a long essay; lead with the practical takeaway.',
-    buildAnalysisContextPromptBlock({
-      taskLabel: 'ingredient',
-      taskContext: analysisContext,
-    }),
-  ].filter(Boolean).join('\n');
+    analysisContextBlock,
+  ].join('\n');
 }
 
 function normalizeIngredientCandidateList(raw, max = 6) {
@@ -38927,7 +37083,7 @@ function extractIngredientRecoContext(action) {
   };
 }
 
-function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext } = {}) {
+function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext = null } = {}) {
   const promptVersion = 'inline_ingredient_reco_v2';
   const c = context && typeof context === 'object' ? context : {};
   const goal = String(c.goal || '').trim();
@@ -38940,6 +37096,9 @@ function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext 
     .map((p) => pickFirstTrimmed(p.display_name, p.name, p.brand))
     .filter(Boolean)
     .slice(0, 8);
+  const analysisContextBlock = analysisContext
+    ? buildAnalysisContextPromptBlock({ taskLabel: 'ingredient', taskContext: analysisContext })
+    : '';
   if (language === 'CN') {
     return [
       `[PROMPT_VERSION=${promptVersion}]`,
@@ -38958,10 +37117,7 @@ function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext 
         ? `产品候选（只能从中选择）：${productCandidateNames.join('、')}`
         : '产品候选：无——请返回空推荐结果。',
       '要求：推荐结果需明确对应上述目标/成分；若无匹配结果，请返回空结果并解释原因。',
-      buildAnalysisContextPromptBlock({
-        taskLabel: 'ingredient',
-        taskContext: analysisContext,
-      }),
+      analysisContextBlock,
     ]
       .filter(Boolean)
       .join('\n');
@@ -38985,10 +37141,7 @@ function buildIngredientRecoUpstreamPrompt({ language, context, analysisContext 
       ? `Product candidates (select ONLY from these): ${productCandidateNames.join(', ')}`
       : 'Product candidates: NONE — return empty recommendations with an explanation.',
     'Rule: every recommendation must align with the goal/candidates; if no constrained match exists, return an explainable empty result.',
-    buildAnalysisContextPromptBlock({
-      taskLabel: 'ingredient',
-      taskContext: analysisContext,
-    }),
+    analysisContextBlock,
   ]
     .filter(Boolean)
     .join('\n');
@@ -40361,22 +38514,14 @@ function buildIngredientResearchPrompts({
     ...(profileSummary && typeof profileSummary === 'object' ? { profile_summary: profileSummary } : {}),
     ...(analysisContext && typeof analysisContext === 'object'
       ? {
-        analysis_context: {
-          hard:
-            analysisContext.task_hard_context && typeof analysisContext.task_hard_context === 'object'
-              ? analysisContext.task_hard_context
-              : {},
-          soft:
-            analysisContext.task_soft_context && typeof analysisContext.task_soft_context === 'object'
-              ? analysisContext.task_soft_context
-              : {},
-          evidence: Array.isArray(analysisContext.evidence_summary) ? analysisContext.evidence_summary.slice(0, 5) : [],
-          conflicts: Array.isArray(analysisContext.analysis_context_conflicts)
-            ? analysisContext.analysis_context_conflicts.slice(0, 4)
-            : [],
-          context_mode: String(analysisContext.context_mode || '').trim() || 'no_context',
-        },
-      }
+          analysis_context: {
+            hard: analysisContext.task_hard_context || {},
+            soft: analysisContext.task_soft_context || {},
+            evidence: Array.isArray(analysisContext.evidence_summary) ? analysisContext.evidence_summary.slice(0, 5) : [],
+            conflicts: Array.isArray(analysisContext.analysis_context_conflicts) ? analysisContext.analysis_context_conflicts.slice(0, 4) : [],
+            context_mode: String(analysisContext.context_mode || '').trim() || 'no_context',
+          },
+        }
       : {}),
     ...(Array.isArray(sources) && sources.length ? { sources } : {}),
   };
@@ -40388,6 +38533,8 @@ function buildIngredientResearchPrompts({
     'Follow the requested schema exactly. Do not add extra keys or rename fields.',
     'Use ONLY context.sources for citations. Never invent studies, journals, URLs, years, or evidence grades.',
     'Stay non-medical, conservative, and brief.',
+    'If context.analysis_context is present, treat hard signals as strong context and soft signals as uncertainty-bearing hints only.',
+    'Do not restate analysis_context as if the user explicitly said it.',
   ].join('\n');
 
   const userPrompt = [
@@ -43717,23 +41864,8 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   const target = identity.targetSignals;
   const out = [];
   const seen = new Set();
-  const normalizeQuery = (raw) => {
-    const tokens = String(raw || '')
-      .trim()
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter(Boolean);
-    if (!tokens.length) return '';
-    const deduped = [];
-    for (const token of tokens) {
-      const normalized = token.toLowerCase();
-      if (deduped.length && deduped[deduped.length - 1].toLowerCase() === normalized) continue;
-      deduped.push(token);
-    }
-    return deduped.join(' ').trim().replace(/\s+/g, ' ');
-  };
   const pushQuery = (raw) => {
-    const query = normalizeQuery(raw);
+    const query = String(raw || '').trim().replace(/\s+/g, ' ');
     if (!query) return;
     const key = query.toLowerCase();
     if (seen.has(key)) return;
@@ -43744,18 +41876,14 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   pushQuery(identity.anchorLabel);
   for (const alias of identity.aliases) pushQuery(alias);
 
-  if (target.knownActives.length && target.usageRole !== 'unknown') {
-    pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
-  }
-  if (target.brand && target.name && target.usageRole !== 'unknown' && !identity.anchorLabel.toLowerCase().includes(target.usageRole.toLowerCase())) {
+  if (target.brand && target.name && target.usageRole !== 'unknown') {
     pushQuery(`${target.brand} ${target.name} ${target.usageRole}`);
   }
-  if (
-    target.productType &&
-    target.usageRole !== 'unknown' &&
-    normalizeQuery(target.productType).toLowerCase() !== normalizeQuery(target.usageRole).toLowerCase()
-  ) {
+  if (target.productType && target.usageRole !== 'unknown') {
     pushQuery(`${target.productType} ${target.usageRole}`);
+  }
+  if (target.knownActives.length && target.usageRole !== 'unknown') {
+    pushQuery(`${target.knownActives[0]} ${target.usageRole}`);
   }
   if (target.primaryClaims.length && target.usageRole !== 'unknown') {
     pushQuery(`${target.primaryClaims[0]} ${target.usageRole}`);
@@ -43763,11 +41891,7 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   if (target.productType && target.primaryClaims.length) {
     pushQuery(`${target.productType} ${target.primaryClaims[0]}`);
   }
-  if (
-    target.productType &&
-    String(productInput || '').trim() &&
-    !normalizeQuery(String(productInput || '')).toLowerCase().includes(normalizeQuery(target.productType).toLowerCase())
-  ) {
+  if (target.productType && String(productInput || '').trim()) {
     pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
   }
 
@@ -44063,264 +42187,10 @@ function buildExternalSeedOpenWorldSchema() {
   };
 }
 
-function limitCompactStrings(values, limit, maxChars = 64) {
-  return uniqCaseInsensitiveStrings(asStringArray(values, limit), limit)
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .map((value) => value.slice(0, maxChars))
-    .filter(Boolean)
-    .slice(0, limit);
-}
-
-function buildCompactOpenWorldAnchorPayload({ anchorId = '', targetSignals = {}, productInput = '', activeThemes = [] } = {}) {
-  const compact = {};
-  const queryText = String(productInput || '').trim();
-  const brand = pickFirstTrimmed(targetSignals.brand);
-  const name = pickFirstTrimmed(targetSignals.name);
-  const category = pickFirstTrimmed(targetSignals.category);
-  const productType = pickFirstTrimmed(targetSignals.productType);
-  const usageRole = pickFirstTrimmed(targetSignals.usageRole);
-  const heroIngredients = limitCompactStrings(targetSignals.heroIngredients, 2, 40);
-  const knownActives = limitCompactStrings(targetSignals.knownActives, 2, 40);
-  const primaryClaims = limitCompactStrings(targetSignals.primaryClaims, 2, 56);
-  const textureHints = limitCompactStrings(targetSignals.textureHints, 1, 40);
-  const notes = String(targetSignals.notes || '').trim();
-
-  if (String(anchorId || '').trim()) compact.anchor_id = String(anchorId || '').trim();
-  if (brand) compact.brand = brand;
-  if (name) compact.name = name;
-  if (queryText) compact.query = queryText.slice(0, 140);
-  if (category) compact.category = category;
-  if (productType) compact.product_type = productType;
-  if (usageRole && usageRole.toLowerCase() !== 'unknown') compact.usage_role = usageRole;
-  if (heroIngredients.length) compact.hero_ingredients = heroIngredients;
-  if (knownActives.length) compact.known_actives = knownActives;
-  if (primaryClaims.length) compact.primary_claims = primaryClaims;
-  if (textureHints.length) compact.texture_hints = textureHints;
-  if (Array.isArray(activeThemes) && activeThemes.length) compact.active_themes = uniqCaseInsensitiveStrings(activeThemes, 6);
-
-  const anchorSignalCount =
-    Number(Boolean(brand)) +
-    Number(Boolean(name)) +
-    Number(Boolean(category)) +
-    Number(Boolean(productType)) +
-    Number(Boolean(usageRole && usageRole.toLowerCase() !== 'unknown')) +
-    heroIngredients.length +
-    knownActives.length +
-    primaryClaims.length +
-    textureHints.length;
-  if (notes && anchorSignalCount <= 2) {
-    compact.notes = notes.slice(0, 80);
-  }
-  return compact;
-}
-
-const RECO_OPEN_WORLD_ACTIVE_THEME_RULES = [
-  { key: 'niacinamide', patterns: [/\bniacinamide\b/i, /烟酰胺/], aliases: ['niacinamide'] },
-  { key: 'zinc', patterns: [/\bzinc\b/i, /锌/], aliases: ['zinc'] },
-  { key: 'salicylic_acid', patterns: [/\bsalicylic\b/i, /\bbha\b/i, /水杨酸/], aliases: ['salicylic acid', 'bha'] },
-  { key: 'hyaluronic_acid', patterns: [/\bhyaluronic\b/i, /\bha\b/i, /\bsodium hyaluronate\b/i, /玻尿酸/, /透明质酸/], aliases: ['hyaluronic acid'] },
-  { key: 'vitamin_c', patterns: [/\bvitamin c\b/i, /\bascorb/i, /维c/, /维C/, /抗坏血酸/], aliases: ['vitamin c'] },
-  { key: 'retinol', patterns: [/\bretinol\b/i, /\bretinal\b/i, /\bretinoid\b/i, /视黄醇/, /a醇/, /维a/], aliases: ['retinol', 'retinoid'] },
-  { key: 'ceramide', patterns: [/\bceramide\b/i, /神经酰胺/], aliases: ['ceramide'] },
-  { key: 'peptide', patterns: [/\bpeptide\b/i, /肽/], aliases: ['peptide'] },
-  { key: 'azelaic_acid', patterns: [/\bazelaic\b/i, /壬二酸/], aliases: ['azelaic acid'] },
-  { key: 'tranexamic_acid', patterns: [/\btranexamic\b/i, /传明酸/, /氨甲环酸/], aliases: ['tranexamic acid'] },
-  { key: 'panthenol', patterns: [/\bpanthenol\b/i, /\bprovitamin b5\b/i, /泛醇/, /维生素b5/, /维B5/], aliases: ['panthenol'] },
-  { key: 'snail_mucin', patterns: [/\bsnail\b/i, /\bmucin\b/i, /蜗牛/], aliases: ['snail mucin'] },
-];
-
-function extractRecoOpenWorldActiveThemesFromText(...values) {
-  const joined = values
-    .flatMap((value) => (Array.isArray(value) ? value : [value]))
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
-  if (!joined) return [];
-  const out = [];
-  for (const rule of RECO_OPEN_WORLD_ACTIVE_THEME_RULES) {
-    if (rule.patterns.some((pattern) => pattern.test(joined))) out.push(rule.key);
-  }
-  return uniqCaseInsensitiveStrings(out, 8);
-}
-
-function deriveRecoOpenWorldAnchorActiveThemes({ targetSignals = {}, productInput = '' } = {}) {
-  const signals = targetSignals && typeof targetSignals === 'object' && !Array.isArray(targetSignals) ? targetSignals : {};
-  return extractRecoOpenWorldActiveThemesFromText(
-    signals.knownActives,
-    signals.heroIngredients,
-    signals.primaryClaims,
-    signals.notes,
-    signals.name,
-    signals.productType,
-    signals.category,
-    productInput,
-  );
-}
-
-function hasRecoOpenWorldActiveOverlap({ anchorActiveThemes = [], candidateText = '' } = {}) {
-  const anchorThemes = uniqCaseInsensitiveStrings(anchorActiveThemes, 8);
-  if (!anchorThemes.length) return false;
-  const candidateThemes = extractRecoOpenWorldActiveThemesFromText(candidateText);
-  return anchorThemes.some((theme) => candidateThemes.includes(theme));
-}
-
-function buildFallbackOpenWorldTradeoffNote({ candidateRole = '', targetRole = '', productType = '', targetSignals = {} } = {}) {
-  const normalizedCandidateRole = String(candidateRole || '').trim().toLowerCase();
-  const normalizedTargetRole = String(targetRole || '').trim().toLowerCase();
-  if (
-    normalizedCandidateRole &&
-    normalizedTargetRole &&
-    normalizedCandidateRole !== 'unknown' &&
-    normalizedTargetRole !== 'unknown' &&
-    normalizedCandidateRole !== normalizedTargetRole
-  ) {
-    return `Role overlap is approximate rather than exact ${normalizedTargetRole} parity.`;
-  }
-  const targetProductType = pickFirstTrimmed(targetSignals.productType, targetSignals.category).toLowerCase();
-  const candidateProductType = String(productType || '').trim().toLowerCase();
-  if (targetProductType && candidateProductType && targetProductType !== candidateProductType) {
-    return 'Format overlap remains approximate rather than exact.';
-  }
-  return 'Formula overlap remains uncertain.';
-}
-
-function recoverCompleteOpenWorldAlternativesFromRawText(rawText) {
-  const text = unwrapCodeFence(rawText);
-  const keyMatch = /"alternatives"\s*:\s*\[/i.exec(text);
-  if (!keyMatch) return [];
-  const arrayStart = text.indexOf('[', keyMatch.index);
-  if (arrayStart < 0) return [];
-  const recovered = [];
-  let inString = false;
-  let escaped = false;
-  let depth = 0;
-  let objectStart = -1;
-  for (let index = arrayStart + 1; index < text.length; index += 1) {
-    const char = text[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === '{') {
-      if (depth === 0) objectStart = index;
-      depth += 1;
-      continue;
-    }
-    if (char === '}') {
-      if (depth > 0) depth -= 1;
-      if (depth === 0 && objectStart >= 0) {
-        const rawObject = text.slice(objectStart, index + 1);
-        const parsed = parseJsonOnlyObject(rawObject);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) recovered.push(parsed);
-        objectStart = -1;
-      }
-      continue;
-    }
-    if (char === ']' && depth === 0) break;
-  }
-  return recovered;
-}
-
-function normalizeOpenWorldEmptyReason(value) {
-  const token = String(value || '').trim().toLowerCase();
-  if (!token) return null;
-  if (token === 'anchor_not_recognizable_skincare') return 'anchor_signal_insufficient_for_open_world';
-  if (token === 'anchor_signal_insufficient_for_open_world') return 'anchor_signal_insufficient_for_open_world';
-  return null;
-}
-
-function extractSingleOpenWorldAlternativePayload(raw) {
-  const parsed = isPlainObject(raw) ? raw : null;
-  if (!parsed) return { alternative: null, emptyReason: null };
-  const emptyReason = normalizeOpenWorldEmptyReason(
-    pickFirstTrimmed(parsed.empty_reason, parsed.emptyReason, parsed.no_result_reason, parsed.noResultReason),
-  );
-  if (isPlainObject(parsed.alternative)) {
-    return { alternative: parsed.alternative, emptyReason };
-  }
-  if (Array.isArray(parsed.alternatives) && parsed.alternatives.length > 0 && isPlainObject(parsed.alternatives[0])) {
-    return { alternative: parsed.alternatives[0], emptyReason };
-  }
-  if (pickFirstTrimmed(parsed.brand) && pickFirstTrimmed(parsed.name)) {
-    return {
-      alternative: {
-        brand: parsed.brand,
-        name: parsed.name,
-        product_type: parsed.product_type ?? parsed.productType ?? null,
-        similarity_score: parsed.similarity_score ?? parsed.similarityScore ?? null,
-        reason: parsed.reason ?? null,
-        tradeoff_note: parsed.tradeoff_note ?? parsed.tradeoffNote ?? null,
-      },
-      emptyReason,
-    };
-  }
-  return { alternative: null, emptyReason };
-}
-
-function recoverSingleOpenWorldAlternativeFromRawText(rawText) {
-  const text = unwrapCodeFence(rawText);
-  const parsed = parseJsonOnlyObject(text);
-  const fromParsed = extractSingleOpenWorldAlternativePayload(parsed);
-  if (fromParsed.alternative || fromParsed.emptyReason) return fromParsed;
-
-  const altMatch = /"alternative"\s*:\s*\{/i.exec(text);
-  if (altMatch) {
-    const objectStart = text.indexOf('{', altMatch.index);
-    if (objectStart >= 0) {
-      let depth = 0;
-      let inString = false;
-      let escaped = false;
-      for (let index = objectStart; index < text.length; index += 1) {
-        const char = text[index];
-        if (escaped) {
-          escaped = false;
-          continue;
-        }
-        if (char === '\\') {
-          escaped = true;
-          continue;
-        }
-        if (char === '"') {
-          inString = !inString;
-          continue;
-        }
-        if (inString) continue;
-        if (char === '{') depth += 1;
-        else if (char === '}') {
-          depth -= 1;
-          if (depth === 0) {
-            const recovered = parseJsonOnlyObject(text.slice(objectStart, index + 1));
-            if (isPlainObject(recovered)) return { alternative: recovered, emptyReason: null };
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  const recoveredAlternatives = recoverCompleteOpenWorldAlternativesFromRawText(text);
-  if (recoveredAlternatives.length > 0) {
-    return { alternative: recoveredAlternatives[0], emptyReason: null };
-  }
-
-  return { alternative: null, emptyReason: null };
-}
-
 function normalizeOpenWorldAlternativeRow(candidate, {
   targetSignals,
   anchorLabel = '',
   anchorNameTokens = [],
-  anchorActiveThemes = [],
   ingredientTokens = [],
   claimTokens = [],
   textureTokens = [],
@@ -44341,26 +42211,11 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   if (!isSkincareCategory(categoryProbe) && candidateRole !== targetRole) return null;
   if (isBlacklistedCategoryOrTitle(categoryProbe) || isExternalSeedPlaceholderCandidate(categoryProbe)) return null;
 
-  const reasons = uniqCaseInsensitiveStrings(
-    asStringArray(row.reasons, 3).concat(asLooseStringArray(row.reason, 1)),
-    3,
-  );
-  const tradeoffNotesRaw = uniqCaseInsensitiveStrings(
-    asStringArray(row.tradeoff_notes, 3).concat(asLooseStringArray(row.tradeoff_note, 1)),
-    3,
-  );
-  if (!reasons.length) return null;
-  const tradeoffNotes = tradeoffNotesRaw.length
-    ? tradeoffNotesRaw
-    : [buildFallbackOpenWorldTradeoffNote({
-      candidateRole,
-      targetRole,
-      productType,
-      targetSignals,
-    })];
+  const reasons = uniqCaseInsensitiveStrings(asStringArray(row.reasons, 3), 3);
+  const tradeoffNotes = uniqCaseInsensitiveStrings(asStringArray(row.tradeoff_notes, 3), 3);
+  if (!reasons.length || !tradeoffNotes.length) return null;
 
   const sourceText = [candidateLabel, productType, reasons.join(' '), tradeoffNotes.join(' ')].join(' ');
-  if (!hasRecoOpenWorldActiveOverlap({ anchorActiveThemes, candidateText: sourceText })) return null;
   const baseScoreRaw = Number(row.similarity_score);
   const baseScore = Number.isFinite(baseScoreRaw) ? clamp01Score(baseScoreRaw > 1 ? baseScoreRaw / 100 : baseScoreRaw) : 0.62;
   const nameOverlap = computeTokenJaccardScore(anchorNameTokens, tokenizeProductTextForSimilarity(candidateLabel)) || 0;
@@ -44398,6 +42253,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
     similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
     reasons,
     tradeoff_notes: tradeoffNotes,
+    best_use: pickFirstTrimmed(row.best_use, row.bestUse) || null,
     pdp_open: {
       path: 'external',
       external: {
@@ -44412,214 +42268,168 @@ function normalizeOpenWorldAlternativeRow(candidate, {
   };
 }
 
-async function fetchRecoAlternativesForLocalOpenWorld({
+function getRecoAlternativesOpenWorldModel() {
+  return pickFirstTrimmed(
+    process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL,
+    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL,
+    ANALYSIS_STORY_MODEL_GEMINI,
+    'gemini-3-flash-preview',
+  );
+}
+
+function getRecoAlternativesOpenWorldMaxOutputTokens() {
+  const raw = Number(process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS);
+  if (!Number.isFinite(raw)) return 1200;
+  return Math.max(256, Math.min(4096, Math.trunc(raw)));
+}
+
+function buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj } = {}) {
+  const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
+  const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
+    productInput,
+    lang: langCode,
+  });
+  return {
+    lang: langCode,
+    anchor: {
+      brand: targetSignals.brand,
+      name: targetSignals.name,
+      query: String(productInput || '').trim() || null,
+      product_type: targetSignals.productType,
+      usage_role: targetSignals.usageRole,
+      hero_ingredients: Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients.slice(0, 2) : [],
+      known_actives: Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives.slice(0, 2) : [],
+      primary_claims: Array.isArray(targetSignals.primaryClaims) ? targetSignals.primaryClaims.slice(0, 2) : [],
+      texture_hints: Array.isArray(targetSignals.textureHints) ? targetSignals.textureHints.slice(0, 1) : [],
+    },
+    task: {
+      max_alternatives: 1,
+      selection_rule: 'Return the single best real skincare alternative anchored to the product context.',
+    },
+  };
+}
+
+function normalizeRecoAlternativesOpenWorldRows(rows, { productInput, productObj, ctx } = {}) {
+  const langCode = normalizeRecoPromptLanguage(ctx?.lang || 'EN');
+  const targetSignals = buildRecoAlternativesTargetSignals(productObj, {
+    productInput,
+    lang: langCode,
+  });
+  const anchorLabel = joinBrandAndName(targetSignals.brand, targetSignals.name || String(productInput || '').trim());
+  const anchorNameTokens = tokenizeProductTextForSimilarity(anchorLabel);
+  const ingredientTokens = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(targetSignals.heroIngredients) ? targetSignals.heroIngredients : []),
+      ...(Array.isArray(targetSignals.knownActives) ? targetSignals.knownActives : []),
+    ],
+    8,
+  );
+  const claimTokens = uniqCaseInsensitiveStrings(targetSignals.primaryClaims, 6);
+  const textureTokens = uniqCaseInsensitiveStrings(targetSignals.textureHints, 5);
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const candidate = isPlainObject(row) ? { ...row } : null;
+      if (!candidate) return null;
+      if (!Array.isArray(candidate.reasons) || !candidate.reasons.length) {
+        const reason = pickFirstTrimmed(candidate.reason, candidate.why, candidate.rationale);
+        if (reason) candidate.reasons = [reason];
+      }
+      if (!Array.isArray(candidate.tradeoff_notes) || !candidate.tradeoff_notes.length) {
+        const tradeoff = pickFirstTrimmed(candidate.tradeoff_note, candidate.tradeoff, candidate.tradeoff_notes);
+        candidate.tradeoff_notes = tradeoff ? [tradeoff] : ['Formula overlap remains uncertain.'];
+      }
+      return normalizeOpenWorldAlternativeRow(candidate, {
+        targetSignals,
+        anchorLabel,
+        anchorNameTokens,
+        ingredientTokens,
+        claimTokens,
+        textureTokens,
+      });
+    })
+    .filter(Boolean)
+    .slice(0, 1);
+}
+
+function recoverRecoAlternativesOpenWorldRowsFromTruncatedText(rawText) {
+  const text = String(rawText || '');
+  if (!text) return [];
+  const rows = [];
+  const pattern =
+    /\{"brand":"([^"]+)","name":"([^"]+)"(?:,"product_type":"([^"]*)")?(?:,"similarity_score":([0-9.]+))?(?:,"reason":"([^"]+)")?(?:,"tradeoff_note":"([^"]+)")?/g;
+  for (const match of text.matchAll(pattern)) {
+    const brand = String(match[1] || '').trim();
+    const name = String(match[2] || '').trim();
+    if (!brand || !name) continue;
+    rows.push({
+      brand,
+      name,
+      ...(match[3] ? { product_type: String(match[3]).trim() || null } : {}),
+      ...(match[4] ? { similarity_score: Number(match[4]) } : {}),
+      ...(match[5] ? { reasons: [String(match[5]).trim()] } : {}),
+      tradeoff_notes: [String(match[6] || 'Formula overlap remains uncertain.').trim()],
+    });
+    if (rows.length >= 3) break;
+  }
+  return rows;
+}
+
+async function fetchRecoAlternativesForLocalGeminiOpenWorld({
   ctx,
   productInput,
   productObj,
-  anchorId = '',
-  maxTotal = 3,
-  logger,
-  profileMode = 'anchor_only',
+  maxTotal,
+  profileMode,
 } = {}) {
-  const limit = 1;
-  const identity = buildExternalSeedCompareIdentity(productObj, productInput);
-  const targetSignals = identity.targetSignals;
-  const anchorActiveThemes = deriveRecoOpenWorldAnchorActiveThemes({ targetSignals, productInput });
-  const resolvedModel = resolveRecoAlternativesOpenWorldGeminiModel();
-  const hasAnchorSignals = Boolean(
-    String(identity.anchorLabel || '').trim() ||
-    String(targetSignals.category || '').trim() ||
-    String(targetSignals.productType || '').trim() ||
-    (String(targetSignals.usageRole || '').trim() && String(targetSignals.usageRole || '').trim().toLowerCase() !== 'unknown') ||
-    (Array.isArray(targetSignals.heroIngredients) && targetSignals.heroIngredients.length > 0) ||
-    (Array.isArray(targetSignals.knownActives) && targetSignals.knownActives.length > 0) ||
-    (Array.isArray(targetSignals.primaryClaims) && targetSignals.primaryClaims.length > 0) ||
-    (Array.isArray(targetSignals.textureHints) && targetSignals.textureHints.length > 0) ||
-    String(targetSignals.notes || '').trim() ||
-    String(productInput || '').trim()
-  );
-  const emptyRawOutputSummary = summarizeRecoAlternativesRaw([]);
-
-  if (!hasAnchorSignals || !anchorActiveThemes.length) {
-    return {
-      ok: true,
-      alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'anchor_signal_insufficient_for_open_world' }],
-      source_mode: 'open_world_only',
-      fallback_source: 'none',
-      refresh_pending: false,
-      refresh_after_ms: 0,
-      failure_class: 'precheck_fail',
-      attempt_count: 0,
-      no_result_reason: 'anchor_signal_insufficient_for_open_world',
-      recommendation_mode: 'open_world_only',
-      profile_mode: normalizeAlternativesProfileMode(profileMode),
-      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-      raw_output_summary: emptyRawOutputSummary,
-      llm_trace: {
-        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-        prompt_hash: null,
-        prompt_chars: 0,
-        token_est: 0,
-        latency_ms: 0,
-        cache_hit: false,
-        provider: 'gemini',
-        model: resolvedModel,
-        source_mode: 'local_gemini_open_world',
-        error_class: 'precheck_fail',
-        provider_reason: 'anchor_signal_insufficient_for_open_world',
-        provider_detail: null,
-        provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: resolvedModel,
-      },
-    };
-  }
-
-  const systemPrompt = loadRecoPromptTemplateFile(RECO_ALTERNATIVES_OPEN_WORLD_SYSTEM_FILE, {
-    parseJson: false,
-    fallback: [
-      'Return JSON only.',
-      'Output exactly one JSON object with keys: alternative, empty_reason.',
-      'If alternative is present, it may use only these keys: brand, name, product_type, similarity_score, reason, tradeoff_note.',
-      'Return exactly 1 distinct real skincare product from a different brand when active or ingredient theme overlap is explicit.',
-      'Return alternative:null only when the anchor is not recognizable skincare or lacks explicit active or ingredient theme.',
-      'Do not output extra keys, prose, markdown, URLs, SKUs, prices, IDs, citations, or the anchor itself.',
-    ].join('\n'),
+  const model = getRecoAlternativesOpenWorldModel();
+  const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
+  const systemPrompt = [
+    'You are a strict skincare alternatives selector.',
+    'Output STRICT JSON only.',
+    'Return real skincare alternatives only. No makeup, tools, or placeholders.',
+    'Do not invent URLs, product IDs, exact INCI lists, or internal references.',
+    'Keep each reason grounded to the anchor product role and actives.',
+  ].join('\n');
+  const userPayload = buildRecoAlternativesOpenWorldUserPayload({ ctx, productInput, productObj });
+  const startedAt = Date.now();
+  const resp = await callGeminiJsonObjectImpl({
+    model,
+    systemPrompt,
+    userPrompt: JSON.stringify(userPayload, null, 2),
+    timeoutMs: 6000,
+    temperature: 0.2,
+    maxOutputTokens,
+    route: 'aurora_reco_alternatives_open_world',
+    ignoreForceModel: true,
   });
-  const userPayload = {
-    lang: normalizeRecoPromptLanguage(ctx?.lang || 'EN'),
-    anchor: buildCompactOpenWorldAnchorPayload({ anchorId, targetSignals, productInput, activeThemes: anchorActiveThemes }),
-    task: {
-      max_alternatives: limit,
-      selection_rule: 'Open-world only. If anchor.active_themes is non-empty, return exactly 1 distinct viable skincare alternative from a different brand with clear active or ingredient theme overlap. If anchor.active_themes is empty or the anchor is not recognizable skincare, return alternative:null with explicit empty_reason.',
-    },
+
+  const llmTrace = {
+    template_id: 'reco_alternatives_open_world_v1',
+    source_mode: 'local_gemini_open_world',
+    provider_route: 'aurora_reco_alternatives_open_world',
+    provider_model: model,
+    provider_reason: resp?.ok === false ? resp.reason || null : null,
+    provider_detail: resp?.ok === false ? resp.detail || null : null,
+    provider_timeout_stage: resp?.ok === false ? resp.timeout_stage || null : null,
+    provider_total_ms: resp?.ok === false && Number.isFinite(Number(resp.total_ms)) ? Number(resp.total_ms) : null,
+    provider_upstream_ms: resp?.ok === false && Number.isFinite(Number(resp.upstream_ms)) ? Number(resp.upstream_ms) : null,
+    provider_result_reason: resp?.meta?.result_reason || null,
+    finish_reason: resp?.finish_reason || null,
+    parse_status: resp?.parse_status || null,
+    latency_ms: Math.max(0, Date.now() - startedAt),
+    cache_hit: false,
+    error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
   };
-  const userPrompt = JSON.stringify(userPayload);
-  const traceSeed = buildRecoPromptTrace({
-    templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-    query: `${systemPrompt}\n${userPrompt}`,
-    provider: 'gemini',
-    model: resolvedModel,
-    coverage: {
-      has_anchor_id: Boolean(String(anchorId || '').trim()),
-      has_product_json: Boolean(productObj && typeof productObj === 'object' && !Array.isArray(productObj)),
-      has_recent_logs: false,
-    },
+
+  const normalizedRows = normalizeRecoAlternativesOpenWorldRows(resp?.json?.alternatives, {
+    productInput,
+    productObj,
+    ctx,
   });
-
-  try {
-    const startedAt = Date.now();
-    const resp = await callGeminiJsonObjectImpl({
-      model: resolvedModel,
-      systemPrompt,
-      userPrompt,
-      timeoutMs: 6000,
-      temperature: 0.2,
-      maxOutputTokens: AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS,
-      route: 'aurora_reco_alternatives_open_world',
-      ignoreForceModel: true,
-    });
-    let extracted = extractSingleOpenWorldAlternativePayload(resp?.ok === true && isPlainObject(resp.json) ? resp.json : null);
-    let rawRows = extracted.alternative ? [extracted.alternative] : [];
-    if (!rawRows.length && typeof resp?.raw_text === 'string') {
-      extracted = recoverSingleOpenWorldAlternativeFromRawText(resp.raw_text);
-      rawRows = extracted.alternative ? [extracted.alternative] : [];
-    }
-    const explicitEmptyReason = normalizeOpenWorldEmptyReason(extracted.emptyReason);
-    const rawOutputSummary = summarizeRecoAlternativesRaw(rawRows);
-    const llmTrace = {
-      ...traceSeed,
-      latency_ms: Math.max(0, Date.now() - startedAt),
-      cache_hit: false,
-      source_mode: 'local_gemini_open_world',
-      provider_reason: resp?.ok === true ? null : String(resp?.reason || '').trim() || null,
-      provider_detail: resp?.ok === true ? null : String(resp?.detail || '').trim() || null,
-      provider_route: 'aurora_reco_alternatives_open_world',
-      provider_model: resolvedModel,
-      provider_timeout_stage: resp?.ok === true ? null : String(resp?.timeout_stage || '').trim() || null,
-      provider_total_ms: Number.isFinite(Number(resp?.total_ms)) ? Math.max(0, Math.trunc(Number(resp.total_ms))) : null,
-      provider_upstream_ms: Number.isFinite(Number(resp?.upstream_ms)) ? Math.max(0, Math.trunc(Number(resp.upstream_ms))) : null,
-      provider_result_reason: resp?.meta && typeof resp.meta === 'object' ? String(resp.meta.result_reason || '').trim() || null : null,
-      finish_reason: String(resp?.finish_reason || '').trim() || null,
-      parse_status: String(resp?.parse_status || '').trim() || null,
-      ...(resp?.ok === true ? {} : { error_class: classifyAlternativesFailureCode(resp?.reason) }),
-    };
-
-    if (resp?.ok !== true && !rawRows.length) {
-      return {
-        ok: true,
-        alternatives: [],
-        field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
-        source_mode: 'open_world_only',
-        fallback_source: 'none',
-        refresh_pending: false,
-        refresh_after_ms: 0,
-        failure_class: classifyAlternativesFailureCode(resp?.reason),
-        attempt_count: 1,
-        no_result_reason: 'local_open_world_provider_error',
-        recommendation_mode: 'open_world_only',
-        profile_mode: normalizeAlternativesProfileMode(profileMode),
-        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-        raw_output_summary: rawOutputSummary,
-        llm_trace: llmTrace,
-      };
-    }
-
-    const normalized = rawRows
-      .map((row) => normalizeOpenWorldAlternativeRow(row, {
-        targetSignals,
-        anchorLabel: identity.anchorLabel,
-        anchorNameTokens: identity.anchorNameTokens,
-        anchorActiveThemes,
-        ingredientTokens: identity.ingredientTokens,
-        claimTokens: identity.claimTokens,
-        textureTokens: identity.textureTokens,
-      }))
-      .filter(Boolean);
-    const deduped = [];
-    const seen = new Set();
-    for (const row of normalized) {
-      const product = isPlainObject(row.product) ? row.product : {};
-      const dedupeKey = pickFirstTrimmed(
-        product.product_id,
-        product.sku_id,
-        product.url,
-        product.brand && product.name ? `${product.brand}:${product.name}` : product.name,
-      ).toLowerCase();
-      if (!dedupeKey || seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-      deduped.push(row);
-      if (deduped.length >= limit) break;
-    }
-
-    if (!deduped.length) {
-      const noResultReason = explicitEmptyReason || 'open_world_empty_structured';
-      const errorClass = explicitEmptyReason ? null : 'empty_structured';
-      return {
-        ok: true,
-        alternatives: [],
-        field_missing: [{ field: 'alternatives', reason: explicitEmptyReason || 'upstream_missing_or_empty' }],
-        source_mode: 'open_world_only',
-        fallback_source: 'none',
-        refresh_pending: false,
-        refresh_after_ms: 0,
-        failure_class: explicitEmptyReason ? 'precheck_fail' : 'empty_structured',
-        attempt_count: 1,
-        no_result_reason: noResultReason,
-        recommendation_mode: 'open_world_only',
-        profile_mode: normalizeAlternativesProfileMode(profileMode),
-        template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-        raw_output_summary: rawOutputSummary,
-        llm_trace: {
-          ...llmTrace,
-          ...(errorClass ? { error_class: errorClass } : {}),
-        },
-      };
-    }
-
+  if (normalizedRows.length) {
     return {
       ok: true,
-      alternatives: deduped,
+      alternatives: normalizedRows.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
       field_missing: [],
       source_mode: 'open_world_only',
       fallback_source: null,
@@ -44629,53 +42439,54 @@ async function fetchRecoAlternativesForLocalOpenWorld({
       attempt_count: 1,
       recommendation_mode: 'open_world_only',
       profile_mode: normalizeAlternativesProfileMode(profileMode),
-      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-      raw_output_summary: rawOutputSummary,
+      template_id: 'reco_alternatives_open_world_v1',
+      raw_output_summary: summarizeRecoAlternativesRaw(resp?.json?.alternatives),
       llm_trace: llmTrace,
     };
-  } catch (err) {
-    logger?.warn?.(
-      { err: err?.message || String(err), request_id: ctx?.request_id, trace_id: ctx?.trace_id },
-      'aurora bff: local open-world alternatives stage failed',
-    );
-    const errorClass = classifyAlternativesFailureCode(err?.code || err?.message);
+  }
+
+  const recoveredRows = resp?.ok === false
+    ? normalizeRecoAlternativesOpenWorldRows(
+        recoverRecoAlternativesOpenWorldRowsFromTruncatedText(resp?.raw_text),
+        { productInput, productObj, ctx },
+      )
+    : [];
+  if (recoveredRows.length) {
     return {
       ok: true,
-      alternatives: [],
-      field_missing: [{ field: 'alternatives', reason: 'provider_error' }],
+      alternatives: recoveredRows.slice(0, Math.max(1, Math.min(6, Number(maxTotal) || 1))),
+      field_missing: [],
       source_mode: 'open_world_only',
-      fallback_source: 'none',
+      fallback_source: null,
       refresh_pending: false,
       refresh_after_ms: 0,
-      failure_class: errorClass,
+      failure_class: null,
       attempt_count: 1,
-      no_result_reason: 'local_open_world_provider_error',
       recommendation_mode: 'open_world_only',
       profile_mode: normalizeAlternativesProfileMode(profileMode),
-      template_id: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-      raw_output_summary: emptyRawOutputSummary,
-      llm_trace: {
-        ...buildRecoPromptTrace({
-          templateId: RECO_ALTERNATIVES_OPEN_WORLD_LOCAL_TEMPLATE_ID,
-          query: '',
-          provider: 'gemini',
-          model: resolvedModel,
-        }),
-        latency_ms: 0,
-        cache_hit: false,
-        source_mode: 'local_gemini_open_world',
-        error_class: errorClass,
-        provider_reason: String(err?.code || err?.message || '').trim() || null,
-        provider_detail: String(err?.message || '').trim() || null,
-        provider_route: 'aurora_reco_alternatives_open_world',
-        provider_model: resolvedModel,
-        provider_timeout_stage: null,
-        provider_total_ms: null,
-        provider_upstream_ms: null,
-        provider_result_reason: null,
-      },
+      template_id: 'reco_alternatives_open_world_v1',
+      raw_output_summary: summarizeRecoAlternativesRaw(recoveredRows),
+      llm_trace: llmTrace,
     };
   }
+
+  return {
+    ok: true,
+    alternatives: [],
+    field_missing: [{ field: 'alternatives', reason: 'upstream_error' }],
+    source_mode: 'open_world_only',
+    fallback_source: 'none',
+    refresh_pending: false,
+    refresh_after_ms: 0,
+    failure_class: classifyAlternativesFailureCode(resp?.reason),
+    attempt_count: 1,
+    no_result_reason: 'no_viable_results_after_fallback',
+    recommendation_mode: 'open_world_only',
+    profile_mode: normalizeAlternativesProfileMode(profileMode),
+    template_id: 'reco_alternatives_open_world_v1',
+    raw_output_summary: summarizeRecoAlternativesRaw([]),
+    llm_trace: llmTrace,
+  };
 }
 
 async function fetchRecoAlternativesForExternalSeedProduct({
@@ -44881,10 +42692,6 @@ async function fetchRecoAlternativesForProduct({
   const preferRefreshCache = opts.prefer_refresh_cache !== false;
   const disableSyntheticLocalFallback = opts.disable_synthetic_local_fallback === true;
   const ignoreSelectorCandidates = opts.ignore_selector_candidates === true;
-  const selectorSeedOnly = opts.selector_seed_only === true;
-  const selectorTimeoutMs = Number.isFinite(Number(opts.selector_timeout_ms))
-    ? Math.max(1000, Math.min(20000, Math.trunc(Number(opts.selector_timeout_ms))))
-    : RECO_ALTERNATIVES_TIMEOUT_MS;
   const allowAnchorlessOpenWorld = recommendationMode !== 'pool_only';
   const usesOpenWorldPrompt = recommendationMode === 'hybrid_fallback' || recommendationMode === 'open_world_only';
 
@@ -44894,20 +42701,12 @@ async function fetchRecoAlternativesForProduct({
   const bestInput = inputText || anchor;
   const selectorCandidatePool = ignoreSelectorCandidates
     ? []
-    : selectorSeedOnly
-      ? (Array.isArray(candidatePool) ? candidatePool : [])
-        .map((row, index) => normalizeAlternativesSelectorCandidate(row, { index }))
-        .filter(Boolean)
-      : buildRecoAlternativesCandidatePool({
-        sharedCandidates: candidatePool,
-        productObj,
-        anchorId: anchor,
-        maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
-      });
-  const selectorMeta = {
-    input_count: Array.isArray(selectorCandidatePool) ? selectorCandidatePool.length : 0,
-    timeout_ms: selectorTimeoutMs,
-  };
+    : buildRecoAlternativesCandidatePool({
+      sharedCandidates: candidatePool,
+      productObj,
+      anchorId: anchor,
+      maxCandidates: Math.max(8, Math.min(24, (Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 6) * 3)),
+    });
   const selectorGroundedAlternatives = ignoreSelectorCandidates
     ? []
     : mapSelectorCandidatesToAlternatives(selectorCandidatePool, {
@@ -44944,7 +42743,6 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: cached.llm_trace && cached.llm_trace.template_id ? cached.llm_trace.template_id : null,
         raw_output_summary: null,
-        selector_meta: selectorMeta,
         ...(cached.llm_trace ? { llm_trace: cached.llm_trace } : {}),
       };
     }
@@ -44965,7 +42763,6 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
-      selector_meta: selectorMeta,
     };
   }
 
@@ -44993,7 +42790,6 @@ async function fetchRecoAlternativesForProduct({
       recommendation_mode: recommendationMode,
       profile_mode: profileMode,
       raw_output_summary: emptyRawOutputSummary,
-      selector_meta: selectorMeta,
     };
   }
 
@@ -45161,7 +42957,6 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
-            selector_meta: selectorMeta,
             ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
           };
         }
@@ -45179,7 +42974,6 @@ async function fetchRecoAlternativesForProduct({
             recommendation_mode: recommendationMode,
             profile_mode: profileMode,
             raw_output_summary: emptyRawOutputSummary,
-            selector_meta: selectorMeta,
           };
         }
         const localFallback = await buildLocalFallbackAlternatives({ failureClass: 'anchor_missing_precheck' });
@@ -45197,7 +42991,6 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
-          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -45236,7 +43029,6 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
-          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
         };
       } else if (!disableFallback) {
@@ -45255,7 +43047,6 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
-          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       } else {
@@ -45272,7 +43063,6 @@ async function fetchRecoAlternativesForProduct({
           recommendation_mode: recommendationMode,
           profile_mode: profileMode,
           raw_output_summary: emptyRawOutputSummary,
-          selector_meta: selectorMeta,
           ...(debug ? { debug: { anchor_precheck: anchorPrecheck } } : {}),
         };
       }
@@ -45283,19 +43073,13 @@ async function fetchRecoAlternativesForProduct({
     profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary) ? profileSummary : {},
   );
   if (recommendationMode === 'open_world_only') {
-    const out = await fetchRecoAlternativesForLocalOpenWorld({
+    return fetchRecoAlternativesForLocalGeminiOpenWorld({
       ctx,
       productInput: bestInput,
       productObj,
-      anchorId: anchor,
       maxTotal,
-      logger,
       profileMode,
     });
-    if (refreshKey && Array.isArray(out.alternatives) && out.alternatives.length) {
-      writeRecoAlternativesCache(refreshKey, out.alternatives, out.llm_trace || null);
-    }
-    return out;
   }
   const prefix = buildContextPrefix({
     profile: profileSummary || null,
@@ -45340,7 +43124,7 @@ async function fetchRecoAlternativesForProduct({
     upstream = await auroraChat({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
-      timeoutMs: selectorTimeoutMs,
+      timeoutMs: RECO_ALTERNATIVES_TIMEOUT_MS,
       retries: RECO_ALTERNATIVES_UPSTREAM_RETRIES,
       trace_id: ctx.trace_id,
       request_id: ctx.request_id,
@@ -45353,10 +43137,9 @@ async function fetchRecoAlternativesForProduct({
       allow_recommendations: true,
     });
   } catch (err) {
-    const failureMeta = classifyAlternativesUpstreamFailure(err);
     const transientCode = classifyRecoUpstreamFailureCode(err);
     llmFailureClass =
-      failureMeta.failure_class === 'precheck_fail'
+      err && err.code === 'AURORA_NOT_CONFIGURED'
         ? 'precheck_fail'
         : isTransientRecoUpstreamFailureCode(transientCode)
           ? 'timeout'
@@ -45380,15 +43163,11 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
-        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
-          upstream_status: failureMeta.upstream_status,
-          upstream_error_code: failureMeta.upstream_error_code,
-          upstream_error_message: failureMeta.upstream_error_message,
         },
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, selector_grounded: true } } : {}),
       };
@@ -45411,15 +43190,11 @@ async function fetchRecoAlternativesForProduct({
         profile_mode: profileMode,
         template_id: queryPack.templateId,
         raw_output_summary: emptyRawOutputSummary,
-        selector_meta: selectorMeta,
         llm_trace: {
           ...traceSeed,
           latency_ms: Date.now() - startedAtMs,
           cache_hit: false,
           error_class: llmFailureClass,
-          upstream_status: failureMeta.upstream_status,
-          upstream_error_code: failureMeta.upstream_error_code,
-          upstream_error_message: failureMeta.upstream_error_message,
         },
       };
     }
@@ -45438,15 +43213,11 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: emptyRawOutputSummary,
-      selector_meta: selectorMeta,
       llm_trace: {
         ...traceSeed,
         latency_ms: Date.now() - startedAtMs,
         cache_hit: false,
         error_class: llmFailureClass,
-        upstream_status: failureMeta.upstream_status,
-        upstream_error_code: failureMeta.upstream_error_code,
-        upstream_error_message: failureMeta.upstream_error_message,
       },
     };
   }
@@ -45510,7 +43281,6 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
-      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -45534,7 +43304,6 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
-      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null, selector_grounded: true } } : {}),
     };
@@ -45556,7 +43325,6 @@ async function fetchRecoAlternativesForProduct({
       profile_mode: profileMode,
       template_id: queryPack.templateId,
       raw_output_summary: rawOutputSummary,
-      selector_meta: selectorMeta,
       llm_trace: llmTrace,
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
     };
@@ -45620,7 +43388,6 @@ async function fetchRecoAlternativesForProduct({
     profile_mode: profileMode,
     template_id: queryPack.templateId,
     raw_output_summary: rawOutputSummary,
-    selector_meta: selectorMeta,
     llm_trace: llmTrace,
     ...(debug ? { debug: { anchor_precheck: anchorPrecheck, upstream_intent: upstream && upstream.intent ? upstream.intent : null } } : {}),
   };
@@ -45855,9 +43622,9 @@ async function generateProductRecommendations({
   profile,
   recentLogs,
   message,
+  focus = '',
   ingredientContext,
   analysisContextSnapshot = null,
-  sharedRequestContext = null,
   requestOverride = null,
   includeAlternatives,
   debug,
@@ -45865,85 +43632,22 @@ async function generateProductRecommendations({
   recoTriggerSource = null,
   recomputeFromProfileUpdate = false,
   budgetMs = null,
+  entryType = 'chat',
 }) {
   const profileSummary = summarizeProfileForContext(profile);
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
-  const normalizedSharedRequestContext =
-    sharedRequestContext && typeof sharedRequestContext === 'object' && !Array.isArray(sharedRequestContext)
-      ? sharedRequestContext
-      : null;
   const effectiveAnalysisContextSnapshot =
-    normalizedSharedRequestContext && normalizedSharedRequestContext.analysis_context_snapshot
-      ? normalizedSharedRequestContext.analysis_context_snapshot
-      : (analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs }));
-  const recommendationTaskContext =
-    normalizedSharedRequestContext && normalizedSharedRequestContext.task_context
-      ? normalizedSharedRequestContext.task_context
-      : buildTaskAnalysisContextForPrefix({
-        task: 'recommendation',
-        snapshot: effectiveAnalysisContextSnapshot,
-        profile,
-        requestOverride,
-        recentLogs,
-      });
-  const requestContextSignature = pickFirstTrimmed(
-    normalizedSharedRequestContext && normalizedSharedRequestContext.request_context_signature,
-  ) || null;
-  const requestContextSignatureVersion = pickFirstTrimmed(
-    normalizedSharedRequestContext && normalizedSharedRequestContext.request_context_signature_version,
-  ) || null;
-  const strictnessSource = pickFirstTrimmed(
-    normalizedSharedRequestContext && normalizedSharedRequestContext.strictness_source,
-  ) || 'entry_default';
-  const sharedAnalysisContextUsage =
-    normalizedSharedRequestContext &&
-    isPlainObject(normalizedSharedRequestContext.context_usage)
-      ? normalizedSharedRequestContext.context_usage
-      : null;
-  const buildNormalizedAnalysisContextUsage = ({
-    candidatePoolSignature: finalizedCandidatePoolSignature = null,
-    candidatePoolSignatureVersion: finalizedCandidatePoolSignatureVersion = null,
-  } = {}) => {
-    const snapshotPresent =
-      sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'snapshot_present')
-        ? Boolean(sharedAnalysisContextUsage.snapshot_present)
-        : Boolean(recommendationTaskContext.snapshot_present);
-    const contextSourceMode = pickFirstTrimmed(
-      sharedAnalysisContextUsage && sharedAnalysisContextUsage.context_source_mode,
-      recommendationTaskContext.context_source_mode,
-      'none',
-    ) || 'none';
-    const analysisContextAvailable =
-      sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'analysis_context_available')
-        ? Boolean(sharedAnalysisContextUsage.analysis_context_available)
-        : Boolean(recommendationTaskContext.analysis_context_available);
-    const usage = {
-      snapshot_present: snapshotPresent,
-      context_source_mode: contextSourceMode,
-      analysis_context_available: analysisContextAvailable,
-      snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
-      hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
-      soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
-      explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
-      context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
-      adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
-      ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
-      ...(requestContextSignatureVersion ? { request_context_signature_version: requestContextSignatureVersion } : {}),
-      ...(finalizedCandidatePoolSignature ? { candidate_pool_signature: finalizedCandidatePoolSignature } : {}),
-      ...(finalizedCandidatePoolSignatureVersion ? { candidate_pool_signature_version: finalizedCandidatePoolSignatureVersion } : {}),
-      strictness_source: strictnessSource,
-    };
-    if (sharedAnalysisContextUsage && Object.prototype.hasOwnProperty.call(sharedAnalysisContextUsage, 'minimum_recommendation_context_satisfied')) {
-      usage.minimum_recommendation_context_satisfied = Boolean(sharedAnalysisContextUsage.minimum_recommendation_context_satisfied);
-    }
-    if (sharedAnalysisContextUsage && pickFirstTrimmed(sharedAnalysisContextUsage.min_context_rule_version)) {
-      usage.min_context_rule_version = pickFirstTrimmed(sharedAnalysisContextUsage.min_context_rule_version);
-    }
-    return usage;
-  };
+    analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs });
+  const recommendationTaskContext = buildTaskAnalysisContextForPrefix({
+    task: 'recommendation',
+    snapshot: effectiveAnalysisContextSnapshot,
+    profile,
+    requestOverride,
+    recentLogs,
+  });
   const analysisContextBlock = buildAnalysisContextPromptBlock({
     taskLabel: 'recommendation',
     taskContext: recommendationTaskContext,
@@ -45964,6 +43668,15 @@ async function generateProductRecommendations({
   const userAsk =
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
+  const targetContext = resolveRecommendationTargetContext({
+    explicitStep: pickFirstTrimmed(
+      normalizedIngredientContext && normalizedIngredientContext.target_step,
+      normalizedIngredientContext && normalizedIngredientContext.step,
+    ),
+    focus,
+    text: userAsk,
+    entryType,
+  });
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
   );
@@ -45977,8 +43690,7 @@ async function generateProductRecommendations({
   let llmLatencyMs = null;
   let catalogStructured = null;
   let catalogCandidatePool = [];
-  let candidatePoolSignature = null;
-  let poolSource = 'none';
+  let catalogCandidateState = null;
   let catalogDebug = null;
   let pdpFastFallbackReasonCode = null;
   let pdpFastExternalFallbackReasonCode = null;
@@ -46127,6 +43839,7 @@ async function generateProductRecommendations({
       ctx,
       profileSummary,
       ingredientContext: normalizedIngredientContext,
+      targetContext,
       debug,
       logger,
     });
@@ -46138,21 +43851,10 @@ async function generateProductRecommendations({
       catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
         ? catalogOut.candidate_pool
         : [];
-    poolSource = catalogCandidatePool.length ? 'catalog_candidates' : 'none';
-    candidatePoolSignature = crypto.createHash('sha256').update(JSON.stringify({
-      ids: catalogCandidatePool
-        .map((row) => pickFirstTrimmed(
-          row && row.product_id,
-          row && row.product_group_id,
-          row && row.sku_id,
-          row && row.name,
-          row && row.display_name,
-          row && row.url,
-        ))
-        .filter(Boolean)
-        .sort(),
-      pool_source: poolSource,
-    })).digest('hex').slice(0, 16);
+    catalogCandidateState =
+      catalogOut && typeof catalogOut === 'object' && catalogOut.candidate_pool_state && typeof catalogOut.candidate_pool_state === 'object'
+        ? catalogOut.candidate_pool_state
+        : null;
     catalogDebug =
       catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
         ? catalogOut.debug
@@ -46160,7 +43862,7 @@ async function generateProductRecommendations({
     pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
     pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
     const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
-    catalogTransientFallbackStructured = useCatalogTransientFallback
+    catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
       ? buildRecoCatalogTransientFallbackStructured({ ctx })
       : null;
   }
@@ -46245,7 +43947,28 @@ async function generateProductRecommendations({
           ? 'catalog_grounded_primary'
           : null,
       llm_candidate_count: Array.isArray(catalogCandidatePool) ? catalogCandidatePool.length : 0,
-      analysis_context_usage: buildNormalizedAnalysisContextUsage(),
+      resolved_target_step: targetContext.resolved_target_step || null,
+      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
+      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      step_resolution_version: targetContext.step_resolution_version || null,
+      candidate_pool_signature: pickFirstTrimmed(catalogDebug?.candidate_pool_signature) || null,
+      raw_candidate_count: Number(catalogDebug?.raw_candidate_count || 0),
+      viable_candidate_count: Number(catalogDebug?.viable_candidate_count || 0),
+      exact_step_viable_count: Number(catalogDebug?.exact_step_viable_count || 0),
+      same_family_viable_count: Number(catalogDebug?.same_family_viable_count || 0),
+      soft_mismatch_count: Number(catalogDebug?.soft_mismatch_count || 0),
+      hard_reject_count: Number(catalogDebug?.hard_reject_count || 0),
+      weak_viable_pool: Boolean(catalogDebug?.weak_viable_pool),
+      overall_target_fidelity_satisfied: Boolean(catalogDebug?.overall_target_fidelity_satisfied),
+      analysis_context_usage: {
+        snapshot_present: Boolean(effectiveAnalysisContextSnapshot),
+        snapshot_fields_used: Array.isArray(recommendationTaskContext.snapshot_fields_used) ? recommendationTaskContext.snapshot_fields_used : [],
+        hard_context_fields_used: Array.isArray(recommendationTaskContext.hard_context_fields_used) ? recommendationTaskContext.hard_context_fields_used : [],
+        soft_context_fields_used: Array.isArray(recommendationTaskContext.soft_context_fields_used) ? recommendationTaskContext.soft_context_fields_used : [],
+        explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
+        context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
+        adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+      },
     }
     : null;
   let mapped = structured && typeof structured === 'object' && !Array.isArray(structured) ? { ...structured } : null;
@@ -46255,6 +43978,7 @@ async function generateProductRecommendations({
       recommendations: mapped.recommendations,
       ctx,
       logger,
+      defaultTargetContext: targetContext,
     });
     mapped = {
       ...mapped,
@@ -46272,6 +43996,16 @@ async function generateProductRecommendations({
   }
 
   const norm = normalizeRecoGenerate(mapped);
+  const viablePoolState = isPlainObject(catalogCandidateState)
+    ? catalogCandidateState
+    : finalizeRecommendationCandidatePools(
+        Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
+        { targetContext },
+      );
+  if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
+    norm.payload.recommendations = [];
+    norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
+  }
   const effectiveGroundingStatus =
     normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
     || (structuredSource === 'catalog_grounded'
@@ -46290,6 +44024,7 @@ async function generateProductRecommendations({
   const effectiveMainlineStatus = pickFirstTrimmed(
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
+    targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     structuredSource === 'catalog_grounded'
       ? 'grounded_success'
       : structuredSource === 'catalog_transient_fallback'
@@ -46635,7 +44370,24 @@ async function generateProductRecommendations({
         ? Number(catalogDebug?.query_count)
         : 0,
       llm_trace: llmTrace,
-      analysis_context_usage: buildNormalizedAnalysisContextUsage(),
+      resolved_target_step: targetContext.resolved_target_step || null,
+      resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
+      resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      step_resolution_version: targetContext.step_resolution_version || null,
+      step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
+      viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+      candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
+      group_semantics_version: GROUP_SEMANTICS_VERSION,
+      raw_candidate_count: Number(viablePoolState.raw_candidate_count || 0),
+      viable_candidate_count: Number(viablePoolState.viable_candidate_count || 0),
+      exact_step_viable_count: Number(viablePoolState.exact_step_viable_count || 0),
+      same_family_viable_count: Number(viablePoolState.same_family_viable_count || 0),
+      soft_mismatch_count: Number(viablePoolState.soft_mismatch_count || 0),
+      hard_reject_count: Number(viablePoolState.hard_reject_count || 0),
+      selected_candidate_count: Number(viablePoolState.selected_candidate_count || 0),
+      overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
+      weak_viable_pool: Boolean(viablePoolState.weak_viable_pool),
+      candidate_pool_signature: viablePoolState.candidate_pool_signature,
     },
   };
   const recoContract = buildRecoMainlineContract({
@@ -46677,11 +44429,6 @@ async function generateProductRecommendations({
     norm,
     upstreamDebug,
     alternativesDebug,
-    candidatePool: catalogCandidatePool,
-    candidatePoolSignature,
-    poolSource,
-    requestContextSignature,
-    strictnessSource,
     upstreamFailureCode,
     llmFailureClass,
     llmTrace,
@@ -49327,9 +47074,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   app.post('/v1/product/analyze', async (req, res) => {
     const ctx = buildRequestContext(req, {});
-    let productAnalyzeProfileContextSource = 'db_only_profile';
-    let productAnalyzeRequestOverlayKeys = [];
-    let productAnalyzeSessionProfileSummary = null;
     const productAnalyzeSessionId = getRecoDogfoodSessionId(
       req,
       ctx,
@@ -49368,15 +47112,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         ...augmented,
         session_patch: {
           ...sessionPatchBase,
-          ...(productAnalyzeRequestOverlayKeys.length && productAnalyzeSessionProfileSummary
-            ? { profile: productAnalyzeSessionProfileSummary }
-            : {}),
           meta: {
             ...sessionPatchMeta,
             retrieval_path_version: 'aurora_retrieval_v2',
-            profile_context_source: productAnalyzeProfileContextSource,
-            request_profile_overlay_applied: productAnalyzeRequestOverlayKeys.length > 0,
-            ...(productAnalyzeRequestOverlayKeys.length ? { request_profile_overlay_keys: productAnalyzeRequestOverlayKeys } : {}),
             ...(productAnalysisContextMeta ? { analysis_context_usage: productAnalysisContextMeta } : {}),
           },
         },
@@ -49427,8 +47165,6 @@ function mountAuroraBffRoutes(app, { logger }) {
                   },
               degraded: retrievalDegradation.degraded === true,
               resolver_first_applied: retrievalDegradation.resolver_first_applied === true,
-              profile_context_source: productAnalyzeProfileContextSource,
-              request_profile_overlay_keys: productAnalyzeRequestOverlayKeys,
             },
             'aurora bff: product analyze diagnostics',
           );
@@ -49486,39 +47222,25 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const identity = await resolveIdentity(req, ctx);
-      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
-      const requestProfileOverlay = extractAnalysisProfileContextOverlay(
-        extractProfilePatchFromSession(incomingSession),
-        extractProfilePatchFromRequestContextPayload(parsed.data),
-      );
-      productAnalyzeRequestOverlayKeys =
-        requestProfileOverlay && typeof requestProfileOverlay === 'object'
-          ? Object.keys(requestProfileOverlay).sort()
-          : [];
-      productAnalyzeProfileContextSource = productAnalyzeRequestOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
-      const profile =
-        requestProfileOverlay && typeof requestProfileOverlay === 'object'
-          ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
-          : storedProfile;
-      const profileSummary = summarizeProfileForContext(profile);
-      productAnalyzeSessionProfileSummary = productAnalyzeRequestOverlayKeys.length ? profileSummary : null;
       const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
         identity,
         session: incomingSession,
         ctx,
         logger,
       });
+      const profileSummary = summarizeProfileForContext(profile);
       const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
         latestArtifact,
-        profile: storedProfile,
+        profile,
         recentLogs,
       });
       const analysisTaskContext = buildTaskAnalysisContextForPrefix({
         task: 'product_analyze',
         snapshot: analysisContextSnapshot,
-        profile: storedProfile,
-        requestOverride: requestProfileOverlay,
+        profile,
+        requestOverride: extractProfilePatchFromSession(incomingSession),
         recentLogs,
       });
       const analysisContextBlock = buildAnalysisContextPromptBlock({
@@ -49526,9 +47248,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskContext: analysisTaskContext,
       });
       productAnalysisContextMeta = {
-        snapshot_present: Boolean(analysisTaskContext.snapshot_present),
-        context_source_mode: String(analysisTaskContext.context_source_mode || '').trim() || 'none',
-        analysis_context_available: Boolean(analysisTaskContext.analysis_context_available),
+        snapshot_present: Boolean(analysisContextSnapshot),
         snapshot_id: analysisContextSnapshot ? String(analysisContextSnapshot.snapshot_id || '').trim() || null : null,
         source_mix_summary:
           analysisContextSnapshot && Array.isArray(analysisContextSnapshot.source_mix_summary)
@@ -50110,9 +47830,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
         if (primaryAnchorResolution.ok && primaryAnchorResolution.product) {
-          applyAnchorCandidateGuard(primaryAnchorResolution.product, 'catalog_primary_resolve', {
-            preferDisplay: true,
+          const resolvedAnchor = mapCatalogProductToAnchorProduct(primaryAnchorResolution.product, {
+            fallbackName: String(input || ''),
           });
+          applyAnchorCandidateGuard(resolvedAnchor, 'catalog_primary_resolve');
         }
       }
 
@@ -50126,9 +47847,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
         if (catalogFallback.ok && catalogFallback.product) {
-          applyAnchorCandidateGuard(catalogFallback.product, 'catalog_fallback', {
-            preferDisplay: true,
-          });
+          const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
+          applyAnchorCandidateGuard(fallbackAnchor, 'catalog_fallback');
         }
       }
 
@@ -50536,13 +48256,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           payload = { ...payload, assessment: { ...a, anchor_product: parsedProduct } };
         }
       }
-      payload = maybeApplyTrustedAnchorProvisionalProductAnalysis(payload, {
-        parsedProduct,
-        profileSummary,
-        lang: ctx.lang,
-        inputText: String(parsed.data.name || input || '').trim(),
-        anchorTrustContext,
-      });
       payload = finalizeProductAnalysisRecoContract(payload, {
         logger,
         requestId: ctx.request_id,
@@ -50678,10 +48391,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       applyDupeSuggestSanitizeToEnvelope,
       getDupeKbEntry,
       upsertDupeKbEntry,
-      purgeDupeKbEntriesByContractVersion,
       normalizeDupeKbKey,
       searchPivotaBackendProducts,
-      buildExternalSeedCompareSearchQueries,
       buildRecoAlternativesCandidatePool,
       fetchRecoAlternativesForProduct,
       auroraChat,
@@ -52187,7 +49898,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           }),
         );
       }
-      const directNoRecoReason = deriveRecoEmptyReason(payload, finalDirectContract);
+      const directNoRecoReason = pickFirstTrimmed(
+        finalDirectContract.products_empty_reason,
+        payload?.products_empty_reason,
+        deriveRecoEmptyReason(payload, finalDirectContract),
+      );
       const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
         const recommendationAnalysisContextMeta =
@@ -52210,15 +49925,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
-	        session_patch: {
-            ...((payload.recommendations && payload.recommendations.length) ? { next_state: 'S7_PRODUCT_RECO' } : {}),
-            meta: {
-              profile_context_source: requestProfileContextSource,
-              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
-              ...(recommendationAnalysisContextMeta ? { analysis_context_usage: recommendationAnalysisContextMeta } : {}),
-            },
-          },
-	        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
+        session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
+        events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
           ctx: { ...ctx, trigger_source: 'action' },
           emitIfMissing: true,
           eventData: buildRecoRequestedEventData({
@@ -53455,15 +51163,19 @@ function mountAuroraBffRoutes(app, { logger }) {
         const previousRoutineState = normalizeRoutineStateFromProfile(profile);
         const previousRoutine = previousRoutineState.current_routine_struct;
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
-        const routineFromRequest =
+        const routineInputRaw =
           parsed.data.currentRoutine !== undefined
-            ? normalizeRoutineInputWithPmShortcut(parsed.data.currentRoutine)
+            ? parsed.data.currentRoutine
             : parsed.data.current_routine !== undefined
-              ? normalizeRoutineInputWithPmShortcut(parsed.data.current_routine)
+              ? parsed.data.current_routine
               : undefined;
+        const routineFromRequest =
+          routineInputRaw !== undefined
+            ? normalizeRoutineInputWithPmShortcut(routineInputRaw)
+            : undefined;
         const requestedRoutineState =
           routineFromRequest !== undefined ? normalizeRoutineStateValue(routineFromRequest) : null;
-        const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineFromRequest);
+        const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineInputRaw);
 
         if (routineFromRequest !== undefined) {
           const normalizedRoutine =
@@ -54654,15 +52366,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               : null;
 
             if (diagnosisArtifact && AURORA_INGREDIENT_PLAN_ENABLED && latestArtifactId) {
-              const planBuiltLegacy = buildIngredientPlan({
+              const planBuilt = buildIngredientPlan({
                 artifact: diagnosisArtifact,
                 profile: profileSummary || profile || {},
               });
-              const planBuilt =
-                coerceIngredientPlanForDiagnosisCard(planBuiltLegacy, {
-                  profile: profileSummary || profile || {},
-                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-                }) || planBuiltLegacy;
               const savedPlan = await saveIngredientPlan({
                 artifactId: latestArtifactId,
                 auroraUid: identity.auroraUid,
@@ -54689,10 +52396,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ...analysis,
                   ingredient_plan: {
                     targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                      ingredient_id: t.ingredient_id,
-                      ingredient_name: t.ingredient_name,
-                      role: t.role,
-                      priority: Number.isFinite(Number(t.priority_score_0_100)) ? Number(t.priority_score_0_100) : t.priority,
+                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
                     })) : [],
                     avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
                       ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
@@ -54721,100 +52425,6 @@ function mountAuroraBffRoutes(app, { logger }) {
                   }
                 : analysis,
             });
-            if (analysis && !shadowRun && persistLastAnalysis) {
-              try {
-                const deeplink = ctx.brief_id
-                  ? `/chat?brief_id=${encodeURIComponent(String(ctx.brief_id))}`
-                  : '/chat';
-                const payload = {
-                  artifact_id: latestArtifactId || null,
-                  analysis_source: String(renderedAnalysisSource || '').trim() || 'unknown',
-                  used_photos: Boolean(usedPhotos),
-                  photos_provided: Boolean(photosProvided),
-                  photo_failure_code: photoFailureCode || null,
-                  quality_grade: String(photoQuality && photoQuality.grade || '').trim() || 'unknown',
-                  photos_count: photosSubmittedCount,
-                };
-                const activity = await appendActivityForIdentity({
-                  auroraUid: identity.auroraUid,
-                  userId: identity.userId,
-                  eventType: 'skin_analysis',
-                  payload,
-                  deeplink,
-                  source: 'analysis_skin',
-                  occurredAtMs: Date.now(),
-                });
-                if (activity && activity.activity_id) {
-                  await upsertActivityDetail({
-                    activityId: activity.activity_id,
-                    detailKind: 'skin_analysis',
-                    detailJson: {
-                      ...payload,
-                      confidence_score:
-                        diagnosisArtifact &&
-                        diagnosisArtifact.overall_confidence &&
-                        Number.isFinite(Number(diagnosisArtifact.overall_confidence.score))
-                          ? Number(diagnosisArtifact.overall_confidence.score)
-                          : null,
-                      confidence_level:
-                        diagnosisArtifact &&
-                        diagnosisArtifact.overall_confidence &&
-                        typeof diagnosisArtifact.overall_confidence.level === 'string'
-                          ? diagnosisArtifact.overall_confidence.level
-                          : null,
-                      source_mix:
-                        diagnosisArtifact && Array.isArray(diagnosisArtifact.source_mix)
-                          ? diagnosisArtifact.source_mix
-                          : [],
-                      skin_type:
-                        diagnosisArtifact && diagnosisArtifact.skinType && typeof diagnosisArtifact.skinType.value === 'string'
-                          ? diagnosisArtifact.skinType.value
-                          : null,
-                      barrier_status:
-                        diagnosisArtifact && diagnosisArtifact.barrierStatus && typeof diagnosisArtifact.barrierStatus.value === 'string'
-                          ? diagnosisArtifact.barrierStatus.value
-                          : null,
-                      sensitivity:
-                        diagnosisArtifact && diagnosisArtifact.sensitivity && typeof diagnosisArtifact.sensitivity.value === 'string'
-                          ? diagnosisArtifact.sensitivity.value
-                          : null,
-                      goals:
-                        diagnosisArtifact &&
-                        diagnosisArtifact.goals &&
-                        Array.isArray(diagnosisArtifact.goals.values)
-                          ? diagnosisArtifact.goals.values
-                          : [],
-                      concerns:
-                        diagnosisArtifact && Array.isArray(diagnosisArtifact.concerns)
-                          ? diagnosisArtifact.concerns
-                          : [],
-                      ingredient_plan:
-                        ingredientPlan && typeof ingredientPlan === 'object'
-                          ? {
-                              plan_id: typeof ingredientPlan.plan_id === 'string' ? ingredientPlan.plan_id : null,
-                              intensity:
-                                ingredientPlan.intensity && typeof ingredientPlan.intensity === 'object'
-                                  ? ingredientPlan.intensity.level || null
-                                  : ingredientPlan.intensity || null,
-                              targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets : [],
-                              avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid : [],
-                              conflicts: Array.isArray(ingredientPlan.conflicts) ? ingredientPlan.conflicts : [],
-                            }
-                          : null,
-                      created_at:
-                        diagnosisArtifact && typeof diagnosisArtifact.created_at === 'string'
-                          ? diagnosisArtifact.created_at
-                          : null,
-                    },
-                  });
-                }
-              } catch (activityErr) {
-                logger?.warn(
-                  { err: activityErr && activityErr.message ? activityErr.message : String(activityErr), request_id: ctx.request_id },
-                  'aurora bff: failed to append skin_analysis activity',
-                );
-              }
-            }
           } catch (err) {
             artifactPersistence = {
               persisted: false,
@@ -54994,12 +52604,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             routineAnalysisV2Result = null;
           }
         }
+
         if (!routineAnalysisV2Result && ingredientPlan) {
-          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id, {
-            profile: profileSummary || profile || {},
-            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-            language: ctx.lang,
-          }));
+          extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
         if (routineAnalysisV2Result) {
           sessionPatch.meta = {
@@ -55641,18 +53248,17 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          });
 	        }
 
-        return {
-          envelope,
-          report,
-          profile_for_guardrails: profile,
-          profile_summary_for_assistant: profileSummary,
-          analysis_for_persist: analysisSummaryPayload,
-          photo_refs: normalizeAnalysisPhotoRefs([
-            ...(Array.isArray(passedPhotos) ? passedPhotos : []),
-            ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
-            ...(Array.isArray(failedPhotos) ? failedPhotos : []),
-          ]),
-        };
+	        return {
+            envelope,
+            report,
+            profile_for_guardrails: profile,
+            analysis_for_persist: analysisSummaryPayload,
+            photo_refs: normalizeAnalysisPhotoRefs([
+              ...(Array.isArray(passedPhotos) ? passedPhotos : []),
+              ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
+              ...(Array.isArray(failedPhotos) ? failedPhotos : []),
+            ]),
+          };
 	      };
 
       const analysisBudgetStartedAtMs = Date.now();
@@ -55833,28 +53439,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',
         );
         if (storyCard && isPlainObject(storyCard.payload)) {
-          const requestRoutineProfilePatch = extractProfilePatchFromRoutinePayload(
-            parsed.data.currentRoutine !== undefined ? parsed.data.currentRoutine : parsed.data.current_routine,
-          );
-          const profileForStory = {
-            ...(isPlainObject(output && output.profile_summary_for_assistant)
-              ? output.profile_summary_for_assistant
-              : summarizeProfileForContext(
-                  isPlainObject(output && output.profile_for_guardrails) ? output.profile_for_guardrails : {},
-                ) || {}),
-            ...(isPlainObject(requestRoutineProfilePatch) ? requestRoutineProfilePatch : {}),
-          };
-          storyCard.payload = applyAnalysisStoryProfilePatch(storyCard.payload, {
-            profileSummary: profileForStory,
-            requestRoutineProfilePatch,
-            analysisPayload: output && output.analysis_for_persist ? output.analysis_for_persist : null,
-            diagnosisArtifact:
-              output &&
-              output.analysis_for_persist &&
-              isPlainObject(output.analysis_for_persist.diagnosis_artifact)
-                ? output.analysis_for_persist.diagnosis_artifact
-                : null,
-          });
           const realignedText = buildAssistantMessageFromStoryV2(storyCard.payload, { language: ctx.lang });
           if (realignedText) {
             storyCard.payload = {
@@ -55913,8 +53497,6 @@ function mountAuroraBffRoutes(app, { logger }) {
     requireAuroraUid,
     resolveIdentity,
     classifyStorageError,
-    appendActivityForIdentity,
-    upsertActivityDetail,
   });
 
   mountActivityRoutes(app, {
@@ -55922,13 +53504,6 @@ function mountAuroraBffRoutes(app, { logger }) {
     requireAuroraUid,
     resolveIdentity,
     classifyStorageError,
-    appendActivityForIdentity,
-    listActivityForIdentity,
-    getActivityEventByIdForIdentity,
-    getActivityDetail,
-    listDiagnosisArtifactsForIdentity,
-    getDiagnosisArtifactById,
-    getIngredientPlanByArtifactId,
   });
 
   try {
@@ -56075,52 +53650,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const routineState = normalizeRoutineStateValue(cleanPatch.currentRoutine);
         cleanPatch.currentRoutine = routineState.current_routine_struct || routineState.current_routine_text || null;
       }
-      const previousProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
       const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, cleanPatch);
-      try {
-        const changedFields = Object.keys(cleanPatch || {}).slice(0, 20);
-        const previousSummary = summarizeProfileForContext(previousProfile) || {};
-        const updatedSummary = summarizeProfileForContext(updated) || {};
-        const values = {};
-        const previous_values = {};
-        for (const field of changedFields) {
-          values[field] = Object.prototype.hasOwnProperty.call(updatedSummary, field) ? updatedSummary[field] : null;
-          previous_values[field] = Object.prototype.hasOwnProperty.call(previousSummary, field) ? previousSummary[field] : null;
-        }
-        const payload = {
-          changed_fields: changedFields,
-          values,
-        };
-        const activity = await appendActivityForIdentity({
-          auroraUid: identity.auroraUid,
-          userId: identity.userId,
-          eventType: 'profile_updated',
-          payload,
-          deeplink: '/profile',
-          source: 'profile_update_api',
-          occurredAtMs: Date.now(),
-        });
-        if (activity && activity.activity_id) {
-          await upsertActivityDetail({
-            activityId: activity.activity_id,
-            detailKind: 'profile_updated',
-            detailJson: {
-              changed_fields: changedFields,
-              values,
-              previous_values,
-            },
-          });
-        }
-      } catch (activityErr) {
-        logger?.warn?.(
-          {
-            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
-            request_id: ctx.request_id,
-            trace_id: ctx.trace_id,
-          },
-          'profile update activity append failed',
-        );
-      }
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -56272,47 +53802,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       const identity = await resolveIdentity(req, ctx);
       const saved = await upsertSkinLogForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, parsed.data);
       const recent = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-      try {
-        const payload = {
-          date: saved && typeof saved.date === 'string' ? saved.date : null,
-          redness: saved && Number.isFinite(Number(saved.redness)) ? Number(saved.redness) : null,
-          acne: saved && Number.isFinite(Number(saved.acne)) ? Number(saved.acne) : null,
-          hydration: saved && Number.isFinite(Number(saved.hydration)) ? Number(saved.hydration) : null,
-          notes_excerpt:
-            saved && typeof saved.notes === 'string' && saved.notes.trim()
-              ? saved.notes.trim().slice(0, 220)
-              : null,
-          routine_id: saved && typeof saved.routine_id === 'string' ? saved.routine_id : null,
-          target_product: saved && typeof saved.targetProduct === 'string' ? saved.targetProduct : null,
-          sensation: saved && typeof saved.sensation === 'string' ? saved.sensation : null,
-          has_notes: Boolean(saved && typeof saved.notes === 'string' && saved.notes.trim()),
-        };
-        const activity = await appendActivityForIdentity({
-          auroraUid: identity.auroraUid,
-          userId: identity.userId,
-          eventType: 'tracker_logged',
-          payload,
-          deeplink: '/chat?open=checkin',
-          source: 'tracker_log_api',
-          occurredAtMs: Date.now(),
-        });
-        if (activity && activity.activity_id) {
-          await upsertActivityDetail({
-            activityId: activity.activity_id,
-            detailKind: 'tracker_logged',
-            detailJson: payload,
-          });
-        }
-      } catch (activityErr) {
-        logger?.warn?.(
-          {
-            err: activityErr && activityErr.message ? activityErr.message : String(activityErr),
-            request_id: ctx.request_id,
-            trace_id: ctx.trace_id,
-          },
-          'tracker log activity append failed',
-        );
-      }
       const recoRefreshHint = {
         should_refresh: true,
         reason: 'checkin_logged',
@@ -56451,7 +53940,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const testProduct = parsed.data.test_product || null;
       const sim = simulateConflicts({ routine, testProduct, language: ctx.lang });
       const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
-      const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+      const heatmapEnabled = isConflictHeatmapV1Enabled();
+      const heatmapPayload = heatmapEnabled
         ? buildConflictHeatmapV1({ routineSimulation: { safe: sim.safe, conflicts: sim.conflicts, summary: sim.summary }, routineSteps: heatmapSteps })
         : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
       const simPayload = {
@@ -56479,7 +53969,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [
           makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length }),
-          ...(CONFLICT_HEATMAP_V1_ENABLED
+          ...(heatmapEnabled
             ? [
               makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
                 schema_version: heatmapPayload.schema_version,
@@ -58096,7 +55586,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       const implicitAnalysisFollowupActionId = resolveImplicitAnalysisFollowupActionId({
         actionId: explicitActionId,
         message,
-        sessionMeta: parsedSessionMetaForAnalysisFollowup,
         sessionAnalysisContext:
           parsedSessionMetaForAnalysisFollowup.analysis_context &&
           typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&
@@ -58297,7 +55786,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      let profileSummaryForFollowup = summarizeChatProfileForContext(profile);
+      const profileSummaryForFollowup = summarizeChatProfileForContext(profile);
       const requestScopedProfileOverride = mergeMissingProfilePatchFields(
         mergeMissingProfilePatchFields({}, profilePatchFromSession),
         appliedProfilePatch || textDerivedProfilePatch,
@@ -58321,8 +55810,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ensureAnalysisContextSnapshotForConversation = async () => {
         if (cachedAnalysisContextSnapshotLoaded) return cachedAnalysisContextSnapshotForConversation;
         cachedAnalysisContextSnapshotLoaded = true;
+        const latestArtifact = await ensureLatestArtifactForConversation();
         cachedAnalysisContextSnapshotForConversation = buildAnalysisContextSnapshotForRoute({
-          latestArtifact: await ensureLatestArtifactForConversation(),
+          latestArtifact,
           profile,
           recentLogs,
         });
@@ -58341,18 +55831,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskAnalysisContextCache.set(key, taskContext);
         return taskContext;
       };
-      const parsedSessionAnalysisContext =
-        parsedSessionMetaForAnalysisFollowup.analysis_context &&
-        typeof parsedSessionMetaForAnalysisFollowup.analysis_context === 'object' &&
-        !Array.isArray(parsedSessionMetaForAnalysisFollowup.analysis_context)
-          ? parsedSessionMetaForAnalysisFollowup.analysis_context
-          : null;
-      const savedAnalysisFollowupGateBypassActive = shouldBypassLegacyDiagnosisGateForSavedAnalysis({
-        sessionMeta: parsedSessionMetaForAnalysisFollowup,
-        sessionAnalysisContext: parsedSessionAnalysisContext,
-        lastAnalysis: profile && profile.lastAnalysis ? profile.lastAnalysis : null,
-        latestArtifactId: extractLatestArtifactIdFromSession(parsedSessionForAnalysisFollowup),
-      });
       const buildIngredientProfileSummaryForResearch = ({ taskContext, ingredientContext }) => {
         const hard = isPlainObject(taskContext && taskContext.task_hard_context) ? taskContext.task_hard_context : {};
         const soft = isPlainObject(taskContext && taskContext.task_soft_context) ? taskContext.task_soft_context : {};
@@ -58396,7 +55874,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         const softGoals = Array.isArray(soft.background_goals) ? soft.background_goals : [];
         const hardTargets = Array.isArray(hard.ingredient_targets) ? hard.ingredient_targets : [];
         const softTargets = Array.isArray(soft.ingredient_targets) ? soft.ingredient_targets : [];
-        const derivedGoal = pickFirstTrimmed(...hardGoals, ...softGoals);
+        const derivedGoal = pickFirstTrimmed(
+          ...hardGoals,
+          ...softGoals,
+        );
         const derivedCandidates = normalizeIngredientCandidateList([...hardTargets, ...softTargets], 8);
         return mergeIngredientRecoContextValue(
           {
@@ -58418,8 +55899,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {};
         meta.analysis_context_usage = {
           snapshot_present: Boolean(taskContext.snapshot_present),
-          context_source_mode: String(taskContext.context_source_mode || '').trim() || 'none',
-          analysis_context_available: Boolean(taskContext.analysis_context_available),
           snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used : [],
           hard_context_fields_used: Array.isArray(taskContext.hard_context_fields_used) ? taskContext.hard_context_fields_used : [],
           soft_context_fields_used: Array.isArray(taskContext.soft_context_fields_used) ? taskContext.soft_context_fields_used : [],
@@ -58447,7 +55926,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (isAnalysisFollowupAction) {
         const normalizedActionId = String(actionId || '').trim();
         const isDeepDiveAction = normalizedActionId === 'chip.aurora.next_action.deep_dive_skin';
-        const isSolutionAction = normalizedActionId === 'chip.aurora.next_action.solution_next_steps';
         const actionData =
           normalizedActionPayload &&
           typeof normalizedActionPayload === 'object' &&
@@ -58465,7 +55943,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? parsedSessionMeta.analysis_context
             : null;
         let latestDiagnosisArtifact = null;
-        if (isDeepDiveAction || isSolutionAction) {
+        if (isDeepDiveAction) {
           try {
             latestDiagnosisArtifact = await loadLatestDiagnosisArtifactForRoute({
               identity,
@@ -58490,17 +55968,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               sessionAnalysisContext,
               logger,
             })
-          : isSolutionAction
-            ? await buildSavedAnalysisSolutionContent({
-                lastAnalysis: profile && profile.lastAnalysis,
-                diagnosisArtifact: latestDiagnosisArtifact,
-                profile,
-                language: ctx.lang,
-                requestId: ctx.request_id,
-                replyText: followupReplyText,
-                actionData,
-                sessionAnalysisContext,
-              })
           : buildAnalysisFollowupContent({
               actionId: normalizedActionId,
               lastAnalysis: profile && profile.lastAnalysis,
@@ -58520,19 +55987,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           { kind: 'metric', name: 'aurora.skin.analysis_followup.routed_rate', value: 1 },
           'metric',
         );
-        skipRoutineRulesFallback = true;
-        const followupSessionMeta = buildAnalysisFollowupSessionMeta({
-          existingMeta: parsedSessionMeta,
-          existingAnalysisContext: sessionAnalysisContext,
-          followup,
-          actionId: normalizedActionId,
-          latestArtifactId: extractLatestArtifactIdFromSession(parsedSession),
-        });
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
           cards: Array.isArray(followup.cards) ? followup.cards : [],
-          session_patch: Object.keys(followupSessionMeta).length ? { meta: followupSessionMeta } : {},
+          session_patch: {},
           events: [
             makeEvent(ctx, 'analysis_followup_action_routed', {
               action_id: normalizedActionId,
@@ -58540,15 +55999,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               used_last_analysis: Boolean(followup.used_last_analysis),
               missing_context: Boolean(followup.missing_context),
               fell_back_to_generic: false,
-              ...((isDeepDiveAction || isSolutionAction) ? {
+              ...(isDeepDiveAction ? {
                 analysis_origin: followup.analysis_origin || null,
                 photo_ref_count: Number(followup.photo_ref_count || 0),
                 used_diagnosis_artifact: Boolean(followup.used_diagnosis_artifact),
                 used_analysis_story_snapshot: Boolean(followup.used_analysis_story_snapshot),
-                ...(isDeepDiveAction ? {
-                  fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
-                  llm_used: Boolean(followup.llm_used),
-                } : {}),
+                fell_back_to_snapshot: Boolean(followup.fell_back_to_snapshot),
+                llm_used: Boolean(followup.llm_used),
               } : {}),
             }),
           ],
@@ -59810,9 +57267,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           const profileSummaryForResearch =
             profile && typeof profile === 'object'
               ? buildIngredientProfileSummaryForResearch({
-                taskContext: currentIngredientAnalysisTaskContext,
-                ingredientContext: ingredientRecoContext,
-              })
+                  taskContext: currentIngredientAnalysisTaskContext,
+                  ingredientContext: ingredientRecoContext,
+                })
               : null;
           syncResearch = await runIngredientResearchSync({
             query: target,
@@ -61327,7 +58784,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             signal_summary: sim.signal_summary && typeof sim.signal_summary === 'object' ? sim.signal_summary : undefined,
           };
           const heatmapSteps = buildHeatmapStepsFromRoutine(routine, { testProduct });
-          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+          const heatmapEnabled = isConflictHeatmapV1Enabled();
+          const heatmapPayload = heatmapEnabled
             ? buildConflictHeatmapV1({ routineSimulation: simPayload, routineSteps: heatmapSteps })
             : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
 
@@ -61354,7 +58812,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const events = [
             makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length, source: 'local_chat' }),
           ];
-          if (CONFLICT_HEATMAP_V1_ENABLED) {
+          if (heatmapEnabled) {
             events.push(
               makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
                 schema_version: heatmapPayload.schema_version,
@@ -62140,37 +59598,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           : 'goal_based_products';
         recordAuroraSkinFlowMetric({ stage: 'reco_request', hit: true });
         recordAuroraRecoEntrySource({ source: recoEntrySourceDetail });
-        const recoGoalResolved = hasResolvedRecoGoal({
-          profile,
-          action: normalizedActionPayload,
-          message,
-          ingredientContext: recoIngredientContext,
-          travelRecoHandoff,
-        });
-        if (!recoGoalResolved) {
-          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
-          const sessionPatch = nextState ? { next_state: nextState } : {};
-          const assistantText =
-            ctx.lang === 'CN'
-              ? '你这次想优先解决什么，或者想先看哪类产品？我先按这个方向给你收紧推荐。'
-              : 'What do you want to prioritize first, or which product type do you want first? I will narrow recommendations from there.';
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(assistantText),
-            suggested_chips: buildRecoGoalClarificationChips(ctx.lang),
-            cards: [],
-            session_patch: sessionPatch,
-            events: [
-              makeEvent(ctx, 'recos_requested', {
-                explicit: true,
-                gated: true,
-                reason: 'reco_goal_clarify',
-                source: 'goal_clarify',
-                source_detail: normalizeRecoSourceDetail(recoEntrySourceDetail),
-              }),
-            ],
-          });
-          return sendChatEnvelope(envelope);
-        }
         const recoSafetyGate = resolveSafetyGateActionV2({
           safety: safetyDecision,
           profileValue: profile,
@@ -62231,7 +59658,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
         // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (hardRequiredMissing.length > 0 && !savedAnalysisFollowupGateBypassActive) {
+        if (hardRequiredMissing.length > 0) {
           const required = hardRequiredMissing;
           const prompt = buildDiagnosisPrompt(ctx.lang, required);
           const chips = buildDiagnosisChips(ctx.lang, required);
@@ -62271,15 +59698,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               }
             }
           }
-        } else if (hardRequiredMissing.length > 0 && savedAnalysisFollowupGateBypassActive) {
-          logger?.info(
-            {
-              request_id: ctx.request_id,
-              trace_id: ctx.trace_id,
-              missing_fields: hardRequiredMissing,
-            },
-            'aurora bff: bypassing legacy diagnosis-first gate due to saved analysis follow-up context',
-          );
         }
 
         const refinementMissing = (Array.isArray(profileMissing) ? profileMissing : []).filter(
@@ -62483,17 +59901,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         const latestArtifactForGate = await ensureLatestArtifactForConversation();
         const latestArtifact = latestArtifactForGate;
         const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
-        const recommendationAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('recommendation');
+        const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
-        if (
-          AURORA_PRODUCT_MATCHER_ENABLED &&
-          !artifactGate.ok &&
-          !allowLowRiskNonBlockingArtifactGate &&
-          !savedAnalysisFollowupGateBypassActive
-        ) {
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
           const chips = buildRecoEntryChips(ctx.lang);
           const decision = pushGateDecision('artifact_missing_gate', {
             reason_codes: ['artifact_missing'],
@@ -62519,25 +59932,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             );
           }
         }
-        if (
-          AURORA_PRODUCT_MATCHER_ENABLED &&
-          !artifactGate.ok &&
-          (allowLowRiskNonBlockingArtifactGate || savedAnalysisFollowupGateBypassActive)
-        ) {
+        if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
           recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
           logger?.info(
             {
               request_id: ctx.request_id,
               trace_id: ctx.trace_id,
               reason: artifactGate.reason || 'artifact_missing',
-              bypass_reason: savedAnalysisFollowupGateBypassActive ? 'saved_analysis_followup' : 'low_risk',
             },
-            'aurora bff: bypassing artifact gate without restarting diagnosis',
+            'aurora bff: bypassing artifact gate for low-risk skincare request',
           );
         }
 
         let mappedIngredientPlan = null;
-        let mappedIngredientPlanCard = null;
         if (latestArtifact && AURORA_INGREDIENT_PLAN_ENABLED) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
@@ -62545,44 +59952,30 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
               : null;
             if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
-              const storedPlan = {
+              mappedIngredientPlan = {
                 ...existingPlan.plan_json,
                 plan_id: existingPlan.plan_id,
                 created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
               };
-              mappedIngredientPlanCard =
-                coerceIngredientPlanForDiagnosisCard(storedPlan, {
-                  profile,
-                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-                }) || storedPlan;
-              mappedIngredientPlan = isIngredientPlanV2Payload(storedPlan)
-                ? buildIngredientPlan({ artifact: latestArtifact, profile })
-                : storedPlan;
             } else {
               const builtPlan = buildIngredientPlan({ artifact: latestArtifact, profile });
-              const builtPlanCard =
-                coerceIngredientPlanForDiagnosisCard(builtPlan, {
-                  profile,
-                  catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-                }) || builtPlan;
               if (latestArtifactId) {
                 const savedPlan = await saveIngredientPlan({
                   artifactId: latestArtifactId,
                   auroraUid: identity.auroraUid,
                   userId: identity.userId,
-                  plan: builtPlanCard,
+                  plan: builtPlan,
                 });
-                mappedIngredientPlanCard = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
                   ? {
                       ...savedPlan.plan_json,
                       plan_id: savedPlan.plan_id,
                       created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
                     }
-                  : builtPlanCard;
+                  : builtPlan;
               } else {
-                mappedIngredientPlanCard = builtPlanCard;
+                mappedIngredientPlan = builtPlan;
               }
-              mappedIngredientPlan = builtPlan;
             }
           } catch (err) {
             logger?.warn(
@@ -62661,6 +60054,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               profile,
               recentLogs,
               message,
+              focus: '',
               ingredientContext: recoIngredientContext,
               analysisContextSnapshot: analysisContextSnapshotForConversation,
               requestOverride: requestScopedProfileOverride,
@@ -62668,6 +60062,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               debug: debugUpstream,
               logger,
               budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
+              entryType: 'chat',
             });
             norm = upstreamReco.norm;
             upstreamDebug = upstreamReco.upstreamDebug;
@@ -62926,12 +60321,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               },
             },
           ];
-          if (mappedIngredientPlanCard || mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
-              profile,
-              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-              language: ctx.lang,
-            }));
+          if (mappedIngredientPlan) {
+            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
@@ -62945,7 +60336,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ingredient_query: recoContextIngredientQuery || '',
             goal: recoContextGoal || '',
           });
-          attachAnalysisContextUsageToSessionPatch(sessionPatch, recommendationAnalysisTaskContext);
+          attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
               ctx.lang === 'CN'
@@ -63156,6 +60547,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           profile,
         });
+        const stepAwareNeedsMoreContext =
+          !finalHasRecs
+          && pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step)
+          && pickFirstTrimmed(payload?.mainline_status, payload?.recommendation_meta?.mainline_status) === 'needs_more_context';
+        const requestedStepLabel = humanizeRecoProductType(
+          pickFirstTrimmed(payload?.recommendation_meta?.resolved_target_step),
+          ctx.lang,
+        );
         const recoUnavailableLead = ctx.lang === 'CN'
           ? '我还没能从上游拿到完整的可购清单，先给你一版稳妥可执行方案。'
           : "I couldn't fetch a complete purchasable shortlist from upstream, so here's a safe and actionable plan first.";
@@ -63167,6 +60566,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? '我已经把核心结果整理成结构化卡片（见下方）。'
                 : '我先按“温和/低刺激”给你整理了几款通用选择（见下方卡片）。如果你愿意点选一下肤质/敏感程度，我可以更精准。'
               : 'I summarized the key results into structured cards below.'))
+          : stepAwareNeedsMoreContext
+            ? (ctx.lang === 'CN'
+              ? `我还不能稳定地锁定适合你的${requestedStepLabel || '这一步'}候选。告诉我你更偏向轻薄、屏障修护、无香，或你想避开的成分，我再继续缩窄。`
+              : `I can't confidently lock a ${requestedStepLabel || 'step-specific'} shortlist yet. Tell me whether you want lightweight texture, barrier support, fragrance-free options, or ingredients to avoid, and I'll narrow it down.`)
           : (recoAssistantBase
             ? `${recoUnavailableLead}\n\n${recoAssistantBase}`
             : (ctx.lang === 'CN'
@@ -63234,13 +60637,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             },
           ];
-          if (mappedIngredientPlanCard || mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlanCard || mappedIngredientPlan, ctx.request_id, {
-              profile,
-              catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-              language: ctx.lang,
-            }));
-          }
+        if (mappedIngredientPlan) {
+          cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+        }
 
         if (debugUpstream && upstreamDebug) {
           cards.push({
@@ -63275,7 +60674,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredient_query: recoContextIngredientQuery || '',
           goal: recoContextGoal || '',
         });
-        attachAnalysisContextUsageToSessionPatch(sessionPatch, recommendationAnalysisTaskContext);
+        attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
 
         const baseRecoRunContext = {
           request_id: ctx.request_id,
@@ -63283,10 +60682,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           trigger_source: ctx.trigger_source,
           low_confidence: lowConfidenceArtifact,
         };
-        const ingredientPlanIdForRecoRun =
-          (mappedIngredientPlanCard && mappedIngredientPlanCard.plan_id) ||
-          (mappedIngredientPlan && mappedIngredientPlan.plan_id) ||
-          null;
         if (llmPrimaryUsed && isPlainObject(payload)) {
           const recoItems = Array.isArray(payload.recommendations) ? payload.recommendations : [];
           const hasUsableReco = recoItems.some((row) => {
@@ -63309,7 +60704,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'llm_primary', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: ingredientPlanIdForRecoRun,
+            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -63356,7 +60751,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraRecoKbWrite({ source: 'artifact_matcher', outcome: 'attempted' });
           saveRecoRun({
             artifactId: latestArtifact ? latestArtifact.artifact_id : null,
-            planId: ingredientPlanIdForRecoRun,
+            planId: mappedIngredientPlan && mappedIngredientPlan.plan_id ? mappedIngredientPlan.plan_id : null,
             auroraUid: identity.auroraUid,
             userId: identity.userId,
             requestContext: {
@@ -63565,7 +60960,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         ].filter(Boolean);
         return parts.join('\n');
       })();
-      const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
       const skinAnalysisContextForPrefix =
         analysisContextSnapshotForConversation
           ? buildAnalysisContextPromptBlock({
@@ -63824,7 +61218,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload: conflictDetector,
           });
           const heatmapSteps = extractHeatmapStepsFromConflictDetector({ conflictDetector, contextRaw });
-          const heatmapPayload = CONFLICT_HEATMAP_V1_ENABLED
+          const heatmapEnabled = isConflictHeatmapV1Enabled();
+          const heatmapPayload = heatmapEnabled
             ? buildConflictHeatmapV1({ routineSimulation: conflictDetector, routineSteps: heatmapSteps })
             : { schema_version: 'aurora.ui.conflict_heatmap.v1' };
           derivedCards.push({
@@ -63832,7 +61227,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             type: 'conflict_heatmap',
             payload: heatmapPayload,
           });
-          if (CONFLICT_HEATMAP_V1_ENABLED) {
+          if (heatmapEnabled) {
             heatmapImpressionEvent = makeEvent(ctx, 'aurora_conflict_heatmap_impression', {
               schema_version: heatmapPayload.schema_version,
               state: heatmapPayload.state,
@@ -64143,7 +61538,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const norm = normalizeProductAnalysis(mapped);
         const payload = reconcileProductAnalysisConsistency(
           finalizeProductAnalysisRecoContract(
-            enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang }),
+            enrichProductAnalysisPayload(norm.payload, { lang: ctx.lang, profileSummary }),
             { logger, requestId: ctx.request_id, mode: 'main_path' },
           ),
           { lang: ctx.lang },
@@ -65021,7 +62416,6 @@ const __internal = {
   buildIngredientLookupUpstreamPrompt,
   sanitizeIngredientResearchOutput,
   enrichIngredientReportCardsInEnvelope,
-  maybeApplyTrustedAnchorProvisionalProductAnalysis,
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
   deriveProductsEmptyReason,
@@ -65031,33 +62425,23 @@ const __internal = {
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
   buildAssistantMessageFromStoryV2,
-  applyAnalysisStoryProfilePatch,
   resolveImplicitAnalysisFollowupActionId,
   extractAnalysisFollowupSignals,
   normalizeAnalysisPhotoRefs,
   rankAnalysisConfidenceLevel,
   buildDeepDiveFallbackStoryPayload,
   buildDeepDiveAnalysisEvidence,
-  buildDeterministicDeepDiveDelta,
-  mergeDeepDiveSignalPayload,
   buildDeepDiveAnalysisStoryGenerationPrompt,
   tryRecoverDeepDiveResponseFromTruncatedText,
   applyDeepDiveLlmResponseToStory,
   applyNonWeakeningDeepDiveUiPatch,
-  applyDeterministicDeepDiveSurfacePatch,
   isDeepDiveStoryWeakerThanFallback,
   buildDeepDiveAssistantText,
   buildAnalysisDeepDiveContentWithLlm,
-  buildSavedAnalysisSolutionContent,
   loadLatestDiagnosisArtifactForRoute,
   resolveArtifactBackedSnapshotForRoute,
   buildAnalysisFollowupContent,
-  buildAnalysisFollowupSessionMeta,
-  enrichIngredientPlanPayloadForCard,
-  extractQuickProfileLightweightPatch,
-  extractProfilePatchFromSession,
-  extractProfilePatchFromRequestContextPayload,
-  extractAnalysisProfileContextOverlay,
+  fetchRecoAlternativesForProduct,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,
@@ -65076,8 +62460,6 @@ const __internal = {
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
-  ANALYSIS_DEEP_DIVE_PROMPT_VERSION,
-  AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
   buildAnalysisStoryGenerationPrompt,
   buildAnalysisStoryReviewPrompt,
   generateAnalysisStoryV2Json,
@@ -65209,9 +62591,6 @@ const __internal = {
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
   },
-  fetchRecoAlternativesForProduct,
-  fetchRecoAlternativesForExternalSeedProduct,
-  buildExternalSeedCompareSearchQueries,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

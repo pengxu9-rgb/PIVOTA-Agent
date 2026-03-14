@@ -8,6 +8,15 @@ const {
   REQUEST_CONTEXT_SIGNATURE_VERSION,
   CANDIDATE_POOL_SIGNATURE_VERSION,
   MIN_CONTEXT_RULE_VERSION,
+  RECOMMENDATION_STEP_QUERY_POLICY_V1,
+  RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  GROUP_SEMANTICS_VERSION,
+  resolveRecommendationTargetContext,
+  buildSameFamilyQueryLevels,
+  finalizeRecommendationCandidatePools,
+  shouldStopStepAwareBroadening,
+  deriveStepAwareEmptyReason,
+  inferSlotForStep,
 } = require('../src/auroraBff/recommendationSharedStack');
 const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
 const { mapSkillResponseToStreamEnvelope } = require('../src/auroraBff/mappers/card_mapper');
@@ -43,11 +52,13 @@ test('buildRecommendationRequestContext produces stable signature and explicit-f
     requestOverride: { goals: ['acne'] },
   });
 
-  assert.equal(context.need_id, 'recommend_a_gentle_cleanser');
+  assert.equal(context.need_id, 'step:cleanser');
   assert.equal(context.strictness_mode, 'strict');
   assert.equal(context.strictness_source, 'entry_default');
   assert.ok(context.request_context_signature);
   assert.equal(context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
+  assert.equal(context.resolved_target_step, 'cleanser');
+  assert.equal(context.resolved_target_step_confidence, 'high');
   assert.equal(context.context_source_mode, 'explicit_only');
   assert.equal(context.analysis_context_available, true);
   assert.equal(context.minimum_recommendation_context_satisfied, true);
@@ -81,6 +92,112 @@ test('buildRecommendationRequestContext marks profile.lastAnalysis as artifact_c
   assert.equal(context.context_usage.snapshot_present, true);
   assert.equal(context.analysis_context_available, true);
   assert.equal(context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
+});
+
+test('normalizeRecommendationIntent aligns direct and chat step aliases to moisturizer target', () => {
+  const directIntent = normalizeRecommendationIntent({
+    entryType: 'direct',
+    directRequest: { focus: 'moisturizer' },
+  });
+  const chatIntent = normalizeRecommendationIntent({
+    entryType: 'chat',
+    message: 'Recommend a 面霜 for me',
+  });
+
+  assert.equal(directIntent.need_id, 'step:moisturizer');
+  assert.equal(directIntent.resolved_target_step, 'moisturizer');
+  assert.equal(directIntent.resolved_target_step_confidence, 'high');
+  assert.equal(chatIntent.need_id, 'step:moisturizer');
+  assert.equal(chatIntent.resolved_target_step, 'moisturizer');
+  assert.equal(chatIntent.resolved_target_step_confidence, 'high');
+});
+
+test('normalizeRecommendationIntent keeps non-step direct focus out of hard target mode', () => {
+  const directIntent = normalizeRecommendationIntent({
+    entryType: 'direct',
+    directRequest: { focus: 'repair' },
+  });
+
+  assert.notEqual(directIntent.resolved_target_step_confidence, 'high');
+  assert.equal(directIntent.mainline_mode, 'generic');
+});
+
+test('step-aware helpers build same-family ladder and reject non-skincare candidates', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    entryType: 'direct',
+  });
+  const levels = buildSameFamilyQueryLevels({
+    targetContext,
+    profileSummary: { goals: ['barrier repair'] },
+    ingredientContext: { query: 'ceramide' },
+    lang: 'EN',
+  });
+  const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
+  const poolState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'cream_1',
+      merchant_id: 'm1',
+      brand: 'GoodSkin',
+      name: 'Barrier Cream',
+      category: 'face cream',
+      product_type: 'cream',
+    },
+    {
+      product_id: 'brush_1',
+      merchant_id: 'm2',
+      brand: 'BrushCo',
+      name: 'Small Eyeshadow Brush',
+      category: 'makeup brush',
+      product_type: 'tool',
+    },
+  ], { targetContext });
+
+  assert.equal(RECOMMENDATION_STEP_QUERY_POLICY_V1, 'recommendation_step_query_policy_v1');
+  assert.equal(RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1, 'recommendation_viable_threshold_policy_v1');
+  assert.equal(GROUP_SEMANTICS_VERSION, 'recommendation_group_semantics_v1');
+  assert.equal(inferSlotForStep('moisturizer'), 'other');
+  assert.equal(flattenedQueries.some((query) => query.includes('cleanser') || query.includes('sunscreen')), false);
+  assert.equal(poolState.viable_candidate_count, 1);
+  assert.equal(poolState.hard_reject_count, 1);
+  assert.equal(poolState.selected_candidate_count, 1);
+  assert.equal(poolState.overall_target_fidelity_satisfied, true);
+  assert.ok(poolState.candidate_pool_signature);
+  assert.ok(poolState.raw_candidate_pool_debug_signature);
+});
+
+test('soft-target mainline only succeeds with same-family viable candidates', () => {
+  const successTargetContext = resolveRecommendationTargetContext({
+    focus: 'barrier cream',
+    entryType: 'chat',
+  });
+  const successState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'cream_1',
+      merchant_id: 'm1',
+      brand: 'GoodSkin',
+      name: 'Barrier Cream',
+      category: 'face cream',
+      product_type: 'cream',
+    },
+  ], { targetContext: successTargetContext });
+  const weakState = finalizeRecommendationCandidatePools([
+    {
+      product_id: 'mask_1',
+      merchant_id: 'm2',
+      brand: 'GoodSkin',
+      name: 'Sleeping Mask',
+      category: 'sleeping mask',
+      product_type: 'mask',
+    },
+  ], { targetContext: successTargetContext });
+
+  assert.equal(successTargetContext.mainline_mode, 'soft_target');
+  assert.equal(successState.terminal_success, true);
+  assert.equal(shouldStopStepAwareBroadening(successState, { targetContext: successTargetContext }), true);
+  assert.equal(weakState.terminal_success, false);
+  assert.equal(weakState.weak_viable_pool, true);
+  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool_for_target');
 });
 
 test('runRecommendationSharedStack clarifies generic chat reco when minimum context is unsatisfied', async () => {
