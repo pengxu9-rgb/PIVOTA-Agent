@@ -190,10 +190,58 @@ function normalizeQueryToken(value) {
   return asString(value).replace(/\s+/g, ' ').trim();
 }
 
-function collectProfileGoalTerms(profileSummary) {
+function normalizeStringArray(values, max = 12) {
+  return uniqStrings(
+    (Array.isArray(values) ? values : [values])
+      .flatMap((item) => (Array.isArray(item) ? item : [item]))
+      .map((item) => normalizeQueryToken(item))
+      .filter(Boolean),
+    max,
+  );
+}
+
+function collectRecoContextGoalTerms(recoContext) {
+  const hard = isPlainObject(recoContext?.task_hard_context) ? recoContext.task_hard_context : {};
+  const soft = isPlainObject(recoContext?.task_soft_context) ? recoContext.task_soft_context : {};
+  return normalizeStringArray([
+    ...(Array.isArray(hard.active_goals) ? hard.active_goals : []),
+    ...(Array.isArray(soft.background_goals) ? soft.background_goals : []),
+    ...(Array.isArray(soft.active_goals) ? soft.active_goals : []),
+  ], 6);
+}
+
+function collectRecoContextIngredientTerms(recoContext) {
+  const hard = isPlainObject(recoContext?.task_hard_context) ? recoContext.task_hard_context : {};
+  const soft = isPlainObject(recoContext?.task_soft_context) ? recoContext.task_soft_context : {};
+  return normalizeStringArray([
+    ...(Array.isArray(hard.ingredient_targets) ? hard.ingredient_targets : []),
+    ...(Array.isArray(soft.ingredient_targets) ? soft.ingredient_targets : []),
+  ], 6);
+}
+
+function collectRecoContextConcernTerms(recoContext) {
+  const hard = isPlainObject(recoContext?.task_hard_context) ? recoContext.task_hard_context : {};
+  const soft = isPlainObject(recoContext?.task_soft_context) ? recoContext.task_soft_context : {};
+  const out = [];
+  const barrierStatus = pickFirstTrimmed(hard.barrier_status, soft.barrier_status);
+  const sensitivity = pickFirstTrimmed(hard.sensitivity, soft.sensitivity);
+  if (barrierStatus === 'impaired' || barrierStatus === 'reactive') out.push('barrier repair');
+  if (barrierStatus === 'healthy') out.push('skin barrier');
+  if (sensitivity === 'high' || sensitivity === 'medium') out.push('sensitive skin');
+  const riskAxes = Array.isArray(soft.risk_axes) ? soft.risk_axes : [];
+  for (const item of riskAxes) {
+    const text = normalizeQueryToken(item);
+    if (!text) continue;
+    out.push(text.replace(/:/g, ' '));
+  }
+  return normalizeStringArray(out, 6);
+}
+
+function collectProfileGoalTerms(profileSummary, recoContext = null) {
   const raw = [];
   if (typeof profileSummary?.goal_primary === 'string') raw.push(profileSummary.goal_primary);
   if (Array.isArray(profileSummary?.goals)) raw.push(...profileSummary.goals);
+  raw.push(...collectRecoContextGoalTerms(recoContext));
   return uniqStrings(
     raw
       .map((item) => normalizeQueryToken(item))
@@ -203,22 +251,24 @@ function collectProfileGoalTerms(profileSummary) {
   );
 }
 
-function collectIngredientTerms(ingredientContext) {
+function collectIngredientTerms(ingredientContext, recoContext = null) {
   const ctx = isPlainObject(ingredientContext) ? ingredientContext : {};
   const candidates = Array.isArray(ctx.candidates) ? ctx.candidates : [];
   return uniqStrings(
     [
       normalizeQueryToken(ctx.query),
       ...candidates.map((item) => normalizeQueryToken(item)),
+      ...collectRecoContextIngredientTerms(recoContext),
     ].filter(Boolean),
     4,
   );
 }
 
-function collectConcernTerms(profileSummary, ingredientContext) {
+function collectConcernTerms(profileSummary, ingredientContext, recoContext = null) {
   const raw = [
-    ...collectProfileGoalTerms(profileSummary),
+    ...collectProfileGoalTerms(profileSummary, recoContext),
     normalizeQueryToken(ingredientContext && ingredientContext.goal),
+    ...collectRecoContextConcernTerms(recoContext),
   ];
   return uniqStrings(
     raw
@@ -273,6 +323,7 @@ function buildSameFamilyQueryLevels({
   targetContext,
   profileSummary,
   ingredientContext,
+  recoContext = null,
   lang = 'EN',
   seedTerms = [],
 } = {}) {
@@ -280,9 +331,9 @@ function buildSameFamilyQueryLevels({
   if (!step) return [];
   const aliases = STEP_QUERY_ALIASES[step] || [step];
   const stepPrimary = aliases[0] || step;
-  const goalTerms = collectProfileGoalTerms(profileSummary).slice(0, 2);
-  const ingredientTerms = collectIngredientTerms(ingredientContext).slice(0, 2);
-  const concernTerms = collectConcernTerms(profileSummary, ingredientContext).slice(0, 2);
+  const goalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
+  const ingredientTerms = collectIngredientTerms(ingredientContext, recoContext).slice(0, 2);
+  const concernTerms = collectConcernTerms(profileSummary, ingredientContext, recoContext).slice(0, 2);
   const normalizedSeedTerms = uniqStrings(
     asArray(seedTerms).map((item) => normalizeQueryToken(item)).filter(Boolean),
     4,
@@ -344,19 +395,75 @@ function buildSameFamilyQueryLevels({
     .filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
 }
 
-function normalizeCandidateStep(product) {
-  if (!isPlainObject(product)) return null;
-  return normalizeProductType(
-    pickFirstTrimmed(
-      product.product_type,
-      product.productType,
-      product.category,
-      product.category_name,
-      product.categoryName,
-      product.step,
-      product.type,
-    ),
+function buildCandidateResolutionText(product) {
+  const row = isPlainObject(product) ? product : {};
+  return [
+    pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+    ...(Array.isArray(row.tags) ? row.tags : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    pickFirstTrimmed(row.retrieval_query, row.query, row.retrieval_reason),
+  ]
+    .map((item) => normalizeQueryToken(item))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function normalizeCandidateStep(product, { targetContext } = {}) {
+  const row = isPlainObject(product) ? product : {};
+  const structuredRaw = pickFirstTrimmed(
+    row.product_type,
+    row.productType,
+    row.category,
+    row.category_name,
+    row.categoryName,
+    row.step,
+    row.type,
   );
+  const structuredStep = normalizeProductType(structuredRaw);
+  if (structuredStep) {
+    return {
+      candidate_step: structuredStep,
+      candidate_step_source: 'structured_category',
+      candidate_step_confidence: 'high',
+    };
+  }
+  const resolutionText = buildCandidateResolutionText(row);
+  const textResolution = resolutionText
+    ? resolveRecoTargetStepIntent({ text: resolutionText })
+    : {
+      resolved_target_step: null,
+      resolved_target_step_confidence: 'none',
+      resolved_target_step_source: 'none',
+    };
+  if (textResolution.resolved_target_step) {
+    return {
+      candidate_step: normalizeRecoTargetStep(textResolution.resolved_target_step),
+      candidate_step_source:
+        textResolution.resolved_target_step_source === 'message_alias'
+          ? 'title_or_tag_alias'
+          : textResolution.resolved_target_step_source === 'message_concept'
+            ? 'title_or_tag_concept'
+            : textResolution.resolved_target_step_source || 'title_or_tag',
+      candidate_step_confidence: textResolution.resolved_target_step_confidence || 'medium',
+    };
+  }
+  const retrievalQuery = normalizeQueryToken(row.retrieval_query || row.query);
+  if (retrievalQuery && targetContext?.resolved_target_step) {
+    const retrievalResolution = resolveRecoTargetStepIntent({ text: retrievalQuery });
+    if (normalizeRecoTargetStep(retrievalResolution.resolved_target_step) === normalizeRecoTargetStep(targetContext.resolved_target_step)) {
+      return {
+        candidate_step: normalizeRecoTargetStep(retrievalResolution.resolved_target_step),
+        candidate_step_source: 'retrieval_trace',
+        candidate_step_confidence: retrievalResolution.resolved_target_step_confidence || 'low',
+      };
+    }
+  }
+  return {
+    candidate_step: null,
+    candidate_step_source: 'none',
+    candidate_step_confidence: 'none',
+  };
 }
 
 function productKey(product) {
@@ -367,50 +474,181 @@ function productKey(product) {
   return `${productId}::${merchantId}::${name}`.toLowerCase();
 }
 
+function resolveCandidateFamilyRelation(targetStep, candidateStep) {
+  const target = normalizeRecoTargetStep(targetStep);
+  const candidate = normalizeRecoTargetStep(candidateStep);
+  if (!target) return 'same_family';
+  if (!candidate) return 'unknown';
+  return getRecoTargetFamilyRelation(target, candidate);
+}
+
+function buildCandidateTextSearch(product) {
+  const row = isPlainObject(product) ? product : {};
+  return [
+    pickFirstTrimmed(row.brand),
+    pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+    pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType),
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    ...(Array.isArray(row.tags) ? row.tags : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+  ]
+    .map((item) => normalizeQueryToken(item).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function arrayIncludesPhrase(text, values = []) {
+  const haystack = String(text || '').trim().toLowerCase();
+  if (!haystack) return false;
+  return (Array.isArray(values) ? values : []).some((raw) => {
+    const token = normalizeQueryToken(raw).toLowerCase();
+    return token && haystack.includes(token);
+  });
+}
+
+function clampScore(value, min = 0, max = 1) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return min;
+  return Math.max(min, Math.min(max, num));
+}
+
+function scoreGoalContext(goal, productText) {
+  const token = normalizeQueryToken(goal).toLowerCase();
+  if (!token) return 0;
+  if (/barrier|repair|修护/.test(token)) {
+    return /(barrier|repair|ceramide|cica|soothing|calming|gel cream|cream|lotion|面霜|保湿)/i.test(productText) ? 0.28 : 0;
+  }
+  if (/hydrat|dry|保湿|补水/.test(token)) {
+    return /(hydrat|moist|cream|lotion|emulsion|gel cream|保湿|补水|乳液|面霜)/i.test(productText) ? 0.2 : 0;
+  }
+  if (/acne|breakout|痘/.test(token)) {
+    return /(niacinamide|salicylic|azelaic|blemish|acne|spot)/i.test(productText) ? 0.16 : 0;
+  }
+  return 0;
+}
+
+function computeCandidateContextSignals(product, recoContext = null) {
+  const row = isPlainObject(product) ? product : {};
+  const hard = isPlainObject(recoContext?.task_hard_context) ? recoContext.task_hard_context : {};
+  const soft = isPlainObject(recoContext?.task_soft_context) ? recoContext.task_soft_context : {};
+  const productText = buildCandidateTextSearch(row);
+  const ingredientTokens = (Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : [])
+    .map((item) => normalizeQueryToken(item).toLowerCase())
+    .filter(Boolean);
+  const hardAvoid = normalizeStringArray(hard.ingredient_avoid, 12).map((item) => item.toLowerCase());
+  const targetTerms = normalizeStringArray([
+    ...(Array.isArray(hard.ingredient_targets) ? hard.ingredient_targets : []),
+    ...(Array.isArray(soft.ingredient_targets) ? soft.ingredient_targets : []),
+  ], 12);
+  const goals = normalizeStringArray([
+    ...(Array.isArray(hard.active_goals) ? hard.active_goals : []),
+    ...(Array.isArray(soft.background_goals) ? soft.background_goals : []),
+  ], 8);
+  const barrierStatus = pickFirstTrimmed(hard.barrier_status, soft.barrier_status).toLowerCase();
+  const sensitivity = pickFirstTrimmed(hard.sensitivity, soft.sensitivity).toLowerCase();
+  const strongActivePattern = /\b(retinol|retinoid|aha|bha|acid|peel|exfoliat|benzoyl)\b/i;
+  let constraintConflict = false;
+  let contextFitScore = 0;
+
+  if (hardAvoid.length && (arrayIncludesPhrase(productText, hardAvoid) || ingredientTokens.some((token) => hardAvoid.some((avoid) => token.includes(avoid))))) {
+    constraintConflict = true;
+  }
+  if (!constraintConflict && (barrierStatus === 'impaired' || barrierStatus === 'reactive') && strongActivePattern.test(productText)) {
+    constraintConflict = true;
+  }
+  if (!constraintConflict && sensitivity === 'high' && strongActivePattern.test(productText)) {
+    constraintConflict = true;
+  }
+  if (constraintConflict) {
+    return {
+      context_fit_score: 0,
+      constraint_conflict: true,
+      artifact_context_applied: goals.length > 0 || targetTerms.length > 0 || Boolean(barrierStatus || sensitivity || hardAvoid.length),
+    };
+  }
+
+  for (const goal of goals) {
+    contextFitScore += scoreGoalContext(goal, productText);
+  }
+  if (barrierStatus === 'impaired' || barrierStatus === 'reactive') {
+    if (/(barrier|repair|ceramide|cica|soothing|calming|cream|lotion|面霜|保湿)/i.test(productText)) contextFitScore += 0.24;
+  }
+  if (sensitivity === 'high' || sensitivity === 'medium') {
+    if (/(gentle|fragrance free|fragrance-free|for sensitive|sensitive skin|soothing|calming|无香|敏感)/i.test(productText)) contextFitScore += 0.18;
+  }
+  if (targetTerms.length) {
+    for (const term of targetTerms) {
+      if (arrayIncludesPhrase(productText, [term]) || ingredientTokens.some((token) => token.includes(term.toLowerCase()))) {
+        contextFitScore += 0.18;
+      }
+    }
+  }
+
+  return {
+    context_fit_score: clampScore(contextFitScore, 0, 1),
+    constraint_conflict: false,
+    artifact_context_applied: goals.length > 0 || targetTerms.length > 0 || Boolean(barrierStatus || sensitivity || hardAvoid.length),
+  };
+}
+
 function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
   if (!targetStep) return 0.75;
   if (relation === 'same_family') {
     return candidateStep === targetStep ? 1 : 0.9;
   }
   if (relation === 'adjacent_family') return 0.58;
+  if (relation === 'unknown') return 0.42;
   return 0;
 }
 
-function classifyRecommendationCandidate(product, { targetContext } = {}) {
+function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
   const skincare = isSkincareCandidate(row);
-  const candidateStep = normalizeCandidateStep(row);
+  const stepResolution = normalizeCandidateStep(row, { targetContext });
+  const candidateStep = stepResolution.candidate_step;
   const stepAwareIntent = Boolean(targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step);
   const resolvedTargetStep = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
   const relation = stepAwareIntent
-    ? getRecoTargetFamilyRelation(resolvedTargetStep, candidateStep)
+    ? resolveCandidateFamilyRelation(resolvedTargetStep, candidateStep)
     : 'same_family';
+  const contextSignals = computeCandidateContextSignals(row, recoContext);
+  const stepFitScore = normalizeViabilityScore({
+    relation,
+    candidateStep,
+    targetStep: resolvedTargetStep,
+  });
+  const selectionScore = clampScore(stepFitScore + Number(contextSignals.context_fit_score || 0), 0, 2);
 
   let bucket = 'viable';
   let reason = 'generic_viable';
   if (!skincare) {
     bucket = 'hard_reject';
     reason = 'non_skincare_or_blacklisted';
+  } else if (contextSignals.constraint_conflict) {
+    bucket = 'hard_reject';
+    reason = 'hard_constraint_conflict';
   } else if (stepAwareIntent && relation === 'incompatible_family') {
     bucket = 'hard_reject';
     reason = 'incompatible_family';
-  } else if (stepAwareIntent && relation === 'adjacent_family') {
+  } else if (stepAwareIntent && (relation === 'adjacent_family' || relation === 'unknown')) {
     bucket = 'soft_mismatch';
-    reason = 'adjacent_family';
+    reason = relation === 'adjacent_family' ? 'adjacent_family' : 'step_unresolved';
   } else if (stepAwareIntent && relation === 'same_family') {
     bucket = 'viable';
     reason = candidateStep === resolvedTargetStep ? 'exact_step_match' : 'same_family_match';
   }
 
-  const score = normalizeViabilityScore({
-    relation,
-    candidateStep,
-    targetStep: resolvedTargetStep,
-  });
   const itemTargetFidelity =
     bucket === 'viable'
-      ? score
+      ? clampScore(
+        Math.max(
+          stepFitScore,
+          (stepFitScore * 0.7) + (Number(contextSignals.context_fit_score || 0) * 0.3),
+        ),
+        0,
+        1,
+      )
       : bucket === 'soft_mismatch'
         ? 0.5
         : 0;
@@ -418,10 +656,17 @@ function classifyRecommendationCandidate(product, { targetContext } = {}) {
   return {
     product: row,
     candidate_step: candidateStep,
+    candidate_step_source: stepResolution.candidate_step_source || 'none',
+    candidate_step_confidence: stepResolution.candidate_step_confidence || 'none',
     family_relation: relation,
     bucket,
     reason,
-    score,
+    score: stepFitScore,
+    step_fit_score: stepFitScore,
+    context_fit_score: Number(contextSignals.context_fit_score || 0),
+    constraint_conflict: Boolean(contextSignals.constraint_conflict),
+    artifact_context_applied: Boolean(contextSignals.artifact_context_applied),
+    selection_score: selectionScore,
     item_target_fidelity: itemTargetFidelity,
   };
 }
@@ -443,7 +688,7 @@ function summarizePrimaryDisplayGroups(selected) {
   ];
 }
 
-function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } = {}) {
+function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, recoContext = null } = {}) {
   const deduped = [];
   const seen = new Set();
   for (const raw of asArray(rawCandidates)) {
@@ -456,27 +701,34 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
   }
 
   const classified = deduped
-    .map((row) => classifyRecommendationCandidate(row, { targetContext }))
+    .map((row) => classifyRecommendationCandidate(row, { targetContext, recoContext }))
     .filter(Boolean);
 
-  const viable = classified.filter((row) => row.bucket === 'viable').sort((left, right) => right.score - left.score);
-  const softMismatch = classified.filter((row) => row.bucket === 'soft_mismatch').sort((left, right) => right.score - left.score);
+  const viable = classified
+    .filter((row) => row.bucket === 'viable')
+    .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
+  const softMismatch = classified
+    .filter((row) => row.bucket === 'soft_mismatch')
+    .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
   const hardReject = classified.filter((row) => row.bucket === 'hard_reject');
   const thresholds = getStepPolicy(targetContext && targetContext.resolved_target_step);
   const exactStepViableCount = viable.filter((row) => row.candidate_step && row.candidate_step === targetContext?.resolved_target_step).length;
   const sameFamilyViableCount = viable.length;
+  const averageContextFit = viable.length
+    ? viable.reduce((sum, row) => sum + Number(row.context_fit_score || 0), 0) / viable.length
+    : 0;
   const sameFamilySuccessThresholdMet = Boolean(
     sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
-      && viable.some((row) => Number(row.score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
+      && viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
   );
-  const sameFamilyStrongViableExists = viable.some((row) => Number(row.score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
+  const sameFamilyStrongViableExists = viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
   const selected = viable.slice(0, 3);
   const selectedFamilies = uniqStrings(selected.map((row) => row.candidate_step || row.family_relation || 'unknown'), 3);
   const topCandidatesConverged = selectedFamilies.length <= 1;
   const primaryDisplayGroups = summarizePrimaryDisplayGroups(selected);
   const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0
     && primaryDisplayGroups.every((group) => Number(group.group_target_fidelity || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
-  const hardConstraintConflict = false;
+  const hardConstraintConflict = viable.some((row) => row.constraint_conflict === true) || selected.some((row) => row.constraint_conflict === true);
   const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && softMismatch.length > 0;
   const softTargetSuccessAllowed =
     targetContext?.mainline_mode === 'soft_target'
@@ -515,6 +767,7 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
   const viablePoolStrength = selected.length > 0
     ? (terminalSuccess ? 'strong' : 'weak')
     : (softMismatch.length > 0 || viable.length > 0 ? 'weak' : 'empty');
+  const artifactContextApplied = classified.some((row) => row.artifact_context_applied === true);
 
   return {
     raw_candidate_pool: deduped,
@@ -548,6 +801,8 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
     same_family_success_threshold_met: sameFamilySuccessThresholdMet,
     hard_constraint_conflict: hardConstraintConflict,
     constraint_conflict: hardConstraintConflict,
+    average_context_fit_score: Number(averageContextFit.toFixed(4)),
+    artifact_context_applied: artifactContextApplied,
     terminal_success: terminalSuccess,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     raw_candidate_pool_debug_signature: buildSharedSignature(RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION, {

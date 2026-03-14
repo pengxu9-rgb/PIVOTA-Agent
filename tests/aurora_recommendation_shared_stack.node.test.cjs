@@ -2,12 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  normalizeRecommendationIntent,
-  buildRecommendationRequestContext,
   runRecommendationSharedStack,
   REQUEST_CONTEXT_SIGNATURE_VERSION,
   CANDIDATE_POOL_SIGNATURE_VERSION,
-  MIN_CONTEXT_RULE_VERSION,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
   GROUP_SEMANTICS_VERSION,
@@ -18,114 +15,42 @@ const {
   deriveStepAwareEmptyReason,
   inferSlotForStep,
 } = require('../src/auroraBff/recommendationSharedStack');
-const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
-const { mapSkillResponseToStreamEnvelope } = require('../src/auroraBff/mappers/card_mapper');
-const {
-  buildSkillRequest,
-  handleChatStream,
-  __setRouterForTests,
-  __resetRouterForTests,
-  __setTravelPipelineForTests,
-} = require('../src/auroraBff/routes/chat');
 
-test('normalizeRecommendationIntent falls back to unknown exploratory contract', () => {
-  const result = normalizeRecommendationIntent({ entryType: 'direct', message: '', directRequest: {} });
-  assert.equal(result.need_id, 'unknown');
-  assert.equal(result.need_type, 'exploratory');
-  assert.equal(result.target_need, null);
-  assert.equal(result.needs_clarification, true);
+test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
+  const aliases = ['moisturizer', 'cream', '面霜', '保湿霜', '日霜'];
+  for (const input of aliases) {
+    const direct = resolveRecommendationTargetContext({
+      focus: input,
+      text: `Recommend ${input} for me`,
+      entryType: 'direct',
+    });
+    const chat = resolveRecommendationTargetContext({
+      text: `Recommend a ${input} for me`,
+      entryType: 'chat',
+    });
+    assert.equal(direct.resolved_target_step, 'moisturizer');
+    assert.equal(chat.resolved_target_step, 'moisturizer');
+    assert.equal(direct.resolved_target_step_confidence, 'high');
+    assert.equal(chat.resolved_target_step_confidence, 'high');
+  }
 });
 
-test('buildRecommendationRequestContext produces stable signature and explicit-first hard context', () => {
-  const intent = normalizeRecommendationIntent({
-    entryType: 'direct',
-    directRequest: { focus: 'Recommend a gentle cleanser' },
-  });
-  const context = buildRecommendationRequestContext({
-    intent,
-    profile: {
-      skinType: 'oily',
-      sensitivity: 'high',
-      goals: ['acne', 'pores'],
-    },
-    recentLogs: [],
-    requestOverride: { goals: ['acne'] },
-  });
-
-  assert.equal(context.need_id, 'step:cleanser');
-  assert.equal(context.strictness_mode, 'strict');
-  assert.equal(context.strictness_source, 'entry_default');
-  assert.ok(context.request_context_signature);
-  assert.equal(context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
-  assert.equal(context.resolved_target_step, 'cleanser');
-  assert.equal(context.resolved_target_step_confidence, 'high');
-  assert.equal(context.context_source_mode, 'explicit_only');
-  assert.equal(context.analysis_context_available, true);
-  assert.equal(context.minimum_recommendation_context_satisfied, true);
-  assert.equal(context.context_usage.min_context_rule_version, MIN_CONTEXT_RULE_VERSION);
-  assert.equal(context.context_usage.minimum_recommendation_context_satisfied, true);
-  assert.deepEqual(context.snapshot_hard_context.active_goals, ['acne']);
-  assert.equal(context.context_usage.explicit_override_applied, true);
+test('direct focus negatives do not escalate to high-confidence hard target', () => {
+  for (const input of ['repair', 'hydrating', 'barrier support', 'something for night']) {
+    const result = resolveRecommendationTargetContext({
+      focus: input,
+      text: input,
+      entryType: 'direct',
+    });
+    assert.notEqual(result.resolved_target_step_confidence, 'high');
+  }
 });
 
-test('buildRecommendationRequestContext marks profile.lastAnalysis as artifact_compat_fallback', () => {
-  const intent = normalizeRecommendationIntent({
-    entryType: 'direct',
-    directRequest: { focus: 'Recommend a serum' },
-  });
-  const context = buildRecommendationRequestContext({
-    intent,
-    profile: {
-      lastAnalysis: {
-        skin_profile: {
-          skin_type_tendency: 'combination',
-          sensitivity_tendency: 'medium',
-        },
-        ingredient_plan: {
-          targets: [{ ingredient_name: 'niacinamide' }],
-        },
-      },
-    },
-  });
-
-  assert.equal(context.context_source_mode, 'artifact_compat_fallback');
-  assert.equal(context.context_usage.snapshot_present, true);
-  assert.equal(context.analysis_context_available, true);
-  assert.equal(context.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
-});
-
-test('normalizeRecommendationIntent aligns direct and chat step aliases to moisturizer target', () => {
-  const directIntent = normalizeRecommendationIntent({
-    entryType: 'direct',
-    directRequest: { focus: 'moisturizer' },
-  });
-  const chatIntent = normalizeRecommendationIntent({
-    entryType: 'chat',
-    message: 'Recommend a 面霜 for me',
-  });
-
-  assert.equal(directIntent.need_id, 'step:moisturizer');
-  assert.equal(directIntent.resolved_target_step, 'moisturizer');
-  assert.equal(directIntent.resolved_target_step_confidence, 'high');
-  assert.equal(chatIntent.need_id, 'step:moisturizer');
-  assert.equal(chatIntent.resolved_target_step, 'moisturizer');
-  assert.equal(chatIntent.resolved_target_step_confidence, 'high');
-});
-
-test('normalizeRecommendationIntent keeps non-step direct focus out of hard target mode', () => {
-  const directIntent = normalizeRecommendationIntent({
-    entryType: 'direct',
-    directRequest: { focus: 'repair' },
-  });
-
-  assert.notEqual(directIntent.resolved_target_step_confidence, 'high');
-  assert.equal(directIntent.mainline_mode, 'generic');
-});
-
-test('step-aware helpers build same-family ladder and reject non-skincare candidates', () => {
+test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {
   const targetContext = resolveRecommendationTargetContext({
     focus: 'moisturizer',
-    entryType: 'direct',
+    text: 'Recommend a moisturizer for barrier support',
+    entryType: 'chat',
   });
   const levels = buildSameFamilyQueryLevels({
     targetContext,
@@ -140,8 +65,8 @@ test('step-aware helpers build same-family ladder and reject non-skincare candid
       merchant_id: 'm1',
       brand: 'GoodSkin',
       name: 'Barrier Cream',
-      category: 'face cream',
-      product_type: 'cream',
+      display_name: 'Barrier Cream',
+      category: 'skincare',
     },
     {
       product_id: 'brush_1',
@@ -167,8 +92,151 @@ test('step-aware helpers build same-family ladder and reject non-skincare candid
   assert.equal(poolState.viable_pool_strength, 'strong');
   assert.equal(poolState.target_fidelity_level, 'satisfied');
   assert.equal(poolState.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
+  assert.equal(poolState.viable[0].candidate_step, 'moisturizer');
+  assert.equal(poolState.viable[0].candidate_step_source, 'title_or_tag_alias');
   assert.ok(poolState.candidate_pool_signature);
   assert.ok(poolState.raw_candidate_pool_debug_signature);
+});
+
+test('viability stage rejects non-skincare and preserves moisturizer candidates', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for me',
+    entryType: 'direct',
+  });
+  const pool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'face_cream_1',
+        merchant_id: 'mid_cream',
+        brand: 'GoodSkin',
+        name: 'Barrier Cream',
+        display_name: 'Barrier Cream',
+        category: 'skincare',
+      },
+      {
+        product_id: 'brush_1',
+        merchant_id: 'mid_brush',
+        brand: 'BrushCo',
+        name: 'Small Eyeshadow Brush',
+        display_name: 'Small Eyeshadow Brush',
+        category: 'makeup brush',
+        product_type: 'tool',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(pool.viable_candidate_count, 1);
+  assert.equal(pool.hard_reject_count, 1);
+  assert.equal(pool.selected_candidate_count, 1);
+  assert.equal(pool.pre_llm_selected_candidate_count, 1);
+  assert.equal(pool.final_selected_candidate_count, 1);
+  assert.equal(pool.selected_recommendations[0].product_id, 'face_cream_1');
+  assert.equal(pool.viable[0].candidate_step, 'moisturizer');
+  assert.equal(pool.viable[0].candidate_step_source, 'title_or_tag_alias');
+  assert.equal(pool.terminal_success, true);
+  assert.equal(pool.viable_pool_strength, 'strong');
+  assert.equal(pool.target_fidelity_level, 'satisfied');
+  assert.equal(pool.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
+});
+
+test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturizer and rejects hard avoid conflicts', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for barrier repair',
+    entryType: 'chat',
+  });
+  const pool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'generic_cream',
+        merchant_id: 'm1',
+        brand: 'GoodSkin',
+        display_name: 'Daily Moisture Cream',
+        category: 'skincare',
+      },
+      {
+        product_id: 'barrier_cream',
+        merchant_id: 'm2',
+        brand: 'BarrierLab',
+        display_name: 'Barrier Repair Cream',
+        category: 'skincare',
+        ingredient_tokens: ['ceramide', 'panthenol'],
+      },
+      {
+        product_id: 'retinol_cream',
+        merchant_id: 'm3',
+        brand: 'ActiveSkin',
+        display_name: 'Retinol Night Cream',
+        category: 'skincare',
+        ingredient_tokens: ['retinol'],
+      },
+    ],
+    {
+      targetContext,
+      recoContext: {
+        task_hard_context: {
+          barrier_status: 'impaired',
+          sensitivity: 'high',
+          active_goals: ['barrier repair'],
+          ingredient_avoid: ['retinol'],
+          ingredient_targets: ['ceramide'],
+        },
+        task_soft_context: {},
+      },
+    },
+  );
+
+  assert.equal(pool.selected_recommendations[0].product_id, 'barrier_cream');
+  assert.equal(pool.hard_reject.some((row) => row.product.product_id === 'retinol_cream'), true);
+  assert.equal(pool.viable[0].context_fit_score > pool.viable[1].context_fit_score, true);
+  assert.equal(pool.artifact_context_applied, true);
+});
+
+test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    text: 'I need something for night',
+    entryType: 'chat',
+  });
+  assert.equal(targetContext.resolved_target_step_confidence, 'medium');
+
+  const successPool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'night_cream_1',
+        merchant_id: 'mid_night_cream',
+        brand: 'GoodSkin',
+        name: 'Night Barrier Cream',
+        display_name: 'Night Barrier Cream',
+        category: 'night cream',
+        product_type: 'cream',
+      },
+    ],
+    { targetContext },
+  );
+  assert.equal(successPool.terminal_success, true);
+
+  const clarifyPool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'sleep_mask_1',
+        merchant_id: 'mid_sleep_mask',
+        brand: 'GoodSkin',
+        name: 'Sleeping Mask',
+        display_name: 'Sleeping Mask',
+        category: 'sleeping mask',
+        product_type: 'mask',
+      },
+    ],
+    { targetContext },
+  );
+  assert.equal(clarifyPool.terminal_success, false);
+  assert.equal(clarifyPool.viable_candidate_count, 0);
+  assert.equal(clarifyPool.soft_mismatch_count, 1);
+  assert.equal(clarifyPool.weak_viable_pool, true);
+  assert.equal(clarifyPool.viable_pool_strength, 'weak');
+  assert.equal(clarifyPool.same_family_success_threshold_met, false);
 });
 
 test('soft-target mainline only succeeds with same-family viable candidates', () => {
@@ -273,309 +341,4 @@ test('runRecommendationSharedStack executes when explicit-only context satisfies
     out.raw.norm.payload.recommendation_meta.analysis_context_usage.minimum_recommendation_context_satisfied,
     true,
   );
-});
-
-test('RecoStepBasedSkill uses shared core and exposes shared-stack meta', async () => {
-  RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest(async (input) => ({
-    norm: {
-      payload: {
-        recommendations: [{ brand: 'CeraVe', name: 'Hydrating Cleanser' }],
-        recommendation_meta: {
-          source_mode: 'catalog_grounded',
-          grounding_status: 'grounded',
-          analysis_context_usage: input.sharedRequestContext.context_usage,
-          llm_trace: { prompt_hash: 'prompt_hash_123' },
-        },
-      },
-    },
-    mainlineStatus: 'grounded_success',
-    candidatePool: [{ product_id: 'sku_1', brand: 'CeraVe', name: 'Hydrating Cleanser' }],
-    poolSource: 'catalog_candidates',
-  }));
-
-  try {
-    const skill = new RecoStepBasedSkill();
-    const response = await skill.run({
-      params: {
-        entry_source: 'chip.start.reco_products',
-        user_message: 'Recommend a few products',
-      },
-      context: {
-        locale: 'en-US',
-        profile: { goals: ['hydration'], sensitivity: 'high', skinType: 'dry' },
-        recent_logs: [],
-      },
-      thread_state: {},
-    }, null);
-
-    const envelope = mapSkillResponseToStreamEnvelope(response, []);
-    assert.equal(envelope.meta.skill_id, 'reco.step_based');
-    assert.ok(envelope.meta.request_context_signature);
-    assert.ok(envelope.meta.candidate_pool_signature);
-    assert.equal(envelope.meta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION);
-    assert.equal(envelope.meta.candidate_pool_signature_version, CANDIDATE_POOL_SIGNATURE_VERSION);
-    assert.equal(envelope.meta.mainline_status, 'grounded_success');
-    assert.equal(envelope.meta.analysis_context_usage.context_mode, 'explicit_only');
-    assert.equal(envelope.meta.analysis_context_usage.context_source_mode, 'explicit_only');
-    assert.equal(envelope.meta.analysis_context_usage.analysis_context_available, true);
-    assert.equal(envelope.meta.analysis_context_usage.minimum_recommendation_context_satisfied, true);
-    const recoCard = envelope.cards.find((card) => card.card_type === 'recommendations');
-    assert.ok(recoCard);
-    assert.equal(recoCard.metadata.terminal_state, 'recommendation');
-    assert.equal(recoCard.metadata.recommendations[0].name, 'Hydrating Cleanser');
-  } finally {
-    RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest();
-  }
-});
-
-test('RecoStepBasedSkill clarifies when generic chat reco lacks minimum context', async () => {
-  let coreRunnerCalled = false;
-  RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest(async () => {
-    coreRunnerCalled = true;
-    throw new Error('shared core should not run for clarify-first generic reco');
-  });
-
-  try {
-    const skill = new RecoStepBasedSkill();
-    const response = await skill.run({
-      params: {
-        entry_source: 'chip.start.reco_products',
-        user_message: 'Recommend a few products',
-      },
-      context: {
-        locale: 'en-US',
-        profile: { goals: ['hydration'] },
-        recent_logs: [],
-      },
-      thread_state: {},
-    }, null);
-
-    const envelope = mapSkillResponseToStreamEnvelope(response, []);
-    assert.equal(coreRunnerCalled, false);
-    assert.equal(envelope.meta.skill_id, 'reco.step_based');
-    assert.equal(envelope.meta.mainline_status, 'needs_more_context');
-    assert.equal(envelope.meta.fallback_mode, 'chat_clarify_needed_for_missing_target_need');
-    assert.equal(envelope.meta.analysis_context_usage.minimum_recommendation_context_satisfied, false);
-    const textCard = envelope.cards.find((card) => card.card_type === 'text_response');
-    assert.ok(textCard);
-    assert.equal(textCard.metadata.terminal_state, 'clarify');
-    assert.equal(envelope.cards.some((card) => card.card_type === 'recommendations'), false);
-  } finally {
-    RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest();
-  }
-});
-
-test('buildSkillRequest carries session analysis_context_snapshot into skill context', () => {
-  const request = buildSkillRequest({
-    body: {
-      message: 'Recommend products',
-      session: {
-        profile: { goals: ['hydration'] },
-        meta: {
-          analysis_context_snapshot: {
-            snapshot_id: 'snap_1',
-          },
-        },
-      },
-    },
-    headers: {},
-    _recentLogs: [],
-    _userProfile: null,
-  });
-
-  assert.deepEqual(request.context.analysis_context_snapshot, { snapshot_id: 'snap_1' });
-});
-
-test('handleChatStream enriches reco requests with forwarded artifact-backed snapshot', async () => {
-  const routesModuleId = require.resolve('../src/auroraBff/routes');
-  const originalRoutesModule = require.cache[routesModuleId];
-  require.cache[routesModuleId] = {
-    id: routesModuleId,
-    filename: routesModuleId,
-    loaded: true,
-    exports: {
-      __internal: {
-        resolveArtifactBackedSnapshotForRoute: async () => ({
-          analysis_context_snapshot: {
-            snapshot_id: 'snap_forwarded',
-            derived_from_artifact_ids: ['da_forwarded'],
-          },
-          latest_artifact_id: 'da_forwarded',
-          artifact_readback_source: 'request_snapshot',
-          artifact_readback_hit: true,
-        }),
-      },
-    },
-  };
-
-  const writes = [];
-  __setTravelPipelineForTests(async () => null);
-  __setRouterForTests({
-    async routeStream(skillRequest, onEvent) {
-      assert.deepEqual(skillRequest.context.artifact_analysis_context_snapshot, {
-        snapshot_id: 'snap_forwarded',
-        derived_from_artifact_ids: ['da_forwarded'],
-      });
-      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_source, 'request_snapshot');
-      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_hit, true);
-      onEvent({
-        type: 'result',
-        data: {
-          cards: [],
-          ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
-          quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
-          telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
-          next_actions: [],
-        },
-      });
-      return {
-        cards: [],
-        ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
-        quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
-        telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
-        next_actions: [],
-      };
-    },
-  });
-
-  try {
-    await handleChatStream(
-      {
-        body: {
-          message: 'Recommend a few products',
-          session: {
-            profile: { goals: ['hydration'] },
-            meta: {
-              analysis_context_snapshot: { snapshot_id: 'ignored_raw' },
-              artifact_persistence: {
-                persisted: true,
-                storage_mode: 'db',
-                artifact_id: 'da_forwarded',
-              },
-            },
-            state: { latest_artifact_id: 'da_forwarded' },
-          },
-          language: 'EN',
-        },
-        headers: {},
-        get() { return null; },
-      },
-      {
-        writeHead() {},
-        write(chunk) { writes.push(String(chunk)); },
-        end() {},
-      },
-    );
-    assert.match(writes.join(''), /event: result/);
-  } finally {
-    __resetRouterForTests();
-    __setTravelPipelineForTests(async () => null);
-    if (originalRoutesModule) require.cache[routesModuleId] = originalRoutesModule;
-    else delete require.cache[routesModuleId];
-  }
-});
-
-test('handleChatStream loads stored profile and recent logs before artifact snapshot readback', async () => {
-  const routesModuleId = require.resolve('../src/auroraBff/routes');
-  const originalRoutesModule = require.cache[routesModuleId];
-  let capturedProfile = null;
-  let capturedRecentLogs = null;
-  require.cache[routesModuleId] = {
-    id: routesModuleId,
-    filename: routesModuleId,
-    loaded: true,
-    exports: {
-      __internal: {
-        getProfileForIdentity: async () => ({
-          skinType: 'dry',
-          sensitivity: 'high',
-          goals: ['hydration'],
-        }),
-        getRecentSkinLogsForIdentity: async () => ([
-          { created_at: '2026-03-01T00:00:00.000Z', note: 'tightness after cleanser' },
-        ]),
-        resolveArtifactBackedSnapshotForRoute: async ({ profile, recentLogs }) => {
-          capturedProfile = profile;
-          capturedRecentLogs = recentLogs;
-          return {
-            analysis_context_snapshot: {
-              snapshot_id: 'snap_db_latest',
-              derived_from_artifact_ids: ['da_db_latest'],
-            },
-            latest_artifact_id: 'da_db_latest',
-            artifact_readback_source: 'db_latest',
-            artifact_readback_hit: true,
-          };
-        },
-      },
-    },
-  };
-
-  const writes = [];
-  __setTravelPipelineForTests(async () => null);
-  __setRouterForTests({
-    async routeStream(skillRequest, onEvent) {
-      assert.equal(skillRequest.context.profile.skinType, 'dry');
-      assert.equal(skillRequest.context.profile.sensitivity, 'high');
-      assert.deepEqual(skillRequest.context.profile.goals, ['hydration']);
-      assert.equal(Array.isArray(skillRequest.context.recent_logs), true);
-      assert.equal(skillRequest.context.recent_logs.length, 1);
-      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_source, 'db_latest');
-      assert.equal(skillRequest.context.analysis_context_artifact_meta.artifact_readback_hit, true);
-      onEvent({
-        type: 'result',
-        data: {
-          cards: [],
-          ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
-          quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
-          telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
-          next_actions: [],
-        },
-      });
-      return {
-        cards: [],
-        ops: { thread_ops: [], profile_patch: {}, routine_patch: {}, experiment_events: [] },
-        quality: { schema_valid: true, quality_ok: true, issues: [], preconditions_met: true, precondition_failures: [] },
-        telemetry: { skill_id: 'reco.step_based', task_mode: 'recommendation', elapsed_ms: 0, llm_calls: 0 },
-        next_actions: [],
-      };
-    },
-  });
-
-  try {
-    await handleChatStream(
-      {
-        body: {
-          message: 'Recommend a moisturizer for me',
-          session: {},
-          language: 'EN',
-        },
-        headers: { 'x-aurora-uid': 'uid_chat_db_context' },
-        get(name) {
-          return this.headers[String(name || '').toLowerCase()] || null;
-        },
-      },
-      {
-        writeHead() {},
-        write(chunk) { writes.push(String(chunk)); },
-        end() {},
-      },
-    );
-
-    assert.deepEqual(capturedProfile, {
-      skinType: 'dry',
-      skin_type: 'dry',
-      sensitivity: 'high',
-      goals: ['hydration'],
-      concerns: ['hydration'],
-    });
-    assert.equal(Array.isArray(capturedRecentLogs), true);
-    assert.equal(capturedRecentLogs.length, 1);
-    assert.match(writes.join(''), /event: result/);
-  } finally {
-    __resetRouterForTests();
-    __setTravelPipelineForTests(async () => null);
-    if (originalRoutesModule) require.cache[routesModuleId] = originalRoutesModule;
-    else delete require.cache[routesModuleId];
-  }
 });

@@ -127,10 +127,10 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
             product_id: `cream_${observedQueries.length}`,
             merchant_id: 'mid_cream',
             brand: 'GoodSkin',
-            name: 'Barrier Cream',
-            display_name: 'Barrier Cream',
-            category: 'face cream',
-            product_type: 'cream',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
           },
         ],
       },
@@ -165,6 +165,7 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
     assert.equal(payload.recommendation_meta?.resolved_target_step_confidence, 'high');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.ok(typeof payload.recommendation_meta?.candidate_pool_signature === 'string' && payload.recommendation_meta.candidate_pool_signature.length > 0);
+    assert.ok(observedQueries.some((query) => query.includes('barrier')));
     assert.ok(!observedQueries.some((query) => query.includes('cleanser') || query.includes('sunscreen')));
   } finally {
     axios.get = originalGet;
@@ -220,12 +221,14 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
       cards.find((card) => card && card.type === 'confidence_notice' && /viable|artifact|candidate/i.test(String(card?.payload?.reason || '')))
       || null;
     assert.ok(confidenceNotice);
+    assert.equal(confidenceNotice?.payload?.reason, 'no_viable_candidates_for_target');
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
     assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
   } finally {
     axios.get = originalGet;
   }
@@ -254,8 +257,8 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
             brand: 'GoodSkin',
             name: 'Moisture Barrier Cream',
             display_name: 'Moisture Barrier Cream',
-            category: 'face cream',
-            product_type: 'cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
           },
         ],
       },

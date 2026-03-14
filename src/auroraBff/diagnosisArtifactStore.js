@@ -12,7 +12,6 @@ const ephemeral = {
   plans: new Map(),
   recoRuns: new Map(),
 };
-const NON_PRIMARY_ARTIFACT_TYPES = new Set(['skin_analysis_kb_snapshot_v1']);
 
 function nowIso() {
   return new Date().toISOString();
@@ -126,25 +125,6 @@ function safeJson(value, fallback = {}) {
   }
 }
 
-function artifactPayloadFromRecord(record) {
-  if (!record || typeof record !== 'object') return null;
-  if (record.artifact_json && typeof record.artifact_json === 'object' && !Array.isArray(record.artifact_json)) {
-    return record.artifact_json;
-  }
-  return record;
-}
-
-function getArtifactType(record) {
-  const payload = artifactPayloadFromRecord(record);
-  return String(payload && (payload.artifact_type || payload.type) || '').trim().toLowerCase();
-}
-
-function isPrimaryDiagnosisArtifact(record) {
-  const artifactType = getArtifactType(record);
-  if (!artifactType) return true;
-  return !NON_PRIMARY_ARTIFACT_TYPES.has(artifactType);
-}
-
 function isStorageUnavailableError(err) {
   const code = String(err && err.code ? err.code : '').trim();
   if (!code) return false;
@@ -172,59 +152,104 @@ function createRecoRunId() {
   return `rr_${randomUUID()}`;
 }
 
-function normalizePersistenceErrorCode(value) {
-  const code = String(value || '').trim();
-  return code || null;
+function normalizeArtifactUse(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'reco_context' || token === 'kb_backfill' || token === 'any') return token;
+  return '';
 }
 
-function normalizeStorageMode(value, fallback = 'db') {
-  const mode = String(value || '').trim().toLowerCase();
-  if (mode === 'db' || mode === 'ephemeral' || mode === 'response_only') return mode;
-  return fallback;
+function inferArtifactUseFromArtifact(artifact) {
+  const row = artifact && typeof artifact === 'object' && !Array.isArray(artifact) ? artifact : {};
+  const explicitUse = normalizeArtifactUse(row.artifact_use || row.artifactUse);
+  if (explicitUse) return explicitUse;
+  const artifactType = String(row.artifact_type || row.artifactType || '').trim().toLowerCase();
+  if (artifactType === 'skin_analysis_kb_snapshot_v1') return 'kb_backfill';
+  const schema = String(row.schema || '').trim().toLowerCase();
+  if (schema === 'aurora.skin_diagnosis.v2') return 'reco_context';
+  const hasRecoFields = Boolean(
+    (row.skinType && typeof row.skinType === 'object')
+      || (row.sensitivity && typeof row.sensitivity === 'object')
+      || (row.barrierStatus && typeof row.barrierStatus === 'object')
+      || (row.goals && typeof row.goals === 'object')
+  );
+  if (hasRecoFields) return 'reco_context';
+  if (row.analysis_summary && typeof row.analysis_summary === 'object') return 'kb_backfill';
+  return 'reco_context';
 }
 
-function withArtifactPersistence(row, {
-  persisted = true,
-  storageMode = 'db',
-  persistenceErrorCode = null,
+function isArtifactEligibleForUse(record, artifactUse = 'any') {
+  const requestedUse = normalizeArtifactUse(artifactUse) || 'any';
+  if (requestedUse === 'any') return true;
+  const payload = record && record.artifact_json && typeof record.artifact_json === 'object'
+    ? record.artifact_json
+    : record;
+  return inferArtifactUseFromArtifact(payload) === requestedUse;
+}
+
+function attachArtifactReadbackMeta(record, {
+  artifactUse = 'any',
+  readbackReason = '',
+  filteredCount = 0,
 } = {}) {
-  const record = row && typeof row === 'object' ? { ...row } : {};
+  if (!record || typeof record !== 'object') return null;
   return {
     ...record,
-    persisted: persisted === true,
-    storage_mode: normalizeStorageMode(storageMode, persisted === true ? 'db' : 'response_only'),
-    persistence_error_code: normalizePersistenceErrorCode(persistenceErrorCode),
+    artifact_use: record.artifact_use || inferArtifactUseFromArtifact(record.artifact_json || record),
+    artifact_readback_kind: normalizeArtifactUse(artifactUse) || 'any',
+    artifact_readback_reason: String(readbackReason || '').trim() || null,
+    artifact_readback_filtered_count: Number.isFinite(Number(filteredCount))
+      ? Math.max(0, Math.trunc(Number(filteredCount)))
+      : 0,
   };
 }
 
-function saveEphemeralArtifact(row) {
-  const record = row && typeof row === 'object' ? row : null;
-  if (!record) return;
-  const key = identityKey({ auroraUid: record.aurora_uid, userId: record.user_id });
-  if (!key) return;
-  const arr = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key).slice() : [];
-  arr.unshift(record);
-  touchMap(ephemeral.artifacts, key, arr.slice(0, 30));
+function selectLatestArtifactCandidate(records = [], {
+  sessionId = null,
+  artifactUse = 'any',
+} = {}) {
+  const rows = Array.isArray(records) ? records.filter(Boolean) : [];
+  if (!rows.length) return null;
+  const requestedUse = normalizeArtifactUse(artifactUse) || 'any';
+  const sess = normalizeSessionId(sessionId);
+  let filteredCount = 0;
+  const eligible = rows.filter((item) => {
+    const ok = isArtifactEligibleForUse(item, requestedUse);
+    if (!ok) filteredCount += 1;
+    return ok;
+  });
+  if (!eligible.length) return null;
+  if (sess) {
+    const sessionHit = eligible.find((item) => String(item.session_id || '') === sess);
+    if (sessionHit) {
+      return attachArtifactReadbackMeta(sessionHit, {
+        artifactUse: requestedUse,
+        readbackReason: 'session_match',
+        filteredCount,
+      });
+    }
+  }
+  return attachArtifactReadbackMeta(eligible[0], {
+    artifactUse: requestedUse,
+    readbackReason: requestedUse === 'any' ? 'latest_any' : `latest_${requestedUse}`,
+    filteredCount,
+  });
 }
 
 function mapArtifactRow(row) {
   if (!row || typeof row !== 'object') return null;
   const artifact = safeJson(row.artifact_json, {});
-  return withArtifactPersistence({
+  return {
     artifact_id: String(row.artifact_id || '').trim() || createArtifactId(),
     aurora_uid: normalizeIdentityValue(row.aurora_uid),
     user_id: normalizeIdentityValue(row.user_id),
     session_id: normalizeSessionId(row.session_id),
     artifact_json: artifact,
+    artifact_use: inferArtifactUseFromArtifact(artifact),
     confidence_score: toConfidenceScore(row.confidence_score),
     confidence_level: normalizeConfidenceLevel(row.confidence_level, row.confidence_score),
     source_mix: Array.isArray(row.source_mix) ? row.source_mix : safeJson(row.source_mix, []),
     created_at: row.created_at ? new Date(row.created_at).toISOString() : nowIso(),
-  }, {
-    persisted: row.persisted !== false,
-    storageMode: row.storage_mode || 'db',
-    persistenceErrorCode: row.persistence_error_code,
-  });
+  };
 }
 
 function mapPlanRow(row) {
@@ -266,6 +291,7 @@ function toArtifactRecord({
     user_id: normalizeIdentityValue(userId),
     session_id: normalizeSessionId(sessionId),
     artifact_json: artifact,
+    artifact_use: inferArtifactUseFromArtifact(artifact),
     confidence_score: toConfidenceScore(confidenceScore),
     confidence_level: normalizeConfidenceLevel(confidenceLevel, confidenceScore),
     source_mix: Array.isArray(sourceMix) ? sourceMix : [],
@@ -294,15 +320,14 @@ async function saveDiagnosisArtifact({ auroraUid, userId, sessionId, artifact, a
     sourceMix,
   });
 
-  if (persistenceDisabled()) {
-    const ephemeralRow = withArtifactPersistence(row, {
-      persisted: true,
-      storageMode: 'ephemeral',
-      persistenceErrorCode: null,
-    });
-    saveEphemeralArtifact(ephemeralRow);
-    return ephemeralRow;
+  const key = identityKey({ auroraUid: row.aurora_uid, userId: row.user_id });
+  if (key) {
+    const arr = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key).slice() : [];
+    arr.unshift(row);
+    touchMap(ephemeral.artifacts, key, arr.slice(0, 30));
   }
+
+  if (persistenceDisabled()) return row;
 
   try {
     const res = await query(
@@ -324,21 +349,9 @@ async function saveDiagnosisArtifact({ auroraUid, userId, sessionId, artifact, a
         JSON.stringify(Array.isArray(row.source_mix) ? row.source_mix : []),
       ],
     );
-    const savedRow = mapArtifactRow(res.rows && res.rows[0]) || withArtifactPersistence(row, {
-      persisted: true,
-      storageMode: 'db',
-      persistenceErrorCode: null,
-    });
-    saveEphemeralArtifact(savedRow);
-    return savedRow;
+    return mapArtifactRow(res.rows && res.rows[0]) || row;
   } catch (err) {
-    if (isStorageUnavailableError(err)) {
-      return withArtifactPersistence(row, {
-        persisted: false,
-        storageMode: 'response_only',
-        persistenceErrorCode: err && err.code ? err.code : 'STORAGE_UNAVAILABLE',
-      });
-    }
+    if (isStorageUnavailableError(err)) return row;
     throw err;
   }
 }
@@ -394,10 +407,18 @@ async function getLatestDiagnosisArtifact({
   sessionId,
   maxAgeDays = 30,
   preferArtifactId,
+  artifactUse = 'any',
 } = {}) {
   const maxAge = parseMaxArtifactAgeDays(maxAgeDays);
+  const requestedUse = normalizeArtifactUse(artifactUse) || 'any';
   const preferred = await getDiagnosisArtifactById({ artifactId: preferArtifactId, auroraUid, userId });
-  if (preferred && isPrimaryDiagnosisArtifact(preferred) && isWithinDays(preferred.created_at, maxAge)) return preferred;
+  if (preferred && isWithinDays(preferred.created_at, maxAge) && isArtifactEligibleForUse(preferred, requestedUse)) {
+    return attachArtifactReadbackMeta(preferred, {
+      artifactUse: requestedUse,
+      readbackReason: 'preferred_artifact_id',
+      filteredCount: 0,
+    });
+  }
 
   const user = normalizeIdentityValue(userId);
   const guest = normalizeIdentityValue(auroraUid);
@@ -406,12 +427,12 @@ async function getLatestDiagnosisArtifact({
 
   if (key) {
     const local = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key) : [];
-    const filtered = local.filter((item) => isPrimaryDiagnosisArtifact(item) && isWithinDays(item.created_at, maxAge));
-    if (sess) {
-      const hit = filtered.find((item) => String(item.session_id || '') === sess);
-      if (hit) return hit;
-    }
-    if (filtered[0]) return filtered[0];
+    const filtered = local.filter((item) => isWithinDays(item.created_at, maxAge));
+    const localSelected = selectLatestArtifactCandidate(filtered, {
+      sessionId: sess,
+      artifactUse: requestedUse,
+    });
+    if (localSelected) return localSelected;
   }
 
   if (persistenceDisabled()) return null;
@@ -434,12 +455,13 @@ async function getLatestDiagnosisArtifact({
     }
     params.push(maxAge);
     const ageIdx = params.length;
+    params.push(24);
+    const limitIdx = params.length;
     const res = await query(
       `
         SELECT artifact_id, aurora_uid, user_id, session_id, artifact_json, confidence_score, confidence_level, source_mix, created_at
         FROM aurora_skin_diagnosis_artifacts
         WHERE ${where.join(' AND ')}
-          AND COALESCE(artifact_json->>'artifact_type', '') <> 'skin_analysis_kb_snapshot_v1'
           AND created_at >= now() - ($${ageIdx}::int || ' days')::interval
         ORDER BY
           ${
@@ -452,11 +474,15 @@ async function getLatestDiagnosisArtifact({
               : ''
           }
           created_at DESC
-        LIMIT 1
+        LIMIT $${limitIdx}
       `,
       params,
     );
-    return mapArtifactRow(res.rows && res.rows[0]);
+    const mappedRows = Array.isArray(res.rows) ? res.rows.map((row) => mapArtifactRow(row)).filter(Boolean) : [];
+    return selectLatestArtifactCandidate(mappedRows, {
+      sessionId: sess,
+      artifactUse: requestedUse,
+    });
   } catch (err) {
     if (isStorageUnavailableError(err)) return null;
     throw err;
@@ -491,7 +517,7 @@ async function listDiagnosisArtifactsForIdentity({
   const maxAge = parseMaxArtifactAgeDays(maxAgeDays, 365);
   const key = identityKey({ auroraUid: guest, userId: user });
   const localRows = key && Array.isArray(ephemeral.artifacts.get(key))
-    ? ephemeral.artifacts.get(key).filter((item) => isPrimaryDiagnosisArtifact(item) && isWithinDays(item.created_at, maxAge))
+    ? ephemeral.artifacts.get(key).filter((item) => isWithinDays(item.created_at, maxAge))
     : [];
 
   if (persistenceDisabled()) return localRows.slice(0, n);
@@ -516,7 +542,6 @@ async function listDiagnosisArtifactsForIdentity({
         SELECT artifact_id, aurora_uid, user_id, session_id, artifact_json, confidence_score, confidence_level, source_mix, created_at
         FROM aurora_skin_diagnosis_artifacts
         WHERE ${where.join(' AND ')}
-          AND COALESCE(artifact_json->>'artifact_type', '') <> 'skin_analysis_kb_snapshot_v1'
           AND created_at >= now() - ($${ageIdx}::int || ' days')::interval
         ORDER BY created_at DESC
         LIMIT $${limitIdx}
@@ -689,4 +714,9 @@ module.exports = {
   saveIngredientPlan,
   getIngredientPlanByArtifactId,
   saveRecoRun,
+  __internal: {
+    inferArtifactUseFromArtifact,
+    isArtifactEligibleForUse,
+    selectLatestArtifactCandidate,
+  },
 };
