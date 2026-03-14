@@ -88,8 +88,13 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
   assert.equal(pool.viable_candidate_count, 1);
   assert.equal(pool.hard_reject_count, 1);
   assert.equal(pool.selected_candidate_count, 1);
+  assert.equal(pool.pre_llm_selected_candidate_count, 1);
+  assert.equal(pool.final_selected_candidate_count, 1);
   assert.equal(pool.selected_recommendations[0].product_id, 'face_cream_1');
   assert.equal(pool.terminal_success, true);
+  assert.equal(pool.viable_pool_strength, 'strong');
+  assert.equal(pool.target_fidelity_level, 'satisfied');
+  assert.equal(pool.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
 });
 
 test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
@@ -133,4 +138,6 @@ test('medium-confidence target only succeeds when same-family viable candidates 
   assert.equal(clarifyPool.viable_candidate_count, 0);
   assert.equal(clarifyPool.soft_mismatch_count, 1);
   assert.equal(clarifyPool.weak_viable_pool, true);
+  assert.equal(clarifyPool.viable_pool_strength, 'weak');
+  assert.equal(clarifyPool.same_family_success_threshold_met, false);
 });
