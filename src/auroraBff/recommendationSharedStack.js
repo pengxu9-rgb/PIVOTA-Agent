@@ -18,6 +18,7 @@ const CANDIDATE_POOL_SIGNATURE_VERSION = 'candidate_pool_signature_v1';
 const MIN_CONTEXT_RULE_VERSION = 'RECOMMENDATION_MIN_CONTEXT_RULES_V1';
 const RECOMMENDATION_STEP_QUERY_POLICY_V1 = 'recommendation_step_query_policy_v1';
 const RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1 = 'recommendation_viable_threshold_policy_v1';
+const RECOMMENDATION_RECO_POLICY_V1 = 'recommendation_step_aware_reco_policy_v1';
 const RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION = 'recommendation_raw_pool_debug_signature_v1';
 const GROUP_SEMANTICS_VERSION = 'recommendation_group_semantics_v1';
 const STRICTNESS_SOURCES = Object.freeze(['entry_default', 'allowlisted_override', 'policy_forced']);
@@ -464,6 +465,10 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
   const thresholds = getStepPolicy(targetContext && targetContext.resolved_target_step);
   const exactStepViableCount = viable.filter((row) => row.candidate_step && row.candidate_step === targetContext?.resolved_target_step).length;
   const sameFamilyViableCount = viable.length;
+  const sameFamilySuccessThresholdMet = Boolean(
+    sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
+      && viable.some((row) => Number(row.score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
+  );
   const sameFamilyStrongViableExists = viable.some((row) => Number(row.score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
   const selected = viable.slice(0, 3);
   const selectedFamilies = uniqStrings(selected.map((row) => row.candidate_step || row.family_relation || 'unknown'), 3);
@@ -493,6 +498,23 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
         ? softTargetSuccessAllowed
         : hardTargetSuccessAllowed,
   );
+  const familyMatchType = !targetContext?.step_aware_intent
+    ? null
+    : exactStepViableCount > 0
+      ? 'exact_step'
+      : sameFamilyViableCount > 0
+        ? 'same_family'
+        : softMismatch.length > 0
+          ? 'adjacent_family'
+          : 'incompatible_family';
+  const targetFidelityLevel = overallTargetFidelitySatisfied
+    ? 'satisfied'
+    : selected.length > 0 || viable.length > 0 || softMismatch.length > 0
+      ? 'partial'
+      : 'failed';
+  const viablePoolStrength = selected.length > 0
+    ? (terminalSuccess ? 'strong' : 'weak')
+    : (softMismatch.length > 0 || viable.length > 0 ? 'weak' : 'empty');
 
   return {
     raw_candidate_pool: deduped,
@@ -507,19 +529,27 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext } =
     same_family_viable_count: sameFamilyViableCount,
     soft_mismatch_count: softMismatch.length,
     hard_reject_count: hardReject.length,
+    pre_llm_selected_candidate_count: selected.length,
+    final_selected_candidate_count: selected.length,
     selected_candidate_count: selected.length,
     hard_reject: hardReject,
     soft_mismatch: softMismatch,
     viable,
+    viable_pool_strength: viablePoolStrength,
     weak_viable_pool: weakViablePool,
+    family_match_type: familyMatchType,
     item_target_fidelity: selected.map((row) => row.item_target_fidelity),
     group_target_fidelity: primaryDisplayGroups.map((group) => group.group_target_fidelity),
+    target_fidelity_level: targetFidelityLevel,
     overall_target_fidelity_satisfied: overallTargetFidelitySatisfied,
     target_fidelity_satisfied: overallTargetFidelitySatisfied,
     top_candidates_converged: topCandidatesConverged,
     same_family_strong_viable_exists: sameFamilyStrongViableExists,
+    same_family_success_threshold_met: sameFamilySuccessThresholdMet,
     hard_constraint_conflict: hardConstraintConflict,
+    constraint_conflict: hardConstraintConflict,
     terminal_success: terminalSuccess,
+    reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     raw_candidate_pool_debug_signature: buildSharedSignature(RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION, {
       ids: deduped.map((row) => productKey(row)).filter(Boolean).sort(),
       target_step: targetContext?.resolved_target_step || null,
@@ -1315,6 +1345,7 @@ module.exports = {
   MIN_CONTEXT_RULE_VERSION,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
+  RECOMMENDATION_RECO_POLICY_V1,
   RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION,
   GROUP_SEMANTICS_VERSION,
   STRICTNESS_SOURCES,

@@ -161,7 +161,12 @@ test('step-aware helpers build same-family ladder and reject non-skincare candid
   assert.equal(poolState.viable_candidate_count, 1);
   assert.equal(poolState.hard_reject_count, 1);
   assert.equal(poolState.selected_candidate_count, 1);
+  assert.equal(poolState.pre_llm_selected_candidate_count, 1);
+  assert.equal(poolState.final_selected_candidate_count, 1);
   assert.equal(poolState.overall_target_fidelity_satisfied, true);
+  assert.equal(poolState.viable_pool_strength, 'strong');
+  assert.equal(poolState.target_fidelity_level, 'satisfied');
+  assert.equal(poolState.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
   assert.ok(poolState.candidate_pool_signature);
   assert.ok(poolState.raw_candidate_pool_debug_signature);
 });
@@ -197,6 +202,8 @@ test('soft-target mainline only succeeds with same-family viable candidates', ()
   assert.equal(shouldStopStepAwareBroadening(successState, { targetContext: successTargetContext }), true);
   assert.equal(weakState.terminal_success, false);
   assert.equal(weakState.weak_viable_pool, true);
+  assert.equal(weakState.viable_pool_strength, 'weak');
+  assert.equal(weakState.same_family_success_threshold_met, false);
   assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool_for_target');
 });
 
