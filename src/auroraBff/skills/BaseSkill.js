@@ -102,6 +102,7 @@ class BaseSkill {
         elapsed_ms: Date.now() - startMs,
         llm_calls: rawResponse._llmCalls || 0,
       },
+      meta: rawResponse._meta && typeof rawResponse._meta === 'object' ? rawResponse._meta : null,
       next_actions: rawResponse.next_actions || [
         { action_type: 'show_chip', label: { en: 'Start over', zh: '重新开始' } },
       ],

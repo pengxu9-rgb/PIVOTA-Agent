@@ -790,6 +790,7 @@ function buildSkillRequest(req) {
   const bodyContext = isPlainObject(body.context) ? body.context : {};
   const bodyParams = isPlainObject(body.params) ? body.params : {};
   const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
   const action = isPlainObject(body.action) ? body.action : {};
   const actionData = isPlainObject(action.data) ? action.data : {};
@@ -867,6 +868,12 @@ function buildSkillRequest(req) {
     context: {
       profile: resolvedProfile,
       recent_logs: bodyContext.recent_logs || req._recentLogs || [],
+      analysis_context_snapshot:
+        isPlainObject(bodyContext.analysis_context_snapshot)
+          ? bodyContext.analysis_context_snapshot
+          : isPlainObject(sessionMeta.analysis_context_snapshot)
+            ? sessionMeta.analysis_context_snapshot
+            : null,
       travel_plan: resolvedTravelPlan,
       current_routine: currentRoutine,
       inventory: bodyContext.inventory || [],

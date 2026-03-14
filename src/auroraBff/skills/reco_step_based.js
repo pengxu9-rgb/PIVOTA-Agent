@@ -1,5 +1,7 @@
 const BaseSkill = require('./BaseSkill');
-const recoHybridResolver = require('../usecases/recoHybridResolveCandidates');
+const { runRecommendationSharedStack } = require('../recommendationSharedStack');
+
+let sharedRecoCoreRunnerOverride = null;
 
 function normalizeRecoLang(locale) {
   const raw = String(locale || '').trim().toLowerCase();
@@ -22,9 +24,76 @@ function localizeStepLabel(step, lang = 'EN') {
   return map[String(step || '').trim().toLowerCase()] || (isCn ? '护肤产品' : 'skincare product');
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function pickFirstTrimmed(...values) {
+  for (const value of values) {
+    const text = value == null ? '' : String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function buildRoutesCoreRunner() {
+  if (typeof sharedRecoCoreRunnerOverride === 'function') return sharedRecoCoreRunnerOverride;
+  const routes = require('../routes');
+  const coreRunner = routes && routes.__internal && typeof routes.__internal.generateProductRecommendations === 'function'
+    ? routes.__internal.generateProductRecommendations
+    : null;
+  if (!coreRunner) {
+    throw new Error('reco.step_based shared core unavailable');
+  }
+  return coreRunner;
+}
+
+function extractRequestOverrideFromRequest(request) {
+  const params = isPlainObject(request && request.params) ? request.params : {};
+  const profilePatch = isPlainObject(params.profile_patch) ? params.profile_patch : {};
+  const goals = Array.isArray(profilePatch.goals)
+    ? profilePatch.goals
+    : profilePatch.goal
+      ? [profilePatch.goal]
+      : profilePatch.goal_primary
+        ? [profilePatch.goal_primary]
+        : [];
+  return {
+    ...(pickFirstTrimmed(profilePatch.skinType, profilePatch.skin_type) ? { skinType: pickFirstTrimmed(profilePatch.skinType, profilePatch.skin_type) } : {}),
+    ...(pickFirstTrimmed(profilePatch.sensitivity, profilePatch.sensitivity_level) ? { sensitivity: pickFirstTrimmed(profilePatch.sensitivity, profilePatch.sensitivity_level) } : {}),
+    ...(pickFirstTrimmed(profilePatch.barrierStatus, profilePatch.barrier_status) ? { barrierStatus: pickFirstTrimmed(profilePatch.barrierStatus, profilePatch.barrier_status) } : {}),
+    ...(goals.length ? { goals } : {}),
+  };
+}
+
+function buildSkillCtx(request, lang) {
+  const entrySource = String(request?.params?.entry_source || '').trim().toLowerCase();
+  const triggerSource = entrySource.startsWith('chip') ? 'chip' : entrySource.includes('action') ? 'action' : 'text';
+  const seed = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    request_id: `reco_skill_${seed}`,
+    trace_id: `reco_skill_trace_${seed}`,
+    lang,
+    locale: request?.context?.locale || (lang === 'CN' ? 'zh-CN' : 'en-US'),
+    state: request?.thread_state?.state || 'chat',
+    trigger_source: triggerSource,
+  };
+}
+
+function buildClarifyMessage({ language, targetIngredient }) {
+  if (targetIngredient) {
+    return language === 'CN'
+      ? `你想围绕 ${targetIngredient} 找哪一类产品？例如洁面、精华、面霜或防晒。`
+      : `What type of product do you want around ${targetIngredient}? For example, cleanser, serum, moisturizer, or sunscreen.`;
+  }
+  return language === 'CN'
+    ? '你想优先找哪一类产品？例如洁面、精华、面霜或防晒。'
+    : 'What type of product do you want first? For example, cleanser, serum, moisturizer, or sunscreen.';
+}
+
 class RecoStepBasedSkill extends BaseSkill {
   constructor() {
-    super('reco.step_based', '2.0.0');
+    super('reco.step_based', '2.1.0');
   }
 
   async checkPreconditions(request) {
@@ -64,48 +133,61 @@ class RecoStepBasedSkill extends BaseSkill {
     return { met: true, failures: [] };
   }
 
-  async execute(request, llmGateway) {
+  async execute(request, _llmGateway) {
     const lang = normalizeRecoLang(request.context?.locale);
     const targetStep = String(request.params?.target_step || '').trim();
     const targetIngredient = String(request.params?.target_ingredient || '').trim();
     const userQuestion = this._getUserQuestion(request);
+    const profile = isPlainObject(request.context?.profile) ? request.context.profile : {};
+    const recentLogs = Array.isArray(request.context?.recent_logs) ? request.context.recent_logs : [];
+    const analysisContextSnapshot = isPlainObject(request.context?.analysis_context_snapshot)
+      ? request.context.analysis_context_snapshot
+      : null;
+    const requestOverride = extractRequestOverrideFromRequest(request);
+    const ctx = buildSkillCtx(request, lang);
+    const coreMessage = userQuestion
+      || (targetIngredient
+        ? (lang === 'CN'
+          ? `围绕 ${targetIngredient} 给我推荐几款产品`
+          : `Recommend a few products built around ${targetIngredient}`)
+        : targetStep
+          ? (lang === 'CN'
+            ? `给我推荐几款${localizeStepLabel(targetStep, lang)}`
+            : `Recommend a few ${localizeStepLabel(targetStep, lang)}`)
+          : (lang === 'CN' ? '给我推荐几款护肤产品' : 'Recommend a few skincare products'));
 
-    let candidateOutput = {
-      answer_en: '',
-      answer_zh: null,
-      products: [],
-    };
-    let promptHash = null;
-
+    let sharedReco;
     try {
-      const llmResult = await llmGateway.call({
-        templateId: 'reco_step_based',
-        taskMode: 'recommendation',
-        params: {
-          profile: request.context?.profile || {},
-          routine: request.context?.current_routine || null,
-          inventory: Array.isArray(request.context?.inventory) ? request.context.inventory : [],
-          target_step: targetStep || null,
-          target_ingredient: targetIngredient || null,
-          concerns: Array.isArray(request.params?._extracted_concerns) ? request.params._extracted_concerns : [],
-          safety_flags: Array.isArray(request.context?.safety_flags) ? request.context.safety_flags : [],
-          locale: request.context?.locale || 'en-US',
-          user_question: userQuestion || null,
+      sharedReco = await runRecommendationSharedStack({
+        entryType: 'chat',
+        message: coreMessage,
+        params: request.params,
+        actionData: request.params,
+        profile,
+        recentLogs,
+        analysisContextSnapshot,
+        requestOverride,
+        coreRunner: buildRoutesCoreRunner(),
+        coreInput: {
+          ctx,
+          profile,
+          recentLogs,
+          message: coreMessage,
+          analysisContextSnapshot,
+          requestOverride,
+          includeAlternatives: request.params?.include_alternatives === true,
+          logger: console,
+          recoTriggerSource: String(request.params?.entry_source || '').trim() || 'chat_skill',
         },
-        schema: 'RecoHybridCandidateOutput',
       });
-      if (llmResult?.parsed && typeof llmResult.parsed === 'object') {
-        candidateOutput = llmResult.parsed;
-      }
-      promptHash = llmResult?.promptHash || null;
     } catch (err) {
-      console.error('[reco.step_based] llm candidate generation failed:', err?.message || err);
+      console.error('[reco.step_based] shared core failed:', err?.message || err);
       const fallbackMessage = this._buildNoResultMessage({
         language: lang,
         targetStep,
         targetIngredient,
-        sourceMode: 'llm_error',
-        telemetryReason: String(err?.message || 'llm_error').slice(0, 200),
+        sourceMode: 'shared_core_error',
+        telemetryReason: String(err?.message || 'shared_core_error').slice(0, 200),
       });
       return {
         cards: [
@@ -126,88 +208,97 @@ class RecoStepBasedSkill extends BaseSkill {
           routine_patch: {},
           experiment_events: [
             {
-              event: 'reco_llm_error',
+              event: 'reco_shared_core_error',
               step_count: 0,
               has_routine: Boolean(request.context?.current_routine),
-              source_mode: 'llm_error',
+              source_mode: 'shared_core_error',
             },
           ],
         },
         next_actions: this._buildNextActions({ targetIngredient }),
         _taskMode: 'recommendation',
         _promptHash: null,
-        _llmCalls: 1,
-      };
-    }
-
-    let resolved;
-    try {
-      resolved = await recoHybridResolver.runRecoHybridResolveCandidates({
-        request,
-        candidateOutput,
-        logger: console,
-      });
-    } catch (err) {
-      console.error('[reco.step_based] hybrid resolver failed:', err?.message || err);
-      resolved = {
-        rows: [],
-        recommendation_meta: {
-          source_mode: 'llm_catalog_hybrid',
-          llm_seed_count: Array.isArray(candidateOutput.products) ? candidateOutput.products.length : 0,
-          exact_match_count: 0,
-          fuzzy_match_count: 0,
-          unresolved_seed_count: 0,
-          target_step: targetStep || null,
-          target_ingredient: targetIngredient || null,
-          telemetry_failure_reason: String(err?.message || 'resolver_error').slice(0, 200),
+        _llmCalls: 0,
+        _meta: {
+          fallback_mode: 'severe_parse_or_prompt_failure',
+          mainline_status: 'shared_core_error',
         },
       };
     }
 
-    const recommendations = Array.isArray(resolved?.rows) ? resolved.rows : [];
-    const recommendationMeta = resolved?.recommendation_meta && typeof resolved.recommendation_meta === 'object'
-      ? resolved.recommendation_meta
-      : {
-          source_mode: 'llm_catalog_hybrid',
-          llm_seed_count: Array.isArray(candidateOutput.products) ? candidateOutput.products.length : 0,
-          exact_match_count: 0,
-          fuzzy_match_count: 0,
-          unresolved_seed_count: 0,
-          target_step: targetStep || null,
-          target_ingredient: targetIngredient || null,
-        };
+    if (sharedReco.needs_more_context) {
+      return {
+        cards: [
+          {
+            card_type: 'text_response',
+            sections: [
+              {
+                type: 'text_answer',
+                text_en: buildClarifyMessage({ language: 'EN', targetIngredient }),
+                text_zh: buildClarifyMessage({ language: 'CN', targetIngredient }),
+              },
+            ],
+          },
+        ],
+        ops: {
+          thread_ops: [],
+          profile_patch: {},
+          routine_patch: {},
+          experiment_events: [
+            {
+              event: 'reco_clarify',
+              step_count: 0,
+              has_routine: Boolean(request.context?.current_routine),
+              source_mode: 'shared_stack',
+            },
+          ],
+        },
+        next_actions: this._buildNextActions({ targetIngredient }),
+        _taskMode: 'recommendation',
+        _promptHash: null,
+        _llmCalls: 0,
+        _meta: {
+          analysis_context_usage: sharedReco.request_context.context_usage,
+          request_context_signature: sharedReco.request_context.request_context_signature,
+          candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+          fallback_mode: sharedReco.core_result.fallback_mode,
+          mainline_status: 'needs_more_context',
+          strictness_source: sharedReco.request_context.strictness_source,
+        },
+      };
+    }
 
+    const upstreamReco = sharedReco.raw;
+    const payload = upstreamReco && upstreamReco.norm && isPlainObject(upstreamReco.norm.payload)
+      ? upstreamReco.norm.payload
+      : {};
+    const recommendationMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+    const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
     const cards = [];
-    const answerEn = String(candidateOutput?.answer_en || '').trim();
-    const answerZh = String(candidateOutput?.answer_zh || '').trim();
-    if (answerEn || answerZh) {
+
+    if (recommendations.length > 0) {
       cards.push({
         card_type: 'text_response',
         sections: [
           {
             type: 'text_answer',
-            text_en: answerEn || this._buildNoResultMessage({ language: 'EN', targetStep, targetIngredient }).en,
-            text_zh: answerZh || null,
+            text_en: 'I pulled together a few products that best fit your current context.',
+            text_zh: '我按你当前的上下文整理了几款更匹配的产品。',
           },
         ],
       });
-    }
-
-    if (recommendations.length > 0) {
       cards.push({
         card_type: 'recommendations',
         metadata: {
           recommendations,
           recommendation_meta: recommendationMeta,
-          source_mode: recommendationMeta.source_mode || 'llm_catalog_hybrid',
+          source_mode: recommendationMeta.source_mode || null,
           target_step: targetStep || null,
           target_ingredient: targetIngredient || null,
-          query_count: Number(recommendationMeta.query_count || 0),
+          request_context_signature: sharedReco.request_context.request_context_signature,
+          candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
         },
       });
-    }
-
-    if (cards.length > 0) {
       return {
         cards,
         ops: {
@@ -216,18 +307,28 @@ class RecoStepBasedSkill extends BaseSkill {
           routine_patch: {},
           experiment_events: [
             {
-              event: recommendations.length > 0 ? 'reco_shown' : 'reco_empty',
+              event: 'reco_shown',
               step_count: recommendations.length,
               has_routine: Boolean(request.context?.current_routine),
               source_mode: recommendationMeta.source_mode || null,
-              grounding_status: 'llm_catalog_hybrid',
+              grounding_status: recommendationMeta.grounding_status || payload.grounding_status || null,
             },
           ],
         },
         next_actions: this._buildNextActions({ targetIngredient }),
         _taskMode: 'recommendation',
-        _promptHash: promptHash,
+        _promptHash: recommendationMeta.llm_trace && recommendationMeta.llm_trace.prompt_hash
+          ? recommendationMeta.llm_trace.prompt_hash
+          : null,
         _llmCalls: 1,
+        _meta: {
+          analysis_context_usage: recommendationMeta.analysis_context_usage || sharedReco.request_context.context_usage,
+          request_context_signature: sharedReco.request_context.request_context_signature,
+          candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+          fallback_mode: sharedReco.core_result.fallback_mode,
+          mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
+          strictness_source: sharedReco.request_context.strictness_source,
+        },
       };
     }
 
@@ -237,6 +338,7 @@ class RecoStepBasedSkill extends BaseSkill {
       targetIngredient,
       sourceMode: recommendationMeta.source_mode || '',
       telemetryReason: recommendationMeta.telemetry_failure_reason || '',
+      catalogSkipReason: recommendationMeta.catalog_skip_reason || '',
     });
 
     return {
@@ -262,14 +364,24 @@ class RecoStepBasedSkill extends BaseSkill {
             step_count: 0,
             has_routine: Boolean(request.context?.current_routine),
             source_mode: recommendationMeta.source_mode || null,
-            grounding_status: 'llm_catalog_hybrid',
+            grounding_status: recommendationMeta.grounding_status || payload.grounding_status || null,
           },
         ],
       },
       next_actions: this._buildNextActions({ targetIngredient }),
       _taskMode: 'recommendation',
-      _promptHash: promptHash,
+      _promptHash: recommendationMeta.llm_trace && recommendationMeta.llm_trace.prompt_hash
+        ? recommendationMeta.llm_trace.prompt_hash
+        : null,
       _llmCalls: 1,
+      _meta: {
+        analysis_context_usage: recommendationMeta.analysis_context_usage || sharedReco.request_context.context_usage,
+        request_context_signature: sharedReco.request_context.request_context_signature,
+        candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
+        fallback_mode: sharedReco.core_result.fallback_mode,
+        mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
+        strictness_source: sharedReco.request_context.strictness_source,
+      },
     };
   }
 
@@ -388,5 +500,13 @@ class RecoStepBasedSkill extends BaseSkill {
     };
   }
 }
+
+RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest = function __setSharedRecoCoreRunnerForTest(fn) {
+  sharedRecoCoreRunnerOverride = typeof fn === 'function' ? fn : null;
+};
+
+RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest = function __resetSharedRecoCoreRunnerForTest() {
+  sharedRecoCoreRunnerOverride = null;
+};
 
 module.exports = RecoStepBasedSkill;

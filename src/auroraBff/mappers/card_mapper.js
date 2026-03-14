@@ -8,6 +8,9 @@ function mapSkillResponseToChatCardsV1(skillResponse) {
       experiment_events: buildExperimentEvents(skillResponse),
     },
     next_actions: skillResponse.next_actions || [],
+    meta: {
+      ...(skillResponse.meta || {}),
+    },
   };
 }
 
@@ -23,6 +26,7 @@ function mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps) {
     next_actions: skillResponse.next_actions || [],
     thinking_steps: thinkingSteps || [],
     meta: {
+      ...(skillResponse.meta || {}),
       skill_id: skillResponse.telemetry?.skill_id || null,
       task_mode: skillResponse.telemetry?.task_mode || null,
       elapsed_ms: skillResponse.telemetry?.elapsed_ms || 0,
