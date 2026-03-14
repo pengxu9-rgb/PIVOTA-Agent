@@ -140,9 +140,16 @@ class RecoStepBasedSkill extends BaseSkill {
     const userQuestion = this._getUserQuestion(request);
     const profile = isPlainObject(request.context?.profile) ? request.context.profile : {};
     const recentLogs = Array.isArray(request.context?.recent_logs) ? request.context.recent_logs : [];
-    const analysisContextSnapshot = isPlainObject(request.context?.analysis_context_snapshot)
-      ? request.context.analysis_context_snapshot
+    const artifactContextMeta = isPlainObject(request.context?.analysis_context_artifact_meta)
+      ? request.context.analysis_context_artifact_meta
       : null;
+    const artifactAnalysisContextSnapshot = isPlainObject(request.context?.artifact_analysis_context_snapshot)
+      ? request.context.artifact_analysis_context_snapshot
+      : null;
+    const analysisContextSnapshot = artifactAnalysisContextSnapshot
+      || (!artifactContextMeta && isPlainObject(request.context?.analysis_context_snapshot)
+        ? request.context.analysis_context_snapshot
+        : null);
     const requestOverride = extractRequestOverrideFromRequest(request);
     const ctx = buildSkillCtx(request, lang);
     const coreMessage = userQuestion
@@ -174,6 +181,12 @@ class RecoStepBasedSkill extends BaseSkill {
         recentLogs,
         analysisContextSnapshot,
         requestOverride,
+        contextUsageOverrides: artifactContextMeta
+          ? {
+              artifact_readback_source: pickFirstTrimmed(artifactContextMeta.artifact_readback_source) || 'none',
+              artifact_readback_hit: Boolean(artifactContextMeta.artifact_readback_hit),
+            }
+          : null,
         coreRunner: buildRoutesCoreRunner(),
         coreInput: {
           ctx,

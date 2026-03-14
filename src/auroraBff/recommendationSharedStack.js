@@ -319,9 +319,10 @@ function normalizeSharedContextUsage(taskContext = {}, {
   contextSourceMode = 'none',
   analysisContextAvailable = false,
   minimumRecommendationContextSatisfied = false,
+  contextUsageOverrides = null,
 } = {}) {
   const usage = isPlainObject(taskContext) ? { ...taskContext } : {};
-  return {
+  const normalized = {
     snapshot_present: contextSourceMode === 'artifact' || contextSourceMode === 'artifact_compat_fallback',
     context_source_mode: contextSourceMode,
     analysis_context_available: analysisContextAvailable,
@@ -335,6 +336,10 @@ function normalizeSharedContextUsage(taskContext = {}, {
     minimum_recommendation_context_satisfied: minimumRecommendationContextSatisfied,
     min_context_rule_version: MIN_CONTEXT_RULE_VERSION,
   };
+  if (isPlainObject(contextUsageOverrides)) {
+    Object.assign(normalized, contextUsageOverrides);
+  }
+  return normalized;
 }
 
 function normalizeRecommendationOverride(raw = null) {
@@ -374,6 +379,7 @@ function buildRecommendationRequestContext({
   internalCallerId = null,
   fallbackPolicy = null,
   requestGoalScope = 'active_only',
+  contextUsageOverrides = null,
 } = {}) {
   const normalizedIntent = isPlainObject(intent)
     ? intent
@@ -460,6 +466,7 @@ function buildRecommendationRequestContext({
       contextSourceMode,
       analysisContextAvailable,
       minimumRecommendationContextSatisfied,
+      contextUsageOverrides,
     }),
     request_context_signature_version: REQUEST_CONTEXT_SIGNATURE_VERSION,
     request_context_signature: requestContextSignature,
@@ -646,6 +653,7 @@ async function runRecommendationSharedStack({
   requestOverride = null,
   coreRunner,
   coreInput = {},
+  contextUsageOverrides = null,
 } = {}) {
   const intent = normalizeRecommendationIntent({
     entryType,
@@ -662,6 +670,7 @@ async function runRecommendationSharedStack({
     requestOverride,
     strictnessMode: coreInput && coreInput.strictnessMode ? coreInput.strictnessMode : null,
     internalCallerId: coreInput && coreInput.internalCallerId ? coreInput.internalCallerId : null,
+    contextUsageOverrides,
   });
   const candidatePool = buildCandidatePool({
     requestContext,

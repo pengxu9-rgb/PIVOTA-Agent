@@ -152,10 +152,45 @@ function createRecoRunId() {
   return `rr_${randomUUID()}`;
 }
 
+function normalizePersistenceErrorCode(value) {
+  const code = String(value || '').trim();
+  return code || null;
+}
+
+function normalizeStorageMode(value, fallback = 'db') {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === 'db' || mode === 'ephemeral' || mode === 'response_only') return mode;
+  return fallback;
+}
+
+function withArtifactPersistence(row, {
+  persisted = true,
+  storageMode = 'db',
+  persistenceErrorCode = null,
+} = {}) {
+  const record = row && typeof row === 'object' ? { ...row } : {};
+  return {
+    ...record,
+    persisted: persisted === true,
+    storage_mode: normalizeStorageMode(storageMode, persisted === true ? 'db' : 'response_only'),
+    persistence_error_code: normalizePersistenceErrorCode(persistenceErrorCode),
+  };
+}
+
+function saveEphemeralArtifact(row) {
+  const record = row && typeof row === 'object' ? row : null;
+  if (!record) return;
+  const key = identityKey({ auroraUid: record.aurora_uid, userId: record.user_id });
+  if (!key) return;
+  const arr = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key).slice() : [];
+  arr.unshift(record);
+  touchMap(ephemeral.artifacts, key, arr.slice(0, 30));
+}
+
 function mapArtifactRow(row) {
   if (!row || typeof row !== 'object') return null;
   const artifact = safeJson(row.artifact_json, {});
-  return {
+  return withArtifactPersistence({
     artifact_id: String(row.artifact_id || '').trim() || createArtifactId(),
     aurora_uid: normalizeIdentityValue(row.aurora_uid),
     user_id: normalizeIdentityValue(row.user_id),
@@ -165,7 +200,11 @@ function mapArtifactRow(row) {
     confidence_level: normalizeConfidenceLevel(row.confidence_level, row.confidence_score),
     source_mix: Array.isArray(row.source_mix) ? row.source_mix : safeJson(row.source_mix, []),
     created_at: row.created_at ? new Date(row.created_at).toISOString() : nowIso(),
-  };
+  }, {
+    persisted: row.persisted !== false,
+    storageMode: row.storage_mode || 'db',
+    persistenceErrorCode: row.persistence_error_code,
+  });
 }
 
 function mapPlanRow(row) {
@@ -235,14 +274,15 @@ async function saveDiagnosisArtifact({ auroraUid, userId, sessionId, artifact, a
     sourceMix,
   });
 
-  const key = identityKey({ auroraUid: row.aurora_uid, userId: row.user_id });
-  if (key) {
-    const arr = Array.isArray(ephemeral.artifacts.get(key)) ? ephemeral.artifacts.get(key).slice() : [];
-    arr.unshift(row);
-    touchMap(ephemeral.artifacts, key, arr.slice(0, 30));
+  if (persistenceDisabled()) {
+    const ephemeralRow = withArtifactPersistence(row, {
+      persisted: true,
+      storageMode: 'ephemeral',
+      persistenceErrorCode: null,
+    });
+    saveEphemeralArtifact(ephemeralRow);
+    return ephemeralRow;
   }
-
-  if (persistenceDisabled()) return row;
 
   try {
     const res = await query(
@@ -264,9 +304,21 @@ async function saveDiagnosisArtifact({ auroraUid, userId, sessionId, artifact, a
         JSON.stringify(Array.isArray(row.source_mix) ? row.source_mix : []),
       ],
     );
-    return mapArtifactRow(res.rows && res.rows[0]) || row;
+    const savedRow = mapArtifactRow(res.rows && res.rows[0]) || withArtifactPersistence(row, {
+      persisted: true,
+      storageMode: 'db',
+      persistenceErrorCode: null,
+    });
+    saveEphemeralArtifact(savedRow);
+    return savedRow;
   } catch (err) {
-    if (isStorageUnavailableError(err)) return row;
+    if (isStorageUnavailableError(err)) {
+      return withArtifactPersistence(row, {
+        persisted: false,
+        storageMode: 'response_only',
+        persistenceErrorCode: err && err.code ? err.code : 'STORAGE_UNAVAILABLE',
+      });
+    }
     throw err;
   }
 }

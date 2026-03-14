@@ -19,6 +19,21 @@ function generateDiagnosisId() {
   return crypto.randomUUID();
 }
 
+function getCtxAuroraUid(ctx = {}) {
+  return cleanString(ctx.auroraUid || ctx.aurora_uid || (!ctx.accountUserId ? ctx.userId : '')) || null;
+}
+
+function getCtxAccountUserId(ctx = {}) {
+  return cleanString(ctx.accountUserId || ctx.account_user_id || ctx.userId) || null;
+}
+
+function buildDiagnosisIdentity(ctx = {}) {
+  return {
+    auroraUid: getCtxAuroraUid(ctx),
+    userId: getCtxAccountUserId(ctx),
+  };
+}
+
 function detectColdStart(ctx) {
   const profile = ctx.profile || {};
   const hasCheckinLogs = Array.isArray(ctx.recentLogs) && ctx.recentLogs.length > 0;
@@ -618,7 +633,7 @@ function normalizeDiagnosisV2ResultPayload(resultPayload, ctx) {
 // ---------------------------------------------------------------------------
 
 function checkLoginGate(ctx) {
-  const isLoggedIn = Boolean(ctx.userId && ctx.authToken);
+  const isLoggedIn = Boolean(getCtxAccountUserId(ctx) && ctx.authToken);
   if (isLoggedIn || ctx.skipLogin === true) return { needsLogin: false };
   return {
     needsLogin: true,
@@ -741,8 +756,9 @@ async function runStage2({ goalProfile, followupAnswers, photoFindings, ctx, llm
   if (ctx.travelPlans?.length) signals.travel_plans = ctx.travelPlans;
 
   let previousDiagnoses = [];
-  if (ctx.userId) {
-    previousDiagnoses = (await getDiagnosisHistory(ctx.userId, { limit: 3 }))
+  const identity = buildDiagnosisIdentity(ctx);
+  if (identity.userId || identity.auroraUid) {
+    previousDiagnoses = (await getDiagnosisHistory(identity, { limit: 3 }))
       .map(compactDiagnosisSummary)
       .filter(Boolean);
   }
@@ -854,14 +870,15 @@ async function runDiagnosisV2({
   ensureLlmProvider(llmProvider);
   const diagnosisId = generateDiagnosisId();
   const isColdStart = detectColdStart(ctx);
+  const identity = buildDiagnosisIdentity(ctx);
 
   // Attach extra context for normalizeDiagnosisV2ResultPayload
   ctx._followupAnswers = followupAnswers;
   ctx._photoFindings = photoFindings;
 
   let diagnosisSeq = 1;
-  if (ctx.userId) {
-    const history = await getDiagnosisHistory(ctx.userId, { limit: 1 });
+  if (identity.userId || identity.auroraUid) {
+    const history = await getDiagnosisHistory(identity, { limit: 1 });
     diagnosisSeq = history.length + 1;
   }
 
@@ -952,12 +969,26 @@ async function runDiagnosisV2({
   }
 
   let analysisContextSnapshot = null;
-  if (ctx.userId) {
+  let latestArtifactId = null;
+  let artifactPersistence = null;
+  if (identity.userId || identity.auroraUid) {
     try {
       const savedArtifact = await saveDiagnosisArtifact({
-        userId: ctx.userId,
+        auroraUid: identity.auroraUid,
+        userId: identity.userId,
         artifact: { schema: 'aurora.skin_diagnosis.v2', data: validation.data },
       });
+      latestArtifactId = savedArtifact && savedArtifact.artifact_id
+        ? String(savedArtifact.artifact_id).trim()
+        : null;
+      artifactPersistence = savedArtifact
+        ? {
+            persisted: savedArtifact.persisted === true,
+            storage_mode: savedArtifact.storage_mode || (savedArtifact.persisted === true ? 'db' : 'response_only'),
+            persistence_error_code: savedArtifact.persistence_error_code || null,
+            artifact_id: latestArtifactId || null,
+          }
+        : null;
       const latestArtifact =
         savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
           ? {
@@ -973,12 +1004,20 @@ async function runDiagnosisV2({
       });
     } catch (_) {
       // Persistence failure should not break the diagnosis flow.
+      artifactPersistence = {
+        persisted: false,
+        storage_mode: 'response_only',
+        persistence_error_code: 'SAVE_FAILED',
+        artifact_id: null,
+      };
     }
   }
 
   return {
     resultPayload: validation.data,
     analysisContextSnapshot,
+    latestArtifactId,
+    artifactPersistence,
     warnings: validation.warnings,
     promptVersion: PROMPT_VERSION,
   };
@@ -988,10 +1027,25 @@ async function runDiagnosisV2({
 // Diagnosis history
 // ---------------------------------------------------------------------------
 
-async function getDiagnosisHistory(userId, { limit = 3 } = {}) {
-  if (!userId) return [];
+async function getDiagnosisHistory(identity, { limit = 3 } = {}) {
+  const resolvedIdentity =
+    identity && typeof identity === 'object'
+      ? {
+          auroraUid: cleanString(identity.auroraUid || identity.aurora_uid || ''),
+          userId: cleanString(identity.userId || identity.accountUserId || identity.account_user_id || ''),
+        }
+      : {
+          auroraUid: null,
+          userId: cleanString(identity || ''),
+        };
+  if (!resolvedIdentity.userId && !resolvedIdentity.auroraUid) return [];
   try {
-    return await listRecentDiagnosisArtifacts({ userId, limit, maxAgeDays: 180 });
+    return await listRecentDiagnosisArtifacts({
+      auroraUid: resolvedIdentity.auroraUid || null,
+      userId: resolvedIdentity.userId || null,
+      limit,
+      maxAgeDays: 180,
+    });
   } catch (_) {
     return [];
   }

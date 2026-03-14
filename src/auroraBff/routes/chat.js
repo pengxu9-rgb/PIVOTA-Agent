@@ -688,10 +688,66 @@ async function maybeRunTravelPipeline(req, skillRequest) {
   return buildTravelPipelineResponse({ req, skillRequest, pipelineOut });
 }
 
+function shouldResolveArtifactSnapshotForSkillRequest(skillRequest) {
+  const request = isPlainObject(skillRequest) ? skillRequest : {};
+  const params = isPlainObject(request.params) ? request.params : {};
+  const explicitSkillId = pickFirstTrimmed(request.skill_id);
+  if (explicitSkillId === 'reco.step_based') return true;
+  if (pickFirstTrimmed(params.target_step, params.target_ingredient)) return true;
+  const entrySource = String(pickFirstTrimmed(params.entry_source) || '').toLowerCase();
+  if (entrySource.includes('reco')) return true;
+  const userMessage = String(pickFirstTrimmed(params.user_message, params.message, params.text) || '').toLowerCase();
+  return /\brecommend|recommendation|products?\b/.test(userMessage) || /推荐|护肤品|产品推荐/.test(userMessage);
+}
+
+async function enrichSkillRequestWithArtifactSnapshot(req, skillRequest, ctx) {
+  const internal = getRoutesInternal();
+  if (!skillRequest || !isPlainObject(skillRequest.context)) return skillRequest;
+  if (!shouldResolveArtifactSnapshotForSkillRequest(skillRequest)) return skillRequest;
+  if (typeof internal.resolveArtifactBackedSnapshotForRoute !== 'function') {
+    skillRequest.context.analysis_context_artifact_meta = {
+      artifact_readback_source: 'none',
+      artifact_readback_hit: false,
+    };
+    return skillRequest;
+  }
+
+  const body = isPlainObject(req.body) ? req.body : {};
+  const session = isPlainObject(body.session) ? body.session : null;
+  const identity = isPlainObject(req._identity)
+    ? req._identity
+    : { auroraUid: ctx && ctx.aurora_uid ? ctx.aurora_uid : null, userId: null };
+  const readback = await internal.resolveArtifactBackedSnapshotForRoute({
+    identity,
+    session,
+    profile: skillRequest.context.profile || null,
+    recentLogs: Array.isArray(skillRequest.context.recent_logs) ? skillRequest.context.recent_logs : [],
+    ctx: {
+      brief_id: session && typeof session.brief_id === 'string' ? session.brief_id : null,
+      request_id:
+        (typeof req.get === 'function' ? req.get('x-request-id') || req.get('X-Request-Id') : null)
+        || null,
+    },
+    logger: console,
+    allowRequestSnapshot: true,
+  });
+
+  skillRequest.context.artifact_analysis_context_snapshot =
+    isPlainObject(readback && readback.analysis_context_snapshot)
+      ? readback.analysis_context_snapshot
+      : null;
+  skillRequest.context.analysis_context_artifact_meta = {
+    artifact_readback_source: pickFirstTrimmed(readback && readback.artifact_readback_source) || 'none',
+    artifact_readback_hit: Boolean(readback && readback.artifact_readback_hit),
+    latest_artifact_id: pickFirstTrimmed(readback && readback.latest_artifact_id) || null,
+  };
+  return skillRequest;
+}
+
 async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req);
-    const skillRequest = buildSkillRequest(req);
+    const skillRequest = await enrichSkillRequestWithArtifactSnapshot(req, buildSkillRequest(req), auth.ctx);
     const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
     if (travelResponse) {
       res.json(mergeResponseMeta(travelResponse, auth.ctx.auth_meta));
@@ -897,7 +953,7 @@ async function handleChatStream(req, res) {
         return;
       }
     }
-    const skillRequest = buildSkillRequest(req);
+    const skillRequest = await enrichSkillRequestWithArtifactSnapshot(req, buildSkillRequest(req), auth.ctx);
     const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
     if (travelResponse) {
       sendEvent('thinking', { step: 'travel_context', message: 'Checking destination conditions...' });
