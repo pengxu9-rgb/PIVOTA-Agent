@@ -206,6 +206,9 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
+const {
+  runRecommendationSharedStack,
+} = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
 const {
@@ -45735,6 +45738,7 @@ async function generateProductRecommendations({
   message,
   ingredientContext,
   analysisContextSnapshot = null,
+  sharedRequestContext = null,
   requestOverride = null,
   includeAlternatives,
   debug,
@@ -45748,15 +45752,30 @@ async function generateProductRecommendations({
   const analysisSummary =
     profile && profile.lastAnalysis ? profile.lastAnalysis : null;
   const analysisSummaryAt = profile && profile.lastAnalysisAt ? profile.lastAnalysisAt : null;
+  const normalizedSharedRequestContext =
+    sharedRequestContext && typeof sharedRequestContext === 'object' && !Array.isArray(sharedRequestContext)
+      ? sharedRequestContext
+      : null;
   const effectiveAnalysisContextSnapshot =
-    analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs });
-  const recommendationTaskContext = buildTaskAnalysisContextForPrefix({
-    task: 'recommendation',
-    snapshot: effectiveAnalysisContextSnapshot,
-    profile,
-    requestOverride,
-    recentLogs,
-  });
+    normalizedSharedRequestContext && normalizedSharedRequestContext.analysis_context_snapshot
+      ? normalizedSharedRequestContext.analysis_context_snapshot
+      : (analysisContextSnapshot || buildAnalysisContextSnapshotForRoute({ profile, recentLogs }));
+  const recommendationTaskContext =
+    normalizedSharedRequestContext && normalizedSharedRequestContext.task_context
+      ? normalizedSharedRequestContext.task_context
+      : buildTaskAnalysisContextForPrefix({
+        task: 'recommendation',
+        snapshot: effectiveAnalysisContextSnapshot,
+        profile,
+        requestOverride,
+        recentLogs,
+      });
+  const requestContextSignature = pickFirstTrimmed(
+    normalizedSharedRequestContext && normalizedSharedRequestContext.request_context_signature,
+  ) || null;
+  const strictnessSource = pickFirstTrimmed(
+    normalizedSharedRequestContext && normalizedSharedRequestContext.strictness_source,
+  ) || 'default';
   const analysisContextBlock = buildAnalysisContextPromptBlock({
     taskLabel: 'recommendation',
     taskContext: recommendationTaskContext,
@@ -45790,6 +45809,8 @@ async function generateProductRecommendations({
   let llmLatencyMs = null;
   let catalogStructured = null;
   let catalogCandidatePool = [];
+  let candidatePoolSignature = null;
+  let poolSource = 'none';
   let catalogDebug = null;
   let pdpFastFallbackReasonCode = null;
   let pdpFastExternalFallbackReasonCode = null;
@@ -45949,6 +45970,21 @@ async function generateProductRecommendations({
       catalogOut && typeof catalogOut === 'object' && Array.isArray(catalogOut.candidate_pool)
         ? catalogOut.candidate_pool
         : [];
+    poolSource = catalogCandidatePool.length ? 'catalog_candidates' : 'none';
+    candidatePoolSignature = crypto.createHash('sha256').update(JSON.stringify({
+      ids: catalogCandidatePool
+        .map((row) => pickFirstTrimmed(
+          row && row.product_id,
+          row && row.product_group_id,
+          row && row.sku_id,
+          row && row.name,
+          row && row.display_name,
+          row && row.url,
+        ))
+        .filter(Boolean)
+        .sort(),
+      pool_source: poolSource,
+    })).digest('hex').slice(0, 16);
     catalogDebug =
       catalogOut && typeof catalogOut === 'object' && catalogOut.debug && typeof catalogOut.debug === 'object'
         ? catalogOut.debug
@@ -46049,6 +46085,9 @@ async function generateProductRecommendations({
         explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
         context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
         adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+        ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
+        ...(candidatePoolSignature ? { candidate_pool_signature: candidatePoolSignature } : {}),
+        strictness_source: strictnessSource,
       },
     }
     : null;
@@ -46447,6 +46486,9 @@ async function generateProductRecommendations({
         explicit_override_applied: Boolean(recommendationTaskContext.explicit_override_applied),
         context_mode: String(recommendationTaskContext.context_mode || '').trim() || 'no_context',
         adapter_version: String(recommendationTaskContext.adapter_version || '').trim() || null,
+        ...(requestContextSignature ? { request_context_signature: requestContextSignature } : {}),
+        ...(candidatePoolSignature ? { candidate_pool_signature: candidatePoolSignature } : {}),
+        strictness_source: strictnessSource,
       },
     },
   };
@@ -46489,6 +46531,11 @@ async function generateProductRecommendations({
     norm,
     upstreamDebug,
     alternativesDebug,
+    candidatePool: catalogCandidatePool,
+    candidatePoolSignature,
+    poolSource,
+    requestContextSignature,
+    strictnessSource,
     upstreamFailureCode,
     llmFailureClass,
     llmTrace,
@@ -51739,17 +51786,28 @@ function mountAuroraBffRoutes(app, { logger }) {
         constraints: parsed.data.constraints || {},
         lang: ctx.lang,
       });
-	      const upstreamReco = await generateProductRecommendations({
-	        ctx,
-	        profile,
-	        recentLogs,
-	        message: requestText,
-	        analysisContextSnapshot,
+      const sharedReco = await runRecommendationSharedStack({
+        entryType: 'direct',
+        message: requestText,
+        directRequest: parsed.data,
+        profile,
+        recentLogs,
+        analysisContextSnapshot,
         requestOverride: requestProfileOverlay,
-        includeAlternatives: false,
-        logger,
-        recoTriggerSource: 'goal_driven',
+        coreRunner: (coreInput) => generateProductRecommendations(coreInput),
+        coreInput: {
+          ctx,
+          profile,
+          recentLogs,
+          message: requestText,
+          analysisContextSnapshot,
+          requestOverride: requestProfileOverlay,
+          includeAlternatives: parsed.data.include_alternatives === true,
+          logger,
+          recoTriggerSource: 'goal_driven',
+        },
       });
+	      const upstreamReco = sharedReco && sharedReco.raw ? sharedReco.raw : null;
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
         : normalizeRecoGenerate(null);
