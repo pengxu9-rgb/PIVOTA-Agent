@@ -85,6 +85,56 @@ test('analysisContextSnapshot: explicit profile stays in snapshot while request 
   assert.equal(taskContext.explicit_override_applied, true);
 });
 
+test('analysisContextSnapshot: resolved context distinguishes artifact, explicit_only, compat fallback, and none', () => {
+  const explicitOnly = resolveAnalysisContextForTask({
+    task: 'recommendation',
+    snapshot: buildAnalysisContextSnapshotV1({
+      latestArtifact: null,
+      profile: { goals: ['hydration'], sensitivity: 'high' },
+      recentLogs: [],
+    }),
+    profile: { goals: ['hydration'], sensitivity: 'high' },
+    requestOverride: null,
+    recentLogs: [],
+  });
+  assert.equal(explicitOnly.snapshot_present, false);
+  assert.equal(explicitOnly.context_source_mode, 'explicit_only');
+  assert.equal(explicitOnly.analysis_context_available, true);
+
+  const compatFallback = resolveAnalysisContextForTask({
+    task: 'recommendation',
+    snapshot: buildAnalysisContextSnapshotV1({
+      latestArtifact: null,
+      profile: {},
+      lastAnalysis: {
+        skin_profile: { skin_type_tendency: 'combination' },
+      },
+      recentLogs: [],
+    }),
+    profile: {
+      lastAnalysis: {
+        skin_profile: { skin_type_tendency: 'combination' },
+      },
+    },
+    requestOverride: null,
+    recentLogs: [],
+  });
+  assert.equal(compatFallback.snapshot_present, true);
+  assert.equal(compatFallback.context_source_mode, 'artifact_compat_fallback');
+  assert.equal(compatFallback.analysis_context_available, true);
+
+  const none = resolveAnalysisContextForTask({
+    task: 'recommendation',
+    snapshot: null,
+    profile: null,
+    requestOverride: null,
+    recentLogs: [],
+  });
+  assert.equal(none.snapshot_present, false);
+  assert.equal(none.context_source_mode, 'none');
+  assert.equal(none.analysis_context_available, false);
+});
+
 test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude boundaries stable across tasks', () => {
   const { profile, snapshot } = buildSnapshotFixture();
   const resolved = resolveAnalysisContextForTask({
@@ -100,15 +150,24 @@ test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude bound
   const recommendationContext = buildRecommendationAnalysisContextFromSnapshot(resolved);
   const travelContext = buildTravelAnalysisContextFromSnapshot(resolved);
 
+  assert.equal(routineContext.snapshot_present, true);
+  assert.equal(routineContext.context_source_mode, 'artifact');
+  assert.equal(routineContext.analysis_context_available, true);
   assert.deepEqual(routineContext.task_hard_context.active_goals, ['wrinkles']);
   assert.equal(routineContext.task_hard_context.sensitivity, 'medium');
   assert.equal(routineContext.task_hard_context.barrier_status, 'healthy');
   assert.ok(Array.isArray(routineContext.task_hard_context.risk_axes));
 
+  assert.equal(productContext.snapshot_present, true);
+  assert.equal(productContext.context_source_mode, 'artifact');
+  assert.equal(productContext.analysis_context_available, true);
   assert.deepEqual(productContext.task_hard_context.active_goals, ['wrinkles']);
   assert.equal(productContext.task_hard_context.skin_type, 'combination');
   assert.deepEqual(productContext.task_hard_context.ingredient_avoid, ['fragrance']);
 
+  assert.equal(ingredientContext.snapshot_present, true);
+  assert.equal(ingredientContext.context_source_mode, 'artifact');
+  assert.equal(ingredientContext.analysis_context_available, true);
   assert.deepEqual(ingredientContext.task_hard_context.active_goals, ['wrinkles']);
   assert.equal(ingredientContext.task_hard_context.sensitivity, 'medium');
   assert.equal(ingredientContext.task_hard_context.barrier_status, 'healthy');
@@ -130,7 +189,13 @@ test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude bound
     false,
     'recommendation adapter should not keep heuristic/soft avoid values as soft exclusions list',
   );
+  assert.equal(recommendationContext.snapshot_present, true);
+  assert.equal(recommendationContext.context_source_mode, 'artifact');
+  assert.equal(recommendationContext.analysis_context_available, true);
 
+  assert.equal(travelContext.snapshot_present, true);
+  assert.equal(travelContext.context_source_mode, 'artifact');
+  assert.equal(travelContext.analysis_context_available, true);
   assert.deepEqual(travelContext.task_hard_context.active_goals, ['wrinkles']);
   assert.ok(Array.isArray(travelContext.task_hard_context.risk_axes));
   assert.ok(
