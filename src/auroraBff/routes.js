@@ -23505,13 +23505,16 @@ async function resolveArtifactBackedSnapshotForRoute({
       ctx,
       logger,
     });
-    if (latestArtifact) {
-      return {
-        analysis_context_snapshot: buildAnalysisContextSnapshotForRoute({
+    const requestArtifactSnapshot = latestArtifact
+      ? buildAnalysisContextSnapshotForRoute({
           latestArtifact,
           profile,
           recentLogs,
-        }),
+        })
+      : null;
+    if (latestArtifact && requestArtifactSnapshot) {
+      return {
+        analysis_context_snapshot: requestArtifactSnapshot,
         latest_artifact: latestArtifact,
         latest_artifact_id: latestArtifactId,
         artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
@@ -23530,13 +23533,16 @@ async function resolveArtifactBackedSnapshotForRoute({
     ctx,
     logger,
   });
-  if (latestArtifact) {
-    return {
-      analysis_context_snapshot: buildAnalysisContextSnapshotForRoute({
+  const latestDbSnapshot = latestArtifact
+    ? buildAnalysisContextSnapshotForRoute({
         latestArtifact,
         profile,
         recentLogs,
-      }),
+      })
+    : null;
+  if (latestArtifact && latestDbSnapshot) {
+    return {
+      analysis_context_snapshot: latestDbSnapshot,
       latest_artifact: latestArtifact,
       latest_artifact_id: pickFirstTrimmed(latestArtifact.artifact_id, latestArtifactId) || null,
       artifact_persistence: normalizeArtifactPersistenceMeta(latestArtifact),
