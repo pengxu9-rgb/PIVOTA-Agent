@@ -387,7 +387,7 @@ test('activity detail snapshot helpers normalize concern objects and preserve nu
   assert.equal(travelSnapshot.indoor_outdoor_ratio, null);
 });
 
-test('activity detail helpers route skin analysis continue chat through explicit deep-dive action', () => {
+test('activity detail helpers route skin analysis continue chat through explicit solution-next-steps action', () => {
   const actions = activityRouteInternal.buildSkinAnalysisActions(
     'EN',
     { activity_id: 'act_skin_1' },
@@ -399,7 +399,7 @@ test('activity detail helpers route skin analysis continue chat through explicit
     : null;
 
   assert.ok(continueChat);
-  assert.match(String(continueChat.deeplink || ''), /chip_id=chip\.aurora\.next_action\.deep_dive_skin/);
+  assert.match(String(continueChat.deeplink || ''), /chip_id=chip\.aurora\.next_action\.solution_next_steps/);
   assert.match(String(continueChat.deeplink || ''), /artifact_id=da_skin_1/);
   assert.match(String(continueChat.deeplink || ''), /Do\+not\+ask\+me\+to\+restate\+my\+goals/i);
 });

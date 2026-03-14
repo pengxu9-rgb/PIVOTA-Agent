@@ -367,7 +367,7 @@ function buildSkinAnalysisActions(lang, item, snapshot) {
     'Continue from my saved skin analysis. Do not ask me to restate my goals. Tell me the next best steps.',
   );
   const continueChat = withQuery('/chat', {
-    chip_id: 'chip.aurora.next_action.deep_dive_skin',
+    chip_id: 'chip.aurora.next_action.solution_next_steps',
     q: prompt,
     activity_id: item.activity_id,
     artifact_id: snapshot && snapshot.artifact_id,
