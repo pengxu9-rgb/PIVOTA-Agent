@@ -851,21 +851,31 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       assert.equal(Array.isArray(target?.products?.example_product_discovery_items), true);
       assert.equal(target.products.example_product_discovery_items.length > 0, true);
       assert.equal(typeof target.products.example_product_discovery_items[0]?.search_query, 'string');
+      assert.equal(Array.isArray(target.products.example_product_discovery_items[0]?.query_ladder_steps), true);
+      assert.equal(target.products.example_product_discovery_items[0].query_ladder_steps.length > 1, true);
       assert.equal(Array.isArray(target.products.example_product_discovery_items[0]?.query_ladder), true);
-      assert.equal(target.products.example_product_discovery_items[0].query_ladder.length > 1, true);
       assert.equal(
-        target.products.example_product_discovery_items[0].query_ladder.every((step) =>
+        target.products.example_product_discovery_items[0].query_ladder.length,
+        target.products.example_product_discovery_items[0].query_ladder_steps.length,
+      );
+      assert.equal(
+        target.products.example_product_discovery_items[0].query_ladder_steps.every((step) =>
           ['strong_goal_family', 'supportive_family', 'generic_family'].includes(String(step?.intent_strength || ''))),
         true,
       );
       assert.equal(
-        target.products.example_product_discovery_items[0].query_ladder.every((step) => step?.stop_on_success === true),
+        target.products.example_product_discovery_items[0].query_ladder_steps.every((step) => step?.stop_on_success === true),
         true,
       );
       assert.equal(
-        target.products.example_product_discovery_items[0].query_ladder.some((step) =>
+        target.products.example_product_discovery_items[0].query_ladder_steps.some((step) =>
           String(step?.query || '').trim().toLowerCase() === 'face moisturizer'),
         false,
+      );
+      assert.equal(
+        target.products.example_product_discovery_items[0].query_ladder_steps.every((step) =>
+          step?.source_policy === 'internal_first_then_external_supplement' && step?.decision_mode === 'guidance_only'),
+        true,
       );
       assert.equal(Array.isArray(target?.products?.competitors), false);
       assert.equal(Array.isArray(target?.products?.dupes), false);
@@ -876,13 +886,13 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       guidanceTargets.some((target) =>
         Array.isArray(target?.products?.example_product_discovery_items)
         && target.products.example_product_discovery_items.some((item) =>
-          Array.isArray(item?.query_ladder)
-          && item.query_ladder.some((step) =>
+          Array.isArray(item?.query_ladder_steps)
+          && item.query_ladder_steps.some((step) =>
             step
-            && step.allow_external_seed === true
             && /moisturizer/i.test(String(step.query || ''))
             && /ceramide/i.test(String(step.query || ''))
-            && /barrier repair/i.test(String(step.query || ''))))),
+            && /barrier repair/i.test(String(step.query || ''))
+            && step.source_policy === 'internal_first_then_external_supplement'))),
       true,
     );
   } finally {

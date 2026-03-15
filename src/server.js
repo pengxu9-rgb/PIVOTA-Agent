@@ -3854,6 +3854,14 @@ function isIngredientPlanGuidanceUiSurface(value) {
   return normalizeSearchUiSurface(value) === 'ingredient_plan_guidance_only';
 }
 
+function normalizeGuidanceDiscoverySourcePolicy(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'internal_first_then_external_supplement') {
+    return 'internal_first_then_external_supplement';
+  }
+  return null;
+}
+
 function parseQueryJsonObject(value) {
   const raw = firstQueryParamValue(value);
   if (!raw) return null;
@@ -4076,15 +4084,25 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
       firstQueryParamValue(query.decision_mode || query.decisionMode),
       { guidanceOnlyDiscovery: true },
     );
+    const sourcePolicy = normalizeGuidanceDiscoverySourcePolicy(
+      firstQueryParamValue(query.source_policy || query.sourcePolicy),
+    );
+    const requestedQueryStepStrength = resolveGuidanceSearchStepStrength(
+      query.query_step_strength ?? query.queryStepStrength,
+      search.query,
+      targetStepFamily,
+    );
 
     if (productOnly !== undefined) metadata.product_only_requested = productOnly;
     if (queryIndex !== undefined) metadata.query_index = Math.max(0, Math.floor(queryIndex));
     if (queryTotal !== undefined) metadata.query_total = Math.max(0, Math.floor(queryTotal));
     if (targetStepFamily) metadata.query_target_step_family = targetStepFamily;
     if (decisionMode) metadata.decision_mode = decisionMode;
+    if (sourcePolicy) metadata.source_policy = sourcePolicy;
+    if (requestedQueryStepStrength) metadata.query_step_strength = requestedQueryStepStrength;
 
     if (search.allow_external_seed === undefined) {
-      search.allow_external_seed = false;
+      search.allow_external_seed = true;
     }
     if (search.allow_external_seed === true && !String(search.external_seed_strategy || '').trim()) {
       search.external_seed_strategy = 'supplement_internal_first';
@@ -22180,11 +22198,37 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !Array.isArray(finalGuidanceMeta.search_decision)
             ? finalGuidanceMeta.search_decision
             : {};
+        const finalGuidanceSourcePolicy = normalizeGuidanceDiscoverySourcePolicy(
+          finalGuidanceMeta.source_policy ||
+            req?.query?.source_policy ||
+            req?.query?.sourcePolicy ||
+            queryParams?.source_policy ||
+            queryParams?.sourcePolicy,
+        );
+        const existingReasonCodes = Array.isArray(enriched?.reason_codes) ? enriched.reason_codes : [];
+        const hasLegacyGuidanceClarification =
+          Boolean(enriched?.clarification?.question) ||
+          existingReasonCodes.includes('AMBIGUITY_CLARIFY') ||
+          String(finalGuidanceMeta.query_source || '').trim() === 'agent_products_error_fallback';
         if (finalGuidanceDecision?.applied) {
           enriched = {
             ...enriched,
+            ...(hasLegacyGuidanceClarification
+              ? {
+                  clarification: null,
+                  reply: '',
+                  reason_codes: existingReasonCodes.filter((code) => String(code || '').trim() !== 'AMBIGUITY_CLARIFY'),
+                }
+              : {}),
             metadata: {
               ...finalGuidanceMeta,
+              ...(hasLegacyGuidanceClarification
+                ? {
+                    clarification_suppressed: hasLegacyGuidanceClarification,
+                    legacy_fallback_suppressed:
+                      String(finalGuidanceMeta.query_source || '').trim() === 'agent_products_error_fallback',
+                  }
+                : {}),
               search_decision: {
                 ...existingFinalGuidanceDecision,
                 contract_version:
@@ -22200,6 +22244,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 supportive_same_family_topk_count: finalGuidanceDecision.supportive_same_family_topk_count,
                 query_step_strength: finalGuidanceDecision.query_step_strength,
                 decision_mode: 'guidance_only',
+                source_policy: finalGuidanceSourcePolicy || null,
                 step_success_class: finalGuidanceDecision.step_success_class || null,
                 success_contract_result: finalGuidanceDecision.success_contract_result || null,
                 candidate_class_counts: mergeSearchCountMaps(
@@ -22250,6 +22295,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 query_exhausted:
                   finalGuidanceMeta.query_exhausted === true ||
                   finalGuidanceProducts.length === 0,
+                clarification_suppressed: hasLegacyGuidanceClarification,
+                legacy_fallback_suppressed:
+                  String(finalGuidanceMeta.query_source || '').trim() === 'agent_products_error_fallback',
               },
             },
           };

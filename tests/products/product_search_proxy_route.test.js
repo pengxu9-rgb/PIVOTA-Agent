@@ -2983,4 +2983,55 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(externalSupplement.isDone()).toBe(true);
   });
 
+  test('ingredient_plan_guidance_only suppresses legacy brand clarification fallback and returns shared failure semantics', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-clarification-suppression-test';
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'false';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async () => ({ rows: [] })),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'ceramide cream',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        allow_external_seed: 'false',
+        target_step_family: 'moisturizer',
+        search_all_merchants: 'true',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.clarification ?? null).toBe(null);
+    expect(Array.isArray(resp.body.reason_codes)).toBe(true);
+    expect(resp.body.reason_codes).not.toContain('AMBIGUITY_CLARIFY');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        clarification_suppressed: true,
+        legacy_fallback_suppressed: true,
+        query_source: 'agent_products_error_fallback',
+      }),
+    );
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        decision_mode: 'guidance_only',
+        clarification_suppressed: true,
+        legacy_fallback_suppressed: true,
+        success_contract_result: expect.objectContaining({
+          applied: true,
+          satisfied: false,
+          failure_class: expect.stringMatching(
+            /^(retrieval_direction_weak|no_target_relevant_candidates|generic_family_only)$/
+          ),
+        }),
+      }),
+    );
+  });
+
 });
