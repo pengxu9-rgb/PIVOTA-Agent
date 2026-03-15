@@ -227,26 +227,26 @@ test('skill_router does not duplicate watchout when answer already includes oily
 });
 
 test('reco_step_based returns a recommendations card when grounded catalog recommendations exist', async () => {
-  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
-  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
-    rows: [
-      {
-        product_id: 'prod_mask_1',
-        merchant_id: 'merchant_mask_1',
-        brand: 'Winona',
-        name: 'Hydrating Repair Mask',
-        reasons: ['Supports barrier comfort and hydration.'],
-        match_state: 'exact',
+  RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest(async () => ({
+    norm: {
+      payload: {
+        recommendations: [
+          {
+            product_id: 'prod_mask_1',
+            merchant_id: 'merchant_mask_1',
+            brand: 'Winona',
+            name: 'Hydrating Repair Mask',
+            product_type: 'mask',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'catalog_grounded',
+          llm_trace: { prompt_hash: 'stub_prompt_hash' },
+        },
       },
-    ],
-    recommendation_meta: {
-      source_mode: 'llm_catalog_hybrid',
-      llm_seed_count: 6,
-      exact_match_count: 1,
-      fuzzy_match_count: 0,
-      unresolved_seed_count: 0,
     },
-  });
+    mainlineStatus: 'grounded_success',
+  }));
 
   try {
     const skill = new RecoStepBasedSkill();
@@ -302,25 +302,27 @@ test('reco_step_based returns a recommendations card when grounded catalog recom
     assert.ok(recoCard);
     assert.equal(Array.isArray(recoCard.metadata?.recommendations), true);
     assert.equal(recoCard.metadata?.recommendations?.[0]?.product_id, 'prod_mask_1');
-    assert.equal(recoCard.metadata?.source_mode, 'llm_catalog_hybrid');
+    assert.equal(recoCard.metadata?.source_mode, 'catalog_grounded');
     assert.equal(response.cards.some((card) => card.card_type === 'effect_review'), false);
   } finally {
-    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
+    RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest();
   }
 });
 
 test('reco_step_based returns text_response when grounded recommendation search yields no candidates', async () => {
-  const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
-  recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
-    rows: [],
-    recommendation_meta: {
-      source_mode: 'llm_catalog_hybrid',
-      llm_seed_count: 6,
-      exact_match_count: 0,
-      fuzzy_match_count: 0,
-      unresolved_seed_count: 6,
+  RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest(async () => ({
+    norm: {
+      payload: {
+        recommendations: [],
+        products_empty_reason: 'no_valid_catalog_hit_for_target',
+        recommendation_meta: {
+          source_mode: 'catalog_grounded',
+          surface_reason: 'no_valid_catalog_hit_for_target',
+        },
+      },
     },
-  });
+    mainlineStatus: 'needs_more_context',
+  }));
 
   try {
     const skill = new RecoStepBasedSkill();
@@ -363,9 +365,75 @@ test('reco_step_based returns text_response when grounded recommendation search 
     const textCard = response.cards.find((card) => card.card_type === 'text_response');
     assert.ok(textCard);
     assert.equal(response.cards.some((card) => card.card_type === 'recommendations'), false);
-    assert.match(String(textCard.sections?.[0]?.text_en || ''), /confident shortlist/i);
+    assert.match(String(textCard.sections?.[0]?.text_en || ''), /strong mask match|narrow it down/i);
   } finally {
-    recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
+    RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest();
+  }
+});
+
+test('reco_step_based forwards latest_reco_context from thread_state and surfaces weak-context reason', async () => {
+  let capturedCoreInput = null;
+  RecoStepBasedSkill.__setSharedRecoCoreRunnerForTest(async (input) => {
+    capturedCoreInput = input;
+    return {
+      norm: {
+        payload: {
+          recommendations: [],
+          products_empty_reason: 'analysis_context_too_weak_for_step_reco',
+          recommendation_meta: {
+            source_mode: 'catalog_grounded',
+            surface_reason: 'analysis_context_too_weak_for_step_reco',
+            products_empty_reason: 'analysis_context_too_weak_for_step_reco',
+          },
+        },
+      },
+      mainlineStatus: 'needs_more_context',
+    };
+  });
+
+  try {
+    const skill = new RecoStepBasedSkill();
+    const response = await skill.run(
+      {
+        skill_id: 'reco.step_based',
+        context: {
+          profile: {},
+          recent_logs: [],
+          travel_plan: null,
+          current_routine: null,
+          inventory: [],
+          locale: 'en-US',
+          safety_flags: [],
+        },
+        params: {
+          user_message: 'Recommend a moisturizer for me.',
+          message: 'Recommend a moisturizer for me.',
+          text: 'Recommend a moisturizer for me.',
+          target_step: 'moisturizer',
+          entry_source: 'text',
+        },
+        thread_state: {
+          latest_reco_context: {
+            reco_context_version: 'aurora.reco_context.v2',
+            reco_context_source: 'analysis_skin',
+            diagnosis_goal: 'barrier_repair',
+            target_step: 'moisturizer',
+            reco_artifact_eligible: false,
+            seed_terms: ['barrier_repair', 'ceramide', 'panthenol'],
+          },
+        },
+      },
+      {}
+    );
+
+    assert.ok(capturedCoreInput);
+    assert.equal(capturedCoreInput.latestRecoContext?.diagnosis_goal, 'barrier_repair');
+    assert.equal(capturedCoreInput.latestRecoContext?.target_step, 'moisturizer');
+    assert.equal(capturedCoreInput.recoArtifactEligibleHint, false);
+    assert.match(String(response.cards?.[0]?.sections?.[0]?.text_en || ''), /Add a clear photo|current routine\/sensitivity/i);
+    assert.equal(response.meta?.surface_reason, 'analysis_context_too_weak_for_step_reco');
+  } finally {
+    RecoStepBasedSkill.__resetSharedRecoCoreRunnerForTest();
   }
 });
 
