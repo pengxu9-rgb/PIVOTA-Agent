@@ -286,6 +286,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.search_decision?.same_family_topk_count).toBeGreaterThan(0);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id).toBe('cream_1');
+    expect(res.body.products.some((row) => String(row?.product_id || '').includes('cleanser_1'))).toBe(false);
     expect(res.body.products.some((row) => String(row?.product_id || '').includes('body_1'))).toBe(false);
     expect(res.body.products.some((row) => String(row?.product_id || '').includes('spf_1'))).toBe(false);
   });

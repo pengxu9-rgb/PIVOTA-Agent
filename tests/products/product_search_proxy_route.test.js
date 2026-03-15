@@ -2754,6 +2754,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
                 created_at: now,
               },
               {
+                id: 'seed_cleanser',
+                market: 'US',
+                tool: '*',
+                title: 'Rose Cream Cleanser',
+                canonical_url: 'https://pixibeauty.com/products/rose-cream-cleanser',
+                destination_url: 'https://pixibeauty.com/products/rose-cream-cleanser',
+                availability: 'in stock',
+                seed_data: { brand: 'PIXI BEAUTY', category: 'cleanser' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed_vitc',
                 market: 'US',
                 tool: '*',
@@ -2792,7 +2804,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
       'Rose Ceramide Cream',
     ]);
-    expect(resp.body.products.some((row) => /Tinted Moisturizer|Milky Peel/i.test(String(row.title || '')))).toBe(false);
+    expect(resp.body.products.some((row) => /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser/i.test(String(row.title || '')))).toBe(false);
     expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
         hit_quality: 'valid_hit',
@@ -2807,10 +2819,87 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           bundle: 1,
           tint: 1,
           peel: 1,
+          cleanser: 1,
           brightening: 1,
         }),
       }),
     );
+  });
+
+  test('ingredient-intent serum guidance filters generic serum noise when panthenol is the anchor', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-external-seed-panthenol-serum-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed_winona_panthenol',
+                market: 'US',
+                tool: '*',
+                title: 'Winona Soothing Repair Serum with Panthenol',
+                canonical_url: 'https://winona.example.com/products/panthenol-serum',
+                destination_url: 'https://winona.example.com/products/panthenol-serum',
+                availability: 'in stock',
+                seed_data: { brand: 'Winona', category: 'serum' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_b5_serum',
+                market: 'US',
+                tool: '*',
+                title: 'Barrier B5 Serum',
+                canonical_url: 'https://example.com/products/barrier-b5-serum',
+                destination_url: 'https://example.com/products/barrier-b5-serum',
+                availability: 'in stock',
+                seed_data: { brand: 'Derm Lab', category: 'serum' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_patyka_generic',
+                market: 'US',
+                tool: '*',
+                title: 'Serum Repulpant Fundamental',
+                canonical_url: 'https://patyka.example.com/products/fundamental-serum',
+                destination_url: 'https://patyka.example.com/products/fundamental-serum',
+                availability: 'in stock',
+                seed_data: { brand: 'PATYKA', category: 'serum' },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'panthenol serum',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        target_step_family: 'serum',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'Winona Soothing Repair Serum with Panthenol',
+      'Barrier B5 Serum',
+    ]);
+    expect(resp.body.products.some((row) => /PATYKA|Repulpant/i.test(String(row.title || '')))).toBe(false);
   });
 
   test('guidance-only moisturizer search supplements external seeds when internal cache is tool-heavy', async () => {

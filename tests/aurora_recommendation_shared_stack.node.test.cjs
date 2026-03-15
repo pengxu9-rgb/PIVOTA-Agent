@@ -355,6 +355,16 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
     guidanceOnlyDiscovery: true,
     queryStepStrength: 'strong_goal_family',
   });
+  const cleanser = classifyBeautyCoarseCandidate({
+    display_name: 'Rose Cream Cleanser',
+    category: 'cleanser',
+    product_type: 'cleanser',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
 
   assert.equal(strong.target_relevance_class, 'strong_goal_family');
   assert.equal(strong.coarse_valid_for_target, true);
@@ -369,6 +379,8 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(tint.noise_reason, 'tint');
   assert.equal(peel.target_relevance_class, 'hard_invalid');
   assert.equal(peel.noise_reason, 'peel');
+  assert.equal(cleanser.target_relevance_class, 'hard_invalid');
+  assert.equal(cleanser.noise_reason, 'cleanser');
   assert.equal(sample.offer_type, 'sample');
   assert.equal(sample.coarse_valid_for_target, true);
 });
