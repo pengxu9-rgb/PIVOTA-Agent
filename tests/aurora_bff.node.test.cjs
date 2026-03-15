@@ -9646,7 +9646,23 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
 
   const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
     headers: { 'X-Aurora-UID': 'test_uid', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief' },
-    body: { use_photo: false, photos: [] },
+    body: {
+      use_photo: false,
+      photos: [],
+      session: {
+        state: {
+          pending_clarification: {
+            v: 1,
+            flow_id: 'pc_stale_analysis',
+            created_at_ms: Date.now(),
+            resume_user_text: 'Recommend a moisturizer',
+            current: { id: 'barrierStatus', norm_id: 'barrierStatus' },
+            queue: [],
+            history: [],
+          },
+        },
+      },
+    },
   });
 
   assert.equal(resp.status, 200);
@@ -9658,6 +9674,7 @@ test('/v1/analysis/skin: allow no-photo analysis (continue without photos)', asy
   assert.equal(String(analysisMeta.detector_source || ''), 'baseline_low_confidence');
   assert.equal(Boolean(analysisMeta.llm_vision_called), false);
   assert.equal(Boolean(analysisMeta.llm_report_called), false);
+  assert.equal(resp.body?.session_patch?.state?.pending_clarification, null);
   const confidenceCard = findCardByType(cards, 'confidence_notice');
   assert.ok(confidenceCard);
   assert.equal(String(confidenceCard?.payload?.reason || ''), 'low_confidence');

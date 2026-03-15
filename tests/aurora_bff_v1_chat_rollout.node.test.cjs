@@ -64,6 +64,23 @@ test('V1ChatRequestSchema accepts optional context on legacy /v1/chat bodies', (
   assert.equal(parsed.success, true);
 });
 
+test('V1ChatRequestSchema accepts optional thread_state on /v1/chat bodies', () => {
+  resetAuroraModules();
+  const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+  const parsed = V1ChatRequestSchema.safeParse({
+    message: 'Recommend a moisturizer for me',
+    thread_state: {
+      latest_reco_context: {
+        diagnosis_goal: 'barrier_repair',
+        target_step: 'moisturizer',
+        reco_artifact_eligible: false,
+      },
+    },
+  });
+
+  assert.equal(parsed.success, true);
+});
+
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
