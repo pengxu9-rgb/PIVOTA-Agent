@@ -337,8 +337,20 @@ function buildSameFamilyQueryLevels({
   const goalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
   const ingredientTerms = collectIngredientTerms(ingredientContext, recoContext).slice(0, 2);
   const concernTerms = collectConcernTerms(profileSummary, ingredientContext, recoContext).slice(0, 2);
+  const seedToSameFamilyQuery = (seed) => {
+    const normalizedSeed = normalizeQueryToken(seed).toLowerCase();
+    if (!normalizedSeed) return '';
+    if (aliases.some((alias) => normalizedSeed.includes(String(alias || '').trim().toLowerCase()))) {
+      return normalizeQueryToken(seed);
+    }
+    return normalizeQueryToken(`${seed} ${stepPrimary}`);
+  };
   const normalizedSeedTerms = uniqStrings(
     asArray(seedTerms).map((item) => normalizeQueryToken(item)).filter(Boolean),
+    4,
+  );
+  const stepScopedSeedTerms = uniqStrings(
+    normalizedSeedTerms.map((seed) => seedToSameFamilyQuery(seed)).filter(Boolean),
     4,
   );
 
@@ -349,28 +361,27 @@ function buildSameFamilyQueryLevels({
         ...goalTerms.flatMap((goal) => ingredientTerms.flatMap((ingredient) => concernTerms.length
           ? concernTerms.map((concern) => `${stepPrimary} ${goal} ${ingredient} ${concern}`)
           : [`${stepPrimary} ${goal} ${ingredient}`])),
-        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [`${seed} ${goal}`, `${stepPrimary} ${seed} ${goal}`])),
+        ...stepScopedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [`${seed} ${goal}`])),
       ], 8),
     },
     {
       ladder_level: 'step_goal',
       queries: uniqStrings([
         ...goalTerms.map((goal) => `${stepPrimary} ${goal}`),
-        ...normalizedSeedTerms,
+        ...stepScopedSeedTerms,
       ], 8),
     },
     {
       ladder_level: 'step_concern',
       queries: uniqStrings([
         ...concernTerms.map((concern) => `${stepPrimary} ${concern}`),
-        ...normalizedSeedTerms.map((seed) => `${stepPrimary} ${seed}`),
+        ...stepScopedSeedTerms,
       ], 8),
     },
     {
       ladder_level: 'step_only',
       queries: uniqStrings([
         stepPrimary,
-        ...normalizedSeedTerms,
       ], 8),
     },
     {

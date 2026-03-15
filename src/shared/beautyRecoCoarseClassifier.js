@@ -12,8 +12,8 @@ const BEAUTY_SEARCH_DECISION_CONTRACT_VERSION = 'beauty_search_decision_v3';
 const TOOL_RE = /\b(brush|applicator|tool|accessory|sponge|puff|mirror|curler|sharpener)\b/i;
 const BRUSH_RE = /\b(brush|applicator|sponge|puff)\b/i;
 const ACCESSORY_RE = /\b(accessory|mirror|curler|sharpener)\b/i;
-const BODY_RE = /\b(body|hand|foot|heel|bath|shower|deodorant|butt|booty|butta)\b/i;
-const FACE_RE = /\b(face|facial)\b/i;
+const BODY_RE = /\b(body|hand|foot|heel|bath|shower|deodorant|butt|booty|butta|trio|set)\b/i;
+const FACE_RE = /\b(face|facial|barrier cream|gel cream)\b/i;
 const MAKEUP_RE = /\b(lip|lipstick|mascara|eyeshadow|shadow|blush|concealer|foundation|liner|brow|powder|highlighter)\b/i;
 
 function asString(value) {
@@ -97,11 +97,13 @@ function classifyBeautyCoarseCandidate(product, { queryTargetStepFamily = null }
   const rawBucket = classifyBeautyBucketFromText(text);
   const stepResolution = resolveBeautyCoarseStepFamily(product);
   const candidateStep = normalizeRecoTargetStep(stepResolution.candidate_step);
+  const hasBodyCue = BODY_RE.test(lower);
+  const hasFaceCue = FACE_RE.test(lower);
 
   let domainScope = 'unknown';
   if (TOOL_RE.test(lower)) {
     domainScope = 'beauty_tool';
-  } else if (BODY_RE.test(lower) && !FACE_RE.test(lower)) {
+  } else if (hasBodyCue && !hasFaceCue) {
     domainScope = 'bodycare';
   } else if (MAKEUP_RE.test(lower) || rawBucket === 'makeup') {
     domainScope = 'makeup';
@@ -117,8 +119,8 @@ function classifyBeautyCoarseCandidate(product, { queryTargetStepFamily = null }
 
   let usageScope = 'unknown';
   if (objectType === 'brush' || objectType === 'tool' || objectType === 'accessory') usageScope = 'tool';
-  else if (domainScope === 'bodycare' || (BODY_RE.test(lower) && !FACE_RE.test(lower))) usageScope = 'body';
-  else if (domainScope === 'skincare' || FACE_RE.test(lower) || candidateStep) usageScope = 'face';
+  else if (domainScope === 'bodycare' || (hasBodyCue && !hasFaceCue)) usageScope = 'body';
+  else if (domainScope === 'skincare' || hasFaceCue || candidateStep) usageScope = 'face';
 
   let applicationMode = 'unknown';
   if (usageScope === 'tool') applicationMode = 'tool';

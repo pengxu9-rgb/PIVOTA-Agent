@@ -549,6 +549,89 @@ test('/v1/reco/generate: deterministic selection can succeed in degraded mode wh
   }
 });
 
+test('/v1/reco/generate: latest reco context seeds moisturizer queries with prior diagnosis goal', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    return {
+      status: 200,
+      data: {
+        metadata: {
+          search_decision: {
+            contract_version: 'beauty_search_decision_v3',
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 1,
+            exact_step_topk_count: 1,
+            raw_result_count: 1,
+            products_returned_count: 1,
+          },
+        },
+        products: [
+          {
+            product_id: `cream_seed_${observedQueries.length}`,
+            merchant_id: 'mid_seed_cream',
+            brand: 'BarrierLab',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'reco_seed_uid', briefId: 'reco_seed_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_seed_uid',
+        'X-Trace-ID': 'trace_reco_seed',
+        'X-Brief-ID': 'reco_seed_brief',
+      },
+      body: {
+        focus: 'moisturizer',
+        session: {
+          state: {
+            latest_reco_context: {
+              reco_context_version: 'aurora.reco_context.v2',
+              reco_context_source: 'analysis_skin',
+              reco_context_updated_at: new Date().toISOString(),
+              diagnosis_goal: 'Repair skin barrier',
+              target_step: 'moisturizer',
+              seed_terms: ['barrier repair', 'ceramide', 'panthenol'],
+              analysis_mode: 'analysis_summary',
+              artifact_gate_tier: 'eligible_minimal',
+              reco_artifact_eligible: true,
+            },
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(observedQueries.some((query) => query.includes('barrier repair moisturizer')));
+    assert.ok(observedQueries.some((query) => query.includes('ceramide moisturizer')));
+    assert.equal(observedQueries.some((query) => query === 'barrier repair' || query === 'ceramide'), false);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: retrieval step rescues generic skincare candidates with opaque titles', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {

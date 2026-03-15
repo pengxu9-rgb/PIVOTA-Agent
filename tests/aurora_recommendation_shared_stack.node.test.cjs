@@ -15,6 +15,7 @@ const {
   deriveStepAwareEmptyReason,
   inferSlotForStep,
 } = require('../src/auroraBff/recommendationSharedStack');
+const { classifyBeautyCoarseCandidate } = require('../src/shared/beautyRecoCoarseClassifier');
 
 test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
   const aliases = ['moisturizer', 'cream', '面霜', '保湿霜', '日霜'];
@@ -93,9 +94,30 @@ test('same-family ladder never broadens moisturizer into cleanser or sunscreen f
   assert.equal(poolState.target_fidelity_level, 'satisfied');
   assert.equal(poolState.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
   assert.equal(poolState.viable[0].candidate_step, 'moisturizer');
-  assert.equal(poolState.viable[0].candidate_step_source, 'title_or_tag_alias');
+  assert.equal(poolState.viable[0].candidate_step_source, 'text_salvage');
   assert.ok(poolState.candidate_pool_signature);
   assert.ok(poolState.raw_candidate_pool_debug_signature);
+});
+
+test('same-family ladder keeps rich moisturizer seeds step-scoped and never emits bare seed queries', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for barrier repair',
+    entryType: 'chat',
+  });
+  const levels = buildSameFamilyQueryLevels({
+    targetContext,
+    profileSummary: { goals: ['barrier repair'] },
+    ingredientContext: { query: 'ceramide' },
+    seedTerms: ['barrier repair', 'ceramide'],
+    lang: 'EN',
+  });
+  const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
+
+  assert.equal(flattenedQueries.some((query) => query === 'barrier repair'), false);
+  assert.equal(flattenedQueries.some((query) => query === 'ceramide'), false);
+  assert.equal(flattenedQueries.some((query) => query.includes('barrier repair moisturizer')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('ceramide moisturizer')), true);
 });
 
 test('viability stage rejects non-skincare and preserves moisturizer candidates', () => {
@@ -134,7 +156,7 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
   assert.equal(pool.final_selected_candidate_count, 1);
   assert.equal(pool.selected_recommendations[0].product_id, 'face_cream_1');
   assert.equal(pool.viable[0].candidate_step, 'moisturizer');
-  assert.equal(pool.viable[0].candidate_step_source, 'title_or_tag_alias');
+  assert.equal(pool.viable[0].candidate_step_source, 'text_salvage');
   assert.equal(pool.terminal_success, true);
   assert.equal(pool.viable_pool_strength, 'strong');
   assert.equal(pool.target_fidelity_level, 'satisfied');
@@ -220,6 +242,32 @@ test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturi
   assert.equal(pool.hard_reject.some((row) => row.product.product_id === 'retinol_cream'), true);
   assert.equal(pool.viable[0].context_fit_score > pool.viable[1].context_fit_score, true);
   assert.equal(pool.artifact_context_applied, true);
+});
+
+test('shared coarse classifier keeps body cream and beauty tools out of face-moisturizer valid hits', () => {
+  const barrierCream = classifyBeautyCoarseCandidate({
+    display_name: 'Barrier Cream',
+    category: 'skincare',
+  }, { queryTargetStepFamily: 'moisturizer' });
+  const bodyCream = classifyBeautyCoarseCandidate({
+    display_name: 'Lil Butta Dropz Body Cream Trio',
+    category: 'body cream',
+  }, { queryTargetStepFamily: 'moisturizer' });
+  const brush = classifyBeautyCoarseCandidate({
+    display_name: 'Small Eyeshadow Brush',
+    category: 'makeup brush',
+    product_type: 'tool',
+  }, { queryTargetStepFamily: 'moisturizer' });
+
+  assert.equal(barrierCream.domain_scope, 'skincare');
+  assert.equal(barrierCream.usage_scope, 'face');
+  assert.equal(barrierCream.coarse_valid_for_target, true);
+  assert.equal(bodyCream.domain_scope, 'bodycare');
+  assert.equal(bodyCream.usage_scope, 'body');
+  assert.equal(bodyCream.coarse_valid_for_target, false);
+  assert.equal(brush.domain_scope, 'beauty_tool');
+  assert.equal(brush.object_type, 'brush');
+  assert.equal(brush.coarse_valid_for_target, false);
 });
 
 test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
