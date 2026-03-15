@@ -63,6 +63,8 @@ const STEP_THRESHOLDS = Object.freeze({
     allow_soft_target_same_family_only: true,
   }),
 });
+const GENERIC_SKINCARE_DOMAIN_RE = /\bskin\s*care\b|护肤/i;
+const STRONG_NON_SKINCARE_HINT_RE = /\b(brush|tool|makeup|accessory|apparel|clothing|jewelry|wallet|watch|bag|gift)\b/i;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -448,6 +450,22 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       candidate_step_confidence: textResolution.resolved_target_step_confidence || 'medium',
     };
   }
+  const retrievalStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(row.retrieval_step, row.retrievalStep),
+  );
+  if (retrievalStep && targetContext?.resolved_target_step) {
+    const familyRelation = getRecoTargetFamilyRelation(
+      normalizeRecoTargetStep(targetContext.resolved_target_step),
+      retrievalStep,
+    );
+    if (familyRelation === 'same_family') {
+      return {
+        candidate_step: retrievalStep,
+        candidate_step_source: 'retrieval_step',
+        candidate_step_confidence: 'low',
+      };
+    }
+  }
   const retrievalQuery = normalizeQueryToken(row.retrieval_query || row.query);
   if (retrievalQuery && targetContext?.resolved_target_step) {
     const retrievalResolution = resolveRecoTargetStepIntent({ text: retrievalQuery });
@@ -495,6 +513,21 @@ function buildCandidateTextSearch(product) {
     .map((item) => normalizeQueryToken(item).toLowerCase())
     .filter(Boolean)
     .join(' ');
+}
+
+function isGenericSkincareDomainCandidate(product) {
+  const row = isPlainObject(product) ? product : {};
+  const categoryText = [
+    pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType, row.type),
+    ...(Array.isArray(row.tags) ? row.tags : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+  ]
+    .map((item) => normalizeQueryToken(item))
+    .filter(Boolean)
+    .join(' ');
+  if (!GENERIC_SKINCARE_DOMAIN_RE.test(categoryText)) return false;
+  const joined = buildCandidateTextSearch(row);
+  return !STRONG_NON_SKINCARE_HINT_RE.test(joined);
 }
 
 function arrayIncludesPhrase(text, values = []) {
@@ -604,10 +637,10 @@ function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
 function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
-  const skincare = isSkincareCandidate(row);
   const stepResolution = normalizeCandidateStep(row, { targetContext });
-  const candidateStep = stepResolution.candidate_step;
   const stepAwareIntent = Boolean(targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step);
+  const skincare = isSkincareCandidate(row) || (stepAwareIntent && isGenericSkincareDomainCandidate(row));
+  const candidateStep = stepResolution.candidate_step;
   const resolvedTargetStep = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
   const relation = stepAwareIntent
     ? resolveCandidateFamilyRelation(resolvedTargetStep, candidateStep)

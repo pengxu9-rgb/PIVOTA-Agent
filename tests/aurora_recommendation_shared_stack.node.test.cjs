@@ -141,6 +141,34 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
   assert.equal(pool.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
 });
 
+test('retrieval_step preserves same-family candidates when category is generic skincare and title is opaque', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for barrier repair',
+    entryType: 'direct',
+  });
+  const pool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'opaque_brand_1',
+        merchant_id: 'mid_opaque',
+        brand: 'Brand X',
+        name: 'Recovery 001',
+        display_name: 'Recovery 001',
+        category: 'skincare',
+        retrieval_step: 'moisturizer',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(pool.viable_candidate_count, 1);
+  assert.equal(pool.selected_candidate_count, 1);
+  assert.equal(pool.viable[0].candidate_step, 'moisturizer');
+  assert.equal(pool.viable[0].candidate_step_source, 'retrieval_step');
+  assert.equal(pool.terminal_success, true);
+});
+
 test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturizer and rejects hard avoid conflicts', () => {
   const targetContext = resolveRecommendationTargetContext({
     focus: 'moisturizer',
