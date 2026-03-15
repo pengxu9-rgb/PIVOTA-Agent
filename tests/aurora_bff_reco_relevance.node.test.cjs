@@ -820,6 +820,11 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits clarification a
       .find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'artifact_missing_core');
     assert.ok(clarificationNotice);
     assert.match(String(clarificationNotice?.payload?.message || ''), /detail|确认一个问题|barrier state/i);
+    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.details) ? clarificationNotice.payload.details : [], []);
+    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.actions) ? clarificationNotice.payload.actions : [], []);
+    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.ask_3_questions) ? clarificationNotice.payload.ask_3_questions : [], [
+      'Which barrier state sounds closest right now?',
+    ]);
     for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
       assert.equal(target?.products?.mode, 'guidance_only');
       assert.equal(Array.isArray(target?.products?.example_product_types), true);

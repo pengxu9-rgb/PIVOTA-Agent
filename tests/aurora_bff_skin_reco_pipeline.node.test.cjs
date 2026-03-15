@@ -346,7 +346,7 @@ test('latest reco context canonicalizes seeds, limits carry-over, and keeps curr
   assert.deepEqual(payload.seed_terms, ['barrier repair', 'ceramide', 'panthenol', 'sensitive skin']);
 });
 
-test('analysis clarification pack surfaces missing-core questions and seeds pending clarification state', () => {
+test('analysis clarification pack stays goal-driven and does not expand into legacy profile questions', () => {
   const pack = routesInternal.buildAnalysisClarificationPack({
     language: 'EN',
     artifactGate: {
@@ -362,11 +362,11 @@ test('analysis clarification pack surfaces missing-core questions and seeds pend
   assert.ok(pack);
   assert.match(pack.primary_question, /barrier state/i);
   assert.equal(Array.isArray(pack.ask_3_questions), true);
-  assert.equal(pack.ask_3_questions.length, 3);
+  assert.equal(pack.ask_3_questions.length, 1);
   assert.equal(Array.isArray(pack.questions), true);
   assert.equal(pack.questions[0].id, 'barrierStatus');
   assert.equal(pack.pending_clarification.current.id, 'barrierStatus');
-  assert.equal(pack.pending_clarification.queue.length >= 2, true);
+  assert.equal(pack.pending_clarification.queue.length, 0);
 });
 
 test('step reco context strength flags contexts that are too weak even when search is valid', () => {
