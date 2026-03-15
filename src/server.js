@@ -5489,32 +5489,75 @@ function scoreDirectExternalSeedProduct({
   queryTokens,
   targetStepFamily,
 }) {
+  const titleText = normalizeSearchTextForMatch(
+    [
+      product?.title,
+      product?.name,
+      product?.brand,
+      product?.vendor,
+      product?.category,
+      product?.product_type,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  );
+  const auxiliaryText = normalizeSearchTextForMatch(
+    [
+      product?.description,
+      product?.url,
+      product?.canonical_url,
+      product?.destination_url,
+      product?.merchant_name,
+      product?.external_domain,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  );
   const candidateText =
     buildSharedBeautyCandidateText(product) ||
     buildFallbackCandidateText(product) ||
-    normalizeSearchTextForMatch(product?.title || product?.name || '');
+    titleText ||
+    auxiliaryText;
   const coarse = classifySharedBeautyCoarseCandidate(product, {
     queryTargetStepFamily: targetStepFamily,
   });
+  const relation = targetStepFamily
+    ? getRecoTargetFamilyRelation(targetStepFamily, coarse?.coarse_step_family || '')
+    : 'same_family';
+  const titleAnchorHits = anchorTokens.filter((token) => titleText.includes(token)).length;
+  const auxiliaryAnchorHits = anchorTokens.filter((token) => auxiliaryText.includes(token)).length;
+  const titleQueryHits = queryTokens.filter((token) => titleText.includes(token)).length;
+  const auxiliaryQueryHits = queryTokens.filter((token) => auxiliaryText.includes(token)).length;
   let score = 0;
 
-  if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 20;
-  score += anchorTokens.filter((token) => candidateText.includes(token)).length * 6;
-  score += queryTokens.filter((token) => candidateText.includes(token)).length * 2;
+  if (normalizedQuery && titleText.includes(normalizedQuery)) score += 24;
+  else if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 12;
+  score += titleAnchorHits * 10;
+  score += auxiliaryAnchorHits * 2;
+  score += titleQueryHits * 4;
+  score += auxiliaryQueryHits;
 
   if (targetStepFamily) {
-    const relation = getRecoTargetFamilyRelation(targetStepFamily, coarse?.coarse_step_family || '');
     if (relation === 'exact_step') score += 14;
     else if (relation === 'same_family') score += 10;
+    else if (relation === 'adjacent_family') score -= 4;
+    else score -= 18;
     if (coarse?.usage_scope === 'face') score += 4;
     if (targetStepFamily === 'moisturizer') {
       if (coarse?.usage_scope === 'body') score -= 10;
       if (coarse?.domain_scope === 'bodycare') score -= 10;
+      if (/\b(ceramide|barrier|repair|soothing|sensitive)\b/.test(titleText)) score += 6;
     }
   }
 
+  if (coarse?.application_mode === 'rinse_off' && targetStepFamily !== 'cleanser') score -= 12;
   if (coarse?.object_type === 'service' || coarse?.domain_scope === 'beauty_service') score -= 25;
   if (coarse?.object_type === 'tool' || coarse?.domain_scope === 'beauty_tool') score -= 20;
+  if (/\b(heat protectant|styling|skin tint|foundation|concealer|powder|mascara|brow|lip|bronzer|highlighter|hair|frizz)\b/.test(titleText)) {
+    score -= 30;
+  }
   return score;
 }
 
@@ -5655,6 +5698,11 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       .filter((row) => row.relevant || row.score > 0)
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
+        const aTitle = normalizeSearchTextForMatch(a.product?.title || a.product?.name || '');
+        const bTitle = normalizeSearchTextForMatch(b.product?.title || b.product?.name || '');
+        const aTitleAnchorHits = anchorTokens.filter((token) => aTitle.includes(token)).length;
+        const bTitleAnchorHits = anchorTokens.filter((token) => bTitle.includes(token)).length;
+        if (bTitleAnchorHits !== aTitleAnchorHits) return bTitleAnchorHits - aTitleAnchorHits;
         return String(b.product?.title || '').localeCompare(String(a.product?.title || ''));
       })
       .map((row) => row.product);
