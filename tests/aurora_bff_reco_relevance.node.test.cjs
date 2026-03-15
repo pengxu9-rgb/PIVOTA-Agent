@@ -270,9 +270,11 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
         'X-Aurora-UID': 'reco_weak_uid',
         'X-Trace-ID': 'trace_reco_weak',
         'X-Brief-ID': 'reco_weak_brief',
+        'X-Debug': 'true',
       },
       body: {
         focus: 'something for night',
+        include_debug: true,
       },
     });
 
@@ -292,6 +294,10 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
     assert.equal(recoEvent?.data?.failure_class, 'weak_viable_pool');
     assert.equal(recoEvent?.data?.surface_reason, 'weak_viable_pool');
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
+    assert.ok(response.body?.debug);
+    assert.equal(response.body?.debug?.effective_failure_class || response.body?.debug?.contract?.effective_failure_class, 'weak_viable_pool');
+    assert.equal(response.body?.debug?.contract?.surface_reason, 'weak_viable_pool');
+    assert.equal(typeof response.body?.debug?.raw_candidate_count, 'number');
   } finally {
     axios.get = originalGet;
   }
