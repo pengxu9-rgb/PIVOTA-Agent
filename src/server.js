@@ -5896,6 +5896,13 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       merchant_id: 'external_seed',
       external_seed_only: true,
       query: variant,
+      ...(query.catalog_surface ? { catalog_surface: query.catalog_surface } : {}),
+      ...(query.ui_surface ? { ui_surface: query.ui_surface } : {}),
+      ...(query.product_only !== undefined ? { product_only: query.product_only } : {}),
+      ...(query.query_index !== undefined ? { query_index: query.query_index } : {}),
+      ...(query.query_total !== undefined ? { query_total: query.query_total } : {}),
+      ...(query.target_step_family ? { target_step_family: query.target_step_family } : {}),
+      ...(source ? { source } : {}),
       ...(query.category ? { category: query.category } : {}),
       ...(query.min_price != null ? { min_price: query.min_price } : {}),
       ...(query.max_price != null ? { max_price: query.max_price } : {}),
@@ -17730,6 +17737,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   const supplement = await fetchExternalSeedSupplementFromBackend({
                     queryParams: {
                       query: activeCacheSearchQueryText,
+                      ...(search.catalog_surface ? { catalog_surface: search.catalog_surface } : {}),
+                      ...(metadata?.ui_surface ? { ui_surface: metadata.ui_surface } : {}),
+                      ...(metadata?.product_only_requested !== undefined
+                        ? { product_only: metadata.product_only_requested }
+                        : {}),
+                      ...(metadata?.query_index !== undefined ? { query_index: metadata.query_index } : {}),
+                      ...(metadata?.query_total !== undefined ? { query_total: metadata.query_total } : {}),
+                      ...(metadata?.query_target_step_family
+                        ? { target_step_family: metadata.query_target_step_family }
+                        : {}),
                       ...(search.category ? { category: search.category } : {}),
                       ...(search.price_min != null || search.min_price != null
                         ? { min_price: search.price_min ?? search.min_price }
