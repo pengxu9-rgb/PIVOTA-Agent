@@ -183,6 +183,7 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
       data: {
         metadata: {
           search_decision: {
+            contract_version: 'beauty_search_decision_v3',
             hit_quality: 'invalid_hit',
             invalid_hit_reason: 'invalid_hit_tools_dominant',
             query_bucket: 'skincare',
@@ -243,6 +244,7 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
     assert.equal(recoEvent?.data?.failure_class, 'no_valid_catalog_hit_for_target');
     assert.equal(recoEvent?.data?.surface_reason, 'no_valid_catalog_hit_for_target');
+    assert.equal(recoEvent?.data?.user_fixable, false);
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
   } finally {
     axios.get = originalGet;
@@ -258,6 +260,7 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
       data: {
         metadata: {
           search_decision: {
+            contract_version: 'beauty_search_decision_v3',
             hit_quality: 'valid_hit',
             query_bucket: 'skincare',
             query_target_step_family: 'moisturizer',
@@ -325,6 +328,85 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
     assert.equal(typeof response.body?.debug?.raw_candidate_count, 'number');
     assert.ok(response.body?.debug?.reco_catalog_debug?.hard_reject_debug);
     assert.ok(response.body?.debug?.reco_catalog_debug?.soft_mismatch_debug);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/reco/generate: valid_hit queries that all hard-reject on coarse domain become retro invalid hits', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        metadata: {
+          search_decision: {
+            contract_version: 'beauty_search_decision_v3',
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 1,
+            exact_step_topk_count: 1,
+            raw_result_count: 2,
+            products_returned_count: 2,
+          },
+        },
+        products: [
+          {
+            product_id: 'body_only_1',
+            merchant_id: 'mid_body_1',
+            brand: 'BodyBrand',
+            name: 'Barrier Body Cream',
+            display_name: 'Barrier Body Cream',
+            category: 'body cream',
+            product_type: 'cream',
+          },
+          {
+            product_id: 'body_only_2',
+            merchant_id: 'mid_body_2',
+            brand: 'BodyBrand',
+            name: 'Shimmering Body Butter',
+            display_name: 'Shimmering Body Butter',
+            category: 'bodycare',
+            product_type: 'cream',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'reco_retro_invalid_uid', briefId: 'reco_retro_invalid_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_retro_invalid_uid',
+        'X-Trace-ID': 'trace_reco_retro_invalid',
+        'X-Brief-ID': 'reco_retro_invalid_brief',
+        'X-Debug': 'true',
+      },
+      body: {
+        focus: 'moisturizer',
+        include_debug: true,
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const recoEvent = Array.isArray(response.body?.events)
+      ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.failure_class, 'no_valid_catalog_hit_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_valid_catalog_hit_for_target');
+    assert.equal(recoEvent?.data?.user_fixable, false);
+    assert.equal(response.body?.debug?.reco_catalog_debug?.retrieval_failure_class, 'invalid_retrieval_hit');
+    assert.ok(Number(response.body?.debug?.reco_catalog_debug?.retro_invalid_hit_query_count || 0) >= 1);
   } finally {
     axios.get = originalGet;
   }

@@ -2,7 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  ANALYSIS_CONTEXT_BUILDER_VERSION,
   buildAnalysisContextSnapshotV1,
+  canonicalizeAnalysisContextSnapshot,
+  analysisContextSnapshotsEqual,
   resolveAnalysisContextForTask,
   buildRoutineAnalysisContextFromSnapshot,
   buildProductAnalysisContextFromSnapshot,
@@ -133,6 +136,30 @@ test('analysisContextSnapshot: resolved context distinguishes artifact, explicit
   assert.equal(none.snapshot_present, false);
   assert.equal(none.context_source_mode, 'none');
   assert.equal(none.analysis_context_available, false);
+});
+
+test('analysisContextSnapshot: canonical serializer normalizes null/missing ordering differences', () => {
+  const left = canonicalizeAnalysisContextSnapshot({
+    snapshot_id: 'acs_same',
+    builder_version: ANALYSIS_CONTEXT_BUILDER_VERSION,
+    goals: {
+      active_goals: { items: [{ value: 'barrier repair' }], primary_items: [], candidate_sources: [], conflict_state: 'resolved' },
+      background_goals: null,
+    },
+    source_mix_summary: ['artifact'],
+  });
+  const right = canonicalizeAnalysisContextSnapshot({
+    source_mix_summary: ['artifact'],
+    goals: {
+      background_goals: undefined,
+      active_goals: { candidate_sources: [], conflict_state: 'resolved', items: [{ value: 'barrier repair' }], primary_items: [] },
+    },
+    snapshot_id: 'acs_same',
+    builder_version: ANALYSIS_CONTEXT_BUILDER_VERSION,
+  });
+
+  assert.deepEqual(left, right);
+  assert.equal(analysisContextSnapshotsEqual(left, right), true);
 });
 
 test('analysisContextSnapshot: adapter consistency keeps hard/soft/exclude boundaries stable across tasks', () => {

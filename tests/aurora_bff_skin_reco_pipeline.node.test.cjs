@@ -207,7 +207,7 @@ test('artifact store: stale preferArtifactId is ignored when it falls outside ma
   assert.equal(latest, null);
 });
 
-test('gating: artifact gate blocks missing core4 and allows complete artifact', () => {
+test('gating: artifact gate exposes minimal/strong eligibility tiers', () => {
   const missingCore = hasUsableArtifactForRecommendations({
     skinType: { value: 'oily' },
     sensitivity: { value: 'medium' },
@@ -216,12 +216,24 @@ test('gating: artifact gate blocks missing core4 and allows complete artifact', 
     overall_confidence: { score: 0.82 },
   });
   assert.equal(missingCore.ok, false);
+  assert.equal(missingCore.tier, 'ineligible');
   assert.equal(Array.isArray(missingCore.missing_core), true);
   assert.equal(missingCore.missing_core.includes('barrierStatus'), true);
   assert.equal(missingCore.missing_core.includes('goals'), true);
 
+  const minimal = hasUsableArtifactForRecommendations({
+    skinType: { value: 'oily' },
+    sensitivity: { value: '' },
+    barrierStatus: { value: '' },
+    goals: { values: ['barrier repair'] },
+    overall_confidence: { score: 0.7 },
+  });
+  assert.equal(minimal.ok, true);
+  assert.equal(minimal.tier, 'eligible_minimal');
+
   const complete = hasUsableArtifactForRecommendations(makeArtifact({ score: 0.7 }));
   assert.equal(complete.ok, true);
+  assert.equal(complete.tier, 'eligible_strong');
   assert.equal(complete.confidence_level, 'medium');
 });
 
@@ -244,6 +256,7 @@ test('gating: diagnosis artifact rows must be flattened before recommendation ga
   };
   const flattenedGate = hasUsableArtifactForRecommendations(flattened);
   assert.equal(flattenedGate.ok, true);
+  assert.equal(flattenedGate.tier, 'eligible_strong');
   assert.equal(flattenedGate.confidence_level, 'medium');
 });
 

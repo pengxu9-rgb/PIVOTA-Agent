@@ -396,9 +396,18 @@ function hasUsableArtifactForRecommendations(artifact, opts = {}) {
   const requiredCore = Array.isArray(opts.requiredCore) && opts.requiredCore.length
     ? opts.requiredCore
     : ['skinType', 'sensitivity', 'barrierStatus', 'goals'];
+  const durableCore = ['skinType', 'sensitivity', 'barrierStatus'];
 
   if (!artifact || typeof artifact !== 'object' || Array.isArray(artifact)) {
-    return { ok: false, reason: 'artifact_missing', confidence_level: 'low' };
+    return {
+      ok: false,
+      eligible: false,
+      tier: 'ineligible',
+      reason: 'artifact_missing',
+      confidence_level: 'low',
+      missing_core: requiredCore.slice(0),
+      durable_count: 0,
+    };
   }
 
   const missingCore = [];
@@ -435,14 +444,33 @@ function hasUsableArtifactForRecommendations(artifact, opts = {}) {
         : 'low';
 
   if (missingCore.length > 0) {
-    return { ok: false, reason: 'artifact_missing_core', missing_core: missingCore, confidence_level: confidenceLevel };
+    const goalsPresent = !missingCore.includes('goals');
+    const durableCount = durableCore.filter((field) => !missingCore.includes(field)).length;
+    const tier =
+      goalsPresent && durableCount >= 2
+        ? 'eligible_strong'
+        : goalsPresent && durableCount >= 1
+          ? 'eligible_minimal'
+          : 'ineligible';
+    return {
+      ok: tier !== 'ineligible',
+      eligible: tier !== 'ineligible',
+      tier,
+      reason: tier === 'ineligible' ? 'artifact_missing_core' : tier,
+      missing_core: missingCore,
+      confidence_level: confidenceLevel,
+      durable_count: durableCount,
+    };
   }
 
   return {
     ok: true,
-    reason: 'ok',
+    eligible: true,
+    tier: 'eligible_strong',
+    reason: 'eligible_strong',
     missing_core: [],
     confidence_level: confidenceLevel,
+    durable_count: durableCore.length,
   };
 }
 
