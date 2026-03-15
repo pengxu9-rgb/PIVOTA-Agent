@@ -52,7 +52,7 @@ const STEP_QUERY_ALIASES = Object.freeze({
   essence: Object.freeze(['essence', 'first essence', '精华水', '精粹']),
   serum: Object.freeze(['serum', 'ampoule', 'repair serum', 'hydrating serum', '精华', '安瓶', '原液']),
   moisturizer: Object.freeze(['moisturizer', 'face cream', 'barrier cream', 'gel cream', 'lotion', 'emulsion', 'day cream', 'night cream', '面霜', '保湿霜', '保湿乳', '乳液', '日霜', '晚霜']),
-  sunscreen: Object.freeze(['sunscreen', 'sun screen', 'spf', 'sunblock', '防晒', '隔离防晒']),
+  sunscreen: Object.freeze(['sunscreen', 'sun screen', 'spf', 'sunblock', 'uv filter', 'uv filters', '防晒', '隔离防晒']),
   treatment: Object.freeze(['treatment', 'spot treatment', 'retinol treatment', 'acid treatment', '祛痘', '刷酸', '点涂']),
   mask: Object.freeze(['mask', 'sleeping mask', 'sheet mask', 'overnight mask', 'facial mask', '面膜', '睡眠面膜', '泥膜']),
   oil: Object.freeze(['face oil', 'facial oil', 'oil serum', '护肤油', '面油']),
@@ -293,6 +293,44 @@ function inferSlotForStep(step) {
   return 'other';
 }
 
+function filterSameFamilySeedTerms(seedTerms, { targetStep, aliases = [] } = {}) {
+  const normalizedTargetStep = normalizeRecoTargetStep(targetStep);
+  if (!normalizedTargetStep) return uniqStrings(
+    asArray(seedTerms).map((item) => normalizeQueryToken(item)).filter(Boolean),
+    4,
+  );
+  const normalizedAliases = asArray(aliases)
+    .map((alias) => normalizeQueryToken(alias).toLowerCase())
+    .filter(Boolean);
+  return uniqStrings(
+    asArray(seedTerms)
+      .map((item) => normalizeQueryToken(item))
+      .filter(Boolean)
+      .filter((seed) => {
+        const lowered = seed.toLowerCase();
+        if (normalizedAliases.some((alias) => lowered.includes(alias))) return true;
+        let seedStep = '';
+        for (const [stepName, stepAliases] of Object.entries(STEP_QUERY_ALIASES)) {
+          const aliasHit = asArray(stepAliases)
+            .map((alias) => normalizeQueryToken(alias).toLowerCase())
+            .filter(Boolean)
+            .some((alias) => lowered.includes(alias));
+          if (aliasHit) {
+            seedStep = normalizeRecoTargetStep(stepName);
+            break;
+          }
+        }
+        if (!seedStep) {
+          const resolution = resolveRecoTargetStepIntent({ focus: seed, text: seed });
+          seedStep = normalizeRecoTargetStep(resolution?.resolved_target_step);
+        }
+        if (!seedStep) return true;
+        return getRecoTargetFamilyRelation(normalizedTargetStep, seedStep) === 'same_family';
+      }),
+    4,
+  );
+}
+
 function resolveRecommendationTargetContext({
   explicitStep = '',
   focus = '',
@@ -345,10 +383,7 @@ function buildSameFamilyQueryLevels({
     }
     return normalizeQueryToken(`${seed} ${stepPrimary}`);
   };
-  const normalizedSeedTerms = uniqStrings(
-    asArray(seedTerms).map((item) => normalizeQueryToken(item)).filter(Boolean),
-    4,
-  );
+  const normalizedSeedTerms = filterSameFamilySeedTerms(seedTerms, { targetStep: step, aliases });
   const stepScopedSeedTerms = uniqStrings(
     normalizedSeedTerms.map((seed) => seedToSameFamilyQuery(seed)).filter(Boolean),
     4,

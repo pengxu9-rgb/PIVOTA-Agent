@@ -153,6 +153,40 @@ function classifyBeautyCoarseCandidate(product, { queryTargetStepFamily = null }
   };
 }
 
+function scoreBeautyCandidateForTarget(product, { queryTargetStepFamily = null } = {}) {
+  const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily });
+  let score = 0;
+  if (coarse.domain_scope === 'skincare') score += 40;
+  if (coarse.usage_scope === 'face') score += 20;
+  if (coarse.object_type === 'product') score += 10;
+  if (coarse.application_mode === 'leave_on') score += 10;
+  if (coarse.family_relation === 'same_family') score += 80;
+  if (queryTargetStepFamily && coarse.candidate_step === queryTargetStepFamily) score += 20;
+  if (coarse.application_mode === 'rinse_off') score -= 15;
+  if (coarse.domain_scope === 'bodycare') score -= 40;
+  if (coarse.domain_scope === 'makeup') score -= 60;
+  if (coarse.domain_scope === 'beauty_tool' || coarse.object_type === 'brush' || coarse.object_type === 'tool') score -= 100;
+  return { score, coarse };
+}
+
+function rerankBeautySkincareProductsByTargetFamily(products, { queryTargetStepFamily = null } = {}) {
+  const rows = Array.isArray(products) ? products : [];
+  return rows
+    .map((product, index) => {
+      const scored = scoreBeautyCandidateForTarget(product, { queryTargetStepFamily });
+      return {
+        product,
+        index,
+        score: scored.score,
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.index - right.index;
+    })
+    .map((row) => row.product);
+}
+
 function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
   const queryBucket = detectBeautyQueryBucket(queryText);
   const rawProducts = Array.isArray(products) ? products : [];
@@ -174,7 +208,8 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
   }
   const queryResolution = resolveRecoTargetStepIntent({ focus: queryText, text: queryText });
   const queryTargetStepFamily = normalizeRecoTargetStep(queryResolution?.resolved_target_step);
-  const topK = rawProducts.slice(0, 8);
+  const rankedProducts = rerankBeautySkincareProductsByTargetFamily(rawProducts, { queryTargetStepFamily });
+  const topK = rankedProducts.slice(0, 8);
   const topkBucketMix = {};
   let toolsTopKCount = 0;
   let sameFamilyTopKCount = 0;
@@ -195,7 +230,7 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
 
   for (const product of topK) classifyTopK(product);
 
-  const validProducts = rawProducts.filter((product) => {
+  const validProducts = rankedProducts.filter((product) => {
     const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily });
     return coarse.coarse_valid_for_target;
   });
@@ -235,5 +270,7 @@ module.exports = {
   buildBeautyCandidateText,
   resolveBeautyCoarseStepFamily,
   classifyBeautyCoarseCandidate,
+  scoreBeautyCandidateForTarget,
+  rerankBeautySkincareProductsByTargetFamily,
   buildBeautySkincareHitQualityDecision,
 };

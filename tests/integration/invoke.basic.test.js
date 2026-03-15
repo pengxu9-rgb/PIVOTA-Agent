@@ -214,4 +214,79 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
     expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
   });
+
+  it('reranks moisturizer-family skincare hits ahead of cleanser, spf, and bodycare noise', async () => {
+    const upstreamBody = {
+      status: 'success',
+      success: true,
+      total: 4,
+      page: 1,
+      page_size: 4,
+      products: [
+        {
+          id: 'cleanser_1',
+          product_id: 'cleanser_1',
+          title: 'Rose Cream Cleanser',
+          name: 'Rose Cream Cleanser',
+          display_name: 'Rose Cream Cleanser',
+          category: 'skincare',
+          product_type: 'cleanser',
+        },
+        {
+          id: 'spf_1',
+          product_id: 'spf_1',
+          title: 'Hydra Vizor SPF 30 Sunscreen Moisturizer',
+          name: 'Hydra Vizor SPF 30 Sunscreen Moisturizer',
+          display_name: 'Hydra Vizor SPF 30 Sunscreen Moisturizer',
+          category: 'skincare',
+          product_type: 'sunscreen',
+        },
+        {
+          id: 'body_1',
+          product_id: 'body_1',
+          title: 'Lil Butta Dropz Body Cream Trio',
+          name: 'Lil Butta Dropz Body Cream Trio',
+          display_name: 'Lil Butta Dropz Body Cream Trio',
+          category: 'body cream',
+          product_type: 'cream',
+        },
+        {
+          id: 'cream_1',
+          product_id: 'cream_1',
+          title: 'Rose Ceramide Cream',
+          name: 'Rose Ceramide Cream',
+          display_name: 'Rose Ceramide Cream',
+          category: 'skincare',
+          product_type: 'cream',
+        },
+      ],
+      metadata: {
+        query_source: 'agent_products_search',
+      },
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, upstreamBody);
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, upstreamBody);
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'barrier repair moisturizer',
+        catalog_surface: 'beauty',
+        source: 'aurora-bff',
+      })
+      .expect(200);
+
+    expect(res.body.metadata?.search_decision?.hit_quality).toBe('valid_hit');
+    expect(res.body.metadata?.search_decision?.same_family_topk_count).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id).toBe('cream_1');
+    expect(res.body.products.some((row) => String(row?.product_id || '').includes('body_1'))).toBe(false);
+    expect(res.body.products.some((row) => String(row?.product_id || '').includes('spf_1'))).toBe(false);
+  });
 });

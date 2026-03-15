@@ -120,6 +120,26 @@ test('same-family ladder keeps rich moisturizer seeds step-scoped and never emit
   assert.equal(flattenedQueries.some((query) => query.includes('ceramide moisturizer')), true);
 });
 
+test('same-family ladder drops step-incompatible seeds like uv filters from moisturizer queries', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for me',
+    entryType: 'chat',
+  });
+  const levels = buildSameFamilyQueryLevels({
+    targetContext,
+    profileSummary: { goals: ['barrier repair'] },
+    ingredientContext: {},
+    seedTerms: ['uv filters', 'ceramide', 'barrier repair'],
+    lang: 'EN',
+  });
+  const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
+
+  assert.equal(flattenedQueries.some((query) => query.includes('uv filters')), false);
+  assert.equal(flattenedQueries.some((query) => query.includes('ceramide moisturizer')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('barrier repair moisturizer')), true);
+});
+
 test('viability stage rejects non-skincare and preserves moisturizer candidates', () => {
   const targetContext = resolveRecommendationTargetContext({
     focus: 'moisturizer',
