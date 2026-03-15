@@ -2665,4 +2665,159 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('guidance-only moisturizer search supplements external seeds when internal cache is tool-heavy', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-cache-supplement-test';
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 4 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'tool_1',
+                  product_id: 'tool_1',
+                  merchant_id: 'merch_tools',
+                  title: 'Barrier Cream Applicator Brush',
+                  description: 'tool for applying moisturizer and barrier cream',
+                  product_type: 'Makeup Brush',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'tool_2',
+                  product_id: 'tool_2',
+                  merchant_id: 'merch_tools',
+                  title: 'Ceramide Moisturizer Brush Set',
+                  description: 'beauty tool set for moisturizer application',
+                  product_type: 'Beauty Tool',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+              {
+                merchant_id: 'merch_tools',
+                merchant_name: 'Tool Shop',
+                product_data: {
+                  id: 'tool_3',
+                  product_id: 'tool_3',
+                  merchant_id: 'merch_tools',
+                  title: 'Face Cream Tool Trio',
+                  description: 'tool trio for face cream application',
+                  product_type: 'Beauty Tool',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.external_seed_only || '') === 'true' &&
+          String(q.query || '') === 'moisturizer barrier repair ceramide np barrier repair' &&
+          String(q.ui_surface || '') === 'ingredient_plan_guidance_only' &&
+          String(q.product_only || '') === 'true' &&
+          String(q.target_step_family || '') === 'moisturizer'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_rose_ceramide_1',
+            product_id: 'ext_rose_ceramide_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Rose Ceramide Cream',
+            description: 'ceramide-rich face moisturizer for barrier repair',
+            product_type: 'external',
+            status: 'active',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: 1,
+            stale_cache_used: false,
+            strategy_applied: 'external_seed_only_direct',
+          },
+          search_decision: {
+            hit_quality: 'valid_hit',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 1,
+            exact_step_topk_count: 1,
+          },
+          product_only_applied: true,
+          discovery_source_used: 'external_seed_direct',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'moisturizer barrier repair ceramide np barrier repair',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        allow_external_seed: 'true',
+        external_seed_strategy: 'supplement_internal_first',
+        target_step_family: 'moisturizer',
+        search_all_merchants: 'true',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_supplemented');
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'ext_rose_ceramide_1',
+          title: 'Rose Ceramide Cream',
+        }),
+      ]),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+      expect.objectContaining({
+        guidance_hit_quality: 'invalid_hit',
+        guidance_query_target_step_family: 'moisturizer',
+        guidance_scoped_internal_products_count: 0,
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        applied: true,
+      }),
+    );
+    expect(externalSupplement.isDone()).toBe(true);
+  });
+
 });

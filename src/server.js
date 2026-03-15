@@ -17637,11 +17637,62 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
+          const cacheUiSurface = normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              search?.ui_surface ||
+              search?.uiSurface ||
+              null,
+          );
+          const guidanceOnlyDiscovery = cacheUiSurface === 'ingredient_plan_guidance_only';
+          const guidanceTargetStepFamily = normalizeRecoTargetStep(
+            metadata?.query_target_step_family ||
+              effectivePayload?.metadata?.query_target_step_family ||
+              payload?.metadata?.query_target_step_family ||
+              search?.target_step_family ||
+              search?.targetStepFamily ||
+              null,
+          );
+          let internalGuidanceHitDecision = null;
+          let guidanceNeedsPrimaryFillSupplement = false;
+          let baselineInternalProducts = internalProductsAfterAnchor;
+          if (guidanceOnlyDiscovery && guidanceTargetStepFamily && internalProductsAfterAnchor.length > 0) {
+            internalGuidanceHitDecision = buildSharedBeautySkincareHitQualityDecision({
+              queryText: cacheQueryText,
+              products: internalProductsAfterAnchor,
+              queryTargetStepFamily: guidanceTargetStepFamily,
+            });
+            const guidanceValidKeys = new Set(
+              (Array.isArray(internalGuidanceHitDecision?.valid_products)
+                ? internalGuidanceHitDecision.valid_products
+                : []
+              )
+                .map((product) => buildSearchDecisionProductKey(product))
+                .filter(Boolean),
+            );
+            baselineInternalProducts =
+              internalGuidanceHitDecision?.applied &&
+              internalGuidanceHitDecision?.hit_quality === 'valid_hit'
+                ? internalProductsAfterAnchor.filter((product) =>
+                    guidanceValidKeys.has(buildSearchDecisionProductKey(product)),
+                  )
+                : [];
+            guidanceNeedsPrimaryFillSupplement =
+              !internalGuidanceHitDecision?.applied ||
+              internalGuidanceHitDecision?.hit_quality !== 'valid_hit' ||
+              Number(internalGuidanceHitDecision?.same_family_topk_count || 0) <= 0 ||
+              baselineInternalProducts.length <= 0;
+          }
+
           const safeResultLimit = Math.max(1, Number(limit || 20));
-          const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
+          const needsPrimaryFillSupplement =
+            guidanceNeedsPrimaryFillSupplement || baselineInternalProducts.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
             hasPetHarnessSearchSignal(cacheQueryText) &&
-            internalProductsAfterAnchor.length >= 3;
+            baselineInternalProducts.length >= 3;
           const isFragranceQuery = hasFragranceSearchSignal(cacheQueryText);
           const needsBeautyDiversitySupplement =
             !(SEARCH_EXTERNAL_HARD_RULE_PRUNE && isFragranceQuery) &&
@@ -17649,15 +17700,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             Number(page) === 1 &&
             isBeautyGeneralDiversitySupplementCandidate(
               effectiveIntent,
-              internalProductsAfterAnchor,
+              baselineInternalProducts,
               safeResultLimit,
               {
                 rawQuery: cacheQueryText,
                 queryClass: cachePolicyQueryClass,
               },
             );
-          const cacheHit = internalProductsAfterAnchor.length > 0;
-          let supplementedProducts = internalProductsAfterAnchor;
+          const cacheHit = baselineInternalProducts.length > 0;
+          let supplementedProducts = baselineInternalProducts;
           let supplementMeta = {
             attempted: false,
             applied: false,
@@ -17670,7 +17721,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             (needsPrimaryFillSupplement || needsBeautyDiversitySupplement)
           ) {
             const neededCount = needsPrimaryFillSupplement
-              ? Math.max(0, safeResultLimit - internalProductsAfterAnchor.length)
+              ? Math.max(0, safeResultLimit - baselineInternalProducts.length)
               : Math.max(1, Math.ceil(safeResultLimit / 2));
             if (neededCount > 0) {
               const confidenceOverall = Number(effectiveIntent?.confidence?.overall || 0) || 0;
@@ -17679,12 +17730,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               const externalFillGateWouldBlock =
                 SEARCH_EXTERNAL_FILL_GATED &&
                 !(
-                  internalProductsAfterAnchor.length >= externalFillMinInternal &&
+                  baselineInternalProducts.length >= externalFillMinInternal &&
                   (confidenceOverall >= 0.7 || isLookupQuery) &&
                   ambiguityScorePre <= 0.45
                 );
               const canApplyExternalFillGate =
-                SEARCH_EXTERNAL_HARD_RULE_PRUNE ? true : !externalFillGateWouldBlock;
+                guidanceNeedsPrimaryFillSupplement
+                  ? true
+                  : SEARCH_EXTERNAL_HARD_RULE_PRUNE
+                    ? true
+                    : !externalFillGateWouldBlock;
               if (shouldSkipExternalSupplementForPetHarness) {
                 supplementMeta = {
                   attempted: false,
@@ -17692,7 +17747,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   added_count: 0,
                   reason: 'pet_harness_internal_sufficient',
                   gate: {
-                    internal_count: internalProductsAfterAnchor.length,
+                    internal_count: baselineInternalProducts.length,
+                    raw_internal_count: internalProductsAfterAnchor.length,
                     min_internal_required: 3,
                   },
                 };
@@ -17705,7 +17761,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   gate: {
                     enabled: SEARCH_EXTERNAL_FILL_GATED,
                     min_internal_required: externalFillMinInternal,
-                    internal_count: internalProductsAfterAnchor.length,
+                    internal_count: baselineInternalProducts.length,
+                    raw_internal_count: internalProductsAfterAnchor.length,
                     overall_confidence: confidenceOverall,
                     ambiguity_score_pre: ambiguityScorePre,
                     lookup_query_bypass: Boolean(isLookupQuery),
@@ -17727,10 +17784,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       externalFillGateWouldBlock && SEARCH_EXTERNAL_HARD_RULE_PRUNE,
                     ),
                     min_internal_required: externalFillMinInternal,
-                    internal_count: internalProductsAfterAnchor.length,
+                    internal_count: baselineInternalProducts.length,
+                    raw_internal_count: internalProductsAfterAnchor.length,
                     overall_confidence: confidenceOverall,
                     ambiguity_score_pre: ambiguityScorePre,
                     lookup_query_bypass: Boolean(isLookupQuery),
+                    guidance_fill_bypassed: guidanceNeedsPrimaryFillSupplement,
                   },
                 };
                 try {
@@ -17761,7 +17820,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     source,
                   });
                   const seen = new Set(
-                    internalProductsAfterAnchor
+                    baselineInternalProducts
                       .map((product) => buildSearchProductKey(product))
                       .filter(Boolean),
                   );
@@ -17785,13 +17844,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     if (toAppend.length >= neededCount) break;
                   }
                   supplementedProducts =
-                    needsBeautyDiversitySupplement && internalProductsAfterAnchor.length >= safeResultLimit
+                    needsBeautyDiversitySupplement && baselineInternalProducts.length >= safeResultLimit
                       ? blendBeautyDiversitySupplement(
-                          internalProductsAfterAnchor,
+                          baselineInternalProducts,
                           toAppend,
                           safeResultLimit,
                         )
-                      : internalProductsAfterAnchor.concat(toAppend);
+                      : baselineInternalProducts.concat(toAppend);
                   supplementMeta = {
                     ...(supplement?.metadata && typeof supplement.metadata === 'object' ? supplement.metadata : {}),
                     attempted: true,
@@ -17895,6 +17954,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             products_count: effectiveProducts.length,
             internal_products_count: internalProducts.length,
             internal_products_relevant_count: internalProductsAfterAnchor.length,
+            guidance_scoped_internal_products_count: baselineInternalProducts.length,
+            guidance_hit_quality: internalGuidanceHitDecision?.hit_quality || null,
+            guidance_same_family_topk_count: Number(
+              internalGuidanceHitDecision?.same_family_topk_count || 0,
+            ),
+            guidance_query_target_step_family: guidanceTargetStepFamily || null,
             leash_anchor_applied: leashAnchoredQuery,
             external_products_count: externalCount,
             cache_relevant: cacheRelevant,
