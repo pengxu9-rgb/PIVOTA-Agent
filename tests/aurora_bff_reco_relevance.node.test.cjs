@@ -832,3 +832,45 @@ test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize a
     else process.env.AURORA_INGREDIENT_PLAN_ENABLED = prevIngredientPlan;
   }
 });
+
+test('/v1/analysis/skin -> /v1/session/bootstrap keeps latest_reco_context for skip-photo goal-driven analysis', async () => {
+  const prevRetention = process.env.AURORA_BFF_RETENTION_DAYS;
+  process.env.AURORA_BFF_RETENTION_DAYS = '0';
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const headers = {
+      'X-Aurora-UID': 'analysis_bootstrap_reco_context_uid',
+      'X-Trace-ID': 'trace_analysis_bootstrap_reco_context',
+    };
+
+    const analysisResponse = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+      headers,
+      body: {
+        use_photo: false,
+        goal: 'barrier_repair',
+        diagnosis_goal: 'barrier_repair',
+      },
+    });
+
+    assert.equal(analysisResponse.status, 200);
+    assert.equal(analysisResponse.body?.session_patch?.state?.latest_reco_context?.diagnosis_goal, 'barrier_repair');
+    assert.equal(analysisResponse.body?.session_patch?.state?.latest_reco_context?.target_step, 'moisturizer');
+
+    const bootstrapResponse = await invokeRoute(app, 'GET', '/v1/session/bootstrap', {
+      headers,
+    });
+
+    assert.equal(bootstrapResponse.status, 200);
+    assert.equal(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.diagnosis_goal, 'barrier_repair');
+    assert.equal(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.target_step, 'moisturizer');
+    assert.equal(Array.isArray(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.seed_terms), true);
+  } finally {
+    if (prevRetention === undefined) delete process.env.AURORA_BFF_RETENTION_DAYS;
+    else process.env.AURORA_BFF_RETENTION_DAYS = prevRetention;
+  }
+});
