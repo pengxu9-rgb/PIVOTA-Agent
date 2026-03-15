@@ -843,7 +843,10 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       assert.equal(Array.isArray(target?.products?.example_product_types), true);
       assert.equal(target.products.example_product_types.length > 0, true);
       assert.equal(Array.isArray(target?.products?.example_product_discovery_items), true);
-      assert.equal(typeof target.products.example_product_discovery_items.length, 'number');
+      assert.equal(target.products.example_product_discovery_items.length > 0, true);
+      assert.equal(typeof target.products.example_product_discovery_items[0]?.search_query, 'string');
+      assert.equal(Array.isArray(target.products.example_product_discovery_items[0]?.query_ladder), true);
+      assert.equal(target.products.example_product_discovery_items[0].query_ladder.length > 1, true);
       assert.equal(Array.isArray(target?.products?.competitors), false);
       assert.equal(Array.isArray(target?.products?.dupes), false);
       assert.equal('competitors' in target, false);
