@@ -21732,6 +21732,15 @@ function buildDeepDiveFallbackStoryPayload({ lastAnalysis, language } = {}) {
         timeline: isPlainObject(snapshot.timeline) ? snapshot.timeline : { first_4_weeks: [], week_8_12_expectation: [] },
         safety_notes: Array.isArray(snapshot.safety_notes) ? snapshot.safety_notes : [],
         disclaimer_non_medical: snapshot.disclaimer_non_medical !== false,
+        ...(pickFirstTrimmed(snapshot.primary_question) ? { primary_question: pickFirstTrimmed(snapshot.primary_question) } : {}),
+        ...(Array.isArray(snapshot.ask_3_questions)
+          ? {
+              ask_3_questions: snapshot.ask_3_questions
+                .map((item) => String(item || '').trim())
+                .filter(Boolean)
+                .slice(0, 3),
+            }
+          : {}),
         ui_card_v1: uiCard || buildAnalysisStoryUiCardV1({ story: { priority_findings: normalizedFindings, confidence_overall: snapshot.confidence_overall }, evidence: null, language: lang }),
       };
       return merged;
@@ -23353,26 +23362,93 @@ function buildGuidanceOnlyDiscoveryContext(target) {
   return { ingredientCue: '', focusCue: 'sensitive skin' };
 }
 
-function buildGuidanceOnlyDiscoveryQuery(target, label) {
+function resolveGuidanceOnlyDiscoveryTargetStepFamily(label, target) {
   const safeLabel = String(label || '').trim();
-  if (!safeLabel) return '';
-  const lower = safeLabel.toLowerCase();
-  const { ingredientCue, focusCue } = buildGuidanceOnlyDiscoveryContext(target);
-  const parts = [];
-  if (focusCue && !lower.includes(focusCue)) parts.push(focusCue);
-  if (ingredientCue && !lower.includes(ingredientCue)) parts.push(ingredientCue);
-  parts.push(safeLabel);
-  if (/\b(moisturizer|moisturiser|cream|barrier cream|gel cream|lotion|balm)\b/i.test(safeLabel) && !/\bface|facial\b/i.test(safeLabel)) {
-    parts.push('face');
+  const inferredFromLabel = normalizeRecoTargetStep(
+    resolveRecoTargetStepIntent({ focus: safeLabel, text: safeLabel })?.resolved_target_step,
+  );
+  if (inferredFromLabel) return inferredFromLabel;
+  const ingredientText = `${pickFirstTrimmed(target?.ingredient_id, target?.ingredientId)} ${pickFirstTrimmed(target?.ingredient_name, target?.ingredientName)}`.toLowerCase();
+  if (/ceramide/.test(ingredientText)) return 'moisturizer';
+  if (/panthenol|vitamin b5|niacinamide|centella|madecassoside|allantoin|hyalur|sodium hyaluronate/.test(ingredientText)) {
+    return /cream|moisturizer|lotion|balm|gel cream/i.test(safeLabel) ? 'moisturizer' : 'serum';
   }
-  parts.push('skincare');
-  return Array.from(
-    new Set(
-      parts
-        .map((part) => String(part || '').trim())
-        .filter(Boolean),
-    ),
-  ).join(' ');
+  return /cream|moisturizer|lotion|balm|gel cream/i.test(safeLabel) ? 'moisturizer' : 'serum';
+}
+
+function dedupeGuidanceOnlyQueries(queries) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(queries) ? queries : []) {
+    const query = String(raw || '').trim().replace(/\s+/g, ' ');
+    if (!query) continue;
+    const key = query.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(query);
+  }
+  return out;
+}
+
+function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
+  const safeLabel = String(label || '').trim();
+  if (!safeLabel) return [];
+  const { ingredientCue, focusCue } = buildGuidanceOnlyDiscoveryContext(target);
+  const queries = [safeLabel];
+
+  if (targetStepFamily === 'moisturizer') {
+    if (focusCue === 'barrier repair') {
+      queries.push('barrier repair moisturizer', 'barrier moisturizer');
+    } else if (focusCue === 'sensitive skin') {
+      queries.push('sensitive skin moisturizer', 'fragrance free moisturizer');
+    } else if (focusCue === 'hydrating') {
+      queries.push('hydrating moisturizer', 'gel cream');
+    } else if (focusCue === 'balance') {
+      queries.push('lightweight gel moisturizer');
+    } else if (focusCue === 'soothing') {
+      queries.push('soothing moisturizer', 'barrier moisturizer');
+    }
+    if (ingredientCue) queries.push(`${ingredientCue} moisturizer`);
+    queries.push('face moisturizer');
+  } else if (targetStepFamily === 'serum') {
+    if (focusCue === 'barrier repair') {
+      queries.push('barrier repair serum', 'soothing serum');
+    } else if (focusCue === 'hydrating') {
+      queries.push('hydrating serum');
+    } else if (focusCue === 'soothing' || focusCue === 'sensitive skin') {
+      queries.push('soothing serum');
+    }
+    if (ingredientCue) queries.push(`${ingredientCue} serum`);
+    queries.push('hydrating serum');
+  } else {
+    if (focusCue) queries.push(`${focusCue} skincare`);
+    if (ingredientCue) queries.push(`${ingredientCue} skincare`);
+  }
+  return dedupeGuidanceOnlyQueries(queries).slice(0, 4);
+}
+
+function buildGuidanceOnlyDiscoveryLadder(target, label) {
+  const safeLabel = String(label || '').trim();
+  if (!safeLabel) return [];
+  const targetStepFamily = resolveGuidanceOnlyDiscoveryTargetStepFamily(safeLabel, target);
+  const internalQueries = buildGuidanceOnlyInternalQueries(target, safeLabel, targetStepFamily);
+  if (!internalQueries.length) return [];
+  const ladder = internalQueries.map((query) => ({
+    query,
+    target_step_family: targetStepFamily || null,
+    allow_external_seed: false,
+    external_seed_strategy: null,
+    product_only: true,
+  }));
+  const supplementQuery = internalQueries[Math.min(1, internalQueries.length - 1)] || internalQueries[0];
+  ladder.push({
+    query: supplementQuery,
+    target_step_family: targetStepFamily || null,
+    allow_external_seed: true,
+    external_seed_strategy: 'supplement_internal_first',
+    product_only: true,
+  });
+  return ladder;
 }
 
 function buildGuidanceOnlyProductDiscoveryItems(target, examples = []) {
@@ -23381,13 +23457,15 @@ function buildGuidanceOnlyProductDiscoveryItems(target, examples = []) {
     .map((label, index) => {
       const safeLabel = String(label || '').trim();
       if (!safeLabel) return null;
-      const query = buildGuidanceOnlyDiscoveryQuery(target, safeLabel);
-      if (!query) return null;
+      const queryLadder = buildGuidanceOnlyDiscoveryLadder(target, safeLabel);
+      if (!queryLadder.length) return null;
+      const primaryStep = queryLadder[0];
       return {
         id: `guidance_example_${index + 1}`,
         label: safeLabel,
-        search_query: query,
+        search_query: primaryStep.query,
         search_title: safeLabel,
+        query_ladder: queryLadder,
         source: 'guidance_only_example',
       };
     })
@@ -25240,13 +25318,35 @@ function buildAnalysisClarificationQuestions({
   diagnosisGoal = '',
   targetStep = '',
 } = {}) {
-  void language;
-  void diagnosisGoal;
-  void targetStep;
-  // Diagnosis V2 owns its own follow-up questions. The low-confidence
-  // /v1/analysis/skin path should not synthesize a second clarification flow
-  // from missing artifact/profile fields.
-  return [];
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const normalizedGoal = String(diagnosisGoal || '').trim().toLowerCase();
+  const normalizedStep = normalizeRecoTargetStep(targetStep);
+
+  if (normalizedGoal.includes('barrier') || normalizedStep === 'moisturizer') {
+    return isCn
+      ? [
+          { id: 'goal_current_tolerance', question: '你现在最容易觉得不舒服的是哪一步：清洁、精华，还是面霜？' },
+          { id: 'goal_recent_actives', question: '最近 7 天有新加酸类、视黄醇，或去角质产品吗？' },
+          { id: 'goal_rich_cream_tolerance', question: '偏厚一点的修护面霜对你来说通常更舒缓，还是更容易闷/刺激？' },
+        ]
+      : [
+          { id: 'goal_current_tolerance', question: 'Which step feels most uncomfortable right now: cleanser, serum, or moisturizer?' },
+          { id: 'goal_recent_actives', question: 'Did you start any new acids, retinoids, or exfoliants in the last 7 days?' },
+          { id: 'goal_rich_cream_tolerance', question: 'Do richer repair creams usually feel soothing for you, or more likely to feel cloggy/irritating?' },
+        ];
+  }
+
+  return isCn
+    ? [
+        { id: 'goal_main_reaction', question: '你现在最想先解决的是哪一种反应：刺痛、泛红，还是干燥紧绷？' },
+        { id: 'goal_recent_change', question: '最近一周有换新产品，或把频率提上去吗？' },
+        { id: 'goal_current_tolerance', question: '你现在最容易觉得不适的是哪一步：清洁、精华，还是面霜？' },
+      ]
+    : [
+        { id: 'goal_main_reaction', question: 'What do you most want to calm first right now: stinging, redness, or dryness/tightness?' },
+        { id: 'goal_recent_change', question: 'Did you change products or increase frequency in the last week?' },
+        { id: 'goal_current_tolerance', question: 'Which step feels most reactive right now: cleansing, serum, or moisturizer?' },
+      ];
 }
 
 function buildAnalysisClarificationPack({
@@ -25262,24 +25362,11 @@ function buildAnalysisClarificationPack({
   if (!questions.length) return null;
   const primaryQuestion = questions[0];
   const ask3 = questions.map((question) => question.question).filter(Boolean).slice(0, 3);
-  const resumeContext = pickFirstTrimmed(diagnosisGoal, targetStep) || 'skin analysis follow-up';
-  const pendingState = sanitizePendingClarification(
-    {
-      v: PENDING_CLARIFICATION_SCHEMA_V1,
-      flow_id: makeFlowId(),
-      created_at_ms: Date.now(),
-      resume_user_text: String(resumeContext).trim().slice(0, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT),
-      current: { id: primaryQuestion.id },
-      queue: [],
-      history: [],
-    },
-    { recordMetrics: false },
-  );
   return {
     primary_question: primaryQuestion.question,
     ask_3_questions: ask3,
     questions,
-    pending_clarification: pendingState && pendingState.pending ? pendingState.pending : null,
+    pending_clarification: null,
   };
 }
 
@@ -27443,10 +27530,7 @@ function evaluateStepRecoContextStrength({
       ? recoArtifactEligible
       : (typeof latest.reco_artifact_eligible === 'boolean' ? latest.reco_artifact_eligible : null);
   const hasDurableSupport = durableFieldPresent || hasIngredientSignals;
-  const notTooWeak =
-    resolvedRecoArtifactEligible === false
-      ? hasDurableSupport
-      : (hasDiagnosisGoal || hasTargetStep || hasDurableSupport);
+  const notTooWeak = hasDurableSupport;
   return {
     context_too_weak: !notTooWeak,
     reco_artifact_eligible: resolvedRecoArtifactEligible,
@@ -32190,6 +32274,17 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
     safety_notes: [
       isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
     ],
+    ...(pickFirstString(payload.primary_question)
+      ? { primary_question: pickFirstString(payload.primary_question) }
+      : {}),
+    ...(Array.isArray(payload.ask_3_questions) && payload.ask_3_questions.length
+      ? {
+          ask_3_questions: payload.ask_3_questions
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+            .slice(0, 3),
+        }
+      : {}),
     disclaimer_non_medical: true,
   };
 }

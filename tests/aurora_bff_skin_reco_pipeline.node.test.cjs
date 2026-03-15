@@ -287,6 +287,8 @@ test('analysis guidance-only mode strips concrete product payloads before UI ren
   assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items), true);
   assert.equal(stripped.targets[0]?.products?.example_product_discovery_items.length > 0, true);
   assert.equal(typeof stripped.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
+  assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder), true);
+  assert.equal(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length > 1, true);
   assert.equal(stripped.targets[0]?.products?.note, 'Tap a product type to browse top matching products.');
   assert.equal('product_rows' in stripped.targets[0], false);
   assert.equal('competitors' in stripped.targets[0], false);
@@ -321,6 +323,8 @@ test('guidance-only ingredient plan cards never rehydrate concrete sku payloads 
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items), true);
   assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items.length > 0, true);
   assert.equal(typeof card.payload.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder), true);
+  assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length > 1, true);
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.competitors), false);
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.dupes), false);
   assert.equal('external_fallback_used' in card.payload.targets[0], false);
@@ -353,7 +357,7 @@ test('latest reco context canonicalizes seeds, limits carry-over, and keeps curr
   assert.deepEqual(payload.seed_terms, ['barrier repair', 'ceramide', 'panthenol', 'sensitive skin']);
 });
 
-test('analysis clarification pack does not synthesize legacy profile questions for diagnosis v2', () => {
+test('analysis clarification pack emits goal-related follow-up questions instead of legacy profile gaps', () => {
   const pack = routesInternal.buildAnalysisClarificationPack({
     language: 'EN',
     artifactGate: {
@@ -366,7 +370,12 @@ test('analysis clarification pack does not synthesize legacy profile questions f
     targetStep: 'moisturizer',
   });
 
-  assert.equal(pack, null);
+  assert.ok(pack);
+  assert.equal(typeof pack.primary_question, 'string');
+  assert.equal(pack.primary_question.includes('missing_'), false);
+  assert.equal(Array.isArray(pack.ask_3_questions), true);
+  assert.equal(pack.ask_3_questions.length, 3);
+  assert.equal(pack.ask_3_questions.some((question) => String(question || '').includes('missing_')), false);
 });
 
 test('step reco context strength flags contexts that are too weak even when search is valid', () => {

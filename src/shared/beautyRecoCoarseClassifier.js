@@ -15,6 +15,8 @@ const ACCESSORY_RE = /\b(accessory|mirror|curler|sharpener)\b/i;
 const BODY_RE = /\b(body|hand|foot|heel|bath|shower|deodorant|butt|booty|butta|trio|set)\b/i;
 const FACE_RE = /\b(face|facial|barrier cream|gel cream)\b/i;
 const MAKEUP_RE = /\b(lip|lipstick|mascara|eyeshadow|shadow|blush|concealer|foundation|liner|brow|powder|highlighter)\b/i;
+const SERVICE_RE = /\b(cabine|fauteuil|minutes?|session|appointment|booking|spa)\b/i;
+const SERVICE_FRENCH_RE = /\bsoin\b/i;
 
 function asString(value) {
   return value == null ? '' : String(value).trim();
@@ -99,9 +101,12 @@ function classifyBeautyCoarseCandidate(product, { queryTargetStepFamily = null }
   const candidateStep = normalizeRecoTargetStep(stepResolution.candidate_step);
   const hasBodyCue = BODY_RE.test(lower);
   const hasFaceCue = FACE_RE.test(lower);
+  const hasServiceCue = SERVICE_RE.test(lower) || (SERVICE_FRENCH_RE.test(lower) && SERVICE_RE.test(lower));
 
   let domainScope = 'unknown';
-  if (TOOL_RE.test(lower)) {
+  if (hasServiceCue) {
+    domainScope = 'beauty_service';
+  } else if (TOOL_RE.test(lower)) {
     domainScope = 'beauty_tool';
   } else if (hasBodyCue && !hasFaceCue) {
     domainScope = 'bodycare';
@@ -112,7 +117,8 @@ function classifyBeautyCoarseCandidate(product, { queryTargetStepFamily = null }
   }
 
   let objectType = 'unknown';
-  if (BRUSH_RE.test(lower)) objectType = 'brush';
+  if (domainScope === 'beauty_service') objectType = 'service';
+  else if (BRUSH_RE.test(lower)) objectType = 'brush';
   else if (TOOL_RE.test(lower)) objectType = 'tool';
   else if (ACCESSORY_RE.test(lower)) objectType = 'accessory';
   else if (domainScope === 'skincare' || domainScope === 'bodycare' || domainScope === 'makeup') objectType = 'product';
@@ -165,6 +171,7 @@ function scoreBeautyCandidateForTarget(product, { queryTargetStepFamily = null }
   if (coarse.application_mode === 'rinse_off') score -= 15;
   if (coarse.domain_scope === 'bodycare') score -= 40;
   if (coarse.domain_scope === 'makeup') score -= 60;
+  if (coarse.domain_scope === 'beauty_service' || coarse.object_type === 'service') score -= 120;
   if (coarse.domain_scope === 'beauty_tool' || coarse.object_type === 'brush' || coarse.object_type === 'tool') score -= 100;
   return { score, coarse };
 }
@@ -187,7 +194,7 @@ function rerankBeautySkincareProductsByTargetFamily(products, { queryTargetStepF
     .map((row) => row.product);
 }
 
-function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
+function buildBeautySkincareHitQualityDecision({ queryText, products, queryTargetStepFamily = null } = {}) {
   const queryBucket = detectBeautyQueryBucket(queryText);
   const rawProducts = Array.isArray(products) ? products : [];
   if (queryBucket !== 'skincare') {
@@ -207,8 +214,12 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
     };
   }
   const queryResolution = resolveRecoTargetStepIntent({ focus: queryText, text: queryText });
-  const queryTargetStepFamily = normalizeRecoTargetStep(queryResolution?.resolved_target_step);
-  const rankedProducts = rerankBeautySkincareProductsByTargetFamily(rawProducts, { queryTargetStepFamily });
+  const normalizedQueryTargetStepFamily = normalizeRecoTargetStep(
+    queryTargetStepFamily || queryResolution?.resolved_target_step,
+  );
+  const rankedProducts = rerankBeautySkincareProductsByTargetFamily(rawProducts, {
+    queryTargetStepFamily: normalizedQueryTargetStepFamily,
+  });
   const topK = rankedProducts.slice(0, 8);
   const topkBucketMix = {};
   let toolsTopKCount = 0;
@@ -217,13 +228,13 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
   let skincareTopKCount = 0;
 
   const classifyTopK = (product) => {
-    const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily });
+    const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily: normalizedQueryTargetStepFamily });
     topkBucketMix[coarse.domain_scope] = Number(topkBucketMix[coarse.domain_scope] || 0) + 1;
     if (coarse.domain_scope === 'beauty_tool') toolsTopKCount += 1;
     if (coarse.domain_scope === 'skincare' && coarse.usage_scope === 'face' && coarse.object_type === 'product') skincareTopKCount += 1;
     if (coarse.coarse_valid_for_target) {
       sameFamilyTopKCount += 1;
-      if (coarse.candidate_step && coarse.candidate_step === queryTargetStepFamily) exactStepTopKCount += 1;
+      if (coarse.candidate_step && coarse.candidate_step === normalizedQueryTargetStepFamily) exactStepTopKCount += 1;
     }
     return coarse;
   };
@@ -231,20 +242,20 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
   for (const product of topK) classifyTopK(product);
 
   const validProducts = rankedProducts.filter((product) => {
-    const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily });
+    const coarse = classifyBeautyCoarseCandidate(product, { queryTargetStepFamily: normalizedQueryTargetStepFamily });
     return coarse.coarse_valid_for_target;
   });
 
   let hitQuality = 'empty';
   let invalidHitReason = null;
   if (rawProducts.length > 0) {
-    if (validProducts.length > 0 && (!queryTargetStepFamily || sameFamilyTopKCount > 0)) {
+    if (validProducts.length > 0 && (!normalizedQueryTargetStepFamily || sameFamilyTopKCount > 0)) {
       hitQuality = 'valid_hit';
     } else {
       hitQuality = 'invalid_hit';
       if (toolsTopKCount >= Math.max(1, Math.ceil(topK.length / 2))) invalidHitReason = 'invalid_hit_tools_dominant';
       else if (skincareTopKCount <= 0) invalidHitReason = 'invalid_hit_all_non_skincare';
-      else if (queryTargetStepFamily && sameFamilyTopKCount <= 0) invalidHitReason = 'invalid_hit_no_same_family_candidates';
+      else if (normalizedQueryTargetStepFamily && sameFamilyTopKCount <= 0) invalidHitReason = 'invalid_hit_no_same_family_candidates';
       else invalidHitReason = 'invalid_hit_wrong_beauty_bucket';
     }
   }
@@ -255,7 +266,7 @@ function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
     hit_quality: hitQuality,
     invalid_hit_reason: invalidHitReason,
     query_bucket: 'skincare',
-    query_target_step_family: queryTargetStepFamily || null,
+    query_target_step_family: normalizedQueryTargetStepFamily || null,
     topk_bucket_mix: topkBucketMix,
     same_family_topk_count: sameFamilyTopKCount,
     exact_step_topk_count: exactStepTopKCount,

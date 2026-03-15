@@ -3833,6 +3833,10 @@ function normalizeSearchUiSurface(value) {
   return normalized || '';
 }
 
+function isIngredientPlanGuidanceUiSurface(value) {
+  return normalizeSearchUiSurface(value) === 'ingredient_plan_guidance_only';
+}
+
 function parseQueryJsonObject(value) {
   const raw = firstQueryParamValue(value);
   if (!raw) return null;
@@ -4041,6 +4045,31 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
     }
     if (search.fast_mode === undefined) {
       search.fast_mode = true;
+    }
+  }
+
+  if (uiSurface === 'ingredient_plan_guidance_only') {
+    const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
+    const queryIndex = parseQueryNumber(query.query_index ?? query.queryIndex);
+    const queryTotal = parseQueryNumber(query.query_total ?? query.queryTotal);
+    const targetStepFamily = normalizeRecoTargetStep(
+      firstQueryParamValue(query.target_step_family || query.targetStepFamily),
+    );
+
+    if (productOnly !== undefined) metadata.product_only_requested = productOnly;
+    if (queryIndex !== undefined) metadata.query_index = Math.max(0, Math.floor(queryIndex));
+    if (queryTotal !== undefined) metadata.query_total = Math.max(0, Math.floor(queryTotal));
+    if (targetStepFamily) metadata.query_target_step_family = targetStepFamily;
+
+    if (search.allow_external_seed === undefined) {
+      search.allow_external_seed = false;
+    }
+    if (search.allow_external_seed === true && !String(search.external_seed_strategy || '').trim()) {
+      search.external_seed_strategy = 'supplement_internal_first';
+    }
+    metadata.search_allow_external_seed = search.allow_external_seed === true;
+    if (String(search.external_seed_strategy || '').trim()) {
+      metadata.external_seed_strategy = String(search.external_seed_strategy || '').trim();
     }
   }
 
@@ -8831,11 +8860,40 @@ function resolveBeautyCoarseStepFamily(product) {
   return resolveSharedBeautyCoarseStepFamily(product);
 }
 
-function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
+function buildBeautySkincareHitQualityDecision({ queryText, products, queryTargetStepFamily = null } = {}) {
   return {
-    ...buildSharedBeautySkincareHitQualityDecision({ queryText, products }),
+    ...buildSharedBeautySkincareHitQualityDecision({ queryText, products, queryTargetStepFamily }),
     contract_version: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   };
+}
+
+function buildSearchDecisionProductKey(product) {
+  return String(
+    product?.product_id ||
+      product?.id ||
+      product?.sku_id ||
+      product?.slug ||
+      product?.title ||
+      product?.name ||
+      '',
+  ).trim();
+}
+
+function inferGuidanceDiscoverySourceUsed(products = [], allowExternalSeed = false) {
+  const rows = Array.isArray(products) ? products : [];
+  if (!rows.length) {
+    return allowExternalSeed ? 'internal_plus_external_exhausted' : 'internal_exhausted';
+  }
+  const usedExternal = rows.some((product) => {
+    const source = String(
+      product?.source ||
+        product?.retrieval_source ||
+        product?.merchant_id ||
+        '',
+    ).trim().toLowerCase();
+    return source === 'external_seed' || source.includes('external');
+  });
+  return usedExternal ? 'external_seed_supplement' : 'internal';
 }
 
 function detectBeautyQueryBucket(queryText) {
@@ -20450,6 +20508,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         enriched && typeof enriched === 'object' && !Array.isArray(enriched) && enriched.metadata
           ? enriched.metadata
           : {};
+      const uiSurface = normalizeSearchUiSurface(
+        existingMeta?.ui_surface ||
+          firstQueryParamValue(req?.query?.ui_surface || req?.query?.uiSurface) ||
+          firstQueryParamValue(queryParams?.ui_surface || queryParams?.uiSurface),
+      );
+      const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
+      const requestedTargetStepFamily = normalizeRecoTargetStep(
+        existingMeta?.query_target_step_family ||
+          firstQueryParamValue(req?.query?.target_step_family || req?.query?.targetStepFamily) ||
+          firstQueryParamValue(queryParams?.target_step_family || queryParams?.targetStepFamily),
+      );
+      const requestedProductOnly = parseQueryBoolean(
+        req?.query?.product_only ?? req?.query?.productOnly ??
+        queryParams?.product_only ?? queryParams?.productOnly,
+      );
+      const requestedAllowExternalSeed = parseQueryBoolean(
+        req?.query?.allow_external_seed ?? req?.query?.allowExternalSeed ??
+        queryParams?.allow_external_seed ?? queryParams?.allowExternalSeed,
+      );
+      const requestedQueryIndex = parseQueryNumber(
+        req?.query?.query_index ?? req?.query?.queryIndex ?? queryParams?.query_index ?? queryParams?.queryIndex,
+      );
+      const requestedQueryTotal = parseQueryNumber(
+        req?.query?.query_total ?? req?.query?.queryTotal ?? queryParams?.query_total ?? queryParams?.queryTotal,
+      );
+      const requestedExternalSeedStrategy = String(
+        firstQueryParamValue(
+          req?.query?.external_seed_strategy ||
+            req?.query?.externalSeedStrategy ||
+            queryParams?.external_seed_strategy ||
+            queryParams?.externalSeedStrategy,
+        ) || '',
+      ).trim();
       const rawProductsBeforeQualityGate = Array.isArray(enriched?.products) ? enriched.products : [];
       const rawProductsForQualityGate = Array.isArray(upstreamData?.products)
         ? upstreamData.products
@@ -20457,6 +20548,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const skincareHitDecision = buildBeautySkincareHitQualityDecision({
         queryText,
         products: rawProductsForQualityGate,
+        queryTargetStepFamily: requestedTargetStepFamily,
       });
       if (skincareHitDecision.applied) {
         const existingSearchDecision =
@@ -20469,31 +20561,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : {};
         const validProductKeys = new Set(
           (Array.isArray(skincareHitDecision.valid_products) ? skincareHitDecision.valid_products : [])
-            .map((product) =>
-              String(
-                product?.product_id ||
-                  product?.id ||
-                  product?.sku_id ||
-                  product?.slug ||
-                  product?.title ||
-                  product?.name ||
-                  '',
-              ).trim(),
-            )
+            .map((product) => buildSearchDecisionProductKey(product))
             .filter(Boolean),
         );
         const policyScopedValidProducts =
           skincareHitDecision.hit_quality === 'valid_hit'
             ? rawProductsBeforeQualityGate.filter((product) => {
-                const productKey = String(
-                  product?.product_id ||
-                    product?.id ||
-                    product?.sku_id ||
-                    product?.slug ||
-                    product?.title ||
-                    product?.name ||
-                    '',
-                ).trim();
+                const productKey = buildSearchDecisionProductKey(product);
                 return productKey && validProductKeys.has(productKey);
               })
             : [];
@@ -20505,6 +20579,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? skincareHitDecision.valid_products
                 : [])
             : [];
+        const nextProductKeys = new Set(nextProducts.map((product) => buildSearchDecisionProductKey(product)).filter(Boolean));
+        const guidanceOnlyProductOnlyApplied =
+          guidanceOnlyDiscovery
+            && (requestedProductOnly !== undefined ? requestedProductOnly : existingMeta?.product_only_requested !== false);
+        const serviceRowsFilteredCount = guidanceOnlyDiscovery
+          ? rawProductsForQualityGate.reduce((count, product) => {
+              const productKey = buildSearchDecisionProductKey(product);
+              if (productKey && nextProductKeys.has(productKey)) return count;
+              const coarse = classifySharedBeautyCoarseCandidate(product, {
+                queryTargetStepFamily: requestedTargetStepFamily,
+              });
+              return coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service'
+                ? count + 1
+                : count;
+            }, 0)
+          : 0;
+        const normalizedQueryIndex = requestedQueryIndex !== undefined
+          ? Math.max(0, Math.floor(requestedQueryIndex))
+          : Number.isFinite(Number(existingMeta?.query_index))
+          ? Math.max(0, Math.floor(Number(existingMeta.query_index)))
+          : null;
+        const normalizedQueryTotal = requestedQueryTotal !== undefined
+          ? Math.max(0, Math.floor(requestedQueryTotal))
+          : Number.isFinite(Number(existingMeta?.query_total))
+          ? Math.max(0, Math.floor(Number(existingMeta.query_total)))
+          : null;
+        const discoveryAllowExternalSeed = requestedAllowExternalSeed !== undefined
+          ? requestedAllowExternalSeed === true
+          : existingMeta?.allow_external_seed === true
+            || existingMeta?.search_allow_external_seed === true
+            || existingMeta?.external_seed_strategy === 'supplement_internal_first'
+            || requestedExternalSeedStrategy === 'supplement_internal_first';
         const nextSearchDecision = {
           ...existingSearchDecision,
           contract_version: skincareHitDecision.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
@@ -20517,6 +20623,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           exact_step_topk_count: skincareHitDecision.exact_step_topk_count,
           raw_result_count: skincareHitDecision.raw_result_count,
           products_returned_count: skincareHitDecision.products_returned_count,
+          ...(guidanceOnlyDiscovery
+            ? {
+                product_only_applied: guidanceOnlyProductOnlyApplied,
+                service_rows_filtered_count: serviceRowsFilteredCount,
+                discovery_source_used: inferGuidanceDiscoverySourceUsed(
+                  nextProducts,
+                  discoveryAllowExternalSeed,
+                ),
+                query_index: normalizedQueryIndex,
+                query_exhausted:
+                  normalizedQueryIndex != null && normalizedQueryTotal != null
+                    ? normalizedQueryTotal > 0 && normalizedQueryIndex >= normalizedQueryTotal - 1
+                    : nextProducts.length === 0,
+              }
+            : {}),
           ...(skincareHitDecision.hit_quality === 'invalid_hit' ? { final_decision: 'invalid_hit' } : {}),
         };
         enriched = {
@@ -20527,6 +20648,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...existingMeta,
             raw_result_count: skincareHitDecision.raw_result_count,
             products_returned_count: skincareHitDecision.products_returned_count,
+            ...(guidanceOnlyDiscovery
+              ? {
+                  product_only_applied: guidanceOnlyProductOnlyApplied,
+                  service_rows_filtered_count: serviceRowsFilteredCount,
+                  discovery_source_used: nextSearchDecision.discovery_source_used,
+                  query_index: normalizedQueryIndex,
+                  query_exhausted: nextSearchDecision.query_exhausted,
+                }
+              : {}),
             search_decision: nextSearchDecision,
           },
         };
