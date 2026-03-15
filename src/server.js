@@ -64,6 +64,10 @@ const {
   classifyBeautyGuidanceQueryStrength: classifySharedBeautyGuidanceQueryStrength,
 } = require('./shared/beautyRecoCoarseClassifier');
 const {
+  normalizeRecommendationDecisionMode,
+  shouldUseSharedTargetRelevancePipeline,
+} = require('./shared/recommendationDecisionCapability');
+const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
@@ -4068,11 +4072,16 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
     const targetStepFamily = normalizeRecoTargetStep(
       firstQueryParamValue(query.target_step_family || query.targetStepFamily),
     );
+    const decisionMode = normalizeRecommendationDecisionMode(
+      firstQueryParamValue(query.decision_mode || query.decisionMode),
+      { guidanceOnlyDiscovery: true },
+    );
 
     if (productOnly !== undefined) metadata.product_only_requested = productOnly;
     if (queryIndex !== undefined) metadata.query_index = Math.max(0, Math.floor(queryIndex));
     if (queryTotal !== undefined) metadata.query_total = Math.max(0, Math.floor(queryTotal));
     if (targetStepFamily) metadata.query_target_step_family = targetStepFamily;
+    if (decisionMode) metadata.decision_mode = decisionMode;
 
     if (search.allow_external_seed === undefined) {
       search.allow_external_seed = false;
@@ -5358,17 +5367,23 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     options?.queryTargetStepFamily || options?.targetStepFamily,
   );
   const uiSurface = normalizeSearchUiSurface(options?.uiSurface || options?.ui_surface || null);
-  const guidanceOnlyMoisturizer =
-    uiSurface === 'ingredient_plan_guidance_only' && targetStepFamily === 'moisturizer';
-  const queryStepStrength = guidanceOnlyMoisturizer
+  const decisionMode = normalizeRecommendationDecisionMode(options?.decisionMode || options?.decision_mode, {
+    guidanceOnlyDiscovery: uiSurface === 'ingredient_plan_guidance_only',
+  });
+  const queryStepStrength = shouldUseSharedTargetRelevancePipeline({
+    mode: decisionMode,
+    targetStepFamily,
+    queryStepStrength: resolveGuidanceSearchStepStrength(options?.queryStepStrength, queryText, targetStepFamily),
+  })
     ? resolveGuidanceSearchStepStrength(options?.queryStepStrength, queryText, targetStepFamily)
     : null;
-  if (guidanceOnlyMoisturizer) {
+  if (shouldUseSharedTargetRelevancePipeline({ mode: decisionMode, targetStepFamily, queryStepStrength })) {
     const coarse = classifySharedBeautyCoarseCandidate(product, {
       queryTargetStepFamily: targetStepFamily,
       queryText,
-      guidanceOnlyDiscovery: true,
+      guidanceOnlyDiscovery: decisionMode === 'guidance_only',
       queryStepStrength,
+      mode: decisionMode,
     });
     if (coarse.target_relevance_class === 'hard_invalid' || coarse.target_relevance_class === 'adjacent_noise') {
       return false;
@@ -5751,6 +5766,7 @@ function scoreDirectExternalSeedProduct({
   targetStepFamily,
   uiSurface = null,
   queryStepStrength = null,
+  decisionMode = null,
 }) {
   const titleText = normalizeSearchTextForMatch(
     [
@@ -5778,8 +5794,14 @@ function scoreDirectExternalSeedProduct({
       .filter(Boolean)
       .join(' '),
   );
-  const guidanceOnlyDiscovery = normalizeSearchUiSurface(uiSurface) === 'ingredient_plan_guidance_only';
-  const effectiveQueryStepStrength = guidanceOnlyDiscovery
+  const normalizedDecisionMode = normalizeRecommendationDecisionMode(decisionMode, {
+    guidanceOnlyDiscovery: normalizeSearchUiSurface(uiSurface) === 'ingredient_plan_guidance_only',
+  });
+  const effectiveQueryStepStrength = shouldUseSharedTargetRelevancePipeline({
+    mode: normalizedDecisionMode,
+    targetStepFamily,
+    queryStepStrength: resolveGuidanceSearchStepStrength(queryStepStrength, queryText, targetStepFamily),
+  })
     ? resolveGuidanceSearchStepStrength(queryStepStrength, queryText, targetStepFamily)
     : null;
   const candidateText =
@@ -5790,8 +5812,9 @@ function scoreDirectExternalSeedProduct({
   const coarse = classifySharedBeautyCoarseCandidate(product, {
     queryTargetStepFamily: targetStepFamily,
     queryText,
-    guidanceOnlyDiscovery,
+    guidanceOnlyDiscovery: normalizedDecisionMode === 'guidance_only',
     queryStepStrength: effectiveQueryStepStrength,
+    mode: normalizedDecisionMode,
   });
   const relation = targetStepFamily
     ? getRecoTargetFamilyRelation(targetStepFamily, coarse?.coarse_step_family || '')
@@ -5822,7 +5845,7 @@ function scoreDirectExternalSeedProduct({
     }
   }
 
-  if (guidanceOnlyDiscovery && targetStepFamily === 'moisturizer') {
+  if (shouldUseSharedTargetRelevancePipeline({ mode: normalizedDecisionMode, targetStepFamily, queryStepStrength: effectiveQueryStepStrength })) {
     if (coarse?.target_relevance_class === 'strong_goal_family') score += 42;
     else if (coarse?.target_relevance_class === 'supportive_family') score += 24;
     else if (coarse?.target_relevance_class === 'generic_family') score -= 12;
@@ -5885,8 +5908,20 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
   );
   const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
-  const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
-  const queryStepStrength = guidanceOnlyDiscovery
+  const decisionMode = normalizeRecommendationDecisionMode(
+    metadata?.decision_mode || search?.decision_mode || search?.decisionMode,
+    { guidanceOnlyDiscovery: uiSurface === 'ingredient_plan_guidance_only' },
+  );
+  const guidanceOnlyDiscovery = decisionMode === 'guidance_only';
+  const queryStepStrength = shouldUseSharedTargetRelevancePipeline({
+    mode: decisionMode,
+    targetStepFamily,
+    queryStepStrength: resolveGuidanceSearchStepStrength(
+      metadata?.query_step_strength || search?.query_step_strength || search?.queryStepStrength,
+      queryText,
+      targetStepFamily,
+    ),
+  })
     ? resolveGuidanceSearchStepStrength(
         metadata?.query_step_strength || search?.query_step_strength || search?.queryStepStrength,
         queryText,
@@ -5979,6 +6014,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         queryText,
         guidanceOnlyDiscovery,
         queryStepStrength,
+        mode: decisionMode,
       });
       if (coarse?.target_relevance_class) {
         prefilterCandidateClassCounts[coarse.target_relevance_class] =
@@ -6001,6 +6037,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           targetStepFamily,
           uiSurface,
           queryStepStrength,
+          decisionMode,
         });
         const relevant = isSupplementCandidateRelevant(product, queryText, {
           normalizedQuery,
@@ -6009,6 +6046,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           targetStepFamily,
           uiSurface,
           queryStepStrength,
+          decisionMode,
         });
         return { product, score, relevant };
       })
@@ -6032,6 +6070,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         queryText,
         guidanceOnlyDiscovery,
         queryStepStrength,
+        mode: decisionMode,
       });
       const blocked =
         coarse?.object_type === 'service' ||
@@ -6048,6 +6087,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       queryTargetStepFamily: targetStepFamily,
       guidanceOnlyDiscovery,
       queryStepStrength,
+      mode: decisionMode,
     });
     const validKeys = new Set(
       (Array.isArray(skincareHitDecision?.valid_products) ? skincareHitDecision.valid_products : [])
@@ -6104,6 +6144,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
               discovery_source_used:
                 responseProducts.length > 0 ? 'external_seed_direct' : 'external_seed_direct_exhausted',
               query_step_strength: queryStepStrength,
+              decision_mode: decisionMode,
               query_index: queryIndex,
               query_exhausted:
                 queryIndex != null && queryTotal != null
@@ -6143,12 +6184,20 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           query_step_strength: skincareHitDecision?.applied
             ? skincareHitDecision.query_step_strength
             : queryStepStrength,
+          decision_mode: decisionMode,
           step_success_class: skincareHitDecision?.applied
             ? skincareHitDecision.step_success_class
+            : null,
+          success_contract_result: skincareHitDecision?.applied
+            ? skincareHitDecision.success_contract_result
             : null,
           candidate_class_counts: mergeSearchCountMaps(
             prefilterCandidateClassCounts,
             skincareHitDecision?.applied ? skincareHitDecision.candidate_class_counts : null,
+          ),
+          target_relevance_class_counts: mergeSearchCountMaps(
+            prefilterCandidateClassCounts,
+            skincareHitDecision?.applied ? skincareHitDecision.target_relevance_class_counts : null,
           ),
           noise_drop_counts: mergeSearchCountMaps(
             prefilterNoiseDropCounts,
@@ -9589,6 +9638,7 @@ function buildBeautySkincareHitQualityDecision({
   queryTargetStepFamily = null,
   guidanceOnlyDiscovery = false,
   queryStepStrength = null,
+  mode = null,
 } = {}) {
   return {
     ...buildSharedBeautySkincareHitQualityDecision({
@@ -9597,6 +9647,7 @@ function buildBeautySkincareHitQualityDecision({
       queryTargetStepFamily,
       guidanceOnlyDiscovery,
       queryStepStrength,
+      mode,
     }),
     contract_version: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   };
@@ -15327,6 +15378,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               guidanceQueryText,
               guidanceTargetStepFamily,
             ),
+            mode: 'guidance_only',
           });
           if (guidanceDecision?.applied) {
             normalizedSearchDecision = {
@@ -15343,10 +15395,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               strong_goal_family_topk_count: guidanceDecision.strong_goal_family_topk_count,
               supportive_same_family_topk_count: guidanceDecision.supportive_same_family_topk_count,
               query_step_strength: guidanceDecision.query_step_strength,
+              decision_mode: 'guidance_only',
               step_success_class: guidanceDecision.step_success_class || null,
+              success_contract_result: guidanceDecision.success_contract_result || null,
               candidate_class_counts: mergeSearchCountMaps(
                 existingSearchDecision.candidate_class_counts,
                 guidanceDecision.candidate_class_counts,
+              ),
+              target_relevance_class_counts: mergeSearchCountMaps(
+                existingSearchDecision.target_relevance_class_counts,
+                guidanceDecision.target_relevance_class_counts,
               ),
               noise_drop_counts: mergeSearchCountMaps(
                 existingSearchDecision.noise_drop_counts,
@@ -18138,6 +18196,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryTargetStepFamily: guidanceTargetStepFamily,
               guidanceOnlyDiscovery,
               queryStepStrength: guidanceQueryStepStrength,
+              mode: 'guidance_only',
             });
             const guidanceValidKeys = new Set(
               (Array.isArray(internalGuidanceHitDecision?.valid_products)
@@ -21654,6 +21713,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           firstQueryParamValue(queryParams?.ui_surface || queryParams?.uiSurface),
       );
       const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
+      const requestedDecisionMode = normalizeRecommendationDecisionMode(
+        firstQueryParamValue(req?.query?.decision_mode || req?.query?.decisionMode || queryParams?.decision_mode || queryParams?.decisionMode || existingMeta?.decision_mode),
+        { guidanceOnlyDiscovery },
+      );
       const requestedTargetStepFamily = normalizeRecoTargetStep(
         existingMeta?.query_target_step_family ||
           firstQueryParamValue(req?.query?.target_step_family || req?.query?.targetStepFamily) ||
@@ -21673,7 +21736,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const requestedQueryTotal = parseQueryNumber(
         req?.query?.query_total ?? req?.query?.queryTotal ?? queryParams?.query_total ?? queryParams?.queryTotal,
       );
-      const requestedQueryStepStrength = guidanceOnlyDiscovery
+      const requestedQueryStepStrength = shouldUseSharedTargetRelevancePipeline({
+        mode: requestedDecisionMode,
+        targetStepFamily: requestedTargetStepFamily,
+        queryStepStrength: resolveGuidanceSearchStepStrength(
+          req?.query?.query_step_strength ??
+            req?.query?.queryStepStrength ??
+            queryParams?.query_step_strength ??
+            queryParams?.queryStepStrength ??
+            existingMeta?.query_step_strength,
+          queryText,
+          requestedTargetStepFamily,
+        ),
+      })
         ? resolveGuidanceSearchStepStrength(
             req?.query?.query_step_strength ??
               req?.query?.queryStepStrength ??
@@ -21702,6 +21777,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryTargetStepFamily: requestedTargetStepFamily,
         guidanceOnlyDiscovery,
         queryStepStrength: requestedQueryStepStrength,
+        mode: requestedDecisionMode,
       });
       if (skincareHitDecision.applied) {
         const existingSearchDecision =
@@ -21777,10 +21853,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           strong_goal_family_topk_count: skincareHitDecision.strong_goal_family_topk_count,
           supportive_same_family_topk_count: skincareHitDecision.supportive_same_family_topk_count,
           query_step_strength: skincareHitDecision.query_step_strength || requestedQueryStepStrength,
+          decision_mode: requestedDecisionMode,
           step_success_class: skincareHitDecision.step_success_class || null,
+          success_contract_result: skincareHitDecision.success_contract_result || null,
           candidate_class_counts: mergeSearchCountMaps(
             existingSearchDecision.candidate_class_counts,
             skincareHitDecision.candidate_class_counts,
+          ),
+          target_relevance_class_counts: mergeSearchCountMaps(
+            existingSearchDecision.target_relevance_class_counts,
+            skincareHitDecision.target_relevance_class_counts,
           ),
           noise_drop_counts: mergeSearchCountMaps(
             existingSearchDecision.noise_drop_counts,
@@ -21820,6 +21902,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   service_rows_filtered_count: serviceRowsFilteredCount,
                   discovery_source_used: nextSearchDecision.discovery_source_used,
                   query_step_strength: nextSearchDecision.query_step_strength,
+                  decision_mode: requestedDecisionMode,
                   query_index: normalizedQueryIndex,
                   query_exhausted: nextSearchDecision.query_exhausted,
                 }
@@ -22089,6 +22172,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryText,
               requestedTargetStepFamily,
             ),
+          mode: 'guidance_only',
         });
         const existingFinalGuidanceDecision =
           finalGuidanceMeta.search_decision &&
@@ -22115,10 +22199,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 strong_goal_family_topk_count: finalGuidanceDecision.strong_goal_family_topk_count,
                 supportive_same_family_topk_count: finalGuidanceDecision.supportive_same_family_topk_count,
                 query_step_strength: finalGuidanceDecision.query_step_strength,
+                decision_mode: 'guidance_only',
                 step_success_class: finalGuidanceDecision.step_success_class || null,
+                success_contract_result: finalGuidanceDecision.success_contract_result || null,
                 candidate_class_counts: mergeSearchCountMaps(
                   existingFinalGuidanceDecision.candidate_class_counts,
                   finalGuidanceDecision.candidate_class_counts,
+                ),
+                target_relevance_class_counts: mergeSearchCountMaps(
+                  existingFinalGuidanceDecision.target_relevance_class_counts,
+                  finalGuidanceDecision.target_relevance_class_counts,
                 ),
                 noise_drop_counts: mergeSearchCountMaps(
                   existingFinalGuidanceDecision.noise_drop_counts,

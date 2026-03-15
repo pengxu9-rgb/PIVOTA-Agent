@@ -2393,7 +2393,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           {
             product_id: 'cp_retry_hit',
             merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Multi-Peptide Lash and Brow Serum',
+            title: 'Multi-Peptide Face Serum',
           },
         ],
         total: 1,

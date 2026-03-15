@@ -251,7 +251,7 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
   }
 });
 
-test('/v1/reco/generate: weak viable pool stays user-fixable and does not masquerade as artifact missing', async () => {
+test('/v1/reco/generate: adjacent/noisy candidates stay user-fixable and do not masquerade as artifact missing', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -311,7 +311,8 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
     assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'weak_viable_pool')
+      cards.find((card) => card && card.type === 'confidence_notice'
+        && String(card?.payload?.reason || '') === 'no_viable_candidates_for_target')
       || null;
     assert.ok(confidenceNotice);
     const recoEvent = Array.isArray(response.body?.events)
@@ -319,12 +320,16 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.failure_class, 'weak_viable_pool');
-    assert.equal(recoEvent?.data?.surface_reason, 'weak_viable_pool');
+    assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.user_fixable, true);
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
     assert.ok(response.body?.debug);
-    assert.equal(response.body?.debug?.effective_failure_class || response.body?.debug?.contract?.effective_failure_class, 'weak_viable_pool');
-    assert.equal(response.body?.debug?.contract?.surface_reason, 'weak_viable_pool');
+    assert.equal(
+      response.body?.debug?.effective_failure_class || response.body?.debug?.contract?.effective_failure_class,
+      'no_viable_candidates_for_target',
+    );
+    assert.equal(response.body?.debug?.contract?.surface_reason, 'no_viable_candidates_for_target');
     assert.equal(typeof response.body?.debug?.raw_candidate_count, 'number');
     assert.ok(response.body?.debug?.reco_catalog_debug?.hard_reject_debug);
     assert.ok(response.body?.debug?.reco_catalog_debug?.soft_mismatch_debug);

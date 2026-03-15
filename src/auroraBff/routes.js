@@ -3520,6 +3520,20 @@ function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   return true;
 }
 
+function mergeSearchCountMaps(...maps) {
+  const merged = {};
+  for (const source of maps) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    for (const [key, rawValue] of Object.entries(source)) {
+      const normalizedKey = String(key || '').trim();
+      const numeric = Number(rawValue);
+      if (!normalizedKey || !Number.isFinite(numeric) || numeric <= 0) continue;
+      merged[normalizedKey] = Number(merged[normalizedKey] || 0) + Math.max(0, Math.trunc(numeric));
+    }
+  }
+  return merged;
+}
+
 async function searchPivotaBackendProducts({
   query,
   limit = 6,
@@ -3534,6 +3548,10 @@ async function searchPivotaBackendProducts({
   allowExternalSeed = undefined,
   externalSeedStrategy = '',
   fastMode = true,
+  targetStepFamily = '',
+  uiSurface = '',
+  queryStepStrength = '',
+  decisionMode = '',
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -3572,6 +3590,10 @@ async function searchPivotaBackendProducts({
     offset: 0,
     source: effectiveSearchSource,
   };
+  if (targetStepFamily) params.target_step_family = targetStepFamily;
+  if (uiSurface) params.ui_surface = uiSurface;
+  if (queryStepStrength) params.query_step_strength = queryStepStrength;
+  if (decisionMode) params.decision_mode = decisionMode;
   if (allowExternalSeed !== undefined) params.allow_external_seed = allowExternalSeed === true;
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
   if (normalizedExternalSeedStrategy) params.external_seed_strategy = normalizedExternalSeedStrategy;
@@ -3628,6 +3650,15 @@ async function searchPivotaBackendProducts({
         query_target_step_family: null,
         same_family_topk_count: 0,
         exact_step_topk_count: 0,
+        strong_goal_family_topk_count: 0,
+        supportive_same_family_topk_count: 0,
+        query_step_strength: null,
+        decision_mode: null,
+        step_success_class: null,
+        success_contract_result: null,
+        candidate_class_counts: {},
+        target_relevance_class_counts: {},
+        noise_drop_counts: {},
         products_returned_count: 0,
         raw_result_count: 0,
       };
@@ -3737,6 +3768,27 @@ async function searchPivotaBackendProducts({
       query_target_step_family: queryTargetStepFamily,
       same_family_topk_count: sameFamilyTopKCount,
       exact_step_topk_count: intNonNegative(searchDecision?.exact_step_topk_count),
+      strong_goal_family_topk_count: intNonNegative(searchDecision?.strong_goal_family_topk_count),
+      supportive_same_family_topk_count: intNonNegative(searchDecision?.supportive_same_family_topk_count),
+      query_step_strength: pickFirstTrimmed(searchDecision?.query_step_strength) || null,
+      decision_mode: pickFirstTrimmed(searchDecision?.decision_mode) || null,
+      step_success_class: pickFirstTrimmed(searchDecision?.step_success_class) || null,
+      success_contract_result:
+        searchDecision?.success_contract_result && typeof searchDecision.success_contract_result === 'object'
+          ? searchDecision.success_contract_result
+          : null,
+      candidate_class_counts:
+        searchDecision?.candidate_class_counts && typeof searchDecision.candidate_class_counts === 'object' && !Array.isArray(searchDecision.candidate_class_counts)
+          ? searchDecision.candidate_class_counts
+          : {},
+      target_relevance_class_counts:
+        searchDecision?.target_relevance_class_counts && typeof searchDecision.target_relevance_class_counts === 'object' && !Array.isArray(searchDecision.target_relevance_class_counts)
+          ? searchDecision.target_relevance_class_counts
+          : {},
+      noise_drop_counts:
+        searchDecision?.noise_drop_counts && typeof searchDecision.noise_drop_counts === 'object' && !Array.isArray(searchDecision.noise_drop_counts)
+          ? searchDecision.noise_drop_counts
+          : {},
       products_returned_count: intNonNegative(
         searchDecision?.products_returned_count,
         Array.isArray(body?.products) ? body.products.length : 0,
@@ -14176,6 +14228,10 @@ async function collectRecoCandidatesFromQueryLevels({
             timeoutMs,
             allowExternalSeed,
             externalSeedStrategy,
+            targetStepFamily: normalizeRecoTargetStep(targetContext?.resolved_target_step),
+            uiSurface: targetContext?.step_aware_intent ? 'step_aware_reco' : '',
+            queryStepStrength: queryEntry.query_step_strength || '',
+            decisionMode: targetContext?.step_aware_intent ? 'step_aware_reco' : '',
           })
         : await searchPivotaBackendProducts({
             query: queryEntry.query,
@@ -14184,6 +14240,10 @@ async function collectRecoCandidatesFromQueryLevels({
             timeoutMs,
             allowExternalSeed: false,
             fastMode: true,
+            targetStepFamily: normalizeRecoTargetStep(targetContext?.resolved_target_step),
+            uiSurface: targetContext?.step_aware_intent ? 'step_aware_reco' : '',
+            queryStepStrength: queryEntry.query_step_strength || '',
+            decisionMode: targetContext?.step_aware_intent ? 'step_aware_reco' : '',
           });
       searchResults.push({
         ...queryEntry,
@@ -14812,6 +14872,10 @@ async function buildPurchasableFallbackCandidates({
   allowExternalSeed = false,
   externalSeedStrategy = 'supplement_internal_first',
   searchFn,
+  targetStepFamily = '',
+  uiSurface = '',
+  queryStepStrength = '',
+  decisionMode = '',
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const q = String(query || '').trim();
@@ -14825,6 +14889,10 @@ async function buildPurchasableFallbackCandidates({
     deadlineMs,
     allowExternalSeed: false,
     fastMode: true,
+    targetStepFamily,
+    uiSurface,
+    queryStepStrength,
+    decisionMode,
   });
   const primaryProducts = Array.isArray(primary?.products) ? primary.products : [];
   const primaryReason = String(primary?.reason || '').trim().toLowerCase();
@@ -14858,6 +14926,10 @@ async function buildPurchasableFallbackCandidates({
         allowExternalSeed: true,
         externalSeedStrategy,
         fastMode: true,
+        targetStepFamily,
+        uiSurface,
+        queryStepStrength,
+        decisionMode,
       });
     }
   }
@@ -14955,6 +15027,27 @@ async function buildPurchasableFallbackCandidates({
     query_target_step_family: queryTargetStepFamily,
     same_family_topk_count: sameFamilyTopkCount,
     exact_step_topk_count: exactStepTopkCount,
+    strong_goal_family_topk_count: Math.max(
+      Number.isFinite(Number(primary?.strong_goal_family_topk_count)) ? Math.trunc(Number(primary.strong_goal_family_topk_count)) : 0,
+      Number.isFinite(Number(supplemental?.strong_goal_family_topk_count)) ? Math.trunc(Number(supplemental.strong_goal_family_topk_count)) : 0,
+    ),
+    supportive_same_family_topk_count: Math.max(
+      Number.isFinite(Number(primary?.supportive_same_family_topk_count)) ? Math.trunc(Number(primary.supportive_same_family_topk_count)) : 0,
+      Number.isFinite(Number(supplemental?.supportive_same_family_topk_count)) ? Math.trunc(Number(supplemental.supportive_same_family_topk_count)) : 0,
+    ),
+    query_step_strength: pickFirstTrimmed(primary?.query_step_strength, supplemental?.query_step_strength) || null,
+    decision_mode: pickFirstTrimmed(primary?.decision_mode, supplemental?.decision_mode, decisionMode) || null,
+    step_success_class: pickFirstTrimmed(primary?.step_success_class, supplemental?.step_success_class) || null,
+    success_contract_result:
+      (primary?.success_contract_result && typeof primary.success_contract_result === 'object'
+        ? primary.success_contract_result
+        : null)
+      || (supplemental?.success_contract_result && typeof supplemental.success_contract_result === 'object'
+        ? supplemental.success_contract_result
+        : null),
+    candidate_class_counts: mergeSearchCountMaps(primary?.candidate_class_counts, supplemental?.candidate_class_counts),
+    target_relevance_class_counts: mergeSearchCountMaps(primary?.target_relevance_class_counts, supplemental?.target_relevance_class_counts),
+    noise_drop_counts: mergeSearchCountMaps(primary?.noise_drop_counts, supplemental?.noise_drop_counts),
     raw_result_count: rawResultCount,
     products_returned_count: merged.length,
     stages: {
@@ -15132,6 +15225,14 @@ async function buildRecoGenerateFromCatalog({
   }
   const retrievalFailureClass = (() => {
     if (targetContext?.step_aware_intent !== true) return '';
+    if (candidateState?.success_contract_result?.applied === true) {
+      if (
+        candidateState.success_contract_result.failure_class === 'retrieval_direction_weak'
+        || candidateState.success_contract_result.failure_class === 'generic_family_only'
+      ) {
+        return 'invalid_retrieval_hit';
+      }
+    }
     if (validHitQueryCount <= 0 && (invalidHitQueryCount > 0 || retroInvalidHitQueryCount > 0 || results.some((row) => Number(row?.same_family_topk_count || 0) <= 0))) {
       return 'invalid_retrieval_hit';
     }
@@ -15196,6 +15297,11 @@ async function buildRecoGenerateFromCatalog({
     retrieval_failure_class: retrievalFailureClass || null,
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
+    target_relevance_class_counts: candidateState.target_relevance_class_counts || {},
+    step_success_class: candidateState.step_success_class || null,
+    success_contract_result: candidateState.success_contract_result || null,
+    retrieval_success_class: candidateState.retrieval_success_class || null,
+    viable_pool_reason: candidateState.viable_pool_reason || null,
     stop_level: collected.stopLevel || null,
     hard_reject_debug: summarizeRecoCandidateBuckets(candidateState.hard_reject, 4),
     soft_mismatch_debug: summarizeRecoCandidateBuckets(candidateState.soft_mismatch, 4),
@@ -46426,6 +46532,15 @@ async function generateProductRecommendations({
           viable_pool_strength: normalizedViablePoolStrength,
           target_fidelity_level: normalizedTargetFidelityLevel,
           same_family_success_threshold_met: Boolean(viablePoolState.same_family_success_threshold_met),
+          target_relevance_class_counts: isPlainObject(viablePoolState.target_relevance_class_counts)
+            ? viablePoolState.target_relevance_class_counts
+            : {},
+          step_success_class: pickFirstTrimmed(viablePoolState.step_success_class) || null,
+          success_contract_result: isPlainObject(viablePoolState.success_contract_result)
+            ? viablePoolState.success_contract_result
+            : null,
+          retrieval_success_class: pickFirstTrimmed(viablePoolState.retrieval_success_class) || null,
+          viable_pool_reason: pickFirstTrimmed(viablePoolState.viable_pool_reason) || null,
           valid_hit_query_count: Number(catalogDebug?.valid_hit_query_count || 0),
           invalid_hit_query_count: Number(catalogDebug?.invalid_hit_query_count || 0),
           empty_hit_query_count: Number(catalogDebug?.empty_hit_query_count || 0),

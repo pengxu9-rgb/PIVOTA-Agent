@@ -11,7 +11,15 @@ const {
   normalizeRecoTargetStep,
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
-const { classifyBeautyCoarseCandidate } = require('../shared/beautyRecoCoarseClassifier');
+const {
+  classifyBeautyCoarseCandidate,
+  classifyBeautyGuidanceQueryStrength,
+} = require('../shared/beautyRecoCoarseClassifier');
+const {
+  buildSuccessContractResult,
+  buildRecommendationDecisionCapabilityOutput,
+  countTargetRelevanceClasses,
+} = require('../shared/recommendationDecisionCapability');
 
 const SHARED_RECOMMENDATION_STACK_VERSION = 'aurora_recommendation_shared_stack_v1';
 const REQUEST_CONTEXT_SIGNATURE_VERSION = 'request_context_signature_v1';
@@ -439,9 +447,25 @@ function buildSameFamilyQueryLevels({
           step: asString(lang).toUpperCase() === 'CN' ? stepPrimary : stepPrimary,
           slot,
           ladder_level: level.ladder_level,
+          query_step_strength:
+            step === 'moisturizer'
+              ? classifyBeautyGuidanceQueryStrength(query, { queryTargetStepFamily: step })
+              : null,
+          stop_on_success: true,
         })),
     }))
     .filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
+}
+
+function buildStepAwareDecisionQueryText({ targetContext, recoContext = null } = {}) {
+  const step = normalizeRecoTargetStep(targetContext?.resolved_target_step);
+  if (!step) return '';
+  return normalizeStringArray([
+    step,
+    ...collectRecoContextGoalTerms(recoContext),
+    ...collectRecoContextConcernTerms(recoContext),
+    ...collectRecoContextIngredientTerms(recoContext),
+  ], 8).join(' ');
 }
 
 function buildCandidateResolutionText(product) {
@@ -661,7 +685,17 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
   const stepAwareIntent = Boolean(targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step);
   const candidateStep = stepResolution.candidate_step;
   const resolvedTargetStep = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
-  const coarse = classifyBeautyCoarseCandidate(row, { queryTargetStepFamily: resolvedTargetStep });
+  const decisionQueryText = buildStepAwareDecisionQueryText({ targetContext, recoContext });
+  const queryStepStrength =
+    resolvedTargetStep === 'moisturizer' && decisionQueryText
+      ? classifyBeautyGuidanceQueryStrength(decisionQueryText, { queryTargetStepFamily: resolvedTargetStep })
+      : null;
+  const coarse = classifyBeautyCoarseCandidate(row, {
+    queryTargetStepFamily: resolvedTargetStep,
+    queryText: decisionQueryText,
+    queryStepStrength,
+    mode: stepAwareIntent ? 'step_aware_reco' : null,
+  });
   const skincare =
     coarse.domain_scope === 'skincare' &&
     coarse.object_type === 'product' &&
@@ -677,7 +711,17 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
     candidateStep,
     targetStep: resolvedTargetStep,
   });
-  const selectionScore = clampScore(stepFitScore + Number(contextSignals.context_fit_score || 0), 0, 2);
+  const relevanceBoost =
+    coarse.target_relevance_class === 'strong_goal_family'
+      ? 0.55
+      : coarse.target_relevance_class === 'supportive_family'
+        ? 0.24
+        : coarse.target_relevance_class === 'generic_family'
+          ? -0.18
+          : coarse.target_relevance_class === 'adjacent_noise'
+            ? -0.55
+            : -0.9;
+  const selectionScore = clampScore(stepFitScore + Number(contextSignals.context_fit_score || 0) + relevanceBoost, 0, 2);
 
   let bucket = 'viable';
   let reason = 'generic_viable';
@@ -694,6 +738,27 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
   } else if (contextSignals.constraint_conflict) {
     bucket = 'hard_reject';
     reason = 'hard_constraint_conflict';
+  } else if (
+    stepAwareIntent &&
+    resolvedTargetStep === 'moisturizer' &&
+    coarse.target_relevance_class === 'hard_invalid'
+  ) {
+    bucket = 'hard_reject';
+    reason = 'hard_invalid_target_relevance';
+  } else if (
+    stepAwareIntent &&
+    resolvedTargetStep === 'moisturizer' &&
+    coarse.target_relevance_class === 'adjacent_noise'
+  ) {
+    bucket = 'hard_reject';
+    reason = 'retrieval_direction_weak';
+  } else if (
+    stepAwareIntent &&
+    resolvedTargetStep === 'moisturizer' &&
+    coarse.target_relevance_class === 'generic_family'
+  ) {
+    bucket = 'soft_mismatch';
+    reason = 'generic_family_only';
   } else if (stepAwareIntent && relation === 'incompatible_family') {
     bucket = 'hard_reject';
     reason = 'incompatible_family';
@@ -729,6 +794,9 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
     application_mode: coarse.application_mode || 'unknown',
     usage_scope: coarse.usage_scope || 'unknown',
     object_type: coarse.object_type || 'unknown',
+    target_relevance_class: coarse.target_relevance_class || 'generic_family',
+    target_relevance_owner: coarse.target_relevance_owner || null,
+    target_relevance_policy_version: coarse.target_relevance_policy_version || null,
     coarse_domain_invalid: !skincare,
     bucket,
     reason,
@@ -782,28 +850,61 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     .filter((row) => row.bucket === 'soft_mismatch')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
   const hardReject = classified.filter((row) => row.bucket === 'hard_reject');
+  const targetRelevanceClassCounts = countTargetRelevanceClasses(
+    classified.map((row) => row.target_relevance_class),
+  );
   const thresholds = getStepPolicy(targetContext && targetContext.resolved_target_step);
   const exactStepViableCount = viable.filter((row) => row.candidate_step && row.candidate_step === targetContext?.resolved_target_step).length;
   const sameFamilyViableCount = viable.length;
   const averageContextFit = viable.length
     ? viable.reduce((sum, row) => sum + Number(row.context_fit_score || 0), 0) / viable.length
     : 0;
-  const sameFamilySuccessThresholdMet = Boolean(
-    sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
-      && viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
-  );
-  const sameFamilyStrongViableExists = viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
   const selected = viable.slice(0, 3);
+  const topCandidateClasses = selected
+    .slice(0, 3)
+    .map((row) => row.target_relevance_class);
+  const decisionQueryText = buildStepAwareDecisionQueryText({ targetContext, recoContext });
+  const decisionQueryStepStrength =
+    normalizeRecoTargetStep(targetContext?.resolved_target_step) === 'moisturizer' && decisionQueryText
+      ? classifyBeautyGuidanceQueryStrength(decisionQueryText, {
+        queryTargetStepFamily: normalizeRecoTargetStep(targetContext?.resolved_target_step),
+      })
+      : null;
+  const successContractResult = buildSuccessContractResult({
+    mode: targetContext?.step_aware_intent ? 'step_aware_reco' : null,
+    targetStepFamily: normalizeRecoTargetStep(targetContext?.resolved_target_step),
+    queryStepStrength: decisionQueryStepStrength,
+    candidateClassCounts: targetRelevanceClassCounts,
+    topCandidateClasses,
+  });
+  const sameFamilySuccessThresholdMet = successContractResult.applied
+    ? Boolean(successContractResult.satisfied)
+    : Boolean(
+      sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
+        && viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
+    );
+  const sameFamilyStrongViableExists = successContractResult.applied
+    ? Boolean(
+      targetRelevanceClassCounts.strong_goal_family > 0
+        || targetRelevanceClassCounts.supportive_family >= 2,
+    )
+    : viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
   const selectedFamilies = uniqStrings(selected.map((row) => row.candidate_step || row.family_relation || 'unknown'), 3);
   const topCandidatesConverged = selectedFamilies.length <= 1;
   const primaryDisplayGroups = summarizePrimaryDisplayGroups(selected);
   const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0
     && primaryDisplayGroups.every((group) => Number(group.group_target_fidelity || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
   const hardConstraintConflict = viable.some((row) => row.constraint_conflict === true) || selected.some((row) => row.constraint_conflict === true);
-  const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && softMismatch.length > 0;
+  const weakViablePool = Boolean(targetContext?.step_aware_intent)
+    && selected.length === 0
+    && softMismatch.length > 0
+    && successContractResult.failure_class !== 'retrieval_direction_weak'
+    && successContractResult.failure_class !== 'generic_family_only';
   const softTargetSuccessAllowed =
     targetContext?.mainline_mode === 'soft_target'
       ? Boolean(
+        (!successContractResult.applied || successContractResult.satisfied === true)
+          &&
         (exactStepViableCount > 0 || sameFamilyStrongViableExists)
           && topCandidatesConverged
           && !hardConstraintConflict
@@ -812,7 +913,12 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
       : null;
   const hardTargetSuccessAllowed =
     targetContext?.mainline_mode === 'hard_target'
-      ? Boolean(exactStepViableCount > 0 && !hardConstraintConflict && overallTargetFidelitySatisfied)
+      ? Boolean(
+        (!successContractResult.applied || successContractResult.satisfied === true)
+          && exactStepViableCount > 0
+          && !hardConstraintConflict
+          && overallTargetFidelitySatisfied,
+      )
       : null;
   const terminalSuccess = Boolean(
     !targetContext?.step_aware_intent
@@ -839,6 +945,18 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     ? (terminalSuccess ? 'strong' : 'weak')
     : (softMismatch.length > 0 || viable.length > 0 ? 'weak' : 'empty');
   const artifactContextApplied = classified.some((row) => row.artifact_context_applied === true);
+  const retrievalSuccessClass = successContractResult.satisfied
+    ? successContractResult.step_success_class
+    : successContractResult.failure_class;
+  const viablePoolReason = weakViablePool
+    ? 'weak_viable_pool'
+    : successContractResult.failure_class === 'retrieval_direction_weak'
+      ? 'retrieval_direction_weak'
+      : successContractResult.failure_class === 'generic_family_only'
+        ? 'generic_family_only'
+        : terminalSuccess
+          ? 'terminal_success'
+          : 'insufficient_target_relevance';
 
   return {
     raw_candidate_pool: deduped,
@@ -875,6 +993,28 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     average_context_fit_score: Number(averageContextFit.toFixed(4)),
     artifact_context_applied: artifactContextApplied,
     terminal_success: terminalSuccess,
+    target_relevance_class_counts: targetRelevanceClassCounts,
+    step_success_class: successContractResult.step_success_class || null,
+    success_contract_result: successContractResult,
+    retrieval_success_class: retrievalSuccessClass || null,
+    viable_pool_reason: viablePoolReason,
+    decision_capability: buildRecommendationDecisionCapabilityOutput({
+      normalized_intent: {
+        target_step_family: normalizeRecoTargetStep(targetContext?.resolved_target_step) || null,
+        query_step_strength: decisionQueryStepStrength,
+        mode: targetContext?.step_aware_intent ? 'step_aware_reco' : null,
+      },
+      query_plan: {
+        decision_query_text: decisionQueryText || null,
+      },
+      candidate_class_counts: targetRelevanceClassCounts,
+      step_success_class: successContractResult.step_success_class || null,
+      success_contract_result: successContractResult,
+      output_policy_payload: {
+        terminal_success: terminalSuccess,
+        viable_pool_strength: viablePoolStrength,
+      },
+    }),
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     raw_candidate_pool_debug_signature: buildSharedSignature(RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION, {
       ids: deduped.map((row) => productKey(row)).filter(Boolean).sort(),
@@ -892,6 +1032,9 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
 
 function shouldStopStepAwareBroadening(poolState, { targetContext } = {}) {
   if (!targetContext?.step_aware_intent) return false;
+  if (poolState?.success_contract_result && poolState.success_contract_result.applied === true) {
+    return poolState.success_contract_result.satisfied === true;
+  }
   const thresholds = getStepPolicy(targetContext.resolved_target_step);
   const viableCount = Number(poolState?.same_family_viable_count || 0);
   const sameFamilyStrongViableExists = Boolean(poolState?.same_family_strong_viable_exists);

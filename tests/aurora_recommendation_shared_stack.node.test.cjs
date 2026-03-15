@@ -260,7 +260,8 @@ test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturi
 
   assert.equal(pool.selected_recommendations[0].product_id, 'barrier_cream');
   assert.equal(pool.hard_reject.some((row) => row.product.product_id === 'retinol_cream'), true);
-  assert.equal(pool.viable[0].context_fit_score > pool.viable[1].context_fit_score, true);
+  assert.equal(pool.soft_mismatch.some((row) => row.product.product_id === 'generic_cream'), true);
+  assert.equal(pool.viable[0].context_fit_score > pool.soft_mismatch[0].context_fit_score, true);
   assert.equal(pool.artifact_context_applied, true);
 });
 
@@ -411,10 +412,13 @@ test('medium-confidence target only succeeds when same-family viable candidates 
   );
   assert.equal(clarifyPool.terminal_success, false);
   assert.equal(clarifyPool.viable_candidate_count, 0);
-  assert.equal(clarifyPool.soft_mismatch_count, 1);
-  assert.equal(clarifyPool.weak_viable_pool, true);
-  assert.equal(clarifyPool.viable_pool_strength, 'weak');
+  assert.equal(clarifyPool.soft_mismatch_count, 0);
+  assert.equal(clarifyPool.hard_reject_count, 1);
+  assert.equal(clarifyPool.weak_viable_pool, false);
+  assert.equal(clarifyPool.viable_pool_strength, 'empty');
   assert.equal(clarifyPool.same_family_success_threshold_met, false);
+  assert.equal(clarifyPool.success_contract_result?.failure_class, 'hard_invalid_only');
+  assert.equal(clarifyPool.retrieval_success_class, 'hard_invalid_only');
 });
 
 test('soft-target mainline only succeeds with same-family viable candidates', () => {
@@ -447,10 +451,12 @@ test('soft-target mainline only succeeds with same-family viable candidates', ()
   assert.equal(successState.terminal_success, true);
   assert.equal(shouldStopStepAwareBroadening(successState, { targetContext: successTargetContext }), true);
   assert.equal(weakState.terminal_success, false);
-  assert.equal(weakState.weak_viable_pool, true);
-  assert.equal(weakState.viable_pool_strength, 'weak');
+  assert.equal(weakState.weak_viable_pool, false);
+  assert.equal(weakState.viable_pool_strength, 'empty');
   assert.equal(weakState.same_family_success_threshold_met, false);
-  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool_for_target');
+  assert.equal(weakState.success_contract_result?.failure_class, 'hard_invalid_only');
+  assert.equal(weakState.retrieval_success_class, 'hard_invalid_only');
+  assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'no_viable_candidates_for_target');
 });
 
 test('runRecommendationSharedStack clarifies generic chat reco when minimum context is unsatisfied', async () => {
