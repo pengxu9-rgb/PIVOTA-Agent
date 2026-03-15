@@ -17,6 +17,7 @@ const { hasUsableArtifactForRecommendations } = require('../src/auroraBff/gating
 const { buildIngredientPlan } = require('../src/auroraBff/ingredientMapperV1');
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../src/auroraBff/productMatcherV1');
 const { evaluateSafetyBoundary } = require('../src/auroraBff/safetyBoundary');
+const { __internal: routesInternal } = require('../src/auroraBff/routes');
 
 function makeArtifact({
   usePhoto = true,
@@ -258,6 +259,108 @@ test('gating: diagnosis artifact rows must be flattened before recommendation ga
   assert.equal(flattenedGate.ok, true);
   assert.equal(flattenedGate.tier, 'eligible_strong');
   assert.equal(flattenedGate.confidence_level, 'medium');
+});
+
+test('analysis guidance-only mode strips concrete product payloads before UI rendering', () => {
+  const plan = {
+    targets: [
+      {
+        ingredient_id: 'ceramide_np',
+        products: [{ product_id: 'sku_1' }],
+        product_rows: [{ product_id: 'sku_2' }],
+        competitors: [{ product_id: 'sku_3' }],
+        dupes: [{ product_id: 'sku_4' }],
+      },
+    ],
+  };
+  const mode = routesInternal.resolveAnalysisProductSurfaceMode({
+    analysisMode: 'analysis_summary',
+    recoArtifactEligible: false,
+  });
+  const stripped = routesInternal.stripIngredientPlanConcreteProducts(plan);
+
+  assert.equal(mode, 'guidance_only');
+  assert.equal(Array.isArray(stripped.targets), true);
+  assert.equal('products' in stripped.targets[0], false);
+  assert.equal('product_rows' in stripped.targets[0], false);
+  assert.equal('competitors' in stripped.targets[0], false);
+  assert.equal('dupes' in stripped.targets[0], false);
+});
+
+test('latest reco context canonicalizes seeds, limits carry-over, and keeps current-turn priority', () => {
+  const payload = routesInternal.buildLatestRecoContextPayload({
+    baseContext: {
+      reco_context_version: 'aurora.reco_context.v1',
+      seed_terms: ['barrier support', 'ceramide', 'fragrance free', 'panthenol'],
+      diagnosis_goal: 'barrier repair',
+      target_step: 'moisturizer',
+    },
+    message: 'Recommend a moisturizer for barrier repair with ceramides',
+    explicitSeedTerms: ['repair skin barrier', 'ceramide', 'panthenol', 'sensitive skin', 'extra seed'],
+    recommendationTaskContext: {
+      task_hard_context: {
+        ingredient_targets: ['panthenol'],
+      },
+      task_soft_context: {
+        background_goals: ['hydration'],
+      },
+    },
+  });
+
+  assert.equal(payload.reco_context_version, 'aurora.reco_context.v2');
+  assert.deepEqual(payload.seed_terms, ['barrier repair', 'ceramide', 'panthenol', 'sensitive skin']);
+});
+
+test('step reco context strength flags contexts that are too weak even when search is valid', () => {
+  const weak = routesInternal.evaluateStepRecoContextStrength({
+    latestRecoContext: {
+      reco_artifact_eligible: false,
+    },
+    recommendationTaskContext: {
+      task_hard_context: {},
+      task_soft_context: {},
+    },
+    targetContext: { resolved_target_step: '' },
+    recoArtifactEligible: false,
+  });
+  const strong = routesInternal.evaluateStepRecoContextStrength({
+    latestRecoContext: {
+      reco_artifact_eligible: false,
+      diagnosis_goal: 'barrier repair',
+    },
+    recommendationTaskContext: {
+      task_hard_context: {
+        barrier_status: 'impaired',
+        ingredient_targets: ['ceramide'],
+      },
+      task_soft_context: {},
+    },
+    targetContext: { resolved_target_step: '' },
+    recoArtifactEligible: false,
+  });
+
+  assert.equal(weak.context_too_weak, true);
+  assert.equal(strong.context_too_weak, false);
+  assert.equal(strong.has_durable_hard_field, true);
+  assert.equal(strong.has_ingredient_signals, true);
+});
+
+test('analysis snapshot hash is canonical across equivalent payload shapes', () => {
+  const snapshotA = {
+    skin_type_tendency: { winner: { value: 'dry' } },
+    barrier_status_tendency: { winner: { value: 'impaired' } },
+    recent_log_signals: [],
+  };
+  const snapshotB = {
+    barrier_status_tendency: { winner: { value: 'impaired' } },
+    recent_log_signals: [],
+    skin_type_tendency: { winner: { value: 'dry' } },
+  };
+
+  assert.equal(
+    routesInternal.buildAnalysisContextSnapshotHash(snapshotA),
+    routesInternal.buildAnalysisContextSnapshotHash(snapshotB),
+  );
 });
 
 test('ingredient mapper: low confidence forces gentle baseline and avoids strong actives', () => {
