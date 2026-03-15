@@ -198,7 +198,9 @@ const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2 } = require('./routineAnalysisV2');
 const {
+  ANALYSIS_CONTEXT_BUILDER_VERSION,
   buildAnalysisContextSnapshotV1,
+  canonicalizeAnalysisContextSnapshot,
   resolveAnalysisContextForTask,
   buildProductAnalysisContextFromSnapshot,
   buildIngredientAnalysisContextFromSnapshot,
@@ -207,6 +209,7 @@ const {
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep } = require('./recoTargetStep');
+const { BEAUTY_SEARCH_DECISION_CONTRACT_VERSION } = require('../shared/beautyRecoCoarseClassifier');
 const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -3599,6 +3602,10 @@ async function searchPivotaBackendProducts({
     else if (statusCode === 429) reason = 'rate_limited';
     return reason;
   };
+  const isCompatibleSearchDecisionContractVersion = (value) => {
+    const token = String(value || '').trim();
+    return token === BEAUTY_SEARCH_DECISION_CONTRACT_VERSION;
+  };
   const extractSearchAttemptMetaFromBody = ({ data } = {}) => {
     const body = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
     if (!body) {
@@ -3606,6 +3613,8 @@ async function searchPivotaBackendProducts({
         resolver_first_applied: false,
         resolver_first_skipped_for_aurora: false,
         search_source: null,
+        search_contract_present: false,
+        search_contract_version: null,
         query_hit_quality: '',
         invalid_hit_reason: null,
         query_bucket: null,
@@ -3689,24 +3698,37 @@ async function searchPivotaBackendProducts({
       return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0;
     };
     const rawProducts = extractAgentProductsFromSearchResponse(body);
-    const queryHitQuality = normalizeRecoQueryHitQuality(
+    let queryHitQuality = normalizeRecoQueryHitQuality(
       searchDecision?.hit_quality || searchDecision?.query_hit_quality,
     ) || (rawProducts.length > 0 ? 'valid_hit' : 'empty');
+    let invalidHitReason = pickFirstTrimmed(
+      searchDecision?.invalid_hit_reason,
+      searchDecision?.reason,
+    ) || null;
+    const queryTargetStepFamily = pickFirstTrimmed(searchDecision?.query_target_step_family) || null;
+    const sameFamilyTopKCount = intNonNegative(searchDecision?.same_family_topk_count);
+    if (
+      queryHitQuality === 'valid_hit' &&
+      queryTargetStepFamily &&
+      sameFamilyTopKCount <= 0
+    ) {
+      queryHitQuality = 'invalid_hit';
+      invalidHitReason = invalidHitReason || 'invalid_hit_no_same_family_candidates';
+    }
     return {
       resolver_first_applied: resolverFirstApplied,
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       search_source: sourceToken || null,
+      search_contract_present: Boolean(searchDecision),
+      search_contract_version: pickFirstTrimmed(searchDecision?.contract_version) || null,
       query_hit_quality: queryHitQuality,
-      invalid_hit_reason: pickFirstTrimmed(
-        searchDecision?.invalid_hit_reason,
-        searchDecision?.reason,
-      ) || null,
+      invalid_hit_reason: invalidHitReason,
       query_bucket: pickFirstTrimmed(
         searchDecision?.query_bucket,
         metadata?.query_semantic_class,
       ) || null,
-      query_target_step_family: pickFirstTrimmed(searchDecision?.query_target_step_family) || null,
-      same_family_topk_count: intNonNegative(searchDecision?.same_family_topk_count),
+      query_target_step_family: queryTargetStepFamily,
+      same_family_topk_count: sameFamilyTopKCount,
       exact_step_topk_count: intNonNegative(searchDecision?.exact_step_topk_count),
       products_returned_count: intNonNegative(
         searchDecision?.products_returned_count,
@@ -3976,11 +3998,47 @@ async function searchPivotaBackendProducts({
         const body = resp && resp.data ? resp.data : null;
         const searchMeta = extractSearchAttemptMetaFromBody({ data: body });
         const products = normalizeProductsFromSearchData(body);
+        const contractCompatible =
+          searchMeta.search_contract_present === true
+            ? isCompatibleSearchDecisionContractVersion(searchMeta.search_contract_version)
+            : true;
         const queryHitQuality = normalizeRecoQueryHitQuality(searchMeta.query_hit_quality)
           || (products.length > 0 ? 'valid_hit' : 'empty');
         const bodyReason = products.length
           ? null
           : inferSearchFailureReasonFromBody({ data: body, statusCode });
+        if (!contractCompatible) {
+          const failed = {
+            ok: false,
+            products: [],
+            reason: 'search_contract_incompatible',
+            status_code: statusCode,
+            source_base_url: normalizedBase,
+            source_endpoint: endpoint,
+            source_path: pathToken,
+            latency_ms: Date.now() - startedAt,
+            ...searchMeta,
+          };
+          pathAttempts.push({
+            endpoint,
+            path: pathToken,
+            ok: false,
+            reason: 'search_contract_incompatible',
+            status_code: statusCode,
+            products: 0,
+            ...searchMeta,
+          });
+          lastFailure = failed;
+          const shouldTryNextPath =
+            pathIdx < normalizedPaths.length - 1 &&
+            hasOverallBudget(150);
+          if (shouldTryNextPath) continue;
+          return {
+            ...failed,
+            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            source_path_failover: pathAttempts.length > 1,
+          };
+        }
         if (queryHitQuality === 'invalid_hit') {
           const failed = {
             ok: false,
@@ -13928,13 +13986,181 @@ async function collectRecoCandidatesFromQueryLevels({
   externalSeedStrategy = 'on_empty_only',
 } = {}) {
   const rawCandidates = [];
+  const rawCandidateIndexByKey = new Map();
   const searchResults = [];
   let candidateState = finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   let stopLevel = null;
 
+  const buildRecoQueryKey = (entry = {}) => [
+    pickFirstString(entry.query),
+    pickFirstString(entry.step),
+    pickFirstString(entry.slot),
+    pickFirstString(entry.ladder_level, entry.ladderLevel),
+  ]
+    .map((item) => String(item || '').trim().toLowerCase())
+    .join('::');
+  const buildRawCandidateKey = (product = {}) => [
+    pickFirstTrimmed(product?.product_id, product?.productId, product?.sku_id, product?.skuId),
+    pickFirstTrimmed(product?.merchant_id, product?.merchantId),
+  ]
+    .filter(Boolean)
+    .join('::')
+    .toLowerCase();
+  const buildRetrievalProvenanceEntry = (queryEntry = {}, queryKey = '') => ({
+    query_key: String(queryKey || '').trim().toLowerCase(),
+    query: pickFirstString(queryEntry.query),
+    step: pickFirstString(queryEntry.step),
+    slot: pickFirstString(queryEntry.slot),
+    ladder_level: pickFirstString(queryEntry.ladder_level),
+  });
+  const readRetrievalProvenance = (row = {}) => {
+    if (Array.isArray(row?.retrieval_provenance) && row.retrieval_provenance.length) {
+      return row.retrieval_provenance
+        .map((entry) => ({
+          query_key: String(entry?.query_key || '').trim().toLowerCase(),
+          query: pickFirstString(entry?.query),
+          step: pickFirstString(entry?.step),
+          slot: pickFirstString(entry?.slot),
+          ladder_level: pickFirstString(entry?.ladder_level),
+        }))
+        .filter((entry) => entry.query_key);
+    }
+    const fallbackKey = String(row?.retrieval_query_key || '').trim().toLowerCase();
+    if (!fallbackKey) return [];
+    return [{
+      query_key: fallbackKey,
+      query: pickFirstString(row?.retrieval_query),
+      step: pickFirstString(row?.retrieval_step),
+      slot: pickFirstString(row?.retrieval_slot),
+      ladder_level: pickFirstString(row?.retrieval_ladder_level),
+    }];
+  };
+  const retroInvalidReason = 'retro_invalid_all_hard_reject';
+  const isCoarseHardReject = (item) => Boolean(
+    item &&
+    item.coarse_domain_invalid === true &&
+    (
+      item.reason === 'non_skincare_or_blacklisted' ||
+      item.reason === 'bodycare_scope' ||
+      item.reason === 'incompatible_family'
+    )
+  );
+  const applyRetroInvalidHit = ({ nextRawCandidates, nextSearchResults, nextCandidateState } = {}) => {
+    const queryStats = new Map();
+    const ensureStats = (queryKey) => {
+      const key = String(queryKey || '').trim().toLowerCase();
+      if (!key) return null;
+      if (!queryStats.has(key)) {
+        queryStats.set(key, {
+          raw_count: 0,
+          viable_count: 0,
+          soft_mismatch_count: 0,
+          hard_reject_count: 0,
+          coarse_hard_reject_count: 0,
+        });
+      }
+      return queryStats.get(key);
+    };
+    for (const row of Array.isArray(nextRawCandidates) ? nextRawCandidates : []) {
+      for (const provenance of readRetrievalProvenance(row)) {
+        const stats = ensureStats(provenance.query_key);
+        if (!stats) continue;
+        stats.raw_count += 1;
+      }
+    }
+    for (const item of Array.isArray(nextCandidateState?.viable) ? nextCandidateState.viable : []) {
+      for (const provenance of readRetrievalProvenance(item?.product)) {
+        const stats = ensureStats(provenance.query_key);
+        if (!stats) continue;
+        stats.viable_count += 1;
+      }
+    }
+    for (const item of Array.isArray(nextCandidateState?.soft_mismatch) ? nextCandidateState.soft_mismatch : []) {
+      for (const provenance of readRetrievalProvenance(item?.product)) {
+        const stats = ensureStats(provenance.query_key);
+        if (!stats) continue;
+        stats.soft_mismatch_count += 1;
+      }
+    }
+    for (const item of Array.isArray(nextCandidateState?.hard_reject) ? nextCandidateState.hard_reject : []) {
+      for (const provenance of readRetrievalProvenance(item?.product)) {
+        const stats = ensureStats(provenance.query_key);
+        if (!stats) continue;
+        stats.hard_reject_count += 1;
+        if (isCoarseHardReject(item)) stats.coarse_hard_reject_count += 1;
+      }
+    }
+
+    const retroInvalidKeys = new Set();
+    for (const row of Array.isArray(nextSearchResults) ? nextSearchResults : []) {
+      const hitQuality = normalizeRecoQueryHitQuality(row?.query_hit_quality);
+      if (hitQuality !== 'valid_hit') continue;
+      const stats = queryStats.get(String(row?.query_key || '').trim().toLowerCase());
+      if (!stats) continue;
+      if (
+        stats.raw_count > 0 &&
+        stats.viable_count === 0 &&
+        stats.soft_mismatch_count === 0 &&
+        stats.hard_reject_count === stats.raw_count &&
+        stats.coarse_hard_reject_count === stats.raw_count
+      ) {
+        retroInvalidKeys.add(String(row.query_key || '').trim().toLowerCase());
+      }
+    }
+    if (!retroInvalidKeys.size) {
+      return {
+        rawCandidates: nextRawCandidates,
+        searchResults: nextSearchResults,
+        candidateState: nextCandidateState,
+        retroInvalidated: 0,
+      };
+    }
+    const filteredRawCandidates = [];
+    for (const row of Array.isArray(nextRawCandidates) ? nextRawCandidates : []) {
+      const remainingProvenance = readRetrievalProvenance(row).filter(
+        (entry) => !retroInvalidKeys.has(entry.query_key),
+      );
+      if (!remainingProvenance.length) continue;
+      const primary = remainingProvenance[0];
+      filteredRawCandidates.push({
+        ...row,
+        retrieval_provenance: remainingProvenance,
+        retrieval_query_key: primary.query_key,
+        retrieval_query: primary.query,
+        retrieval_step: primary.step,
+        retrieval_slot: primary.slot,
+        retrieval_ladder_level: primary.ladder_level,
+      });
+    }
+    const filteredSearchResults = (Array.isArray(nextSearchResults) ? nextSearchResults : []).map((row) => {
+      const queryKey = String(row?.query_key || '').trim().toLowerCase();
+      if (!retroInvalidKeys.has(queryKey)) return row;
+      return {
+        ...row,
+        ok: false,
+        reason: 'invalid_hit',
+        query_hit_quality: 'invalid_hit',
+        invalid_hit_reason: retroInvalidReason,
+        products: [],
+        products_returned_count: 0,
+        retro_invalid_hit: true,
+      };
+    });
+    return {
+      rawCandidates: filteredRawCandidates,
+      searchResults: filteredSearchResults,
+      candidateState: finalizeRecommendationCandidatePools(filteredRawCandidates, {
+        targetContext,
+        recoContext: recommendationTaskContext,
+      }),
+      retroInvalidated: retroInvalidKeys.size,
+    };
+  };
+
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     for (const queryEntry of queries) {
+      const queryKey = buildRecoQueryKey(queryEntry);
       const out = usePurchasableFallback
         ? await buildPurchasableFallbackCandidates({
             query: queryEntry.query,
@@ -13954,25 +14180,66 @@ async function collectRecoCandidatesFromQueryLevels({
           });
       searchResults.push({
         ...queryEntry,
+        query_key: queryKey,
         ...out,
       });
       const products = Array.isArray(out?.products) ? out.products : [];
       for (const product of products) {
         const normalized = normalizeRecoCatalogProduct(product);
         if (!isPlainObject(normalized)) continue;
-        rawCandidates.push({
+        const provenanceEntry = buildRetrievalProvenanceEntry(queryEntry, queryKey);
+        const nextCandidate = {
           ...normalized,
           retrieval_query: queryEntry.query,
+          retrieval_query_key: queryKey,
           retrieval_step: queryEntry.step,
           retrieval_slot: queryEntry.slot,
           retrieval_ladder_level: queryEntry.ladder_level,
-        });
+          retrieval_provenance: [provenanceEntry],
+        };
+        const candidateKey = buildRawCandidateKey(nextCandidate);
+        if (!candidateKey) {
+          rawCandidates.push(nextCandidate);
+          continue;
+        }
+        const existingIndex = rawCandidateIndexByKey.get(candidateKey);
+        if (existingIndex == null) {
+          rawCandidateIndexByKey.set(candidateKey, rawCandidates.length);
+          rawCandidates.push(nextCandidate);
+          continue;
+        }
+        const existing = rawCandidates[existingIndex];
+        const existingProvenance = readRetrievalProvenance(existing);
+        if (!existingProvenance.some((entry) => entry.query_key === provenanceEntry.query_key)) {
+          existing.retrieval_provenance = existingProvenance.concat(provenanceEntry);
+        }
       }
     }
     candidateState = finalizeRecommendationCandidatePools(rawCandidates, {
       targetContext,
       recoContext: recommendationTaskContext,
     });
+    const retroInvalidApplied = applyRetroInvalidHit({
+      nextRawCandidates: rawCandidates,
+      nextSearchResults: searchResults,
+      nextCandidateState: candidateState,
+    });
+    const nextRawCandidates = retroInvalidApplied.rawCandidates === rawCandidates
+      ? rawCandidates.slice()
+      : (Array.isArray(retroInvalidApplied.rawCandidates) ? retroInvalidApplied.rawCandidates : []);
+    const nextSearchResults = retroInvalidApplied.searchResults === searchResults
+      ? searchResults.slice()
+      : (Array.isArray(retroInvalidApplied.searchResults) ? retroInvalidApplied.searchResults : []);
+    rawCandidates.length = 0;
+    rawCandidates.push(...nextRawCandidates);
+    rawCandidateIndexByKey.clear();
+    rawCandidates.forEach((row, index) => {
+      const candidateKey = buildRawCandidateKey(row);
+      if (candidateKey) rawCandidateIndexByKey.set(candidateKey, index);
+    });
+    searchResults.length = 0;
+    searchResults.push(...nextSearchResults);
+    candidateState = retroInvalidApplied.candidateState;
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
       break;
@@ -14641,6 +14908,10 @@ async function buildPurchasableFallbackCandidates({
     primary?.query_hit_quality ||
     supplemental?.query_hit_quality,
   ) || (merged.length > 0 ? 'valid_hit' : '');
+  const searchContractVersion = pickFirstTrimmed(
+    primary?.search_contract_version,
+    supplemental?.search_contract_version,
+  ) || null;
   const invalidHitReason = pickFirstTrimmed(
     primary?.invalid_hit_reason,
     supplemental?.invalid_hit_reason,
@@ -14670,6 +14941,7 @@ async function buildPurchasableFallbackCandidates({
     products: merged,
     reason,
     selected_source: selectedSource,
+    search_contract_version: searchContractVersion,
     query_hit_quality: queryHitQuality || null,
     invalid_hit_reason: invalidHitReason,
     query_bucket: queryBucket,
@@ -14822,7 +15094,13 @@ async function buildRecoGenerateFromCatalog({
   let externalSeedUsedCount = 0;
   let validHitQueryCount = 0;
   let invalidHitQueryCount = 0;
+  let retroInvalidHitQueryCount = 0;
   let emptyHitQueryCount = 0;
+  const viableQueryKeys = new Set();
+  for (const item of Array.isArray(candidateState.viable) ? candidateState.viable : []) {
+    const key = pickFirstString(item?.product?.retrieval_query_key);
+    if (key) viableQueryKeys.add(String(key).trim().toLowerCase());
+  }
   for (const r of results) {
     const reason = String(r?.reason || (r?.ok ? 'ok' : 'unknown')).trim() || 'unknown';
     const hitQuality = normalizeRecoQueryHitQuality(r?.query_hit_quality);
@@ -14836,10 +15114,11 @@ async function buildRecoGenerateFromCatalog({
     if (hitQuality === 'valid_hit') validHitQueryCount += 1;
     else if (hitQuality === 'invalid_hit') invalidHitQueryCount += 1;
     else emptyHitQueryCount += 1;
+    if (r?.retro_invalid_hit === true) retroInvalidHitQueryCount += 1;
   }
   const retrievalFailureClass = (() => {
     if (targetContext?.step_aware_intent !== true) return '';
-    if (validHitQueryCount <= 0 && (invalidHitQueryCount > 0 || results.some((row) => Number(row?.same_family_topk_count || 0) <= 0))) {
+    if (validHitQueryCount <= 0 && (invalidHitQueryCount > 0 || retroInvalidHitQueryCount > 0 || results.some((row) => Number(row?.same_family_topk_count || 0) <= 0))) {
       return 'invalid_retrieval_hit';
     }
     if (validHitQueryCount > 0 && Number(candidateState.selected_candidate_count || 0) <= 0) {
@@ -14895,7 +15174,11 @@ async function buildRecoGenerateFromCatalog({
     weak_viable_pool: Boolean(candidateState.weak_viable_pool),
     valid_hit_query_count: validHitQueryCount,
     invalid_hit_query_count: invalidHitQueryCount,
+    retro_invalid_hit_query_count: retroInvalidHitQueryCount,
     empty_hit_query_count: emptyHitQueryCount,
+    valid_hit_to_viable_pool_rate: validHitQueryCount > 0
+      ? Number((viableQueryKeys.size / validHitQueryCount).toFixed(4))
+      : 0,
     retrieval_failure_class: retrievalFailureClass || null,
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
@@ -14909,8 +15192,10 @@ async function buildRecoGenerateFromCatalog({
         step: String(row?.step || '').trim() || null,
         ladder_level: String(row?.ladder_level || '').trim() || null,
         reason: String(row?.reason || (row?.ok ? 'ok' : '')).trim() || null,
+        search_contract_version: pickFirstTrimmed(row?.search_contract_version) || null,
         query_hit_quality: normalizeRecoQueryHitQuality(row?.query_hit_quality) || null,
         invalid_hit_reason: pickFirstTrimmed(row?.invalid_hit_reason) || null,
+        retro_invalid_hit: row?.retro_invalid_hit === true,
         query_target_step_family: pickFirstTrimmed(row?.query_target_step_family) || null,
         same_family_topk_count: Number.isFinite(Number(row?.same_family_topk_count)) ? Number(row.same_family_topk_count) : 0,
         exact_step_topk_count: Number.isFinite(Number(row?.exact_step_topk_count)) ? Number(row.exact_step_topk_count) : 0,
@@ -22556,6 +22841,11 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     } else {
       delete data.surface_reason;
     }
+    if (typeof contractObj.user_fixable === 'boolean') {
+      data.user_fixable = contractObj.user_fixable;
+    } else {
+      delete data.user_fixable;
+    }
     if (contractObj.upstream_status) {
       data.upstream_status = contractObj.upstream_status;
     } else {
@@ -22584,6 +22874,7 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
       ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
       ...(contractObj.surface_reason ? { surface_reason: contractObj.surface_reason } : {}),
+      ...(typeof contractObj.user_fixable === 'boolean' ? { user_fixable: contractObj.user_fixable } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
     };
@@ -23470,13 +23761,16 @@ function resolveRecoCentralOutcome({
       normalizedRetrievalFailureClass === 'invalid_retrieval_hit'
         ? 'no_valid_catalog_hit_for_target'
         : effective;
+    const userFixable = normalizedRetrievalFailureClass === 'invalid_retrieval_hit'
+      ? false
+      : true;
     return {
       surface_kind: entryType === 'chat' ? 'clarify' : 'needs_more_context',
       surface_reason: surfaceReason,
       mainline_status: 'needs_more_context',
       telemetry_reason: surfaceReason,
       products_empty_reason: surfaceReason,
-      user_fixable: true,
+      user_fixable: userFixable,
       effective_failure_class: effective,
       failure_origin: origin,
       presentation_mode: normalizedPresentationMode || null,
@@ -26542,7 +26836,7 @@ function buildAnalysisContextSnapshotForRoute({
   recentLogs = [],
   lastAnalysis = null,
 } = {}) {
-  return buildAnalysisContextSnapshotV1({
+  return canonicalizeAnalysisContextSnapshot(buildAnalysisContextSnapshotV1({
     latestArtifact,
     lastAnalysis:
       lastAnalysis && typeof lastAnalysis === 'object'
@@ -26552,7 +26846,7 @@ function buildAnalysisContextSnapshotForRoute({
           : null,
     profile,
     recentLogs,
-  });
+  }));
 }
 
 function buildTaskAnalysisContextForPrefix({
@@ -53266,15 +53560,31 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         const degradeReason = degradeMeta.degradeReason;
         let routineAnalysisV2Result = null;
+        let analysisMode = 'analysis_summary';
+        const artifactGateMeta = artifactGate && typeof artifactGate === 'object'
+          ? {
+              tier: pickFirstString(artifactGate.tier) || 'ineligible',
+              reason: pickFirstString(artifactGate.reason) || 'artifact_missing',
+              missing_core: Array.isArray(artifactGate.missing_core) ? artifactGate.missing_core.slice(0, 4) : [],
+            }
+          : {
+              tier: 'ineligible',
+              reason: diagnosisArtifact ? 'artifact_missing_core' : 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            };
+        const recoArtifactEligible = Boolean(artifactGate && artifactGate.ok);
         const analysisMeta = {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
           routine_analysis_version: routineAnalysisV2Result ? 'v2' : 'legacy',
+          analysis_mode: analysisMode,
           profile_context_source: requestProfileContextSource,
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
-          artifact_usable: Boolean(artifactGate && artifactGate.ok),
+          artifact_usable: recoArtifactEligible,
+          reco_artifact_eligible: recoArtifactEligible,
+          artifact_gate: artifactGateMeta,
           gate_relax_mode: AURORA_RULE_RELAX_MODE,
           low_quality_tolerated: Boolean(
             AURORA_RULE_RELAX_AGGRESSIVE &&
@@ -53327,8 +53637,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(diagnosisArtifact ? { diagnosis_artifact: diagnosisArtifact } : {}),
           ...(ingredientPlan ? { ingredient_plan: ingredientPlan } : {}),
           recommendation_ready: Boolean(recommendationReady),
+          reco_artifact_eligible: recoArtifactEligible,
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
           analysis_meta: {
+            analysis_mode: analysisMode,
+            reco_artifact_eligible: recoArtifactEligible,
+            artifact_gate: artifactGateMeta,
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(
               AURORA_RULE_RELAX_AGGRESSIVE &&
@@ -53374,7 +53688,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               requestProfileOverride: requestProfileOverlay,
               logger,
             });
+            analysisMode = 'routine_v2';
             analysisMeta.routine_analysis_version = 'v2';
+            analysisMeta.analysis_mode = analysisMode;
             routineProductEvents.push(
               makeEvent(ctx, 'routine_analysis_v2_completed', {
                 audited_product_count:
@@ -53410,6 +53726,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
+            analysis_contract: {
+              analysis_mode: analysisMode,
+              reco_artifact_eligible: recoArtifactEligible,
+              artifact_gate: artifactGateMeta,
+            },
             routine_analysis_v2: {
               ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
               profile_context_source: requestProfileContextSource,
@@ -53422,6 +53743,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
             analysis_context_snapshot: analysisContextSnapshot,
+            analysis_contract: {
+              analysis_mode: analysisMode,
+              reco_artifact_eligible: recoArtifactEligible,
+              artifact_gate: artifactGateMeta,
+            },
+          };
+        }
+        if (!isPlainObject(sessionPatch.meta)) sessionPatch.meta = {};
+        if (!isPlainObject(sessionPatch.meta.analysis_contract)) {
+          sessionPatch.meta.analysis_contract = {
+            analysis_mode: analysisMode,
+            reco_artifact_eligible: recoArtifactEligible,
+            artifact_gate: artifactGateMeta,
           };
         }
 
@@ -54108,8 +54442,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             reasons: [timeoutReasonText],
           },
           recommendation_ready: false,
+          reco_artifact_eligible: false,
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
           analysis_meta: {
+            analysis_mode: 'timeout_degraded',
+            reco_artifact_eligible: false,
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
           },
@@ -54123,6 +54465,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
+            analysis_mode: 'timeout_degraded',
+            reco_artifact_eligible: false,
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
@@ -54172,6 +54521,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
+            analysis_mode: 'timeout_degraded',
+            reco_artifact_eligible: false,
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
@@ -54350,6 +54706,25 @@ function mountAuroraBffRoutes(app, { logger }) {
               recentLogs,
             })
           : null;
+      const bootstrapArtifactGate = latestArtifact ? hasUsableArtifactForRecommendations(latestArtifact) : null;
+      const analysisContextDebug = {
+        snapshot_builder_version: ANALYSIS_CONTEXT_BUILDER_VERSION,
+        latest_artifact_id_used: pickFirstString(latestArtifact && latestArtifact.artifact_id) || null,
+        artifact_gate_at_bootstrap: bootstrapArtifactGate
+          ? {
+              ok: Boolean(bootstrapArtifactGate.ok),
+              tier: pickFirstString(bootstrapArtifactGate.tier) || 'ineligible',
+              reason: pickFirstString(bootstrapArtifactGate.reason) || 'artifact_missing',
+              missing_core: Array.isArray(bootstrapArtifactGate.missing_core) ? bootstrapArtifactGate.missing_core.slice(0, 4) : [],
+            }
+          : null,
+        snapshot_build_failed_reason:
+          !dbError && !latestAnalysisContext
+            ? (bootstrapArtifactGate && bootstrapArtifactGate.ok === false
+                ? pickFirstString(bootstrapArtifactGate.reason) || 'artifact_missing'
+                : 'snapshot_unavailable')
+            : null,
+      };
 
       const cards = [
         {
@@ -54362,6 +54737,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             is_returning: isReturning,
             db_ready: !dbError,
             latest_analysis_context: latestAnalysisContext,
+            analysis_context_debug: analysisContextDebug,
           },
           ...(dbError
             ? { field_missing: [{ field: 'profile', reason: 'db_not_configured_or_unavailable' }] }
@@ -54379,7 +54755,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           recent_logs: recentLogs,
           checkin_due: checkinDue,
           is_returning: isReturning,
-          ...(latestAnalysisContext ? { meta: { analysis_context_snapshot: latestAnalysisContext } } : {}),
+          meta: {
+            ...(latestAnalysisContext ? { analysis_context_snapshot: latestAnalysisContext } : {}),
+            analysis_context_debug: analysisContextDebug,
+          },
         },
         events,
       });
@@ -61107,6 +61486,20 @@ function mountAuroraBffRoutes(app, { logger }) {
           ];
           if (mappedIngredientPlan) {
             cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
+          }
+          if (debugUpstream && upstreamDebug) {
+            cards.push({
+              card_id: `aurora_debug_${ctx.request_id}`,
+              type: 'aurora_debug',
+              payload: upstreamDebug,
+            });
+            if (alternativesDebug) {
+              cards.push({
+                card_id: `aurora_alt_debug_${ctx.request_id}`,
+                type: 'aurora_alt_debug',
+                payload: { items: alternativesDebug },
+              });
+            }
           }
           const sessionPatch = {};
           appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);

@@ -1968,6 +1968,7 @@ test('Catalog search: invalid skincare hit does not count as successful products
             data: {
               metadata: {
                 search_decision: {
+                  contract_version: 'beauty_search_decision_v3',
                   hit_quality: 'invalid_hit',
                   invalid_hit_reason: 'invalid_hit_tools_dominant',
                   query_bucket: 'skincare',

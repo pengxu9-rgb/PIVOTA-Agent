@@ -11,6 +11,7 @@ const {
   normalizeRecoTargetStep,
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
+const { classifyBeautyCoarseCandidate } = require('../shared/beautyRecoCoarseClassifier');
 
 const SHARED_RECOMMENDATION_STACK_VERSION = 'aurora_recommendation_shared_stack_v1';
 const REQUEST_CONTEXT_SIGNATURE_VERSION = 'request_context_signature_v1';
@@ -413,41 +414,14 @@ function buildCandidateResolutionText(product) {
 
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
-  const structuredRaw = pickFirstTrimmed(
-    row.product_type,
-    row.productType,
-    row.category,
-    row.category_name,
-    row.categoryName,
-    row.step,
-    row.type,
-  );
-  const structuredStep = normalizeProductType(structuredRaw);
-  if (structuredStep) {
+  const coarse = classifyBeautyCoarseCandidate(row, {
+    queryTargetStepFamily: normalizeRecoTargetStep(targetContext?.resolved_target_step),
+  });
+  if (coarse.candidate_step) {
     return {
-      candidate_step: structuredStep,
-      candidate_step_source: 'structured_category',
-      candidate_step_confidence: 'high',
-    };
-  }
-  const resolutionText = buildCandidateResolutionText(row);
-  const textResolution = resolutionText
-    ? resolveRecoTargetStepIntent({ text: resolutionText })
-    : {
-      resolved_target_step: null,
-      resolved_target_step_confidence: 'none',
-      resolved_target_step_source: 'none',
-    };
-  if (textResolution.resolved_target_step) {
-    return {
-      candidate_step: normalizeRecoTargetStep(textResolution.resolved_target_step),
-      candidate_step_source:
-        textResolution.resolved_target_step_source === 'message_alias'
-          ? 'title_or_tag_alias'
-          : textResolution.resolved_target_step_source === 'message_concept'
-            ? 'title_or_tag_concept'
-            : textResolution.resolved_target_step_source || 'title_or_tag',
-      candidate_step_confidence: textResolution.resolved_target_step_confidence || 'medium',
+      candidate_step: coarse.candidate_step,
+      candidate_step_source: coarse.candidate_step_source || 'none',
+      candidate_step_confidence: coarse.candidate_step_confidence || 'none',
     };
   }
   const retrievalStep = normalizeRecoTargetStep(
@@ -639,9 +613,15 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
   if (!row) return null;
   const stepResolution = normalizeCandidateStep(row, { targetContext });
   const stepAwareIntent = Boolean(targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step);
-  const skincare = isSkincareCandidate(row) || (stepAwareIntent && isGenericSkincareDomainCandidate(row));
   const candidateStep = stepResolution.candidate_step;
   const resolvedTargetStep = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
+  const coarse = classifyBeautyCoarseCandidate(row, { queryTargetStepFamily: resolvedTargetStep });
+  const skincare =
+    coarse.domain_scope === 'skincare' &&
+    coarse.object_type === 'product' &&
+    coarse.usage_scope === 'face' &&
+    coarse.application_mode !== 'tool' &&
+    (isSkincareCandidate(row) || isGenericSkincareDomainCandidate(row) || stepAwareIntent);
   const relation = stepAwareIntent
     ? resolveCandidateFamilyRelation(resolvedTargetStep, candidateStep)
     : 'same_family';
@@ -657,7 +637,14 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
   let reason = 'generic_viable';
   if (!skincare) {
     bucket = 'hard_reject';
-    reason = 'non_skincare_or_blacklisted';
+    reason =
+      coarse.object_type === 'brush' || coarse.object_type === 'tool' || coarse.object_type === 'accessory'
+        ? 'non_skincare_or_blacklisted'
+        : coarse.domain_scope === 'bodycare'
+          ? 'bodycare_scope'
+          : coarse.domain_scope === 'makeup' || coarse.domain_scope === 'beauty_tool'
+            ? 'non_skincare_or_blacklisted'
+            : 'non_skincare_or_blacklisted';
   } else if (contextSignals.constraint_conflict) {
     bucket = 'hard_reject';
     reason = 'hard_constraint_conflict';
@@ -692,6 +679,11 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
     candidate_step_source: stepResolution.candidate_step_source || 'none',
     candidate_step_confidence: stepResolution.candidate_step_confidence || 'none',
     family_relation: relation,
+    domain_scope: coarse.domain_scope || 'unknown',
+    application_mode: coarse.application_mode || 'unknown',
+    usage_scope: coarse.usage_scope || 'unknown',
+    object_type: coarse.object_type || 'unknown',
+    coarse_domain_invalid: !skincare,
     bucket,
     reason,
     score: stepFitScore,

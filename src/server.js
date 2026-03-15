@@ -55,6 +55,13 @@ const {
   getRecoTargetFamilyRelation,
 } = require('./auroraBff/recoTargetStep');
 const {
+  BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+  buildBeautyCandidateText: buildSharedBeautyCandidateText,
+  resolveBeautyCoarseStepFamily: resolveSharedBeautyCoarseStepFamily,
+  classifyBeautyCoarseCandidate: classifySharedBeautyCoarseCandidate,
+  buildBeautySkincareHitQualityDecision: buildSharedBeautySkincareHitQualityDecision,
+} = require('./shared/beautyRecoCoarseClassifier');
+const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
@@ -8808,158 +8815,26 @@ function hasBeautyCatalogProductSignal(candidateText) {
 }
 
 function classifyBeautyBucketFromProduct(product) {
-  const text = buildFallbackCandidateText(product);
-  const bucket = classifyBeautyBucketFromText(text);
-  return bucket === 'general' ? 'other' : bucket;
+  const coarse = classifySharedBeautyCoarseCandidate(product);
+  if (coarse.domain_scope === 'skincare') return 'skincare';
+  if (coarse.domain_scope === 'beauty_tool') return 'tools';
+  if (coarse.domain_scope === 'makeup') return 'makeup';
+  if (coarse.domain_scope === 'bodycare') return 'bodycare';
+  return 'other';
 }
 
 function buildBeautyStepCandidateText(product) {
-  if (!product || typeof product !== 'object') return '';
-  const parts = [
-    product.title,
-    product.name,
-    product.display_name,
-    product.brand,
-    product.product_type,
-    product.category,
-    product.category_name,
-    ...(Array.isArray(product.tags) ? product.tags : []),
-    ...(Array.isArray(product.tag_tokens) ? product.tag_tokens : []),
-    ...(Array.isArray(product.ingredient_tokens) ? product.ingredient_tokens : []),
-    product.retrieval_query,
-    product.query,
-  ]
-    .map((item) => String(item || '').trim())
-    .filter(Boolean);
-  return parts.join(' ');
+  return buildSharedBeautyCandidateText(product);
 }
 
 function resolveBeautyCoarseStepFamily(product) {
-  const structuredStep = normalizeRecoTargetStep(
-    [
-      product?.product_type,
-      product?.productType,
-      product?.category,
-      product?.category_name,
-      product?.categoryName,
-      product?.type,
-    ]
-      .map((item) => String(item || '').trim())
-      .find(Boolean) || '',
-  );
-  if (structuredStep) {
-    return {
-      candidate_step: structuredStep,
-      candidate_step_source: 'structured_category',
-      candidate_step_confidence: 'high',
-    };
-  }
-  const text = buildBeautyStepCandidateText(product);
-  const resolved = resolveRecoTargetStepIntent({ text, focus: text });
-  const candidateStep = normalizeRecoTargetStep(resolved?.resolved_target_step);
-  if (!candidateStep) {
-    return {
-      candidate_step: null,
-      candidate_step_source: 'none',
-      candidate_step_confidence: 'none',
-    };
-  }
-  return {
-    candidate_step: candidateStep,
-    candidate_step_source: 'text_salvage',
-    candidate_step_confidence: String(resolved?.resolved_target_step_confidence || 'medium').trim().toLowerCase() || 'medium',
-  };
+  return resolveSharedBeautyCoarseStepFamily(product);
 }
 
 function buildBeautySkincareHitQualityDecision({ queryText, products } = {}) {
-  const queryBucket = detectBeautyQueryBucket(queryText);
-  if (queryBucket !== 'skincare') {
-    return {
-      applied: false,
-      hit_quality: '',
-      invalid_hit_reason: null,
-      query_bucket: queryBucket || null,
-      query_target_step_family: null,
-      topk_bucket_mix: {},
-      same_family_topk_count: 0,
-      exact_step_topk_count: 0,
-      raw_result_count: Array.isArray(products) ? products.length : 0,
-      products_returned_count: Array.isArray(products) ? products.length : 0,
-      valid_products: Array.isArray(products) ? products : [],
-    };
-  }
-  const queryResolution = resolveRecoTargetStepIntent({ focus: queryText, text: queryText });
-  const queryTargetStepFamily = normalizeRecoTargetStep(queryResolution?.resolved_target_step);
-  const rawProducts = Array.isArray(products) ? products : [];
-  const topK = rawProducts.slice(0, 8);
-  const topkBucketMix = {};
-  let skincareTopKCount = 0;
-  let toolsTopKCount = 0;
-  let sameFamilyTopKCount = 0;
-  let exactStepTopKCount = 0;
-
-  const isValidCandidate = (product) => {
-    const bucket = classifyBeautyBucketFromProduct(product);
-    topkBucketMix[bucket] = Number(topkBucketMix[bucket] || 0) + 1;
-    if (bucket === 'skincare') skincareTopKCount += 1;
-    if (bucket === 'tools') toolsTopKCount += 1;
-    if (bucket !== 'skincare') return false;
-    if (!queryTargetStepFamily) return true;
-    const stepResolution = resolveBeautyCoarseStepFamily(product);
-    if (!stepResolution.candidate_step) return false;
-    const familyRelation = getRecoTargetFamilyRelation(queryTargetStepFamily, stepResolution.candidate_step);
-    if (familyRelation === 'same_family') {
-      sameFamilyTopKCount += 1;
-      if (stepResolution.candidate_step === queryTargetStepFamily) exactStepTopKCount += 1;
-      return true;
-    }
-    return false;
-  };
-
-  for (const product of topK) {
-    isValidCandidate(product);
-  }
-
-  const validProducts = rawProducts.filter((product) => {
-    const bucket = classifyBeautyBucketFromProduct(product);
-    if (bucket !== 'skincare') return false;
-    if (!queryTargetStepFamily) return true;
-    const stepResolution = resolveBeautyCoarseStepFamily(product);
-    if (!stepResolution.candidate_step) return false;
-    return getRecoTargetFamilyRelation(queryTargetStepFamily, stepResolution.candidate_step) === 'same_family';
-  });
-
-  let hitQuality = 'empty';
-  let invalidHitReason = null;
-  if (rawProducts.length > 0) {
-    if (validProducts.length > 0 && (!queryTargetStepFamily || sameFamilyTopKCount > 0)) {
-      hitQuality = 'valid_hit';
-    } else {
-      hitQuality = 'invalid_hit';
-      if (toolsTopKCount >= Math.max(1, Math.ceil(topK.length / 2))) {
-        invalidHitReason = 'invalid_hit_tools_dominant';
-      } else if (skincareTopKCount <= 0) {
-        invalidHitReason = 'invalid_hit_all_non_skincare';
-      } else if (queryTargetStepFamily && sameFamilyTopKCount <= 0) {
-        invalidHitReason = 'invalid_hit_no_same_family_candidates';
-      } else {
-        invalidHitReason = 'invalid_hit_wrong_beauty_bucket';
-      }
-    }
-  }
-
   return {
-    applied: true,
-    hit_quality: hitQuality,
-    invalid_hit_reason: invalidHitReason,
-    query_bucket: 'skincare',
-    query_target_step_family: queryTargetStepFamily || null,
-    topk_bucket_mix: topkBucketMix,
-    same_family_topk_count: sameFamilyTopKCount,
-    exact_step_topk_count: exactStepTopKCount,
-    raw_result_count: rawProducts.length,
-    products_returned_count: hitQuality === 'valid_hit' ? validProducts.length : 0,
-    valid_products: hitQuality === 'valid_hit' ? validProducts : [],
+    ...buildSharedBeautySkincareHitQualityDecision({ queryText, products }),
+    contract_version: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   };
 }
 
@@ -20632,6 +20507,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : [];
         const nextSearchDecision = {
           ...existingSearchDecision,
+          contract_version: skincareHitDecision.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
           hit_quality: skincareHitDecision.hit_quality,
           invalid_hit_reason: skincareHitDecision.invalid_hit_reason,
           query_bucket: skincareHitDecision.query_bucket,

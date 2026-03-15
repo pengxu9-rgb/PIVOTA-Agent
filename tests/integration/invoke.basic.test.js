@@ -151,8 +151,66 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
+    expect(res.body.metadata?.search_decision?.contract_version).toBe('beauty_search_decision_v3');
     expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_tools_dominant');
     expect(res.body.metadata?.search_decision?.final_decision).toBe('invalid_hit');
+    expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
+    expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
+  });
+
+  it('does not count body cream as valid face-moisturizer hit', async () => {
+    const upstreamBody = {
+      status: 'success',
+      success: true,
+      total: 2,
+      page: 1,
+      page_size: 2,
+      products: [
+        {
+          id: 'body_1',
+          product_id: 'body_1',
+          title: 'Lil Butta Dropz Body Cream Trio',
+          name: 'Lil Butta Dropz Body Cream Trio',
+          display_name: 'Lil Butta Dropz Body Cream Trio',
+          category: 'body cream',
+          product_type: 'cream',
+        },
+        {
+          id: 'body_2',
+          product_id: 'body_2',
+          title: 'Shimmering Body Butter',
+          name: 'Shimmering Body Butter',
+          display_name: 'Shimmering Body Butter',
+          category: 'bodycare',
+          product_type: 'cream',
+        },
+      ],
+      metadata: {
+        query_source: 'agent_products_search',
+      },
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, upstreamBody);
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, upstreamBody);
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'Barrier Cream',
+        catalog_surface: 'beauty',
+        source: 'aurora-bff',
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
+    expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_all_non_skincare');
     expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
     expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
   });

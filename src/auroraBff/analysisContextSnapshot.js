@@ -78,6 +78,35 @@ function stableHash(value, length = 16) {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, length);
 }
 
+function canonicalizeSnapshotValue(value) {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => canonicalizeSnapshotValue(item))
+      .filter((item) => item !== undefined);
+  }
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      const normalized = canonicalizeSnapshotValue(value[key]);
+      if (normalized !== undefined) out[key] = normalized;
+    }
+    return out;
+  }
+  return value;
+}
+
+function canonicalizeAnalysisContextSnapshot(snapshot) {
+  if (!isPlainObject(snapshot)) return null;
+  const normalized = canonicalizeSnapshotValue(snapshot);
+  if (!isPlainObject(normalized) || Object.keys(normalized).length <= 0) return null;
+  return normalized;
+}
+
+function analysisContextSnapshotsEqual(left, right) {
+  return stableHash(canonicalizeAnalysisContextSnapshot(left) || {}) === stableHash(canonicalizeAnalysisContextSnapshot(right) || {});
+}
+
 function toIso(value) {
   const text = asString(value);
   if (!text) return null;
@@ -1626,6 +1655,8 @@ module.exports = {
   ANALYSIS_CONTEXT_BUILDER_VERSION,
   DEFAULT_TASK_ADAPTER_VERSION,
   buildAnalysisContextSnapshotV1,
+  canonicalizeAnalysisContextSnapshot,
+  analysisContextSnapshotsEqual,
   resolveAnalysisContextForTask,
   buildRoutineAnalysisContextFromSnapshot,
   buildProductAnalysisContextFromSnapshot,

@@ -182,8 +182,14 @@ test('/v1/analysis/skin: routine analysis v2 emits product-first cards with comp
           : {};
         assert.equal(sessionPatch.next_state, 'ROUTINE_REVIEW');
         const meta = sessionPatch.meta && typeof sessionPatch.meta === 'object' ? sessionPatch.meta : {};
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.analysis_mode, 'routine_v2');
+        assert.equal(typeof analysisMeta.reco_artifact_eligible, 'boolean');
         assert.equal(Boolean(meta.routine_analysis_v2 && meta.routine_analysis_v2.enabled), true);
         assert.equal(meta.routine_analysis_legacy_compat && meta.routine_analysis_legacy_compat.source, 'routine_analysis_v2');
+        assert.equal(meta.analysis_contract && meta.analysis_contract.analysis_mode, 'routine_v2');
       } finally {
         harness.restore();
       }
@@ -232,6 +238,7 @@ test('/v1/analysis/skin: routine analysis v2 stays enabled when env flag is abse
           ? resp.body.analysis_meta
           : {};
         assert.equal(analysisMeta.routine_analysis_version, 'v2');
+        assert.equal(analysisMeta.analysis_mode, 'routine_v2');
       } finally {
         harness.restore();
       }
