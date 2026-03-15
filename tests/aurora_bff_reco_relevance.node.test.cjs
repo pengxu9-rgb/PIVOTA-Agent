@@ -433,3 +433,54 @@ test('/v1/reco/generate: deterministic selection can succeed in degraded mode wh
     axios.get = originalGet;
   }
 });
+
+test('/v1/reco/generate: retrieval step rescues generic skincare candidates with opaque titles', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'opaque_cream_1',
+            merchant_id: 'mid_opaque',
+            brand: 'BarrierLab',
+            name: 'Recovery 001',
+            display_name: 'Recovery 001',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'reco_retrieval_step_uid', briefId: 'reco_retrieval_step_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_retrieval_step_uid',
+        'X-Trace-ID': 'trace_reco_retrieval_step',
+        'X-Brief-ID': 'reco_retrieval_step_brief',
+      },
+      body: {
+        focus: 'moisturizer',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+  } finally {
+    axios.get = originalGet;
+  }
+});
