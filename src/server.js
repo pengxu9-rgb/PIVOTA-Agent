@@ -19975,8 +19975,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           Number(existingSearchDecision.same_family_topk_count || 0) > 0 &&
           primaryProductsBeforeGuidance.length > 0;
         const shouldAttemptGuidanceDirectSupplement =
-          !primaryHasExternalSeedBeforeGuidance &&
-          (!primaryHasValidGuidanceHit || primaryProductsBeforeGuidance.length < requestedLimit);
+          !primaryHasValidGuidanceHit ||
+          (!primaryHasExternalSeedBeforeGuidance && primaryProductsBeforeGuidance.length < requestedLimit);
 
         if (shouldAttemptGuidanceDirectSupplement) {
           const directSupplement = await searchExternalSeedOnlyProductsDirect({
