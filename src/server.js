@@ -19901,6 +19901,199 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const requestedLimit = Math.min(
+        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+        SEARCH_LIMIT_MAX,
+      );
+      const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
+      const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
+      const requestedFindProductsMultiPage =
+        requestedPageFromPayload > 0
+          ? requestedPageFromPayload
+          : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
+      const guidanceUiSurface = normalizeSearchUiSurface(
+        metadata?.ui_surface ||
+          effectivePayload?.metadata?.ui_surface ||
+          effectivePayload?.context?.ui_surface ||
+          queryParams?.ui_surface ||
+          queryParams?.uiSurface,
+      );
+      const guidanceOnlyDiscovery = guidanceUiSurface === 'ingredient_plan_guidance_only';
+      const requestedTargetStepFamily = normalizeRecoTargetStep(
+        metadata?.query_target_step_family ||
+          effectivePayload?.metadata?.query_target_step_family ||
+          queryParams?.target_step_family ||
+          queryParams?.targetStepFamily,
+      );
+      const requestedAllowExternalSeed = parseQueryBoolean(
+        queryParams?.allow_external_seed ??
+          queryParams?.allowExternalSeed ??
+          effectivePayload?.search?.allow_external_seed ??
+          effectivePayload?.search?.allowExternalSeed ??
+          metadata?.search_allow_external_seed,
+      );
+      const requestedProductOnly = parseQueryBoolean(
+        metadata?.product_only_requested ??
+          queryParams?.product_only ??
+          queryParams?.productOnly ??
+          effectivePayload?.search?.product_only ??
+          effectivePayload?.search?.productOnly,
+      );
+      const requestedQueryIndex = parseQueryNumber(
+        metadata?.query_index ??
+          queryParams?.query_index ??
+          queryParams?.queryIndex,
+      );
+      const requestedQueryTotal = parseQueryNumber(
+        metadata?.query_total ??
+          queryParams?.query_total ??
+          queryParams?.queryTotal,
+      );
+
+      if (
+        guidanceOnlyDiscovery &&
+        requestedAllowExternalSeed === true &&
+        requestedTargetStepFamily &&
+        queryText
+      ) {
+        const existingMeta =
+          upstreamData?.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+            ? upstreamData.metadata
+            : {};
+        const existingSearchDecision =
+          existingMeta.search_decision &&
+          typeof existingMeta.search_decision === 'object' &&
+          !Array.isArray(existingMeta.search_decision)
+            ? existingMeta.search_decision
+            : {};
+        const primaryProductsBeforeGuidance = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+        const primaryHasExternalSeedBeforeGuidance = primaryProductsBeforeGuidance.some((product) =>
+          isExternalSeedProduct(product),
+        );
+        const primaryHasValidGuidanceHit =
+          existingSearchDecision.hit_quality === 'valid_hit' &&
+          Number(existingSearchDecision.same_family_topk_count || 0) > 0 &&
+          primaryProductsBeforeGuidance.length > 0;
+        const shouldAttemptGuidanceDirectSupplement =
+          !primaryHasExternalSeedBeforeGuidance &&
+          (!primaryHasValidGuidanceHit || primaryProductsBeforeGuidance.length < requestedLimit);
+
+        if (shouldAttemptGuidanceDirectSupplement) {
+          const directSupplement = await searchExternalSeedOnlyProductsDirect({
+            search: {
+              query: queryText,
+              limit: requestedLimit,
+              offset: 0,
+              in_stock_only:
+                parseQueryBoolean(
+                  queryParams?.in_stock_only ??
+                    queryParams?.inStockOnly ??
+                    effectivePayload?.search?.in_stock_only ??
+                    effectivePayload?.search?.inStockOnly,
+                ) !== false,
+              target_step_family: requestedTargetStepFamily,
+              ui_surface: guidanceUiSurface,
+              product_only: requestedProductOnly === true,
+              catalog_surface:
+                firstQueryParamValue(
+                  queryParams?.catalog_surface ||
+                    queryParams?.catalogSurface ||
+                    effectivePayload?.search?.catalog_surface ||
+                    effectivePayload?.search?.catalogSurface,
+                ) || null,
+              source: metadata?.source || null,
+            },
+            metadata: {
+              ui_surface: guidanceUiSurface,
+              product_only_requested: requestedProductOnly === true,
+              query_target_step_family: requestedTargetStepFamily,
+              query_index: requestedQueryIndex,
+              query_total: requestedQueryTotal,
+            },
+          });
+
+          const directProducts = Array.isArray(directSupplement?.products) ? directSupplement.products : [];
+          const directSearchDecision =
+            directSupplement?.metadata?.search_decision &&
+            typeof directSupplement.metadata.search_decision === 'object' &&
+            !Array.isArray(directSupplement.metadata.search_decision)
+              ? directSupplement.metadata.search_decision
+              : {};
+          const directValidHit =
+            directSearchDecision.hit_quality === 'valid_hit' && directProducts.length > 0;
+
+          if (directValidHit) {
+            const mergedProducts = [];
+            const seen = new Set();
+            const appendProducts = (products) => {
+              for (const product of products) {
+                const key = buildSearchProductKey(product);
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                mergedProducts.push(product);
+                if (mergedProducts.length >= requestedLimit) break;
+              }
+            };
+            if (primaryHasValidGuidanceHit) {
+              appendProducts(primaryProductsBeforeGuidance);
+            }
+            appendProducts(directProducts);
+            const mergedExternalCount = mergedProducts.filter((product) => isExternalSeedProduct(product)).length;
+            const mergedInternalCount = Math.max(0, mergedProducts.length - mergedExternalCount);
+            upstreamData = normalizeAgentProductsListResponse(
+              {
+                ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                  ? upstreamData
+                  : {}),
+                products: mergedProducts,
+                total: Math.max(
+                  mergedProducts.length,
+                  Number(upstreamData?.total || 0) || 0,
+                  Number(directSupplement?.total || 0) || 0,
+                ),
+                metadata: {
+                  ...existingMeta,
+                  query_source: primaryHasValidGuidanceHit
+                    ? 'agent_products_search_guidance_supplemented'
+                    : 'agent_products_guidance_external_seed_supplemented',
+                  source_breakdown: {
+                    ...(existingMeta.source_breakdown && typeof existingMeta.source_breakdown === 'object'
+                      ? existingMeta.source_breakdown
+                      : {}),
+                    internal_count: mergedInternalCount,
+                    external_seed_count: mergedExternalCount,
+                    stale_cache_used: false,
+                    strategy_applied: 'guidance_direct_external_seed_supplement',
+                  },
+                  external_seed_executed: true,
+                  external_seed_rows_fetched: Number(
+                    directSupplement?.metadata?.external_seed_rows_fetched || directProducts.length,
+                  ) || 0,
+                  external_seed_rows_built: Number(
+                    directSupplement?.metadata?.external_seed_rows_built || directProducts.length,
+                  ) || 0,
+                  external_seed_returned_count: mergedExternalCount,
+                  search_stage_b: {
+                    attempted: true,
+                    applied: true,
+                    added_count: mergedExternalCount,
+                    reason: primaryHasValidGuidanceHit
+                      ? 'guidance_direct_external_seed_supplemented'
+                      : 'guidance_direct_external_seed_replaced',
+                  },
+                  supplement_attempted: true,
+                  supplement_skip_reason: null,
+                },
+              },
+              {
+                limit: queryParams?.limit,
+                offset: queryParams?.offset,
+              },
+            );
+          }
+        }
+      }
+
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
       const primaryRelevant = queryText ? isProxySearchFallbackRelevant(upstreamData, queryText) : true;
@@ -19936,16 +20129,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         hasFragranceQuerySignal(queryText) &&
         (primaryUsableCount === 0 || primaryLowQualityNonempty);
       const primaryQualityGatePassed = !primaryLowQualityNonempty && primaryUsableCount > 0;
-      const requestedLimit = Math.min(
-        Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
-        SEARCH_LIMIT_MAX,
-      );
-      const requestedOffset = Math.max(0, Number(queryParams?.offset || 0) || 0);
-      const requestedPageFromPayload = Number(queryParams?.page || 0) || 0;
-      const requestedFindProductsMultiPage =
-        requestedPageFromPayload > 0
-          ? requestedPageFromPayload
-          : Math.floor(requestedOffset / Math.max(1, requestedLimit)) + 1;
       const secondarySkipBrandLike = Boolean(
         detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
       );
