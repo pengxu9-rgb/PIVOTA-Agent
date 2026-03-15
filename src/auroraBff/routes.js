@@ -13911,6 +13911,28 @@ function normalizeRecoPlanStringArray(raw, max = 6) {
   return uniqCaseInsensitiveStrings(asStringArray(raw), max);
 }
 
+function summarizeRecoCandidateBuckets(rows, maxSamples = 4) {
+  const items = Array.isArray(rows) ? rows : [];
+  const reasonCounts = {};
+  const samples = [];
+  for (const item of items) {
+    const reason = String(item?.reason || 'unknown').trim() || 'unknown';
+    reasonCounts[reason] = Number(reasonCounts[reason] || 0) + 1;
+    if (samples.length >= Math.max(1, Number(maxSamples) || 4)) continue;
+    const product = item && typeof item.product === 'object' && !Array.isArray(item.product) ? item.product : {};
+    samples.push({
+      product_id: pickFirstString(product.product_id, product.productId) || null,
+      name: pickFirstString(product.display_name, product.displayName, product.name, product.title) || null,
+      category: pickFirstString(product.category, product.category_name, product.product_type, product.type) || null,
+      candidate_step: item?.candidate_step || null,
+      family_relation: item?.family_relation || null,
+      reason,
+      retrieval_query: pickFirstString(product.retrieval_query, product.query) || null,
+    });
+  }
+  return { reason_counts: reasonCounts, samples };
+}
+
 function humanizeRecoProductType(productType, lang = 'EN') {
   const token = String(productType || '').trim().toLowerCase();
   const isCn = String(lang || '').trim().toUpperCase() === 'CN';
@@ -14723,6 +14745,17 @@ async function buildRecoGenerateFromCatalog({
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
     stop_level: collected.stopLevel || null,
+    hard_reject_debug: summarizeRecoCandidateBuckets(candidateState.hard_reject, 4),
+    soft_mismatch_debug: summarizeRecoCandidateBuckets(candidateState.soft_mismatch, 4),
+    query_samples: results
+      .slice(0, 8)
+      .map((row) => ({
+        query: String(row?.query || '').trim() || null,
+        step: String(row?.step || '').trim() || null,
+        ladder_level: String(row?.ladder_level || '').trim() || null,
+        reason: String(row?.reason || (row?.ok ? 'ok' : '')).trim() || null,
+        product_count: Array.isArray(row?.products) ? row.products.length : 0,
+      })),
     ...(debug
       ? {
         empty_count: emptyCount,

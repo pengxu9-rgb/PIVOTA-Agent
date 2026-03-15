@@ -298,6 +298,8 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
     assert.equal(response.body?.debug?.effective_failure_class || response.body?.debug?.contract?.effective_failure_class, 'weak_viable_pool');
     assert.equal(response.body?.debug?.contract?.surface_reason, 'weak_viable_pool');
     assert.equal(typeof response.body?.debug?.raw_candidate_count, 'number');
+    assert.ok(response.body?.debug?.reco_catalog_debug?.hard_reject_debug);
+    assert.ok(response.body?.debug?.reco_catalog_debug?.soft_mismatch_debug);
   } finally {
     axios.get = originalGet;
   }
