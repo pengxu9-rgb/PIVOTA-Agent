@@ -23279,6 +23279,19 @@ function extractLatestRecoContextFromSession(session) {
   return context;
 }
 
+function extractLatestRecoContextFromChatContext(chatContext) {
+  if (!chatContext || typeof chatContext !== 'object' || Array.isArray(chatContext)) return null;
+  const context = sanitizeRecoRequestContext(
+    chatContext.latest_reco_context && typeof chatContext.latest_reco_context === 'object'
+      ? chatContext.latest_reco_context
+      : chatContext.latestRecoContext && typeof chatContext.latestRecoContext === 'object'
+        ? chatContext.latestRecoContext
+        : null,
+  );
+  if (!context) return null;
+  return context;
+}
+
 function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   if (!sessionPatch || typeof sessionPatch !== 'object') return;
   const normalized = sanitizeRecoRequestContext(context);
@@ -23286,6 +23299,14 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
   state.latest_reco_context = normalized;
   sessionPatch.state = state;
+}
+
+function appendLatestRecoContextToChatContext(chatContext, context) {
+  const normalized = sanitizeRecoRequestContext(context);
+  if (!normalized) return isPlainObject(chatContext) ? { ...chatContext } : {};
+  const next = isPlainObject(chatContext) ? { ...chatContext } : {};
+  next.latest_reco_context = normalized;
+  return next;
 }
 
 function buildGuidanceOnlyProductExamples(target) {
@@ -54455,7 +54476,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (analysisClarificationNoticeCard) {
           extraCards.unshift(analysisClarificationNoticeCard);
         }
-        appendLatestRecoContextToSessionPatch(sessionPatch, buildLatestRecoContextPayload({
+        const latestRecoContextPayload = buildLatestRecoContextPayload({
           recoContextSource: 'analysis_skin',
           sourceDetail: 'analysis_skin',
           triggerSource: 'analysis_skin',
@@ -54468,7 +54489,25 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoArtifactEligible,
           explicitSeedTerms: [analysisDiagnosisGoal],
           updatedAt: Date.now(),
-        }));
+        });
+        appendLatestRecoContextToSessionPatch(sessionPatch, latestRecoContextPayload);
+        if (identity && (identity.auroraUid || identity.userId)) {
+          const nextChatContext = appendLatestRecoContextToChatContext(profile && profile.chatContext, latestRecoContextPayload);
+          await executeAuroraOptionalStep({
+            logger,
+            route: '/v1/analysis/skin',
+            stepId: 'analysis_skin.persist_reco_context',
+            criticality: 'optional',
+            fn: async () =>
+              upsertChatContextForIdentity(
+                { auroraUid: identity.auroraUid, userId: identity.userId },
+                nextChatContext,
+              ),
+          });
+          if (profile && typeof profile === 'object') {
+            profile = { ...profile, chatContext: nextChatContext };
+          }
+        }
 
         const routineFitPlan = resolveRoutineFitAnalysisPlan({
           routineProductCandidates,
@@ -55251,7 +55290,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (Array.isArray(timeoutClarificationPack?.ask_3_questions) && timeoutClarificationPack.ask_3_questions.length) {
           timeoutPayload.ask_3_questions = timeoutClarificationPack.ask_3_questions.slice(0, 3);
         }
-        appendLatestRecoContextToSessionPatch(timeoutSessionPatch, buildLatestRecoContextPayload({
+        const timeoutLatestRecoContext = buildLatestRecoContextPayload({
           recoContextSource: 'analysis_skin',
           sourceDetail: 'analysis_skin',
           triggerSource: 'analysis_skin',
@@ -55263,7 +55302,22 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoArtifactEligible: false,
           explicitSeedTerms: [timeoutDiagnosisGoal],
           updatedAt: Date.now(),
-        }));
+        });
+        appendLatestRecoContextToSessionPatch(timeoutSessionPatch, timeoutLatestRecoContext);
+        if (identity && (identity.auroraUid || identity.userId)) {
+          const nextChatContext = appendLatestRecoContextToChatContext(profile && profile.chatContext, timeoutLatestRecoContext);
+          await executeAuroraOptionalStep({
+            logger,
+            route: '/v1/analysis/skin',
+            stepId: 'analysis_skin.persist_reco_context',
+            criticality: 'optional',
+            fn: async () =>
+              upsertChatContextForIdentity(
+                { auroraUid: identity.auroraUid, userId: identity.userId },
+                nextChatContext,
+              ),
+          });
+        }
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(timeoutAssistantText),
@@ -55464,26 +55518,36 @@ function mountAuroraBffRoutes(app, { logger }) {
       let profile = null;
       let recentLogs = [];
       let latestArtifact = null;
+      let chatContext = null;
       let dbError = null;
       const identity = await resolveIdentity(req, ctx);
       try {
-        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
+        const [profileRes, recentLogsRes, chatContextRes, latestArtifactRes] = await Promise.allSettled([
+          getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
+          getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7),
+          getChatContextForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
+          loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger }),
+        ]);
+        if (profileRes.status === 'fulfilled') profile = profileRes.value;
+        else dbError = dbError || profileRes.reason;
+        if (recentLogsRes.status === 'fulfilled') recentLogs = recentLogsRes.value;
+        else dbError = dbError || recentLogsRes.reason;
+        if (chatContextRes.status === 'fulfilled') chatContext = chatContextRes.value;
+        else dbError = dbError || chatContextRes.reason;
+        if (latestArtifactRes.status === 'fulfilled') latestArtifact = latestArtifactRes.value;
+        else dbError = dbError || latestArtifactRes.reason;
       } catch (err) {
         dbError = err;
       }
 
       const isReturning = Boolean(profile) || recentLogs.length > 0;
       const checkinDue = isCheckinDue(recentLogs);
-      const latestAnalysisContext =
-        !dbError
-          ? buildAnalysisContextSnapshotForRoute({
-              latestArtifact,
-              profile,
-              recentLogs,
-            })
-          : null;
+      const latestAnalysisContext = buildAnalysisContextSnapshotForRoute({
+        latestArtifact,
+        profile,
+        recentLogs,
+      });
+      const latestRecoContext = extractLatestRecoContextFromChatContext(chatContext || (profile && profile.chatContext));
       const latestAnalysisContextHash = buildAnalysisContextSnapshotHash(latestAnalysisContext);
       const bootstrapParitySampled = shouldSampleAnalysisContextParity(ctx);
       const bootstrapArtifactGate = latestArtifact ? hasUsableArtifactForRecommendations(latestArtifact) : null;
@@ -55543,6 +55607,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           recent_logs: recentLogs,
           checkin_due: checkinDue,
           is_returning: isReturning,
+          ...(latestRecoContext ? { state: { latest_reco_context: latestRecoContext } } : {}),
           meta: {
             ...(latestAnalysisContext ? { analysis_context_snapshot: latestAnalysisContext } : {}),
             analysis_context_debug: analysisContextDebug,
