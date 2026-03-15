@@ -287,8 +287,13 @@ test('analysis guidance-only mode strips concrete product payloads before UI ren
   assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items), true);
   assert.equal(stripped.targets[0]?.products?.example_product_discovery_items.length > 0, true);
   assert.equal(typeof stripped.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
+  assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps), true);
+  assert.equal(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps.length > 1, true);
   assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder), true);
-  assert.equal(stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length > 1, true);
+  assert.equal(
+    stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length,
+    stripped.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps.length,
+  );
   assert.equal(stripped.targets[0]?.products?.note, 'Tap a product type to browse top matching products.');
   assert.equal('product_rows' in stripped.targets[0], false);
   assert.equal('competitors' in stripped.targets[0], false);
@@ -323,8 +328,13 @@ test('guidance-only ingredient plan cards never rehydrate concrete sku payloads 
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items), true);
   assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items.length > 0, true);
   assert.equal(typeof card.payload.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps), true);
+  assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps.length > 1, true);
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder), true);
-  assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length > 1, true);
+  assert.equal(
+    card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder.length,
+    card.payload.targets[0]?.products?.example_product_discovery_items[0]?.query_ladder_steps.length,
+  );
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.competitors), false);
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.dupes), false);
   assert.equal('external_fallback_used' in card.payload.targets[0], false);

@@ -23499,6 +23499,9 @@ function dedupeGuidanceOnlyQueries(queries) {
   return out;
 }
 
+const GUIDANCE_DISCOVERY_SOURCE_POLICY_INTERNAL_FIRST_THEN_EXTERNAL_SUPPLEMENT =
+  'internal_first_then_external_supplement';
+
 function buildGuidanceOnlyIngredientSearchPhrases(target, ingredientCue = '') {
   const rawIngredientName = pickFirstTrimmed(
     target?.ingredient_name,
@@ -23516,14 +23519,20 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
   const safeLabel = String(label || '').trim();
   if (!safeLabel) return [];
   const { ingredientCue, focusCue } = buildGuidanceOnlyDiscoveryContext(target);
-  const queries = [safeLabel];
+  const queries = [];
 
   if (targetStepFamily === 'moisturizer') {
     if (focusCue === 'barrier repair') {
       if (ingredientCue) {
         queries.push(`${ingredientCue} barrier moisturizer`, `barrier repair ${ingredientCue} moisturizer`);
       }
-      queries.push('barrier repair moisturizer', 'fragrance-free barrier moisturizer', 'barrier moisturizer');
+      queries.push('barrier repair moisturizer');
+      if (/fragrance[-\s]?free/i.test(safeLabel)) {
+        queries.push('fragrance-free barrier moisturizer');
+      } else if (ingredientCue) {
+        queries.push(`${ingredientCue} moisturizer`);
+      }
+      queries.push('sensitive skin moisturizer');
     } else if (focusCue === 'sensitive skin') {
       queries.push('sensitive skin moisturizer', 'fragrance free moisturizer');
     } else if (focusCue === 'hydrating') {
@@ -23537,8 +23546,9 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
       queries.push('soothing moisturizer', 'barrier moisturizer');
     }
     if (ingredientCue) queries.push(`${ingredientCue} moisturizer`);
-    queries.push('sensitive skin moisturizer');
+    queries.push(safeLabel);
   } else if (targetStepFamily === 'serum') {
+    queries.push(safeLabel);
     if (focusCue === 'barrier repair') {
       if (ingredientCue) queries.push(`${ingredientCue} barrier repair serum`);
       queries.push('barrier repair serum', 'soothing serum');
@@ -23552,10 +23562,11 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
     if (ingredientCue) queries.push(`${ingredientCue} serum`);
     queries.push('hydrating serum');
   } else {
+    queries.push(safeLabel);
     if (focusCue) queries.push(`${focusCue} skincare`);
     if (ingredientCue) queries.push(`${ingredientCue} skincare`);
   }
-  return dedupeGuidanceOnlyQueries(queries).slice(0, 4);
+  return dedupeGuidanceOnlyQueries(queries).slice(0, targetStepFamily === 'moisturizer' ? 5 : 4);
 }
 
 function buildGuidanceOnlySupplementQueries(target, label, targetStepFamily, internalQueries = []) {
@@ -23612,20 +23623,13 @@ function buildGuidanceOnlyDiscoveryLadder(target, label) {
       ladder.push({
         query,
         target_step_family: targetStepFamily || null,
-        allow_external_seed: false,
-        external_seed_strategy: null,
-        product_only: true,
-        intent_strength: intentStrength,
-        stop_on_success: true,
-      });
-      ladder.push({
-        query,
-        target_step_family: targetStepFamily || null,
+        source_policy: GUIDANCE_DISCOVERY_SOURCE_POLICY_INTERNAL_FIRST_THEN_EXTERNAL_SUPPLEMENT,
         allow_external_seed: true,
         external_seed_strategy: 'supplement_internal_first',
         product_only: true,
         intent_strength: intentStrength,
         stop_on_success: true,
+        decision_mode: 'guidance_only',
       });
     });
   });
@@ -23646,7 +23650,19 @@ function buildGuidanceOnlyProductDiscoveryItems(target, examples = []) {
         label: safeLabel,
         search_query: primaryStep.query,
         search_title: safeLabel,
-        query_ladder: queryLadder,
+        query_ladder_steps: queryLadder,
+        query_ladder: queryLadder.map((step) => ({
+          query: step.query,
+          target_step_family: step.target_step_family || null,
+          allow_external_seed: step.allow_external_seed === true,
+          external_seed_strategy: step.external_seed_strategy || null,
+          product_only: step.product_only !== false,
+          intent_strength: step.intent_strength || null,
+          stop_on_success: step.stop_on_success === true,
+          decision_mode: step.decision_mode || 'guidance_only',
+          source_policy:
+            step.source_policy || GUIDANCE_DISCOVERY_SOURCE_POLICY_INTERNAL_FIRST_THEN_EXTERNAL_SUPPLEMENT,
+        })),
         source: 'guidance_only_example',
       };
     })
