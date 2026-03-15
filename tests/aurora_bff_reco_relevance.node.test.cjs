@@ -14,6 +14,8 @@ process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
 process.env.AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = 'true';
 process.env.AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED = 'false';
+process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = 'true';
+process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 
 const axios = require('axios');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
@@ -179,6 +181,18 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
     return {
       status: 200,
       data: {
+        metadata: {
+          search_decision: {
+            hit_quality: 'invalid_hit',
+            invalid_hit_reason: 'invalid_hit_tools_dominant',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 0,
+            exact_step_topk_count: 0,
+            raw_result_count: 1,
+            products_returned_count: 0,
+          },
+        },
         products: [
           {
             product_id: 'brush_only',
@@ -218,17 +232,17 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
     assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice' && /viable|artifact|candidate/i.test(String(card?.payload?.reason || '')))
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'no_valid_catalog_hit_for_target')
       || null;
     assert.ok(confidenceNotice);
-    assert.equal(confidenceNotice?.payload?.reason, 'no_viable_candidates_for_target');
+    assert.equal(confidenceNotice?.payload?.reason, 'no_valid_catalog_hit_for_target');
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
-    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.failure_class, 'no_valid_catalog_hit_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_valid_catalog_hit_for_target');
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
   } finally {
     axios.get = originalGet;
@@ -242,6 +256,17 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
     return {
       status: 200,
       data: {
+        metadata: {
+          search_decision: {
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 1,
+            exact_step_topk_count: 0,
+            raw_result_count: 1,
+            products_returned_count: 1,
+          },
+        },
         products: [
           {
             product_id: 'sleep_mask_only',

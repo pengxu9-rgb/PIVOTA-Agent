@@ -3606,11 +3606,26 @@ async function searchPivotaBackendProducts({
         resolver_first_applied: false,
         resolver_first_skipped_for_aurora: false,
         search_source: null,
+        query_hit_quality: '',
+        invalid_hit_reason: null,
+        query_bucket: null,
+        query_target_step_family: null,
+        same_family_topk_count: 0,
+        exact_step_topk_count: 0,
+        products_returned_count: 0,
+        raw_result_count: 0,
       };
     }
     const metadata =
       body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
         ? body.metadata
+        : null;
+    const searchDecision =
+      metadata &&
+      metadata.search_decision &&
+      typeof metadata.search_decision === 'object' &&
+      !Array.isArray(metadata.search_decision)
+        ? metadata.search_decision
         : null;
     const searchTrace =
       metadata &&
@@ -3669,10 +3684,38 @@ async function searchPivotaBackendProducts({
       sourceToken.startsWith('aurora') &&
       resolverFirstSkippedReason.includes('aurora')
     );
+    const intNonNegative = (value, fallback = 0) => {
+      const numeric = Number.isFinite(Number(value)) ? Number(value) : Number(fallback);
+      return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0;
+    };
+    const rawProducts = extractAgentProductsFromSearchResponse(body);
+    const queryHitQuality = normalizeRecoQueryHitQuality(
+      searchDecision?.hit_quality || searchDecision?.query_hit_quality,
+    ) || (rawProducts.length > 0 ? 'valid_hit' : 'empty');
     return {
       resolver_first_applied: resolverFirstApplied,
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       search_source: sourceToken || null,
+      query_hit_quality: queryHitQuality,
+      invalid_hit_reason: pickFirstTrimmed(
+        searchDecision?.invalid_hit_reason,
+        searchDecision?.reason,
+      ) || null,
+      query_bucket: pickFirstTrimmed(
+        searchDecision?.query_bucket,
+        metadata?.query_semantic_class,
+      ) || null,
+      query_target_step_family: pickFirstTrimmed(searchDecision?.query_target_step_family) || null,
+      same_family_topk_count: intNonNegative(searchDecision?.same_family_topk_count),
+      exact_step_topk_count: intNonNegative(searchDecision?.exact_step_topk_count),
+      products_returned_count: intNonNegative(
+        searchDecision?.products_returned_count,
+        Array.isArray(body?.products) ? body.products.length : 0,
+      ),
+      raw_result_count: intNonNegative(
+        searchDecision?.raw_result_count,
+        rawProducts.length,
+      ),
     };
   };
   const mapProxySearchFallbackReason = (raw) => {
@@ -3798,6 +3841,9 @@ async function searchPivotaBackendProducts({
     if (token === 'empty' || token === 'not_found') {
       return RECO_CATALOG_MULTI_SOURCE_ENABLED && RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     }
+    if (token === 'invalid_hit') {
+      return RECO_CATALOG_MULTI_SOURCE_ENABLED && RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+    }
     return false;
   };
   const shouldTrySecondaryPathReason = (reason) => {
@@ -3806,6 +3852,7 @@ async function searchPivotaBackendProducts({
     if (token === 'not_found') return true;
     if (token === 'upstream_timeout' || token === 'upstream_error' || token === 'rate_limited') return false;
     if (token === 'empty') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
+    if (token === 'invalid_hit') return RECO_CATALOG_MULTI_SOURCE_ON_EMPTY;
     return false;
   };
   const runSearchAttemptByBase = async (baseUrl, timeoutForAttemptMs) => {
@@ -3929,9 +3976,44 @@ async function searchPivotaBackendProducts({
         const body = resp && resp.data ? resp.data : null;
         const searchMeta = extractSearchAttemptMetaFromBody({ data: body });
         const products = normalizeProductsFromSearchData(body);
+        const queryHitQuality = normalizeRecoQueryHitQuality(searchMeta.query_hit_quality)
+          || (products.length > 0 ? 'valid_hit' : 'empty');
         const bodyReason = products.length
           ? null
           : inferSearchFailureReasonFromBody({ data: body, statusCode });
+        if (queryHitQuality === 'invalid_hit') {
+          const failed = {
+            ok: false,
+            products: [],
+            reason: 'invalid_hit',
+            status_code: statusCode,
+            source_base_url: normalizedBase,
+            source_endpoint: endpoint,
+            source_path: pathToken,
+            latency_ms: Date.now() - startedAt,
+            ...searchMeta,
+          };
+          pathAttempts.push({
+            endpoint,
+            path: pathToken,
+            ok: false,
+            reason: 'invalid_hit',
+            status_code: statusCode,
+            products: 0,
+            ...searchMeta,
+          });
+          lastFailure = failed;
+          const shouldTryNextPath =
+            pathIdx < normalizedPaths.length - 1 &&
+            shouldTrySecondaryPathReason('invalid_hit') &&
+            hasOverallBudget(150);
+          if (shouldTryNextPath) continue;
+          return {
+            ...failed,
+            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            source_path_failover: pathAttempts.length > 1,
+          };
+        }
         if (bodyReason && bodyReason !== 'not_found') {
           const failed = {
             ok: false,
@@ -4212,6 +4294,14 @@ async function searchPivotaBackendProducts({
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
       search_source: effectiveSearchSource,
+      query_hit_quality: normalizeRecoQueryHitQuality(finalEmpty.query_hit_quality) || null,
+      invalid_hit_reason: pickFirstTrimmed(finalEmpty.invalid_hit_reason) || null,
+      query_bucket: pickFirstTrimmed(finalEmpty.query_bucket) || null,
+      query_target_step_family: pickFirstTrimmed(finalEmpty.query_target_step_family) || null,
+      same_family_topk_count: Number.isFinite(Number(finalEmpty.same_family_topk_count)) ? Math.max(0, Math.trunc(Number(finalEmpty.same_family_topk_count))) : 0,
+      exact_step_topk_count: Number.isFinite(Number(finalEmpty.exact_step_topk_count)) ? Math.max(0, Math.trunc(Number(finalEmpty.exact_step_topk_count))) : 0,
+      products_returned_count: Number.isFinite(Number(finalEmpty.products_returned_count)) ? Math.max(0, Math.trunc(Number(finalEmpty.products_returned_count))) : 0,
+      raw_result_count: Number.isFinite(Number(finalEmpty.raw_result_count)) ? Math.max(0, Math.trunc(Number(finalEmpty.raw_result_count))) : 0,
     };
   }
 
@@ -4232,6 +4322,14 @@ async function searchPivotaBackendProducts({
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
       search_source: effectiveSearchSource,
+      query_hit_quality: normalizeRecoQueryHitQuality(finalFailure.query_hit_quality) || null,
+      invalid_hit_reason: pickFirstTrimmed(finalFailure.invalid_hit_reason) || null,
+      query_bucket: pickFirstTrimmed(finalFailure.query_bucket) || null,
+      query_target_step_family: pickFirstTrimmed(finalFailure.query_target_step_family) || null,
+      same_family_topk_count: Number.isFinite(Number(finalFailure.same_family_topk_count)) ? Math.max(0, Math.trunc(Number(finalFailure.same_family_topk_count))) : 0,
+      exact_step_topk_count: Number.isFinite(Number(finalFailure.exact_step_topk_count)) ? Math.max(0, Math.trunc(Number(finalFailure.exact_step_topk_count))) : 0,
+      products_returned_count: Number.isFinite(Number(finalFailure.products_returned_count)) ? Math.max(0, Math.trunc(Number(finalFailure.products_returned_count))) : 0,
+      raw_result_count: Number.isFinite(Number(finalFailure.raw_result_count)) ? Math.max(0, Math.trunc(Number(finalFailure.raw_result_count))) : 0,
     };
   }
 
@@ -14470,6 +14568,7 @@ async function buildPurchasableFallbackCandidates({
     const strategy = String(externalSeedStrategy || '').trim().toLowerCase();
     const shouldSupplement =
       !primaryTransientFailure &&
+      primaryReason !== 'invalid_hit' &&
       (
         primaryProducts.length === 0 ||
         strategy.includes('supplement') ||
@@ -14538,12 +14637,47 @@ async function buildPurchasableFallbackCandidates({
               ? primary.reason
               : 'empty',
         );
+  const queryHitQuality = normalizeRecoQueryHitQuality(
+    primary?.query_hit_quality ||
+    supplemental?.query_hit_quality,
+  ) || (merged.length > 0 ? 'valid_hit' : '');
+  const invalidHitReason = pickFirstTrimmed(
+    primary?.invalid_hit_reason,
+    supplemental?.invalid_hit_reason,
+  ) || null;
+  const queryBucket = pickFirstTrimmed(
+    primary?.query_bucket,
+    supplemental?.query_bucket,
+  ) || null;
+  const queryTargetStepFamily = pickFirstTrimmed(
+    primary?.query_target_step_family,
+    supplemental?.query_target_step_family,
+  ) || null;
+  const sameFamilyTopkCount = Math.max(
+    Number.isFinite(Number(primary?.same_family_topk_count)) ? Math.trunc(Number(primary.same_family_topk_count)) : 0,
+    Number.isFinite(Number(supplemental?.same_family_topk_count)) ? Math.trunc(Number(supplemental.same_family_topk_count)) : 0,
+  );
+  const exactStepTopkCount = Math.max(
+    Number.isFinite(Number(primary?.exact_step_topk_count)) ? Math.trunc(Number(primary.exact_step_topk_count)) : 0,
+    Number.isFinite(Number(supplemental?.exact_step_topk_count)) ? Math.trunc(Number(supplemental.exact_step_topk_count)) : 0,
+  );
+  const rawResultCount =
+    (Number.isFinite(Number(primary?.raw_result_count)) ? Math.max(0, Math.trunc(Number(primary.raw_result_count))) : primaryProducts.length)
+    + (Number.isFinite(Number(supplemental?.raw_result_count)) ? Math.max(0, Math.trunc(Number(supplemental.raw_result_count))) : supplementalProducts.length);
 
   return {
     ok: merged.length > 0 || primaryOk || supplementalOk,
     products: merged,
     reason,
     selected_source: selectedSource,
+    query_hit_quality: queryHitQuality || null,
+    invalid_hit_reason: invalidHitReason,
+    query_bucket: queryBucket,
+    query_target_step_family: queryTargetStepFamily,
+    same_family_topk_count: sameFamilyTopkCount,
+    exact_step_topk_count: exactStepTopkCount,
+    raw_result_count: rawResultCount,
+    products_returned_count: merged.length,
     stages: {
       catalog: primary,
       external_seed: supplemental,
@@ -14621,8 +14755,8 @@ async function buildRecoGenerateFromCatalog({
     allowExternalSeed: allowExternalSeedSupplement,
     externalSeedStrategy: 'on_empty_only',
   });
-  const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
-  const candidateState = isPlainObject(collected.candidateState)
+  let results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+  let candidateState = isPlainObject(collected.candidateState)
     ? collected.candidateState
     : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
@@ -14686,8 +14820,12 @@ async function buildRecoGenerateFromCatalog({
   let emptyCount = 0;
   let timeoutCount = 0;
   let externalSeedUsedCount = 0;
+  let validHitQueryCount = 0;
+  let invalidHitQueryCount = 0;
+  let emptyHitQueryCount = 0;
   for (const r of results) {
     const reason = String(r?.reason || (r?.ok ? 'ok' : 'unknown')).trim() || 'unknown';
+    const hitQuality = normalizeRecoQueryHitQuality(r?.query_hit_quality);
     statusCounts[reason] = (statusCounts[reason] || 0) + 1;
     if (r?.ok) okCount += 1;
     if (r?.ok && (!Array.isArray(r?.products) || r.products.length === 0)) emptyCount += 1;
@@ -14695,7 +14833,20 @@ async function buildRecoGenerateFromCatalog({
     const source = String(r?.selected_source || 'none').trim() || 'none';
     sourceCounts[source] = (sourceCounts[source] || 0) + 1;
     if (source.includes('external_seed')) externalSeedUsedCount += 1;
+    if (hitQuality === 'valid_hit') validHitQueryCount += 1;
+    else if (hitQuality === 'invalid_hit') invalidHitQueryCount += 1;
+    else emptyHitQueryCount += 1;
   }
+  const retrievalFailureClass = (() => {
+    if (targetContext?.step_aware_intent !== true) return '';
+    if (validHitQueryCount <= 0 && (invalidHitQueryCount > 0 || results.some((row) => Number(row?.same_family_topk_count || 0) <= 0))) {
+      return 'invalid_retrieval_hit';
+    }
+    if (validHitQueryCount > 0 && Number(candidateState.selected_candidate_count || 0) <= 0) {
+      return 'no_valid_candidates_after_valid_hit';
+    }
+    return '';
+  })();
 
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
   const hasOnlyTransientErrors = results.length > 0 && results.every((r) => !r?.ok && transientReasons.has(String(r?.reason || '')));
@@ -14742,6 +14893,10 @@ async function buildRecoGenerateFromCatalog({
     hard_reject_count: Number(candidateState.hard_reject_count || 0),
     selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
     weak_viable_pool: Boolean(candidateState.weak_viable_pool),
+    valid_hit_query_count: validHitQueryCount,
+    invalid_hit_query_count: invalidHitQueryCount,
+    empty_hit_query_count: emptyHitQueryCount,
+    retrieval_failure_class: retrievalFailureClass || null,
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
     stop_level: collected.stopLevel || null,
@@ -14754,6 +14909,11 @@ async function buildRecoGenerateFromCatalog({
         step: String(row?.step || '').trim() || null,
         ladder_level: String(row?.ladder_level || '').trim() || null,
         reason: String(row?.reason || (row?.ok ? 'ok' : '')).trim() || null,
+        query_hit_quality: normalizeRecoQueryHitQuality(row?.query_hit_quality) || null,
+        invalid_hit_reason: pickFirstTrimmed(row?.invalid_hit_reason) || null,
+        query_target_step_family: pickFirstTrimmed(row?.query_target_step_family) || null,
+        same_family_topk_count: Number.isFinite(Number(row?.same_family_topk_count)) ? Number(row.same_family_topk_count) : 0,
+        exact_step_topk_count: Number.isFinite(Number(row?.exact_step_topk_count)) ? Number(row.exact_step_topk_count) : 0,
         product_count: Array.isArray(row?.products) ? row.products.length : 0,
       })),
     ...(debug
@@ -20676,6 +20836,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '当前还没有可展示的推荐结果。你可以补充更多需求，或稍后再试一次。'
         : 'No recommendation result is ready to show yet. Add more context or retry shortly.',
+    no_valid_catalog_hit_for_target:
+      lang === 'CN'
+        ? '当前商品搜索没有命中这个品类的有效候选，我先不硬推商品。补充更明确的偏好、肤感或限制条件后，我会继续缩窄。'
+        : "Search did not return a valid shortlist for this step yet, so I’m not forcing a product pick. Add clearer preferences, texture goals, or constraints and I’ll narrow it down.",
     strict_filter_dropped:
       lang === 'CN'
         ? '当前可购候选没有全部通过护肤过滤，我先保留推荐方案供你参考。'
@@ -20741,6 +20905,8 @@ function collectRecoContractReasonTokens({ payload, fieldMissing } = {}) {
     ...fieldMissingRows.map((row) => (isPlainObject(row) ? String(row.reason || '').trim().toLowerCase() : '')),
     ...asStringArray(basePayload.missing_info).map((value) => String(value || '').trim().toLowerCase()),
     ...asStringArray(basePayload.warnings).map((value) => String(value || '').trim().toLowerCase()),
+    String(basePayload.surface_reason || '').trim().toLowerCase(),
+    String(basePayload.recommendation_meta && basePayload.recommendation_meta.surface_reason || '').trim().toLowerCase(),
     String(basePayload.products_empty_reason || '').trim().toLowerCase(),
     String(basePayload.failure_reason || '').trim().toLowerCase(),
   ].filter(Boolean)));
@@ -20748,6 +20914,7 @@ function collectRecoContractReasonTokens({ payload, fieldMissing } = {}) {
 
 function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
+  if (tokens.includes('no_valid_catalog_hit_for_target')) return 'no_valid_catalog_hit_for_target';
   if (tokens.includes('no_viable_candidates_for_target')) return 'no_viable_candidates_for_target';
   if (tokens.includes('weak_viable_pool')) return 'weak_viable_pool';
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
@@ -20769,6 +20936,7 @@ function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
   const actionMap = {
     upstream_empty_recommendations: ['retry_recommendations', 'update_current_routine'],
     upstream_schema_invalid: ['retry_recommendations', 'update_current_routine', 'upload_daylight_and_indoor_white'],
+    no_valid_catalog_hit_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     ingredient_constraint_no_match: ['broaden_to_goal', 'check_product_inci', 'search_category'],
     no_viable_candidates_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     weak_viable_pool: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
@@ -22958,6 +23126,24 @@ function normalizeRecoProductsEmptyReason(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeRecoQueryHitQuality(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'valid_hit' || token === 'invalid_hit' || token === 'empty') return token;
+  return '';
+}
+
+function normalizeRecoRetrievalFailureClass(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (
+    token === 'invalid_retrieval_hit' ||
+    token === 'no_valid_candidates_after_valid_hit' ||
+    token === 'transient_search_failure'
+  ) {
+    return token;
+  }
+  return '';
+}
+
 function normalizeRecoEffectiveFailureClass(value) {
   const token = String(value || '').trim().toLowerCase();
   if (
@@ -23046,6 +23232,7 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
     return {
       effectiveFailureClass: null,
       failureOrigin: 'none',
+      retrievalFailureClass: null,
       terminalSuccess: null,
       viablePoolStrength: null,
       targetFidelityLevel: null,
@@ -23070,6 +23257,12 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
         typeof fallbackObj.failure_origin === 'string' ? fallbackObj.failure_origin : '',
       ),
     ),
+    retrievalFailureClass: normalizeRecoRetrievalFailureClass(
+      pickFirstTrimmed(
+        typeof meta.retrieval_failure_class === 'string' ? meta.retrieval_failure_class : '',
+        typeof fallbackObj.retrieval_failure_class === 'string' ? fallbackObj.retrieval_failure_class : '',
+      ),
+    ) || null,
     terminalSuccess:
       typeof terminalSuccessRaw === 'boolean'
         ? terminalSuccessRaw
@@ -23152,9 +23345,13 @@ function resolveRecoEffectiveFailure({
   intentResolutionFailed = false,
   contextResolutionFailureOrigin = 'none',
   postGuardrailCount = null,
+  retrievalFailureClass = '',
 } = {}) {
   const poolState = isPlainObject(viablePoolState) ? viablePoolState : {};
   const catalogFailure = deriveRecoCatalogDependencyFailure(catalogDebug);
+  const normalizedRetrievalFailureClass = normalizeRecoRetrievalFailureClass(
+    retrievalFailureClass || catalogDebug?.retrieval_failure_class,
+  );
   const preLlmSelectedCandidateCount = Number.isFinite(Number(poolState.pre_llm_selected_candidate_count))
     ? Math.max(0, Math.trunc(Number(poolState.pre_llm_selected_candidate_count)))
     : Number.isFinite(Number(poolState.selected_candidate_count))
@@ -23184,23 +23381,36 @@ function resolveRecoEffectiveFailure({
     };
   }
   if (catalogFailure.effective_failure_class) {
-    return catalogFailure;
+    return {
+      ...catalogFailure,
+      retrieval_failure_class: normalizedRetrievalFailureClass || null,
+    };
+  }
+  if (normalizedRetrievalFailureClass === 'invalid_retrieval_hit') {
+    return {
+      effective_failure_class: 'no_viable_candidates_for_target',
+      failure_origin: 'user_input',
+      retrieval_failure_class: normalizedRetrievalFailureClass,
+    };
   }
   if (normalizeRecoViablePoolStrength(poolState.viable_pool_strength) === 'weak' || poolState.weak_viable_pool === true) {
     return {
       effective_failure_class: 'weak_viable_pool',
       failure_origin: 'user_input',
+      retrieval_failure_class: normalizedRetrievalFailureClass || null,
     };
   }
   if (targetContext?.step_aware_intent && preLlmSelectedCandidateCount <= 0) {
     return {
       effective_failure_class: 'no_viable_candidates_for_target',
       failure_origin: 'user_input',
+      retrieval_failure_class: normalizedRetrievalFailureClass || null,
     };
   }
   return {
     effective_failure_class: 'none',
     failure_origin: 'none',
+    retrieval_failure_class: normalizedRetrievalFailureClass || null,
   };
 }
 
@@ -23215,9 +23425,11 @@ function resolveRecoCentralOutcome({
   successMode = '',
   sourceMode = '',
   groundingStatus = '',
+  retrievalFailureClass = '',
 } = {}) {
   const effective = normalizeRecoEffectiveFailureClass(effectiveFailureClass) || 'none';
   const origin = normalizeRecoFailureOrigin(failureOrigin);
+  const normalizedRetrievalFailureClass = normalizeRecoRetrievalFailureClass(retrievalFailureClass);
   const normalizedSuccessMode = normalizeRecoSuccessMode(successMode)
     || (terminalSuccess ? (normalizeRecoPresentationMode(presentationMode) === 'deterministic_degraded' ? 'degraded_success' : 'full_success') : '');
   const normalizedPresentationMode = normalizeRecoPresentationMode(presentationMode)
@@ -23254,12 +23466,16 @@ function resolveRecoCentralOutcome({
       || effective === 'weak_viable_pool'
     )
   ) {
+    const surfaceReason =
+      normalizedRetrievalFailureClass === 'invalid_retrieval_hit'
+        ? 'no_valid_catalog_hit_for_target'
+        : effective;
     return {
       surface_kind: entryType === 'chat' ? 'clarify' : 'needs_more_context',
-      surface_reason: effective,
+      surface_reason: surfaceReason,
       mainline_status: 'needs_more_context',
-      telemetry_reason: effective,
-      products_empty_reason: effective,
+      telemetry_reason: surfaceReason,
+      products_empty_reason: surfaceReason,
       user_fixable: true,
       effective_failure_class: effective,
       failure_origin: origin,
@@ -23428,6 +23644,7 @@ function buildRecoMainlineContract({
   finalSelectedCandidateCount = null,
   postGuardrailCount = null,
   surfaceReason = null,
+  retrievalFailureClass = null,
 } = {}) {
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
@@ -23478,7 +23695,9 @@ function buildRecoMainlineContract({
       successMode: normalizedSuccessMode,
       sourceMode: normalizedSourceMode,
       groundingStatus,
+      retrievalFailureClass,
     });
+    const resolvedSurfaceReason = pickFirstTrimmed(surfaceReason, outcome.surface_reason) || null;
     const centralizedUpstreamStatus = (() => {
       if (normalizedTerminalSuccess) return 'ok';
       if (outcome.user_fixable) return null;
@@ -23506,13 +23725,13 @@ function buildRecoMainlineContract({
       source: String(source || '').trim() || null,
       primary_failure_reason: normalizedTerminalSuccess ? null : outcome.products_empty_reason || 'artifact_missing',
       telemetry_failure_reason: outcome.telemetry_reason || null,
-      failure_class: normalizedTerminalSuccess ? null : (outcome.effective_failure_class || null),
+      failure_class: normalizedTerminalSuccess ? null : (resolvedSurfaceReason || outcome.effective_failure_class || null),
       effective_failure_class: outcome.effective_failure_class || 'none',
       failure_origin: outcome.failure_origin || 'none',
       upstream_status: centralizedUpstreamStatus,
       mainline_status: outcome.mainline_status,
       surface_kind: outcome.surface_kind,
-      surface_reason: pickFirstTrimmed(surfaceReason, outcome.surface_reason) || null,
+      surface_reason: resolvedSurfaceReason,
       user_fixable: outcome.user_fixable,
       catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
       products_empty_reason: normalizedTerminalSuccess ? null : (outcome.products_empty_reason || null),
@@ -23534,6 +23753,7 @@ function buildRecoMainlineContract({
       post_guardrail_count: Number.isFinite(Number(postGuardrailCount))
         ? Math.max(0, Math.trunc(Number(postGuardrailCount)))
         : null,
+      retrieval_failure_class: normalizeRecoRetrievalFailureClass(retrievalFailureClass) || null,
     };
   }
   let normalizedTelemetryReason = normalizeRecoContractTelemetryReason(
@@ -23644,6 +23864,7 @@ function attachRecoContractMeta(payload, contract) {
       ...(Number.isFinite(Number(contractObj.pre_llm_selected_candidate_count)) ? { pre_llm_selected_candidate_count: Number(contractObj.pre_llm_selected_candidate_count) } : {}),
       ...(Number.isFinite(Number(contractObj.final_selected_candidate_count)) ? { final_selected_candidate_count: Number(contractObj.final_selected_candidate_count) } : {}),
       ...(Number.isFinite(Number(contractObj.post_guardrail_count)) ? { post_guardrail_count: Number(contractObj.post_guardrail_count) } : {}),
+      ...(contractObj.retrieval_failure_class ? { retrieval_failure_class: contractObj.retrieval_failure_class } : {}),
       ...(Number.isFinite(Number(contractObj.grounded_count)) ? { grounded_count: Number(contractObj.grounded_count) } : {}),
       ...(Number.isFinite(Number(contractObj.ungrounded_count)) ? { ungrounded_count: Number(contractObj.ungrounded_count) } : {}),
       ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
@@ -44276,6 +44497,7 @@ async function generateProductRecommendations({
   let successMode = 'full_success';
   let effectiveFailureClass = 'none';
   let failureOrigin = 'none';
+  let retrievalFailureClass = '';
   let preLlmSelectedCandidateCount = null;
   let finalSelectedCandidateCount = null;
   let postGuardrailCount = null;
@@ -44383,9 +44605,11 @@ async function generateProductRecommendations({
       targetContext,
       viablePoolState: catalogCandidateState,
       catalogDebug,
+      retrievalFailureClass: catalogDebug?.retrieval_failure_class,
     });
     effectiveFailureClass = failureSignals.effective_failure_class || 'none';
     failureOrigin = failureSignals.failure_origin || 'none';
+    retrievalFailureClass = failureSignals.retrieval_failure_class || normalizeRecoRetrievalFailureClass(catalogDebug?.retrieval_failure_class) || '';
   } else {
     const promptState = buildRecoLlmPromptState({
       prefix,
@@ -44899,9 +45123,11 @@ async function generateProductRecommendations({
       },
       catalogDebug,
       postGuardrailCount,
+      retrievalFailureClass: catalogDebug?.retrieval_failure_class || retrievalFailureClass,
     });
     effectiveFailureClass = failureSignals.effective_failure_class || 'none';
     failureOrigin = failureSignals.failure_origin || 'none';
+    retrievalFailureClass = failureSignals.retrieval_failure_class || retrievalFailureClass || '';
   }
   const sourceMode = finalRecommendations.length > 0
     ? structuredSource === 'llm_primary'
@@ -44950,6 +45176,7 @@ async function generateProductRecommendations({
     upstreamDebug.post_guardrail_count = postGuardrailCount;
     upstreamDebug.effective_failure_class = effectiveFailureClass || null;
     upstreamDebug.failure_origin = failureOrigin || null;
+    upstreamDebug.retrieval_failure_class = retrievalFailureClass || null;
   }
   const terminalSuccess = finalRecommendations.length > 0
     && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
@@ -44987,6 +45214,7 @@ async function generateProductRecommendations({
         ? {
           effective_failure_class: normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') || 'none',
           failure_origin: normalizeRecoFailureOrigin(failureOrigin || 'none'),
+          retrieval_failure_class: normalizeRecoRetrievalFailureClass(retrievalFailureClass || '') || null,
         }
         : {}),
       contract_status: contractStatus,
@@ -45041,6 +45269,9 @@ async function generateProductRecommendations({
           viable_pool_strength: normalizedViablePoolStrength,
           target_fidelity_level: normalizedTargetFidelityLevel,
           same_family_success_threshold_met: Boolean(viablePoolState.same_family_success_threshold_met),
+          valid_hit_query_count: Number(catalogDebug?.valid_hit_query_count || 0),
+          invalid_hit_query_count: Number(catalogDebug?.invalid_hit_query_count || 0),
+          empty_hit_query_count: Number(catalogDebug?.empty_hit_query_count || 0),
         }
         : {}),
       overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
@@ -45078,6 +45309,7 @@ async function generateProductRecommendations({
     preLlmSelectedCandidateCount,
     finalSelectedCandidateCount,
     postGuardrailCount,
+    retrievalFailureClass,
   });
   const warningContract = applyRecoWarningVisibilityContract(nextPayload);
   nextPayload = {

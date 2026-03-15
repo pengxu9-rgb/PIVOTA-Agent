@@ -98,4 +98,62 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.error).toBeUndefined();
   });
+
+  it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
+    const upstreamBody = {
+      status: 'success',
+      success: true,
+      total: 2,
+      page: 1,
+      page_size: 2,
+      products: [
+        {
+          id: 'brush_1',
+          product_id: 'brush_1',
+          title: 'Small Eyeshadow Brush',
+          name: 'Small Eyeshadow Brush',
+          display_name: 'Small Eyeshadow Brush',
+          category: 'makeup brush',
+          product_type: 'tool',
+        },
+        {
+          id: 'brush_2',
+          product_id: 'brush_2',
+          title: 'Blending Brush',
+          name: 'Blending Brush',
+          display_name: 'Blending Brush',
+          category: 'beauty tool',
+          product_type: 'tool',
+        },
+      ],
+      metadata: {
+        query_source: 'agent_products_search',
+      },
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, upstreamBody);
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, upstreamBody);
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'moisturizer barrier repair Ceramide NP barrier repair',
+        catalog_surface: 'beauty',
+        source: 'aurora-bff',
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
+    expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_tools_dominant');
+    expect(res.body.metadata?.search_decision?.final_decision).toBe('invalid_hit');
+    expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
+    expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
+  });
 });

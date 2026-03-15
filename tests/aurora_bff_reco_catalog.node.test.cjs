@@ -1951,6 +1951,71 @@ test('Catalog search: primary timeout uses local search fallback', async () => {
   );
 });
 
+test('Catalog search: invalid skincare hit does not count as successful products return', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+    },
+    async () => {
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        const target = String(url || '');
+        if (target.startsWith('https://pivota-backend.test') && isProductsSearchUrl(target)) {
+          return {
+            status: 200,
+            data: {
+              metadata: {
+                search_decision: {
+                  hit_quality: 'invalid_hit',
+                  invalid_hit_reason: 'invalid_hit_tools_dominant',
+                  query_bucket: 'skincare',
+                  query_target_step_family: 'moisturizer',
+                  same_family_topk_count: 0,
+                  exact_step_topk_count: 0,
+                  raw_result_count: 1,
+                  products_returned_count: 0,
+                },
+              },
+              products: [
+                {
+                  product_id: 'prod_brush_only',
+                  merchant_id: 'mid_brush',
+                  brand: 'BrushCo',
+                  name: 'Small Eyeshadow Brush',
+                  display_name: 'Small Eyeshadow Brush',
+                  category: 'makeup brush',
+                  product_type: 'tool',
+                },
+              ],
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${target}`);
+      };
+
+      try {
+        const { __internal } = loadRoutesFresh();
+        const out = await __internal.searchPivotaBackendProducts({
+          query: 'barrier moisturizer',
+          limit: 6,
+          timeoutMs: 1800,
+          logger: null,
+        });
+
+        assert.equal(out?.ok, false);
+        assert.equal(out?.reason, 'invalid_hit');
+        assert.equal(out?.query_hit_quality, 'invalid_hit');
+        assert.equal(out?.invalid_hit_reason, 'invalid_hit_tools_dominant');
+        assert.deepEqual(out?.products, []);
+      } finally {
+        axios.get = originalGet;
+      }
+    },
+  );
+});
+
 test('/v1/chat availability: specific query uses catalog hit directly without resolve fallback', async () => {
   await withEnv(
     {
