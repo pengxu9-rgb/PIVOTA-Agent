@@ -31870,12 +31870,15 @@ async function sanitizeRecoCandidatesForUi(
       for (const target of targets) {
         const baseTarget = isPlainObject(target) ? { ...target } : {};
         const shouldSanitizeProductRowArray = (value) => Array.isArray(value) && value.some((item) => isPlainObject(item));
+        const shouldPreserveIngredientPlanControlBucket = (bucketName) =>
+          String(bucketName || '').trim().toLowerCase() === 'example_product_discovery_items';
         if (shouldSanitizeProductRowArray(baseTarget.products)) {
           baseTarget.products = await sanitizeRows(baseTarget.products);
         } else if (isPlainObject(baseTarget.products)) {
           const products = { ...baseTarget.products };
           const bucketNames = Object.keys(products);
           for (const bucketName of bucketNames) {
+            if (shouldPreserveIngredientPlanControlBucket(bucketName)) continue;
             if (!shouldSanitizeProductRowArray(products[bucketName])) continue;
             products[bucketName] = await sanitizeRows(products[bucketName]);
           }
@@ -33135,6 +33138,8 @@ function coerceRecoRowsForGuardrail(rows) {
 function coerceIngredientPlanPayloadForGuardrail(payload) {
   const p = isPlainObject(payload) ? { ...payload } : {};
   const shouldCoerceProductRowArray = (value) => Array.isArray(value) && value.some((item) => isPlainObject(item));
+  const shouldPreserveIngredientPlanControlBucket = (bucketName) =>
+    String(bucketName || '').trim().toLowerCase() === 'example_product_discovery_items';
   const normalizeTarget = (target) => {
     const baseTarget = isPlainObject(target) ? { ...target } : {};
     if (shouldCoerceProductRowArray(baseTarget.products)) {
@@ -33142,6 +33147,7 @@ function coerceIngredientPlanPayloadForGuardrail(payload) {
     } else if (isPlainObject(baseTarget.products)) {
       const products = { ...baseTarget.products };
       for (const bucketName of Object.keys(products)) {
+        if (shouldPreserveIngredientPlanControlBucket(bucketName)) continue;
         if (!shouldCoerceProductRowArray(products[bucketName])) continue;
         products[bucketName] = coerceRecoRowsForGuardrail(products[bucketName]);
       }
