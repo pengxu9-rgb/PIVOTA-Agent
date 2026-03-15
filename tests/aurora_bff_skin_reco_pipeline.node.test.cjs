@@ -281,7 +281,9 @@ test('analysis guidance-only mode strips concrete product payloads before UI ren
 
   assert.equal(mode, 'guidance_only');
   assert.equal(Array.isArray(stripped.targets), true);
-  assert.equal('products' in stripped.targets[0], false);
+  assert.equal(stripped.targets[0]?.products?.mode, 'guidance_only');
+  assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_types), true);
+  assert.equal(stripped.targets[0]?.products?.example_product_types.length > 0, true);
   assert.equal('product_rows' in stripped.targets[0], false);
   assert.equal('competitors' in stripped.targets[0], false);
   assert.equal('dupes' in stripped.targets[0], false);
@@ -309,7 +311,11 @@ test('guidance-only ingredient plan cards never rehydrate concrete sku payloads 
   assert.equal(card.type, 'ingredient_plan_v2');
   assert.equal(card.payload.product_surface_mode, 'guidance_only');
   assert.equal(Array.isArray(card.payload.targets), true);
-  assert.equal('products' in card.payload.targets[0], false);
+  assert.equal(card.payload.targets[0]?.products?.mode, 'guidance_only');
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_types), true);
+  assert.equal(card.payload.targets[0]?.products?.example_product_types.length > 0, true);
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.competitors), false);
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.dupes), false);
   assert.equal('external_fallback_used' in card.payload.targets[0], false);
 });
 
@@ -329,6 +335,7 @@ test('latest reco context canonicalizes seeds, limits carry-over, and keeps curr
       },
       task_soft_context: {
         background_goals: ['hydration'],
+        ingredient_targets: ['uv filters'],
       },
     },
   });
@@ -366,6 +373,8 @@ test('step reco context strength flags contexts that are too weak even when sear
   const weak = routesInternal.evaluateStepRecoContextStrength({
     latestRecoContext: {
       reco_artifact_eligible: false,
+      diagnosis_goal: 'barrier repair',
+      target_step: 'moisturizer',
     },
     recommendationTaskContext: {
       task_hard_context: {},

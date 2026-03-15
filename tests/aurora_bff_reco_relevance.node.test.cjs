@@ -333,6 +333,96 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
   }
 });
 
+test('/v1/reco/generate: valid hit with ineligible weak analysis context returns analysis_context_too_weak_for_step_reco', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        metadata: {
+          search_decision: {
+            contract_version: 'beauty_search_decision_v3',
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 1,
+            exact_step_topk_count: 1,
+            raw_result_count: 1,
+            products_returned_count: 1,
+          },
+        },
+        products: [
+          {
+            product_id: 'cream_valid_but_context_weak',
+            merchant_id: 'mid_cream',
+            brand: 'BarrierLab',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'skincare',
+            ingredient_tokens: ['ceramide', 'panthenol'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_context_weak_uid',
+        'X-Trace-ID': 'trace_reco_context_weak',
+        'X-Debug': 'true',
+      },
+      body: {
+        focus: 'moisturizer',
+        include_debug: true,
+        session: {
+          state: {
+            latest_reco_context: {
+              reco_context_version: 'aurora.reco_context.v2',
+              reco_context_source: 'analysis_skin',
+              reco_context_updated_at: new Date().toISOString(),
+              diagnosis_goal: 'Repair skin barrier',
+              target_step: 'moisturizer',
+              analysis_mode: 'analysis_summary',
+              artifact_gate_tier: 'ineligible',
+              reco_artifact_eligible: false,
+              seed_terms: ['barrier repair'],
+            },
+          },
+        },
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceNotice =
+      cards.find((card) => card && card.type === 'confidence_notice'
+        && String(card?.payload?.reason || '') === 'analysis_context_too_weak_for_step_reco')
+      || null;
+    assert.ok(confidenceNotice);
+    const recoEvent = Array.isArray(response.body?.events)
+      ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
+    assert.equal(recoEvent?.data?.failure_class, 'analysis_context_too_weak_for_step_reco');
+    assert.equal(recoEvent?.data?.surface_reason, 'analysis_context_too_weak_for_step_reco');
+    assert.equal(recoEvent?.data?.user_fixable, true);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: valid_hit queries that all hard-reject on coarse domain become retro invalid hits', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
@@ -715,6 +805,8 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits clarification a
     assert.equal(sessionPatch?.meta?.analysis_contract?.product_surface_mode, 'guidance_only');
     assert.equal(latestRecoContext?.diagnosis_goal, 'Repair skin barrier');
     assert.equal(latestRecoContext?.target_step, 'moisturizer');
+    assert.equal(Array.isArray(latestRecoContext?.seed_terms), true);
+    assert.equal(latestRecoContext.seed_terms.includes('uv filters'), false);
     assert.ok(pendingClarification);
     assert.equal(typeof pendingClarification.current?.id, 'string');
     assert.equal(Array.isArray(response.body?.suggested_chips), true);
@@ -724,8 +816,16 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits clarification a
     );
     assert.ok(ingredientPlanCard);
     assert.equal(ingredientPlanCard.payload?.product_surface_mode, 'guidance_only');
+    const clarificationNotice = (Array.isArray(response.body?.cards) ? response.body.cards : [])
+      .find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'artifact_missing_core');
+    assert.ok(clarificationNotice);
+    assert.match(String(clarificationNotice?.payload?.message || ''), /detail|确认一个问题|barrier state/i);
     for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
-      assert.equal('products' in target, false);
+      assert.equal(target?.products?.mode, 'guidance_only');
+      assert.equal(Array.isArray(target?.products?.example_product_types), true);
+      assert.equal(target.products.example_product_types.length > 0, true);
+      assert.equal(Array.isArray(target?.products?.competitors), false);
+      assert.equal(Array.isArray(target?.products?.dupes), false);
       assert.equal('competitors' in target, false);
       assert.equal('dupes' in target, false);
     }
