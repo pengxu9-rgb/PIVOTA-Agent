@@ -50222,6 +50222,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return res.status(400).json(envelope);
       }
+      const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
+      const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
+      const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
 
 	      const identity = await resolveIdentity(req, ctx);
 	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
@@ -50280,6 +50283,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	        analysisContextSnapshot,
         requestOverride: extractProfilePatchFromSession(parsed.data.session),
         includeAlternatives: false,
+        debug: includeDebug,
         logger,
         recoTriggerSource: 'goal_driven',
         entryType: 'direct',
@@ -50424,6 +50428,23 @@ function mountAuroraBffRoutes(app, { logger }) {
         payload?.products_empty_reason,
         deriveRecoEmptyReason(payload, finalDirectContract),
       );
+      const recoRouteDebug = includeDebug && isPlainObject(upstreamReco?.upstreamDebug)
+        ? {
+            ...upstreamReco.upstreamDebug,
+            contract: {
+              effective_failure_class: finalDirectContract.effective_failure_class || 'none',
+              failure_origin: finalDirectContract.failure_origin || 'none',
+              mainline_status: finalDirectContract.mainline_status || null,
+              surface_reason: finalDirectContract.surface_reason || null,
+              products_empty_reason: finalDirectContract.products_empty_reason || null,
+              upstream_status: finalDirectContract.upstream_status || null,
+              viable_pool_strength: finalDirectContract.viable_pool_strength || null,
+              target_fidelity_level: finalDirectContract.target_fidelity_level || null,
+              terminal_success: finalDirectContract.terminal_success === true,
+            },
+            analysis_context_snapshot_present: Boolean(analysisContextSnapshot),
+          }
+        : null;
       const hasPlanOrGroundedRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
       const envelope = buildEnvelope(ctx, {
@@ -50473,10 +50494,11 @@ function mountAuroraBffRoutes(app, { logger }) {
             ],
             suggested_chips: suggestedChips.length ? suggestedChips : buildRecoEntryChips(ctx.lang),
             session_patch: {},
+            ...(recoRouteDebug ? { debug: recoRouteDebug } : {}),
           };
           return res.json(noRecoEnvelope);
         }
-        return res.json(envelope);
+        return res.json(recoRouteDebug ? { ...envelope, debug: recoRouteDebug } : envelope);
       }
       const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
         envelope,
@@ -50617,6 +50639,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         }),
       }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
+      if (recoRouteDebug) {
+        guardedEnvelope.debug = recoRouteDebug;
+      }
       return res.json(guardedEnvelope);
     } catch (err) {
       const status = err.status || 500;
