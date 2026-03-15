@@ -287,6 +287,32 @@ test('analysis guidance-only mode strips concrete product payloads before UI ren
   assert.equal('dupes' in stripped.targets[0], false);
 });
 
+test('guidance-only ingredient plan cards never rehydrate concrete sku payloads after v2 upgrade', () => {
+  const card = routesInternal.buildIngredientPlanCard({
+    schema_version: 'aurora.ingredient_plan.v2',
+    targets: [
+      {
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+        why: ['Barrier support'],
+        products: {
+          competitors: [{ product_id: 'sku_1' }],
+          dupes: [{ product_id: 'sku_2' }],
+        },
+        external_fallback_used: true,
+      },
+    ],
+    avoid: [],
+    conflicts: [],
+  }, 'req_test', null, { product_surface_mode: 'guidance_only' });
+
+  assert.equal(card.type, 'ingredient_plan_v2');
+  assert.equal(card.payload.product_surface_mode, 'guidance_only');
+  assert.equal(Array.isArray(card.payload.targets), true);
+  assert.equal('products' in card.payload.targets[0], false);
+  assert.equal('external_fallback_used' in card.payload.targets[0], false);
+});
+
 test('latest reco context canonicalizes seeds, limits carry-over, and keeps current-turn priority', () => {
   const payload = routesInternal.buildLatestRecoContextPayload({
     baseContext: {
@@ -308,7 +334,32 @@ test('latest reco context canonicalizes seeds, limits carry-over, and keeps curr
   });
 
   assert.equal(payload.reco_context_version, 'aurora.reco_context.v2');
+  assert.equal(payload.diagnosis_goal, 'barrier repair');
+  assert.equal(payload.target_step, 'moisturizer');
   assert.deepEqual(payload.seed_terms, ['barrier repair', 'ceramide', 'panthenol', 'sensitive skin']);
+});
+
+test('analysis clarification pack surfaces missing-core questions and seeds pending clarification state', () => {
+  const pack = routesInternal.buildAnalysisClarificationPack({
+    language: 'EN',
+    artifactGate: {
+      tier: 'ineligible',
+      reason: 'artifact_missing_core',
+      missing_core: ['barrierStatus', 'sensitivity', 'skinType'],
+    },
+    hasCurrentRoutine: false,
+    diagnosisGoal: 'Repair skin barrier',
+    targetStep: 'moisturizer',
+  });
+
+  assert.ok(pack);
+  assert.match(pack.primary_question, /barrier state/i);
+  assert.equal(Array.isArray(pack.ask_3_questions), true);
+  assert.equal(pack.ask_3_questions.length, 3);
+  assert.equal(Array.isArray(pack.questions), true);
+  assert.equal(pack.questions[0].id, 'barrierStatus');
+  assert.equal(pack.pending_clarification.current.id, 'barrierStatus');
+  assert.equal(pack.pending_clarification.queue.length >= 2, true);
 });
 
 test('step reco context strength flags contexts that are too weak even when search is valid', () => {

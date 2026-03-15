@@ -610,7 +610,7 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with prio
               reco_context_updated_at: new Date().toISOString(),
               diagnosis_goal: 'Repair skin barrier',
               target_step: 'moisturizer',
-              seed_terms: ['barrier repair', 'ceramide', 'panthenol'],
+              seed_terms: ['barrier repair', 'ceramide', 'panthenol', 'uv filters'],
               analysis_mode: 'analysis_summary',
               artifact_gate_tier: 'eligible_minimal',
               reco_artifact_eligible: true,
@@ -626,6 +626,7 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with prio
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.ok(observedQueries.some((query) => query.includes('barrier repair moisturizer')));
     assert.ok(observedQueries.some((query) => query.includes('ceramide moisturizer')));
+    assert.equal(observedQueries.some((query) => query.includes('uv filters')), false);
     assert.equal(observedQueries.some((query) => query === 'barrier repair' || query === 'ceramide'), false);
   } finally {
     axios.get = originalGet;
@@ -680,5 +681,56 @@ test('/v1/reco/generate: retrieval step rescues generic skincare candidates with
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
   } finally {
     axios.get = originalGet;
+  }
+});
+
+test('/v1/analysis/skin: low-confidence guidance-only path emits clarification and never ships concrete sku rows', async () => {
+  const prevIngredientPlan = process.env.AURORA_INGREDIENT_PLAN_ENABLED;
+  process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'true';
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const response = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+      headers: {
+        'X-Aurora-UID': 'analysis_low_conf_uid',
+        'X-Trace-ID': 'trace_analysis_low_conf',
+      },
+      body: {
+        use_photo: false,
+        goal: 'Repair skin barrier',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const sessionPatch = response.body?.session_patch || {};
+    const latestRecoContext = sessionPatch?.state?.latest_reco_context || null;
+    const pendingClarification = sessionPatch?.state?.pending_clarification || null;
+    const ingredientPlanCard = (Array.isArray(response.body?.cards) ? response.body.cards : [])
+      .find((card) => card && card.type === 'ingredient_plan_v2');
+
+    assert.equal(sessionPatch?.meta?.analysis_contract?.product_surface_mode, 'guidance_only');
+    assert.equal(latestRecoContext?.diagnosis_goal, 'Repair skin barrier');
+    assert.equal(latestRecoContext?.target_step, 'moisturizer');
+    assert.ok(pendingClarification);
+    assert.equal(typeof pendingClarification.current?.id, 'string');
+    assert.equal(Array.isArray(response.body?.suggested_chips), true);
+    assert.equal(
+      response.body.suggested_chips.some((chip) => String(chip?.data?.clarification_question_id || '').trim().length > 0),
+      true,
+    );
+    assert.ok(ingredientPlanCard);
+    assert.equal(ingredientPlanCard.payload?.product_surface_mode, 'guidance_only');
+    for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
+      assert.equal('products' in target, false);
+      assert.equal('competitors' in target, false);
+      assert.equal('dupes' in target, false);
+    }
+  } finally {
+    if (prevIngredientPlan === undefined) delete process.env.AURORA_INGREDIENT_PLAN_ENABLED;
+    else process.env.AURORA_INGREDIENT_PLAN_ENABLED = prevIngredientPlan;
   }
 });

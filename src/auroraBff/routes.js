@@ -23259,10 +23259,25 @@ function stripIngredientPlanConcreteProducts(plan) {
     delete next.skuRows;
     delete next.product_expansion;
     delete next.productExpansion;
+    delete next.external_search_ctas;
+    delete next.externalSearchCtas;
+    delete next.external_fallback_used;
     return next;
   };
+  const nextPlan = { ...plan };
+  delete nextPlan.products;
+  delete nextPlan.product_rows;
+  delete nextPlan.productRows;
+  delete nextPlan.competitors;
+  delete nextPlan.dupes;
+  delete nextPlan.sku_rows;
+  delete nextPlan.skuRows;
+  delete nextPlan.product_expansion;
+  delete nextPlan.productExpansion;
+  delete nextPlan.external_search_ctas;
+  delete nextPlan.externalSearchCtas;
   return {
-    ...plan,
+    ...nextPlan,
     targets: Array.isArray(plan.targets) ? plan.targets.map((target) => stripTargetRow(target)) : [],
   };
 }
@@ -23271,6 +23286,20 @@ function resolveAnalysisProductSurfaceMode({ analysisMode = '', recoArtifactElig
   return !recoArtifactEligible && String(analysisMode || '').trim().toLowerCase() !== 'routine_v2'
     ? 'guidance_only'
     : 'sku_backed';
+}
+
+function applyIngredientPlanSurfaceMode(plan, productSurfaceMode = '') {
+  if (!isPlainObject(plan)) return plan;
+  const normalizedMode = String(productSurfaceMode || '').trim().toLowerCase() === 'guidance_only'
+    ? 'guidance_only'
+    : 'sku_backed';
+  const sealedPlan = normalizedMode === 'guidance_only'
+    ? stripIngredientPlanConcreteProducts(plan)
+    : { ...plan };
+  return {
+    ...sealedPlan,
+    product_surface_mode: normalizedMode,
+  };
 }
 
 function normalizeIngredientPlanForV2Upgrade(plan) {
@@ -23298,7 +23327,10 @@ function buildIngredientPlanCard(plan, requestId, profile = null, options = {}) 
     ? stripIngredientPlanConcreteProducts(plan)
     : plan;
   const normalizedPlan = normalizeIngredientPlanForV2Upgrade(sourcePlan) || sourcePlan;
-  const upgradedPlan = upgradeIngredientPlanToV2({ plan: normalizedPlan, profile });
+  const upgradedPlan = applyIngredientPlanSurfaceMode(
+    upgradeIngredientPlanToV2({ plan: normalizedPlan, profile }),
+    productSurfaceMode,
+  );
   const isV2Plan =
     isPlainObject(upgradedPlan) &&
     String(upgradedPlan.schema_version || '').trim().toLowerCase() === 'aurora.ingredient_plan.v2';
@@ -23309,18 +23341,20 @@ function buildIngredientPlanCard(plan, requestId, profile = null, options = {}) 
       payload: upgradedPlan,
     };
   }
+  const legacyPlan = applyIngredientPlanSurfaceMode(normalizedPlan, productSurfaceMode);
   return {
     card_id: `ing_plan_${requestId}`,
     type: 'ingredient_plan',
     payload: {
-      plan: normalizedPlan,
-      intensity: normalizedPlan && normalizedPlan.intensity ? normalizedPlan.intensity : 'balanced',
-      targets: Array.isArray(normalizedPlan && normalizedPlan.targets) ? normalizedPlan.targets : [],
-      avoid: Array.isArray(normalizedPlan && normalizedPlan.avoid) ? normalizedPlan.avoid : [],
-      conflicts: Array.isArray(normalizedPlan && normalizedPlan.conflicts) ? normalizedPlan.conflicts : [],
-      confidence: normalizedPlan && normalizedPlan.confidence && typeof normalizedPlan.confidence === 'object'
-        ? normalizedPlan.confidence
+      plan: legacyPlan,
+      intensity: legacyPlan && legacyPlan.intensity ? legacyPlan.intensity : 'balanced',
+      targets: Array.isArray(legacyPlan && legacyPlan.targets) ? legacyPlan.targets : [],
+      avoid: Array.isArray(legacyPlan && legacyPlan.avoid) ? legacyPlan.avoid : [],
+      conflicts: Array.isArray(legacyPlan && legacyPlan.conflicts) ? legacyPlan.conflicts : [],
+      confidence: legacyPlan && legacyPlan.confidence && typeof legacyPlan.confidence === 'object'
+        ? legacyPlan.confidence
         : null,
+      product_surface_mode: productSurfaceMode === 'guidance_only' ? 'guidance_only' : 'sku_backed',
     },
   };
 }
@@ -25018,6 +25052,101 @@ function buildChipsForQuestion(question, { stepIndex } = {}) {
       clarification_step: step,
     },
   }));
+}
+
+function buildAnalysisClarificationQuestions({
+  language = 'EN',
+  artifactGate = null,
+  hasCurrentRoutine = false,
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const missingCore = new Set(
+    Array.isArray(artifactGate?.missing_core)
+      ? artifactGate.missing_core.map((value) => String(value || '').trim())
+      : [],
+  );
+  const questions = [];
+  if (missingCore.has('barrierStatus')) {
+    questions.push({
+      id: 'barrierStatus',
+      question: isCn
+        ? '你最近更接近哪种屏障状态？'
+        : 'Which barrier state sounds closest right now?',
+      options: isCn
+        ? ['经常刺痛/泛红', '偶尔会敏感', '大多比较稳定', '不确定']
+        : ['Stinging/redness often', 'Sometimes reactive', 'Mostly stable', 'Not sure'],
+    });
+  }
+  if (missingCore.has('sensitivity')) {
+    questions.push({
+      id: 'sensitivity',
+      question: isCn
+        ? '你最近对产品的敏感反应有多明显？'
+        : 'How reactive does your skin feel to products lately?',
+      options: isCn
+        ? ['高敏感', '中等敏感', '低敏感', '不确定']
+        : ['High sensitivity', 'Medium sensitivity', 'Low sensitivity', 'Not sure'],
+    });
+  }
+  if (missingCore.has('skinType')) {
+    questions.push({
+      id: 'skinType',
+      question: isCn
+        ? '大多数时候你的肤质更接近哪一种？'
+        : 'Which skin type sounds closest on most days?',
+      options: isCn
+        ? ['偏干', '混合', '偏油', '中性', '不确定']
+        : ['Dry', 'Combination', 'Oily', 'Normal', 'Not sure'],
+    });
+  }
+  if (!hasCurrentRoutine) {
+    questions.push({
+      id: 'currentRoutine',
+      question: isCn
+        ? '你现在最稳定在用的是哪类 routine？'
+        : 'What are you using most consistently right now?',
+      options: isCn
+        ? ['温和洁面 + 保湿', '夜间常用强活性', '白天主要用防晒', '没有固定 routine', '不确定']
+        : ['Gentle cleanser + moisturizer', 'Strong actives most nights', 'Mainly sunscreen in daytime', 'Nothing consistent', 'Not sure'],
+    });
+  }
+  return questions.slice(0, 4);
+}
+
+function buildAnalysisClarificationPack({
+  language = 'EN',
+  artifactGate = null,
+  hasCurrentRoutine = false,
+  diagnosisGoal = '',
+  targetStep = '',
+} = {}) {
+  const questions = buildAnalysisClarificationQuestions({
+    language,
+    artifactGate,
+    hasCurrentRoutine,
+  });
+  if (!questions.length) return null;
+  const primaryQuestion = questions[0];
+  const ask3 = questions.map((question) => question.question).filter(Boolean).slice(0, 3);
+  const resumeContext = pickFirstTrimmed(diagnosisGoal, targetStep) || 'skin analysis follow-up';
+  const pendingState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: makeFlowId(),
+      created_at_ms: Date.now(),
+      resume_user_text: String(resumeContext).trim().slice(0, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT),
+      current: { id: primaryQuestion.id },
+      queue: questions.slice(1),
+      history: [],
+    },
+    { recordMetrics: false },
+  );
+  return {
+    primary_question: primaryQuestion.question,
+    ask_3_questions: ask3,
+    questions,
+    pending_clarification: pendingState && pendingState.pending ? pendingState.pending : null,
+  };
 }
 
 function advancePendingClarification(pending, selectedOption, selectedQuestionId) {
@@ -27072,9 +27201,9 @@ function buildLatestRecoContextPayload({
   const mergedSeedTerms = mergeRecoSeedTermsByPriority(
     currentTurnSeeds,
     hardSeeds,
+    [resolvedDiagnosisGoal],
     Array.isArray(normalizedBase.seed_terms) ? normalizedBase.seed_terms : [],
     softSeeds,
-    [resolvedDiagnosisGoal],
   );
   return {
     ...normalizedBase,
@@ -27115,9 +27244,9 @@ function buildStepAwareSeedTerms({
   return mergeRecoSeedTermsByPriority(
     currentTurnSeeds,
     hardSeeds,
+    [latest.diagnosis_goal],
     latestSeeds,
     softSeeds,
-    [latest.diagnosis_goal],
   );
 }
 
@@ -54129,6 +54258,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysisMode,
           recoArtifactEligible,
         });
+        const requestedAnalysisGoal = pickFirstTrimmed(
+          parsed?.data?.goal,
+          parsed?.data?.diagnosis_goal,
+          parsed?.data?.diagnosisGoal,
+          profileSummary && profileSummary.goal_primary,
+          ...(Array.isArray(profileSummary?.goals) ? profileSummary.goals : []),
+        );
+        const analysisDiagnosisGoal = deriveRecoDiagnosisGoal({
+          profileSummary,
+          recommendationTaskContext: analysisRecommendationTaskContext,
+          fallbackGoal: requestedAnalysisGoal,
+        });
+        const analysisTargetStep = inferRecoTargetStepFromDiagnosisGoal(analysisDiagnosisGoal);
         const surfacedIngredientPlan = analysisProductSurfaceMode === 'guidance_only'
           ? stripIngredientPlanConcreteProducts(ingredientPlan)
           : ingredientPlan;
@@ -54188,19 +54330,37 @@ function mountAuroraBffRoutes(app, { logger }) {
             product_surface_mode: analysisProductSurfaceMode,
           };
         }
+        const analysisClarificationPack =
+          !routineAnalysisV2Result && !recoArtifactEligible
+            ? buildAnalysisClarificationPack({
+                language: ctx.lang,
+                artifactGate: artifactGateMeta,
+                hasCurrentRoutine: hasRoutine,
+                diagnosisGoal: analysisDiagnosisGoal,
+                targetStep: analysisTargetStep,
+              })
+            : null;
+        if (analysisClarificationPack?.pending_clarification) {
+          emitPendingClarificationPatch(sessionPatch, analysisClarificationPack.pending_clarification);
+        }
+        if (analysisClarificationPack?.primary_question) {
+          analysisSummaryPayload.primary_question = analysisClarificationPack.primary_question;
+        }
+        if (Array.isArray(analysisClarificationPack?.ask_3_questions) && analysisClarificationPack.ask_3_questions.length) {
+          analysisSummaryPayload.ask_3_questions = analysisClarificationPack.ask_3_questions.slice(0, 3);
+        }
         appendLatestRecoContextToSessionPatch(sessionPatch, buildLatestRecoContextPayload({
           recoContextSource: 'analysis_skin',
           sourceDetail: 'analysis_skin',
           triggerSource: 'analysis_skin',
-          goal: pickFirstTrimmed(profileSummary && profileSummary.goal_primary, ...(Array.isArray(profileSummary?.goals) ? profileSummary.goals : [])),
-          diagnosisGoal: deriveRecoDiagnosisGoal({
-            profileSummary,
-            recommendationTaskContext: analysisRecommendationTaskContext,
-          }),
+          goal: requestedAnalysisGoal,
+          diagnosisGoal: analysisDiagnosisGoal,
+          targetStep: analysisTargetStep,
           recommendationTaskContext: analysisRecommendationTaskContext,
           analysisMode,
           artifactGateTier: artifactGateMeta.tier,
           recoArtifactEligible,
+          explicitSeedTerms: [analysisDiagnosisGoal],
           updatedAt: Date.now(),
         }));
 
@@ -54515,7 +54675,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           hasIngredientPlan: Boolean(ingredientPlan),
           hasRoutineFit: Boolean(routineFitCard || routineAnalysisV2Result),
         });
-        const analysisAssistantText = routineAnalysisV2Result && typeof routineAnalysisV2Result.assistant_text === 'string'
+        if (analysisClarificationPack?.questions?.[0]) {
+          analysisChips.unshift(...buildChipsForQuestion(analysisClarificationPack.questions[0], { stepIndex: 1 }));
+        }
+        const analysisAssistantBaseText = routineAnalysisV2Result && typeof routineAnalysisV2Result.assistant_text === 'string'
           ? routineAnalysisV2Result.assistant_text
           : buildAnalysisAssistantMessage({
               language: ctx.lang,
@@ -54524,6 +54687,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientPlan,
               routineFit: routineFitCard && routineFitCard.payload ? routineFitCard.payload : null,
             });
+        const analysisAssistantText = analysisClarificationPack?.primary_question
+          ? (
+            ctx.lang === 'CN'
+              ? `${analysisAssistantBaseText}\n\n为了把后续推荐收得更准，我先确认一个问题：${analysisClarificationPack.primary_question}`
+              : `${analysisAssistantBaseText}\n\nBefore I narrow the next product pick, I need one detail: ${analysisClarificationPack.primary_question}`
+          )
+          : analysisAssistantBaseText;
         if (profileSummary) {
           sessionPatch.profile = profileSummary;
         }
@@ -54927,23 +55097,59 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
         });
 
+        const timeoutDiagnosisGoal = pickFirstTrimmed(
+          parsed?.data?.goal,
+          parsed?.data?.diagnosis_goal,
+          parsed?.data?.diagnosisGoal,
+        );
+        const timeoutTargetStep = inferRecoTargetStepFromDiagnosisGoal(timeoutDiagnosisGoal);
+        const timeoutClarificationPack = buildAnalysisClarificationPack({
+          language: ctx.lang,
+          artifactGate: timeoutPayload.analysis_meta?.artifact_gate,
+          hasCurrentRoutine: hasRoutine,
+          diagnosisGoal: timeoutDiagnosisGoal,
+          targetStep: timeoutTargetStep,
+        });
         const timeoutChips = buildAnalysisSuggestedChips({
           language: ctx.lang,
           lowConfidence: true,
           hasIngredientPlan: false,
           hasRoutineProducts: false,
         });
-        const timeoutAssistantText = ctx.lang === 'CN'
+        if (timeoutClarificationPack?.questions?.[0]) {
+          timeoutChips.unshift(...buildChipsForQuestion(timeoutClarificationPack.questions[0], { stepIndex: 1 }));
+        }
+        const timeoutAssistantBaseText = ctx.lang === 'CN'
           ? '分析超时，已切换为保守方案。你可以重新拍照或直接提问。'
           : 'Analysis timed out and switched to a conservative plan. You can retake photos or ask questions.';
+        const timeoutAssistantText = timeoutClarificationPack?.primary_question
+          ? (
+            ctx.lang === 'CN'
+              ? `${timeoutAssistantBaseText}\n\n为了把后续推荐收得更准，我先确认一个问题：${timeoutClarificationPack.primary_question}`
+              : `${timeoutAssistantBaseText}\n\nBefore I narrow the next product pick, I need one detail: ${timeoutClarificationPack.primary_question}`
+          )
+          : timeoutAssistantBaseText;
         const timeoutSessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
+        if (timeoutClarificationPack?.pending_clarification) {
+          emitPendingClarificationPatch(timeoutSessionPatch, timeoutClarificationPack.pending_clarification);
+        }
+        if (timeoutClarificationPack?.primary_question) {
+          timeoutPayload.primary_question = timeoutClarificationPack.primary_question;
+        }
+        if (Array.isArray(timeoutClarificationPack?.ask_3_questions) && timeoutClarificationPack.ask_3_questions.length) {
+          timeoutPayload.ask_3_questions = timeoutClarificationPack.ask_3_questions.slice(0, 3);
+        }
         appendLatestRecoContextToSessionPatch(timeoutSessionPatch, buildLatestRecoContextPayload({
           recoContextSource: 'analysis_skin',
           sourceDetail: 'analysis_skin',
           triggerSource: 'analysis_skin',
+          goal: timeoutDiagnosisGoal,
+          diagnosisGoal: timeoutDiagnosisGoal,
+          targetStep: timeoutTargetStep,
           analysisMode: 'timeout_degraded',
           artifactGateTier: 'ineligible',
           recoArtifactEligible: false,
+          explicitSeedTerms: [timeoutDiagnosisGoal],
           updatedAt: Date.now(),
         }));
 
@@ -64168,7 +64374,11 @@ const __internal = {
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   stripIngredientPlanConcreteProducts,
+  applyIngredientPlanSurfaceMode,
   resolveAnalysisProductSurfaceMode,
+  buildIngredientPlanCard,
+  buildAnalysisClarificationQuestions,
+  buildAnalysisClarificationPack,
   buildAnalysisContextSnapshotHash,
   buildLatestRecoContextPayload,
   buildStepAwareSeedTerms,
