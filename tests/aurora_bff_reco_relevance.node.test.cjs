@@ -774,7 +774,7 @@ test('/v1/reco/generate: retrieval step rescues generic skincare candidates with
   }
 });
 
-test('/v1/analysis/skin: low-confidence guidance-only path emits clarification and never ships concrete sku rows', async () => {
+test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize artifact-missing clarification flow', async () => {
   const prevIngredientPlan = process.env.AURORA_INGREDIENT_PLAN_ENABLED;
   process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'true';
   try {
@@ -807,24 +807,17 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits clarification a
     assert.equal(latestRecoContext?.target_step, 'moisturizer');
     assert.equal(Array.isArray(latestRecoContext?.seed_terms), true);
     assert.equal(latestRecoContext.seed_terms.includes('uv filters'), false);
-    assert.ok(pendingClarification);
-    assert.equal(typeof pendingClarification.current?.id, 'string');
+    assert.equal(pendingClarification, null);
     assert.equal(Array.isArray(response.body?.suggested_chips), true);
     assert.equal(
       response.body.suggested_chips.some((chip) => String(chip?.data?.clarification_question_id || '').trim().length > 0),
-      true,
+      false,
     );
     assert.ok(ingredientPlanCard);
     assert.equal(ingredientPlanCard.payload?.product_surface_mode, 'guidance_only');
     const clarificationNotice = (Array.isArray(response.body?.cards) ? response.body.cards : [])
       .find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'artifact_missing_core');
-    assert.ok(clarificationNotice);
-    assert.match(String(clarificationNotice?.payload?.message || ''), /detail|确认一个问题|barrier state/i);
-    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.details) ? clarificationNotice.payload.details : [], []);
-    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.actions) ? clarificationNotice.payload.actions : [], []);
-    assert.deepEqual(Array.isArray(clarificationNotice?.payload?.ask_3_questions) ? clarificationNotice.payload.ask_3_questions : [], [
-      'Which barrier state sounds closest right now?',
-    ]);
+    assert.equal(clarificationNotice, undefined);
     for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
       assert.equal(target?.products?.mode, 'guidance_only');
       assert.equal(Array.isArray(target?.products?.example_product_types), true);

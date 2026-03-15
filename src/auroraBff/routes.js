@@ -25155,61 +25155,13 @@ function buildAnalysisClarificationQuestions({
   diagnosisGoal = '',
   targetStep = '',
 } = {}) {
-  const isCn = String(language || '').trim().toUpperCase() === 'CN';
-  const goalText = `${String(diagnosisGoal || '').trim()} ${String(targetStep || '').trim()}`.toLowerCase();
-  const questions = [];
-  if (/barrier|repair|moisturizer/.test(goalText)) {
-    questions.push({
-      id: 'barrierStatus',
-      question: isCn
-        ? '你最近更接近哪种屏障状态？'
-        : 'Which barrier state sounds closest right now?',
-      options: isCn
-        ? ['经常刺痛/泛红', '偶尔会敏感', '大多比较稳定', '不确定']
-        : ['Stinging/redness often', 'Sometimes reactive', 'Mostly stable', 'Not sure'],
-    });
-  } else if (/sensitive|reactive|redness|calm/.test(goalText)) {
-    questions.push({
-      id: 'sensitivity',
-      question: isCn
-        ? '你最近对产品的敏感反应有多明显？'
-        : 'How reactive does your skin feel to products lately?',
-      options: isCn
-        ? ['高敏感', '中等敏感', '低敏感', '不确定']
-        : ['High sensitivity', 'Medium sensitivity', 'Low sensitivity', 'Not sure'],
-    });
-  } else if (/acne|breakout|blemish|pore|oil/.test(goalText)) {
-    questions.push({
-      id: 'breakoutPattern',
-      question: isCn
-        ? '你现在的痘痘状态更接近哪一种？'
-        : 'Which breakout pattern sounds closest right now?',
-      options: isCn
-        ? ['红肿痘更多', '闭口堵塞更多', '主要是痘印', '不确定']
-        : ['Mostly inflamed pimples', 'Mostly clogged bumps', 'Mostly post-acne marks', 'Not sure'],
-    });
-  } else if (/dark spots|brighten|tone|pigment/.test(goalText)) {
-    questions.push({
-      id: 'pigmentPattern',
-      question: isCn
-        ? '你更想优先解决哪类色沉？'
-        : 'Which tone concern do you want to prioritize first?',
-      options: isCn
-        ? ['新发痘印', '旧色沉/晒斑', '整体肤色不均', '不确定']
-        : ['Fresh post-acne marks', 'Older sun spots', 'Overall uneven tone', 'Not sure'],
-    });
-  } else if (/hydrat|dry/.test(goalText)) {
-    questions.push({
-      id: 'drynessLevel',
-      question: isCn
-        ? '你现在的缺水/干燥感更接近哪一种？'
-        : 'Which dryness level sounds closest right now?',
-      options: isCn
-        ? ['紧绷脱皮明显', '偶尔干但可控', '主要是外油内干', '不确定']
-        : ['Tight or flaky often', 'Sometimes dry but manageable', 'Oily outside but dehydrated', 'Not sure'],
-    });
-  }
-  return questions.slice(0, 1);
+  void language;
+  void diagnosisGoal;
+  void targetStep;
+  // Diagnosis V2 owns its own follow-up questions. The low-confidence
+  // /v1/analysis/skin path should not synthesize a second clarification flow
+  // from missing artifact/profile fields.
+  return [];
 }
 
 function buildAnalysisClarificationPack({
