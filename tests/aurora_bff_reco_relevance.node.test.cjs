@@ -774,7 +774,7 @@ test('/v1/reco/generate: retrieval step rescues generic skincare candidates with
   }
 });
 
-test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize artifact-missing clarification flow', async () => {
+test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related clarification without legacy missing-field prompts', async () => {
   const prevIngredientPlan = process.env.AURORA_INGREDIENT_PLAN_ENABLED;
   process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'true';
   try {
@@ -799,8 +799,11 @@ test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize a
     const sessionPatch = response.body?.session_patch || {};
     const latestRecoContext = sessionPatch?.state?.latest_reco_context || null;
     const pendingClarification = sessionPatch?.state?.pending_clarification || null;
-    const ingredientPlanCard = (Array.isArray(response.body?.cards) ? response.body.cards : [])
-      .find((card) => card && card.type === 'ingredient_plan_v2');
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const ingredientPlanCard = cards.find((card) => card && card.type === 'ingredient_plan_v2');
+    const analysisSummaryCard = cards.find(
+      (card) => card && typeof card?.payload?.primary_question === 'string',
+    );
 
     assert.equal(sessionPatch?.meta?.analysis_contract?.product_surface_mode, 'guidance_only');
     assert.equal(latestRecoContext?.diagnosis_goal, 'Repair skin barrier');
@@ -813,11 +816,28 @@ test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize a
       response.body.suggested_chips.some((chip) => String(chip?.data?.clarification_question_id || '').trim().length > 0),
       false,
     );
+    assert.ok(analysisSummaryCard);
+    assert.equal(typeof analysisSummaryCard?.payload?.primary_question, 'string');
+    assert.equal(analysisSummaryCard.payload.primary_question.includes('missing_'), false);
+    assert.equal(Array.isArray(analysisSummaryCard?.payload?.ask_3_questions), true);
+    assert.equal(analysisSummaryCard.payload.ask_3_questions.length > 0, true);
+    assert.equal(
+      analysisSummaryCard.payload.ask_3_questions.some((question) => String(question || '').includes('missing_')),
+      false,
+    );
     assert.ok(ingredientPlanCard);
     assert.equal(ingredientPlanCard.payload?.product_surface_mode, 'guidance_only');
     const clarificationNotice = (Array.isArray(response.body?.cards) ? response.body.cards : [])
       .find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'artifact_missing_core');
-    assert.equal(clarificationNotice, undefined);
+    assert.ok(clarificationNotice);
+    assert.equal(
+      Array.isArray(clarificationNotice?.payload?.ask_3_questions) && clarificationNotice.payload.ask_3_questions.length > 0,
+      true,
+    );
+    assert.equal(
+      clarificationNotice.payload.ask_3_questions.some((question) => String(question || '').includes('missing_')),
+      false,
+    );
     for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
       assert.equal(target?.products?.mode, 'guidance_only');
       assert.equal(Array.isArray(target?.products?.example_product_types), true);

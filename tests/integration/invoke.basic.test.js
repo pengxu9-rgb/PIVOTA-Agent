@@ -289,4 +289,71 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.products.some((row) => String(row?.product_id || '').includes('body_1'))).toBe(false);
     expect(res.body.products.some((row) => String(row?.product_id || '').includes('spf_1'))).toBe(false);
   });
+
+  it('applies product-only guidance discovery filtering and reports service rows removed', async () => {
+    const upstreamBody = {
+      status: 'success',
+      success: true,
+      total: 2,
+      page: 1,
+      page_size: 2,
+      products: [
+        {
+          id: 'service_1',
+          product_id: 'service_1',
+          title: 'Barrier Repair Facial 60 Minutes Soin Cabine',
+          name: 'Barrier Repair Facial 60 Minutes Soin Cabine',
+          display_name: 'Barrier Repair Facial 60 Minutes Soin Cabine',
+          category: 'spa service',
+          product_type: 'treatment',
+        },
+        {
+          id: 'serum_1',
+          product_id: 'serum_1',
+          title: 'Soothing Barrier Repair Serum',
+          name: 'Soothing Barrier Repair Serum',
+          display_name: 'Soothing Barrier Repair Serum',
+          category: 'skincare',
+          product_type: 'serum',
+          source: 'catalog',
+        },
+      ],
+      metadata: {
+        query_source: 'agent_products_search',
+      },
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, upstreamBody);
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, upstreamBody);
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'barrier repair serum',
+        catalog_surface: 'beauty',
+        source: 'aurora_chatbox',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        query_index: '0',
+        query_total: '2',
+        target_step_family: 'serum',
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]?.product_id).toBe('serum_1');
+    expect(res.body.metadata?.product_only_applied).toBe(true);
+    expect(res.body.metadata?.service_rows_filtered_count).toBe(1);
+    expect(res.body.metadata?.query_index).toBe(0);
+    expect(res.body.metadata?.query_exhausted).toBe(false);
+    expect(res.body.metadata?.search_decision?.product_only_applied).toBe(true);
+    expect(res.body.metadata?.search_decision?.service_rows_filtered_count).toBe(1);
+    expect(res.body.metadata?.search_decision?.discovery_source_used).toBe('internal');
+  });
 });
