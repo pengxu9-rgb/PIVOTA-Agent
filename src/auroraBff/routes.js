@@ -24438,6 +24438,86 @@ function buildChipsForQuestion(question, { stepIndex } = {}) {
   }));
 }
 
+function buildAnalysisClarificationQuestions({
+  language = 'EN',
+  diagnosisGoal = '',
+  targetStep = '',
+} = {}) {
+  void language;
+  void diagnosisGoal;
+  void targetStep;
+  // The diagnosis gate owns follow-up questions in the new skin-analysis flow.
+  // Low-confidence /analysis/skin responses should not synthesize a second set
+  // of profile-missing questions from artifact gate state.
+  return [];
+}
+
+function buildAnalysisClarificationPack({
+  language = 'EN',
+  diagnosisGoal = '',
+  targetStep = '',
+} = {}) {
+  const questions = buildAnalysisClarificationQuestions({
+    language,
+    diagnosisGoal,
+    targetStep,
+  });
+  if (!questions.length) return null;
+  const primaryQuestion = questions[0];
+  const ask3 = questions.map((question) => question.question).filter(Boolean).slice(0, 3);
+  const resumeContext = pickFirstTrimmed(diagnosisGoal, targetStep) || 'skin analysis follow-up';
+  const pendingState = sanitizePendingClarification(
+    {
+      v: PENDING_CLARIFICATION_SCHEMA_V1,
+      flow_id: makeFlowId(),
+      created_at_ms: Date.now(),
+      resume_user_text: String(resumeContext).trim().slice(0, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT),
+      current: { id: primaryQuestion.id },
+      queue: [],
+      history: [],
+    },
+    { recordMetrics: false },
+  );
+  return {
+    primary_question: primaryQuestion.question,
+    ask_3_questions: ask3,
+    questions,
+    pending_clarification: pendingState && pendingState.pending ? pendingState.pending : null,
+  };
+}
+
+function buildAnalysisClarificationNoticeCard({
+  requestId,
+  language = 'EN',
+  clarificationPack = null,
+} = {}) {
+  if (!clarificationPack || !clarificationPack.primary_question) return null;
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  return {
+    card_id: `analysis_clarify_${requestId}`,
+    type: 'confidence_notice',
+    payload: {
+      ...buildConfidenceNoticeCardPayload({
+        language,
+        reason: 'artifact_missing_core',
+        confidence: {
+          score: 0.35,
+          level: 'low',
+          rationale: ['artifact_missing_core'],
+        },
+        non_blocking: true,
+        details: [],
+        actions: [],
+      }),
+      message: isCn
+        ? `为了把后续推荐收得更准，我先确认一个问题：${clarificationPack.primary_question}`
+        : `Before I narrow the next product pick, I need one detail: ${clarificationPack.primary_question}`,
+      ask_3_questions: Array.isArray(clarificationPack.ask_3_questions)
+        ? clarificationPack.ask_3_questions.slice(0, 3)
+        : [],
+    },
+  };
+}
 function advancePendingClarification(pending, selectedOption, selectedQuestionId) {
   const nowMs = Date.now();
   const option = typeof selectedOption === 'string' ? selectedOption.trim() : '';

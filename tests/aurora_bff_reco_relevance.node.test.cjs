@@ -367,3 +367,30 @@ test('/v1/reco/generate: deterministic selection can succeed in degraded mode wh
     axios.get = originalGet;
   }
 });
+
+test('/v1/analysis/skin: low-confidence skip-photo does not synthesize artifact-missing clarification flow', async () => {
+  const express = require('express');
+  const { mountAuroraBffRoutes } = loadRoutesFresh();
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  mountAuroraBffRoutes(app, { logger: null });
+
+  const response = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+    headers: {
+      'X-Aurora-UID': 'analysis_no_synth_clarify_uid',
+      'X-Trace-ID': 'trace_analysis_no_synth_clarify',
+    },
+    body: {
+      use_photo: false,
+      goal: 'Repair skin barrier',
+    },
+  });
+
+  assert.equal(response.status, 200);
+  const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+  const clarificationNotice = cards.find(
+    (card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '').trim() === 'artifact_missing_core',
+  );
+  assert.equal(clarificationNotice, undefined);
+  assert.equal(response.body?.session_patch?.state?.pending_clarification || null, null);
+});
