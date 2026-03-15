@@ -2559,4 +2559,85 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('external_seed_only search returns direct seed products for guidance discovery', async () => {
+    process.env.DATABASE_URL = 'postgres://seed-direct-test';
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_rose_1',
+              external_product_id: 'ext_rose_ceramide_1',
+              destination_url: 'https://shop.example.com/products/rose-ceramide-cream',
+              canonical_url: 'https://shop.example.com/products/rose-ceramide-cream',
+              domain: 'shop.example.com',
+              title: 'Rose Ceramide Cream',
+              image_url: 'https://cdn.example.com/rose-ceramide.jpg',
+              price_amount: '42',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Rose Inc',
+                category: 'moisturizer',
+                snapshot: {
+                  title: 'Rose Ceramide Cream',
+                  brand: 'Rose Inc',
+                  category: 'moisturizer',
+                  destination_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                  canonical_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                },
+              },
+              updated_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            },
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'moisturizer barrier repair ceramide np barrier repair',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        target_step_family: 'moisturizer',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_rose_ceramide_1',
+        title: 'Rose Ceramide Cream',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_external_seed_direct',
+        external_seed_only_requested: true,
+        external_seed_returned_count: 1,
+        product_only_applied: true,
+      }),
+    );
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        query_target_step_family: 'moisturizer',
+      }),
+    );
+  });
+
 });

@@ -66,6 +66,7 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
+const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const {
   buildSearchDebugBundle,
@@ -5430,6 +5431,9 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
   if (allowExternalSeed !== undefined) search.allow_external_seed = allowExternalSeed;
 
+  const externalSeedOnly = parseQueryBoolean(query.external_seed_only ?? query.externalSeedOnly);
+  if (externalSeedOnly !== undefined) search.external_seed_only = externalSeedOnly;
+
   const allowStaleCache = parseQueryBoolean(query.allow_stale_cache ?? query.allowStaleCache);
   if (allowStaleCache !== undefined) search.allow_stale_cache = allowStaleCache;
 
@@ -5475,6 +5479,320 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   if (context) payload.context = context;
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
   return payload;
+}
+
+function scoreDirectExternalSeedProduct({
+  product,
+  queryText,
+  normalizedQuery,
+  anchorTokens,
+  queryTokens,
+  targetStepFamily,
+}) {
+  const candidateText =
+    buildSharedBeautyCandidateText(product) ||
+    buildFallbackCandidateText(product) ||
+    normalizeSearchTextForMatch(product?.title || product?.name || '');
+  const coarse = classifySharedBeautyCoarseCandidate(product, {
+    queryTargetStepFamily: targetStepFamily,
+  });
+  let score = 0;
+
+  if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 20;
+  score += anchorTokens.filter((token) => candidateText.includes(token)).length * 6;
+  score += queryTokens.filter((token) => candidateText.includes(token)).length * 2;
+
+  if (targetStepFamily) {
+    const relation = getRecoTargetFamilyRelation(targetStepFamily, coarse?.coarse_step_family || '');
+    if (relation === 'exact_step') score += 14;
+    else if (relation === 'same_family') score += 10;
+    if (coarse?.usage_scope === 'face') score += 4;
+    if (targetStepFamily === 'moisturizer') {
+      if (coarse?.usage_scope === 'body') score -= 10;
+      if (coarse?.domain_scope === 'bodycare') score -= 10;
+    }
+  }
+
+  if (coarse?.object_type === 'service' || coarse?.domain_scope === 'beauty_service') score -= 25;
+  if (coarse?.object_type === 'tool' || coarse?.domain_scope === 'beauty_tool') score -= 20;
+  return score;
+}
+
+async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {} } = {}) {
+  if (!process.env.DATABASE_URL) return null;
+
+  const queryText = extractSearchQueryText(search);
+  if (!queryText) {
+    return {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+      page: 1,
+      page_size: 0,
+      reply: null,
+      metadata: {
+        query_source: 'agent_products_external_seed_direct',
+        fetched_at: new Date().toISOString(),
+        external_seed_only_requested: true,
+        external_seed_rows_fetched: 0,
+        external_seed_rows_built: 0,
+        external_seed_returned_count: 0,
+        strict_empty: true,
+        strict_empty_reason: 'external_seed_only_empty_query',
+      },
+    };
+  }
+
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const targetStepFamily = normalizeRecoTargetStep(
+    metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
+  );
+  const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
+  const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
+  const requestedProductOnly =
+    parseQueryBoolean(metadata?.product_only_requested ?? search?.product_only ?? search?.productOnly) === true;
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const tool = 'creator_agents';
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const searchPatterns = Array.from(
+    new Set([...anchorTokens, ...queryTokens].map((token) => `%${String(token || '').trim()}%`).filter(Boolean)),
+  ).slice(0, 12);
+  const sqlParams = [market, tool];
+  const filters = [];
+
+  if (searchPatterns.length > 0) {
+    sqlParams.push(searchPatterns);
+    const bind = `$${sqlParams.length}`;
+    filters.push(
+      `(
+        lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
+        OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
+        OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
+        OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
+        OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])
+      )`,
+    );
+  }
+
+  if (inStockOnly) {
+    filters.push(
+      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+    );
+  }
+
+  sqlParams.push(Math.min(Math.max(safeLimit * 12, 72), 240));
+  const limitBind = `$${sqlParams.length}`;
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND (tool = '*' OR tool = $2)
+          ${filters.length > 0 ? `AND ${filters.join('\n          AND ')}` : ''}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT ${limitBind}
+      `,
+      sqlParams,
+    );
+
+    const seen = new Set();
+    const rawProducts = [];
+    for (const row of res.rows || []) {
+      const product = buildExternalSeedProduct(row);
+      if (!product) continue;
+      const key = buildSearchProductKey(product);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      rawProducts.push(product);
+    }
+
+    const rankedProducts = rawProducts
+      .map((product) => {
+        const score = scoreDirectExternalSeedProduct({
+          product,
+          queryText,
+          normalizedQuery,
+          anchorTokens,
+          queryTokens,
+          targetStepFamily,
+        });
+        const relevant = isSupplementCandidateRelevant(product, queryText, {
+          normalizedQuery,
+          anchorTokens,
+          queryTokens,
+        });
+        return { product, score, relevant };
+      })
+      .filter((row) => row.relevant || row.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return String(b.product?.title || '').localeCompare(String(a.product?.title || ''));
+      })
+      .map((row) => row.product);
+
+    let serviceRowsFilteredCount = 0;
+    const productOnlyProducts = rankedProducts.filter((product) => {
+      if (!guidanceOnlyDiscovery || !requestedProductOnly) return true;
+      const coarse = classifySharedBeautyCoarseCandidate(product, {
+        queryTargetStepFamily: targetStepFamily,
+      });
+      const blocked =
+        coarse?.object_type === 'service' ||
+        coarse?.domain_scope === 'beauty_service' ||
+        coarse?.object_type === 'tool' ||
+        coarse?.domain_scope === 'beauty_tool';
+      if (blocked) serviceRowsFilteredCount += 1;
+      return !blocked;
+    });
+
+    const skincareHitDecision = buildSharedBeautySkincareHitQualityDecision({
+      queryText,
+      products: productOnlyProducts,
+      queryTargetStepFamily: targetStepFamily,
+    });
+    const validKeys = new Set(
+      (Array.isArray(skincareHitDecision?.valid_products) ? skincareHitDecision.valid_products : [])
+        .map((product) => buildSearchDecisionProductKey(product))
+        .filter(Boolean),
+    );
+    const scopedProducts =
+      skincareHitDecision?.applied && skincareHitDecision?.hit_quality !== 'valid_hit'
+        ? []
+        : skincareHitDecision?.applied
+        ? productOnlyProducts.filter((product) => validKeys.has(buildSearchDecisionProductKey(product)))
+        : productOnlyProducts;
+    const pagedProducts = scopedProducts.slice(safeOffset, safeOffset + safeLimit);
+    const queryIndex = Number.isFinite(Number(metadata?.query_index))
+      ? Math.max(0, Math.floor(Number(metadata.query_index)))
+      : null;
+    const queryTotal = Number.isFinite(Number(metadata?.query_total))
+      ? Math.max(0, Math.floor(Number(metadata.query_total)))
+      : null;
+
+    return {
+      status: 'success',
+      success: true,
+      products: pagedProducts,
+      total: scopedProducts.length,
+      page: safePage,
+      page_size: pagedProducts.length,
+      reply: null,
+      metadata: {
+        query_source: 'agent_products_external_seed_direct',
+        fetched_at: new Date().toISOString(),
+        source_breakdown: {
+          internal_count: 0,
+          external_seed_count: pagedProducts.length,
+          stale_cache_used: false,
+          strategy_applied: 'external_seed_only_direct',
+        },
+        external_seed_only_requested: true,
+        external_seed_rows_fetched: rawProducts.length,
+        external_seed_rows_built: scopedProducts.length,
+        external_seed_returned_count: pagedProducts.length,
+        raw_result_count: skincareHitDecision?.applied
+          ? skincareHitDecision.raw_result_count
+          : productOnlyProducts.length,
+        products_returned_count: pagedProducts.length,
+        ...(guidanceOnlyDiscovery
+          ? {
+              product_only_applied: requestedProductOnly,
+              service_rows_filtered_count: serviceRowsFilteredCount,
+              discovery_source_used:
+                pagedProducts.length > 0 ? 'external_seed_direct' : 'external_seed_direct_exhausted',
+              query_index: queryIndex,
+              query_exhausted:
+                queryIndex != null && queryTotal != null
+                  ? queryTotal > 0 && queryIndex >= queryTotal - 1
+                  : pagedProducts.length === 0,
+            }
+          : {}),
+        search_decision: {
+          contract_version:
+            skincareHitDecision?.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+          hit_quality: skincareHitDecision?.applied
+            ? skincareHitDecision.hit_quality
+            : pagedProducts.length > 0
+            ? 'valid_hit'
+            : 'empty',
+          invalid_hit_reason: skincareHitDecision?.applied
+            ? skincareHitDecision.invalid_hit_reason
+            : null,
+          query_bucket: skincareHitDecision?.applied ? skincareHitDecision.query_bucket : null,
+          query_target_step_family:
+            skincareHitDecision?.applied
+              ? skincareHitDecision.query_target_step_family
+              : targetStepFamily || null,
+          topk_bucket_mix: skincareHitDecision?.applied ? skincareHitDecision.topk_bucket_mix : {},
+          same_family_topk_count: skincareHitDecision?.applied
+            ? skincareHitDecision.same_family_topk_count
+            : 0,
+          exact_step_topk_count: skincareHitDecision?.applied
+            ? skincareHitDecision.exact_step_topk_count
+            : 0,
+          raw_result_count: skincareHitDecision?.applied
+            ? skincareHitDecision.raw_result_count
+            : productOnlyProducts.length,
+          products_returned_count: pagedProducts.length,
+          ...(guidanceOnlyDiscovery
+            ? {
+                product_only_applied: requestedProductOnly,
+                service_rows_filtered_count: serviceRowsFilteredCount,
+                discovery_source_used:
+                  pagedProducts.length > 0 ? 'external_seed_direct' : 'external_seed_direct_exhausted',
+                query_index: queryIndex,
+                query_exhausted:
+                  queryIndex != null && queryTotal != null
+                    ? queryTotal > 0 && queryIndex >= queryTotal - 1
+                    : pagedProducts.length === 0,
+              }
+            : {}),
+          ...(skincareHitDecision?.applied && skincareHitDecision.hit_quality === 'invalid_hit'
+            ? { final_decision: 'invalid_hit' }
+            : {}),
+        },
+      },
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (msg.includes('external_product_seeds') && msg.includes('does not exist')) {
+      return null;
+    }
+    logger.warn(
+      { err: err?.message || String(err), query: queryText },
+      'external seed direct search failed',
+    );
+    return null;
+  }
 }
 
 async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount, source }) {
@@ -12346,6 +12664,22 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
       error: 'INVALID_QUERY',
       message: 'query payload is invalid',
     });
+  }
+
+  const directExternalSeedOnly =
+    payload?.search?.external_seed_only === true &&
+    String(payload?.search?.merchant_id || '').trim() === 'external_seed';
+  if (directExternalSeedOnly) {
+    const directResponse = await searchExternalSeedOnlyProductsDirect({
+      search: payload.search,
+      metadata:
+        payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : {},
+    });
+    if (directResponse) {
+      return res.json(directResponse);
+    }
   }
 
   req.body = {
