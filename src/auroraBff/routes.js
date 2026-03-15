@@ -23446,6 +23446,16 @@ function buildRecoMainlineContract({
       sourceMode: normalizedSourceMode,
       groundingStatus,
     });
+    const centralizedUpstreamStatus = (() => {
+      if (normalizedTerminalSuccess) return 'ok';
+      if (outcome.user_fixable) return null;
+      if (outcome.effective_failure_class === 'upstream_timeout') return 'timeout';
+      if (outcome.effective_failure_class === 'schema_invalid') return 'schema_invalid';
+      if (outcome.effective_failure_class === 'prompt_contract_mismatch') return 'prompt_contract_mismatch';
+      if (outcome.effective_failure_class === 'upstream_dependency_failure') return 'upstream_dependency_failure';
+      if (outcome.effective_failure_class === 'catalog_contract_invalid') return 'catalog_contract_invalid';
+      return null;
+    })();
     return {
       ok: normalizedTerminalSuccess,
       contract_status: normalizedTerminalSuccess
@@ -23466,19 +23476,7 @@ function buildRecoMainlineContract({
       failure_class: normalizedTerminalSuccess ? null : (outcome.effective_failure_class || null),
       effective_failure_class: outcome.effective_failure_class || 'none',
       failure_origin: outcome.failure_origin || 'none',
-      upstream_status: normalizedTerminalSuccess
-        ? 'ok'
-        : outcome.effective_failure_class === 'upstream_timeout'
-          ? 'timeout'
-          : outcome.effective_failure_class === 'schema_invalid'
-            ? 'schema_invalid'
-            : outcome.effective_failure_class === 'prompt_contract_mismatch'
-              ? 'prompt_contract_mismatch'
-              : outcome.effective_failure_class === 'upstream_dependency_failure'
-                ? 'upstream_dependency_failure'
-                : outcome.effective_failure_class === 'catalog_contract_invalid'
-                  ? 'catalog_contract_invalid'
-                  : 'artifact_missing',
+      upstream_status: centralizedUpstreamStatus,
       mainline_status: outcome.mainline_status,
       surface_kind: outcome.surface_kind,
       surface_reason: pickFirstTrimmed(surfaceReason, outcome.surface_reason) || null,
