@@ -250,6 +250,7 @@ const V1ChatRequestSchema = z
     selected_option_index: z.number().int().min(0).max(99).optional(),
     session: z.record(z.string(), z.any()).optional(),
     context: z.record(z.string(), z.any()).optional(),
+    thread_state: z.record(z.string(), z.any()).optional(),
     language: LanguageSchema.optional(),
     llm_provider: z.enum(['gemini', 'openai']).optional(),
     llm_model: z.string().min(1).max(120).optional(),

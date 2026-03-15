@@ -54464,9 +54464,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           clarificationPack: analysisClarificationPack,
           artifactGate: artifactGateMeta,
         });
-        if (analysisClarificationPack?.pending_clarification) {
-          emitPendingClarificationPatch(sessionPatch, analysisClarificationPack.pending_clarification);
-        }
+        emitPendingClarificationPatch(sessionPatch, analysisClarificationPack?.pending_clarification || null);
         if (analysisClarificationPack?.primary_question) {
           analysisSummaryPayload.primary_question = analysisClarificationPack.primary_question;
         }
@@ -55281,9 +55279,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           )
           : timeoutAssistantBaseText;
         const timeoutSessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
-        if (timeoutClarificationPack?.pending_clarification) {
-          emitPendingClarificationPatch(timeoutSessionPatch, timeoutClarificationPack.pending_clarification);
-        }
+        emitPendingClarificationPatch(timeoutSessionPatch, timeoutClarificationPack?.pending_clarification || null);
         if (timeoutClarificationPack?.primary_question) {
           timeoutPayload.primary_question = timeoutClarificationPack.primary_question;
         }
