@@ -20056,6 +20056,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   query_source: primaryHasValidGuidanceHit
                     ? 'agent_products_search_guidance_supplemented'
                     : 'agent_products_guidance_external_seed_supplemented',
+                  guidance_direct_external_seed_applied: true,
+                  guidance_direct_external_seed_valid_hit: true,
                   source_breakdown: {
                     ...(existingMeta.source_breakdown && typeof existingMeta.source_breakdown === 'object'
                       ? existingMeta.source_breakdown
@@ -20124,11 +20126,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const primaryMonoculture = Boolean(primaryMonocultureSignal.detected);
       const primaryIrrelevant =
         Boolean(queryText) && ((primaryUsableCount > 0 && !primaryRelevant) || primaryMonoculture);
-      const shouldFallback = primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
+      const guidanceDirectSupplementValidHit =
+        guidanceOnlyDiscovery &&
+        upstreamData?.metadata?.guidance_direct_external_seed_applied === true &&
+        upstreamData?.metadata?.guidance_direct_external_seed_valid_hit === true &&
+        primaryUsableCount > 0;
+      const shouldFallback = guidanceDirectSupplementValidHit
+        ? false
+        : primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
       const forceInvokeFallbackForFragrance =
         hasFragranceQuerySignal(queryText) &&
         (primaryUsableCount === 0 || primaryLowQualityNonempty);
-      const primaryQualityGatePassed = !primaryLowQualityNonempty && primaryUsableCount > 0;
+      const primaryQualityGatePassed =
+        (guidanceDirectSupplementValidHit || !primaryLowQualityNonempty) && primaryUsableCount > 0;
       const secondarySkipBrandLike = Boolean(
         detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
       );
