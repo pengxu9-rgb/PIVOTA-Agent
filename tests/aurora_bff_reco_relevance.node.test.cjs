@@ -183,7 +183,7 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
       data: {
         metadata: {
           search_decision: {
-            contract_version: 'beauty_search_decision_v3',
+            contract_version: 'beauty_search_decision_v4',
             hit_quality: 'invalid_hit',
             invalid_hit_reason: 'invalid_hit_tools_dominant',
             query_bucket: 'skincare',
@@ -260,7 +260,7 @@ test('/v1/reco/generate: weak viable pool stays user-fixable and does not masque
       data: {
         metadata: {
           search_decision: {
-            contract_version: 'beauty_search_decision_v3',
+            contract_version: 'beauty_search_decision_v4',
             hit_quality: 'valid_hit',
             query_bucket: 'skincare',
             query_target_step_family: 'moisturizer',
@@ -342,7 +342,7 @@ test('/v1/reco/generate: valid hit with ineligible weak analysis context returns
       data: {
         metadata: {
           search_decision: {
-            contract_version: 'beauty_search_decision_v3',
+            contract_version: 'beauty_search_decision_v4',
             hit_quality: 'valid_hit',
             query_bucket: 'skincare',
             query_target_step_family: 'moisturizer',
@@ -432,7 +432,7 @@ test('/v1/reco/generate: valid_hit queries that all hard-reject on coarse domain
       data: {
         metadata: {
           search_decision: {
-            contract_version: 'beauty_search_decision_v3',
+            contract_version: 'beauty_search_decision_v4',
             hit_quality: 'valid_hit',
             query_bucket: 'skincare',
             query_target_step_family: 'moisturizer',
@@ -651,7 +651,7 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with prio
       data: {
         metadata: {
           search_decision: {
-            contract_version: 'beauty_search_decision_v3',
+            contract_version: 'beauty_search_decision_v4',
             hit_quality: 'valid_hit',
             query_bucket: 'skincare',
             query_target_step_family: 'moisturizer',
@@ -848,6 +848,20 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       assert.equal(typeof target.products.example_product_discovery_items[0]?.search_query, 'string');
       assert.equal(Array.isArray(target.products.example_product_discovery_items[0]?.query_ladder), true);
       assert.equal(target.products.example_product_discovery_items[0].query_ladder.length > 1, true);
+      assert.equal(
+        target.products.example_product_discovery_items[0].query_ladder.every((step) =>
+          ['strong_goal_family', 'supportive_family', 'generic_family'].includes(String(step?.intent_strength || ''))),
+        true,
+      );
+      assert.equal(
+        target.products.example_product_discovery_items[0].query_ladder.every((step) => step?.stop_on_success === true),
+        true,
+      );
+      assert.equal(
+        target.products.example_product_discovery_items[0].query_ladder.some((step) =>
+          String(step?.query || '').trim().toLowerCase() === 'face moisturizer'),
+        false,
+      );
       assert.equal(Array.isArray(target?.products?.competitors), false);
       assert.equal(Array.isArray(target?.products?.dupes), false);
       assert.equal('competitors' in target, false);

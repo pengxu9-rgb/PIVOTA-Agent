@@ -213,7 +213,10 @@ const {
   resolveRecoTargetStepIntent,
   getRecoTargetFamilyRelation,
 } = require('./recoTargetStep');
-const { BEAUTY_SEARCH_DECISION_CONTRACT_VERSION } = require('../shared/beautyRecoCoarseClassifier');
+const {
+  BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+  classifyBeautyGuidanceQueryStrength,
+} = require('../shared/beautyRecoCoarseClassifier');
 const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -23411,24 +23414,33 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
 
   if (targetStepFamily === 'moisturizer') {
     if (focusCue === 'barrier repair') {
-      queries.push('barrier repair moisturizer', 'barrier moisturizer');
+      if (ingredientCue) {
+        queries.push(`${ingredientCue} barrier moisturizer`, `barrier repair ${ingredientCue} moisturizer`);
+      }
+      queries.push('barrier repair moisturizer', 'fragrance-free barrier moisturizer', 'barrier moisturizer');
     } else if (focusCue === 'sensitive skin') {
       queries.push('sensitive skin moisturizer', 'fragrance free moisturizer');
     } else if (focusCue === 'hydrating') {
+      if (ingredientCue) queries.push(`${ingredientCue} hydrating moisturizer`);
       queries.push('hydrating moisturizer', 'gel cream');
     } else if (focusCue === 'balance') {
+      if (ingredientCue) queries.push(`${ingredientCue} lightweight moisturizer`);
       queries.push('lightweight gel moisturizer');
     } else if (focusCue === 'soothing') {
+      if (ingredientCue) queries.push(`${ingredientCue} soothing moisturizer`);
       queries.push('soothing moisturizer', 'barrier moisturizer');
     }
     if (ingredientCue) queries.push(`${ingredientCue} moisturizer`);
-    queries.push('face moisturizer');
+    queries.push('sensitive skin moisturizer');
   } else if (targetStepFamily === 'serum') {
     if (focusCue === 'barrier repair') {
+      if (ingredientCue) queries.push(`${ingredientCue} barrier repair serum`);
       queries.push('barrier repair serum', 'soothing serum');
     } else if (focusCue === 'hydrating') {
+      if (ingredientCue) queries.push(`${ingredientCue} hydrating serum`);
       queries.push('hydrating serum');
     } else if (focusCue === 'soothing' || focusCue === 'sensitive skin') {
+      if (ingredientCue) queries.push(`${ingredientCue} soothing serum`);
       queries.push('soothing serum');
     }
     if (ingredientCue) queries.push(`${ingredientCue} serum`);
@@ -23477,23 +23489,38 @@ function buildGuidanceOnlyDiscoveryLadder(target, label) {
   const safeLabel = String(label || '').trim();
   if (!safeLabel) return [];
   const targetStepFamily = resolveGuidanceOnlyDiscoveryTargetStepFamily(safeLabel, target);
-  const internalQueries = buildGuidanceOnlyInternalQueries(target, safeLabel, targetStepFamily);
-  if (!internalQueries.length) return [];
-  const ladder = internalQueries.map((query) => ({
-    query,
-    target_step_family: targetStepFamily || null,
-    allow_external_seed: false,
-    external_seed_strategy: null,
-    product_only: true,
-  }));
-  const supplementQueries = buildGuidanceOnlySupplementQueries(target, safeLabel, targetStepFamily, internalQueries);
-  supplementQueries.forEach((query) => {
-    ladder.push({
-      query,
-      target_step_family: targetStepFamily || null,
-      allow_external_seed: true,
-      external_seed_strategy: 'supplement_internal_first',
-      product_only: true,
+  const semanticQueries = buildGuidanceOnlyInternalQueries(target, safeLabel, targetStepFamily);
+  if (!semanticQueries.length) return [];
+  const strengthOrder = ['strong_goal_family', 'supportive_family', 'generic_family'];
+  const grouped = new Map(strengthOrder.map((strength) => [strength, []]));
+  semanticQueries.forEach((query) => {
+    const strength = classifyBeautyGuidanceQueryStrength(query, {
+      queryTargetStepFamily: targetStepFamily,
+    });
+    grouped.get(strength)?.push(query);
+  });
+  const ladder = [];
+  strengthOrder.forEach((intentStrength) => {
+    const queries = grouped.get(intentStrength) || [];
+    queries.forEach((query) => {
+      ladder.push({
+        query,
+        target_step_family: targetStepFamily || null,
+        allow_external_seed: false,
+        external_seed_strategy: null,
+        product_only: true,
+        intent_strength: intentStrength,
+        stop_on_success: true,
+      });
+      ladder.push({
+        query,
+        target_step_family: targetStepFamily || null,
+        allow_external_seed: true,
+        external_seed_strategy: 'supplement_internal_first',
+        product_only: true,
+        intent_strength: intentStrength,
+        stop_on_success: true,
+      });
     });
   });
   return ladder;
@@ -43645,23 +43672,62 @@ function normalizePoolAlternativeRow(row, {
   );
   if (mixedScore < 0.55) return null;
 
-  const pdpUrl = extractCandidateOpenUrl(normalized);
-  const pdpOpen = normalized.canonical_product_ref
-    ? { path: 'ref', product_ref: normalized.canonical_product_ref }
+  const canonicalProductRef = normalizeCanonicalProductRef(normalized.canonical_product_ref, {
+    requireMerchant: true,
+    allowOpaqueProductId: false,
+  });
+  const groupBackedProductRef = extractCanonicalRefFromProductGroupId(normalized.product_group_id);
+  const resolveProductRef = normalizeCanonicalProductRef(
+    {
+      product_id: normalized.product_id,
+      merchant_id: normalized.merchant_id,
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  const externalPdpUrlRaw = extractCandidateOpenUrl(normalized);
+  const internalPdpUrl = canonicalProductRef
+    ? buildInternalPdpUrlFromTarget({
+        productId: canonicalProductRef.product_id,
+        merchantId: canonicalProductRef.merchant_id,
+      })
+    : groupBackedProductRef
+      ? buildInternalPdpUrlFromTarget({
+          productId: groupBackedProductRef.product_id,
+          merchantId: groupBackedProductRef.merchant_id,
+        })
+      : resolveProductRef
+        ? buildInternalPdpUrlFromTarget({
+            productId: resolveProductRef.product_id,
+            merchantId: resolveProductRef.merchant_id,
+          })
+        : '';
+  const externalPdpUrl =
+    externalPdpUrlRaw && externalPdpUrlRaw !== internalPdpUrl ? externalPdpUrlRaw : '';
+  const pdpOpen = canonicalProductRef
+    ? {
+        path: 'ref',
+        product_ref: canonicalProductRef,
+        ...(externalPdpUrl ? { external: { url: externalPdpUrl, query: candidateLabel } } : {}),
+      }
     : normalized.product_group_id
-      ? { path: 'group', product_group_id: normalized.product_group_id }
-      : pdpUrl
-        ? { path: 'external', external: { url: pdpUrl, query: candidateLabel } }
-        : productId
-          ? {
-              path: 'resolve',
-              product_ref: {
-                product_id: normalized.product_id,
-                ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
-              },
-              external: { query: candidateLabel },
-            }
+      ? {
+          path: 'group',
+          product_group_id: normalized.product_group_id,
+          ...(externalPdpUrl ? { external: { url: externalPdpUrl, query: candidateLabel } } : {}),
+        }
+      : resolveProductRef
+        ? {
+            path: 'resolve',
+            product_ref: resolveProductRef,
+            external: {
+              ...(externalPdpUrl ? { url: externalPdpUrl } : {}),
+              query: candidateLabel,
+            },
+          }
+        : externalPdpUrl
+          ? { path: 'external', external: { url: externalPdpUrl, query: candidateLabel } }
           : { path: 'external', external: { query: candidateLabel } };
+  const primaryPdpUrl = internalPdpUrl || externalPdpUrl;
 
   return {
     kind: 'similar',
@@ -43676,7 +43742,8 @@ function normalizePoolAlternativeRow(row, {
       ...(normalized.brand ? { brand: normalized.brand } : {}),
       name: pickFirstTrimmed(normalized.display_name, normalized.name),
       ...(normalized.category ? { category: normalized.category } : {}),
-      ...(pdpUrl ? { pdp_url: pdpUrl, url: pdpUrl } : {}),
+      ...(primaryPdpUrl ? { pdp_url: primaryPdpUrl, product_url: primaryPdpUrl, url: primaryPdpUrl } : {}),
+      ...(externalPdpUrl ? { external_redirect_url: externalPdpUrl } : {}),
       ...(normalized.price && typeof normalized.price === 'object' ? { price: normalized.price } : {}),
     },
     ...(normalized.brand ? { brand: normalized.brand } : {}),

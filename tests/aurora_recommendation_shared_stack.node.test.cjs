@@ -290,6 +290,88 @@ test('shared coarse classifier keeps body cream and beauty tools out of face-moi
   assert.equal(brush.coarse_valid_for_target, false);
 });
 
+test('guidance-only moisturizer classifier separates strong/supportive rows from noisy moisturizer-like candidates', () => {
+  const strong = classifyBeautyCoarseCandidate({
+    display_name: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair ceramide moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+  });
+  const supportive = classifyBeautyCoarseCandidate({
+    display_name: 'Rose Ceramide Cream',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const generic = classifyBeautyCoarseCandidate({
+    display_name: 'Mattifying Moisturizer',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const duo = classifyBeautyCoarseCandidate({
+    display_name: 'Strength Trainer Peptide Boost Moisturizer Duo',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const tint = classifyBeautyCoarseCandidate({
+    display_name: 'Positive Light Tinted Moisturizer',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const peel = classifyBeautyCoarseCandidate({
+    display_name: 'Hydrating Milky Peel',
+    category: 'peel',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const sample = classifyBeautyCoarseCandidate({
+    display_name: '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair ceramide moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+  });
+
+  assert.equal(strong.target_relevance_class, 'strong_goal_family');
+  assert.equal(strong.coarse_valid_for_target, true);
+  assert.equal(supportive.target_relevance_class, 'supportive_family');
+  assert.equal(supportive.coarse_valid_for_target, true);
+  assert.equal(generic.target_relevance_class, 'generic_family');
+  assert.equal(generic.coarse_valid_for_target, false);
+  assert.equal(duo.offer_type, 'duo');
+  assert.equal(duo.target_relevance_class, 'adjacent_noise');
+  assert.equal(duo.coarse_valid_for_target, false);
+  assert.equal(tint.target_relevance_class, 'hard_invalid');
+  assert.equal(tint.noise_reason, 'tint');
+  assert.equal(peel.target_relevance_class, 'hard_invalid');
+  assert.equal(peel.noise_reason, 'peel');
+  assert.equal(sample.offer_type, 'sample');
+  assert.equal(sample.coarse_valid_for_target, true);
+});
+
 test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
   const targetContext = resolveRecommendationTargetContext({
     text: 'I need something for night',

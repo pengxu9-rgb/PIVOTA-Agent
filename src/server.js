@@ -60,6 +60,8 @@ const {
   resolveBeautyCoarseStepFamily: resolveSharedBeautyCoarseStepFamily,
   classifyBeautyCoarseCandidate: classifySharedBeautyCoarseCandidate,
   buildBeautySkincareHitQualityDecision: buildSharedBeautySkincareHitQualityDecision,
+  normalizeGuidanceIntentStrength: normalizeSharedGuidanceIntentStrength,
+  classifyBeautyGuidanceQueryStrength: classifySharedBeautyGuidanceQueryStrength,
 } = require('./shared/beautyRecoCoarseClassifier');
 const {
   detectBrandEntities,
@@ -3364,6 +3366,16 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     bodyExternalCountForHealth,
   );
   const externalSeedReturnedCount = routeHealth.external_raw_count;
+  routeHealth.external_seed_rows_fetched = Math.max(
+    routeHealth.external_seed_rows_fetched,
+    intNonNegative(metadata.external_seed_returned_count),
+    bodyExternalCountForHealth,
+  );
+  routeHealth.external_seed_rows_built = Math.max(
+    routeHealth.external_seed_rows_built,
+    intNonNegative(metadata.external_seed_returned_count),
+    bodyExternalCountForHealth,
+  );
   routeHealth.external_seed_returned_count = externalSeedReturnedCount;
   routeHealth.merged_pre_limit_count = Math.max(
     routeHealth.merged_pre_limit_count != null
@@ -4311,6 +4323,207 @@ function buildTravelLookupSearchProductDedupeKey(product) {
   return buildSearchProductKey(product);
 }
 
+const GUIDANCE_PUBLIC_PDP_BASE_URL = String(
+  process.env.AURORA_PIVOTA_SHOP_URL ||
+    process.env.PIVOTA_SHOP_BASE_URL ||
+    process.env.AURORA_PDP_BASE_URL ||
+    'https://agent.pivota.cc',
+)
+  .trim()
+  .replace(/\/+$/, '');
+
+function normalizeGuidanceHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!/^https?:\/\//i.test(raw)) return '';
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return '';
+  }
+}
+
+function isGuidanceInternalPdpUrl(value) {
+  const normalized = normalizeGuidanceHttpUrl(value);
+  if (!normalized || !GUIDANCE_PUBLIC_PDP_BASE_URL) return false;
+  try {
+    const parsed = new URL(normalized);
+    const base = new URL(GUIDANCE_PUBLIC_PDP_BASE_URL);
+    if (parsed.origin !== base.origin) return false;
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const isPdpPath = segments.length === 2 && segments[0] === 'products' && Boolean(segments[1]);
+    const isBrowseRoute = String(parsed.searchParams.get('open') || '').trim().toLowerCase() === 'browse';
+    return isPdpPath && !isBrowseRoute;
+  } catch {
+    return false;
+  }
+}
+
+function buildGuidanceInternalPdpUrl({ productId, merchantId } = {}) {
+  const normalizedProductId = String(productId || '').trim();
+  if (!normalizedProductId || !GUIDANCE_PUBLIC_PDP_BASE_URL) return '';
+  try {
+    const url = new URL(`${GUIDANCE_PUBLIC_PDP_BASE_URL}/products/${encodeURIComponent(normalizedProductId)}`);
+    const normalizedMerchantId = String(merchantId || '').trim();
+    if (normalizedMerchantId) url.searchParams.set('merchant_id', normalizedMerchantId);
+    url.searchParams.set('entry', 'aurora_chatbox');
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function readGuidanceProductRefTarget(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const productId = String(raw.product_id || raw.productId || '').trim();
+  const merchantId = String(raw.merchant_id || raw.merchantId || '').trim();
+  if (!productId) return null;
+  return merchantId ? { product_id: productId, merchant_id: merchantId } : { product_id: productId };
+}
+
+function extractGuidanceProductGroupTarget(rawGroupId) {
+  const groupId = String(rawGroupId || '').trim();
+  if (!groupId || !groupId.startsWith('pg:')) return null;
+  const parts = groupId
+    .split(':')
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  if (parts.length < 3 || parts[0] !== 'pg') return null;
+  const merchantId = parts[1];
+  const productId = parts.slice(2).join(':');
+  if (!productId) return null;
+  return merchantId ? { product_id: productId, merchant_id: merchantId } : { product_id: productId };
+}
+
+function normalizeGuidanceDiscoveryProductPdpContract(product) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+
+  const row = { ...product };
+  const pdpOpen =
+    row.pdp_open && typeof row.pdp_open === 'object' && !Array.isArray(row.pdp_open)
+      ? { ...row.pdp_open }
+      : row.pdpOpen && typeof row.pdpOpen === 'object' && !Array.isArray(row.pdpOpen)
+        ? { ...row.pdpOpen }
+        : {};
+  const pdpOpenExternal =
+    pdpOpen.external && typeof pdpOpen.external === 'object' && !Array.isArray(pdpOpen.external)
+      ? { ...pdpOpen.external }
+      : {};
+  const subject =
+    pdpOpen.subject && typeof pdpOpen.subject === 'object' && !Array.isArray(pdpOpen.subject)
+      ? { ...pdpOpen.subject }
+      : {};
+
+  const explicitInternalUrl = [
+    row.pdp_url,
+    row.pdpUrl,
+    row.product_url,
+    row.productUrl,
+    row.url,
+    row.purchase_path,
+    row.purchasePath,
+  ]
+    .map(normalizeGuidanceHttpUrl)
+    .find((value) => Boolean(value) && isGuidanceInternalPdpUrl(value));
+
+  const canonicalRef =
+    readGuidanceProductRefTarget(row.canonical_product_ref) ||
+    readGuidanceProductRefTarget(pdpOpen.canonical_product_ref) ||
+    null;
+  const directRef =
+    canonicalRef ||
+    readGuidanceProductRefTarget(pdpOpen.product_ref) ||
+    readGuidanceProductRefTarget(row.product_ref) ||
+    (() => {
+      const productId = String(row.product_id || row.productId || row.id || '').trim();
+      const merchantId = String(row.merchant_id || row.merchantId || '').trim();
+      if (!productId) return null;
+      return merchantId ? { product_id: productId, merchant_id: merchantId } : { product_id: productId };
+    })();
+  const subjectProductGroupId =
+    String(subject.id || subject.product_group_id || subject.productGroupId || row.subject_product_group_id || row.subjectProductGroupId || row.product_group_id || row.productGroupId || '').trim() ||
+    null;
+  const groupTarget = extractGuidanceProductGroupTarget(subjectProductGroupId);
+
+  let internalUrl = explicitInternalUrl || '';
+  let nextPath = String(pdpOpen.path || '').trim().toLowerCase();
+  if (!internalUrl && canonicalRef?.product_id) {
+    internalUrl = buildGuidanceInternalPdpUrl({
+      productId: canonicalRef.product_id,
+      merchantId: canonicalRef.merchant_id,
+    });
+    nextPath = 'ref';
+    pdpOpen.product_ref = canonicalRef;
+  } else if (!internalUrl && groupTarget?.product_id) {
+    internalUrl = buildGuidanceInternalPdpUrl({
+      productId: groupTarget.product_id,
+      merchantId: groupTarget.merchant_id,
+    });
+    nextPath = 'group';
+    pdpOpen.product_group_id = subjectProductGroupId;
+    pdpOpen.subject = {
+      ...subject,
+      ...(subjectProductGroupId ? { id: subjectProductGroupId, product_group_id: subjectProductGroupId } : {}),
+    };
+  } else if (!internalUrl && directRef?.product_id) {
+    internalUrl = buildGuidanceInternalPdpUrl({
+      productId: directRef.product_id,
+      merchantId: directRef.merchant_id,
+    });
+    nextPath = 'resolve';
+    pdpOpen.product_ref = directRef;
+  }
+
+  const externalUrl = [
+    row.external_redirect_url,
+    row.externalRedirectUrl,
+    row.external_url,
+    row.externalUrl,
+    row.destination_url,
+    row.canonical_url,
+    row.url,
+    row.product_url,
+    row.productUrl,
+    row.purchase_path,
+    row.purchasePath,
+    row.pdp_url,
+    row.pdpUrl,
+    pdpOpenExternal.url,
+  ]
+    .map(normalizeGuidanceHttpUrl)
+    .find((value) => Boolean(value) && !isGuidanceInternalPdpUrl(value)) || '';
+  const externalQuery = String(
+    pdpOpenExternal.query ||
+      [row.brand, row.title || row.name || row.display_name].map((value) => String(value || '').trim()).filter(Boolean).join(' '),
+  ).trim();
+
+  if (externalUrl) {
+    row.external_redirect_url = externalUrl;
+    if (!row.external_url) row.external_url = externalUrl;
+    pdpOpen.external = {
+      ...pdpOpenExternal,
+      url: externalUrl,
+      ...(externalQuery ? { query: externalQuery } : {}),
+    };
+  }
+
+  if (internalUrl) {
+    row.pdp_url = internalUrl;
+    row.product_url = internalUrl;
+    row.url = internalUrl;
+    pdpOpen.path = nextPath || 'resolve';
+  } else if (externalUrl) {
+    row.pdp_url = externalUrl;
+    if (!row.product_url) row.product_url = externalUrl;
+    pdpOpen.path = 'external';
+  }
+
+  if (Object.keys(pdpOpen).length > 0) {
+    row.pdp_open = pdpOpen;
+  }
+
+  return row;
+}
+
 function normalizeSearchProductTitleForDedupe(product) {
   if (!product || typeof product !== 'object') return '';
   const title = String(
@@ -5073,6 +5286,30 @@ function hasFragranceSearchSignal(queryText) {
   );
 }
 
+function resolveGuidanceSearchStepStrength(rawValue, queryText, targetStepFamily = null) {
+  return (
+    normalizeSharedGuidanceIntentStrength(rawValue) ||
+    classifySharedBeautyGuidanceQueryStrength(queryText, {
+      queryTargetStepFamily: normalizeRecoTargetStep(targetStepFamily),
+    })
+  );
+}
+
+function mergeSearchCountMaps(...maps) {
+  const merged = {};
+  for (const source of maps) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    for (const [key, rawValue] of Object.entries(source)) {
+      const name = String(key || '').trim();
+      if (!name) continue;
+      const numeric = Number(rawValue);
+      if (!Number.isFinite(numeric) || numeric <= 0) continue;
+      merged[name] = Number(merged[name] || 0) + Math.max(0, Math.trunc(numeric));
+    }
+  }
+  return merged;
+}
+
 function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
@@ -5115,6 +5352,30 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (beautyQueryBucket) {
     const candidateBucket = classifyBeautyBucketFromText(candidateText);
     if (!isBeautyBucketCompatibleForQuery(candidateBucket, beautyQueryBucket)) return false;
+  }
+
+  const targetStepFamily = normalizeRecoTargetStep(
+    options?.queryTargetStepFamily || options?.targetStepFamily,
+  );
+  const uiSurface = normalizeSearchUiSurface(options?.uiSurface || options?.ui_surface || null);
+  const guidanceOnlyMoisturizer =
+    uiSurface === 'ingredient_plan_guidance_only' && targetStepFamily === 'moisturizer';
+  const queryStepStrength = guidanceOnlyMoisturizer
+    ? resolveGuidanceSearchStepStrength(options?.queryStepStrength, queryText, targetStepFamily)
+    : null;
+  if (guidanceOnlyMoisturizer) {
+    const coarse = classifySharedBeautyCoarseCandidate(product, {
+      queryTargetStepFamily: targetStepFamily,
+      queryText,
+      guidanceOnlyDiscovery: true,
+      queryStepStrength,
+    });
+    if (coarse.target_relevance_class === 'hard_invalid' || coarse.target_relevance_class === 'adjacent_noise') {
+      return false;
+    }
+    if (queryStepStrength !== 'generic_family' && coarse.target_relevance_class === 'generic_family') {
+      return false;
+    }
   }
 
   const normalizedQuery =
@@ -5488,6 +5749,8 @@ function scoreDirectExternalSeedProduct({
   anchorTokens,
   queryTokens,
   targetStepFamily,
+  uiSurface = null,
+  queryStepStrength = null,
 }) {
   const titleText = normalizeSearchTextForMatch(
     [
@@ -5515,6 +5778,10 @@ function scoreDirectExternalSeedProduct({
       .filter(Boolean)
       .join(' '),
   );
+  const guidanceOnlyDiscovery = normalizeSearchUiSurface(uiSurface) === 'ingredient_plan_guidance_only';
+  const effectiveQueryStepStrength = guidanceOnlyDiscovery
+    ? resolveGuidanceSearchStepStrength(queryStepStrength, queryText, targetStepFamily)
+    : null;
   const candidateText =
     buildSharedBeautyCandidateText(product) ||
     buildFallbackCandidateText(product) ||
@@ -5522,6 +5789,9 @@ function scoreDirectExternalSeedProduct({
     auxiliaryText;
   const coarse = classifySharedBeautyCoarseCandidate(product, {
     queryTargetStepFamily: targetStepFamily,
+    queryText,
+    guidanceOnlyDiscovery,
+    queryStepStrength: effectiveQueryStepStrength,
   });
   const relation = targetStepFamily
     ? getRecoTargetFamilyRelation(targetStepFamily, coarse?.coarse_step_family || '')
@@ -5550,6 +5820,22 @@ function scoreDirectExternalSeedProduct({
       if (coarse?.domain_scope === 'bodycare') score -= 10;
       if (/\b(ceramide|barrier|repair|soothing|sensitive)\b/.test(titleText)) score += 6;
     }
+  }
+
+  if (guidanceOnlyDiscovery && targetStepFamily === 'moisturizer') {
+    if (coarse?.target_relevance_class === 'strong_goal_family') score += 42;
+    else if (coarse?.target_relevance_class === 'supportive_family') score += 24;
+    else if (coarse?.target_relevance_class === 'generic_family') score -= 12;
+    else if (coarse?.target_relevance_class === 'adjacent_noise') score -= 48;
+    else if (coarse?.target_relevance_class === 'hard_invalid') score -= 120;
+
+    if (coarse?.offer_type === 'sample') score -= 4;
+    if (coarse?.noise_reason === 'bundle') score -= 36;
+    if (coarse?.noise_reason === 'brightening') score -= 18;
+    if (coarse?.noise_reason === 'tint') score -= 36;
+    if (coarse?.noise_reason === 'spf') score -= 30;
+    if (coarse?.noise_reason === 'peel') score -= 30;
+    if (/\b(barrier|repair|ceramide|fragrance[- ]free|sensitive)\b/.test(titleText)) score += 10;
   }
 
   if (coarse?.application_mode === 'rinse_off' && targetStepFamily !== 'cleanser') score -= 12;
@@ -5600,6 +5886,13 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   );
   const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
   const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
+  const queryStepStrength = guidanceOnlyDiscovery
+    ? resolveGuidanceSearchStepStrength(
+        metadata?.query_step_strength || search?.query_step_strength || search?.queryStepStrength,
+        queryText,
+        targetStepFamily,
+      )
+    : null;
   const requestedProductOnly =
     parseQueryBoolean(metadata?.product_only_requested ?? search?.product_only ?? search?.productOnly) === true;
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
@@ -5678,6 +5971,25 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       rawProducts.push(product);
     }
 
+    const prefilterCandidateClassCounts = {};
+    const prefilterNoiseDropCounts = {};
+    for (const product of rawProducts) {
+      const coarse = classifySharedBeautyCoarseCandidate(product, {
+        queryTargetStepFamily: targetStepFamily,
+        queryText,
+        guidanceOnlyDiscovery,
+        queryStepStrength,
+      });
+      if (coarse?.target_relevance_class) {
+        prefilterCandidateClassCounts[coarse.target_relevance_class] =
+          Number(prefilterCandidateClassCounts[coarse.target_relevance_class] || 0) + 1;
+      }
+      if (coarse?.noise_reason) {
+        prefilterNoiseDropCounts[coarse.noise_reason] =
+          Number(prefilterNoiseDropCounts[coarse.noise_reason] || 0) + 1;
+      }
+    }
+
     const rankedProducts = rawProducts
       .map((product) => {
         const score = scoreDirectExternalSeedProduct({
@@ -5687,11 +5999,16 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           anchorTokens,
           queryTokens,
           targetStepFamily,
+          uiSurface,
+          queryStepStrength,
         });
         const relevant = isSupplementCandidateRelevant(product, queryText, {
           normalizedQuery,
           anchorTokens,
           queryTokens,
+          targetStepFamily,
+          uiSurface,
+          queryStepStrength,
         });
         return { product, score, relevant };
       })
@@ -5712,6 +6029,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       if (!guidanceOnlyDiscovery || !requestedProductOnly) return true;
       const coarse = classifySharedBeautyCoarseCandidate(product, {
         queryTargetStepFamily: targetStepFamily,
+        queryText,
+        guidanceOnlyDiscovery,
+        queryStepStrength,
       });
       const blocked =
         coarse?.object_type === 'service' ||
@@ -5726,6 +6046,8 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       queryText,
       products: productOnlyProducts,
       queryTargetStepFamily: targetStepFamily,
+      guidanceOnlyDiscovery,
+      queryStepStrength,
     });
     const validKeys = new Set(
       (Array.isArray(skincareHitDecision?.valid_products) ? skincareHitDecision.valid_products : [])
@@ -5746,42 +6068,47 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       ? Math.max(0, Math.floor(Number(metadata.query_total)))
       : null;
 
+    const responseProducts = guidanceOnlyDiscovery
+      ? pagedProducts.map((product) => normalizeGuidanceDiscoveryProductPdpContract(product))
+      : pagedProducts;
+
     return {
       status: 'success',
       success: true,
-      products: pagedProducts,
+      products: responseProducts,
       total: scopedProducts.length,
       page: safePage,
-      page_size: pagedProducts.length,
+      page_size: responseProducts.length,
       reply: null,
       metadata: {
         query_source: 'agent_products_external_seed_direct',
         fetched_at: new Date().toISOString(),
         source_breakdown: {
           internal_count: 0,
-          external_seed_count: pagedProducts.length,
+          external_seed_count: responseProducts.length,
           stale_cache_used: false,
           strategy_applied: 'external_seed_only_direct',
         },
         external_seed_only_requested: true,
         external_seed_rows_fetched: rawProducts.length,
         external_seed_rows_built: scopedProducts.length,
-        external_seed_returned_count: pagedProducts.length,
+        external_seed_returned_count: responseProducts.length,
         raw_result_count: skincareHitDecision?.applied
           ? skincareHitDecision.raw_result_count
           : productOnlyProducts.length,
-        products_returned_count: pagedProducts.length,
+        products_returned_count: responseProducts.length,
         ...(guidanceOnlyDiscovery
           ? {
               product_only_applied: requestedProductOnly,
               service_rows_filtered_count: serviceRowsFilteredCount,
               discovery_source_used:
-                pagedProducts.length > 0 ? 'external_seed_direct' : 'external_seed_direct_exhausted',
+                responseProducts.length > 0 ? 'external_seed_direct' : 'external_seed_direct_exhausted',
+              query_step_strength: queryStepStrength,
               query_index: queryIndex,
               query_exhausted:
                 queryIndex != null && queryTotal != null
                   ? queryTotal > 0 && queryIndex >= queryTotal - 1
-                  : pagedProducts.length === 0,
+                  : responseProducts.length === 0,
             }
           : {}),
         search_decision: {
@@ -5807,10 +6134,30 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           exact_step_topk_count: skincareHitDecision?.applied
             ? skincareHitDecision.exact_step_topk_count
             : 0,
+          strong_goal_family_topk_count: skincareHitDecision?.applied
+            ? skincareHitDecision.strong_goal_family_topk_count
+            : 0,
+          supportive_same_family_topk_count: skincareHitDecision?.applied
+            ? skincareHitDecision.supportive_same_family_topk_count
+            : 0,
+          query_step_strength: skincareHitDecision?.applied
+            ? skincareHitDecision.query_step_strength
+            : queryStepStrength,
+          step_success_class: skincareHitDecision?.applied
+            ? skincareHitDecision.step_success_class
+            : null,
+          candidate_class_counts: mergeSearchCountMaps(
+            prefilterCandidateClassCounts,
+            skincareHitDecision?.applied ? skincareHitDecision.candidate_class_counts : null,
+          ),
+          noise_drop_counts: mergeSearchCountMaps(
+            prefilterNoiseDropCounts,
+            skincareHitDecision?.applied ? skincareHitDecision.noise_drop_counts : null,
+          ),
           raw_result_count: skincareHitDecision?.applied
             ? skincareHitDecision.raw_result_count
             : productOnlyProducts.length,
-          products_returned_count: pagedProducts.length,
+          products_returned_count: responseProducts.length,
           ...(guidanceOnlyDiscovery
             ? {
                 product_only_applied: requestedProductOnly,
@@ -5961,6 +6308,9 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       anchorTokens,
       queryTokens,
       brandTerms,
+      targetStepFamily: query.target_step_family,
+      uiSurface: query.ui_surface,
+      queryStepStrength: query.query_step_strength,
     }),
   );
   const filteredOutIrrelevantCount = Math.max(0, mergedProducts.length - relevantProducts.length);
@@ -9233,9 +9583,21 @@ function resolveBeautyCoarseStepFamily(product) {
   return resolveSharedBeautyCoarseStepFamily(product);
 }
 
-function buildBeautySkincareHitQualityDecision({ queryText, products, queryTargetStepFamily = null } = {}) {
+function buildBeautySkincareHitQualityDecision({
+  queryText,
+  products,
+  queryTargetStepFamily = null,
+  guidanceOnlyDiscovery = false,
+  queryStepStrength = null,
+} = {}) {
   return {
-    ...buildSharedBeautySkincareHitQualityDecision({ queryText, products, queryTargetStepFamily }),
+    ...buildSharedBeautySkincareHitQualityDecision({
+      queryText,
+      products,
+      queryTargetStepFamily,
+      guidanceOnlyDiscovery,
+      queryStepStrength,
+    }),
     contract_version: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   };
 }
@@ -14924,10 +15286,105 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           String(existingMeta.external_seed_skip_reason || '').trim() ||
           String(existingMeta.route_health?.external_seed_skip_reason || '').trim() ||
           null;
+        const guidanceUiSurface = normalizeSearchUiSurface(
+          existingMeta.ui_surface ||
+            req?.query?.ui_surface ||
+            req?.query?.uiSurface,
+        );
+        const guidanceTargetStepFamily = normalizeRecoTargetStep(
+          existingMeta.query_target_step_family ||
+            firstQueryParamValue(req?.query?.target_step_family || req?.query?.targetStepFamily),
+        );
+        const guidanceQueryText = String(
+          req?.query?.query ||
+            existingMeta.search_trace?.raw_query ||
+            '',
+        ).trim();
+        let normalizedSearchDecision = existingSearchDecision;
+        let normalizedGuidanceProducts = Array.isArray(finalBody.products) ? finalBody.products : [];
+        if (
+          guidanceUiSurface === 'ingredient_plan_guidance_only' &&
+          guidanceTargetStepFamily &&
+          guidanceQueryText
+        ) {
+          normalizedGuidanceProducts = normalizedGuidanceProducts.map((product) =>
+            normalizeGuidanceDiscoveryProductPdpContract(product),
+          );
+          finalBody = {
+            ...finalBody,
+            products: normalizedGuidanceProducts,
+          };
+          const guidanceDecision = buildSharedBeautySkincareHitQualityDecision({
+            queryText: guidanceQueryText,
+            products: normalizedGuidanceProducts,
+            queryTargetStepFamily: guidanceTargetStepFamily,
+            guidanceOnlyDiscovery: true,
+            queryStepStrength: resolveGuidanceSearchStepStrength(
+              existingSearchDecision?.query_step_strength ??
+                existingMeta.query_step_strength ??
+                req?.query?.query_step_strength ??
+                req?.query?.queryStepStrength,
+              guidanceQueryText,
+              guidanceTargetStepFamily,
+            ),
+          });
+          if (guidanceDecision?.applied) {
+            normalizedSearchDecision = {
+              ...existingSearchDecision,
+              contract_version:
+                guidanceDecision.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+              hit_quality: guidanceDecision.hit_quality,
+              invalid_hit_reason: guidanceDecision.invalid_hit_reason,
+              query_bucket: guidanceDecision.query_bucket,
+              query_target_step_family: guidanceDecision.query_target_step_family,
+              topk_bucket_mix: guidanceDecision.topk_bucket_mix,
+              same_family_topk_count: guidanceDecision.same_family_topk_count,
+              exact_step_topk_count: guidanceDecision.exact_step_topk_count,
+              strong_goal_family_topk_count: guidanceDecision.strong_goal_family_topk_count,
+              supportive_same_family_topk_count: guidanceDecision.supportive_same_family_topk_count,
+              query_step_strength: guidanceDecision.query_step_strength,
+              step_success_class: guidanceDecision.step_success_class || null,
+              candidate_class_counts: mergeSearchCountMaps(
+                existingSearchDecision.candidate_class_counts,
+                guidanceDecision.candidate_class_counts,
+              ),
+              noise_drop_counts: mergeSearchCountMaps(
+                existingSearchDecision.noise_drop_counts,
+                guidanceDecision.noise_drop_counts,
+              ),
+              raw_result_count: guidanceDecision.raw_result_count,
+              products_returned_count: guidanceDecision.products_returned_count,
+              product_only_applied:
+                existingMeta.product_only_applied === true ||
+                parseQueryBoolean(req?.query?.product_only ?? req?.query?.productOnly) === true,
+              service_rows_filtered_count: Math.max(
+                0,
+                Number(existingMeta.service_rows_filtered_count || 0) || 0,
+              ),
+              discovery_source_used:
+                String(existingMeta.discovery_source_used || '').trim() ||
+                inferGuidanceDiscoverySourceUsed(
+                  normalizedGuidanceProducts,
+                  parseQueryBoolean(
+                    req?.query?.allow_external_seed ?? req?.query?.allowExternalSeed,
+                  ) === true,
+                ),
+              query_index:
+                parseQueryNumber(
+                  existingMeta.query_index ??
+                    req?.query?.query_index ??
+                    req?.query?.queryIndex,
+                ) ?? null,
+              query_exhausted:
+                existingMeta.query_exhausted === true ||
+                (Array.isArray(finalBody.products) ? finalBody.products.length === 0 : true),
+            };
+          }
+        }
         const domainFilterDroppedExternal =
           Number(
             existingMeta.domain_filter_dropped_external ??
-              existingSearchDecision.domain_filter_dropped_external ??
+              normalizedSearchDecision.domain_filter_dropped_external ??
               existingRouteDebugPolicy?.ambiguity?.domain_filter_dropped_external ??
               0,
           ) || 0;
@@ -14946,6 +15403,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             semantic_retry_hits: Math.max(0, Number(existingMeta.semantic_retry_hits || 0) || 0),
             domain_filter_dropped_external: Math.max(0, domainFilterDroppedExternal),
             external_fill_gate_reason: defaultExternalFillGateReason,
+            ...(normalizedSearchDecision && Object.keys(normalizedSearchDecision).length > 0
+              ? { search_decision: normalizedSearchDecision }
+              : {}),
           },
         };
       }
@@ -17656,6 +18116,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               search?.targetStepFamily ||
               null,
           );
+          const guidanceQueryStepStrength = guidanceOnlyDiscovery
+            ? resolveGuidanceSearchStepStrength(
+                metadata?.query_step_strength ||
+                  effectivePayload?.metadata?.query_step_strength ||
+                  payload?.metadata?.query_step_strength ||
+                  search?.query_step_strength ||
+                  search?.queryStepStrength ||
+                  null,
+                cacheQueryText,
+                guidanceTargetStepFamily,
+              )
+            : null;
           let internalGuidanceHitDecision = null;
           let guidanceNeedsPrimaryFillSupplement = false;
           let baselineInternalProducts = internalProductsAfterAnchor;
@@ -17664,6 +18136,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryText: cacheQueryText,
               products: internalProductsAfterAnchor,
               queryTargetStepFamily: guidanceTargetStepFamily,
+              guidanceOnlyDiscovery,
+              queryStepStrength: guidanceQueryStepStrength,
             });
             const guidanceValidKeys = new Set(
               (Array.isArray(internalGuidanceHitDecision?.valid_products)
@@ -17833,6 +18307,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         normalizedQuery: normalizedLookupQuery,
                         anchorTokens: lookupAnchorTokens,
                         queryTokens: lookupQueryTokens,
+                        targetStepFamily: guidanceTargetStepFamily,
+                        uiSurface: cacheUiSurface,
+                        queryStepStrength: guidanceQueryStepStrength,
                       })
                     ) {
                       continue;
@@ -20268,7 +20745,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               const seen = new Set(primaryProducts.map((product) => buildSearchProductKey(product)).filter(Boolean));
               const toAppend = [];
               for (const product of secondaryProducts) {
-                if (!isSupplementCandidateRelevant(product, queryText)) continue;
+                if (!isSupplementCandidateRelevant(product, queryText, {
+                  targetStepFamily:
+                    queryParams?.target_step_family || queryParams?.targetStepFamily || null,
+                  uiSurface: queryParams?.ui_surface || queryParams?.uiSurface || null,
+                  queryStepStrength:
+                    queryParams?.query_step_strength || queryParams?.queryStepStrength || null,
+                })) continue;
                 const key = buildSearchProductKey(product);
                 if (!key || seen.has(key)) continue;
                 seen.add(key);
@@ -21190,6 +21673,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const requestedQueryTotal = parseQueryNumber(
         req?.query?.query_total ?? req?.query?.queryTotal ?? queryParams?.query_total ?? queryParams?.queryTotal,
       );
+      const requestedQueryStepStrength = guidanceOnlyDiscovery
+        ? resolveGuidanceSearchStepStrength(
+            req?.query?.query_step_strength ??
+              req?.query?.queryStepStrength ??
+              queryParams?.query_step_strength ??
+              queryParams?.queryStepStrength ??
+              existingMeta?.query_step_strength,
+            queryText,
+            requestedTargetStepFamily,
+          )
+        : null;
       const requestedExternalSeedStrategy = String(
         firstQueryParamValue(
           req?.query?.external_seed_strategy ||
@@ -21206,6 +21700,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText,
         products: rawProductsForQualityGate,
         queryTargetStepFamily: requestedTargetStepFamily,
+        guidanceOnlyDiscovery,
+        queryStepStrength: requestedQueryStepStrength,
       });
       if (skincareHitDecision.applied) {
         const existingSearchDecision =
@@ -21278,6 +21774,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           topk_bucket_mix: skincareHitDecision.topk_bucket_mix,
           same_family_topk_count: skincareHitDecision.same_family_topk_count,
           exact_step_topk_count: skincareHitDecision.exact_step_topk_count,
+          strong_goal_family_topk_count: skincareHitDecision.strong_goal_family_topk_count,
+          supportive_same_family_topk_count: skincareHitDecision.supportive_same_family_topk_count,
+          query_step_strength: skincareHitDecision.query_step_strength || requestedQueryStepStrength,
+          step_success_class: skincareHitDecision.step_success_class || null,
+          candidate_class_counts: mergeSearchCountMaps(
+            existingSearchDecision.candidate_class_counts,
+            skincareHitDecision.candidate_class_counts,
+          ),
+          noise_drop_counts: mergeSearchCountMaps(
+            existingSearchDecision.noise_drop_counts,
+            skincareHitDecision.noise_drop_counts,
+          ),
           raw_result_count: skincareHitDecision.raw_result_count,
           products_returned_count: skincareHitDecision.products_returned_count,
           ...(guidanceOnlyDiscovery
@@ -21288,6 +21796,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   nextProducts,
                   discoveryAllowExternalSeed,
                 ),
+                query_step_strength: skincareHitDecision.query_step_strength || requestedQueryStepStrength,
                 query_index: normalizedQueryIndex,
                 query_exhausted:
                   normalizedQueryIndex != null && normalizedQueryTotal != null
@@ -21310,6 +21819,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   product_only_applied: guidanceOnlyProductOnlyApplied,
                   service_rows_filtered_count: serviceRowsFilteredCount,
                   discovery_source_used: nextSearchDecision.discovery_source_used,
+                  query_step_strength: nextSearchDecision.query_step_strength,
                   query_index: normalizedQueryIndex,
                   query_exhausted: nextSearchDecision.query_exhausted,
                 }
@@ -21548,6 +22058,112 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             low_confidence_reasons: normalizedLowConfidenceReasons,
           },
         };
+      }
+
+      const finalGuidanceUiSurface = normalizeSearchUiSurface(
+        enriched?.metadata?.ui_surface ||
+          metadata?.ui_surface ||
+          effectivePayload?.metadata?.ui_surface ||
+          effectivePayload?.context?.ui_surface ||
+          req?.query?.ui_surface ||
+          req?.query?.uiSurface ||
+          queryParams?.ui_surface ||
+          queryParams?.uiSurface,
+      );
+      if (finalGuidanceUiSurface === 'ingredient_plan_guidance_only' && requestedTargetStepFamily) {
+        const finalGuidanceMeta =
+          enriched?.metadata && typeof enriched.metadata === 'object' && !Array.isArray(enriched.metadata)
+            ? enriched.metadata
+            : {};
+        const finalGuidanceProducts = Array.isArray(enriched?.products) ? enriched.products : [];
+        const finalGuidanceDecision = buildSharedBeautySkincareHitQualityDecision({
+          queryText,
+          products: finalGuidanceProducts,
+          queryTargetStepFamily: requestedTargetStepFamily,
+          guidanceOnlyDiscovery: true,
+          queryStepStrength:
+            resolveGuidanceSearchStepStrength(
+              finalGuidanceMeta.query_step_strength ??
+                req?.query?.query_step_strength ??
+                req?.query?.queryStepStrength,
+              queryText,
+              requestedTargetStepFamily,
+            ),
+        });
+        const existingFinalGuidanceDecision =
+          finalGuidanceMeta.search_decision &&
+          typeof finalGuidanceMeta.search_decision === 'object' &&
+          !Array.isArray(finalGuidanceMeta.search_decision)
+            ? finalGuidanceMeta.search_decision
+            : {};
+        if (finalGuidanceDecision?.applied) {
+          enriched = {
+            ...enriched,
+            metadata: {
+              ...finalGuidanceMeta,
+              search_decision: {
+                ...existingFinalGuidanceDecision,
+                contract_version:
+                  finalGuidanceDecision.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+                hit_quality: finalGuidanceDecision.hit_quality,
+                invalid_hit_reason: finalGuidanceDecision.invalid_hit_reason,
+                query_bucket: finalGuidanceDecision.query_bucket,
+                query_target_step_family: finalGuidanceDecision.query_target_step_family,
+                topk_bucket_mix: finalGuidanceDecision.topk_bucket_mix,
+                same_family_topk_count: finalGuidanceDecision.same_family_topk_count,
+                exact_step_topk_count: finalGuidanceDecision.exact_step_topk_count,
+                strong_goal_family_topk_count: finalGuidanceDecision.strong_goal_family_topk_count,
+                supportive_same_family_topk_count: finalGuidanceDecision.supportive_same_family_topk_count,
+                query_step_strength: finalGuidanceDecision.query_step_strength,
+                step_success_class: finalGuidanceDecision.step_success_class || null,
+                candidate_class_counts: mergeSearchCountMaps(
+                  existingFinalGuidanceDecision.candidate_class_counts,
+                  finalGuidanceDecision.candidate_class_counts,
+                ),
+                noise_drop_counts: mergeSearchCountMaps(
+                  existingFinalGuidanceDecision.noise_drop_counts,
+                  finalGuidanceDecision.noise_drop_counts,
+                ),
+                raw_result_count: finalGuidanceDecision.raw_result_count,
+                products_returned_count: finalGuidanceDecision.products_returned_count,
+                product_only_applied:
+                  finalGuidanceMeta.product_only_applied === true ||
+                  parseQueryBoolean(
+                    req?.query?.product_only ??
+                      req?.query?.productOnly ??
+                      queryParams?.product_only ??
+                      queryParams?.productOnly,
+                  ) === true,
+                service_rows_filtered_count: Math.max(
+                  0,
+                  Number(finalGuidanceMeta.service_rows_filtered_count || 0) || 0,
+                ),
+                discovery_source_used:
+                  String(finalGuidanceMeta.discovery_source_used || '').trim() ||
+                  inferGuidanceDiscoverySourceUsed(
+                    finalGuidanceProducts,
+                    parseQueryBoolean(
+                      req?.query?.allow_external_seed ??
+                        req?.query?.allowExternalSeed ??
+                        queryParams?.allow_external_seed ??
+                        queryParams?.allowExternalSeed,
+                    ) === true,
+                  ),
+                query_index:
+                  parseQueryNumber(
+                    finalGuidanceMeta.query_index ??
+                      req?.query?.query_index ??
+                      req?.query?.queryIndex ??
+                      queryParams?.query_index ??
+                      queryParams?.queryIndex,
+                  ) ?? null,
+                query_exhausted:
+                  finalGuidanceMeta.query_exhausted === true ||
+                  finalGuidanceProducts.length === 0,
+              },
+            },
+          };
+        }
       }
 
       if (

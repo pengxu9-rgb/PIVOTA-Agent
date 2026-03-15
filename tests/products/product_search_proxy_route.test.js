@@ -2647,6 +2647,19 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         merchant_id: 'external_seed',
         product_id: 'ext_rose_ceramide_1',
         title: 'Rose Ceramide Cream',
+        pdp_url:
+          'https://agent.pivota.cc/products/ext_rose_ceramide_1?merchant_id=external_seed&entry=aurora_chatbox',
+        external_redirect_url: 'https://shop.example.com/products/rose-ceramide-cream',
+        pdp_open: expect.objectContaining({
+          path: 'resolve',
+          product_ref: {
+            product_id: 'ext_rose_ceramide_1',
+            merchant_id: 'external_seed',
+          },
+          external: expect.objectContaining({
+            url: 'https://shop.example.com/products/rose-ceramide-cream',
+          }),
+        }),
       }),
     );
     expect(resp.body.metadata).toEqual(
@@ -2654,13 +2667,148 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         query_source: 'agent_products_external_seed_direct',
         external_seed_only_requested: true,
         external_seed_returned_count: resp.body.products.length,
+        external_seed_rows_fetched: expect.any(Number),
+        external_seed_rows_built: expect.any(Number),
         product_only_applied: true,
       }),
     );
+    expect(resp.body.metadata?.external_seed_rows_fetched).toBeGreaterThanOrEqual(resp.body.products.length);
+    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThanOrEqual(resp.body.products.length);
     expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
         hit_quality: 'valid_hit',
         query_target_step_family: 'moisturizer',
+        query_step_strength: 'strong_goal_family',
+      }),
+    );
+  });
+
+  test('guidance-only external-seed direct search demotes moisturizer noise and surfaces target-relevant rows first', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-external-seed-ranking-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed_apres',
+                market: 'US',
+                tool: '*',
+                title: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+                canonical_url: 'https://olehenriksen.com/products/apres-skin-multi-use-rich-rescue-cream',
+                destination_url: 'https://olehenriksen.com/products/apres-skin-multi-use-rich-rescue-cream',
+                availability: 'in stock',
+                seed_data: { brand: 'Olehenriksen', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_rose',
+                market: 'US',
+                tool: '*',
+                title: 'Rose Ceramide Cream',
+                canonical_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                destination_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                availability: 'in stock',
+                seed_data: { brand: 'PIXI BEAUTY', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_bundle',
+                market: 'US',
+                tool: '*',
+                title: 'Build Your Own AM + PM Moisturizer Bundle',
+                canonical_url: 'https://fentybeauty.com/products/build-your-own-am-pm-moisturizer-bundle',
+                destination_url: 'https://fentybeauty.com/products/build-your-own-am-pm-moisturizer-bundle',
+                availability: 'in stock',
+                seed_data: { brand: 'Fenty Beauty', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_tint',
+                market: 'US',
+                tool: '*',
+                title: 'Positive Light Tinted Moisturizer',
+                canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer',
+                destination_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer',
+                availability: 'in stock',
+                seed_data: { brand: 'Rare Beauty', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_peel',
+                market: 'US',
+                tool: '*',
+                title: 'Hydrating Milky Peel',
+                canonical_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+                destination_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+                availability: 'in stock',
+                seed_data: { brand: 'PIXI BEAUTY', category: 'peel' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_vitc',
+                market: 'US',
+                tool: '*',
+                title: 'Vitamin C Brightening Boost Moisturizer',
+                canonical_url: 'https://skintific.com/products/vitamin-c-brightening-boost-moisturizer',
+                destination_url: 'https://skintific.com/products/vitamin-c-brightening-boost-moisturizer',
+                availability: 'in stock',
+                seed_data: { brand: 'SKINTIFIC', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'barrier repair moisturizer',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        target_step_family: 'moisturizer',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.slice(0, 2).map((row) => row.title)).toEqual([
+      'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+      'Rose Ceramide Cream',
+    ]);
+    expect(resp.body.products.some((row) => /Tinted Moisturizer|Milky Peel/i.test(String(row.title || '')))).toBe(false);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        query_step_strength: 'supportive_family',
+        strong_goal_family_topk_count: 1,
+        supportive_same_family_topk_count: 1,
+        candidate_class_counts: expect.objectContaining({
+          strong_goal_family: expect.any(Number),
+          supportive_family: expect.any(Number),
+        }),
+        noise_drop_counts: expect.objectContaining({
+          bundle: 1,
+          tint: 1,
+          peel: 1,
+          brightening: 1,
+        }),
       }),
     );
   });
@@ -2801,22 +2949,37 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           merchant_id: 'external_seed',
           product_id: 'ext_rose_ceramide_1',
           title: 'Rose Ceramide Cream',
+          pdp_url:
+            'https://agent.pivota.cc/products/ext_rose_ceramide_1?merchant_id=external_seed&entry=aurora_chatbox',
+          pdp_open: expect.objectContaining({
+            path: 'resolve',
+            product_ref: {
+              product_id: 'ext_rose_ceramide_1',
+              merchant_id: 'external_seed',
+            },
+          }),
         }),
       ]),
     );
-    expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+    expect(resp.body.metadata?.source_breakdown).toEqual(
       expect.objectContaining({
-        guidance_hit_quality: 'invalid_hit',
-        guidance_query_target_step_family: 'moisturizer',
-        guidance_scoped_internal_products_count: 0,
+        external_seed_count: expect.any(Number),
       }),
     );
-    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
+    expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBeGreaterThanOrEqual(1);
+    expect(['unified_relevance', 'supplement_internal_first']).toContain(
+      String(resp.body.metadata?.source_breakdown?.strategy_applied || ''),
+    );
+    expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
-        attempted: true,
-        applied: true,
+        contract_version: 'beauty_search_decision_v4',
+        hit_quality: 'valid_hit',
+        query_target_step_family: 'moisturizer',
       }),
     );
+    expect(resp.body.metadata?.external_seed_rows_fetched).toBeGreaterThanOrEqual(1);
+    expect(resp.body.metadata?.external_seed_rows_built).toBeGreaterThanOrEqual(1);
+    expect(resp.body.metadata?.external_seed_returned_count).toBeGreaterThanOrEqual(1);
     expect(externalSupplement.isDone()).toBe(true);
   });
 

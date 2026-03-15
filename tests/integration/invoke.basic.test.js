@@ -151,7 +151,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
-    expect(res.body.metadata?.search_decision?.contract_version).toBe('beauty_search_decision_v3');
+    expect(res.body.metadata?.search_decision?.contract_version).toBe('beauty_search_decision_v4');
     expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_tools_dominant');
     expect(res.body.metadata?.search_decision?.final_decision).toBe('invalid_hit');
     expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
