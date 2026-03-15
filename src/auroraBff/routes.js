@@ -23390,6 +23390,19 @@ function dedupeGuidanceOnlyQueries(queries) {
   return out;
 }
 
+function buildGuidanceOnlyIngredientSearchPhrases(target, ingredientCue = '') {
+  const rawIngredientName = pickFirstTrimmed(
+    target?.ingredient_name,
+    target?.ingredientName,
+    target?.ingredient_id,
+    target?.ingredientId,
+  );
+  const phrases = [];
+  if (rawIngredientName) phrases.push(String(rawIngredientName || '').trim().toLowerCase());
+  if (ingredientCue) phrases.push(String(ingredientCue || '').trim().toLowerCase());
+  return dedupeGuidanceOnlyQueries(phrases);
+}
+
 function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
   const safeLabel = String(label || '').trim();
   if (!safeLabel) return [];
@@ -23427,6 +23440,39 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
   return dedupeGuidanceOnlyQueries(queries).slice(0, 4);
 }
 
+function buildGuidanceOnlySupplementQueries(target, label, targetStepFamily, internalQueries = []) {
+  const safeLabel = String(label || '').trim();
+  const { ingredientCue, focusCue } = buildGuidanceOnlyDiscoveryContext(target);
+  const ingredientPhrases = buildGuidanceOnlyIngredientSearchPhrases(target, ingredientCue);
+  const queries = [];
+
+  if (targetStepFamily === 'moisturizer') {
+    if (focusCue && ingredientPhrases.length > 0) {
+      ingredientPhrases.forEach((phrase) => {
+        queries.push(`moisturizer ${focusCue} ${phrase} ${focusCue}`);
+        queries.push(`${focusCue} moisturizer ${phrase}`);
+      });
+    }
+    if (focusCue === 'barrier repair' && ingredientCue) {
+      queries.push(`${ingredientCue} barrier moisturizer`);
+      queries.push(`face moisturizer ${ingredientCue}`);
+    }
+    if (safeLabel) queries.push(safeLabel);
+    queries.push(...internalQueries.slice(0, 2));
+  } else if (targetStepFamily === 'serum') {
+    if (focusCue && ingredientPhrases.length > 0) {
+      ingredientPhrases.forEach((phrase) => {
+        queries.push(`${focusCue} serum ${phrase}`);
+      });
+    }
+    queries.push(...internalQueries.slice(0, 2));
+  } else {
+    queries.push(...internalQueries.slice(0, 2));
+  }
+
+  return dedupeGuidanceOnlyQueries(queries).slice(0, 4);
+}
+
 function buildGuidanceOnlyDiscoveryLadder(target, label) {
   const safeLabel = String(label || '').trim();
   if (!safeLabel) return [];
@@ -23440,13 +23486,15 @@ function buildGuidanceOnlyDiscoveryLadder(target, label) {
     external_seed_strategy: null,
     product_only: true,
   }));
-  const supplementQuery = internalQueries[Math.min(1, internalQueries.length - 1)] || internalQueries[0];
-  ladder.push({
-    query: supplementQuery,
-    target_step_family: targetStepFamily || null,
-    allow_external_seed: true,
-    external_seed_strategy: 'supplement_internal_first',
-    product_only: true,
+  const supplementQueries = buildGuidanceOnlySupplementQueries(target, safeLabel, targetStepFamily, internalQueries);
+  supplementQueries.forEach((query) => {
+    ladder.push({
+      query,
+      target_step_family: targetStepFamily || null,
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+      product_only: true,
+    });
   });
   return ladder;
 }

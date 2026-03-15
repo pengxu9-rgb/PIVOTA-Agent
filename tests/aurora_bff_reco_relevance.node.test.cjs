@@ -838,7 +838,8 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       clarificationNotice.payload.ask_3_questions.some((question) => String(question || '').includes('missing_')),
       false,
     );
-    for (const target of Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : []) {
+    const guidanceTargets = Array.isArray(ingredientPlanCard.payload?.targets) ? ingredientPlanCard.payload.targets : [];
+    for (const target of guidanceTargets) {
       assert.equal(target?.products?.mode, 'guidance_only');
       assert.equal(Array.isArray(target?.products?.example_product_types), true);
       assert.equal(target.products.example_product_types.length > 0, true);
@@ -852,6 +853,19 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
       assert.equal('competitors' in target, false);
       assert.equal('dupes' in target, false);
     }
+    assert.equal(
+      guidanceTargets.some((target) =>
+        Array.isArray(target?.products?.example_product_discovery_items)
+        && target.products.example_product_discovery_items.some((item) =>
+          Array.isArray(item?.query_ladder)
+          && item.query_ladder.some((step) =>
+            step
+            && step.allow_external_seed === true
+            && /moisturizer/i.test(String(step.query || ''))
+            && /ceramide/i.test(String(step.query || ''))
+            && /barrier repair/i.test(String(step.query || ''))))),
+      true,
+    );
   } finally {
     if (prevIngredientPlan === undefined) delete process.env.AURORA_INGREDIENT_PLAN_ENABLED;
     else process.env.AURORA_INGREDIENT_PLAN_ENABLED = prevIngredientPlan;
