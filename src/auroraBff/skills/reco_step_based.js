@@ -36,6 +36,44 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function uniqTrimmedStrings(values, limit = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const text = String(value || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function extractLatestRecoContext(request) {
+  const threadState = isPlainObject(request?.thread_state) ? request.thread_state : {};
+  const raw = isPlainObject(threadState.latest_reco_context) ? threadState.latest_reco_context : null;
+  if (!raw) return null;
+  const normalized = {
+    ...(pickFirstTrimmed(raw.reco_context_version) ? { reco_context_version: pickFirstTrimmed(raw.reco_context_version) } : {}),
+    ...(pickFirstTrimmed(raw.reco_context_source) ? { reco_context_source: pickFirstTrimmed(raw.reco_context_source) } : {}),
+    ...(pickFirstTrimmed(raw.reco_context_updated_at) ? { reco_context_updated_at: pickFirstTrimmed(raw.reco_context_updated_at) } : {}),
+    ...(pickFirstTrimmed(raw.source_detail) ? { source_detail: pickFirstTrimmed(raw.source_detail) } : {}),
+    ...(pickFirstTrimmed(raw.intent) ? { intent: pickFirstTrimmed(raw.intent) } : {}),
+    ...(pickFirstTrimmed(raw.trigger_source) ? { trigger_source: pickFirstTrimmed(raw.trigger_source) } : {}),
+    ...(pickFirstTrimmed(raw.goal) ? { goal: pickFirstTrimmed(raw.goal) } : {}),
+    ...(pickFirstTrimmed(raw.diagnosis_goal) ? { diagnosis_goal: pickFirstTrimmed(raw.diagnosis_goal) } : {}),
+    ...(pickFirstTrimmed(raw.target_step) ? { target_step: pickFirstTrimmed(raw.target_step).toLowerCase() } : {}),
+    ...(pickFirstTrimmed(raw.analysis_mode) ? { analysis_mode: pickFirstTrimmed(raw.analysis_mode) } : {}),
+    ...(pickFirstTrimmed(raw.artifact_gate_tier) ? { artifact_gate_tier: pickFirstTrimmed(raw.artifact_gate_tier) } : {}),
+    ...(typeof raw.reco_artifact_eligible === 'boolean' ? { reco_artifact_eligible: raw.reco_artifact_eligible } : {}),
+  };
+  const seedTerms = uniqTrimmedStrings(raw.seed_terms, 6);
+  if (seedTerms.length) normalized.seed_terms = seedTerms;
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 function buildRoutesCoreRunner() {
   if (typeof sharedRecoCoreRunnerOverride === 'function') return sharedRecoCoreRunnerOverride;
   const routes = require('../routes');
@@ -91,6 +129,13 @@ function buildClarifyMessage({ language, targetIngredient }) {
     : 'What type of product do you want first? For example, cleanser, serum, moisturizer, or sunscreen.';
 }
 
+function buildWeakContextMessage({ language, targetStep }) {
+  const stepLabel = localizeStepLabel(targetStep, language);
+  return language === 'CN'
+    ? `我已经知道你想找${stepLabel || '护肤产品'}，但这次无照片分析的上下文还不够强，暂时不能直接给出可靠商品。补一张清晰照片，或告诉我你现在的护肤流程/敏感情况后，我再继续收窄。`
+    : `I understand you want a ${stepLabel || 'skincare product'}, but this no-photo analysis still doesn't give me enough reliable context to choose one confidently. Add a clear photo, or share your current routine/sensitivity and I can narrow it down.`;
+}
+
 class RecoStepBasedSkill extends BaseSkill {
   constructor() {
     super('reco.step_based', '2.1.0');
@@ -135,7 +180,8 @@ class RecoStepBasedSkill extends BaseSkill {
 
   async execute(request, _llmGateway) {
     const lang = normalizeRecoLang(request.context?.locale);
-    const targetStep = String(request.params?.target_step || '').trim();
+    const latestRecoContext = extractLatestRecoContext(request);
+    const targetStep = pickFirstTrimmed(request.params?.target_step, latestRecoContext?.target_step);
     const targetIngredient = String(request.params?.target_ingredient || '').trim();
     const userQuestion = this._getUserQuestion(request);
     const profile = isPlainObject(request.context?.profile) ? request.context.profile : {};
@@ -150,7 +196,13 @@ class RecoStepBasedSkill extends BaseSkill {
       || (!artifactContextMeta && isPlainObject(request.context?.analysis_context_snapshot)
         ? request.context.analysis_context_snapshot
         : null);
-    const requestOverride = extractRequestOverrideFromRequest(request);
+    const requestOverride = (() => {
+      const base = extractRequestOverrideFromRequest(request);
+      const diagnosisGoal = pickFirstTrimmed(latestRecoContext?.diagnosis_goal, latestRecoContext?.goal);
+      if (Array.isArray(base.goals) && base.goals.length > 0) return base;
+      if (!diagnosisGoal) return base;
+      return { ...base, goals: [diagnosisGoal] };
+    })();
     const ctx = buildSkillCtx(request, lang);
     const coreMessage = userQuestion
       || (targetIngredient
@@ -198,6 +250,11 @@ class RecoStepBasedSkill extends BaseSkill {
           includeAlternatives: request.params?.include_alternatives === true,
           logger: console,
           recoTriggerSource: String(request.params?.entry_source || '').trim() || 'chat_skill',
+          latestRecoContext,
+          recoArtifactEligibleHint:
+            typeof latestRecoContext?.reco_artifact_eligible === 'boolean'
+              ? latestRecoContext.reco_artifact_eligible
+              : null,
         },
       });
     } catch (err) {
@@ -253,6 +310,7 @@ class RecoStepBasedSkill extends BaseSkill {
 
     if (sharedReco.needs_more_context) {
       transitionTerminalState('clarify');
+      const weakContext = latestRecoContext && latestRecoContext.reco_artifact_eligible === false;
       return {
         cards: [
           {
@@ -267,8 +325,12 @@ class RecoStepBasedSkill extends BaseSkill {
             sections: [
               {
                 type: 'text_answer',
-                text_en: buildClarifyMessage({ language: 'EN', targetIngredient }),
-                text_zh: buildClarifyMessage({ language: 'CN', targetIngredient }),
+                text_en: weakContext
+                  ? buildWeakContextMessage({ language: 'EN', targetStep })
+                  : buildClarifyMessage({ language: 'EN', targetIngredient }),
+                text_zh: weakContext
+                  ? buildWeakContextMessage({ language: 'CN', targetStep })
+                  : buildClarifyMessage({ language: 'CN', targetIngredient }),
               },
             ],
           },
@@ -296,6 +358,7 @@ class RecoStepBasedSkill extends BaseSkill {
           request_context_signature_version: sharedReco.request_context.request_context_signature_version,
           candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
           candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+          surface_reason: weakContext ? 'analysis_context_too_weak_for_step_reco' : null,
           fallback_mode: sharedReco.core_result.fallback_mode,
           mainline_status: 'needs_more_context',
           strictness_source: sharedReco.request_context.strictness_source,
@@ -308,6 +371,12 @@ class RecoStepBasedSkill extends BaseSkill {
       ? upstreamReco.norm.payload
       : {};
     const recommendationMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+    const surfaceReason = pickFirstTrimmed(
+      recommendationMeta.surface_reason,
+      payload.surface_reason,
+      recommendationMeta.products_empty_reason,
+      payload.products_empty_reason,
+    );
     const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
     const cards = [];
 
@@ -369,6 +438,7 @@ class RecoStepBasedSkill extends BaseSkill {
           request_context_signature_version: sharedReco.request_context.request_context_signature_version,
           candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
           candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+          surface_reason: surfaceReason || null,
           fallback_mode: sharedReco.core_result.fallback_mode,
           mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
           strictness_source: sharedReco.request_context.strictness_source,
@@ -384,6 +454,7 @@ class RecoStepBasedSkill extends BaseSkill {
       sourceMode: recommendationMeta.source_mode || '',
       telemetryReason: recommendationMeta.telemetry_failure_reason || '',
       catalogSkipReason: recommendationMeta.catalog_skip_reason || '',
+      surfaceReason,
     });
 
     return {
@@ -432,6 +503,7 @@ class RecoStepBasedSkill extends BaseSkill {
         request_context_signature_version: sharedReco.request_context.request_context_signature_version,
         candidate_pool_signature: sharedReco.candidate_pool.candidate_pool_signature,
         candidate_pool_signature_version: sharedReco.candidate_pool.candidate_pool_signature_version,
+        surface_reason: surfaceReason || null,
         fallback_mode: sharedReco.core_result.fallback_mode,
         mainline_status: upstreamReco.mainlineStatus || recommendationMeta.mainline_status || null,
         strictness_source: sharedReco.request_context.strictness_source,
@@ -520,12 +592,20 @@ class RecoStepBasedSkill extends BaseSkill {
     return nextActions;
   }
 
-  _buildNoResultMessage({ language, targetStep, targetIngredient, sourceMode, catalogSkipReason, telemetryReason }) {
+  _buildNoResultMessage({ language, targetStep, targetIngredient, sourceMode, catalogSkipReason, telemetryReason, surfaceReason }) {
     const stepLabel = localizeStepLabel(targetStep, language);
+    const normalizedSurfaceReason = String(surfaceReason || '').trim().toLowerCase();
     const transient = String(telemetryReason || '').trim().toLowerCase() === 'timeout_degraded'
       || String(sourceMode || '').trim().toLowerCase() === 'catalog_transient_fallback'
       || String(sourceMode || '').trim().toLowerCase() === 'llm_error'
       || String(catalogSkipReason || '').trim().toLowerCase() === 'fail_fast_open';
+
+    if (normalizedSurfaceReason === 'analysis_context_too_weak_for_step_reco') {
+      return {
+        en: buildWeakContextMessage({ language: 'EN', targetStep }),
+        zh: buildWeakContextMessage({ language: 'CN', targetStep }),
+      };
+    }
 
     if (transient) {
       return {
