@@ -822,6 +822,8 @@ test('/v1/analysis/skin: low-confidence guidance-only path does not synthesize a
       assert.equal(target?.products?.mode, 'guidance_only');
       assert.equal(Array.isArray(target?.products?.example_product_types), true);
       assert.equal(target.products.example_product_types.length > 0, true);
+      assert.equal(Array.isArray(target?.products?.example_product_discovery_items), true);
+      assert.equal(typeof target.products.example_product_discovery_items.length, 'number');
       assert.equal(Array.isArray(target?.products?.competitors), false);
       assert.equal(Array.isArray(target?.products?.dupes), false);
       assert.equal('competitors' in target, false);

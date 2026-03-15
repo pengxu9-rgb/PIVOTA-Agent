@@ -284,6 +284,10 @@ test('analysis guidance-only mode strips concrete product payloads before UI ren
   assert.equal(stripped.targets[0]?.products?.mode, 'guidance_only');
   assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_types), true);
   assert.equal(stripped.targets[0]?.products?.example_product_types.length > 0, true);
+  assert.equal(Array.isArray(stripped.targets[0]?.products?.example_product_discovery_items), true);
+  assert.equal(stripped.targets[0]?.products?.example_product_discovery_items.length > 0, true);
+  assert.equal(typeof stripped.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
+  assert.equal(stripped.targets[0]?.products?.note, 'Tap a product type to browse top matching products.');
   assert.equal('product_rows' in stripped.targets[0], false);
   assert.equal('competitors' in stripped.targets[0], false);
   assert.equal('dupes' in stripped.targets[0], false);
@@ -314,6 +318,9 @@ test('guidance-only ingredient plan cards never rehydrate concrete sku payloads 
   assert.equal(card.payload.targets[0]?.products?.mode, 'guidance_only');
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_types), true);
   assert.equal(card.payload.targets[0]?.products?.example_product_types.length > 0, true);
+  assert.equal(Array.isArray(card.payload.targets[0]?.products?.example_product_discovery_items), true);
+  assert.equal(card.payload.targets[0]?.products?.example_product_discovery_items.length > 0, true);
+  assert.equal(typeof card.payload.targets[0]?.products?.example_product_discovery_items[0]?.search_query, 'string');
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.competitors), false);
   assert.equal(Array.isArray(card.payload.targets[0]?.products?.dupes), false);
   assert.equal('external_fallback_used' in card.payload.targets[0], false);

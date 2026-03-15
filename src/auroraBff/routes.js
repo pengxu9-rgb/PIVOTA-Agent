@@ -23331,12 +23331,76 @@ function buildGuidanceOnlyProductExamples(target) {
   return ['ingredient-focused serum', 'fragrance-free moisturizer'];
 }
 
+function buildGuidanceOnlyDiscoveryContext(target) {
+  const ingredientId = pickFirstTrimmed(target?.ingredient_id, target?.ingredientId).toLowerCase();
+  const ingredientName = pickFirstTrimmed(target?.ingredient_name, target?.ingredientName).toLowerCase();
+  const text = `${ingredientId} ${ingredientName}`.trim();
+  if (/ceramide/.test(text)) {
+    return { ingredientCue: 'ceramide', focusCue: 'barrier repair' };
+  }
+  if (/panthenol|vitamin b5/.test(text)) {
+    return { ingredientCue: 'panthenol', focusCue: 'barrier repair' };
+  }
+  if (/hyalur|sodium hyaluronate/.test(text)) {
+    return { ingredientCue: 'hyaluronic acid', focusCue: 'hydrating' };
+  }
+  if (/niacinamide/.test(text)) {
+    return { ingredientCue: 'niacinamide', focusCue: 'balance' };
+  }
+  if (/centella|madecassoside|allantoin/.test(text)) {
+    return { ingredientCue: 'centella', focusCue: 'soothing' };
+  }
+  return { ingredientCue: '', focusCue: 'sensitive skin' };
+}
+
+function buildGuidanceOnlyDiscoveryQuery(target, label) {
+  const safeLabel = String(label || '').trim();
+  if (!safeLabel) return '';
+  const lower = safeLabel.toLowerCase();
+  const { ingredientCue, focusCue } = buildGuidanceOnlyDiscoveryContext(target);
+  const parts = [];
+  if (focusCue && !lower.includes(focusCue)) parts.push(focusCue);
+  if (ingredientCue && !lower.includes(ingredientCue)) parts.push(ingredientCue);
+  parts.push(safeLabel);
+  if (/\b(moisturizer|moisturiser|cream|barrier cream|gel cream|lotion|balm)\b/i.test(safeLabel) && !/\bface|facial\b/i.test(safeLabel)) {
+    parts.push('face');
+  }
+  parts.push('skincare');
+  return Array.from(
+    new Set(
+      parts
+        .map((part) => String(part || '').trim())
+        .filter(Boolean),
+    ),
+  ).join(' ');
+}
+
+function buildGuidanceOnlyProductDiscoveryItems(target, examples = []) {
+  const safeExamples = Array.isArray(examples) ? examples : [];
+  return safeExamples
+    .map((label, index) => {
+      const safeLabel = String(label || '').trim();
+      if (!safeLabel) return null;
+      const query = buildGuidanceOnlyDiscoveryQuery(target, safeLabel);
+      if (!query) return null;
+      return {
+        id: `guidance_example_${index + 1}`,
+        label: safeLabel,
+        search_query: query,
+        search_title: safeLabel,
+        source: 'guidance_only_example',
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildGuidanceOnlyProductBlock(target) {
   const examples = buildGuidanceOnlyProductExamples(target);
   return {
     mode: 'guidance_only',
     example_product_types: examples,
-    note: 'Examples are product types, not selected SKUs.',
+    example_product_discovery_items: buildGuidanceOnlyProductDiscoveryItems(target, examples),
+    note: 'Tap a product type to browse top matching products.',
   };
 }
 
