@@ -5087,10 +5087,10 @@ function hasBeautyIngredientIntentSignal(queryText) {
   const q = normalizeSearchTextForMatch(queryText);
   if (!q) return false;
   return (
-    /\b(copper|peptide|tripeptide|tetrapeptide|hexapeptide|retinol|retinal|niacinamide|ceramide|hyaluronic|ascorbic|vitamin c|salicylic|glycolic|lactic|mandelic|azelaic|tranexamic|benzoyl)\b/i.test(
+    /\b(copper|peptide|tripeptide|tetrapeptide|hexapeptide|retinol|retinal|niacinamide|ceramide|hyaluronic|ascorbic|vitamin c|salicylic|glycolic|lactic|mandelic|azelaic|tranexamic|benzoyl|panthenol|vitamin b5|centella|cica|allantoin|ectoin|madecassoside)\b/i.test(
       q,
     ) ||
-    /(铜肽|胜肽|视黄醇|烟酰胺|神经酰胺|玻尿酸|水杨酸|果酸|壬二酸)/.test(q)
+    /(铜肽|胜肽|视黄醇|烟酰胺|神经酰胺|玻尿酸|水杨酸|果酸|壬二酸|泛醇|维生素b5|积雪草|尿囊素|依克多因|羟基积雪草苷)/.test(q)
   );
 }
 
@@ -5099,7 +5099,7 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   const out = new Set();
   const pushToken = (token) => {
     const value = normalizeSearchTextForMatch(token);
-    if (!value || BEAUTY_FORM_FACTOR_TOKENS.has(value) || value.length < 3) return;
+    if (!value || BEAUTY_FORM_FACTOR_TOKENS.has(value) || (value.length < 3 && value !== 'b5')) return;
     out.add(value);
   };
 
@@ -5122,7 +5122,19 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   if (/\bretinol|retinal|retinoid/.test(normalized)) pushToken('retinol');
   if (/\bniacinamide/.test(normalized)) pushToken('niacinamide');
   if (/\bceramide/.test(normalized)) pushToken('ceramide');
+  if (/\bpanthenol|vitamin b5|\bb5\b/.test(normalized)) {
+    pushToken('panthenol');
+    pushToken('vitamin b5');
+    pushToken('b5');
+  }
   if (/\bhyaluronic/.test(normalized)) pushToken('hyaluronic');
+  if (/\bcentella|\bcica\b/.test(normalized)) {
+    pushToken('centella');
+    pushToken('cica');
+  }
+  if (/\ballantoin/.test(normalized)) pushToken('allantoin');
+  if (/\bectoin/.test(normalized)) pushToken('ectoin');
+  if (/\bmadecassoside/.test(normalized)) pushToken('madecassoside');
   if (/\bascorbic|vitamin c/.test(normalized)) pushToken('vitamin c');
   if (/\bsalicylic/.test(normalized)) pushToken('salicylic');
   if (/\bglycolic/.test(normalized)) pushToken('glycolic');
@@ -5955,6 +5967,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
   const searchPatterns = Array.from(
     new Set([...anchorTokens, ...queryTokens].map((token) => `%${String(token || '').trim()}%`).filter(Boolean)),
   ).slice(0, 12);
@@ -6068,7 +6081,10 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         });
         return { product, score, relevant };
       })
-      .filter((row) => row.relevant || row.score > 0)
+      .filter((row) => {
+        if (ingredientIntent) return row.relevant;
+        return row.relevant || row.score > 0;
+      })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         const aTitle = normalizeSearchTextForMatch(a.product?.title || a.product?.name || '');

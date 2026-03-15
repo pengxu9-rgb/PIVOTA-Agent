@@ -36,6 +36,7 @@ const SAMPLE_RE = /\b(sample|mini|travel size|trial size)\b/i;
 const TINT_RE = /\b(skin tint|tinted|tint(ed)? moisturizer|bb cream|cc cream|foundation|concealer)\b/i;
 const PEEL_RE = /\b(peel|exfoliant|exfoliating|resurfacing)\b/i;
 const SPF_RE = /\b(spf\s*\d+|spf|sunscreen|sun screen|uv filters?)\b/i;
+const CLEANSER_RE = /\b(cleanser|cleanse|cleansing|face wash|facial wash|wash[- ]off|wash off|foaming wash|cream cleanser)\b/i;
 const BRIGHTENING_RE = /\b(brightening|vitamin c|glow|radiance)\b/i;
 const MOISTURIZER_GUIDANCE_FAMILY_RE = /\b(moisturizer|moisturiser|cream|lotion|gel cream|balm)\b/i;
 const GUIDANCE_BARRIER_RE = /\b(barrier|repair)\b/i;
@@ -137,6 +138,9 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
   if (TINT_RE.test(lower)) {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tint' };
   }
+  if (coarse.candidate_step === 'cleanser' || CLEANSER_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
   if (SPF_RE.test(lower)) {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'spf' };
   }
@@ -149,8 +153,11 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
   if (coarse.domain_scope === 'makeup') {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tool' };
   }
-  if (coarse.application_mode === 'rinse_off' || coarse.family_relation === 'adjacent_family') {
-    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'peel' };
+  if (coarse.application_mode === 'rinse_off') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (coarse.family_relation === 'adjacent_family') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'adjacent_family' };
   }
   if (
     coarse.domain_scope !== 'skincare' ||
