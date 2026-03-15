@@ -25152,17 +25152,13 @@ function buildChipsForQuestion(question, { stepIndex } = {}) {
 
 function buildAnalysisClarificationQuestions({
   language = 'EN',
-  artifactGate = null,
-  hasCurrentRoutine = false,
+  diagnosisGoal = '',
+  targetStep = '',
 } = {}) {
   const isCn = String(language || '').trim().toUpperCase() === 'CN';
-  const missingCore = new Set(
-    Array.isArray(artifactGate?.missing_core)
-      ? artifactGate.missing_core.map((value) => String(value || '').trim())
-      : [],
-  );
+  const goalText = `${String(diagnosisGoal || '').trim()} ${String(targetStep || '').trim()}`.toLowerCase();
   const questions = [];
-  if (missingCore.has('barrierStatus')) {
+  if (/barrier|repair|moisturizer/.test(goalText)) {
     questions.push({
       id: 'barrierStatus',
       question: isCn
@@ -25172,8 +25168,7 @@ function buildAnalysisClarificationQuestions({
         ? ['经常刺痛/泛红', '偶尔会敏感', '大多比较稳定', '不确定']
         : ['Stinging/redness often', 'Sometimes reactive', 'Mostly stable', 'Not sure'],
     });
-  }
-  if (missingCore.has('sensitivity')) {
+  } else if (/sensitive|reactive|redness|calm/.test(goalText)) {
     questions.push({
       id: 'sensitivity',
       question: isCn
@@ -25183,43 +25178,49 @@ function buildAnalysisClarificationQuestions({
         ? ['高敏感', '中等敏感', '低敏感', '不确定']
         : ['High sensitivity', 'Medium sensitivity', 'Low sensitivity', 'Not sure'],
     });
-  }
-  if (missingCore.has('skinType')) {
+  } else if (/acne|breakout|blemish|pore|oil/.test(goalText)) {
     questions.push({
-      id: 'skinType',
+      id: 'breakoutPattern',
       question: isCn
-        ? '大多数时候你的肤质更接近哪一种？'
-        : 'Which skin type sounds closest on most days?',
+        ? '你现在的痘痘状态更接近哪一种？'
+        : 'Which breakout pattern sounds closest right now?',
       options: isCn
-        ? ['偏干', '混合', '偏油', '中性', '不确定']
-        : ['Dry', 'Combination', 'Oily', 'Normal', 'Not sure'],
+        ? ['红肿痘更多', '闭口堵塞更多', '主要是痘印', '不确定']
+        : ['Mostly inflamed pimples', 'Mostly clogged bumps', 'Mostly post-acne marks', 'Not sure'],
+    });
+  } else if (/dark spots|brighten|tone|pigment/.test(goalText)) {
+    questions.push({
+      id: 'pigmentPattern',
+      question: isCn
+        ? '你更想优先解决哪类色沉？'
+        : 'Which tone concern do you want to prioritize first?',
+      options: isCn
+        ? ['新发痘印', '旧色沉/晒斑', '整体肤色不均', '不确定']
+        : ['Fresh post-acne marks', 'Older sun spots', 'Overall uneven tone', 'Not sure'],
+    });
+  } else if (/hydrat|dry/.test(goalText)) {
+    questions.push({
+      id: 'drynessLevel',
+      question: isCn
+        ? '你现在的缺水/干燥感更接近哪一种？'
+        : 'Which dryness level sounds closest right now?',
+      options: isCn
+        ? ['紧绷脱皮明显', '偶尔干但可控', '主要是外油内干', '不确定']
+        : ['Tight or flaky often', 'Sometimes dry but manageable', 'Oily outside but dehydrated', 'Not sure'],
     });
   }
-  if (!hasCurrentRoutine) {
-    questions.push({
-      id: 'currentRoutine',
-      question: isCn
-        ? '你现在最稳定在用的是哪类 routine？'
-        : 'What are you using most consistently right now?',
-      options: isCn
-        ? ['温和洁面 + 保湿', '夜间常用强活性', '白天主要用防晒', '没有固定 routine', '不确定']
-        : ['Gentle cleanser + moisturizer', 'Strong actives most nights', 'Mainly sunscreen in daytime', 'Nothing consistent', 'Not sure'],
-    });
-  }
-  return questions.slice(0, 4);
+  return questions.slice(0, 1);
 }
 
 function buildAnalysisClarificationPack({
   language = 'EN',
-  artifactGate = null,
-  hasCurrentRoutine = false,
   diagnosisGoal = '',
   targetStep = '',
 } = {}) {
   const questions = buildAnalysisClarificationQuestions({
     language,
-    artifactGate,
-    hasCurrentRoutine,
+    diagnosisGoal,
+    targetStep,
   });
   if (!questions.length) return null;
   const primaryQuestion = questions[0];
@@ -25232,7 +25233,7 @@ function buildAnalysisClarificationPack({
       created_at_ms: Date.now(),
       resume_user_text: String(resumeContext).trim().slice(0, PENDING_CLARIFICATION_MAX_RESUME_USER_TEXT),
       current: { id: primaryQuestion.id },
-      queue: questions.slice(1),
+      queue: [],
       history: [],
     },
     { recordMetrics: false },
@@ -25249,11 +25250,9 @@ function buildAnalysisClarificationNoticeCard({
   requestId,
   language = 'EN',
   clarificationPack = null,
-  artifactGate = null,
 } = {}) {
   if (!clarificationPack || !clarificationPack.primary_question) return null;
   const isCn = String(language || '').trim().toUpperCase() === 'CN';
-  const missingCore = Array.isArray(artifactGate?.missing_core) ? artifactGate.missing_core.slice(0, 4) : [];
   return {
     card_id: `analysis_clarify_${requestId}`,
     type: 'confidence_notice',
@@ -25267,11 +25266,8 @@ function buildAnalysisClarificationNoticeCard({
           rationale: ['artifact_missing_core'],
         },
         non_blocking: true,
-        details: [
-          clarificationPack.primary_question,
-          ...missingCore.map((item) => `missing_${item}`),
-        ].slice(0, 6),
-        actions: ['refine_profile'],
+        details: [],
+        actions: [],
       }),
       message: isCn
         ? `为了把后续推荐收得更准，我先确认一个问题：${clarificationPack.primary_question}`
