@@ -229,6 +229,69 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
     assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
     assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
+    assert.equal('upstream_status' in (recoEvent?.data || {}), false);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/reco/generate: weak viable pool stays user-fixable and does not masquerade as artifact missing', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'sleep_mask_only',
+            merchant_id: 'mid_sleep_mask',
+            brand: 'NightSkin',
+            name: 'Sleeping Mask',
+            display_name: 'Sleeping Mask',
+            category: 'sleeping mask',
+            product_type: 'mask',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'reco_weak_uid', briefId: 'reco_weak_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/reco/generate', {
+      headers: {
+        'X-Aurora-UID': 'reco_weak_uid',
+        'X-Trace-ID': 'trace_reco_weak',
+        'X-Brief-ID': 'reco_weak_brief',
+      },
+      body: {
+        focus: 'something for night',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceNotice =
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'weak_viable_pool')
+      || null;
+    assert.ok(confidenceNotice);
+    const recoEvent = Array.isArray(response.body?.events)
+      ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
+    assert.equal(recoEvent?.data?.failure_class, 'weak_viable_pool');
+    assert.equal(recoEvent?.data?.surface_reason, 'weak_viable_pool');
+    assert.equal('upstream_status' in (recoEvent?.data || {}), false);
   } finally {
     axios.get = originalGet;
   }
