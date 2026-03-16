@@ -3735,7 +3735,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('ingredient_plan_guidance_only auto-upgrades serum family into server-owned ladder fastpath', async () => {
+  test('ingredient_plan_guidance_only auto-upgrades real serum guidance queries into server-owned ladder fastpath', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-fastpath-serum-test';
 
     jest.doMock('../../src/db', () => ({
@@ -3857,7 +3857,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     const resp = await request(app)
       .get('/agent/v1/products/search')
       .query({
-        query: 'panthenol serum',
+        query: 'panthenol barrier repair serum',
         limit: '8',
         source: 'aurora_chatbox',
         catalog_surface: 'beauty',
@@ -3886,7 +3886,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
     expect(Array.isArray(resp.body.metadata?.attempt_trace)).toBe(true);
     expect(resp.body.metadata?.attempt_count).toBeGreaterThanOrEqual(1);
-    expect(String(resp.body.metadata?.selected_attempt_query || '')).toMatch(/serum/i);
+    expect(String(resp.body.metadata?.selected_attempt_query || '')).toMatch(/panthenol serum|barrier b5 serum/i);
     expect(resp.body.products.map((row) => row.title)).toEqual([
       'Winona Soothing Repair Serum with Panthenol',
       'Barrier B5 Serum',
