@@ -697,7 +697,6 @@ function buildBeautySkincareHitQualityDecision({
   );
 
   const contractStrongOrSupportive = [];
-  const contractGenericFallback = [];
   const validProducts = rankedProducts.filter((product) => {
     const coarse = classifyBeautyCoarseCandidate(product, {
       queryTargetStepFamily: normalizedQueryTargetStepFamily,
@@ -720,9 +719,6 @@ function buildBeautySkincareHitQualityDecision({
         contractStrongOrSupportive.push(product);
         return true;
       }
-      if (coarse.target_relevance_class === 'generic_family' && contractStrongOrSupportive.length > 0 && contractGenericFallback.length < 1) {
-        contractGenericFallback.push(product);
-      }
       return false;
     }
     return coarse.coarse_valid_for_target;
@@ -734,7 +730,7 @@ function buildBeautySkincareHitQualityDecision({
       targetStepFamily: normalizedQueryTargetStepFamily,
       queryStepStrength: normalizedQueryStepStrength,
     })
-      ? contractStrongOrSupportive.concat(contractGenericFallback)
+      ? contractStrongOrSupportive
       : validProducts;
   const candidateClassesTop3 = normalizedValidProducts.slice(0, 3).map((product) => {
     const coarse = classifyBeautyCoarseCandidate(product, {
