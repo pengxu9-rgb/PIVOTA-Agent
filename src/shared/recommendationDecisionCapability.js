@@ -2,6 +2,7 @@ const RECOMMENDATION_DECISION_CAPABILITY_VERSION = 'recommendation_decision_capa
 const TARGET_RELEVANCE_CLASS_OWNER = 'shared_relevance_classifier';
 const SHARED_TARGET_RELEVANCE_POLICY_VERSION = 'shared_target_relevance_policy_v2';
 const TOP3_TARGET_RELEVANCE_CONTRACT_VERSION = 'top3_target_relevance_contract_v1';
+const SERUM_PANTHENOL_CANARY_BACKBONE_ID = 'serum_panthenol_canary_backbone_v1';
 
 const TARGET_RELEVANCE_CLASSES = Object.freeze([
   'strong_goal_family',
@@ -62,6 +63,50 @@ function normalizeTargetRelevanceClass(value) {
   const token = asString(value).toLowerCase();
   if (TARGET_RELEVANCE_CLASSES.includes(token)) return token;
   return 'generic_family';
+}
+
+function normalizeQueryStepStrength(value) {
+  const token = asString(value).toLowerCase();
+  if (token === 'strong_goal_family' || token === 'supportive_family' || token === 'generic_family') {
+    return token;
+  }
+  return null;
+}
+
+function detectSerumCanaryVariantOverlay(queryText) {
+  const text = asString(queryText).toLowerCase();
+  if (!text) return null;
+  if (/\b(barrier|repair)\b/.test(text)) return 'barrier_repair_focus';
+  if (/\b(soothing|sensitive|cica|centella|calming)\b/.test(text)) return 'soothing_focus';
+  return 'ingredient_fidelity';
+}
+
+function normalizeSharedTargetIntent({
+  queryText = '',
+  targetStepFamily = '',
+  mode = null,
+  queryStepStrength = '',
+} = {}) {
+  const normalizedMode = normalizeRecommendationDecisionMode(mode);
+  const normalizedTargetStepFamily = asString(targetStepFamily).toLowerCase() || null;
+  const normalizedStrength = normalizeQueryStepStrength(queryStepStrength);
+  const normalizedQuery = asString(queryText).toLowerCase();
+  const out = {
+    target_step_family: normalizedTargetStepFamily,
+    query_step_strength: normalizedStrength,
+    mode: normalizedMode,
+    backbone_id: null,
+    variant_overlay: null,
+  };
+  if (
+    normalizedMode === RECOMMENDATION_DECISION_MODES.guidance_only &&
+    normalizedTargetStepFamily === 'serum' &&
+    /\b(panthenol|vitamin[- ]?b5|\bb5\b)\b/.test(normalizedQuery)
+  ) {
+    out.backbone_id = SERUM_PANTHENOL_CANARY_BACKBONE_ID;
+    out.variant_overlay = detectSerumCanaryVariantOverlay(normalizedQuery);
+  }
+  return out;
 }
 
 function getTargetRelevanceClassRank(value) {
@@ -131,18 +176,55 @@ function buildTop3Contract({
   };
 }
 
+function buildQualityGateResult({
+  applied = false,
+  strongCount = 0,
+  supportiveCount = 0,
+  supportiveDistinctCount = supportiveCount,
+} = {}) {
+  const normalizedStrongCount = Math.max(0, Number(strongCount || 0) || 0);
+  const normalizedSupportiveCount = Math.max(0, Number(supportiveCount || 0) || 0);
+  const normalizedSupportiveDistinctCount = Math.max(
+    0,
+    Number(supportiveDistinctCount == null ? normalizedSupportiveCount : supportiveDistinctCount) || 0,
+  );
+  const satisfied =
+    normalizedStrongCount >= 1 ||
+    normalizedSupportiveDistinctCount >= 2;
+  return {
+    applied: applied === true,
+    satisfied,
+    rule: 'at_least_one_strong_or_two_distinct_supportive',
+    strong_count: normalizedStrongCount,
+    supportive_count: normalizedSupportiveCount,
+    supportive_distinct_count: normalizedSupportiveDistinctCount,
+  };
+}
+
 function buildSuccessContractResult({
   mode = null,
   targetStepFamily = '',
   queryStepStrength = '',
   candidateClassCounts = {},
   topCandidateClasses = [],
+  qualityGateResult = null,
 } = {}) {
   const applied = shouldUseSharedTargetRelevancePipeline({ mode, targetStepFamily, queryStepStrength });
   const normalizedCounts = countTargetRelevanceClasses(
     Object.entries(candidateClassCounts || {}).flatMap(([token, count]) => Array(Math.max(0, Number(count) || 0)).fill(token)),
   );
   const top3Contract = buildTop3Contract({ topCandidateClasses });
+  const resolvedQualityGateResult =
+    qualityGateResult && typeof qualityGateResult === 'object'
+      ? {
+          ...qualityGateResult,
+          applied: applied === true,
+        }
+      : buildQualityGateResult({
+          applied,
+          strongCount: normalizedCounts.strong_goal_family,
+          supportiveCount: normalizedCounts.supportive_family,
+        });
   if (!applied) {
     return {
       owner: TARGET_RELEVANCE_CLASS_OWNER,
@@ -154,21 +236,26 @@ function buildSuccessContractResult({
       failure_class: null,
       stop_on_success: false,
       top3_contract: top3Contract,
+      quality_gate_result: resolvedQualityGateResult,
     };
   }
 
   let stepSuccessClass = null;
   let failureClass = null;
-  if (normalizedCounts.strong_goal_family >= 1) {
+  const explicitQualityGateSatisfied = resolvedQualityGateResult.satisfied === true;
+  const serumGuidanceOnly = normalizeRecommendationDecisionMode(mode) === RECOMMENDATION_DECISION_MODES.guidance_only
+    && asString(targetStepFamily).toLowerCase() === 'serum';
+  const supportiveTop3ShortListSatisfied =
+    !serumGuidanceOnly &&
+    top3Contract.satisfied &&
+    normalizedCounts.supportive_family >= 1 &&
+    Number(top3Contract.visible_count || 0) > 0 &&
+    Number(top3Contract.visible_count || 0) < 3;
+  if (resolvedQualityGateResult.strong_count >= 1) {
     stepSuccessClass = 'strong_goal_family';
-  } else if (normalizedCounts.supportive_family >= 2) {
+  } else if (resolvedQualityGateResult.supportive_distinct_count >= 2) {
     stepSuccessClass = 'supportive_family';
-  } else if (
-    top3Contract.satisfied
-    && normalizedCounts.supportive_family >= 1
-    && Number(top3Contract.visible_count || 0) > 0
-    && Number(top3Contract.visible_count || 0) < 3
-  ) {
+  } else if (supportiveTop3ShortListSatisfied) {
     stepSuccessClass = 'supportive_family';
   } else if (normalizedCounts.adjacent_noise >= Math.max(1, normalizedCounts.generic_family + normalizedCounts.supportive_family + normalizedCounts.strong_goal_family)) {
     failureClass = 'retrieval_direction_weak';
@@ -185,11 +272,12 @@ function buildSuccessContractResult({
     policy_version: SHARED_TARGET_RELEVANCE_POLICY_VERSION,
     capability_version: RECOMMENDATION_DECISION_CAPABILITY_VERSION,
     applied: true,
-    satisfied: Boolean(stepSuccessClass),
+    satisfied: Boolean(stepSuccessClass) && (explicitQualityGateSatisfied || supportiveTop3ShortListSatisfied),
     step_success_class: stepSuccessClass,
     failure_class: stepSuccessClass ? null : failureClass,
-    stop_on_success: Boolean(stepSuccessClass),
+    stop_on_success: Boolean(stepSuccessClass) && (explicitQualityGateSatisfied || supportiveTop3ShortListSatisfied),
     top3_contract: top3Contract,
+    quality_gate_result: resolvedQualityGateResult,
   };
 }
 
@@ -222,15 +310,19 @@ module.exports = {
   SHARED_TARGET_RELEVANCE_POLICY_VERSION,
   TOP3_TARGET_RELEVANCE_CONTRACT_VERSION,
   RECOMMENDATION_DECISION_MODES,
+  SERUM_PANTHENOL_CANARY_BACKBONE_ID,
   TARGET_RELEVANCE_CLASS_ORDER,
   BARRIER_MOISTURIZER_TARGET_POLICY_V2,
   BARRIER_SERUM_TARGET_POLICY_V1,
   normalizeRecommendationDecisionMode,
+  normalizeQueryStepStrength,
   normalizeTargetRelevanceClass,
+  normalizeSharedTargetIntent,
   getTargetRelevanceClassRank,
   shouldUseSharedTargetRelevancePipeline,
   countTargetRelevanceClasses,
   buildTop3Contract,
+  buildQualityGateResult,
   buildSuccessContractResult,
   buildRecommendationDecisionCapabilityOutput,
 };

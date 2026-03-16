@@ -445,6 +445,17 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
     queryStepStrength: 'strong_goal_family',
     mode: 'guidance_only',
   });
+  const tonerEssence = classifyBeautyCoarseCandidate({
+    display_name: 'Fat Water Hydrating Milky Toner Essence',
+    category: 'essence',
+    product_type: 'essence',
+  }, {
+    queryTargetStepFamily: 'serum',
+    queryText: 'panthenol barrier repair serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+    mode: 'guidance_only',
+  });
   const decision = buildBeautySkincareHitQualityDecision({
     queryText: 'panthenol serum',
     products: [
@@ -478,10 +489,15 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
   assert.equal(generic.coarse_valid_for_target, false);
   assert.equal(niacinamide.target_relevance_class, 'generic_family');
   assert.equal(niacinamide.coarse_valid_for_target, false);
+  assert.equal(tonerEssence.target_relevance_class, 'adjacent_noise');
+  assert.equal(tonerEssence.noise_reason, 'adjacent_liquid');
   assert.equal(decision.hit_quality, 'valid_hit');
   assert.equal(decision.step_success_class, 'strong_goal_family');
   assert.equal(decision.success_contract_result?.applied, true);
   assert.equal(decision.success_contract_result?.satisfied, true);
+  assert.equal(decision.quality_gate_result?.satisfied, true);
+  assert.equal(decision.normalized_intent?.backbone_id, 'serum_panthenol_canary_backbone_v1');
+  assert.equal(decision.normalized_intent?.variant_overlay, 'ingredient_fidelity');
   assert.deepEqual(
     decision.valid_products.slice(0, 2).map((product) => String(product?.title || product?.display_name || '')),
     [
@@ -492,6 +508,191 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
   assert.equal(
     decision.valid_products.some((product) => /Repulpant/i.test(String(product?.title || product?.display_name || ''))),
     false,
+  );
+});
+
+test('guidance-only serum classifier still promotes explicit barrier-repair serum without panthenol canary overlay', () => {
+  const strong = classifyBeautyCoarseCandidate({
+    title: 'Soothing Barrier Repair Serum',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryText: 'barrier repair serum',
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'barrier repair serum',
+    products: [
+      {
+        product_id: 'serum_1',
+        merchant_id: 'merchant_serum',
+        title: 'Soothing Barrier Repair Serum',
+        brand: 'Barrier Lab',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(strong.target_relevance_class, 'strong_goal_family');
+  assert.equal(strong.relevance_channel, 'goal-strong');
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.quality_gate_result?.satisfied, true);
+  assert.equal(Array.isArray(decision.valid_products), true);
+  assert.equal(decision.valid_products.length, 1);
+  assert.equal(String(decision.valid_products[0]?.product_id || ''), 'serum_1');
+});
+
+test('guidance-only serum selection applies session exposure penalty and fill metadata', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'panthenol soothing serum',
+    products: [
+      {
+        product_id: 'prod_winona',
+        merchant_id: 'merchant_winona',
+        title: 'Winona Soothing Repair Serum with Panthenol',
+        brand: 'Winona',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'prod_b5',
+        merchant_id: 'merchant_dermlab',
+        title: 'Barrier B5 Serum',
+        brand: 'Derm Lab',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'prod_cica',
+        merchant_id: 'external_seed',
+        title: 'Cica Calming Repair Serum',
+        brand: 'Skin Calm',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+    sessionSeenProductIds: ['prod_winona'],
+  });
+
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.fill_target_count, 3);
+  assert.equal(decision.fill_completed_count, 3);
+  assert.equal(decision.coverage_limited_after_fill, false);
+  assert.equal(decision.selection_diversity?.session_exposure_penalty_applied, true);
+  assert.equal(decision.selection_diversity?.same_canonical_intent_top1_repeat_rate, 0);
+  assert.equal(String(decision.valid_products[0]?.product_id || ''), 'prod_b5');
+  assert.deepEqual(decision.candidate_origin_counts, {
+    internal_live: 2,
+    external_supplement: 1,
+    stable_prior: 0,
+  });
+});
+
+test('guidance-only serum keeps stable-prior rows out of normal canary pool when live coverage is sufficient', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'panthenol soothing serum',
+    products: [
+      {
+        product_id: 'prod_winona',
+        merchant_id: 'merchant_winona',
+        title: 'Winona Soothing Repair Serum with Panthenol',
+        brand: 'Winona',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'prod_b5',
+        merchant_id: 'merchant_dermlab',
+        title: 'Barrier B5 Serum',
+        brand: 'Derm Lab',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'stable_prior_serum',
+        merchant_id: 'merchant_prior',
+        title: 'Calming Repair Serum',
+        brand: 'Legacy Skin',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_reason: 'catalog_transient_fallback_structured',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.stable_prior_applied, false);
+  assert.equal(decision.fallback_mode, 'normal');
+  assert.equal(decision.valid_scoping_dropped_count, 1);
+  assert.deepEqual(decision.candidate_class_counts, {
+    strong_goal_family: 2,
+  });
+  assert.deepEqual(
+    decision.valid_products.map((product) => String(product?.product_id || '')),
+    ['prod_winona', 'prod_b5'],
+  );
+});
+
+test('guidance-only serum can use stable-prior fallback after quality pass when coverage stays below minimum', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'panthenol soothing serum',
+    products: [
+      {
+        product_id: 'prod_winona',
+        merchant_id: 'merchant_winona',
+        title: 'Winona Soothing Repair Serum with Panthenol',
+        brand: 'Winona',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'stable_prior_serum',
+        merchant_id: 'merchant_prior',
+        title: 'Cica Calming Repair Serum',
+        brand: 'Legacy Skin',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_reason: 'catalog_transient_fallback_structured',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.quality_gate_result?.satisfied, true);
+  assert.equal(decision.coverage_limited_after_fill, true);
+  assert.equal(decision.fill_completed_count, 1);
+  assert.equal(decision.stable_prior_applied, true);
+  assert.equal(decision.stable_prior_source, 'catalog_transient_fallback');
+  assert.equal(decision.fallback_mode, 'stable_prior_fill');
+  assert.deepEqual(decision.candidate_origin_counts, {
+    internal_live: 1,
+    external_supplement: 0,
+    stable_prior: 1,
+  });
+  assert.deepEqual(
+    decision.valid_products.map((product) => String(product?.product_id || '')),
+    ['prod_winona', 'stable_prior_serum'],
   );
 });
 
