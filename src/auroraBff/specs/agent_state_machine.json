@@ -51,6 +51,14 @@
       "analytics_event": "ui_chip_clicked"
     },
     {
+      "chip_id": "chip_start_routine",
+      "label_en": "Build an AM/PM routine",
+      "label_cn": "生成早晚护肤 routine",
+      "allowed_states": ["IDLE_CHAT", "SOFT_INTENT_SUGGEST", "DIAG_ANALYSIS_SUMMARY", "RETURN_WELCOME"],
+      "next_state": "ROUTINE_INTAKE",
+      "analytics_event": "ui_chip_clicked"
+    },
+    {
       "chip_id": "chip_eval_single_product",
       "label_en": "Check a product/link",
       "label_cn": "评估单品/链接",
