@@ -20,6 +20,9 @@ const SOURCE_CONFIDENCE = Object.freeze({
   reddit: 0.56,
   xiaohongshu: 0.56,
 });
+const GUIDANCE_ONLY_DECISION_MODE = 'guidance_only';
+const GUIDANCE_RETRIEVAL_MODE = 'guidance_recall_first';
+const GUIDANCE_SOURCE_POLICY = 'internal_first_then_external_supplement';
 
 const INGREDIENT_ALIAS_TO_CANONICAL = Object.freeze({
   ceramide: 'ceramide_np',
@@ -95,6 +98,101 @@ const INGREDIENT_USAGE_GUIDANCE = Object.freeze({
   sunscreen_filters: ['Daily AM final step', 'Reapply when sun exposure is extended'],
   glycerin: ['AM/PM hydration support', 'Layer with moisturizer for better retention'],
   hyaluronic_acid: ['Apply on damp skin', 'Seal with moisturizer'],
+});
+
+const INGREDIENT_DISCOVERY_HINTS = Object.freeze({
+  ceramide_np: {
+    target_step_family: 'moisturizer',
+    semantic_family: 'moisturizer',
+    steps: [
+      ['ceramide barrier moisturizer', 'strong_goal_family'],
+      ['barrier repair ceramide moisturizer', 'strong_goal_family'],
+      ['barrier repair moisturizer', 'supportive_family'],
+      ['ceramide moisturizer', 'supportive_family'],
+      ['sensitive skin moisturizer', 'generic_family'],
+    ],
+  },
+  panthenol: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['panthenol serum', 'strong_goal_family'],
+      ['barrier repair serum', 'supportive_family'],
+      ['soothing serum', 'supportive_family'],
+      ['hydrating serum', 'generic_family'],
+    ],
+  },
+  glycerin: {
+    target_step_family: 'moisturizer',
+    semantic_family: 'moisturizer',
+    steps: [
+      ['hydrating moisturizer', 'supportive_family'],
+      ['sensitive skin moisturizer', 'generic_family'],
+    ],
+  },
+  hyaluronic_acid: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['hyaluronic acid serum', 'strong_goal_family'],
+      ['hydrating serum', 'supportive_family'],
+      ['soothing serum', 'generic_family'],
+    ],
+  },
+  niacinamide: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['niacinamide serum', 'strong_goal_family'],
+      ['balancing serum', 'supportive_family'],
+      ['daily treatment serum', 'generic_family'],
+    ],
+  },
+  zinc_pca: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['zinc pca serum', 'strong_goal_family'],
+      ['balancing serum', 'supportive_family'],
+      ['daily treatment serum', 'generic_family'],
+    ],
+  },
+  azelaic_acid: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['azelaic acid serum', 'strong_goal_family'],
+      ['soothing treatment serum', 'supportive_family'],
+      ['daily treatment serum', 'generic_family'],
+    ],
+  },
+  salicylic_acid: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['salicylic acid serum', 'strong_goal_family'],
+      ['blemish treatment serum', 'supportive_family'],
+      ['daily treatment serum', 'generic_family'],
+    ],
+  },
+  ascorbic_acid: {
+    target_step_family: 'serum',
+    semantic_family: 'serum',
+    steps: [
+      ['vitamin c serum', 'strong_goal_family'],
+      ['brightening serum', 'supportive_family'],
+      ['daily antioxidant serum', 'generic_family'],
+    ],
+  },
+  sunscreen_filters: {
+    target_step_family: 'sunscreen',
+    semantic_family: 'sunscreen',
+    steps: [
+      ['broad spectrum sunscreen', 'strong_goal_family'],
+      ['spf 50 sunscreen', 'supportive_family'],
+      ['daily face sunscreen', 'generic_family'],
+    ],
+  },
 });
 
 const RISKY_FOR_FRAGILE = new Set([
@@ -508,6 +606,72 @@ function resolveIngredientName(ingredientId) {
   const canonical = resolveCanonicalIngredientId(ingredientId);
   if (!canonical) return 'Ingredient';
   return INGREDIENT_NAME_MAP[canonical] || canonical.replace(/_/g, ' ');
+}
+
+function buildIngredientDiscoveryHint(ingredientId, {
+  ingredientName = null,
+  fallbackQuery = '',
+  fallbackNormalizedQuery = '',
+} = {}) {
+  const canonicalId = resolveCanonicalIngredientId(ingredientId);
+  if (!canonicalId) return null;
+  const ingredientLabel = String(ingredientName || resolveIngredientName(canonicalId)).trim();
+  const config = INGREDIENT_DISCOVERY_HINTS[canonicalId];
+  const defaultQuery = String(fallbackQuery || `${ingredientLabel} skincare product`).trim();
+  const defaultNormalizedQuery = normalizeQueryKey(fallbackNormalizedQuery || defaultQuery);
+  if (!config) {
+    const defaultStep = {
+      query: defaultQuery,
+      intent_strength: 'generic_family',
+      target_step_family: 'serum',
+      semantic_family: 'serum',
+      source_policy: GUIDANCE_SOURCE_POLICY,
+      product_only: true,
+      stop_on_success: true,
+      decision_mode: GUIDANCE_ONLY_DECISION_MODE,
+      retrieval_mode: GUIDANCE_RETRIEVAL_MODE,
+      negative_constraints: [],
+    };
+    return {
+      search_title: ingredientLabel || 'Product ideas',
+      retrieval_mode: GUIDANCE_RETRIEVAL_MODE,
+      decision_mode: GUIDANCE_ONLY_DECISION_MODE,
+      source_policy: GUIDANCE_SOURCE_POLICY,
+      target_step_family: 'serum',
+      semantic_family: 'serum',
+      product_only: true,
+      negative_constraints: [],
+      query_ladder_steps: [defaultStep],
+      query_ladder: [{ ...defaultStep }],
+      normalized_query: defaultNormalizedQuery,
+    };
+  }
+
+  const steps = config.steps.map(([query, intentStrength], idx) => ({
+    query,
+    intent_strength: intentStrength,
+    target_step_family: config.target_step_family,
+    semantic_family: config.semantic_family,
+    source_policy: GUIDANCE_SOURCE_POLICY,
+    product_only: true,
+    stop_on_success: idx < config.steps.length - 1,
+    decision_mode: GUIDANCE_ONLY_DECISION_MODE,
+    retrieval_mode: GUIDANCE_RETRIEVAL_MODE,
+    negative_constraints: [],
+  }));
+  return {
+    search_title: ingredientLabel || 'Product ideas',
+    retrieval_mode: GUIDANCE_RETRIEVAL_MODE,
+    decision_mode: GUIDANCE_ONLY_DECISION_MODE,
+    source_policy: GUIDANCE_SOURCE_POLICY,
+    target_step_family: config.target_step_family,
+    semantic_family: config.semantic_family,
+    product_only: true,
+    negative_constraints: [],
+    query_ladder_steps: steps,
+    query_ladder: steps.map((step) => ({ ...step })),
+    normalized_query: defaultNormalizedQuery,
+  };
 }
 
 function parseCatalogProduct(raw) {
@@ -1431,6 +1595,11 @@ function selectIngredientProducts({
 
   const metaObj = normalizeObject(externalMeta);
   const normalizedMetaQuery = normalizeQueryKey(metaObj?.query || metaObj?.normalized_query || fallbackPack.query);
+  const discoveryHint = buildIngredientDiscoveryHint(ingredientId, {
+    ingredientName: ingredientLabel,
+    fallbackQuery: String(metaObj?.query || fallbackPack.query || '').trim() || fallbackPack.query,
+    fallbackNormalizedQuery: normalizedMetaQuery || fallbackPack.normalized_query,
+  });
   const missingSignal = localCatalogMissing || localCatalogInsufficient || fallbackUsed
     ? {
         ingredient_id: ingredientId,
@@ -1454,6 +1623,7 @@ function selectIngredientProducts({
         ...(String(metaObj?.failure_reason || '').trim()
           ? { failure_reason: String(metaObj.failure_reason).trim() }
           : {}),
+        ...(discoveryHint ? discoveryHint : {}),
       }
     : null;
 
@@ -1461,6 +1631,15 @@ function selectIngredientProducts({
     competitors: competitorRows.slice(0, maxCompetitors),
     dupes: dupeRows.slice(0, maxDupes),
     external_fallback_used: fallbackUsed,
+    ...(missingSignal
+      ? {
+          example_product_discovery_items: [
+            {
+              ...missingSignal,
+            },
+          ],
+        }
+      : {}),
     ...(missingSignal ? { missing_catalog_signal: missingSignal } : {}),
   };
 }
@@ -1540,6 +1719,12 @@ function buildIngredientPlanV2({
       products: {
         competitors: Array.isArray(selection.competitors) ? selection.competitors : [],
         dupes: Array.isArray(selection.dupes) ? selection.dupes : [],
+        ...(Array.isArray(selection.example_product_discovery_items) &&
+        selection.example_product_discovery_items.length > 0
+          ? {
+              example_product_discovery_items: selection.example_product_discovery_items,
+            }
+          : {}),
       },
       external_fallback_used: Boolean(selection.external_fallback_used),
     };

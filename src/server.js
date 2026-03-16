@@ -811,6 +811,14 @@ const PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS = Math.max(
   800,
   Math.min(parseTimeoutMs(process.env.PROXY_SEARCH_AURORA_TOTAL_BUDGET_MS, 1500), 10000),
 );
+const PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT = Math.max(
+  40,
+  Math.min(Number(process.env.PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT || 160) || 160, 480),
+);
+const PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_APPEND_LIMIT = Math.max(
+  4,
+  Math.min(Number(process.env.PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_APPEND_LIMIT || 18) || 18, 48),
+);
 const PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = Math.max(
   1,
   Math.min(20, Number(process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE || 3) || 3),
@@ -4182,6 +4190,228 @@ function getAuroraFallbackOverrides(source, operation) {
   };
 }
 
+const GUIDANCE_ONLY_UI_SURFACE = 'ingredient_plan_guidance_only';
+const GUIDANCE_ONLY_DECISION_MODE = 'guidance_only';
+const GUIDANCE_RETRIEVAL_MODE = 'guidance_recall_first';
+const GUIDANCE_SOURCE_POLICY = 'internal_first_then_external_supplement';
+
+function normalizeSearchHintToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function hasFragranceFreeSkincareSignal(queryText) {
+  return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
+    String(queryText || ''),
+  );
+}
+
+function inferGuidanceSemanticFamily(queryText, targetStepFamily) {
+  const explicit = normalizeSearchHintToken(targetStepFamily);
+  if (explicit) return explicit;
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (/\b(moisturizer|moisturiser|cream|lotion|barrier cream|gel cream)\b/.test(normalized)) {
+    return 'moisturizer';
+  }
+  if (/\b(serum|essence|ampoule|concentrate)\b/.test(normalized)) return 'serum';
+  return '';
+}
+
+function extractGuidanceNegativeConstraints(queryLike, queryText) {
+  const query = queryLike && typeof queryLike === 'object' && !Array.isArray(queryLike) ? queryLike : {};
+  const explicit = parseQueryStringArray(query.negative_constraints ?? query.negativeConstraints)
+    .map((item) => normalizeSearchHintToken(item))
+    .filter(Boolean);
+  const out = new Set(explicit);
+  if (hasFragranceFreeSkincareSignal(queryText)) out.add('fragrance_free');
+  return Array.from(out);
+}
+
+function extractGuidanceRetrievalContext(queryLike, { queryText = '' } = {}) {
+  const query = queryLike && typeof queryLike === 'object' && !Array.isArray(queryLike) ? queryLike : {};
+  const uiSurface = normalizeSearchHintToken(firstQueryParamValue(query.ui_surface ?? query.uiSurface));
+  const decisionMode = normalizeSearchHintToken(firstQueryParamValue(query.decision_mode ?? query.decisionMode));
+  const queryStepStrength = normalizeSearchHintToken(
+    firstQueryParamValue(query.query_step_strength ?? query.queryStepStrength),
+  );
+  const targetStepFamily = normalizeSearchHintToken(
+    firstQueryParamValue(query.target_step_family ?? query.targetStepFamily),
+  );
+  const sourcePolicy = normalizeSearchHintToken(firstQueryParamValue(query.source_policy ?? query.sourcePolicy));
+  const retrievalMode = normalizeSearchHintToken(
+    firstQueryParamValue(query.retrieval_mode ?? query.retrievalMode),
+  );
+  const semanticFamily = normalizeSearchHintToken(
+    firstQueryParamValue(query.semantic_family ?? query.semanticFamily),
+  );
+  const isGuidanceOnly =
+    uiSurface === GUIDANCE_ONLY_UI_SURFACE || decisionMode === GUIDANCE_ONLY_DECISION_MODE;
+  const normalizedQueryText = String(queryText || extractSearchQueryText(query) || '').trim();
+  const effectiveTargetStepFamily = inferGuidanceSemanticFamily(normalizedQueryText, targetStepFamily || semanticFamily);
+  const negativeConstraints = extractGuidanceNegativeConstraints(query, normalizedQueryText);
+  const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
+  const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
+  const externalSeedStrategy = String(
+    firstQueryParamValue(query.external_seed_strategy ?? query.externalSeedStrategy) || '',
+  )
+    .trim()
+    .toLowerCase();
+  return {
+    ui_surface: uiSurface || null,
+    decision_mode: decisionMode || null,
+    query_step_strength: queryStepStrength || null,
+    target_step_family: effectiveTargetStepFamily || null,
+    semantic_family: semanticFamily || effectiveTargetStepFamily || null,
+    source_policy: sourcePolicy || null,
+    retrieval_mode: retrievalMode || (isGuidanceOnly ? GUIDANCE_RETRIEVAL_MODE : null),
+    negative_constraints: negativeConstraints,
+    allow_external_seed: allowExternalSeed,
+    external_seed_strategy: externalSeedStrategy || null,
+    product_only: productOnly,
+    is_guidance_only: isGuidanceOnly,
+    is_guidance_recall_first: isGuidanceOnly && (retrievalMode === GUIDANCE_RETRIEVAL_MODE || !retrievalMode),
+  };
+}
+
+function hasGuidanceLookupStyleQuery(queryText, guidanceContext) {
+  if (!guidanceContext || !guidanceContext.is_guidance_only) return false;
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  if (isLookupStyleSearchQuery(queryText, anchorTokens)) return true;
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (!normalized) return false;
+  if (
+    guidanceContext.target_step_family === 'moisturizer' &&
+    /\b(moisturizer|moisturiser|cream|lotion)\b/.test(normalized)
+  ) {
+    return false;
+  }
+  if (guidanceContext.target_step_family === 'serum' && /\b(serum|essence|ampoule)\b/.test(normalized)) {
+    return false;
+  }
+  return false;
+}
+
+function buildGuidanceFamilyPatterns(targetStepFamily) {
+  const family = normalizeSearchHintToken(targetStepFamily);
+  if (family === 'moisturizer') {
+    return {
+      family_pattern: /\b(moisturizer|moisturiser|cream|lotion|gel cream|barrier cream)\b/i,
+      core_anchors: ['barrier', 'repair', 'ceramide'],
+      supportive_anchors: ['sensitive', 'fragrance free', 'unscented', 'soothing'],
+      hard_invalid_pattern:
+        /\b(perfume|parfum|cologne|body mist|eau de parfum|eau de toilette|brush|tool|body lotion|body cream|body wash|facial treatment|service)\b/i,
+      adjacent_noise_pattern:
+        /\b(bundle|duo|set|kit|skin tint|tinted|foundation|peel|exfoliant|spf|sunscreen|vitamin c|brightening|cleanser|mask|toner)\b/i,
+    };
+  }
+  if (family === 'serum') {
+    return {
+      family_pattern: /\b(serum|essence|ampoule|concentrate)\b/i,
+      core_anchors: ['panthenol', 'barrier', 'repair', 'soothing', 'hydrating'],
+      supportive_anchors: ['sensitive', 'fragrance free', 'unscented', 'calming'],
+      hard_invalid_pattern:
+        /\b(perfume|parfum|cologne|body mist|brush|tool|body lotion|body cream|facial treatment|service)\b/i,
+      adjacent_noise_pattern:
+        /\b(bundle|duo|set|kit|skin tint|tinted|foundation|peel|exfoliant|spf|sunscreen|cleanser|mask|moisturizer|moisturiser|cream)\b/i,
+    };
+  }
+  return null;
+}
+
+function countNormalizedPhraseMatches(text, phrases = []) {
+  const normalizedText = normalizeSearchTextForMatch(text);
+  if (!normalizedText) return 0;
+  let count = 0;
+  for (const phrase of phrases) {
+    const normalizedPhrase = normalizeSearchTextForMatch(phrase);
+    if (!normalizedPhrase) continue;
+    if (normalizedText.includes(normalizedPhrase)) count += 1;
+  }
+  return count;
+}
+
+function classifyGuidanceTargetRelevance(product, queryText, guidanceContext) {
+  if (!guidanceContext || !guidanceContext.is_guidance_only) return 'unclassified';
+  const patterns = buildGuidanceFamilyPatterns(guidanceContext.target_step_family);
+  if (!patterns) return 'unclassified';
+  const candidateText = buildFallbackCandidateText(product);
+  if (!candidateText) return 'hard_invalid';
+  if (patterns.hard_invalid_pattern.test(candidateText)) return 'hard_invalid';
+  if (!patterns.family_pattern.test(candidateText)) {
+    return patterns.adjacent_noise_pattern.test(candidateText) ? 'adjacent_noise' : 'hard_invalid';
+  }
+  if (patterns.adjacent_noise_pattern.test(candidateText)) return 'adjacent_noise';
+  const coreMatches = countNormalizedPhraseMatches(candidateText, patterns.core_anchors);
+  const supportiveMatches = countNormalizedPhraseMatches(candidateText, patterns.supportive_anchors);
+  if (coreMatches > 0) return 'strong_goal_family';
+  if (supportiveMatches > 0) return 'supportive_family';
+  return 'generic_family';
+}
+
+function summarizeGuidanceCandidatePool(products, queryText, queryLike) {
+  const guidanceContext = extractGuidanceRetrievalContext(queryLike, { queryText });
+  if (!guidanceContext.is_guidance_only) return null;
+  const counts = {
+    strong_goal_family: 0,
+    supportive_family: 0,
+    generic_family: 0,
+    adjacent_noise: 0,
+    hard_invalid: 0,
+    unclassified: 0,
+  };
+  const list = Array.isArray(products) ? products : [];
+  let top3Score = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    const klass = classifyGuidanceTargetRelevance(list[i], queryText, guidanceContext);
+    counts[klass] = Number(counts[klass] || 0) + 1;
+    if (i < 3) {
+      if (klass === 'strong_goal_family') top3Score += 100;
+      else if (klass === 'supportive_family') top3Score += 40;
+      else if (klass === 'generic_family') top3Score += 5;
+      else if (klass === 'adjacent_noise') top3Score -= 20;
+      else if (klass === 'hard_invalid') top3Score -= 50;
+    }
+  }
+  return {
+    context: guidanceContext,
+    counts,
+    target_relevant_count: counts.strong_goal_family + counts.supportive_family,
+    top3_quality_score: top3Score,
+    generic_only: counts.generic_family > 0 && counts.strong_goal_family === 0 && counts.supportive_family === 0,
+    adjacent_noise_dominant:
+      counts.adjacent_noise > 0 &&
+      counts.adjacent_noise >= counts.strong_goal_family + counts.supportive_family + counts.generic_family,
+  };
+}
+
+function compareGuidanceCandidatePools(candidateSummary, currentSummary) {
+  if (!candidateSummary && !currentSummary) return 0;
+  if (candidateSummary && !currentSummary) return 1;
+  if (!candidateSummary && currentSummary) return -1;
+  const candidateScore =
+    candidateSummary.counts.strong_goal_family * 120 +
+    candidateSummary.counts.supportive_family * 45 +
+    candidateSummary.top3_quality_score +
+    candidateSummary.counts.generic_family * 2 -
+    candidateSummary.counts.adjacent_noise * 10 -
+    candidateSummary.counts.hard_invalid * 15;
+  const currentScore =
+    currentSummary.counts.strong_goal_family * 120 +
+    currentSummary.counts.supportive_family * 45 +
+    currentSummary.top3_quality_score +
+    currentSummary.counts.generic_family * 2 -
+    currentSummary.counts.adjacent_noise * 10 -
+    currentSummary.counts.hard_invalid * 15;
+  if (candidateScore !== currentScore) return candidateScore > currentScore ? 1 : -1;
+  if (candidateSummary.target_relevant_count !== currentSummary.target_relevant_count) {
+    return candidateSummary.target_relevant_count > currentSummary.target_relevant_count ? 1 : -1;
+  }
+  return 0;
+}
+
 function applyShoppingCatalogQueryGuards(queryParams, source) {
   const params =
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
@@ -4189,6 +4419,9 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       : {};
   if (!isCatalogGuardSource(source)) return params;
   const isAurora = isAuroraSource(source);
+  const guidanceContext = extractGuidanceRetrievalContext(params, {
+    queryText: extractSearchQueryText(params),
+  });
   const explicitAllowExternalSeed = parseQueryBoolean(
     params.allow_external_seed ?? params.allowExternalSeed,
   );
@@ -4214,7 +4447,35 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     allow_external_seed: allowExternalSeed,
     allow_stale_cache: false,
     external_seed_strategy: externalSeedStrategy,
-    fast_mode: explicitFastMode !== undefined ? explicitFastMode : true,
+    fast_mode:
+      explicitFastMode !== undefined
+        ? explicitFastMode
+        : guidanceContext.is_guidance_recall_first
+          ? false
+          : true,
+    ...(guidanceContext.is_guidance_only
+      ? {
+          ui_surface: guidanceContext.ui_surface || GUIDANCE_ONLY_UI_SURFACE,
+          decision_mode: guidanceContext.decision_mode || GUIDANCE_ONLY_DECISION_MODE,
+          retrieval_mode: guidanceContext.retrieval_mode || GUIDANCE_RETRIEVAL_MODE,
+          source_policy: guidanceContext.source_policy || GUIDANCE_SOURCE_POLICY,
+          ...(guidanceContext.target_step_family
+            ? { target_step_family: guidanceContext.target_step_family }
+            : {}),
+          ...(guidanceContext.semantic_family
+            ? { semantic_family: guidanceContext.semantic_family }
+            : {}),
+          ...(guidanceContext.query_step_strength
+            ? { query_step_strength: guidanceContext.query_step_strength }
+            : {}),
+          ...(guidanceContext.product_only !== undefined
+            ? { product_only: guidanceContext.product_only }
+            : {}),
+          ...(guidanceContext.negative_constraints.length
+            ? { negative_constraints: guidanceContext.negative_constraints }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -5322,6 +5583,7 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 }
 
 function hasFragranceSearchSignal(queryText) {
+  if (hasFragranceFreeSkincareSignal(queryText)) return false;
   return /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i.test(
     String(queryText || ''),
   );
@@ -5355,6 +5617,23 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (!product || typeof product !== 'object') return false;
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
+  let softPenalty = 1;
+  const guidanceContext =
+    options.guidanceContext && typeof options.guidanceContext === 'object'
+      ? options.guidanceContext
+      : extractGuidanceRetrievalContext(options.queryLike || {}, { queryText });
+
+  if (guidanceContext.is_guidance_only) {
+    const targetClass = classifyGuidanceTargetRelevance(product, queryText, guidanceContext);
+    if (targetClass === 'hard_invalid' || targetClass === 'adjacent_noise') return false;
+    if (
+      guidanceContext.negative_constraints.includes('fragrance_free') &&
+      /\b(perfume|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(candidateText) &&
+      !hasFragranceFreeSkincareSignal(candidateText)
+    ) {
+      return false;
+    }
+  }
 
   const hasFragranceSearch = hasFragranceSearchSignal(queryText);
   const hasFragranceCandidateSignal =
@@ -5369,10 +5648,12 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   );
 
   if (hasFragranceSearch) {
-    if (!hasFragranceCandidateSignal && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
-    if (isBeautyToolLikeCandidate && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
-    // Recall-first for fragrance supplement: skip hard lexical overlap gates.
-    return true;
+    if (!hasFragranceCandidateSignal) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.68 : 0.45;
+    }
+    if (isBeautyToolLikeCandidate) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.65 : 0.4;
+    }
   }
 
   const brandTerms = Array.isArray(options.brandTerms)
@@ -5382,11 +5663,15 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : [];
   if (brandTerms.length > 0) {
     const brandMatched = brandTerms.some((term) => hasBrandTermMatch(candidateText, term));
-    if (!brandMatched && !SEARCH_EXTERNAL_HARD_RULE_PRUNE) return false;
+    if (!brandMatched) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.72 : 0.5;
+    }
   }
 
   if (hasPetHarnessSearchSignal(queryText)) {
-    if (!hasStrictPetHarnessCatalogSignal(candidateText)) return false;
+    if (!hasStrictPetHarnessCatalogSignal(candidateText)) {
+      softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.42 : 0.25;
+    }
   }
 
   const beautyQueryBucket = detectBeautyQueryBucket(queryText);
@@ -5395,34 +5680,8 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     if (!isBeautyBucketCompatibleForQuery(candidateBucket, beautyQueryBucket)) return false;
   }
 
-  const targetStepFamily = normalizeRecoTargetStep(
-    options?.queryTargetStepFamily || options?.targetStepFamily,
-  );
-  const uiSurface = normalizeSearchUiSurface(options?.uiSurface || options?.ui_surface || null);
-  const decisionMode = normalizeRecommendationDecisionMode(options?.decisionMode || options?.decision_mode, {
-    guidanceOnlyDiscovery: uiSurface === 'ingredient_plan_guidance_only',
-  });
-  const queryStepStrength = shouldUseSharedTargetRelevancePipeline({
-    mode: decisionMode,
-    targetStepFamily,
-    queryStepStrength: resolveGuidanceSearchStepStrength(options?.queryStepStrength, queryText, targetStepFamily),
-  })
-    ? resolveGuidanceSearchStepStrength(options?.queryStepStrength, queryText, targetStepFamily)
-    : null;
-  if (shouldUseSharedTargetRelevancePipeline({ mode: decisionMode, targetStepFamily, queryStepStrength })) {
-    const coarse = classifySharedBeautyCoarseCandidate(product, {
-      queryTargetStepFamily: targetStepFamily,
-      queryText,
-      guidanceOnlyDiscovery: decisionMode === 'guidance_only',
-      queryStepStrength,
-      mode: decisionMode,
-    });
-    if (coarse.target_relevance_class === 'hard_invalid' || coarse.target_relevance_class === 'adjacent_noise') {
-      return false;
-    }
-    if (queryStepStrength !== 'generic_family' && coarse.target_relevance_class === 'generic_family') {
-      return false;
-    }
+  if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
+    softPenalty *= SEARCH_EXTERNAL_HARD_RULE_PRUNE ? 0.6 : 0.35;
   }
 
   const normalizedQuery =
@@ -5461,7 +5720,42 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     return candidateText.includes(effectiveTokens[0]);
   }
   const overlapCount = effectiveTokens.filter((token) => candidateText.includes(token)).length;
-  return overlapCount >= (ingredientIntent ? 1 : 2);
+  const strictOverlapRequired = ingredientIntent ? 1 : 2;
+  const relaxedOverlapRequired = SEARCH_EXTERNAL_HARD_RULE_PRUNE
+    ? Math.max(1, strictOverlapRequired - 1)
+    : strictOverlapRequired;
+  if (overlapCount >= relaxedOverlapRequired) return true;
+  if (SEARCH_EXTERNAL_HARD_RULE_PRUNE && overlapCount >= 1) {
+    return softPenalty >= 0.35;
+  }
+  return false;
+}
+
+function buildGuidanceRecallSupplementQueries(queryText, guidanceContext) {
+  if (!guidanceContext || !guidanceContext.is_guidance_only) return [];
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (!query) return;
+    const key = normalizeSearchTextForMatch(query);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(query);
+  };
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (guidanceContext.target_step_family === 'moisturizer') {
+    if (/\bceramide\b/.test(normalized)) push('ceramide barrier moisturizer');
+    push('barrier repair moisturizer');
+    push('ceramide moisturizer');
+    push('sensitive skin moisturizer');
+  } else if (guidanceContext.target_step_family === 'serum') {
+    if (/\bpanthenol\b/.test(normalized)) push('panthenol serum');
+    push('barrier repair serum');
+    push('soothing serum');
+    push('hydrating serum');
+  }
+  return out;
 }
 
 function filterBeautySpecificCacheProducts(products, queryText, options = {}) {
@@ -5752,6 +6046,37 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     firstQueryParamValue(query.external_seed_strategy || query.externalSeedStrategy) || '',
   ).trim();
   if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
+
+  const uiSurface = String(firstQueryParamValue(query.ui_surface || query.uiSurface) || '').trim();
+  if (uiSurface) search.ui_surface = uiSurface;
+
+  const decisionMode = String(firstQueryParamValue(query.decision_mode || query.decisionMode) || '').trim();
+  if (decisionMode) search.decision_mode = decisionMode;
+
+  const queryStepStrength = String(
+    firstQueryParamValue(query.query_step_strength || query.queryStepStrength) || '',
+  ).trim();
+  if (queryStepStrength) search.query_step_strength = queryStepStrength;
+
+  const targetStepFamily = String(
+    firstQueryParamValue(query.target_step_family || query.targetStepFamily) || '',
+  ).trim();
+  if (targetStepFamily) search.target_step_family = targetStepFamily;
+
+  const sourcePolicy = String(firstQueryParamValue(query.source_policy || query.sourcePolicy) || '').trim();
+  if (sourcePolicy) search.source_policy = sourcePolicy;
+
+  const retrievalMode = String(firstQueryParamValue(query.retrieval_mode || query.retrievalMode) || '').trim();
+  if (retrievalMode) search.retrieval_mode = retrievalMode;
+
+  const semanticFamily = String(firstQueryParamValue(query.semantic_family || query.semanticFamily) || '').trim();
+  if (semanticFamily) search.semantic_family = semanticFamily;
+
+  const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
+  if (productOnly !== undefined) search.product_only = productOnly;
+
+  const negativeConstraints = parseQueryStringArray(query.negative_constraints ?? query.negativeConstraints);
+  if (negativeConstraints.length) search.negative_constraints = negativeConstraints;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
   if (limit !== undefined) search.limit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)));
@@ -6485,77 +6810,53 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     };
   }
 
+  const guidanceContext = extractGuidanceRetrievalContext(query, { queryText });
   const requestedCount = Math.max(1, Number(neededCount || 1));
-  const normalizedIntent = buildGuidanceSearchNormalizedIntent({
-    queryText,
-    targetStepFamily: query.target_step_family,
-    uiSurface: query.ui_surface,
-    decisionMode: query.decision_mode,
-    queryStepStrength: query.query_step_strength,
-  });
-  const serumCanaryBackboneQueries = normalizedIntent?.backbone_id
-    ? buildSerumCanaryBackboneQueries(queryText)
-    : [];
-  const limit = normalizedIntent?.backbone_id
-    ? 60
+  const limit = guidanceContext.is_guidance_recall_first
+    ? Math.min(
+        Math.max(requestedCount * 10, PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT),
+        PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT,
+      )
     : Math.min(Math.max(requestedCount * 6, 48), 320);
-  const hardBudgetMs = Math.max(
-    800,
-    Number(process.env.PROXY_SEARCH_EXTERNAL_SEED_SUPPLEMENT_BUDGET_MS || 4400),
-  );
-  const startedAtMs = Date.now();
   const brandDetection = detectBrandEntities(queryText, { candidateProducts: [] });
   const hasExplicitCategory = hasExplicitCategoryHint(queryText, null);
-  const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: queryText });
   const brandTerms = Array.isArray(brandDetection?.brands)
     ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
     : [];
   const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
+  const guidanceVariants = buildGuidanceRecallSupplementQueries(queryText, guidanceContext);
   const fragranceVariants =
-    beautyQueryProfile?.bucket === 'fragrance'
+    !hasFragranceFreeSkincareSignal(queryText) &&
+    (/\b(perfume|fragrance|parfum|cologne)\b/i.test(queryText) || hasExplicitCategory)
       ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
       : [];
   const queryVariants = Array.from(
     new Set(
-      [...serumCanaryBackboneQueries, queryText, ...baseVariants, ...fragranceVariants]
+      [queryText, ...guidanceVariants, ...baseVariants, ...fragranceVariants]
         .map((item) => String(item || '').trim())
         .filter(Boolean),
     ),
-  ).slice(0, normalizedIntent?.backbone_id ? 6 : 4);
+  ).slice(0, 8);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
   const requestHeaders = {
-    ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+    ...(checkoutToken
+      ? { 'X-Checkout-Token': checkoutToken }
+      : {
+          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        }),
   };
   const seenKeys = new Set();
   const mergedProducts = [];
   let upstreamStatus = 0;
   let upstreamCalls = 0;
   let rawFetchedCount = 0;
-  let budgetExhausted = false;
-  let supplementTimeout = false;
 
   for (const variant of queryVariants) {
-    const elapsedMs = Date.now() - startedAtMs;
-    const remainingBudgetMs = hardBudgetMs - elapsedMs;
-    if (remainingBudgetMs <= 0) {
-      budgetExhausted = true;
-      break;
-    }
     const upstreamParams = {
       merchant_id: 'external_seed',
       external_seed_only: true,
       query: variant,
-      ...(query.catalog_surface ? { catalog_surface: query.catalog_surface } : {}),
-      ...(query.ui_surface ? { ui_surface: query.ui_surface } : {}),
-      ...(query.product_only !== undefined ? { product_only: query.product_only } : {}),
-      ...(query.query_index !== undefined ? { query_index: query.query_index } : {}),
-      ...(query.query_total !== undefined ? { query_total: query.query_total } : {}),
-      ...(query.target_step_family ? { target_step_family: query.target_step_family } : {}),
-      ...(query.query_step_strength ? { query_step_strength: query.query_step_strength } : {}),
-      ...(query.decision_mode ? { decision_mode: query.decision_mode } : {}),
-      ...(query.source_policy ? { source_policy: query.source_policy } : {}),
-      ...(query.session_id ? { session_id: query.session_id } : {}),
-      ...(source ? { source } : {}),
       ...(query.category ? { category: query.category } : {}),
       ...(query.min_price != null ? { min_price: query.min_price } : {}),
       ...(query.max_price != null ? { max_price: query.max_price } : {}),
@@ -6565,32 +6866,39 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       allow_external_seed: true,
       allow_stale_cache: false,
       external_seed_strategy: 'supplement_internal_first',
-      fast_mode: true,
+      fast_mode: guidanceContext.is_guidance_recall_first ? false : true,
+      ...(guidanceContext.is_guidance_only
+        ? {
+            ui_surface: guidanceContext.ui_surface || GUIDANCE_ONLY_UI_SURFACE,
+            decision_mode: guidanceContext.decision_mode || GUIDANCE_ONLY_DECISION_MODE,
+            retrieval_mode: guidanceContext.retrieval_mode || GUIDANCE_RETRIEVAL_MODE,
+            source_policy: guidanceContext.source_policy || GUIDANCE_SOURCE_POLICY,
+            ...(guidanceContext.target_step_family
+              ? { target_step_family: guidanceContext.target_step_family }
+              : {}),
+            ...(guidanceContext.semantic_family
+              ? { semantic_family: guidanceContext.semantic_family }
+              : {}),
+            ...(guidanceContext.query_step_strength
+              ? { query_step_strength: guidanceContext.query_step_strength }
+              : {}),
+            ...(guidanceContext.product_only !== undefined
+              ? { product_only: guidanceContext.product_only }
+              : {}),
+            ...(guidanceContext.negative_constraints.length
+              ? { negative_constraints: guidanceContext.negative_constraints }
+              : {}),
+          }
+        : {}),
     };
-    let resp = null;
-    try {
-      resp = await axios({
-        method: 'GET',
-        url,
-        params: upstreamParams,
-        headers: requestHeaders,
-        timeout: Math.max(
-          500,
-          Math.min(
-            remainingBudgetMs,
-            2500,
-            getUpstreamTimeoutMs('find_products_multi'),
-          ),
-        ),
-        validateStatus: () => true,
-      });
-    } catch (err) {
-      if (String(err?.code || '').toUpperCase() === 'ECONNABORTED') {
-        supplementTimeout = true;
-        continue;
-      }
-      throw err;
-    }
+    const resp = await axios({
+      method: 'GET',
+      url,
+      params: upstreamParams,
+      headers: requestHeaders,
+      timeout: Math.min(6500, getUpstreamTimeoutMs('find_products_multi')),
+      validateStatus: () => true,
+    });
     upstreamCalls += 1;
     upstreamStatus = Math.max(upstreamStatus, Number(resp.status || 0) || 0);
     if (!(resp.status >= 200 && resp.status < 300)) continue;
@@ -6609,61 +6917,52 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       seenKeys.add(key);
       mergedProducts.push(product);
     }
-    if (mergedProducts.length >= requestedCount) {
+    if (mergedProducts.length >= Math.max(requestedCount * 3, 48)) {
       break;
     }
   }
 
-  const retrievalQueries = serumCanaryBackboneQueries.length > 0 ? serumCanaryBackboneQueries : [queryText];
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
-  const anchorTokens = Array.from(new Set(retrievalQueries.flatMap((item) => extractSearchAnchorTokens(item))));
-  const queryTokens = Array.from(
-    new Set(retrievalQueries.flatMap((item) => tokenizeSearchTextForMatch(normalizeSearchTextForMatch(item)))),
-  );
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const relevantProducts = mergedProducts.filter((p) =>
     isSupplementCandidateRelevant(p, queryText, {
       normalizedQuery,
       anchorTokens,
       queryTokens,
       brandTerms,
-      targetStepFamily: query.target_step_family,
-      uiSurface: query.ui_surface,
-      queryStepStrength: query.query_step_strength,
-      decisionMode: query.decision_mode,
+      guidanceContext,
+      queryLike: query,
     }),
   );
-  const cappedRelevantProducts = relevantProducts.slice(0, normalizedIntent?.backbone_id ? 12 : relevantProducts.length);
   const filteredOutIrrelevantCount = Math.max(0, mergedProducts.length - relevantProducts.length);
 
   return {
-    products: cappedRelevantProducts,
+    products: relevantProducts,
     metadata: {
       attempted: true,
-      applied: cappedRelevantProducts.length > 0,
+      applied: relevantProducts.length > 0,
       reason:
-        cappedRelevantProducts.length > 0
+        relevantProducts.length > 0
           ? 'external_seed_candidates_found'
-          : supplementTimeout
-            ? 'supplement_timeout'
           : filteredOutIrrelevantCount > 0
             ? 'external_seed_candidates_filtered_irrelevant'
             : 'no_external_seed_candidates',
       requested_count: requestedCount,
-      fetched_count: cappedRelevantProducts.length,
+      fetched_count: relevantProducts.length,
       fetched_raw_count: rawFetchedCount,
       fetched_variant_count: queryVariants.length,
       upstream_calls: upstreamCalls,
       brand_query_detected: Boolean(brandDetection?.brand_like),
       brand_entities: brandTerms,
       brand_scope: hasExplicitCategory ? 'category_scoped' : 'broad',
-      beauty_query_bucket: beautyQueryProfile?.bucket || null,
       filtered_out_irrelevant_count: filteredOutIrrelevantCount,
       query_variants: queryVariants,
       upstream_status: upstreamStatus,
-      supplement_budget_ms: hardBudgetMs,
-      supplement_budget_exhausted: budgetExhausted,
-      supplement_timeout: supplementTimeout,
-      normalized_intent: normalizedIntent,
+      retrieval_mode: guidanceContext.is_guidance_recall_first ? GUIDANCE_RETRIEVAL_MODE : 'default',
+      negative_constraints_applied: guidanceContext.negative_constraints,
+      external_seed_rows_raw: rawFetchedCount,
+      external_seed_rows_relevant: relevantProducts.length,
     },
   };
 }
@@ -6672,6 +6971,7 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   const base = String(baseQueryText || '').trim();
   if (!base) return [];
   const normalized = normalizeSearchTextForMatch(base);
+  const hasFragranceSignal = hasFragranceSearchSignal(base);
   const peptideNormalizedBase = base
     .replace(/\b(tri|tetra|hexa)peptides?\b/gi, 'peptide')
     .replace(/\bpeptides\b/gi, 'peptide')
@@ -6701,6 +7001,45 @@ function buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText) {
   }
   if (/\bniacinamide\b/.test(normalized) && /\b(serum|essence)\b/.test(normalized)) {
     push(`${base} vitamin b3`);
+  }
+  if (/\bceramide\b/.test(normalized) && /\b(cream|moisturizer|moisturiser|lotion)\b/.test(normalized)) {
+    push('ceramide barrier moisturizer');
+    push('barrier repair moisturizer');
+    push('ceramide moisturizer');
+  }
+  if (
+    /\bfragrance(?:\s|-)?free\b/.test(normalized) &&
+    /\b(barrier|moisturizer|moisturiser|cream|lotion)\b/.test(normalized)
+  ) {
+    push('barrier repair moisturizer');
+    push('ceramide moisturizer');
+    push('sensitive skin moisturizer');
+  }
+  if (/\bbarrier\b/.test(normalized) && /\b(moisturizer|moisturiser|cream|lotion)\b/.test(normalized)) {
+    push('barrier repair moisturizer');
+    push('ceramide barrier moisturizer');
+    push('ceramide moisturizer');
+  }
+  if (hasFragranceSignal) {
+    const fragranceStem = base
+      .replace(/\b(beauty|cosmetics?|makeup|tool|tools|brush(?:es)?|kit)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const fragranceCore = fragranceStem
+      .replace(
+        /\b(perfume|perfumes|fragrance|fragrances|parfum|parfums|cologne|body mist|eau de parfum|eau de toilette)\b/gi,
+        ' ',
+      )
+      .replace(/\s+/g, ' ')
+      .trim();
+    const seed = fragranceCore || fragranceStem || base;
+    push(`${seed} fragrance`);
+    push(`${seed} perfume`);
+    push(`${seed} parfum`);
+    push(`${seed} cologne`);
+    push(`${seed} eau de parfum`);
+    push(`${seed} eau de toilette`);
+    push(`${seed} body mist`);
   }
 
   return candidates.slice(0, PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_MAX_QUERIES);
@@ -6772,14 +7111,24 @@ async function invokeFindProductsMultiFallbackOnce({
     offset: parseQueryNumber(payload?.search?.offset),
   });
   const usableCount = countUsableSearchProducts(normalized?.products);
+  const guidanceSummary = summarizeGuidanceCandidatePool(
+    normalized?.products,
+    relevanceQuery,
+    payload?.search,
+  );
   const relevanceMatched = relevanceQuery
-    ? isProxySearchFallbackRelevant(normalized, relevanceQuery)
+    ? guidanceSummary
+      ? guidanceSummary.target_relevant_count > 0
+      : isProxySearchFallbackRelevant(normalized, relevanceQuery)
     : usableCount > 0;
 
   return {
     status: Number(resp.status || 0) || 0,
     usableCount,
     relevanceMatched,
+    targetRelevantCount: guidanceSummary ? guidanceSummary.target_relevant_count : 0,
+    targetRelevanceCounts: guidanceSummary ? guidanceSummary.counts : null,
+    top3QualityScore: guidanceSummary ? guidanceSummary.top3_quality_score : null,
     queryUsed: String(payload?.search?.query || ''),
     productsPreview: buildFallbackOverlapPreview(normalized?.products, relevanceQuery, 3),
     data: withProxySearchFallbackMetadata(normalized, {
@@ -6819,37 +7168,14 @@ async function queryFindProductsMultiFallback({
     isAuroraSource(normalizedRequestSource) &&
     (String(reason || '').trim() === 'primary_irrelevant' || isAuroraMonocultureRetry);
   const isFragranceSemanticRetry =
-    SEARCH_FRAGRANCE_SEMANTIC_RETRY &&
-    hasFragranceQuerySignal(baseQueryText);
+    SEARCH_EXTERNAL_HARD_RULE_PRUNE &&
+    hasFragranceSearchSignal(baseQueryText) &&
+    String(reason || '').trim() !== 'primary_request_failed';
   const semanticRetryEnabled = isAuroraSemanticRetry || isFragranceSemanticRetry;
-  const normalizedBaseQuery = normalizeSearchTextForMatch(baseQueryText);
-  const fragranceSemanticRetryQuery = isFragranceSemanticRetry
-    ? buildFragranceSemanticRetryQuery(baseQueryText)
-    : '';
-  const fragranceSemanticRetryFallbackQuery = isFragranceSemanticRetry
-    ? 'fragrance perfume parfum cologne eau de parfum eau de toilette body mist'
-    : '';
-  const auroraSemanticRetryQuery = isAuroraSemanticRetry
-    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)[0] || ''
-    : '';
-  const semanticRetryQueries = [];
-  if (
-    fragranceSemanticRetryQuery &&
-    normalizeSearchTextForMatch(fragranceSemanticRetryQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(fragranceSemanticRetryQuery);
-  } else if (
-    fragranceSemanticRetryFallbackQuery &&
-    normalizeSearchTextForMatch(fragranceSemanticRetryFallbackQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(fragranceSemanticRetryFallbackQuery);
-  } else if (
-    auroraSemanticRetryQuery &&
-    normalizeSearchTextForMatch(auroraSemanticRetryQuery) !== normalizedBaseQuery
-  ) {
-    semanticRetryQueries.push(auroraSemanticRetryQuery);
-  }
-  const candidateQueries = Array.from(new Set([baseQueryText, ...semanticRetryQueries].filter(Boolean))).slice(0, 2);
+  const semanticRetryQueries = semanticRetryEnabled
+    ? buildAuroraPrimaryIrrelevantSemanticRetryQueries(baseQueryText)
+    : [];
+  const candidateQueries = [baseQueryText, ...semanticRetryQueries].filter(Boolean);
   const configuredFallbackTimeoutMs = isAuroraSource(normalizedRequestSource)
     ? Math.min(PROXY_SEARCH_FALLBACK_TIMEOUT_MS, PROXY_SEARCH_AURORA_FALLBACK_TIMEOUT_MS)
     : PROXY_SEARCH_FALLBACK_TIMEOUT_MS;
@@ -6862,20 +7188,6 @@ async function queryFindProductsMultiFallback({
   let selectedAttempt = null;
   let selectedAttemptNo = 0;
   const attempts = [];
-  const rankFallbackAttempt = (attempt) => {
-    const statusOk = attempt && attempt.status >= 200 && attempt.status < 300;
-    const usableCount = Math.max(0, Number(attempt?.usableCount || 0) || 0);
-    const relevanceMatched = attempt?.relevanceMatched === true;
-    return {
-      statusOk,
-      usableCount,
-      relevanceMatched,
-      total:
-        (statusOk ? 100 : 0) +
-        (usableCount * 12) +
-        (relevanceMatched ? 8 : 0),
-    };
-  };
   for (let i = 0; i < candidateQueries.length; i += 1) {
     const remainingBudgetMs = Math.max(0, fallbackDeadlineMs - Date.now());
     if (remainingBudgetMs < 100) {
@@ -6914,6 +7226,7 @@ async function queryFindProductsMultiFallback({
       query: attempt.queryUsed,
       status: attempt.status,
       usable_count: attempt.usableCount,
+      target_relevant_count: Number(attempt.targetRelevantCount || 0),
       relevance_matched: attempt.relevanceMatched,
       products_preview: attempt.productsPreview,
     });
@@ -6922,12 +7235,19 @@ async function queryFindProductsMultiFallback({
       selectedAttempt = attempt;
       selectedAttemptNo = i + 1;
     } else {
-      const selectedRank = rankFallbackAttempt(selectedAttempt);
-      const candidateRank = rankFallbackAttempt(attempt);
-      const shouldReplaceByRecall =
-        candidateRank.statusOk &&
-        candidateRank.usableCount >= Math.max(1, selectedRank.usableCount + 2);
-      if (shouldReplaceByRecall || candidateRank.total > selectedRank.total) {
+      const selectedScore =
+        (selectedAttempt.status >= 200 && selectedAttempt.status < 300 ? 100 : 0) +
+        (selectedAttempt.relevanceMatched ? 50 : 0) +
+        Math.min(120, Number(selectedAttempt.targetRelevantCount || 0) * 30) +
+        Math.min(120, Number(selectedAttempt.top3QualityScore || 0)) +
+        Math.min(20, selectedAttempt.usableCount);
+      const candidateScore =
+        (attempt.status >= 200 && attempt.status < 300 ? 100 : 0) +
+        (attempt.relevanceMatched ? 50 : 0) +
+        Math.min(120, Number(attempt.targetRelevantCount || 0) * 30) +
+        Math.min(120, Number(attempt.top3QualityScore || 0)) +
+        Math.min(20, attempt.usableCount);
+      if (candidateScore > selectedScore) {
         selectedAttempt = attempt;
         selectedAttemptNo = i + 1;
       }
@@ -6935,9 +7255,7 @@ async function queryFindProductsMultiFallback({
 
     if (attempt.relevanceMatched && attempt.usableCount > 0) {
       const shouldForceNextSemanticAttempt =
-        i === 0 &&
-        candidateQueries.length > 1 &&
-        (isAuroraMonocultureRetry || isFragranceSemanticRetry);
+        isAuroraMonocultureRetry && i === 0 && candidateQueries.length > 1;
       if (!shouldForceNextSemanticAttempt) break;
     }
   }
@@ -6982,6 +7300,9 @@ async function queryFindProductsMultiFallback({
     status: selectedAttempt.status,
     usableCount: selectedAttempt.usableCount,
     relevanceMatched: selectedAttempt.relevanceMatched,
+    targetRelevantCount: Number(selectedAttempt.targetRelevantCount || 0),
+    targetRelevanceCounts: selectedAttempt.targetRelevanceCounts || null,
+    top3QualityScore: Number(selectedAttempt.top3QualityScore || 0) || 0,
     selectedQuery: selectedAttempt.queryUsed,
     selectedAttemptNo,
     semanticRetryApplied,
@@ -7587,6 +7908,7 @@ function shouldUseResolverFirstSearch({
   remainingBudgetMs = null,
   queryClass = null,
   brandLike = false,
+  queryParams = null,
 }) {
   if (!PROXY_SEARCH_RESOLVER_FIRST_ENABLED) return false;
   if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
@@ -7595,6 +7917,17 @@ function shouldUseResolverFirstSearch({
   if (
     Number.isFinite(Number(remainingBudgetMs)) &&
     Number(remainingBudgetMs) < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
+  ) {
+    return false;
+  }
+
+  const guidanceContext = extractGuidanceRetrievalContext(
+    queryParams || metadata?.queryParams || metadata?.search || {},
+    { queryText },
+  );
+  if (
+    guidanceContext.is_guidance_recall_first &&
+    !hasGuidanceLookupStyleQuery(queryText, guidanceContext)
   ) {
     return false;
   }
@@ -7634,7 +7967,6 @@ function shouldUseResolverFirstSearch({
   const source = normalizeAgentSource(metadata?.source);
   if (isCreatorUiSource(source)) return false;
   const auroraSource = isAuroraSource(source);
-  if (auroraSource && PROXY_SEARCH_RESOLVER_FIRST_DISABLE_AURORA) return false;
   if (!source) return true;
   const isCatalogSource = isResolverFirstCatalogSource(source);
   if (PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY && (isCatalogSource || auroraSource)) {
