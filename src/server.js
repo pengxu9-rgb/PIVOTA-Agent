@@ -6396,6 +6396,16 @@ async function runGuidanceServerOwnedLadderSearch({
 
   for (let index = 0; index < attempts.length; index += 1) {
     const attempt = attempts[index];
+    const clusterQueries = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(attempt.cluster_queries) ? attempt.cluster_queries : []),
+          attempt.selected_query,
+        ]
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      ),
+    );
     const attemptStartedAt = Date.now();
     const remainingBeforeAttempt = getGuidanceFastpathRemainingBudgetMs(startedAt);
     const remainingAfterReserve = Math.max(
@@ -6403,14 +6413,14 @@ async function runGuidanceServerOwnedLadderSearch({
       remainingBeforeAttempt - GUIDANCE_FASTPATH_RESPONSE_BUDGET_MS,
     );
     if (remainingAfterReserve < 250) {
-      attemptTrace.push({
-        attempt_index: index + 1,
-        intent_strength: attempt.intent_strength,
-        selected_query: attempt.selected_query,
-        cluster_queries: attempt.cluster_queries,
-        adopted: false,
-        skipped_reason: 'budget_exhausted',
-      });
+        attemptTrace.push({
+          attempt_index: index + 1,
+          intent_strength: attempt.intent_strength,
+          selected_query: attempt.selected_query,
+          cluster_queries: clusterQueries,
+          adopted: false,
+          skipped_reason: 'budget_exhausted',
+        });
       continue;
     }
 
@@ -6425,14 +6435,51 @@ async function runGuidanceServerOwnedLadderSearch({
 
     const [internalPhase, externalPhase] = await Promise.all([
       runGuidanceFastpathPhase('internal_recall', internalBudget, async () =>
-        searchCrossMerchantFromCache(attempt.selected_query, 1, candidateLimit, {
-          inStockOnly,
-        })),
+        {
+          const queryTraces = await Promise.all(
+            clusterQueries.map(async (clusterQuery) => {
+              try {
+                const cacheResult = await searchCrossMerchantFromCache(clusterQuery, 1, candidateLimit, {
+                  inStockOnly,
+                });
+                const cacheProducts = Array.isArray(cacheResult?.products) ? cacheResult.products : [];
+                return {
+                  query: clusterQuery,
+                  ok: true,
+                  candidate_count: cacheProducts.length,
+                  products: cacheProducts,
+                };
+              } catch (err) {
+                return {
+                  query: clusterQuery,
+                  ok: false,
+                  candidate_count: 0,
+                  products: [],
+                  error: err?.message || String(err),
+                };
+              }
+            }),
+          );
+          return {
+            products: mergeGuidanceFastpathProducts(
+              queryTraces.flatMap((item) => item.products || []),
+              queryText,
+              guidanceContext,
+            ),
+            query_traces: queryTraces.map((item) => ({
+              query: item.query,
+              ok: item.ok,
+              candidate_count: item.candidate_count,
+              ...(item.error ? { error: item.error } : {}),
+            })),
+          };
+        }),
       runGuidanceFastpathPhase('direct_external_seed_recall', externalBudget, async () =>
         allowExternalSeed
           ? searchExternalSeedOnlyProductsDirect({
               search: {
-                query: attempt.selected_query,
+                query: queryText,
+                retrieval_query_variants: clusterQueries,
                 merchant_id: 'external_seed',
                 external_seed_only: true,
                 allow_external_seed: true,
@@ -6463,6 +6510,8 @@ async function runGuidanceServerOwnedLadderSearch({
                 query_step_strength: attempt.intent_strength,
                 query_target_step_family: guidanceContext.target_step_family,
                 retrieval_mode: guidanceContext.retrieval_mode || GUIDANCE_RETRIEVAL_MODE,
+                retrieval_query_variants: clusterQueries,
+                relevance_query_text: queryText,
               },
               guidanceFastpath: true,
             })
@@ -6473,6 +6522,7 @@ async function runGuidanceServerOwnedLadderSearch({
       phase: 'internal_recall',
       attempt_index: index + 1,
       query: attempt.selected_query,
+      cluster_queries: clusterQueries,
       duration_ms: internalPhase.duration_ms,
       timeout_ms: internalPhase.timeout_ms,
       ok: internalPhase.ok,
@@ -6482,6 +6532,7 @@ async function runGuidanceServerOwnedLadderSearch({
       phase: 'direct_external_seed_recall',
       attempt_index: index + 1,
       query: attempt.selected_query,
+      cluster_queries: clusterQueries,
       duration_ms: externalPhase.duration_ms,
       timeout_ms: externalPhase.timeout_ms,
       ok: externalPhase.ok,
@@ -6490,6 +6541,9 @@ async function runGuidanceServerOwnedLadderSearch({
 
     const internalProducts = Array.isArray(internalPhase.result?.products)
       ? internalPhase.result.products
+      : [];
+    const internalQueryTraces = Array.isArray(internalPhase.result?.query_traces)
+      ? internalPhase.result.query_traces
       : [];
     const externalProducts = Array.isArray(externalPhase.result?.products)
       ? externalPhase.result.products
@@ -6552,10 +6606,14 @@ async function runGuidanceServerOwnedLadderSearch({
       attempt_index: index + 1,
       intent_strength: attempt.intent_strength,
       selected_query: attempt.selected_query,
-      cluster_queries: attempt.cluster_queries,
+      cluster_queries: clusterQueries,
       internal_candidate_count: internalProducts.length,
       external_candidate_count: externalProducts.length,
       merged_candidate_count: mergedProducts.length,
+      internal_query_traces: internalQueryTraces,
+      external_query_traces: Array.isArray(externalPhase.result?.metadata?.retrieval_query_debug)
+        ? externalPhase.result.metadata.retrieval_query_debug
+        : [],
       target_relevance_class_counts:
         searchDecision?.target_relevance_class_counts ||
         candidateSummary?.counts ||
@@ -6591,7 +6649,9 @@ async function runGuidanceServerOwnedLadderSearch({
           attempt_index: index + 2,
           intent_strength: attempts[index + 1]?.intent_strength || 'supportive_family',
           selected_query: attempts[index + 1]?.selected_query || null,
-          cluster_queries: attempts[index + 1]?.cluster_queries || [],
+          cluster_queries: Array.isArray(attempts[index + 1]?.cluster_queries)
+            ? attempts[index + 1].cluster_queries
+            : [],
           adopted: false,
           skipped_reason: 'budget_exhausted',
         });
@@ -6948,7 +7008,16 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   if (!process.env.DATABASE_URL) return null;
 
   const queryText = extractSearchQueryText(search);
-  if (!queryText) {
+  const relevanceQueryText = String(
+    firstQueryParamValue(
+      metadata?.relevance_query_text ??
+        metadata?.relevanceQueryText ??
+        search?.relevance_query_text ??
+        search?.relevanceQueryText ??
+        queryText,
+    ) || '',
+  ).trim();
+  if (!relevanceQueryText) {
     return {
       status: 'success',
       success: true,
@@ -7012,9 +7081,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const market =
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
-  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const normalizedQuery = normalizeSearchTextForMatch(relevanceQueryText);
   const normalizedIntent = buildGuidanceSearchNormalizedIntent({
-    queryText,
+    queryText: relevanceQueryText,
     targetStepFamily,
     uiSurface,
     decisionMode,
@@ -7022,21 +7091,32 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   });
   const serumCanaryQueryVariants = normalizedIntent?.backbone_id ? buildSerumCanaryBackboneQueries(queryText) : [];
   const guidanceFamilyQueryVariants = guidanceOnlyDiscovery
-    ? buildGuidanceRecallSupplementQueries(queryText, {
+    ? buildGuidanceRecallSupplementQueries(relevanceQueryText, {
         is_guidance_only: true,
         target_step_family: targetStepFamily,
       })
     : [];
+  const retrievalQueryVariantsOverride = parseQueryStringArray(
+    metadata?.retrieval_query_variants ??
+      metadata?.retrievalQueryVariants ??
+      search?.retrieval_query_variants ??
+      search?.retrievalQueryVariants,
+  );
   const retrievalQueries = Array.from(
     new Set(
-      [queryText, ...serumCanaryQueryVariants, ...guidanceFamilyQueryVariants]
+      [
+        ...retrievalQueryVariantsOverride,
+        queryText,
+        ...serumCanaryQueryVariants,
+        ...guidanceFamilyQueryVariants,
+      ]
         .map((item) => String(item || '').trim())
         .filter(Boolean),
     ),
   );
-  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const anchorTokens = extractSearchAnchorTokens(relevanceQueryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
+  const ingredientIntent = hasBeautyIngredientIntentSignal(relevanceQueryText);
 
   try {
     const seen = new Set();
@@ -7139,7 +7219,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     for (const product of rawProducts) {
       const coarse = classifySharedBeautyCoarseCandidate(product, {
         queryTargetStepFamily: targetStepFamily,
-        queryText,
+        queryText: relevanceQueryText,
         guidanceOnlyDiscovery,
         queryStepStrength,
         mode: decisionMode,
@@ -7158,7 +7238,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       .map((product) => {
         const score = scoreDirectExternalSeedProduct({
           product,
-          queryText,
+          queryText: relevanceQueryText,
           normalizedQuery,
           anchorTokens,
           queryTokens,
@@ -7167,7 +7247,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           queryStepStrength,
           decisionMode,
         });
-        const relevant = isSupplementCandidateRelevant(product, queryText, {
+        const relevant = isSupplementCandidateRelevant(product, relevanceQueryText, {
           normalizedQuery,
           anchorTokens,
           queryTokens,
@@ -7198,7 +7278,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       if (!guidanceOnlyDiscovery || !requestedProductOnly) return true;
       const coarse = classifySharedBeautyCoarseCandidate(product, {
         queryTargetStepFamily: targetStepFamily,
-        queryText,
+        queryText: relevanceQueryText,
         guidanceOnlyDiscovery,
         queryStepStrength,
         mode: decisionMode,
@@ -7213,7 +7293,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     });
 
     const skincareHitDecision = buildSharedBeautySkincareHitQualityDecision({
-      queryText,
+      queryText: relevanceQueryText,
       products: productOnlyProducts,
       queryTargetStepFamily: targetStepFamily,
       guidanceOnlyDiscovery,
