@@ -477,8 +477,8 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
     ],
   );
   assert.equal(
-    decision.valid_products.filter((product) => /Repulpant/i.test(String(product?.title || product?.display_name || ''))).length <= 1,
-    true,
+    decision.valid_products.some((product) => /Repulpant/i.test(String(product?.title || product?.display_name || ''))),
+    false,
   );
 });
 
