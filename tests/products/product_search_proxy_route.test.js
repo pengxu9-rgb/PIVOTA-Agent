@@ -2851,12 +2851,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
   test('guidance-only external-seed direct search expands moisturizer family retrieval patterns within a single step', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-external-seed-variant-union-test';
 
-    let capturedParams = null;
+    const capturedPatternSets = [];
     jest.doMock('../../src/db', () => ({
       query: jest.fn(async (sql, params) => {
         const text = String(sql || '');
         if (text.includes('FROM external_product_seeds')) {
-          capturedParams = Array.isArray(params) ? params.slice() : null;
+          capturedPatternSets.push(Array.isArray(params?.[2]) ? params[2].slice() : []);
           return { rows: [] };
         }
         return { rows: [] };
@@ -2883,11 +2883,22 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(Array.isArray(capturedParams)).toBe(true);
-    const searchPatterns = Array.isArray(capturedParams?.[2]) ? capturedParams[2] : [];
-    expect(searchPatterns).toEqual(
-      expect.arrayContaining(['%fragrance%', '%barrier%', '%moisturizer%', '%ceramide%', '%sensitive%']),
-    );
+    expect(capturedPatternSets.length).toBeGreaterThanOrEqual(4);
+    expect(
+      capturedPatternSets.some((patterns) =>
+        patterns.includes('%fragrance%') && patterns.includes('%barrier%') && patterns.includes('%moisturizer%'),
+      ),
+    ).toBe(true);
+    expect(
+      capturedPatternSets.some((patterns) =>
+        patterns.includes('%ceramide%') && patterns.includes('%moisturizer%'),
+      ),
+    ).toBe(true);
+    expect(
+      capturedPatternSets.some((patterns) =>
+        patterns.includes('%sensitive%') && patterns.includes('%skin%') && patterns.includes('%moisturizer%'),
+      ),
+    ).toBe(true);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_external_seed_direct',
@@ -2901,6 +2912,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       }),
     );
     expect(resp.body.metadata?.retrieval_query_variant_count).toBeGreaterThanOrEqual(4);
+    expect(Array.isArray(resp.body.metadata?.retrieval_query_debug)).toBe(true);
+    expect(resp.body.metadata?.retrieval_query_debug).toHaveLength(resp.body.metadata?.retrieval_query_variant_count);
   });
 
   test('ingredient-intent serum guidance filters generic serum noise when panthenol is the anchor', async () => {

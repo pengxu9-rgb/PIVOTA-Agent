@@ -6435,84 +6435,101 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         .filter(Boolean),
     ),
   );
-  const anchorTokens = Array.from(
-    new Set(
-      retrievalQueries.flatMap((item) => extractSearchAnchorTokens(item)),
-    ),
-  );
-  const queryTokens = Array.from(
-    new Set(
-      retrievalQueries.flatMap((item) => tokenizeSearchTextForMatch(normalizeSearchTextForMatch(item))),
-    ),
-  );
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
-  const searchPatterns = Array.from(
-    new Set([...anchorTokens, ...queryTokens].map((token) => `%${String(token || '').trim()}%`).filter(Boolean)),
-  ).slice(0, serumCanaryQueryVariants.length > 0 || guidanceFamilyQueryVariants.length > 0 ? 20 : 12);
-  const sqlParams = [market, tool];
-  const filters = [];
-
-  if (searchPatterns.length > 0) {
-    sqlParams.push(searchPatterns);
-    const bind = `$${sqlParams.length}`;
-    filters.push(
-      `(
-        lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
-        OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
-        OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
-        OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
-        OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])
-      )`,
-    );
-  }
-
-  if (inStockOnly) {
-    filters.push(
-      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
-    );
-  }
-
-  sqlParams.push(Math.min(Math.max(safeLimit * 12, 72), 240));
-  const limitBind = `$${sqlParams.length}`;
 
   try {
-    const res = await query(
-      `
-        SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND market = $1
-          AND (tool = '*' OR tool = $2)
-          ${filters.length > 0 ? `AND ${filters.join('\n          AND ')}` : ''}
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        LIMIT ${limitBind}
-      `,
-      sqlParams,
-    );
-
     const seen = new Set();
     const rawProducts = [];
-    for (const row of res.rows || []) {
-      const product = buildExternalSeedProduct(row);
-      if (!product) continue;
-      const key = buildSearchProductKey(product);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      rawProducts.push(product);
+    const variantQueryDebug = [];
+    const perVariantLimit = Math.min(Math.max(safeLimit * 12, 72), 240);
+    const rawProductCap =
+      serumCanaryQueryVariants.length > 0 || guidanceFamilyQueryVariants.length > 0
+        ? Math.min(Math.max(safeLimit * 24, 120), 480)
+        : perVariantLimit;
+
+    for (const retrievalQuery of retrievalQueries) {
+      const variantNormalizedQuery = normalizeSearchTextForMatch(retrievalQuery);
+      const variantAnchorTokens = extractSearchAnchorTokens(retrievalQuery);
+      const variantQueryTokens = Array.from(
+        new Set(tokenizeSearchTextForMatch(variantNormalizedQuery)),
+      );
+      const variantSearchPatterns = Array.from(
+        new Set(
+          [...variantAnchorTokens, ...variantQueryTokens]
+            .map((token) => `%${String(token || '').trim()}%`)
+            .filter(Boolean),
+        ),
+      ).slice(0, 12);
+      const sqlParams = [market, tool];
+      const filters = [];
+
+      if (variantSearchPatterns.length > 0) {
+        sqlParams.push(variantSearchPatterns);
+        const bind = `$${sqlParams.length}`;
+        filters.push(
+          `(
+            lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
+            OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
+            OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
+            OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
+            OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])
+          )`,
+        );
+      }
+
+      if (inStockOnly) {
+        filters.push(
+          `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+        );
+      }
+
+      sqlParams.push(perVariantLimit);
+      const limitBind = `$${sqlParams.length}`;
+      const res = await query(
+        `
+          SELECT
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            seed_data,
+            updated_at,
+            created_at
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND attached_product_key IS NULL
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            ${filters.length > 0 ? `AND ${filters.join('\n            AND ')}` : ''}
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT ${limitBind}
+        `,
+        sqlParams,
+      );
+
+      variantQueryDebug.push({
+        query: retrievalQuery,
+        pattern_count: variantSearchPatterns.length,
+        row_count: Array.isArray(res?.rows) ? res.rows.length : 0,
+      });
+      for (const row of res.rows || []) {
+        const product = buildExternalSeedProduct(row);
+        if (!product) continue;
+        const key = buildSearchProductKey(product);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        rawProducts.push(product);
+        if (rawProducts.length >= rawProductCap) break;
+      }
+      if (rawProducts.length >= rawProductCap) break;
     }
 
     const prefilterCandidateClassCounts = {};
@@ -6663,6 +6680,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
               normalized_intent: normalizedIntent,
               retrieval_query_variants: retrievalQueries,
               retrieval_query_variant_count: retrievalQueries.length,
+              retrieval_query_debug: variantQueryDebug,
               quality_gate_result: skincareHitDecision?.quality_gate_result || null,
               candidate_origin_counts: skincareHitDecision?.candidate_origin_counts || countCandidateOriginBreakdown(responseProducts),
               displayable_candidate_count: Number(skincareHitDecision?.displayable_candidate_count || responseProducts.length) || 0,
@@ -6720,6 +6738,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           normalized_intent: normalizedIntent,
           retrieval_query_variants: retrievalQueries,
           retrieval_query_variant_count: retrievalQueries.length,
+          retrieval_query_debug: variantQueryDebug,
           step_success_class: skincareHitDecision?.applied
             ? skincareHitDecision.step_success_class
             : null,
