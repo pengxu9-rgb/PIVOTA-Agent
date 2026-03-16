@@ -2848,6 +2848,61 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata?.search_decision?.noise_drop_counts?.brightening).toBeGreaterThanOrEqual(1);
   });
 
+  test('guidance-only external-seed direct search expands moisturizer family retrieval patterns within a single step', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-external-seed-variant-union-test';
+
+    let capturedParams = null;
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql, params) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) {
+          capturedParams = Array.isArray(params) ? params.slice() : null;
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'fragrance-free barrier moisturizer',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        retrieval_mode: 'guidance_recall_first',
+        source_policy: 'internal_first_then_external_supplement',
+        product_only: 'true',
+        target_step_family: 'moisturizer',
+        query_step_strength: 'supportive_family',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(capturedParams)).toBe(true);
+    const searchPatterns = Array.isArray(capturedParams?.[2]) ? capturedParams[2] : [];
+    expect(searchPatterns).toEqual(
+      expect.arrayContaining(['%fragrance%', '%barrier%', '%moisturizer%', '%ceramide%', '%sensitive%']),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_external_seed_direct',
+        retrieval_query_variants: expect.arrayContaining([
+          'fragrance-free barrier moisturizer',
+          'barrier repair moisturizer',
+          'ceramide moisturizer',
+          'sensitive skin moisturizer',
+        ]),
+        retrieval_query_variant_count: expect.any(Number),
+      }),
+    );
+    expect(resp.body.metadata?.retrieval_query_variant_count).toBeGreaterThanOrEqual(4);
+  });
+
   test('ingredient-intent serum guidance filters generic serum noise when panthenol is the anchor', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-external-seed-panthenol-serum-test';
 
