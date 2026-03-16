@@ -7116,6 +7116,14 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const anchorTokens = extractSearchAnchorTokens(relevanceQueryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const ingredientIntent = hasBeautyIngredientIntentSignal(relevanceQueryText);
+  const useLeanGuidanceSql =
+    guidanceOnlyDiscovery &&
+    targetStepFamily === 'moisturizer' &&
+    (
+      guidanceFastpath ||
+      retrievalQueryVariantsOverride.length > 0 ||
+      retrievalQueries.length > 1
+    );
 
   try {
     const seen = new Set();
@@ -7158,7 +7166,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
                 OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
                 OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
                 OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
-                OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])
+                ${useLeanGuidanceSql ? '' : `OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])`}
               )`,
             );
           }
@@ -7204,6 +7212,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
             pattern_count: variantSearchPatterns.length,
             row_count: Array.isArray(res?.rows) ? res.rows.length : 0,
             duration_ms: Date.now() - variantStartedAt,
+            lean_sql_applied: useLeanGuidanceSql,
             rows: Array.isArray(res?.rows) ? res.rows : [],
           };
         } catch (err) {
@@ -7212,6 +7221,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
             pattern_count: 0,
             row_count: 0,
             duration_ms: Date.now() - variantStartedAt,
+            lean_sql_applied: useLeanGuidanceSql,
             rows: [],
             error: err?.message || String(err),
           };
@@ -7225,6 +7235,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         pattern_count: variantResult.pattern_count,
         row_count: variantResult.row_count,
         duration_ms: variantResult.duration_ms,
+        lean_sql_applied: variantResult.lean_sql_applied === true,
         ...(variantResult.error ? { error: variantResult.error } : {}),
       });
       for (const row of variantResult.rows || []) {
@@ -7389,6 +7400,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
               retrieval_query_variants: retrievalQueries,
               retrieval_query_variant_count: retrievalQueries.length,
               retrieval_query_debug: variantQueryDebug,
+              lean_sql_applied: useLeanGuidanceSql,
               quality_gate_result: skincareHitDecision?.quality_gate_result || null,
               candidate_origin_counts: skincareHitDecision?.candidate_origin_counts || countCandidateOriginBreakdown(responseProducts),
               displayable_candidate_count: Number(skincareHitDecision?.displayable_candidate_count || responseProducts.length) || 0,
