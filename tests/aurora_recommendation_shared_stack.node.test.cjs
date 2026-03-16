@@ -413,6 +413,43 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(routine.noise_reason, 'bundle');
 });
 
+test('guidance-only moisturizer decision keeps mini samples behind full-size barrier candidates', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'fragrance-free barrier moisturizer',
+    queryTargetStepFamily: 'moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+    mode: 'guidance_only',
+    products: [
+      {
+        product_id: 'sample_1',
+        merchant_id: 'external_seed',
+        display_name: '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
+        description: 'Ceramide barrier repair moisturizer for sensitive skin.',
+        category: 'moisturizer',
+      },
+      {
+        product_id: 'rose_1',
+        merchant_id: 'external_seed',
+        display_name: 'Rose Ceramide Cream',
+        description: 'Fragrance-free ceramide face cream for sensitive skin.',
+        category: 'moisturizer',
+      },
+      {
+        product_id: 'apres_1',
+        merchant_id: 'external_seed',
+        display_name: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+        description: 'Barrier repair moisturizer with ceramides for dry sensitive skin.',
+        category: 'moisturizer',
+      },
+    ],
+  });
+
+  const titles = decision.valid_products.map((row) => row.display_name || row.name);
+  assert.ok(titles.indexOf('5X Ceramide Barrier Repair Moisture Gel (Mini Sample)') > titles.indexOf('Rose Ceramide Cream'));
+  assert.ok(titles.indexOf('5X Ceramide Barrier Repair Moisture Gel (Mini Sample)') > titles.indexOf('Après Skin Rich Rescue Barrier Moisturizer with Ceramides'));
+});
+
 test('guidance-only serum classifier promotes panthenol repair serum and rejects generic serum fallback', () => {
   const strong = classifyBeautyCoarseCandidate({
     display_name: 'Winona Soothing Repair Serum with Panthenol',
