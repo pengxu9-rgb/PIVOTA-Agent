@@ -33,6 +33,15 @@ const BARRIER_MOISTURIZER_TARGET_POLICY_V2 = Object.freeze({
   offer_type_penalty_rule: 'bundle_duo_set_kit_demote_sample_penalize',
 });
 
+const BARRIER_SERUM_TARGET_POLICY_V1 = Object.freeze({
+  policy_version: SHARED_TARGET_RELEVANCE_POLICY_VERSION,
+  core_anchor_set: Object.freeze(['panthenol', 'b5', 'barrier', 'repair']),
+  supportive_anchor_set: Object.freeze(['soothing', 'sensitive', 'centella', 'cica', 'hydrating']),
+  noise_anchor_set: Object.freeze(['tinted', 'peel', 'brightening', 'spf', 'hair']),
+  family_only_match_rule: 'same_family_without_anchor',
+  offer_type_penalty_rule: 'bundle_duo_set_kit_demote_sample_penalize',
+});
+
 function asString(value) {
   return value == null ? '' : String(value).trim();
 }
@@ -69,10 +78,11 @@ function shouldUseSharedTargetRelevancePipeline({
 } = {}) {
   const normalizedMode = normalizeRecommendationDecisionMode(mode);
   const normalizedStep = asString(targetStepFamily).toLowerCase();
-  if (normalizedStep !== 'moisturizer') return false;
-  if (normalizedMode === RECOMMENDATION_DECISION_MODES.guidance_only) return true;
+  if (normalizedMode === RECOMMENDATION_DECISION_MODES.guidance_only) {
+    return normalizedStep === 'moisturizer' || normalizedStep === 'serum';
+  }
   if (normalizedMode === RECOMMENDATION_DECISION_MODES.step_aware_reco) {
-    return true;
+    return normalizedStep === 'moisturizer';
   }
   return false;
 }
@@ -214,6 +224,7 @@ module.exports = {
   RECOMMENDATION_DECISION_MODES,
   TARGET_RELEVANCE_CLASS_ORDER,
   BARRIER_MOISTURIZER_TARGET_POLICY_V2,
+  BARRIER_SERUM_TARGET_POLICY_V1,
   normalizeRecommendationDecisionMode,
   normalizeTargetRelevanceClass,
   getTargetRelevanceClassRank,

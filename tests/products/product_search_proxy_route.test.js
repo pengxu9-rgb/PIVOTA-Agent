@@ -2777,6 +2777,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
                 updated_at: now,
                 created_at: now,
               },
+              {
+                id: 'seed_hair_styling',
+                market: 'US',
+                tool: '*',
+                title: 'The Protective Type Frizz-Smoothing Heat Protectant Styling Cream',
+                canonical_url: 'https://typebea.example.com/products/styling-cream',
+                destination_url: 'https://typebea.example.com/products/styling-cream',
+                availability: 'in stock',
+                seed_data: { brand: 'TYPEBEA', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
             ],
           };
         }
@@ -2804,7 +2816,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
       'Rose Ceramide Cream',
     ]);
-    expect(resp.body.products.some((row) => /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser/i.test(String(row.title || '')))).toBe(false);
+    expect(
+      resp.body.products.some((row) =>
+        /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser|Heat Protectant|Styling Cream/i.test(String(row.title || ''))),
+    ).toBe(false);
     expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
         hit_quality: 'valid_hit',
@@ -2820,6 +2835,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           tint: 1,
           peel: 1,
           cleanser: 1,
+          hair: 1,
           brightening: 1,
         }),
       }),
@@ -2900,6 +2916,19 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'Barrier B5 Serum',
     ]);
     expect(resp.body.products.some((row) => /PATYKA|Repulpant/i.test(String(row.title || '')))).toBe(false);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        query_target_step_family: 'serum',
+        query_step_strength: 'supportive_family',
+        step_success_class: 'strong_goal_family',
+        success_contract_result: expect.objectContaining({
+          applied: true,
+          satisfied: true,
+          step_success_class: 'strong_goal_family',
+        }),
+      }),
+    );
   });
 
   test('guidance-only moisturizer search supplements external seeds when internal cache is tool-heavy', async () => {

@@ -15,7 +15,10 @@ const {
   deriveStepAwareEmptyReason,
   inferSlotForStep,
 } = require('../src/auroraBff/recommendationSharedStack');
-const { classifyBeautyCoarseCandidate } = require('../src/shared/beautyRecoCoarseClassifier');
+const {
+  classifyBeautyCoarseCandidate,
+  buildBeautySkincareHitQualityDecision,
+} = require('../src/shared/beautyRecoCoarseClassifier');
 
 test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
   const aliases = ['moisturizer', 'cream', '面霜', '保湿霜', '日霜'];
@@ -365,6 +368,16 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
     guidanceOnlyDiscovery: true,
     queryStepStrength: 'supportive_family',
   });
+  const hairStyling = classifyBeautyCoarseCandidate({
+    display_name: 'The Protective Type Frizz-Smoothing Heat Protectant Styling Cream',
+    category: 'moisturizer',
+    product_type: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'barrier repair moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
 
   assert.equal(strong.target_relevance_class, 'strong_goal_family');
   assert.equal(strong.coarse_valid_for_target, true);
@@ -381,8 +394,92 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(peel.noise_reason, 'peel');
   assert.equal(cleanser.target_relevance_class, 'hard_invalid');
   assert.equal(cleanser.noise_reason, 'cleanser');
+  assert.equal(hairStyling.target_relevance_class, 'hard_invalid');
+  assert.equal(hairStyling.noise_reason, 'hair');
   assert.equal(sample.offer_type, 'sample');
   assert.equal(sample.coarse_valid_for_target, true);
+});
+
+test('guidance-only serum classifier promotes panthenol repair serum and rejects generic serum fallback', () => {
+  const strong = classifyBeautyCoarseCandidate({
+    display_name: 'Winona Soothing Repair Serum with Panthenol',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryTargetStepFamily: 'serum',
+    queryText: 'panthenol serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+  const supportive = classifyBeautyCoarseCandidate({
+    display_name: 'Barrier B5 Serum',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryTargetStepFamily: 'serum',
+    queryText: 'panthenol serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+  const generic = classifyBeautyCoarseCandidate({
+    display_name: 'Serum Repulpant Fundamental',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryTargetStepFamily: 'serum',
+    queryText: 'panthenol serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'panthenol serum',
+    products: [
+      {
+        title: 'Winona Soothing Repair Serum with Panthenol',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        title: 'Barrier B5 Serum',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        title: 'Serum Repulpant Fundamental',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(strong.target_relevance_class, 'strong_goal_family');
+  assert.equal(strong.coarse_valid_for_target, true);
+  assert.equal(supportive.target_relevance_class, 'strong_goal_family');
+  assert.equal(supportive.coarse_valid_for_target, true);
+  assert.equal(generic.target_relevance_class, 'generic_family');
+  assert.equal(generic.coarse_valid_for_target, false);
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.step_success_class, 'strong_goal_family');
+  assert.equal(decision.success_contract_result?.applied, true);
+  assert.equal(decision.success_contract_result?.satisfied, true);
+  assert.deepEqual(
+    decision.valid_products.slice(0, 2).map((product) => String(product?.title || product?.display_name || '')),
+    [
+      'Winona Soothing Repair Serum with Panthenol',
+      'Barrier B5 Serum',
+    ],
+  );
+  assert.equal(
+    decision.valid_products.filter((product) => /Repulpant/i.test(String(product?.title || product?.display_name || ''))).length <= 1,
+    true,
+  );
 });
 
 test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
