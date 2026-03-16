@@ -3277,7 +3277,7 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       const raw =
         String(diagnostics?.search_trace?.raw_query || metadata?.search_trace?.raw_query || '').trim();
       if (!raw) return '';
-      return hasFragranceQuerySignal(raw) ? 'fragrance' : '';
+      return inferFragranceSemanticClass(raw);
     })();
     const candidate =
       [
@@ -3287,7 +3287,9 @@ function withSearchDiagnostics(body, diagnostics = {}) {
         routeDebugSemanticClass,
       ].find((value) => value != null && String(value).trim() !== '') || null;
     let value = String(candidate || '').trim().toLowerCase();
-    if ((!value || value === 'default') && inferredByRawQuery) {
+    if (inferredByRawQuery === 'fragrance_free_skincare') {
+      value = inferredByRawQuery;
+    } else if ((!value || value === 'default') && inferredByRawQuery) {
       value = inferredByRawQuery;
     }
     return value || null;
@@ -5252,8 +5254,13 @@ const FRAGRANCE_SEMANTIC_TERMS = [
 const FRAGRANCE_QUERY_REGEX =
   /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i;
 
+function inferFragranceSemanticClass(queryText = '') {
+  if (hasFragranceFreeSkincareSignal(queryText)) return 'fragrance_free_skincare';
+  return FRAGRANCE_QUERY_REGEX.test(String(queryText || '')) ? 'fragrance' : '';
+}
+
 function hasFragranceQuerySignal(queryText = '') {
-  return FRAGRANCE_QUERY_REGEX.test(String(queryText || ''));
+  return inferFragranceSemanticClass(queryText) === 'fragrance';
 }
 
 function buildFragranceSemanticRetryQuery(queryText = '') {
