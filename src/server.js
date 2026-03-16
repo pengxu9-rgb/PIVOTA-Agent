@@ -6571,7 +6571,7 @@ async function runGuidanceServerOwnedLadderSearch({
         allowExternalSeed
           ? searchExternalSeedOnlyProductsDirect({
               search: {
-                query: queryText,
+                query: attempt.selected_query,
                 retrieval_query_variants: clusterQueries,
                 merchant_id: 'external_seed',
                 external_seed_only: true,
