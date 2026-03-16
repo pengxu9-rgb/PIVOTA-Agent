@@ -3468,4 +3468,162 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient_plan_guidance_only server-owned ladder fastpath bypasses legacy fallback layers', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-fastpath-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 2 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_internal_1',
+                merchant_name: 'Internal Shop',
+                product_data: {
+                  id: 'int_barrier_1',
+                  product_id: 'int_barrier_1',
+                  merchant_id: 'merch_internal_1',
+                  title: 'Barrier Repair Moisturizer',
+                  description: 'barrier repair moisturizer for sensitive skin',
+                  product_type: 'Moisturizer',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_internal_2',
+                merchant_name: 'Internal Shop 2',
+                product_data: {
+                  id: 'int_ceramide_1',
+                  product_id: 'int_ceramide_1',
+                  merchant_id: 'merch_internal_2',
+                  title: 'Ceramide Barrier Cream',
+                  description: 'ceramide-rich cream for barrier repair',
+                  product_type: 'Moisturizer',
+                  status: 'published',
+                  inventory_quantity: 7,
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed_rose_1',
+                external_product_id: 'ext_rose_1',
+                destination_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                canonical_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                domain: 'pixibeauty.com',
+                title: 'Rose Ceramide Cream',
+                image_url: 'https://pixibeauty.com/image.jpg',
+                price_amount: 24,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Pixi',
+                  category: 'Moisturizer',
+                  snapshot: {
+                    title: 'Rose Ceramide Cream',
+                    description: 'barrier moisturizer with ceramides',
+                    brand: 'Pixi',
+                    category: 'Moisturizer',
+                    canonical_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                    destination_url: 'https://pixibeauty.com/products/rose-ceramide-cream',
+                  },
+                },
+              },
+              {
+                id: 'seed_phyto_1',
+                external_product_id: 'ext_phyto_1',
+                destination_url: 'https://theordinary.com/products/nmf-phytoceramides',
+                canonical_url: 'https://theordinary.com/products/nmf-phytoceramides',
+                domain: 'theordinary.com',
+                title: 'Natural Moisturizing Factors + PhytoCeramides',
+                image_url: 'https://theordinary.com/image.jpg',
+                price_amount: 19,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'The Ordinary',
+                  category: 'Moisturizer',
+                  snapshot: {
+                    title: 'Natural Moisturizing Factors + PhytoCeramides',
+                    description: 'moisturizer with phytoceramides for barrier support',
+                    brand: 'The Ordinary',
+                    category: 'Moisturizer',
+                    canonical_url: 'https://theordinary.com/products/nmf-phytoceramides',
+                    destination_url: 'https://theordinary.com/products/nmf-phytoceramides',
+                  },
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'fragrance-free barrier moisturizer',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        execution_mode: 'server_owned_ladder',
+        source_policy: 'internal_first_then_external_supplement',
+        product_only: 'true',
+        allow_external_seed: 'true',
+        target_step_family: 'moisturizer',
+        search_all_merchants: 'true',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        legacy_pipeline_bypassed: true,
+        resolver_first_applied: false,
+        pass2_attempted: false,
+        secondary_attempted: false,
+        second_stage_expansion_attempted: false,
+        client_timeout_recommended_ms: 5000,
+      }),
+    );
+    expect(Array.isArray(resp.body.metadata?.attempt_trace)).toBe(true);
+    expect(Array.isArray(resp.body.metadata?.phase_trace)).toBe(true);
+    expect(resp.body.metadata?.attempt_count).toBeGreaterThanOrEqual(1);
+    expect(String(resp.body.metadata?.selected_attempt_query || '')).toMatch(/moisturizer/);
+    expect(resp.body.products.map((row) => row.title)).toEqual(
+      expect.arrayContaining([
+        'Barrier Repair Moisturizer',
+        'Ceramide Barrier Cream',
+      ]),
+    );
+    expect(resp.body.products.some((row) => String(row.merchant_id || '') === 'external_seed')).toBe(true);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        decision_mode: 'guidance_only',
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        query_target_step_family: 'moisturizer',
+        success_contract_result: expect.objectContaining({
+          applied: true,
+          satisfied: true,
+        }),
+      }),
+    );
+  });
+
 });
