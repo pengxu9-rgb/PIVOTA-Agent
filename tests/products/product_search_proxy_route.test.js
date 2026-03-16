@@ -2875,6 +2875,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         'Filaderme Emulsion - Face Lotion For Dry Skin',
       ]),
     );
+    expect(returnedTitles).not.toContain('Lait-Crème Sensitive - Fragrance free');
     expect(returnedTitles.indexOf('5X Ceramide Barrier Repair Moisture Gel (Mini Sample)')).toBeGreaterThan(
       returnedTitles.indexOf('Rose Ceramide Cream'),
     );

@@ -1138,6 +1138,20 @@ function applySerumCanarySelectionPolicy(rows, {
   };
 }
 
+function applyGuidanceMoisturizerDisplayPolicy(rows, {
+  decisionMode = null,
+  queryTargetStepFamily = null,
+} = {}) {
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(queryTargetStepFamily);
+  if (decisionMode !== 'guidance_only' || normalizedTargetStepFamily !== 'moisturizer') {
+    return rows;
+  }
+  const list = Array.isArray(rows) ? rows : [];
+  const strongRows = list.filter((row) => row?.coarse?.target_relevance_class === 'strong_goal_family');
+  if (strongRows.length >= 3) return strongRows;
+  return list;
+}
+
 function buildBeautySkincareHitQualityDecision({
   queryText,
   products,
@@ -1301,6 +1315,10 @@ function buildBeautySkincareHitQualityDecision({
       coarse: scored.coarse,
     };
   });
+  const displayPolicyRows = applyGuidanceMoisturizerDisplayPolicy(normalizedValidRows, {
+    decisionMode,
+    queryTargetStepFamily: normalizedQueryTargetStepFamily,
+  });
   const supportiveDistinctCount = countDistinctSupportiveCandidates(normalizedValidRows);
   const qualityGateResult = buildQualityGateResult({
     applied: sharedPipelineApplied,
@@ -1308,7 +1326,7 @@ function buildBeautySkincareHitQualityDecision({
     supportiveCount: contractCandidateClassCounts.supportive_family,
     supportiveDistinctCount,
   });
-  let displayableProducts = normalizedValidProducts.slice();
+  let displayableProducts = displayPolicyRows.map((row) => row.product);
   let selectionDiversity = {
     exact_sku_dropped_count: 0,
     cross_origin_dropped_count: 0,
