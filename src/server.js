@@ -6422,7 +6422,19 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     queryStepStrength,
   });
   const serumCanaryQueryVariants = normalizedIntent?.backbone_id ? buildSerumCanaryBackboneQueries(queryText) : [];
-  const retrievalQueries = serumCanaryQueryVariants.length > 0 ? serumCanaryQueryVariants : [queryText];
+  const guidanceFamilyQueryVariants = guidanceOnlyDiscovery
+    ? buildGuidanceRecallSupplementQueries(queryText, {
+        is_guidance_only: true,
+        target_step_family: targetStepFamily,
+      })
+    : [];
+  const retrievalQueries = Array.from(
+    new Set(
+      [queryText, ...serumCanaryQueryVariants, ...guidanceFamilyQueryVariants]
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
   const anchorTokens = Array.from(
     new Set(
       retrievalQueries.flatMap((item) => extractSearchAnchorTokens(item)),
@@ -6436,7 +6448,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
   const searchPatterns = Array.from(
     new Set([...anchorTokens, ...queryTokens].map((token) => `%${String(token || '').trim()}%`).filter(Boolean)),
-  ).slice(0, normalizedIntent?.backbone_id ? 16 : 12);
+  ).slice(0, serumCanaryQueryVariants.length > 0 || guidanceFamilyQueryVariants.length > 0 ? 20 : 12);
   const sqlParams = [market, tool];
   const filters = [];
 
@@ -6649,6 +6661,8 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
               query_step_strength: queryStepStrength,
               decision_mode: decisionMode,
               normalized_intent: normalizedIntent,
+              retrieval_query_variants: retrievalQueries,
+              retrieval_query_variant_count: retrievalQueries.length,
               quality_gate_result: skincareHitDecision?.quality_gate_result || null,
               candidate_origin_counts: skincareHitDecision?.candidate_origin_counts || countCandidateOriginBreakdown(responseProducts),
               displayable_candidate_count: Number(skincareHitDecision?.displayable_candidate_count || responseProducts.length) || 0,
@@ -6704,6 +6718,8 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
             : queryStepStrength,
           decision_mode: decisionMode,
           normalized_intent: normalizedIntent,
+          retrieval_query_variants: retrievalQueries,
+          retrieval_query_variant_count: retrievalQueries.length,
           step_success_class: skincareHitDecision?.applied
             ? skincareHitDecision.step_success_class
             : null,
@@ -21415,8 +21431,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
       ) {
         const remainingBudgetForSecondStage = getFpmRemainingBudgetMs();
+        const secondStageGuidanceContext = extractGuidanceRetrievalContext(
+          {
+            ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
+              ? queryParams
+              : {}),
+            ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+              ? {
+                  ui_surface: metadata.ui_surface,
+                  decision_mode: metadata.decision_mode,
+                  retrieval_mode: metadata.retrieval_mode,
+                }
+              : {}),
+          },
+          { queryText },
+        );
         const shouldSkipSecondStageByBudget =
           FPM_GATE_SIMPLIFY_V1 &&
+          !secondStageGuidanceContext.is_guidance_recall_first &&
           remainingBudgetForSecondStage < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS;
         if (shouldSkipSecondStageByBudget) {
           fpmLatencyGuardApplied = true;
