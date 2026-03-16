@@ -2683,6 +2683,142 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('guidance external-seed direct search keeps moisturizer recall thick even when UI limit is small', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-direct-budget-floor-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql, params = []) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        const sqlParams = Array.isArray(params) ? params : [];
+        const variantLimit = Number(sqlParams[sqlParams.length - 1] || 0) || 0;
+        const now = new Date().toISOString();
+        const buildRow = (id, title, brand) => ({
+          id,
+          market: 'US',
+          tool: '*',
+          external_product_id: id,
+          destination_url: `https://${brand.toLowerCase().replace(/\s+/g, '')}.example.com/products/${id}`,
+          canonical_url: `https://${brand.toLowerCase().replace(/\s+/g, '')}.example.com/products/${id}`,
+          domain: `${brand.toLowerCase().replace(/\s+/g, '')}.example.com`,
+          title,
+          image_url: `https://cdn.example.com/${id}.jpg`,
+          price_amount: '40',
+          price_currency: 'USD',
+          availability: 'in stock',
+          seed_data: {
+            brand,
+            category: 'moisturizer',
+            snapshot: {
+              title,
+              brand,
+              category: 'moisturizer',
+            },
+          },
+          updated_at: now,
+          created_at: now,
+        });
+        if (variantLimit < 120) {
+          return {
+            rows: [
+              buildRow('seed_rose', 'Rose Ceramide Cream', 'Pixi Beauty'),
+              buildRow(
+                'seed_nmf',
+                'Natural Moisturizing Factors + PhytoCeramides',
+                'The Ordinary',
+              ),
+            ],
+          };
+        }
+        return {
+          rows: [
+            buildRow(
+              'seed_apres',
+              'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+              'Olehenriksen',
+            ),
+            buildRow(
+              'seed_skintific_mini',
+              '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
+              'SKINTIFIC',
+            ),
+            buildRow(
+              'seed_skintific_b5',
+              '5% B5 Ceramide Barrier Relief Moisturizer',
+              'SKINTIFIC',
+            ),
+            buildRow('seed_rose', 'Rose Ceramide Cream', 'Pixi Beauty'),
+            buildRow(
+              'seed_nmf',
+              'Natural Moisturizing Factors + PhytoCeramides',
+              'The Ordinary',
+            ),
+            buildRow(
+              'seed_filaderme',
+              'Filaderme Emulsion - Face Lotion For Dry Skin',
+              'Embryolisse',
+            ),
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'ceramide barrier moisturizer',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        product_only: 'true',
+        target_step_family: 'moisturizer',
+        query_step_strength: 'strong_goal_family',
+        decision_mode: 'guidance_only',
+        source_policy: 'internal_first_then_external_supplement',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+      'Rose Ceramide Cream',
+      '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
+      '5% B5 Ceramide Barrier Relief Moisturizer',
+      'Natural Moisturizing Factors + PhytoCeramides',
+      'Filaderme Emulsion - Face Lotion For Dry Skin',
+    ]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_external_seed_direct',
+        external_seed_rows_fetched: 6,
+        external_seed_rows_built: 6,
+        external_seed_returned_count: 6,
+        retrieval_budget: expect.objectContaining({
+          floor_applied: true,
+          per_variant_limit: expect.any(Number),
+          raw_product_cap: expect.any(Number),
+        }),
+      }),
+    );
+    expect(resp.body.metadata?.retrieval_budget?.per_variant_limit).toBeGreaterThanOrEqual(120);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        query_target_step_family: 'moisturizer',
+        query_step_strength: 'strong_goal_family',
+        products_returned_count: 6,
+        retrieval_budget: expect.objectContaining({
+          floor_applied: true,
+        }),
+      }),
+    );
+  });
+
   test('guidance-only external-seed direct search demotes moisturizer noise and surfaces target-relevant rows first', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-external-seed-ranking-test';
 

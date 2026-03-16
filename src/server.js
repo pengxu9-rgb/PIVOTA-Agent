@@ -6352,6 +6352,49 @@ function scoreDirectExternalSeedProduct({
   return score;
 }
 
+function resolveGuidanceDirectExternalSeedRetrievalBudget({
+  safeLimit,
+  guidanceOnlyDiscovery = false,
+  targetStepFamily = null,
+  retrievalQueryCount = 1,
+} = {}) {
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const normalizedLimit = Math.max(1, Number(safeLimit || 1) || 1);
+  const normalizedRetrievalQueryCount = Math.max(1, Number(retrievalQueryCount || 1) || 1);
+  const basePerVariantLimit = Math.min(Math.max(normalizedLimit * 12, 72), 240);
+  const baseRawProductCap =
+    normalizedRetrievalQueryCount > 1
+      ? Math.min(Math.max(normalizedLimit * 24, 120), 480)
+      : basePerVariantLimit;
+
+  if (!(guidanceOnlyDiscovery && normalizedTargetStepFamily === 'moisturizer')) {
+    return {
+      per_variant_limit: basePerVariantLimit,
+      raw_product_cap: baseRawProductCap,
+      floor_applied: false,
+    };
+  }
+
+  // Keep recall depth stable for moisturizer guidance even when the UI asks for a small page size.
+  const perVariantFloor = Math.max(
+    120,
+    Math.min(PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT, 240),
+  );
+  const rawCapFloor = Math.max(
+    200,
+    Math.min(
+      PROXY_SEARCH_AURORA_GUIDANCE_EXTERNAL_SEED_LIMIT * Math.min(normalizedRetrievalQueryCount, 3),
+      480,
+    ),
+  );
+
+  return {
+    per_variant_limit: Math.max(basePerVariantLimit, perVariantFloor),
+    raw_product_cap: Math.max(baseRawProductCap, rawCapFloor),
+    floor_applied: true,
+  };
+}
+
 async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {} } = {}) {
   if (!process.env.DATABASE_URL) return null;
 
@@ -6450,11 +6493,14 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     const seen = new Set();
     const rawProducts = [];
     const variantQueryDebug = [];
-    const perVariantLimit = Math.min(Math.max(safeLimit * 12, 72), 240);
-    const rawProductCap =
-      serumCanaryQueryVariants.length > 0 || guidanceFamilyQueryVariants.length > 0
-        ? Math.min(Math.max(safeLimit * 24, 120), 480)
-        : perVariantLimit;
+    const retrievalBudget = resolveGuidanceDirectExternalSeedRetrievalBudget({
+      safeLimit,
+      guidanceOnlyDiscovery,
+      targetStepFamily,
+      retrievalQueryCount: retrievalQueries.length,
+    });
+    const perVariantLimit = retrievalBudget.per_variant_limit;
+    const rawProductCap = retrievalBudget.raw_product_cap;
 
     for (const retrievalQuery of retrievalQueries) {
       const variantNormalizedQuery = normalizeSearchTextForMatch(retrievalQuery);
@@ -6707,6 +6753,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
                 queryIndex != null && queryTotal != null
                   ? queryTotal > 0 && queryIndex >= queryTotal - 1
                   : responseProducts.length === 0,
+              retrieval_budget: retrievalBudget,
             }
           : {}),
         search_decision: {
@@ -6746,6 +6793,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           retrieval_query_variants: retrievalQueries,
           retrieval_query_variant_count: retrievalQueries.length,
           retrieval_query_debug: variantQueryDebug,
+          retrieval_budget: retrievalBudget,
           step_success_class: skincareHitDecision?.applied
             ? skincareHitDecision.step_success_class
             : null,
