@@ -2683,6 +2683,87 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('guidance external_seed_only search enters direct path without explicit external_seed merchant_id', async () => {
+    process.env.DATABASE_URL = 'postgres://seed-direct-guidance-no-merchant-test';
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_apres_1',
+              external_product_id: 'ext_apres_barrier_1',
+              destination_url: 'https://shop.example.com/products/apres-barrier-moisturizer',
+              canonical_url: 'https://shop.example.com/products/apres-barrier-moisturizer',
+              domain: 'shop.example.com',
+              title: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+              image_url: 'https://cdn.example.com/apres-barrier.jpg',
+              price_amount: '38',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'After Beauty',
+                category: 'moisturizer',
+                snapshot: {
+                  title: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+                  brand: 'After Beauty',
+                  category: 'moisturizer',
+                  destination_url: 'https://shop.example.com/products/apres-barrier-moisturizer',
+                  canonical_url: 'https://shop.example.com/products/apres-barrier-moisturizer',
+                },
+              },
+              updated_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            },
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        external_seed_only: 'true',
+        query: 'fragrance-free barrier moisturizer',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        product_only: 'true',
+        allow_external_seed: 'true',
+        target_step_family: 'moisturizer',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.length).toBeGreaterThanOrEqual(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_apres_barrier_1',
+        title: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_external_seed_direct',
+        external_seed_only_requested: true,
+        external_seed_returned_count: resp.body.products.length,
+      }),
+    );
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        decision_mode: 'guidance_only',
+        query_target_step_family: 'moisturizer',
+      }),
+    );
+  });
+
   test('guidance external-seed direct search keeps moisturizer recall thick even when UI limit is small', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-direct-budget-floor-test';
 
