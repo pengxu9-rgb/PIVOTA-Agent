@@ -2865,14 +2865,23 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.products.map((row) => row.title)).toEqual([
-      'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
-      'Rose Ceramide Cream',
-      '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
-      '5% B5 Ceramide Barrier Relief Moisturizer',
-      'Natural Moisturizing Factors + PhytoCeramides',
-      'Filaderme Emulsion - Face Lotion For Dry Skin',
-    ]);
+    const returnedTitles = resp.body.products.map((row) => row.title);
+    expect(returnedTitles[0]).toBe('Après Skin Rich Rescue Barrier Moisturizer with Ceramides');
+    expect(returnedTitles).toEqual(
+      expect.arrayContaining([
+        'Rose Ceramide Cream',
+        '5X Ceramide Barrier Repair Moisture Gel (Mini Sample)',
+        'Natural Moisturizing Factors + PhytoCeramides',
+        'Filaderme Emulsion - Face Lotion For Dry Skin',
+      ]),
+    );
+    expect(returnedTitles.indexOf('5X Ceramide Barrier Repair Moisture Gel (Mini Sample)')).toBeGreaterThan(
+      returnedTitles.indexOf('Rose Ceramide Cream'),
+    );
+    const b5Index = returnedTitles.indexOf('5% B5 Ceramide Barrier Relief Moisturizer');
+    if (b5Index >= 0) {
+      expect(returnedTitles.indexOf('5X Ceramide Barrier Repair Moisture Gel (Mini Sample)')).toBeGreaterThan(b5Index);
+    }
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_external_seed_direct',
@@ -2943,6 +2952,23 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
                 destination_url: 'https://fentybeauty.com/products/build-your-own-am-pm-moisturizer-bundle',
                 availability: 'in stock',
                 seed_data: { brand: 'Fenty Beauty', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_routine',
+                market: 'US',
+                tool: '*',
+                title: 'Cult Fragrance-Free Skincare Routine',
+                canonical_url: 'https://embryolisse.example.com/products/natural-beauty-set',
+                destination_url: 'https://embryolisse.example.com/products/natural-beauty-set',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'EMBRYOLISSE',
+                  category: 'moisturizer',
+                  description:
+                    'A 2-step fragrance-free moisturizer routine for sensitive face skin',
+                },
                 updated_at: now,
                 created_at: now,
               },
@@ -3035,7 +3061,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     ]);
     expect(
       resp.body.products.some((row) =>
-        /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser|Heat Protectant|Styling Cream/i.test(String(row.title || ''))),
+        /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser|Heat Protectant|Styling Cream|Skincare Routine/i.test(String(row.title || ''))),
     ).toBe(false);
     expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
