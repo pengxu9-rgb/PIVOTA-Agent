@@ -35,6 +35,7 @@ const BUNDLE_RE = /\b(bundle)\b/i;
 const DUO_RE = /\b(duo)\b/i;
 const SET_RE = /\b(set)\b/i;
 const KIT_RE = /\b(kit)\b/i;
+const ROUTINE_BUNDLE_RE = /\b(routine|regimen|ritual|system)\b/i;
 const SAMPLE_RE = /\b(sample|mini|travel size|trial size)\b/i;
 const TINT_RE = /\b(skin tint|tinted|tint(ed)? moisturizer|bb cream|cc cream|foundation|concealer)\b/i;
 const PEEL_RE = /\b(peel|exfoliant|exfoliating|resurfacing)\b/i;
@@ -124,6 +125,7 @@ function detectBeautyOfferType(text) {
   const lower = asString(text).toLowerCase();
   if (!lower) return 'unknown';
   if (BUNDLE_RE.test(lower)) return 'bundle';
+  if (ROUTINE_BUNDLE_RE.test(lower)) return 'bundle';
   if (DUO_RE.test(lower)) return 'duo';
   if (SET_RE.test(lower)) return 'set';
   if (KIT_RE.test(lower)) return 'kit';
@@ -684,7 +686,7 @@ function scoreBeautyCandidateForTarget(product, {
     else if (coarse.target_relevance_class === 'generic_family') score += 10;
     else if (coarse.target_relevance_class === 'adjacent_noise') score -= 90;
     else score -= 160;
-    if (coarse.offer_type === 'sample') score -= 4;
+    if (coarse.offer_type === 'sample') score -= 18;
     if (coarse.relevance_channel === 'ingredient-strong') score += 36;
     else if (coarse.relevance_channel === 'goal-strong') score += 8;
     score += Math.max(0, Number(coarse.overlay_score || 0) || 0) * 6;

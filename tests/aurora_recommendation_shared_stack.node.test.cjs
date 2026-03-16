@@ -378,6 +378,16 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
     guidanceOnlyDiscovery: true,
     queryStepStrength: 'supportive_family',
   });
+  const routine = classifyBeautyCoarseCandidate({
+    display_name: 'Cult Fragrance-Free Skincare Routine',
+    category: 'moisturizer',
+    description: 'A 2-step fragrance-free moisturizer routine for sensitive face skin',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+  });
 
   assert.equal(strong.target_relevance_class, 'strong_goal_family');
   assert.equal(strong.coarse_valid_for_target, true);
@@ -398,6 +408,9 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(hairStyling.noise_reason, 'hair');
   assert.equal(sample.offer_type, 'sample');
   assert.equal(sample.coarse_valid_for_target, true);
+  assert.equal(routine.offer_type, 'bundle');
+  assert.equal(routine.target_relevance_class, 'adjacent_noise');
+  assert.equal(routine.noise_reason, 'bundle');
 });
 
 test('guidance-only serum classifier promotes panthenol repair serum and rejects generic serum fallback', () => {

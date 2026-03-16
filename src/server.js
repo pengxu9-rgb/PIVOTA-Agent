@@ -6943,7 +6943,7 @@ function scoreDirectExternalSeedProduct({
     else if (coarse?.target_relevance_class === 'adjacent_noise') score -= 48;
     else if (coarse?.target_relevance_class === 'hard_invalid') score -= 120;
 
-    if (coarse?.offer_type === 'sample') score -= 4;
+    if (coarse?.offer_type === 'sample') score -= 18;
     if (coarse?.noise_reason === 'bundle') score -= 36;
     if (coarse?.noise_reason === 'brightening') score -= 18;
     if (coarse?.noise_reason === 'tint') score -= 36;
