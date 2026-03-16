@@ -207,8 +207,19 @@ const BRAND_TERM_SUFFIXES = new Set([
   'makeup',
 ]);
 
+function hasFragranceFreeSkincareSignal(rawQuery = '') {
+  return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
+    String(rawQuery || ''),
+  );
+}
+
+function inferFragranceSemanticClass(rawQuery = '') {
+  if (hasFragranceFreeSkincareSignal(rawQuery)) return 'fragrance_free_skincare';
+  return FRAGRANCE_QUERY_REGEX.test(String(rawQuery || '')) ? 'fragrance' : '';
+}
+
 function hasFragranceQuerySignal(rawQuery) {
-  return FRAGRANCE_QUERY_REGEX.test(String(rawQuery || ''));
+  return inferFragranceSemanticClass(rawQuery) === 'fragrance';
 }
 
 function isExternalSeedProduct(product) {
@@ -3054,7 +3065,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     },
   };
 
-  const querySemanticClass = hasFragranceQuerySignal(latestUserQuery) ? 'fragrance' : null;
+  const querySemanticClass = inferFragranceSemanticClass(latestUserQuery) || null;
   const expansionMeta = {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
@@ -3205,7 +3216,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   )
     .trim()
     .toLowerCase();
-  const querySemanticClass = metadataSemanticClass || (hasFragranceQuerySignal(rawQuery) ? 'fragrance' : null);
+  const querySemanticClass = metadataSemanticClass || inferFragranceSemanticClass(rawQuery) || null;
 
   const skipConstraintReorder =
     intent?.primary_domain === 'beauty' &&
