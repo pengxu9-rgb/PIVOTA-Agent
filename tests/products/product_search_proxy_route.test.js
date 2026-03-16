@@ -2777,6 +2777,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
                 updated_at: now,
                 created_at: now,
               },
+              {
+                id: 'seed_hair_styling',
+                market: 'US',
+                tool: '*',
+                title: 'The Protective Type Frizz-Smoothing Heat Protectant Styling Cream',
+                canonical_url: 'https://typebea.example.com/products/styling-cream',
+                destination_url: 'https://typebea.example.com/products/styling-cream',
+                availability: 'in stock',
+                seed_data: { brand: 'TYPEBEA', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
             ],
           };
         }
@@ -2804,7 +2816,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
       'Rose Ceramide Cream',
     ]);
-    expect(resp.body.products.some((row) => /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser/i.test(String(row.title || '')))).toBe(false);
+    expect(
+      resp.body.products.some((row) =>
+        /Tinted Moisturizer|Milky Peel|Rose Cream Cleanser|Heat Protectant|Styling Cream/i.test(String(row.title || ''))),
+    ).toBe(false);
     expect(resp.body.metadata?.search_decision).toEqual(
       expect.objectContaining({
         hit_quality: 'valid_hit',
@@ -2820,6 +2835,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           tint: 1,
           peel: 1,
           cleanser: 1,
+          hair: 1,
           brightening: 1,
         }),
       }),
@@ -2872,6 +2888,18 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
                 updated_at: now,
                 created_at: now,
               },
+              {
+                id: 'seed_fat_water_toner',
+                market: 'US',
+                tool: '*',
+                title: 'Fat Water Hydrating Milky Toner Essence',
+                canonical_url: 'https://fenty.example.com/products/fat-water',
+                destination_url: 'https://fenty.example.com/products/fat-water',
+                availability: 'in stock',
+                seed_data: { brand: 'Fenty Skin', category: 'essence' },
+                updated_at: now,
+                created_at: now,
+              },
             ],
           };
         }
@@ -2892,6 +2920,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         ui_surface: 'ingredient_plan_guidance_only',
         product_only: 'true',
         target_step_family: 'serum',
+        session_id: 'sess_serum_guidance',
       });
 
     expect(resp.status).toBe(200);
@@ -2900,6 +2929,43 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       'Barrier B5 Serum',
     ]);
     expect(resp.body.products.some((row) => /PATYKA|Repulpant/i.test(String(row.title || '')))).toBe(false);
+    expect(resp.body.products.some((row) => /Fat Water|Toner Essence/i.test(String(row.title || '')))).toBe(false);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        query_target_step_family: 'serum',
+        query_step_strength: 'supportive_family',
+        step_success_class: 'strong_goal_family',
+        normalized_intent: expect.objectContaining({
+          backbone_id: 'serum_panthenol_canary_backbone_v1',
+          variant_overlay: 'ingredient_fidelity',
+        }),
+        success_contract_result: expect.objectContaining({
+          applied: true,
+          satisfied: true,
+          step_success_class: 'strong_goal_family',
+          quality_gate_result: expect.objectContaining({
+            applied: true,
+            satisfied: true,
+          }),
+        }),
+        quality_gate_result: expect.objectContaining({
+          applied: true,
+          satisfied: true,
+        }),
+        candidate_origin_counts: expect.objectContaining({
+          external_supplement: 2,
+        }),
+        displayable_candidate_count: 2,
+        fill_target_count: 3,
+        fill_completed_count: 2,
+        coverage_limited_after_fill: true,
+        selection_diversity: expect.objectContaining({
+          exact_sku_dropped_count: 0,
+          session_exposure_penalty_applied: false,
+        }),
+      }),
+    );
   });
 
   test('guidance-only moisturizer search supplements external seeds when internal cache is tool-heavy', async () => {
