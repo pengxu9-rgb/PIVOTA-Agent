@@ -2921,8 +2921,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === 'fragrance-free barrier moisturizer' &&
-          String(q.source || '') === 'aurora-bff'
+          String(q.query || '').includes('fragrance-free barrier moisturizer') &&
+          !/\b(perfume|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(
+            String(q.query || ''),
+          )
         );
       })
       .reply(200, {
@@ -2930,9 +2932,9 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         success: true,
         products: [
           {
-            product_id: 'perfume_bad_hit',
+            product_id: 'fragrance_free_skin_hit',
             merchant_id: 'external_seed',
-            title: 'PixiPerfume Eau de Parfum - PixiRose',
+            title: 'Barrier Rescue Fragrance-Free Moisturizer',
             source: 'external_seed',
           },
         ],

@@ -2,6 +2,12 @@ function normalizeBeautyQueryClass(queryClass) {
   return String(queryClass || '').trim().toLowerCase() || null;
 }
 
+function hasFragranceFreeSkincareSignal(text) {
+  return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function classifyBeautyBucketFromText(text) {
   const q = String(text || '');
   if (!q) return 'other';
@@ -14,6 +20,9 @@ function classifyBeautyBucketFromText(text) {
       q,
     );
 
+  if (hasFragranceFreeSkincareSignal(q) && hasSkincareTreatmentSignal) {
+    return 'skincare';
+  }
   if (
     /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(q) ||
     /香水|香氛|古龙|古龍|フレグランス|コロン/.test(q)
