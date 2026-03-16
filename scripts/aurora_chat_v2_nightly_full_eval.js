@@ -69,6 +69,77 @@ function normalizeHeaders(inputHeaders) {
   return out;
 }
 
+function makeSkippedStep(cmd, reason, extra = {}) {
+  const now = new Date().toISOString();
+  return {
+    cmd,
+    started_at: now,
+    ended_at: now,
+    exit_code: 0,
+    signal: null,
+    ok: true,
+    skipped: true,
+    warning: reason,
+    ...extra,
+  };
+}
+
+async function probeLiveTarget(base) {
+  const startedAt = new Date().toISOString();
+  const cmd = `probe:live-target ${String(base).replace(/\/+$/, '')}/healthz`;
+  try {
+    const res = await fetch(`${String(base).replace(/\/+$/, '')}/healthz`);
+    let body = {};
+    try {
+      body = await res.json();
+    } catch (_err) {
+      body = {};
+    }
+    const status = Number(res.status || 0);
+    const version = body && body.version && typeof body.version === 'object' && !Array.isArray(body.version)
+      ? body.version
+      : {};
+    const commit = String(version.commit || '').trim();
+    const deploymentId = String(version.deployment_id || '').trim();
+    const buildId = String(version.build_id || '').trim();
+    const warning = status === 200 && !commit
+      ? `live target is missing a commit marker (deployment_id=${deploymentId || 'unknown'}, build_id=${buildId || 'unknown'})`
+      : null;
+    return {
+      cmd,
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      exit_code: status === 200 ? 0 : 2,
+      signal: null,
+      ok: status === 200,
+      skipped: false,
+      error: status === 200 ? null : `healthz status expected 200, actual=${status}`,
+      warning,
+      target: {
+        status,
+        commit: commit || null,
+        deployment_id: deploymentId || null,
+        build_id: buildId || null,
+      },
+      skip_live_eval: Boolean(status === 200 && !commit),
+    };
+  } catch (err) {
+    return {
+      cmd,
+      started_at: startedAt,
+      ended_at: new Date().toISOString(),
+      exit_code: 2,
+      signal: null,
+      ok: false,
+      skipped: false,
+      error: `healthz request failed: ${String(err && err.message ? err.message : err)}`,
+      warning: null,
+      target: null,
+      skip_live_eval: false,
+    };
+  }
+}
+
 async function runStagingTravelPreflight(base) {
   const startedAt = new Date().toISOString();
   const cmd = `preflight:aurora-travel ${String(base).replace(/\/+$/, '')}/v1/chat`;
@@ -171,7 +242,9 @@ function buildMarkdown(report) {
   lines.push('## Step Results');
   lines.push('');
   for (const step of report.steps) {
-    lines.push(`- ${step.ok ? 'PASS' : 'FAIL'}: \`${step.cmd}\` (exit=${step.exit_code == null ? 'null' : step.exit_code})`);
+    const label = step.skipped ? 'SKIP' : step.ok ? 'PASS' : 'FAIL';
+    lines.push(`- ${label}: \`${step.cmd}\` (exit=${step.exit_code == null ? 'null' : step.exit_code})`);
+    if (step.warning) lines.push(`- warning: ${step.warning}`);
   }
   lines.push('');
 
@@ -228,56 +301,81 @@ async function main() {
     steps.push(runCommand('npm', ['run', 'test:replay-quality']));
   }
   if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        'scripts/aurora_travel_gate.js',
+        '--mode',
+        'local-mock',
+        '--strict-meta',
+        'true',
+        '--report-dir',
+        reportDir,
+      ]),
+    );
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        'scripts/aurora_travel_gate.js',
+        '--mode',
+        'local-mock',
+        '--strict-meta',
+        'true',
+        '--cases',
+        'tests/golden/aurora_safety_20.jsonl',
+        '--report-prefix',
+        'aurora_safety_gate',
+        '--report-dir',
+        reportDir,
+      ]),
+    );
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        'scripts/aurora_travel_gate.js',
+        '--mode',
+        'local-mock',
+        '--strict-meta',
+        'true',
+        '--cases',
+        'tests/golden/aurora_anchor_eval_20.jsonl',
+        '--report-prefix',
+        'aurora_anchor_eval_gate',
+        '--report-dir',
+        reportDir,
+      ]),
+    );
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(await probeLiveTarget(base));
+  }
+  const liveTargetStep = steps[steps.length - 1];
+  const shouldSkipLiveEval = Boolean(liveTargetStep && liveTargetStep.ok && liveTargetStep.skip_live_eval);
+
+  if (shouldSkipLiveEval) {
+    const reason = liveTargetStep.warning || 'live target skipped';
+    steps.push(makeSkippedStep(`preflight:aurora-travel ${base}/v1/chat`, reason));
+    steps.push(makeSkippedStep(`node scripts/aurora_travel_gate.js --mode staging-live --base ${base} --strict-meta false --report-dir ${reportDir}`, reason));
+    steps.push(
+      makeSkippedStep(
+        `node scripts/aurora_travel_gate.js --mode staging-live --base ${base} --strict-meta false --cases tests/golden/aurora_safety_20.jsonl --report-prefix aurora_safety_gate --report-dir ${reportDir}`,
+        reason,
+      ),
+    );
+    steps.push(
+      makeSkippedStep(
+        `node scripts/aurora_travel_gate.js --mode staging-live --base ${base} --strict-meta false --cases tests/golden/aurora_anchor_eval_20.jsonl --report-prefix aurora_anchor_eval_gate --report-dir ${reportDir}`,
+        reason,
+      ),
+    );
+    steps.push(makeSkippedStep(`node scripts/chat_followup_canary.mjs --base ${base}`, reason));
+  }
+
+  if (steps[steps.length - 1].ok && !shouldSkipLiveEval) {
     steps.push(await runStagingTravelPreflight(base));
   }
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--report-dir',
-        reportDir,
-      ]),
-    );
-  }
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--cases',
-        'tests/golden/aurora_safety_20.jsonl',
-        '--report-prefix',
-        'aurora_safety_gate',
-        '--report-dir',
-        reportDir,
-      ]),
-    );
-  }
-  if (steps[steps.length - 1].ok) {
-    steps.push(
-      runCommand('node', [
-        'scripts/aurora_travel_gate.js',
-        '--mode',
-        'local-mock',
-        '--strict-meta',
-        'true',
-        '--cases',
-        'tests/golden/aurora_anchor_eval_20.jsonl',
-        '--report-prefix',
-        'aurora_anchor_eval_gate',
-        '--report-dir',
-        reportDir,
-      ]),
-    );
-  }
-  if (steps[steps.length - 1].ok) {
+  if (steps[steps.length - 1].ok && !shouldSkipLiveEval) {
     steps.push(
       runCommand('node', [
         'scripts/aurora_travel_gate.js',
@@ -292,7 +390,7 @@ async function main() {
       ]),
     );
   }
-  if (steps[steps.length - 1].ok) {
+  if (steps[steps.length - 1].ok && !shouldSkipLiveEval) {
     steps.push(
       runCommand('node', [
         'scripts/aurora_travel_gate.js',
@@ -311,7 +409,7 @@ async function main() {
       ]),
     );
   }
-  if (steps[steps.length - 1].ok) {
+  if (steps[steps.length - 1].ok && !shouldSkipLiveEval) {
     steps.push(
       runCommand('node', [
         'scripts/aurora_travel_gate.js',
@@ -330,7 +428,7 @@ async function main() {
       ]),
     );
   }
-  if (steps[steps.length - 1].ok) {
+  if (steps[steps.length - 1].ok && !shouldSkipLiveEval) {
     steps.push(
       runCommand('node', [
         'scripts/chat_followup_canary.mjs',
