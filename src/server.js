@@ -68,6 +68,7 @@ const {
   normalizeRecommendationDecisionMode,
   shouldUseSharedTargetRelevancePipeline,
   normalizeSharedTargetIntent,
+  getTargetRelevanceClassRank,
 } = require('./shared/recommendationDecisionCapability');
 const {
   detectBrandEntities,
@@ -6993,7 +6994,10 @@ function scoreDirectExternalSeedProduct({
   if (/\b(heat protectant|styling|skin tint|foundation|concealer|powder|mascara|brow|lip|bronzer|highlighter|hair|frizz)\b/.test(titleText)) {
     score -= 30;
   }
-  return score;
+  return {
+    score,
+    coarse,
+  };
 }
 
 function resolveGuidanceDirectExternalSeedRetrievalBudget({
@@ -7307,7 +7311,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
 
     const rankedProducts = rawProducts
       .map((product) => {
-        const score = scoreDirectExternalSeedProduct({
+        const scored = scoreDirectExternalSeedProduct({
           product,
           queryText: relevanceQueryText,
           normalizedQuery,
@@ -7318,6 +7322,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           queryStepStrength,
           decisionMode,
         });
+        const coarse = scored?.coarse || null;
         const relevant = isSupplementCandidateRelevant(product, relevanceQueryText, {
           normalizedQuery,
           anchorTokens,
@@ -7327,13 +7332,22 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           queryStepStrength,
           decisionMode,
         });
-        return { product, score, relevant };
+        return {
+          product,
+          score: Number(scored?.score || 0) || 0,
+          coarse,
+          relevance_rank: getTargetRelevanceClassRank(coarse?.target_relevance_class),
+          sample_rank: coarse?.offer_type === 'sample' ? 1 : 0,
+          relevant,
+        };
       })
       .filter((row) => {
         if (ingredientIntent) return row.relevant;
         return row.relevant || row.score > 0;
       })
       .sort((a, b) => {
+        if (a.relevance_rank !== b.relevance_rank) return a.relevance_rank - b.relevance_rank;
+        if (a.sample_rank !== b.sample_rank) return a.sample_rank - b.sample_rank;
         if (b.score !== a.score) return b.score - a.score;
         const aTitle = normalizeSearchTextForMatch(a.product?.title || a.product?.name || '');
         const bTitle = normalizeSearchTextForMatch(b.product?.title || b.product?.name || '');
