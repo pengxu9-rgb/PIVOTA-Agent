@@ -829,6 +829,10 @@ function runCommandRequestBody(caseDef, turnDef) {
         : {};
   const message = String((turnDef && turnDef.message) || caseDef.message || '');
   const language = String((turnDef && turnDef.language) || caseDef.language || 'EN').toUpperCase();
+  const travelPlan =
+    profile && profile.travel_plan && typeof profile.travel_plan === 'object' && !Array.isArray(profile.travel_plan)
+      ? profile.travel_plan
+      : null;
   return {
     message,
     session: {
@@ -836,6 +840,11 @@ function runCommandRequestBody(caseDef, turnDef) {
       profile,
     },
     language,
+    context: {
+      locale: language.toLowerCase(),
+      profile,
+      ...(travelPlan ? { travel_plan: travelPlan } : {}),
+    },
   };
 }
 
@@ -871,13 +880,18 @@ async function runLocalMockCases(cases, strictMeta) {
 
   return withTempEnv(
     {
+      AURORA_BFF_USE_MOCK: 'true',
       AURORA_PROFILE_V2_ENABLED: 'true',
       AURORA_QA_PLANNER_V1_ENABLED: 'true',
       AURORA_SAFETY_ENGINE_V1_ENABLED: 'true',
       AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'true',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
       AURORA_LOOP_BREAKER_V2_ENABLED: 'true',
       AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
       AURORA_ROLLOUT_ENABLED: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
     },
     async () => {
       const routesPath = require.resolve('../src/auroraBff/routes');
@@ -900,9 +914,10 @@ async function runLocalMockCases(cases, strictMeta) {
           const turnResults = [];
           for (let idx = 0; idx < turnDefs.length; idx += 1) {
             const turnDef = turnDefs[idx];
+            const requestHeaders = buildCaseHeaders({ ...caseDef, language: turnDef.language }, runId);
             const res = await supertest(app)
               .post('/v1/chat')
-              .set(buildCaseHeaders({ ...caseDef, language: turnDef.language }, runId))
+              .set(requestHeaders)
               .send(runCommandRequestBody(caseDef, turnDef));
 
             const body = res && res.body && typeof res.body === 'object' ? res.body : {};
