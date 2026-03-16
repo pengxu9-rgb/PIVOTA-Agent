@@ -33,6 +33,11 @@ test('skill_router routes diagnosis follow-up to diagnosis_v2.answer when goals 
   assert.equal(result, 'diagnosis_v2.answer');
 });
 
+test('skill_router maps chip.start.routine to routine.apply_blueprint', () => {
+  const result = resolveSkillId({ intent: null, threadState: {}, entrySource: 'chip.start.routine' });
+  assert.equal(result, 'routine.apply_blueprint');
+});
+
 test('diagnosis_v2_start gracefully degrades when personalized follow-up schema validation fails', async () => {
   const skill = new DiagnosisStartSkill();
   const llmGateway = {

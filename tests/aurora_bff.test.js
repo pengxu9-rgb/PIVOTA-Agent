@@ -261,6 +261,20 @@ describe('Aurora BFF (/v1)', () => {
     expect(skipResult.requested_next_state).toBe('DIAG_ANALYSIS_SUMMARY');
   });
 
+  test('Routine: chip.start.routine is recognized by state machine from IDLE_CHAT', () => {
+    const { canonicalizeChipId, deriveRequestedTransitionFromAction } = require('../src/auroraBff/agentStateMachine');
+
+    expect(canonicalizeChipId('chip.start.routine')).toBe('chip_start_routine');
+
+    const result = deriveRequestedTransitionFromAction({
+      fromState: 'IDLE_CHAT',
+      actionId: 'chip.start.routine',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result.requested_next_state).toBe('ROUTINE_INTAKE');
+  });
+
   test('Routine: initial request returns recommendations with optional budget optimization', async () => {
     const app = require('../src/server');
     const res = await request(app)
