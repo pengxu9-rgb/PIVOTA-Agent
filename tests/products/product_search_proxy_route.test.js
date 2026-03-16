@@ -3735,7 +3735,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('ingredient_plan_guidance_only server-owned ladder fastpath also handles serum family', async () => {
+  test('ingredient_plan_guidance_only auto-upgrades serum family into server-owned ladder fastpath', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-fastpath-serum-test';
 
     jest.doMock('../../src/db', () => ({
@@ -3863,7 +3863,6 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         catalog_surface: 'beauty',
         ui_surface: 'ingredient_plan_guidance_only',
         decision_mode: 'guidance_only',
-        execution_mode: 'server_owned_ladder',
         source_policy: 'internal_first_then_external_supplement',
         product_only: 'true',
         allow_external_seed: 'true',

@@ -4275,6 +4275,15 @@ function extractGuidanceRetrievalContext(queryLike, { queryText = '' } = {}) {
     uiSurface === GUIDANCE_ONLY_UI_SURFACE || decisionMode === GUIDANCE_ONLY_DECISION_MODE;
   const normalizedQueryText = String(queryText || extractSearchQueryText(query) || '').trim();
   const effectiveTargetStepFamily = inferGuidanceSemanticFamily(normalizedQueryText, targetStepFamily || semanticFamily);
+  const effectiveExecutionMode =
+    executionMode ||
+    (
+      isGuidanceOnly &&
+      uiSurface === GUIDANCE_ONLY_UI_SURFACE &&
+      ['moisturizer', 'serum'].includes(effectiveTargetStepFamily)
+        ? GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER
+        : null
+    );
   const negativeConstraints = extractGuidanceNegativeConstraints(query, normalizedQueryText);
   const productOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
   const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
@@ -4286,7 +4295,7 @@ function extractGuidanceRetrievalContext(queryLike, { queryText = '' } = {}) {
   return {
     ui_surface: uiSurface || null,
     decision_mode: decisionMode || null,
-    execution_mode: executionMode || null,
+    execution_mode: effectiveExecutionMode || null,
     query_step_strength: queryStepStrength || null,
     target_step_family: effectiveTargetStepFamily || null,
     semantic_family: semanticFamily || effectiveTargetStepFamily || null,
@@ -4299,7 +4308,7 @@ function extractGuidanceRetrievalContext(queryLike, { queryText = '' } = {}) {
     is_guidance_only: isGuidanceOnly,
     is_guidance_recall_first: isGuidanceOnly && (retrievalMode === GUIDANCE_RETRIEVAL_MODE || !retrievalMode),
     is_server_owned_ladder:
-      isGuidanceOnly && executionMode === GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER,
+      isGuidanceOnly && effectiveExecutionMode === GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER,
   };
 }
 
