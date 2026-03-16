@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const DiagnosisStartSkill = require('../src/auroraBff/skills/diagnosis_v2_start');
 const { LlmQualityError } = require('../src/auroraBff/services/llm_gateway');
+const { resolveSkillId } = require('../src/auroraBff/orchestrator/skill_router');
 
 function makeRequest(profile = {}) {
   return {
@@ -12,6 +13,11 @@ function makeRequest(profile = {}) {
     },
   };
 }
+
+test('skill_router maps chip.start.routine to routine.apply_blueprint', () => {
+  const result = resolveSkillId({ intent: null, threadState: {}, entrySource: 'chip.start.routine' });
+  assert.equal(result, 'routine.apply_blueprint');
+});
 
 test('diagnosis_v2_start gracefully degrades when personalized follow-up schema validation fails', async () => {
   const skill = new DiagnosisStartSkill();
