@@ -6311,6 +6311,33 @@ function mergeGuidanceFastpathProducts(products, queryText, guidanceContext) {
   return sortGuidanceFastpathProducts(deduped, queryText, guidanceContext);
 }
 
+function stabilizeGuidanceFastpathDisplayProducts(products, queryText, guidanceContext) {
+  const list = Array.isArray(products) ? products.slice() : [];
+  if (!guidanceContext?.is_guidance_only || guidanceContext?.target_step_family !== 'moisturizer') {
+    return list;
+  }
+  return list
+    .map((product, index) => {
+      const coarse = classifySharedBeautyCoarseCandidate(product, {
+        queryTargetStepFamily: guidanceContext.target_step_family,
+        queryText,
+        guidanceOnlyDiscovery: true,
+        queryStepStrength: guidanceContext.query_step_strength,
+        mode: GUIDANCE_ONLY_DECISION_MODE,
+      });
+      return {
+        product,
+        index,
+        sample_rank: coarse?.offer_type === 'sample' ? 1 : 0,
+      };
+    })
+    .sort((left, right) => {
+      if (left.sample_rank !== right.sample_rank) return left.sample_rank - right.sample_rank;
+      return left.index - right.index;
+    })
+    .map((row) => row.product);
+}
+
 async function runGuidanceFastpathPhase(phaseName, timeoutMs, task) {
   const startedAt = Date.now();
   try {
@@ -6682,7 +6709,12 @@ async function runGuidanceServerOwnedLadderSearch({
           failure_class: failureClass,
         };
 
-  const responseProducts = selectedDisplayProducts
+  const stabilizedDisplayProducts = stabilizeGuidanceFastpathDisplayProducts(
+    selectedDisplayProducts,
+    queryText,
+    guidanceContext,
+  );
+  const responseProducts = stabilizedDisplayProducts
     .slice(0, requestedLimit)
     .map((product) => normalizeGuidanceDiscoveryProductPdpContract(product));
   const remainingBudgetMs = getGuidanceFastpathRemainingBudgetMs(startedAt);
