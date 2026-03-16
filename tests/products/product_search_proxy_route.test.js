@@ -2916,6 +2916,60 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata?.retrieval_query_debug).toHaveLength(resp.body.metadata?.retrieval_query_variant_count);
   });
 
+  test('fragrance-free moisturizer guidance query normalizes semantic class away from fragrance', async () => {
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === 'fragrance-free barrier moisturizer' &&
+          String(q.source || '') === 'aurora-bff'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'perfume_bad_hit',
+            merchant_id: 'external_seed',
+            title: 'PixiPerfume Eau de Parfum - PixiRose',
+            source: 'external_seed',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_semantic_class: 'fragrance',
+          route_health: {
+            query_semantic_class: 'fragrance',
+          },
+          search_decision: {
+            query_semantic_class: 'fragrance',
+          },
+          search_trace: {
+            raw_query: 'fragrance-free barrier moisturizer',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'fragrance-free barrier moisturizer',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        target_step_family: 'moisturizer',
+        query_step_strength: 'supportive_family',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_semantic_class).toBe('fragrance_free_skincare');
+    expect(resp.body.metadata?.route_health?.query_semantic_class).toBe('fragrance_free_skincare');
+    expect(String(resp.body.metadata?.search_decision?.query_semantic_class || '')).not.toBe('fragrance');
+  });
+
   test('ingredient-intent serum guidance filters generic serum noise when panthenol is the anchor', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-external-seed-panthenol-serum-test';
 
