@@ -6273,8 +6273,8 @@ function buildGuidanceServerOwnedLadderAttempts(queryText, guidanceContext) {
     if (hasAzelaic) pushUnique(strongQueries, 'azelaic acid serum');
     if (hasSalicylic) pushUnique(strongQueries, 'salicylic acid serum');
     if (hasVitaminC) pushUnique(strongQueries, 'vitamin c serum');
-    if (hasBarrier) pushUnique(strongQueries, 'barrier repair serum');
-    pushUnique(strongQueries, String(queryText || '').trim());
+    if (strongQueries.length === 0 && hasBarrier) pushUnique(strongQueries, 'barrier repair serum');
+    if (strongQueries.length === 0) pushUnique(strongQueries, String(queryText || '').trim());
 
     if (hasPanthenol || hasBarrier) pushUnique(supportiveQueries, 'barrier repair serum');
     if (hasPanthenol || /\b(soothing|calming|sensitive|cica|centella)\b/.test(normalized)) {
@@ -6286,6 +6286,8 @@ function buildGuidanceServerOwnedLadderAttempts(queryText, guidanceContext) {
     if (hasNiacinamide || hasZinc) pushUnique(supportiveQueries, 'balancing serum');
     if (hasVitaminC) pushUnique(supportiveQueries, 'brightening serum');
     pushUnique(supportiveQueries, 'hydrating serum');
+    if (strongQueries.length > 2) strongQueries.splice(2);
+    if (supportiveQueries.length > 3) supportiveQueries.splice(3);
   } else {
     return [];
   }
@@ -6313,6 +6315,19 @@ function scoreGuidanceFastpathTargetClass(targetClass) {
   if (targetClass === 'adjacent_noise') return -100;
   if (targetClass === 'hard_invalid') return -250;
   return 0;
+}
+
+function getGuidanceFastpathPhaseBudgets(targetStepFamily) {
+  if (normalizeSearchHintToken(targetStepFamily) === 'serum') {
+    return {
+      internal_recall_ms: 400,
+      external_recall_ms: 3600,
+    };
+  }
+  return {
+    internal_recall_ms: GUIDANCE_FASTPATH_INTERNAL_RECALL_BUDGET_MS,
+    external_recall_ms: GUIDANCE_FASTPATH_EXTERNAL_RECALL_BUDGET_MS,
+  };
 }
 
 function sortGuidanceFastpathProducts(products, queryText, guidanceContext) {
@@ -6470,6 +6485,7 @@ async function runGuidanceServerOwnedLadderSearch({
   let externalSeedRowsRaw = 0;
   let externalSeedRowsRelevant = 0;
   let externalSeedRowsAppended = 0;
+  const phaseBudgets = getGuidanceFastpathPhaseBudgets(guidanceContext.target_step_family);
 
   for (let index = 0; index < attempts.length; index += 1) {
     const attempt = attempts[index];
@@ -6503,11 +6519,11 @@ async function runGuidanceServerOwnedLadderSearch({
 
     const internalBudget = Math.max(
       200,
-      Math.min(GUIDANCE_FASTPATH_INTERNAL_RECALL_BUDGET_MS, remainingAfterReserve),
+      Math.min(phaseBudgets.internal_recall_ms, remainingAfterReserve),
     );
     const externalBudget = Math.max(
       200,
-      Math.min(GUIDANCE_FASTPATH_EXTERNAL_RECALL_BUDGET_MS, remainingAfterReserve),
+      Math.min(phaseBudgets.external_recall_ms, remainingAfterReserve),
     );
 
     const [internalPhase, externalPhase] = await Promise.all([
