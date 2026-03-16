@@ -434,6 +434,17 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
     queryStepStrength: 'supportive_family',
     mode: 'guidance_only',
   });
+  const niacinamide = classifyBeautyCoarseCandidate({
+    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryTargetStepFamily: 'serum',
+    queryText: 'panthenol barrier repair serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'strong_goal_family',
+    mode: 'guidance_only',
+  });
   const decision = buildBeautySkincareHitQualityDecision({
     queryText: 'panthenol serum',
     products: [
@@ -465,6 +476,8 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
   assert.equal(supportive.coarse_valid_for_target, true);
   assert.equal(generic.target_relevance_class, 'generic_family');
   assert.equal(generic.coarse_valid_for_target, false);
+  assert.equal(niacinamide.target_relevance_class, 'generic_family');
+  assert.equal(niacinamide.coarse_valid_for_target, false);
   assert.equal(decision.hit_quality, 'valid_hit');
   assert.equal(decision.step_success_class, 'strong_goal_family');
   assert.equal(decision.success_contract_result?.applied, true);

@@ -46,6 +46,14 @@ const GUIDANCE_BARRIER_RE = /\b(barrier|repair)\b/i;
 const GUIDANCE_INGREDIENT_RE = /\b(ceramides?|panthenol|vitamin[- ]?b5|b5|niacinamide|hyalur|hyaluronic|centella|cica|allantoin|phyto.?ceramides?)\b/i;
 const GUIDANCE_SENSITIVITY_RE = /\b(sensitive|fragrance[- ]free|gentle|soothing|calming)\b/i;
 const GUIDANCE_HYDRATION_RE = /\b(hydrat|gel cream)\b/i;
+const GUIDANCE_INGREDIENT_TOKEN_SPECS = Object.freeze([
+  { key: 'ceramide', re: /\b(ceramides?|phyto.?ceramides?)\b/i },
+  { key: 'panthenol', re: /\b(panthenol|vitamin[- ]?b5|b5)\b/i },
+  { key: 'niacinamide', re: /\bniacinamide\b/i },
+  { key: 'centella', re: /\b(centella|cica)\b/i },
+  { key: 'allantoin', re: /\ballantoin\b/i },
+  { key: 'hyaluronic', re: /\b(hyalur|hyaluronic)\b/i },
+]);
 
 function normalizeGuidanceIntentStrength(value) {
   const normalized = asString(value).toLowerCase();
@@ -73,6 +81,16 @@ function countGuidanceAnchorMatches(candidateFlags, queryFlags) {
   if (flags.sensitivity && candidateFlags.sensitivity) count += 1;
   if (flags.hydration && candidateFlags.hydration) count += 1;
   return count;
+}
+
+function extractGuidanceIngredientTokens(text) {
+  const lower = asString(text).toLowerCase();
+  if (!lower) return new Set();
+  const tokens = new Set();
+  for (const spec of GUIDANCE_INGREDIENT_TOKEN_SPECS) {
+    if (spec.re.test(lower)) tokens.add(spec.key);
+  }
+  return tokens;
 }
 
 function classifyBeautyGuidanceQueryStrength(queryText, { queryTargetStepFamily = null } = {}) {
@@ -225,6 +243,9 @@ function classifyGuidanceOnlySerumTargetRelevance({
   const queryFlags = buildGuidanceAnchorFlags(queryText);
   const candidateFlags = buildGuidanceAnchorFlags(lower);
   const anchorMatches = countGuidanceAnchorMatches(candidateFlags, queryFlags);
+  const queryIngredientTokens = extractGuidanceIngredientTokens(queryText);
+  const candidateIngredientTokens = extractGuidanceIngredientTokens(lower);
+  const ingredientOverlap = Array.from(candidateIngredientTokens).some((token) => queryIngredientTokens.has(token));
   const looksLikeSerumFamily =
     coarse.candidate_step === 'serum' || SERUM_GUIDANCE_FAMILY_RE.test(lower);
   const effectiveStrength =
@@ -285,7 +306,7 @@ function classifyGuidanceOnlySerumTargetRelevance({
   }
   if (
     effectiveStrength !== 'generic_family' &&
-    candidateFlags.ingredient &&
+    ingredientOverlap &&
     (candidateFlags.barrier || candidateFlags.sensitivity || candidateFlags.hydration) &&
     (queryFlags.ingredient || queryFlags.barrier || queryFlags.sensitivity || queryFlags.hydration)
   ) {
@@ -294,11 +315,11 @@ function classifyGuidanceOnlySerumTargetRelevance({
   if (anchorMatches >= 2 && effectiveStrength !== 'generic_family') {
     return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
   }
-  if (anchorMatches >= 1) {
+  if (anchorMatches >= 1 && (candidateFlags.barrier || candidateFlags.sensitivity || candidateFlags.hydration || ingredientOverlap)) {
     return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
   }
   if (
-    candidateFlags.ingredient &&
+    ingredientOverlap &&
     (
       queryFlags.ingredient ||
       queryFlags.barrier ||
