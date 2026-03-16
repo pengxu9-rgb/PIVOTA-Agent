@@ -6219,13 +6219,7 @@ function getGuidanceFastpathRemainingBudgetMs(startedAt, totalBudgetMs = GUIDANC
 
 function buildGuidanceServerOwnedLadderAttempts(queryText, guidanceContext) {
   if (!guidanceContext || !guidanceContext.is_server_owned_ladder) return [];
-  if (guidanceContext.target_step_family !== 'moisturizer') return [];
-
   const normalized = normalizeSearchTextForMatch(queryText);
-  const hasCeramide = /\bceramide\b/.test(normalized);
-  const hasFragranceFree = hasFragranceFreeSkincareSignal(queryText);
-  const strongQueries = [];
-  const supportiveQueries = [];
   const pushUnique = (list, value) => {
     const query = String(value || '').trim();
     if (!query) return;
@@ -6235,14 +6229,57 @@ function buildGuidanceServerOwnedLadderAttempts(queryText, guidanceContext) {
     list.push(query);
   };
 
-  if (hasCeramide) pushUnique(strongQueries, 'ceramide barrier moisturizer');
-  pushUnique(strongQueries, 'barrier repair ceramide moisturizer');
-  pushUnique(strongQueries, 'ceramide barrier moisturizer');
+  const strongQueries = [];
+  const supportiveQueries = [];
 
-  pushUnique(supportiveQueries, 'barrier repair moisturizer');
-  if (hasFragranceFree) pushUnique(supportiveQueries, 'fragrance-free barrier moisturizer');
-  pushUnique(supportiveQueries, hasCeramide ? 'ceramide moisturizer' : 'ceramide barrier moisturizer');
-  pushUnique(supportiveQueries, 'sensitive skin moisturizer');
+  if (guidanceContext.target_step_family === 'moisturizer') {
+    const hasCeramide = /\bceramide\b/.test(normalized);
+    const hasFragranceFree = hasFragranceFreeSkincareSignal(queryText);
+
+    if (hasCeramide) pushUnique(strongQueries, 'ceramide barrier moisturizer');
+    pushUnique(strongQueries, 'barrier repair ceramide moisturizer');
+    pushUnique(strongQueries, 'ceramide barrier moisturizer');
+
+    pushUnique(supportiveQueries, 'barrier repair moisturizer');
+    if (hasFragranceFree) pushUnique(supportiveQueries, 'fragrance-free barrier moisturizer');
+    pushUnique(supportiveQueries, hasCeramide ? 'ceramide moisturizer' : 'ceramide barrier moisturizer');
+    pushUnique(supportiveQueries, 'sensitive skin moisturizer');
+  } else if (guidanceContext.target_step_family === 'serum') {
+    const hasPanthenol = /\b(panthenol|vitamin[-\s]?b5|b5)\b/.test(normalized);
+    const hasHyaluronic = /\b(hyaluronic|hyaluron|sodium hyaluronate|ha)\b/.test(normalized);
+    const hasNiacinamide = /\bniacinamide\b/.test(normalized);
+    const hasZinc = /\b(zinc|zinc pca)\b/.test(normalized);
+    const hasAzelaic = /\bazelaic\b/.test(normalized);
+    const hasSalicylic = /\b(salicylic|bha)\b/.test(normalized);
+    const hasVitaminC = /\b(vitamin c|ascorbic)\b/.test(normalized);
+    const hasBarrier = /\b(barrier|repair)\b/.test(normalized);
+
+    if (hasPanthenol) {
+      pushUnique(strongQueries, 'panthenol serum');
+      pushUnique(strongQueries, 'barrier b5 serum');
+    }
+    if (hasHyaluronic) pushUnique(strongQueries, 'hyaluronic acid serum');
+    if (hasNiacinamide) pushUnique(strongQueries, 'niacinamide serum');
+    if (hasZinc) pushUnique(strongQueries, 'zinc pca serum');
+    if (hasAzelaic) pushUnique(strongQueries, 'azelaic acid serum');
+    if (hasSalicylic) pushUnique(strongQueries, 'salicylic acid serum');
+    if (hasVitaminC) pushUnique(strongQueries, 'vitamin c serum');
+    if (hasBarrier) pushUnique(strongQueries, 'barrier repair serum');
+    pushUnique(strongQueries, String(queryText || '').trim());
+
+    if (hasPanthenol || hasBarrier) pushUnique(supportiveQueries, 'barrier repair serum');
+    if (hasPanthenol || /\b(soothing|calming|sensitive|cica|centella)\b/.test(normalized)) {
+      pushUnique(supportiveQueries, 'soothing serum');
+    }
+    if (hasHyaluronic || /\b(hydrat|dehydrat|dry)\b/.test(normalized)) {
+      pushUnique(supportiveQueries, 'hydrating serum');
+    }
+    if (hasNiacinamide || hasZinc) pushUnique(supportiveQueries, 'balancing serum');
+    if (hasVitaminC) pushUnique(supportiveQueries, 'brightening serum');
+    pushUnique(supportiveQueries, 'hydrating serum');
+  } else {
+    return [];
+  }
 
   return [
     {
@@ -6379,7 +6416,10 @@ async function runGuidanceServerOwnedLadderSearch({
 } = {}) {
   const queryText = extractSearchQueryText(search);
   const guidanceContext = extractGuidanceRetrievalContext(search, { queryText });
-  if (!guidanceContext.is_server_owned_ladder || guidanceContext.target_step_family !== 'moisturizer') {
+  if (
+    !guidanceContext.is_server_owned_ladder ||
+    !['moisturizer', 'serum'].includes(String(guidanceContext.target_step_family || ''))
+  ) {
     return null;
   }
 

@@ -3735,4 +3735,177 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient_plan_guidance_only server-owned ladder fastpath also handles serum family', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-fastpath-serum-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed_winona_panthenol',
+                external_product_id: 'ext_panthenol_1',
+                destination_url: 'https://winona.example.com/products/panthenol-serum',
+                canonical_url: 'https://winona.example.com/products/panthenol-serum',
+                domain: 'winona.example.com',
+                title: 'Winona Soothing Repair Serum with Panthenol',
+                image_url: 'https://winona.example.com/image.jpg',
+                price_amount: 29,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Winona',
+                  category: 'Serum',
+                  snapshot: {
+                    title: 'Winona Soothing Repair Serum with Panthenol',
+                    description: 'panthenol serum for soothing barrier repair support',
+                    brand: 'Winona',
+                    category: 'Serum',
+                    canonical_url: 'https://winona.example.com/products/panthenol-serum',
+                    destination_url: 'https://winona.example.com/products/panthenol-serum',
+                  },
+                },
+              },
+              {
+                id: 'seed_barrier_b5',
+                external_product_id: 'ext_barrier_b5_1',
+                destination_url: 'https://dermlab.example.com/products/barrier-b5-serum',
+                canonical_url: 'https://dermlab.example.com/products/barrier-b5-serum',
+                domain: 'dermlab.example.com',
+                title: 'Barrier B5 Serum',
+                image_url: 'https://dermlab.example.com/image.jpg',
+                price_amount: 26,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Derm Lab',
+                  category: 'Serum',
+                  snapshot: {
+                    title: 'Barrier B5 Serum',
+                    description: 'barrier repair serum with panthenol and b5',
+                    brand: 'Derm Lab',
+                    category: 'Serum',
+                    canonical_url: 'https://dermlab.example.com/products/barrier-b5-serum',
+                    destination_url: 'https://dermlab.example.com/products/barrier-b5-serum',
+                  },
+                },
+              },
+              {
+                id: 'seed_generic_serum',
+                external_product_id: 'ext_generic_1',
+                destination_url: 'https://patyka.example.com/products/fundamental-serum',
+                canonical_url: 'https://patyka.example.com/products/fundamental-serum',
+                domain: 'patyka.example.com',
+                title: 'Serum Repulpant Fundamental',
+                image_url: 'https://patyka.example.com/image.jpg',
+                price_amount: 34,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'PATYKA',
+                  category: 'Serum',
+                  snapshot: {
+                    title: 'Serum Repulpant Fundamental',
+                    description: 'hydrating face serum',
+                    brand: 'PATYKA',
+                    category: 'Serum',
+                    canonical_url: 'https://patyka.example.com/products/fundamental-serum',
+                    destination_url: 'https://patyka.example.com/products/fundamental-serum',
+                  },
+                },
+              },
+              {
+                id: 'seed_adjacent_toner',
+                external_product_id: 'ext_toner_1',
+                destination_url: 'https://fenty.example.com/products/fat-water',
+                canonical_url: 'https://fenty.example.com/products/fat-water',
+                domain: 'fenty.example.com',
+                title: 'Fat Water Hydrating Milky Toner Essence',
+                image_url: 'https://fenty.example.com/image.jpg',
+                price_amount: 18,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                seed_data: {
+                  brand: 'Fenty Skin',
+                  category: 'Essence',
+                  snapshot: {
+                    title: 'Fat Water Hydrating Milky Toner Essence',
+                    description: 'hydrating toner essence',
+                    brand: 'Fenty Skin',
+                    category: 'Essence',
+                    canonical_url: 'https://fenty.example.com/products/fat-water',
+                    destination_url: 'https://fenty.example.com/products/fat-water',
+                  },
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'panthenol serum',
+        limit: '8',
+        source: 'aurora_chatbox',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        execution_mode: 'server_owned_ladder',
+        source_policy: 'internal_first_then_external_supplement',
+        product_only: 'true',
+        allow_external_seed: 'true',
+        target_step_family: 'serum',
+        search_all_merchants: 'true',
+        lang: 'en',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        legacy_pipeline_bypassed: true,
+        resolver_first_applied: false,
+        pass2_attempted: false,
+        secondary_attempted: false,
+        second_stage_expansion_attempted: false,
+        client_timeout_recommended_ms: 5000,
+      }),
+    );
+    expect(Array.isArray(resp.body.metadata?.attempt_trace)).toBe(true);
+    expect(resp.body.metadata?.attempt_count).toBeGreaterThanOrEqual(1);
+    expect(String(resp.body.metadata?.selected_attempt_query || '')).toMatch(/serum/i);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'Winona Soothing Repair Serum with Panthenol',
+      'Barrier B5 Serum',
+    ]);
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        decision_mode: 'guidance_only',
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        query_target_step_family: 'serum',
+        step_success_class: 'strong_goal_family',
+        success_contract_result: expect.objectContaining({
+          applied: true,
+          satisfied: true,
+          step_success_class: 'strong_goal_family',
+        }),
+      }),
+    );
+  });
+
 });
