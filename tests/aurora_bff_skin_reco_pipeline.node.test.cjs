@@ -340,6 +340,31 @@ test('guidance-only ingredient plan cards never rehydrate concrete sku payloads 
   assert.equal('external_fallback_used' in card.payload.targets[0], false);
 });
 
+test('guidance-only serum ladder is canonical-first and does not lead with the literal label query', () => {
+  const ladder = routesInternal.buildGuidanceOnlyDiscoveryLadder(
+    {
+      ingredient_id: 'panthenol',
+      ingredient_name: 'Panthenol',
+    },
+    'panthenol serum',
+  );
+
+  assert.equal(Array.isArray(ladder), true);
+  assert.equal(ladder.length >= 4, true);
+  assert.equal(ladder[0]?.target_step_family, 'serum');
+  assert.equal(ladder[0]?.decision_mode, 'guidance_only');
+  assert.equal(ladder[0]?.source_policy, 'internal_first_then_external_supplement');
+  assert.equal(String(ladder[0]?.query || ''), 'panthenol barrier repair serum');
+  assert.equal(
+    ladder.slice(0, 3).every((step) => String(step?.query || '').toLowerCase() !== 'panthenol serum'),
+    true,
+  );
+  assert.equal(
+    ladder.some((step) => String(step?.query || '').toLowerCase() === 'panthenol soothing serum'),
+    true,
+  );
+});
+
 test('latest reco context canonicalizes seeds, limits carry-over, and keeps current-turn priority', () => {
   const payload = routesInternal.buildLatestRecoContextPayload({
     baseContext: {

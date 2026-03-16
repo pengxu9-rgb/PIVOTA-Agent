@@ -11,8 +11,11 @@ const {
   TARGET_RELEVANCE_CLASS_OWNER,
   SHARED_TARGET_RELEVANCE_POLICY_VERSION,
   BARRIER_MOISTURIZER_TARGET_POLICY_V2,
+  BARRIER_SERUM_TARGET_POLICY_V1,
   normalizeRecommendationDecisionMode,
+  normalizeSharedTargetIntent,
   getTargetRelevanceClassRank,
+  buildQualityGateResult,
   buildSuccessContractResult,
   buildRecommendationDecisionCapabilityOutput,
   countTargetRelevanceClasses,
@@ -37,12 +40,24 @@ const TINT_RE = /\b(skin tint|tinted|tint(ed)? moisturizer|bb cream|cc cream|fou
 const PEEL_RE = /\b(peel|exfoliant|exfoliating|resurfacing)\b/i;
 const SPF_RE = /\b(spf\s*\d+|spf|sunscreen|sun screen|uv filters?)\b/i;
 const CLEANSER_RE = /\b(cleanser|cleanse|cleansing|face wash|facial wash|wash[- ]off|wash off|foaming wash|cream cleanser)\b/i;
+const HAIR_RE = /\b(hair|scalp|frizz|heat protectant|styling|conditioner|shampoo|leave[- ]?in|blowout|curl cream)\b/i;
 const BRIGHTENING_RE = /\b(brightening|vitamin c|glow|radiance)\b/i;
 const MOISTURIZER_GUIDANCE_FAMILY_RE = /\b(moisturizer|moisturiser|cream|lotion|gel cream|balm)\b/i;
+const SERUM_GUIDANCE_FAMILY_RE = /\b(serum|ampoule|essence)\b/i;
 const GUIDANCE_BARRIER_RE = /\b(barrier|repair)\b/i;
-const GUIDANCE_INGREDIENT_RE = /\b(ceramides?|panthenol|niacinamide|hyalur|hyaluronic|centella|cica|allantoin|phyto.?ceramides?)\b/i;
+const GUIDANCE_INGREDIENT_RE = /\b(ceramides?|panthenol|vitamin[- ]?b5|b5|niacinamide|hyalur|hyaluronic|centella|cica|allantoin|phyto.?ceramides?)\b/i;
 const GUIDANCE_SENSITIVITY_RE = /\b(sensitive|fragrance[- ]free|gentle|soothing|calming)\b/i;
 const GUIDANCE_HYDRATION_RE = /\b(hydrat|gel cream)\b/i;
+const SERUM_TREATMENT_CUE_RE = /\b(serum|concentrate|booster|treatment)\b/i;
+const SERUM_ADJACENT_LIQUID_RE = /\b(toner|mist|treatment lotion|hydrating liquid|essence lotion)\b/i;
+const GUIDANCE_INGREDIENT_TOKEN_SPECS = Object.freeze([
+  { key: 'ceramide', re: /\b(ceramides?|phyto.?ceramides?)\b/i },
+  { key: 'panthenol', re: /\b(panthenol|vitamin[- ]?b5|b5)\b/i },
+  { key: 'niacinamide', re: /\bniacinamide\b/i },
+  { key: 'centella', re: /\b(centella|cica)\b/i },
+  { key: 'allantoin', re: /\ballantoin\b/i },
+  { key: 'hyaluronic', re: /\b(hyalur|hyaluronic)\b/i },
+]);
 
 function normalizeGuidanceIntentStrength(value) {
   const normalized = asString(value).toLowerCase();
@@ -70,6 +85,16 @@ function countGuidanceAnchorMatches(candidateFlags, queryFlags) {
   if (flags.sensitivity && candidateFlags.sensitivity) count += 1;
   if (flags.hydration && candidateFlags.hydration) count += 1;
   return count;
+}
+
+function extractGuidanceIngredientTokens(text) {
+  const lower = asString(text).toLowerCase();
+  if (!lower) return new Set();
+  const tokens = new Set();
+  for (const spec of GUIDANCE_INGREDIENT_TOKEN_SPECS) {
+    if (spec.re.test(lower)) tokens.add(spec.key);
+  }
+  return tokens;
 }
 
 function classifyBeautyGuidanceQueryStrength(queryText, { queryTargetStepFamily = null } = {}) {
@@ -138,6 +163,9 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
   if (TINT_RE.test(lower)) {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tint' };
   }
+  if (HAIR_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'hair' };
+  }
   if (coarse.candidate_step === 'cleanser' || CLEANSER_RE.test(lower)) {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
   }
@@ -205,6 +233,199 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
     return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
   }
   return { offer_type: offerType, target_relevance_class: 'generic_family', noise_reason: null };
+}
+
+function classifyGuidanceOnlySerumTargetRelevance({
+  text,
+  coarse,
+  queryText,
+  queryStepStrength,
+}) {
+  const lower = asString(text).toLowerCase();
+  const offerType = detectBeautyOfferType(lower);
+  const queryFlags = buildGuidanceAnchorFlags(queryText);
+  const candidateFlags = buildGuidanceAnchorFlags(lower);
+  const queryIngredientTokens = extractGuidanceIngredientTokens(queryText);
+  const candidateIngredientTokens = extractGuidanceIngredientTokens(lower);
+  const ingredientOverlap = Array.from(candidateIngredientTokens).some((token) => queryIngredientTokens.has(token));
+  const looksLikeSerumFamily =
+    coarse.candidate_step === 'serum' || SERUM_GUIDANCE_FAMILY_RE.test(lower);
+  const looksLikeAdjacentLiquid =
+    SERUM_ADJACENT_LIQUID_RE.test(lower) ||
+    (/\bessence\b/.test(lower) && !/\bserum\b/.test(lower)) ||
+    (/\bampoule\b/.test(lower) && !/\bserum\b/.test(lower));
+  const normalizedIntent = normalizeSharedTargetIntent({
+    queryText,
+    targetStepFamily: 'serum',
+    mode: 'guidance_only',
+    queryStepStrength,
+  });
+  const overlay = normalizedIntent?.variant_overlay || null;
+  let overlayScore = 0;
+  if (overlay === 'ingredient_fidelity') {
+    if (ingredientOverlap) overlayScore += 2;
+    if (candidateFlags.barrier || candidateFlags.sensitivity) overlayScore += 1;
+  } else if (overlay === 'soothing_focus') {
+    if (candidateFlags.sensitivity) overlayScore += 2;
+    if (/\b(cica|centella|madecassoside|calming|redness)\b/.test(lower)) overlayScore += 1;
+    if (ingredientOverlap) overlayScore += 1;
+  } else if (overlay === 'barrier_repair_focus') {
+    if (candidateFlags.barrier) overlayScore += 2;
+    if (/\brepair\b/.test(lower)) overlayScore += 1;
+    if (ingredientOverlap) overlayScore += 1;
+  } else if (ingredientOverlap) {
+    overlayScore += 1;
+  }
+  const queryConsistentAnchorFidelity =
+    /\b(sensitive|cica|centella|madecassoside|panthenol|vitamin[- ]?b5|b5|allantoin|soothing|calming|repair|barrier)\b/.test(lower) ||
+    SERUM_TREATMENT_CUE_RE.test(lower) ||
+    overlayScore >= 2;
+  const explicitSerumGoalCue =
+    /\b(barrier|repair|soothing|calming|sensitive|cica|centella|madecassoside)\b/.test(lower) ||
+    SERUM_TREATMENT_CUE_RE.test(lower);
+  const effectiveStrength =
+    normalizeGuidanceIntentStrength(queryStepStrength) ||
+    classifyBeautyGuidanceQueryStrength(queryText, { queryTargetStepFamily: 'serum' });
+
+  if (coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'service' };
+  }
+  if (
+    coarse.object_type === 'brush' ||
+    coarse.object_type === 'tool' ||
+    coarse.object_type === 'accessory' ||
+    coarse.domain_scope === 'beauty_tool'
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tool' };
+  }
+  if (TINT_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tint' };
+  }
+  if (HAIR_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'hair' };
+  }
+  if (coarse.candidate_step === 'cleanser' || CLEANSER_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (SPF_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'spf' };
+  }
+  if (PEEL_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'peel' };
+  }
+  if (coarse.domain_scope === 'bodycare' || coarse.usage_scope === 'body') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'body' };
+  }
+  if (coarse.domain_scope === 'makeup') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tool' };
+  }
+  if (coarse.application_mode === 'rinse_off') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (looksLikeAdjacentLiquid) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'adjacent_noise',
+      noise_reason: 'adjacent_liquid',
+      overlay_score: overlayScore,
+      relevance_channel: null,
+      ingredient_overlap: ingredientOverlap,
+    };
+  }
+  if (coarse.family_relation === 'adjacent_family') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'adjacent_family' };
+  }
+  if (
+    coarse.domain_scope !== 'skincare' ||
+    coarse.object_type !== 'product' ||
+    coarse.usage_scope !== 'face' ||
+    (!looksLikeSerumFamily && coarse.family_relation !== 'same_family')
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'body' };
+  }
+  if (offerType === 'bundle' || offerType === 'duo' || offerType === 'set' || offerType === 'kit') {
+    return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'bundle' };
+  }
+  if (BRIGHTENING_RE.test(lower) && (queryFlags.barrier || queryFlags.ingredient || queryFlags.sensitivity)) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'adjacent_noise',
+      noise_reason: 'brightening',
+      overlay_score: overlayScore,
+      relevance_channel: null,
+      ingredient_overlap: ingredientOverlap,
+    };
+  }
+  if (
+    effectiveStrength !== 'generic_family' &&
+    ingredientOverlap &&
+    looksLikeSerumFamily &&
+    !looksLikeAdjacentLiquid &&
+    (
+      candidateFlags.barrier ||
+      candidateFlags.sensitivity ||
+      candidateFlags.hydration ||
+      overlayScore >= 1
+    )
+  ) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'strong_goal_family',
+      noise_reason: null,
+      relevance_channel: 'ingredient-strong',
+      overlay_score: overlayScore,
+      ingredient_overlap: ingredientOverlap,
+    };
+  }
+  if (
+    effectiveStrength !== 'generic_family' &&
+    looksLikeSerumFamily &&
+    !looksLikeAdjacentLiquid &&
+    (candidateFlags.barrier || candidateFlags.sensitivity) &&
+    queryConsistentAnchorFidelity &&
+    (
+      overlayScore >= 2 ||
+      (
+        !normalizedIntent?.backbone_id &&
+        effectiveStrength !== 'generic_family' &&
+        explicitSerumGoalCue
+      )
+    )
+  ) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'strong_goal_family',
+      noise_reason: null,
+      relevance_channel: 'goal-strong',
+      overlay_score: overlayScore,
+      ingredient_overlap: ingredientOverlap,
+    };
+  }
+  if (
+    looksLikeSerumFamily &&
+    !looksLikeAdjacentLiquid &&
+    (
+      ingredientOverlap ||
+      ((candidateFlags.barrier || candidateFlags.sensitivity || candidateFlags.hydration) && queryConsistentAnchorFidelity)
+    )
+  ) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: null,
+      overlay_score: overlayScore,
+      ingredient_overlap: ingredientOverlap,
+    };
+  }
+  return {
+    offer_type: offerType,
+    target_relevance_class: 'generic_family',
+    noise_reason: null,
+    relevance_channel: null,
+    overlay_score: overlayScore,
+    ingredient_overlap: ingredientOverlap,
+  };
 }
 
 function asString(value) {
@@ -344,7 +565,7 @@ function classifyBeautyCoarseCandidate(product, {
       ? 'same_family'
       : 'unknown';
   const decisionMode = normalizeRecommendationDecisionMode(mode, { guidanceOnlyDiscovery });
-  const guidanceOnlyMoisturizer =
+  const sharedGuidancePipeline =
     shouldUseSharedTargetRelevancePipeline({
       mode: decisionMode,
       targetStepFamily: normalizeRecoTargetStep(queryTargetStepFamily),
@@ -353,8 +574,12 @@ function classifyBeautyCoarseCandidate(product, {
   let offerType = detectBeautyOfferType(lower);
   let targetRelevanceClass = 'supportive_family';
   let noiseReason = null;
-  if (guidanceOnlyMoisturizer) {
-    const guidanceRelevance = classifyGuidanceOnlyMoisturizerTargetRelevance({
+  let relevanceChannel = null;
+  let overlayScore = 0;
+  let ingredientOverlap = false;
+  if (sharedGuidancePipeline) {
+    const normalizedTargetStepFamily = normalizeRecoTargetStep(queryTargetStepFamily);
+    const guidanceInput = {
       text,
       coarse: {
         domain_scope: domainScope,
@@ -367,10 +592,17 @@ function classifyBeautyCoarseCandidate(product, {
       },
       queryText,
       queryStepStrength,
-    });
+    };
+    const guidanceRelevance =
+      normalizedTargetStepFamily === 'serum'
+        ? classifyGuidanceOnlySerumTargetRelevance(guidanceInput)
+        : classifyGuidanceOnlyMoisturizerTargetRelevance(guidanceInput);
     offerType = guidanceRelevance.offer_type;
     targetRelevanceClass = guidanceRelevance.target_relevance_class;
     noiseReason = guidanceRelevance.noise_reason;
+    relevanceChannel = guidanceRelevance.relevance_channel || null;
+    overlayScore = Number(guidanceRelevance.overlay_score || 0) || 0;
+    ingredientOverlap = guidanceRelevance.ingredient_overlap === true;
   } else if (
     domainScope === 'skincare' &&
     objectType === 'product' &&
@@ -388,7 +620,7 @@ function classifyBeautyCoarseCandidate(product, {
   } else {
     targetRelevanceClass = 'adjacent_noise';
   }
-  const coarseValidForTarget = guidanceOnlyMoisturizer
+  const coarseValidForTarget = sharedGuidancePipeline
     ? targetRelevanceClass === 'strong_goal_family' || targetRelevanceClass === 'supportive_family'
     : Boolean(
         domainScope === 'skincare'
@@ -412,6 +644,9 @@ function classifyBeautyCoarseCandidate(product, {
     target_relevance_owner: TARGET_RELEVANCE_CLASS_OWNER,
     target_relevance_policy_version: SHARED_TARGET_RELEVANCE_POLICY_VERSION,
     noise_reason: noiseReason,
+    relevance_channel: relevanceChannel,
+    overlay_score: overlayScore,
+    ingredient_overlap: ingredientOverlap,
     coarse_valid_for_target: coarseValidForTarget,
   };
 }
@@ -437,13 +672,22 @@ function scoreBeautyCandidateForTarget(product, {
   if (coarse.application_mode === 'leave_on') score += 10;
   if (coarse.family_relation === 'same_family') score += 80;
   if (queryTargetStepFamily && coarse.candidate_step === queryTargetStepFamily) score += 20;
-  if (guidanceOnlyDiscovery === true && normalizeRecoTargetStep(queryTargetStepFamily) === 'moisturizer') {
+  if (
+    shouldUseSharedTargetRelevancePipeline({
+      mode,
+      targetStepFamily: normalizeRecoTargetStep(queryTargetStepFamily),
+      queryStepStrength,
+    })
+  ) {
     if (coarse.target_relevance_class === 'strong_goal_family') score += 120;
     else if (coarse.target_relevance_class === 'supportive_family') score += 80;
     else if (coarse.target_relevance_class === 'generic_family') score += 10;
     else if (coarse.target_relevance_class === 'adjacent_noise') score -= 90;
     else score -= 160;
     if (coarse.offer_type === 'sample') score -= 4;
+    if (coarse.relevance_channel === 'ingredient-strong') score += 36;
+    else if (coarse.relevance_channel === 'goal-strong') score += 8;
+    score += Math.max(0, Number(coarse.overlay_score || 0) || 0) * 6;
   }
   if (coarse.application_mode === 'rinse_off') score -= 15;
   if (coarse.domain_scope === 'bodycare') score -= 40;
@@ -485,6 +729,323 @@ function rerankBeautySkincareProductsByTargetFamily(products, {
     .map((row) => row.product);
 }
 
+function buildCandidateBrandKey(product) {
+  return asString(product?.brand || product?.merchant_name || product?.vendor || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeCandidateTitleForDedupe(product) {
+  return asString(product?.title || product?.display_name || product?.displayName || product?.name || '')
+    .toLowerCase()
+    .replace(/\b(\d+(?:\.\d+)?\s?(?:ml|oz|fl oz|g|count|ct)|mini|sample|travel(?:\s+size)?)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildCandidateExactSkuKey(product) {
+  const merchantId = asString(product?.merchant_id || product?.merchantId).toLowerCase();
+  const productId = asString(product?.product_id || product?.productId || product?.id).toLowerCase();
+  const skuId = asString(product?.sku_id || product?.skuId).toLowerCase();
+  if (merchantId && productId) return `${merchantId}::${productId}`;
+  if (merchantId && skuId) return `${merchantId}::sku::${skuId}`;
+  const canonicalUrl = asString(product?.canonical_url || product?.canonicalUrl || product?.destination_url || product?.destinationUrl || product?.url).toLowerCase();
+  if (canonicalUrl) return canonicalUrl;
+  const brandKey = buildCandidateBrandKey(product);
+  const titleKey = normalizeCandidateTitleForDedupe(product);
+  return `${brandKey}::${titleKey}`;
+}
+
+function buildCandidateCrossOriginKey(product) {
+  const brandKey = buildCandidateBrandKey(product);
+  const titleKey = normalizeCandidateTitleForDedupe(product);
+  return brandKey && titleKey ? `${brandKey}::${titleKey}` : buildCandidateExactSkuKey(product);
+}
+
+function buildCandidateFamilyVariantKey(product) {
+  return buildCandidateCrossOriginKey(product);
+}
+
+function buildCandidateOrigin(product) {
+  const explicitOrigin = asString(product?.candidate_origin).toLowerCase();
+  if (explicitOrigin === 'stable_prior') return 'stable_prior';
+  const retrievalReason = asString(product?.retrieval_reason).toLowerCase();
+  if (retrievalReason.includes('catalog_transient_fallback')) return 'stable_prior';
+  const merchantId = asString(product?.merchant_id || product?.merchantId).toLowerCase();
+  if (merchantId === 'external_seed') return 'external_supplement';
+  return 'internal_live';
+}
+
+function countCandidateOrigins(products) {
+  const counts = {
+    internal_live: 0,
+    external_supplement: 0,
+    stable_prior: 0,
+  };
+  for (const product of Array.isArray(products) ? products : []) {
+    const origin = buildCandidateOrigin(product);
+    counts[origin] = Number(counts[origin] || 0) + 1;
+  }
+  return counts;
+}
+
+function countDistinctSupportiveCandidates(rows) {
+  const seen = new Set();
+  let count = 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const coarse = row?.coarse;
+    if (coarse?.target_relevance_class !== 'supportive_family') continue;
+    const key = buildCandidateFamilyVariantKey(row.product);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    count += 1;
+  }
+  return count;
+}
+
+function buildStablePriorSource(product) {
+  const explicitOrigin = asString(product?.candidate_origin).toLowerCase();
+  if (explicitOrigin === 'stable_prior') return explicitOrigin;
+  const retrievalReason = asString(product?.retrieval_reason).toLowerCase();
+  if (retrievalReason.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
+  return null;
+}
+
+function selectStablePriorFallbackRows(rows, {
+  existingRows = [],
+  minimumDisplayCount = 2,
+  sessionSeenProductIds = [],
+} = {}) {
+  const selectedRows = Array.isArray(existingRows) ? existingRows.slice() : [];
+  const candidates = Array.isArray(rows) ? rows.slice() : [];
+  const sessionSeen = new Set(
+    (Array.isArray(sessionSeenProductIds) ? sessionSeenProductIds : [])
+      .map((value) => asString(value).toLowerCase())
+      .filter(Boolean),
+  );
+  const exactSeen = new Set();
+  const familySeen = new Set();
+  const crossOriginSeen = new Set();
+  const brandCounts = new Map();
+
+  for (const row of selectedRows) {
+    const exactKey = buildCandidateExactSkuKey(row.product);
+    const familyVariantKey = buildCandidateFamilyVariantKey(row.product);
+    const crossOriginKey = buildCandidateCrossOriginKey(row.product);
+    const brandKey = buildCandidateBrandKey(row.product);
+    if (exactKey) exactSeen.add(exactKey);
+    if (familyVariantKey) familySeen.add(familyVariantKey);
+    if (crossOriginKey) crossOriginSeen.add(crossOriginKey);
+    if (brandKey) brandCounts.set(brandKey, Number(brandCounts.get(brandKey) || 0) + 1);
+  }
+
+  const decorated = candidates.map((row, index) => {
+    const exactKey = buildCandidateExactSkuKey(row.product);
+    const seenInSession =
+      exactKey
+        ? sessionSeen.has(exactKey) || sessionSeen.has(asString(row.product?.product_id).toLowerCase())
+        : false;
+    return {
+      ...row,
+      index,
+      exact_key: exactKey,
+      family_variant_key: buildCandidateFamilyVariantKey(row.product),
+      cross_origin_key: buildCandidateCrossOriginKey(row.product),
+      brand_key: buildCandidateBrandKey(row.product),
+      adjusted_score: row.score - (seenInSession ? 80 : 0),
+      seen_in_session: seenInSession,
+    };
+  });
+
+  decorated.sort((left, right) => {
+    const leftRank = getTargetRelevanceClassRank(left.coarse?.target_relevance_class);
+    const rightRank = getTargetRelevanceClassRank(right.coarse?.target_relevance_class);
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    if (right.adjusted_score !== left.adjusted_score) return right.adjusted_score - left.adjusted_score;
+    return left.index - right.index;
+  });
+
+  const fallbackRows = [];
+  let diversityExceptionApplied = false;
+  let stablePriorSource = null;
+  let sessionExposurePenaltyApplied = false;
+  for (const row of decorated) {
+    if (selectedRows.length + fallbackRows.length >= minimumDisplayCount) break;
+    if (row.exact_key && exactSeen.has(row.exact_key)) continue;
+    if (row.family_variant_key && familySeen.has(row.family_variant_key)) continue;
+    if (row.cross_origin_key && crossOriginSeen.has(row.cross_origin_key)) continue;
+    const brandCount = row.brand_key ? Number(brandCounts.get(row.brand_key) || 0) : 0;
+    if (brandCount >= 1) {
+      const crossBrandAlternative = decorated.find((candidate) =>
+        candidate !== row &&
+        candidate.brand_key !== row.brand_key &&
+        (!candidate.exact_key || !exactSeen.has(candidate.exact_key)) &&
+        (!candidate.family_variant_key || !familySeen.has(candidate.family_variant_key)) &&
+        (!candidate.cross_origin_key || !crossOriginSeen.has(candidate.cross_origin_key)),
+      );
+      const allowException =
+        !crossBrandAlternative ||
+        getTargetRelevanceClassRank(row.coarse?.target_relevance_class) <
+          getTargetRelevanceClassRank(crossBrandAlternative.coarse?.target_relevance_class) ||
+        (
+          getTargetRelevanceClassRank(row.coarse?.target_relevance_class) ===
+            getTargetRelevanceClassRank(crossBrandAlternative.coarse?.target_relevance_class) &&
+          row.adjusted_score - crossBrandAlternative.adjusted_score >= 25
+        );
+      if (!allowException) continue;
+      diversityExceptionApplied = true;
+    }
+    if (row.seen_in_session) sessionExposurePenaltyApplied = true;
+    if (row.exact_key) exactSeen.add(row.exact_key);
+    if (row.family_variant_key) familySeen.add(row.family_variant_key);
+    if (row.cross_origin_key) crossOriginSeen.add(row.cross_origin_key);
+    if (row.brand_key) brandCounts.set(row.brand_key, brandCount + 1);
+    if (!stablePriorSource) stablePriorSource = buildStablePriorSource(row.product);
+    fallbackRows.push(row);
+  }
+
+  return {
+    rows: fallbackRows,
+    diversity_exception_applied: diversityExceptionApplied,
+    stable_prior_source: stablePriorSource,
+    session_exposure_penalty_applied: sessionExposurePenaltyApplied,
+  };
+}
+
+function applySerumCanarySelectionPolicy(rows, {
+  fillTargetCount = 3,
+  sessionSeenProductIds = [],
+} = {}) {
+  const sourceRows = Array.isArray(rows) ? rows.slice() : [];
+  const sessionSeen = new Set(
+    (Array.isArray(sessionSeenProductIds) ? sessionSeenProductIds : [])
+      .map((value) => asString(value).toLowerCase())
+      .filter(Boolean),
+  );
+  const selectionDiversity = {
+    exact_sku_dropped_count: 0,
+    cross_origin_dropped_count: 0,
+    family_variant_dropped_count: 0,
+    brand_near_duplicate_dropped_count: 0,
+    session_exposure_penalty_applied: false,
+    session_repeat_exact_sku_rate: 0,
+    same_canonical_intent_top1_repeat_rate: 0,
+  };
+  const exactSeen = new Set();
+  const familySeen = new Set();
+  const crossOriginSeen = new Set();
+  const deduped = [];
+
+  for (const row of sourceRows) {
+    const exactKey = buildCandidateExactSkuKey(row.product);
+    const crossOriginKey = buildCandidateCrossOriginKey(row.product);
+    const familyVariantKey = buildCandidateFamilyVariantKey(row.product);
+    if (exactKey && exactSeen.has(exactKey)) {
+      selectionDiversity.exact_sku_dropped_count += 1;
+      continue;
+    }
+    if (familyVariantKey && familySeen.has(familyVariantKey)) {
+      selectionDiversity.family_variant_dropped_count += 1;
+      continue;
+    }
+    if (crossOriginKey && crossOriginSeen.has(crossOriginKey)) {
+      selectionDiversity.cross_origin_dropped_count += 1;
+      continue;
+    }
+    if (exactKey) exactSeen.add(exactKey);
+    if (familyVariantKey) familySeen.add(familyVariantKey);
+    if (crossOriginKey) crossOriginSeen.add(crossOriginKey);
+    const seenInSession = exactKey ? sessionSeen.has(exactKey) || sessionSeen.has(asString(row.product?.product_id).toLowerCase()) : false;
+    if (seenInSession) selectionDiversity.session_exposure_penalty_applied = true;
+    deduped.push({
+      ...row,
+      exact_key: exactKey,
+      family_variant_key: familyVariantKey,
+      cross_origin_key: crossOriginKey,
+      brand_key: buildCandidateBrandKey(row.product),
+      seen_in_session: seenInSession,
+      adjusted_score: row.score - (seenInSession ? 80 : 0),
+    });
+  }
+
+  deduped.sort((left, right) => {
+    const leftRank = getTargetRelevanceClassRank(left.coarse?.target_relevance_class);
+    const rightRank = getTargetRelevanceClassRank(right.coarse?.target_relevance_class);
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    if (right.adjusted_score !== left.adjusted_score) return right.adjusted_score - left.adjusted_score;
+    return left.index - right.index;
+  });
+
+  const topRows = [];
+  const deferred = [];
+  const brandCounts = new Map();
+  for (const row of deduped) {
+    if (topRows.length >= fillTargetCount) {
+      deferred.push(row);
+      continue;
+    }
+    const brandKey = row.brand_key;
+    if (brandKey && Number(brandCounts.get(brandKey) || 0) >= 1) {
+      selectionDiversity.brand_near_duplicate_dropped_count += 1;
+      deferred.push(row);
+      continue;
+    }
+    topRows.push(row);
+    if (brandKey) brandCounts.set(brandKey, Number(brandCounts.get(brandKey) || 0) + 1);
+  }
+
+  let diversityExceptionApplied = false;
+  if (topRows.length < fillTargetCount && deferred.length > 0) {
+    const remaining = [];
+    for (const row of deferred) {
+      if (topRows.length < fillTargetCount) {
+        const bestCrossBrandAlternative =
+          deferred.find((candidate) => candidate !== row && candidate.brand_key !== row.brand_key) || null;
+        const shouldAllowException =
+          !bestCrossBrandAlternative ||
+          getTargetRelevanceClassRank(row.coarse?.target_relevance_class) < getTargetRelevanceClassRank(bestCrossBrandAlternative.coarse?.target_relevance_class) ||
+          (
+            getTargetRelevanceClassRank(row.coarse?.target_relevance_class) === getTargetRelevanceClassRank(bestCrossBrandAlternative.coarse?.target_relevance_class) &&
+            row.adjusted_score - bestCrossBrandAlternative.adjusted_score >= 25
+          );
+        if (shouldAllowException) {
+          diversityExceptionApplied = true;
+          selectionDiversity.brand_near_duplicate_dropped_count = Math.max(
+            0,
+            selectionDiversity.brand_near_duplicate_dropped_count - 1,
+          );
+          topRows.push(row);
+          continue;
+        }
+      }
+      remaining.push(row);
+    }
+    deferred.length = 0;
+    deferred.push(...remaining);
+  }
+
+  const finalRows = topRows.concat(deferred);
+  const finalProducts = finalRows.map((row) => row.product);
+  const repeatedExactSkuCount = finalRows.filter((row) => row.seen_in_session).length;
+  const top1Seen = topRows[0]?.seen_in_session === true;
+  selectionDiversity.session_repeat_exact_sku_rate =
+    finalRows.length > 0 ? repeatedExactSkuCount / finalRows.length : 0;
+  selectionDiversity.same_canonical_intent_top1_repeat_rate = top1Seen ? 1 : 0;
+
+  return {
+    products: finalProducts,
+    candidate_origin_counts: countCandidateOrigins(finalProducts),
+    selection_diversity: selectionDiversity,
+    dedupe_dropped_count:
+      selectionDiversity.exact_sku_dropped_count +
+      selectionDiversity.cross_origin_dropped_count +
+      selectionDiversity.family_variant_dropped_count,
+    diversity_exception_applied: diversityExceptionApplied,
+  };
+}
+
 function buildBeautySkincareHitQualityDecision({
   queryText,
   products,
@@ -492,6 +1053,7 @@ function buildBeautySkincareHitQualityDecision({
   guidanceOnlyDiscovery = false,
   queryStepStrength = null,
   mode = null,
+  sessionSeenProductIds = [],
 } = {}) {
   const queryBucket = detectBeautyQueryBucket(queryText);
   const rawProducts = Array.isArray(products) ? products : [];
@@ -525,6 +1087,21 @@ function buildBeautySkincareHitQualityDecision({
     queryTargetStepFamily || queryResolution?.resolved_target_step,
   );
   const decisionMode = normalizeRecommendationDecisionMode(mode, { guidanceOnlyDiscovery });
+  const sharedPipelineApplied = shouldUseSharedTargetRelevancePipeline({
+    mode: decisionMode,
+    targetStepFamily: normalizedQueryTargetStepFamily,
+    queryStepStrength: normalizedQueryStepStrength,
+  });
+  const normalizedIntent = normalizeSharedTargetIntent({
+    queryText,
+    targetStepFamily: normalizedQueryTargetStepFamily,
+    mode: decisionMode,
+    queryStepStrength: normalizedQueryStepStrength,
+  });
+  const serumCanaryGuidance =
+    decisionMode === 'guidance_only' &&
+    normalizedQueryTargetStepFamily === 'serum' &&
+    Boolean(normalizedIntent?.backbone_id);
   const rankedProducts = rerankBeautySkincareProductsByTargetFamily(rawProducts, {
     queryTargetStepFamily: normalizedQueryTargetStepFamily,
     queryText,
@@ -568,7 +1145,8 @@ function buildBeautySkincareHitQualityDecision({
   for (const product of topK) classifyTopK(product);
 
   const contractCandidateClassCounts = countTargetRelevanceClasses(
-    rankedProducts.map((product) => {
+    rankedProducts.flatMap((product) => {
+      if (serumCanaryGuidance && buildCandidateOrigin(product) === 'stable_prior') return [];
       const coarse = classifyBeautyCoarseCandidate(product, {
         queryTargetStepFamily: normalizedQueryTargetStepFamily,
         queryText,
@@ -576,13 +1154,15 @@ function buildBeautySkincareHitQualityDecision({
         queryStepStrength: normalizedQueryStepStrength,
         mode: decisionMode,
       });
-      return coarse.target_relevance_class;
+      return [coarse.target_relevance_class];
     }),
   );
 
   const contractStrongOrSupportive = [];
-  const contractGenericFallback = [];
+  const contractStablePriorRows = [];
   const validProducts = rankedProducts.filter((product) => {
+    const candidateOrigin = buildCandidateOrigin(product);
+    const stablePriorProduct = serumCanaryGuidance && candidateOrigin === 'stable_prior';
     const coarse = classifyBeautyCoarseCandidate(product, {
       queryTargetStepFamily: normalizedQueryTargetStepFamily,
       queryText,
@@ -590,22 +1170,20 @@ function buildBeautySkincareHitQualityDecision({
       queryStepStrength: normalizedQueryStepStrength,
       mode: decisionMode,
     });
-    candidateClassCounts[coarse.target_relevance_class] = Number(candidateClassCounts[coarse.target_relevance_class] || 0) + 1;
+    if (!stablePriorProduct) {
+      candidateClassCounts[coarse.target_relevance_class] = Number(candidateClassCounts[coarse.target_relevance_class] || 0) + 1;
+    }
     if (coarse.noise_reason) {
       noiseDropCounts[coarse.noise_reason] = Number(noiseDropCounts[coarse.noise_reason] || 0) + 1;
     }
-    const sharedPipelineApplied = shouldUseSharedTargetRelevancePipeline({
-      mode: decisionMode,
-      targetStepFamily: normalizedQueryTargetStepFamily,
-      queryStepStrength: normalizedQueryStepStrength,
-    });
     if (sharedPipelineApplied) {
       if (coarse.target_relevance_class === 'strong_goal_family' || coarse.target_relevance_class === 'supportive_family') {
+        if (stablePriorProduct) {
+          contractStablePriorRows.push(product);
+          return false;
+        }
         contractStrongOrSupportive.push(product);
         return true;
-      }
-      if (coarse.target_relevance_class === 'generic_family' && contractStrongOrSupportive.length > 0 && contractGenericFallback.length < 1) {
-        contractGenericFallback.push(product);
       }
       return false;
     }
@@ -613,14 +1191,117 @@ function buildBeautySkincareHitQualityDecision({
   });
 
   const normalizedValidProducts =
-    shouldUseSharedTargetRelevancePipeline({
-      mode: decisionMode,
-      targetStepFamily: normalizedQueryTargetStepFamily,
-      queryStepStrength: normalizedQueryStepStrength,
-    })
-      ? contractStrongOrSupportive.concat(contractGenericFallback)
+    sharedPipelineApplied
+      ? contractStrongOrSupportive
       : validProducts;
-  const candidateClassesTop3 = normalizedValidProducts.slice(0, 3).map((product) => {
+  const normalizedValidRows = normalizedValidProducts.map((product, index) => {
+    const scored = scoreBeautyCandidateForTarget(product, {
+      queryTargetStepFamily: normalizedQueryTargetStepFamily,
+      queryText,
+      guidanceOnlyDiscovery,
+      queryStepStrength: normalizedQueryStepStrength,
+      mode: decisionMode,
+    });
+    return {
+      product,
+      index,
+      score: scored.score,
+      coarse: scored.coarse,
+    };
+  });
+  const supportiveDistinctCount = countDistinctSupportiveCandidates(normalizedValidRows);
+  const qualityGateResult = buildQualityGateResult({
+    applied: sharedPipelineApplied,
+    strongCount: contractCandidateClassCounts.strong_goal_family,
+    supportiveCount: contractCandidateClassCounts.supportive_family,
+    supportiveDistinctCount,
+  });
+  let displayableProducts = normalizedValidProducts.slice();
+  let selectionDiversity = {
+    exact_sku_dropped_count: 0,
+    cross_origin_dropped_count: 0,
+    family_variant_dropped_count: 0,
+    brand_near_duplicate_dropped_count: 0,
+    session_exposure_penalty_applied: false,
+    session_repeat_exact_sku_rate: 0,
+    same_canonical_intent_top1_repeat_rate: 0,
+  };
+  let dedupeDroppedCount = 0;
+  let diversityExceptionApplied = false;
+  let candidateOriginCounts = countCandidateOrigins(displayableProducts);
+  let stablePriorApplied = false;
+  let stablePriorSource = null;
+  let fallbackMode = 'normal';
+  let validScopingDroppedCount = serumCanaryGuidance ? contractStablePriorRows.length : 0;
+  const fillTargetCount = serumCanaryGuidance ? 3 : Math.min(3, Math.max(0, normalizedValidProducts.length));
+  if (serumCanaryGuidance && normalizedValidRows.length > 0) {
+    const selection = applySerumCanarySelectionPolicy(normalizedValidRows, {
+      fillTargetCount: Math.max(1, fillTargetCount),
+      sessionSeenProductIds,
+    });
+    displayableProducts = selection.products;
+    selectionDiversity = selection.selection_diversity;
+    dedupeDroppedCount = selection.dedupe_dropped_count;
+    diversityExceptionApplied = selection.diversity_exception_applied === true;
+    candidateOriginCounts = selection.candidate_origin_counts;
+  }
+  const contractDisplayableProducts = displayableProducts.slice();
+  if (
+    serumCanaryGuidance &&
+    qualityGateResult.satisfied === true &&
+    displayableProducts.length < 2 &&
+    contractStablePriorRows.length > 0
+  ) {
+    const stablePriorRows = contractStablePriorRows.map((product, index) => {
+      const scored = scoreBeautyCandidateForTarget(product, {
+        queryTargetStepFamily: normalizedQueryTargetStepFamily,
+        queryText,
+        guidanceOnlyDiscovery,
+        queryStepStrength: normalizedQueryStepStrength,
+        mode: decisionMode,
+      });
+      return {
+        product,
+        index,
+        score: scored.score,
+        coarse: scored.coarse,
+      };
+    });
+    const selectedRows = contractDisplayableProducts.map((product, index) => {
+      const scored = scoreBeautyCandidateForTarget(product, {
+        queryTargetStepFamily: normalizedQueryTargetStepFamily,
+        queryText,
+        guidanceOnlyDiscovery,
+        queryStepStrength: normalizedQueryStepStrength,
+        mode: decisionMode,
+      });
+      return {
+        product,
+        index,
+        score: scored.score,
+        coarse: scored.coarse,
+      };
+    });
+    const fallbackSelection = selectStablePriorFallbackRows(stablePriorRows, {
+      existingRows: selectedRows,
+      minimumDisplayCount: 2,
+      sessionSeenProductIds,
+    });
+    if (fallbackSelection.rows.length > 0) {
+      displayableProducts = displayableProducts.concat(fallbackSelection.rows.map((row) => row.product));
+      stablePriorApplied = true;
+      stablePriorSource = fallbackSelection.stable_prior_source || null;
+      fallbackMode = 'stable_prior_fill';
+      if (fallbackSelection.session_exposure_penalty_applied) {
+        selectionDiversity.session_exposure_penalty_applied = true;
+      }
+      if (fallbackSelection.diversity_exception_applied) {
+        diversityExceptionApplied = true;
+      }
+      candidateOriginCounts = countCandidateOrigins(displayableProducts);
+    }
+  }
+  const candidateClassesTop3 = contractDisplayableProducts.slice(0, 3).map((product) => {
     const coarse = classifyBeautyCoarseCandidate(product, {
       queryTargetStepFamily: normalizedQueryTargetStepFamily,
       queryText,
@@ -636,7 +1317,21 @@ function buildBeautySkincareHitQualityDecision({
     queryStepStrength: normalizedQueryStepStrength,
     candidateClassCounts: contractCandidateClassCounts,
     topCandidateClasses: candidateClassesTop3,
+    qualityGateResult,
   });
+  const fillCompletedCount = serumCanaryGuidance
+    ? Math.min(fillTargetCount, contractDisplayableProducts.length)
+    : Math.min(3, displayableProducts.length);
+  const coverageLimitedAfterFill =
+    serumCanaryGuidance && fillTargetCount > 0
+      ? contractDisplayableProducts.length < fillTargetCount
+      : false;
+  const surfaceReason =
+    successContractResult.satisfied !== true
+      ? successContractResult.failure_class || 'no_target_relevant_candidates'
+      : coverageLimitedAfterFill
+        ? 'coverage_limited_after_fill'
+        : 'filled_success';
 
   let hitQuality = 'empty';
   let invalidHitReason = null;
@@ -644,14 +1339,10 @@ function buildBeautySkincareHitQualityDecision({
   if (rawProducts.length > 0) {
     stepSuccessClass = successContractResult.step_success_class || null;
     const guidanceSuccess =
-      !shouldUseSharedTargetRelevancePipeline({
-        mode: decisionMode,
-        targetStepFamily: normalizedQueryTargetStepFamily,
-        queryStepStrength: normalizedQueryStepStrength,
-      }) ||
+      !sharedPipelineApplied ||
       successContractResult.satisfied === true;
     if (
-      normalizedValidProducts.length > 0 &&
+      displayableProducts.length > 0 &&
       (!normalizedQueryTargetStepFamily || sameFamilyTopKCount > 0) &&
       guidanceSuccess
     ) {
@@ -685,26 +1376,47 @@ function buildBeautySkincareHitQualityDecision({
     query_step_strength: normalizedQueryStepStrength,
     step_success_class: stepSuccessClass,
     success_contract_result: successContractResult,
+    quality_gate_result: qualityGateResult,
     candidate_class_counts: candidateClassCounts,
     target_relevance_class_counts: candidateClassCounts,
+    normalized_intent: normalizedIntent,
+    candidate_origin_counts: candidateOriginCounts,
     noise_drop_counts: noiseDropCounts,
+    classified_candidate_count: normalizedValidProducts.length,
+    displayable_candidate_count: displayableProducts.length,
+    returned_candidate_count: hitQuality === 'valid_hit' ? displayableProducts.length : 0,
+    fill_target_count: serumCanaryGuidance ? fillTargetCount : null,
+    fill_completed_count: serumCanaryGuidance ? fillCompletedCount : null,
+    coverage_limited_after_fill: coverageLimitedAfterFill,
+    post_fill_unmet_count:
+      serumCanaryGuidance && fillTargetCount > 0
+        ? Math.max(0, fillTargetCount - fillCompletedCount)
+        : 0,
+    valid_scoping_dropped_count: validScopingDroppedCount,
+    dedupe_dropped_count: dedupeDroppedCount,
+    selection_diversity: selectionDiversity,
+    diversity_exception_applied: diversityExceptionApplied,
+    stable_prior_applied: stablePriorApplied,
+    stable_prior_source: stablePriorSource,
+    fallback_mode: fallbackMode,
+    surface_reason: surfaceReason,
     raw_result_count: rawProducts.length,
-    products_returned_count: hitQuality === 'valid_hit' ? normalizedValidProducts.length : 0,
-    valid_products: hitQuality === 'valid_hit' ? normalizedValidProducts : [],
+    products_returned_count: hitQuality === 'valid_hit' ? displayableProducts.length : 0,
+    valid_products: hitQuality === 'valid_hit' ? displayableProducts : [],
     decision_capability: buildRecommendationDecisionCapabilityOutput({
-      normalized_intent: {
-        target_step_family: normalizedQueryTargetStepFamily || null,
-        query_step_strength: normalizedQueryStepStrength,
-        mode: decisionMode,
-      },
+      normalized_intent: normalizedIntent,
       query_plan: {
         query_text: queryText || null,
       },
       candidate_class_counts: candidateClassCounts,
       step_success_class: stepSuccessClass,
       success_contract_result: successContractResult,
+      surface_reason: surfaceReason,
       output_policy_payload: {
         hit_quality: hitQuality,
+        quality_gate_result: qualityGateResult,
+        coverage_limited_after_fill: coverageLimitedAfterFill,
+        fallback_mode: fallbackMode,
       },
     }),
   };

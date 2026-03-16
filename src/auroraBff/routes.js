@@ -23548,25 +23548,27 @@ function buildGuidanceOnlyInternalQueries(target, label, targetStepFamily) {
     if (ingredientCue) queries.push(`${ingredientCue} moisturizer`);
     queries.push(safeLabel);
   } else if (targetStepFamily === 'serum') {
-    queries.push(safeLabel);
     if (focusCue === 'barrier repair') {
-      if (ingredientCue) queries.push(`${ingredientCue} barrier repair serum`);
+      if (ingredientCue) {
+        queries.push(`${ingredientCue} barrier repair serum`, `${ingredientCue} soothing serum`);
+      }
       queries.push('barrier repair serum', 'soothing serum');
     } else if (focusCue === 'hydrating') {
       if (ingredientCue) queries.push(`${ingredientCue} hydrating serum`);
       queries.push('hydrating serum');
     } else if (focusCue === 'soothing' || focusCue === 'sensitive skin') {
       if (ingredientCue) queries.push(`${ingredientCue} soothing serum`);
-      queries.push('soothing serum');
+      queries.push('soothing serum', 'barrier repair serum');
     }
     if (ingredientCue) queries.push(`${ingredientCue} serum`);
+    queries.push(safeLabel);
     queries.push('hydrating serum');
   } else {
     queries.push(safeLabel);
     if (focusCue) queries.push(`${focusCue} skincare`);
     if (ingredientCue) queries.push(`${ingredientCue} skincare`);
   }
-  return dedupeGuidanceOnlyQueries(queries).slice(0, targetStepFamily === 'moisturizer' ? 5 : 4);
+  return dedupeGuidanceOnlyQueries(queries).slice(0, targetStepFamily === 'moisturizer' ? 5 : targetStepFamily === 'serum' ? 5 : 4);
 }
 
 function buildGuidanceOnlySupplementQueries(target, label, targetStepFamily, internalQueries = []) {
@@ -64961,6 +64963,8 @@ const __internal = {
   stripIngredientPlanConcreteProducts,
   applyIngredientPlanSurfaceMode,
   resolveAnalysisProductSurfaceMode,
+  buildGuidanceOnlyInternalQueries,
+  buildGuidanceOnlyDiscoveryLadder,
   buildIngredientPlanCard,
   buildAnalysisClarificationQuestions,
   buildAnalysisClarificationPack,
