@@ -6981,6 +6981,9 @@ function scoreDirectExternalSeedProduct({
     if (coarse?.noise_reason === 'tint') score -= 36;
     if (coarse?.noise_reason === 'spf') score -= 30;
     if (coarse?.noise_reason === 'peel') score -= 30;
+    if (coarse?.relevance_channel === 'ingredient-strong') score += 10;
+    else if (coarse?.relevance_channel === 'goal-strong') score += 4;
+    score += Math.max(0, Number(coarse?.overlay_score || 0) || 0) * 5;
     if (/\b(barrier|repair|ceramide|fragrance[- ]free|sensitive)\b/.test(titleText)) score += 10;
   }
 
