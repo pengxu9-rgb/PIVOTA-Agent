@@ -40,11 +40,16 @@ test('ingredient fallback: catalog miss returns external search candidates and m
     assert.equal(typeof plan.__missing_catalog_queries[0].candidate_url === 'string', true);
     assert.equal(String(plan.__missing_catalog_queries[0].candidate_url).startsWith('https://'), true);
     assert.equal(plan.__missing_catalog_queries[0].capture_mode, 'sync_external_fallback');
+    assert.equal(plan.__missing_catalog_queries[0].retrieval_mode, 'guidance_recall_first');
+    assert.equal(plan.__missing_catalog_queries[0].decision_mode, 'guidance_only');
+    assert.equal(Array.isArray(plan.__missing_catalog_queries[0].query_ladder_steps), true);
 
     const target = plan.targets.find((item) => item.ingredient_id === 'azelaic_acid');
     assert.ok(target);
     assert.equal(Array.isArray(target.products.competitors), true);
     assert.equal(Array.isArray(target.products.dupes), true);
+    assert.equal(Array.isArray(target.products.example_product_discovery_items), true);
+    assert.equal(target.products.example_product_discovery_items.length >= 1, true);
     assert.equal(target.products.competitors.length, 2);
     assert.equal(target.products.dupes.length, 1);
 

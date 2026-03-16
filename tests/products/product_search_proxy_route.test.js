@@ -720,6 +720,238 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('guidance recall-first moisturizer query skips resolver-first, keeps fragrance-free as negative constraint, and adopts pass2', async () => {
+    const queryText = 'fragrance-free barrier moisturizer';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ON_SEARCH_ROUTE_ENABLED = 'true';
+    process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
+    process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
+    process.env.PROXY_SEARCH_AURORA_FORCE_TWO_PASS = 'true';
+    process.env.PROXY_SEARCH_AURORA_TWO_PASS_MIN_USABLE = '2';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: false,
+      product_ref: null,
+      confidence: 0,
+      reason: 'no_candidates',
+      metadata: { latency_ms: 4 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: resolverSpy,
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const negativeConstraints = Array.isArray(q.negative_constraints)
+          ? q.negative_constraints
+          : [q.negative_constraints];
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.ui_surface || '') === 'ingredient_plan_guidance_only' &&
+          String(q.target_step_family || '') === 'moisturizer' &&
+          String(q.allow_external_seed || '') === 'false' &&
+          String(q.fast_mode || '') === 'false' &&
+          negativeConstraints.map((item) => String(item || '')).includes('fragrance_free')
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          retrieval_mode: 'guidance_recall_first',
+          negative_constraints_applied: ['fragrance_free'],
+        },
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        const negativeConstraints = Array.isArray(q.negative_constraints)
+          ? q.negative_constraints
+          : [q.negative_constraints];
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.ui_surface || '') === 'ingredient_plan_guidance_only' &&
+          String(q.target_step_family || '') === 'moisturizer' &&
+          String(q.allow_external_seed || '') === 'true' &&
+          String(q.external_seed_strategy || '') === 'supplement_internal_first' &&
+          String(q.fast_mode || '') === 'false' &&
+          negativeConstraints.map((item) => String(item || '')).includes('fragrance_free')
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'rose_ceramide_cream',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Rose Ceramide Cream',
+          },
+        ],
+        total: 1,
+        metadata: {
+          external_seed_rows_raw: 12,
+          external_seed_rows_relevant: 4,
+          external_seed_rows_appended: 1,
+          negative_constraints_applied: ['fragrance_free'],
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        retrieval_mode: 'guidance_recall_first',
+        target_step_family: 'moisturizer',
+        semantic_family: 'moisturizer',
+        product_only: 'true',
+        negative_constraints: 'fragrance_free',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'rose_ceramide_cream',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        retrieval_mode: 'guidance_recall_first',
+        resolver_first_applied: false,
+        resolver_first_skipped_reason: 'guidance_recall_first_non_lookup_query',
+        negative_constraints_applied: expect.arrayContaining(['fragrance_free']),
+        pass2_target_relevant_count: 1,
+        fallback_adoption_reason: 'pass2_target_relevance_better',
+        external_seed_rows_raw: 12,
+        external_seed_rows_relevant: 4,
+        external_seed_rows_appended: 1,
+      }),
+    );
+  });
+
+  test('guidance recall-first can adopt semantic retry with fewer but more target-relevant moisturizer candidates', async () => {
+    const queryText = 'ceramide cream';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK = 'true';
+    process.env.PROXY_SEARCH_AURORA_PRIMARY_IRRELEVANT_SEMANTIC_RETRY_ENABLED = 'true';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.source || '') === 'aurora-bff' &&
+          String(q.ui_surface || '') === 'ingredient_plan_guidance_only'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'generic_moisturizer_1',
+            merchant_id: 'm1',
+            title: 'Daily Face Moisturizer',
+          },
+        ],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+        return (
+          parsed &&
+          parsed.operation === 'find_products_multi' &&
+          parsed.payload &&
+          parsed.payload.search &&
+          String(parsed.payload.search.query || '') === queryText
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'generic_fb_1', merchant_id: 'm2', title: 'Face Moisturizer Lotion' }],
+        total: 1,
+      });
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.source || '').toLowerCase() === 'aurora-bff' &&
+          String(q.ui_surface || '') === 'ingredient_plan_guidance_only' &&
+          String(q.query || '').toLowerCase() === 'ceramide barrier moisturizer'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'rose_retry_hit',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Rose Ceramide Cream',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        decision_mode: 'guidance_only',
+        retrieval_mode: 'guidance_recall_first',
+        target_step_family: 'moisturizer',
+        semantic_family: 'moisturizer',
+        product_only: 'true',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'rose_retry_hit',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'primary_irrelevant',
+        }),
+        fallback_strategy: expect.objectContaining({
+          secondary_attempted: true,
+          secondary_relevance_passed: true,
+          secondary_rejected_reason: null,
+          secondary_selected_query: 'ceramide barrier moisturizer',
+        }),
+        fallback_adoption_reason: 'secondary_target_relevance_better',
+      }),
+    );
+  });
+
   test('aurora source preserves fallback_strategy and attempts secondary fallback on primary 5xx', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';

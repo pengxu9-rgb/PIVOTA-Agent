@@ -209,6 +209,47 @@ test('ingredient_plan_v2 consumes realtime external candidates when provided', (
   }
 });
 
+test('ingredient_plan_v2 exposes canonical guidance query_ladder_steps for moisturizer canary fallback', () => {
+  const { dir, file } = createTempCatalog([]);
+  try {
+    const plan = buildIngredientPlanV2({
+      plan: {
+        intensity: 'gentle',
+        targets: [{ ingredient_id: 'ceramide_np', priority: 92 }],
+        avoid: [],
+        conflicts: [],
+      },
+      profile: { budgetTier: 'mid' },
+      catalogPath: file,
+    });
+
+    assert.ok(plan);
+    const target = plan.targets.find((item) => item.ingredient_id === 'ceramide_np');
+    assert.ok(target);
+    assert.ok(target.products);
+    assert.equal(Array.isArray(target.products.example_product_discovery_items), true);
+    assert.equal(target.products.example_product_discovery_items.length >= 1, true);
+    const discovery = target.products.example_product_discovery_items[0];
+    assert.equal(discovery.retrieval_mode, 'guidance_recall_first');
+    assert.equal(discovery.decision_mode, 'guidance_only');
+    assert.equal(discovery.source_policy, 'internal_first_then_external_supplement');
+    assert.equal(discovery.target_step_family, 'moisturizer');
+    assert.equal(discovery.semantic_family, 'moisturizer');
+    assert.equal(Array.isArray(discovery.query_ladder_steps), true);
+    assert.equal(discovery.query_ladder_steps.length >= 4, true);
+    assert.equal(discovery.query_ladder_steps[0].query, 'ceramide barrier moisturizer');
+    assert.equal(discovery.query_ladder_steps[0].intent_strength, 'strong_goal_family');
+    assert.equal(discovery.query_ladder_steps[0].decision_mode, 'guidance_only');
+    assert.equal(discovery.query_ladder_steps[0].retrieval_mode, 'guidance_recall_first');
+    assert.equal(discovery.query_ladder_steps[0].source_policy, 'internal_first_then_external_supplement');
+    assert.equal(discovery.query_ladder_steps.some((step) => step.query === 'sensitive skin moisturizer'), true);
+    assert.equal(Array.isArray(plan.__missing_catalog_queries), true);
+    assert.equal(Array.isArray(plan.__missing_catalog_queries[0].query_ladder_steps), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('ingredient_plan_v2 product entries keep rich media/open fields for rendering', () => {
   const { dir, file } = createTempCatalog([]);
   try {
