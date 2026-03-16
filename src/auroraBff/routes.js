@@ -61819,7 +61819,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const { norm, suggestedChips } = routineRecoOut;
 
         const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
-        const nextState = stateChangeAllowed(ctx.trigger_source) && (hasRecs || wantsProductRecommendations)
+        const nextState = stateChangeAllowed(ctx.trigger_source) && hasRecs
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
