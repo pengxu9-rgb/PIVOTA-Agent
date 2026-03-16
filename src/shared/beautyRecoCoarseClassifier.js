@@ -98,6 +98,42 @@ function extractGuidanceIngredientTokens(text) {
   return tokens;
 }
 
+function buildMoisturizerGuidanceSignalProfile(text) {
+  const flags = buildGuidanceAnchorFlags(text);
+  const ingredientTokens = extractGuidanceIngredientTokens(text);
+  return {
+    barrier: flags.barrier,
+    ceramide: ingredientTokens.has('ceramide'),
+    sensitivity: flags.sensitivity,
+    hydration: flags.hydration,
+    supportive_ingredient: Array.from(ingredientTokens).some((token) => token !== 'ceramide'),
+  };
+}
+
+function buildMoisturizerGuidanceOverlayScore(candidateProfile, queryProfile) {
+  let overlayScore = 0;
+  let relevanceChannel = null;
+
+  if (candidateProfile.barrier) {
+    overlayScore += 2;
+    relevanceChannel = relevanceChannel || 'goal-strong';
+  }
+  if (candidateProfile.ceramide) {
+    overlayScore += 3;
+    relevanceChannel = 'ingredient-strong';
+  }
+  if (candidateProfile.supportive_ingredient) overlayScore += 1;
+  if (candidateProfile.hydration) overlayScore += 1;
+  if (candidateProfile.sensitivity) overlayScore += 1;
+  if (queryProfile.sensitivity && candidateProfile.sensitivity) overlayScore += 1;
+  if ((queryProfile.barrier || queryProfile.ceramide) && candidateProfile.ceramide) overlayScore += 1;
+
+  return {
+    overlay_score: overlayScore,
+    relevance_channel: relevanceChannel,
+  };
+}
+
 function classifyBeautyGuidanceQueryStrength(queryText, { queryTargetStepFamily = null } = {}) {
   const targetStep = normalizeRecoTargetStep(queryTargetStepFamily);
   const text = asString(queryText).toLowerCase();
@@ -144,12 +180,25 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
   const policy = BARRIER_MOISTURIZER_TARGET_POLICY_V2;
   const queryFlags = buildGuidanceAnchorFlags(queryText);
   const candidateFlags = buildGuidanceAnchorFlags(lower);
+  const querySignalProfile = buildMoisturizerGuidanceSignalProfile(queryText);
+  const candidateSignalProfile = buildMoisturizerGuidanceSignalProfile(lower);
+  const guidanceOverlay = buildMoisturizerGuidanceOverlayScore(candidateSignalProfile, querySignalProfile);
   const anchorMatches = countGuidanceAnchorMatches(candidateFlags, queryFlags);
   const looksLikeMoisturizerFamily =
     coarse.candidate_step === 'moisturizer' || MOISTURIZER_GUIDANCE_FAMILY_RE.test(lower);
   const effectiveStrength =
     normalizeGuidanceIntentStrength(queryStepStrength) ||
     classifyBeautyGuidanceQueryStrength(queryText, { queryTargetStepFamily: 'moisturizer' });
+  const queryHasCoreDemand =
+    querySignalProfile.barrier ||
+    querySignalProfile.ceramide;
+  const candidateHasCoreSignal =
+    candidateSignalProfile.barrier ||
+    candidateSignalProfile.ceramide;
+  const candidateHasSupportiveSignal =
+    candidateSignalProfile.sensitivity ||
+    candidateSignalProfile.hydration ||
+    candidateSignalProfile.supportive_ingredient;
 
   if (coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service') {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'service' };
@@ -205,11 +254,17 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
   }
   if (
     effectiveStrength !== 'generic_family' &&
-    candidateFlags.ingredient &&
-    (candidateFlags.barrier || candidateFlags.sensitivity || candidateFlags.hydration) &&
-    (queryFlags.ingredient || queryFlags.barrier || queryFlags.sensitivity || queryFlags.hydration)
+    candidateHasCoreSignal &&
+    (queryHasCoreDemand || queryFlags.sensitivity || queryFlags.hydration || queryFlags.ingredient)
   ) {
-    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'strong_goal_family',
+      noise_reason: null,
+      relevance_channel: guidanceOverlay.relevance_channel,
+      overlay_score: guidanceOverlay.overlay_score,
+      ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+    };
   }
   if (
     coarse.family_relation === 'same_family' &&
@@ -220,21 +275,56 @@ function classifyGuidanceOnlyMoisturizerTargetRelevance({
     offerType !== 'set' &&
     offerType !== 'kit'
   ) {
-    return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: null,
+      overlay_score: guidanceOverlay.overlay_score,
+      ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+    };
   }
-  if (anchorMatches >= 2 && effectiveStrength !== 'generic_family') {
-    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+  if (anchorMatches >= 2 && effectiveStrength !== 'generic_family' && candidateHasCoreSignal) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'strong_goal_family',
+      noise_reason: null,
+      relevance_channel: guidanceOverlay.relevance_channel,
+      overlay_score: guidanceOverlay.overlay_score,
+      ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+    };
   }
-  if (anchorMatches >= 1) {
-    return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+  if (anchorMatches >= 1 || candidateHasSupportiveSignal) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: null,
+      overlay_score: guidanceOverlay.overlay_score,
+      ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+    };
   }
   if (
     candidateFlags.ingredient &&
     (queryFlags.barrier || queryFlags.sensitivity || queryFlags.hydration || queryFlags.ingredient)
   ) {
-    return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: null,
+      overlay_score: guidanceOverlay.overlay_score,
+      ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+    };
   }
-  return { offer_type: offerType, target_relevance_class: 'generic_family', noise_reason: null };
+  return {
+    offer_type: offerType,
+    target_relevance_class: 'generic_family',
+    noise_reason: null,
+    relevance_channel: null,
+    overlay_score: guidanceOverlay.overlay_score,
+    ingredient_overlap: candidateSignalProfile.ceramide || candidateSignalProfile.supportive_ingredient,
+  };
 }
 
 function classifyGuidanceOnlySerumTargetRelevance({

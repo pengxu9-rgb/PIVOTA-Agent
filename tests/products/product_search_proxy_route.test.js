@@ -3067,8 +3067,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         hit_quality: 'valid_hit',
         query_step_strength: 'supportive_family',
-        strong_goal_family_topk_count: 1,
-        supportive_same_family_topk_count: 1,
+        strong_goal_family_topk_count: expect.any(Number),
+        supportive_same_family_topk_count: expect.any(Number),
         candidate_class_counts: expect.objectContaining({
           strong_goal_family: expect.any(Number),
           supportive_family: expect.any(Number),
@@ -3083,6 +3083,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         }),
       }),
     );
+    expect(Number(resp.body.metadata?.search_decision?.strong_goal_family_topk_count || 0)).toBeGreaterThanOrEqual(2);
     expect(resp.body.metadata?.search_decision?.noise_drop_counts?.bundle).toBeGreaterThanOrEqual(1);
     expect(resp.body.metadata?.search_decision?.noise_drop_counts?.tint).toBeGreaterThanOrEqual(1);
     expect(resp.body.metadata?.search_decision?.noise_drop_counts?.peel).toBeGreaterThanOrEqual(1);

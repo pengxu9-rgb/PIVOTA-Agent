@@ -18,6 +18,7 @@ const {
 const {
   classifyBeautyCoarseCandidate,
   buildBeautySkincareHitQualityDecision,
+  scoreBeautyCandidateForTarget,
 } = require('../src/shared/beautyRecoCoarseClassifier');
 
 test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
@@ -305,11 +306,20 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
     queryStepStrength: 'strong_goal_family',
   });
   const supportive = classifyBeautyCoarseCandidate({
+    display_name: 'Lait-Crème Sensitive - Fragrance free',
+    category: 'moisturizer',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+  });
+  const coreSupportive = classifyBeautyCoarseCandidate({
     display_name: 'Rose Ceramide Cream',
     category: 'moisturizer',
   }, {
     queryTargetStepFamily: 'moisturizer',
-    queryText: 'barrier repair moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
     guidanceOnlyDiscovery: true,
     queryStepStrength: 'supportive_family',
   });
@@ -393,6 +403,9 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(strong.coarse_valid_for_target, true);
   assert.equal(supportive.target_relevance_class, 'supportive_family');
   assert.equal(supportive.coarse_valid_for_target, true);
+  assert.equal(coreSupportive.target_relevance_class, 'strong_goal_family');
+  assert.equal(coreSupportive.relevance_channel, 'ingredient-strong');
+  assert.equal(coreSupportive.coarse_valid_for_target, true);
   assert.equal(generic.target_relevance_class, 'generic_family');
   assert.equal(generic.coarse_valid_for_target, false);
   assert.equal(duo.offer_type, 'duo');
@@ -411,6 +424,48 @@ test('guidance-only moisturizer classifier separates strong/supportive rows from
   assert.equal(routine.offer_type, 'bundle');
   assert.equal(routine.target_relevance_class, 'adjacent_noise');
   assert.equal(routine.noise_reason, 'bundle');
+});
+
+test('guidance-only moisturizer ranking prefers ceramide core candidates over sensitivity-only supportive candidates', () => {
+  const rose = scoreBeautyCandidateForTarget({
+    display_name: 'Rose Ceramide Cream',
+    category: 'moisturizer',
+    description: 'Face moisturizer with ceramides for barrier repair.',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+  const nmf = scoreBeautyCandidateForTarget({
+    display_name: 'Natural Moisturizing Factors + PhytoCeramides',
+    category: 'moisturizer',
+    description: 'Barrier-supporting moisturizer with phytoceramides.',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+  const lait = scoreBeautyCandidateForTarget({
+    display_name: 'Lait-Crème Sensitive - Fragrance free',
+    category: 'moisturizer',
+    description: 'Sensitive skin face cream without fragrance.',
+  }, {
+    queryTargetStepFamily: 'moisturizer',
+    queryText: 'fragrance-free barrier moisturizer',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.ok(rose.coarse.target_relevance_class === 'strong_goal_family');
+  assert.ok(nmf.coarse.target_relevance_class === 'strong_goal_family');
+  assert.ok(lait.coarse.target_relevance_class === 'supportive_family');
+  assert.ok(rose.score > lait.score);
+  assert.ok(nmf.score > lait.score);
 });
 
 test('guidance-only moisturizer decision keeps mini samples behind full-size barrier candidates', () => {
