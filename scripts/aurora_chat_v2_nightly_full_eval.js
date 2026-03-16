@@ -205,7 +205,25 @@ async function main() {
   const startedAt = new Date().toISOString();
   const steps = [];
 
-  steps.push(runCommand('npm', ['run', 'test:aurora-bff:unit']));
+  steps.push(runCommand('npm', ['run', 'test:preflight']));
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('node', [
+        '--test',
+        'tests/aurora_chat_v2_routes.node.test.cjs',
+        'tests/aurora_chat_v2_nightly_gates.node.test.cjs',
+      ]),
+    );
+  }
+  if (steps[steps.length - 1].ok) {
+    steps.push(
+      runCommand('npx', [
+        'jest',
+        'tests/aurora_bff_chatcard_factory_structured_sections.test.js',
+        '--runInBand',
+      ]),
+    );
+  }
   if (steps[steps.length - 1].ok) {
     steps.push(runCommand('npm', ['run', 'test:replay-quality']));
   }

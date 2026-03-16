@@ -152,8 +152,13 @@ async function main() {
   } catch (_err) {
     chatJson = {};
   }
-  const cardTypes = Array.isArray(chatJson.cards) ? chatJson.cards.map((c) => c?.type).filter(Boolean) : [];
-  const assistantText = String(chatJson?.assistant_message?.content || '');
+  const responseCards = Array.isArray(chatJson.cards)
+    ? chatJson.cards
+    : Array.isArray(chatJson.cards_chatcards)
+      ? chatJson.cards_chatcards
+      : [];
+  const cardTypes = responseCards.map((c) => c?.type).filter(Boolean);
+  const assistantText = String(chatJson?.assistant_message?.content || chatJson?.assistant_text || '');
 
   const metricsAfterResp = await fetchWithTimeout(`${base}/metrics`, {}, timeoutMs);
   const metricsAfter = await metricsAfterResp.text();

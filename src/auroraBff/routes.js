@@ -25802,6 +25802,34 @@ function mergeMissingProfilePatchFields(target, source) {
   return base;
 }
 
+function extractQuickProfileLightweightPatch(raw = null) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return null;
+
+  const patch = {};
+  const skinFeel = pickFirstTrimmed(node.skin_feel, node.skinFeel).toLowerCase();
+  if (skinFeel === 'oily' || skinFeel === 'dry' || skinFeel === 'combination') patch.skinType = skinFeel;
+  else if (skinFeel === 'unsure') patch.skinType = 'unknown';
+
+  const goalPrimary = pickFirstTrimmed(node.goal_primary, node.goalPrimary).toLowerCase();
+  if (goalPrimary === 'breakouts') patch.goals = ['acne'];
+  else if (goalPrimary === 'brightening') patch.goals = ['brightening'];
+  else if (goalPrimary === 'antiaging') patch.goals = ['wrinkles'];
+  else if (goalPrimary === 'barrier') patch.goals = ['barrier'];
+  else if (goalPrimary === 'spf') patch.goals = ['uv_protection'];
+  else if (goalPrimary === 'other') patch.goals = ['other'];
+
+  const sensitivityFlag = pickFirstTrimmed(node.sensitivity_flag, node.sensitivityFlag).toLowerCase();
+  if (sensitivityFlag === 'yes') patch.sensitivity = 'high';
+  else if (sensitivityFlag === 'no') patch.sensitivity = 'low';
+  else if (sensitivityFlag === 'unsure') patch.sensitivity = 'unknown';
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
 function extractProfilePatchFromSession(session) {
   const s = session && typeof session === 'object' ? session : null;
   if (!s) return null;
@@ -25886,6 +25914,7 @@ function extractProfilePatchFromSession(session) {
     patch.travel_plan = rawProfile.travelPlan;
   }
   mergeMissingProfilePatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+  mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(rawProfile));
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -25954,6 +25983,9 @@ function extractProfilePatchFromRequestContextPayload(payload) {
   if (barrierStatus) patch.barrierStatus = barrierStatus;
   const goals = readGoalArray();
   if (goals.length) patch.goals = goals;
+  for (const node of candidates) {
+    mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
+  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -64957,6 +64989,8 @@ const __internal = {
   buildAnalysisDeepDiveContentWithLlm,
   loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
+  extractQuickProfileLightweightPatch,
+  extractProfilePatchFromRequestContextPayload,
   fetchRecoAlternativesForProduct,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,

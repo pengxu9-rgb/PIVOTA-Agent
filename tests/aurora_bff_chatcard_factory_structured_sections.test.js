@@ -188,6 +188,47 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(cards[0].type).not.toBe('error');
   });
 
+  test('product_parse card preserves type and remains schema-compatible', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'product_parse',
+        card_id: 'legacy_product_parse',
+        payload: {
+          intent: 'availability',
+          confidence: 0.92,
+          product: { brand: 'Winona', name: '舒敏保湿特护霜' },
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('product_parse');
+    expect(cards[0].title).toBe('Product parse');
+    expect(cards[0].payload.intent).toBe('availability');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('offers_resolved card preserves type and remains schema-compatible', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'offers_resolved',
+        card_id: 'legacy_offers_resolved',
+        payload: {
+          market: 'CN',
+          items: [{ product: { brand: 'Winona' }, offer: null }],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('offers_resolved');
+    expect(cards[0].title).toBe('Offers resolved');
+    expect(cards[0].payload.market).toBe('CN');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
   test('error card preserves detail from payload.detail field', () => {
     const cards = mapLegacyCardToSpecCards(
       {
