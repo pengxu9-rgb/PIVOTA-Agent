@@ -1311,6 +1311,7 @@ function shouldDelegateV1ChatToV2(body) {
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
+    'chip.start.routine',
     'chip.start.dupes',
     'chip.action.dupe_compare',
   ].includes(actionId);
