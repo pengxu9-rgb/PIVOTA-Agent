@@ -517,6 +517,7 @@ const {
   getIngredientResearchKbEntry,
   upsertIngredientResearchKbEntry,
 } = require('./ingredientResearchKbStore');
+const { getBestIngredientReferenceMatch } = require('../services/ingredientReferenceStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   createArtifactId,
@@ -542,6 +543,7 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('../services/productGroundingResolver');
 let resolveProductRefDirectImpl = resolveProductRefDirect;
+let getBestIngredientReferenceMatchImpl = getBestIngredientReferenceMatch;
 const {
   normalizeBudgetHint,
   mapConcerns,
@@ -39779,7 +39781,245 @@ function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
   return '';
 }
 
-function extractIngredientLookupTargetFromText(message, language = 'EN') {
+function sanitizeIngredientReferenceRuntimeMatch(reference) {
+  if (!reference || typeof reference !== 'object' || Array.isArray(reference)) return null;
+  const takeList = (value, max = 12) =>
+    Array.isArray(value)
+      ? value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, max)
+      : [];
+  return {
+    record_id: String(reference.record_id || '').trim() || null,
+    normalized_key: String(reference.normalized_key || '').trim() || null,
+    canonical_inci_name: String(reference.canonical_inci_name || '').trim() || null,
+    canonical_display_name: String(reference.canonical_display_name || '').trim() || null,
+    ingredient_family: String(reference.ingredient_family || '').trim() || null,
+    primary_bucket: String(reference.primary_bucket || '').trim() || null,
+    us_label_name: String(reference.us_label_name || '').trim() || null,
+    eu_label_name: String(reference.eu_label_name || '').trim() || null,
+    alias_quality: String(reference.alias_quality || '').trim() || null,
+    notes_for_parser: String(reference.notes_for_parser || '').trim() || null,
+    confidence: String(reference.confidence || '').trim() || null,
+    aliases_common_list: takeList(reference.aliases_common_list),
+    parser_variants_list: takeList(reference.parser_variants_list),
+    deprecated_aliases_list: takeList(reference.deprecated_aliases_list),
+    all_buckets_list: takeList(reference.all_buckets_list),
+    function_tags_list: takeList(reference.function_tags_list),
+    benefit_tags_list: takeList(reference.benefit_tags_list),
+    risk_flags_list: takeList(reference.risk_flags_list),
+    flags:
+      reference.flags && typeof reference.flags === 'object' && !Array.isArray(reference.flags)
+        ? {
+          is_humectant: reference.flags.is_humectant === true,
+          is_barrier_support: reference.flags.is_barrier_support === true,
+          is_retinoid: reference.flags.is_retinoid === true,
+          is_exfoliant: reference.flags.is_exfoliant === true,
+          is_uv_filter: reference.flags.is_uv_filter === true,
+          is_preservative: reference.flags.is_preservative === true,
+          is_surfactant: reference.flags.is_surfactant === true,
+          is_fragrance_or_eo: reference.flags.is_fragrance_or_eo === true,
+        }
+        : null,
+  };
+}
+
+async function resolveIngredientReferenceRuntimeMatch(input, language = 'EN') {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  try {
+    const reference = sanitizeIngredientReferenceRuntimeMatch(await getBestIngredientReferenceMatchImpl(raw));
+    if (!reference) return null;
+    const canonicalQuery = pickFirstTrimmed(
+      reference.canonical_display_name,
+      reference.canonical_inci_name,
+      reference.us_label_name,
+      reference.eu_label_name,
+    ) || raw;
+    return {
+      canonical_query: String(canonicalQuery).slice(0, 120),
+      language: language === 'CN' ? 'CN' : 'EN',
+      reference,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatIngredientReferenceFacet(token, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const key = String(token || '').trim().toLowerCase();
+  if (!key) return '';
+  const labels = {
+    hydration: { EN: 'Hydration support', CN: '保湿支持' },
+    repair: { EN: 'Barrier repair support', CN: '屏障修护支持' },
+    'anti-aging': { EN: 'Anti-aging support', CN: '抗老支持' },
+    'anti-acne': { EN: 'Acne support', CN: '抗痘支持' },
+    exfoliant: { EN: 'Exfoliant', CN: '去角质活性' },
+    sunscreen: { EN: 'Sunscreen support', CN: '防晒支持' },
+    preservative: { EN: 'Preservative system', CN: '防腐体系' },
+    surfactant: { EN: 'Surfactant', CN: '表活体系' },
+    'fragrance/essential oil': { EN: 'Fragrance / essential oil', CN: '香精/精油' },
+    humectant: { EN: 'Humectant', CN: '吸湿保湿剂' },
+    emollient: { EN: 'Emollient', CN: '柔润剂' },
+    occlusive: { EN: 'Occlusive', CN: '封闭保湿剂' },
+    ceramide: { EN: 'Ceramide', CN: '神经酰胺类' },
+    peptide: { EN: 'Peptide', CN: '多肽类' },
+    retinoid: { EN: 'Retinoid', CN: '维A类' },
+    acid_exfoliant: { EN: 'Acid exfoliant', CN: '酸类去角质活性' },
+    uv_filter: { EN: 'UV filter', CN: '防晒滤剂' },
+    fragrance: { EN: 'Fragrance', CN: '香精类' },
+    plant_extract: { EN: 'Plant extract', CN: '植物提取物' },
+    solvent: { EN: 'Solvent', CN: '溶剂' },
+    vitamin: { EN: 'Vitamin active', CN: '维生素类活性' },
+    other: { EN: 'Ingredient reference', CN: '成分参考' },
+  };
+  if (labels[key]) return labels[key][lang];
+  return key
+    .split(/[_/]+/)
+    .filter(Boolean)
+    .map((part) => {
+      if (part === 'uv') return 'UV';
+      if (part === 'eo') return 'EO';
+      return `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
+    })
+    .join(' / ');
+}
+
+function buildIngredientReferenceAliases(reference) {
+  if (!reference || typeof reference !== 'object') return [];
+  const seen = new Set();
+  const out = [];
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+  push(reference.canonical_display_name);
+  push(reference.canonical_inci_name);
+  push(reference.us_label_name);
+  push(reference.eu_label_name);
+  for (const item of Array.isArray(reference.aliases_common_list) ? reference.aliases_common_list : []) push(item);
+  for (const item of Array.isArray(reference.deprecated_aliases_list) ? reference.deprecated_aliases_list : []) push(item);
+  return out.slice(0, 12);
+}
+
+function buildIngredientReferenceCategory(reference, language = 'EN') {
+  const family = formatIngredientReferenceFacet(reference && reference.ingredient_family, language);
+  const bucket = formatIngredientReferenceFacet(reference && reference.primary_bucket, language);
+  if (family && bucket && family.toLowerCase() !== bucket.toLowerCase()) return `${family} / ${bucket}`;
+  return family || bucket || (language === 'CN' ? '成分参考' : 'Ingredient reference');
+}
+
+function buildIngredientReferenceBenefits(reference, language = 'EN') {
+  if (!reference || typeof reference !== 'object') return [];
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const rawTokens = [
+    ...(Array.isArray(reference.benefit_tags_list) ? reference.benefit_tags_list : []),
+    ...(Array.isArray(reference.function_tags_list) ? reference.function_tags_list : []),
+    reference.primary_bucket || '',
+  ];
+  const seen = new Set();
+  const tokens = [];
+  for (const item of rawTokens) {
+    const text = String(item || '').trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tokens.push(text);
+  }
+  return tokens.slice(0, 3).map((token) => {
+    const label = formatIngredientReferenceFacet(token, lang);
+    const concern = String(token || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'ingredient-benefit';
+    return {
+      concern,
+      strength: 2,
+      what_it_means:
+        lang === 'CN'
+          ? `${label} 是 reviewed ingredient reference 中标记的主要作用方向。`
+          : `${label} is one of the reviewed roles captured in the ingredient reference seed.`,
+    };
+  });
+}
+
+function buildIngredientReferenceWatchouts(reference, language = 'EN') {
+  if (!reference || typeof reference !== 'object') return [];
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const directFlags = (Array.isArray(reference.risk_flags_list) ? reference.risk_flags_list : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((token) => ({
+      issue: formatIngredientReferenceFacet(token, lang) || token,
+      likelihood: 'uncommon',
+      what_to_do:
+        lang === 'CN'
+          ? '结合肤质与配方整体刺激性观察耐受。'
+          : 'Check tolerance against your skin profile and the full formula context.',
+    }));
+  if (directFlags.length) return directFlags;
+  const flags = reference.flags && typeof reference.flags === 'object' ? reference.flags : {};
+  if (flags.is_retinoid) {
+    return [
+      {
+        issue: lang === 'CN' ? '维A类耐受建立' : 'Retinoid tolerance ramp-up',
+        likelihood: 'common',
+        what_to_do: lang === 'CN' ? '从低频开始，并配合保湿与日间防晒。' : 'Start low-frequency and pair with moisturizer plus daytime SPF.',
+      },
+    ];
+  }
+  if (flags.is_exfoliant) {
+    return [
+      {
+        issue: lang === 'CN' ? '过度去角质风险' : 'Over-exfoliation risk',
+        likelihood: 'common',
+        what_to_do: lang === 'CN' ? '避免和其他强活性同晚叠加，先低频起步。' : 'Avoid stacking with other strong actives on the same night; start slowly.',
+      },
+    ];
+  }
+  if (flags.is_fragrance_or_eo) {
+    return [
+      {
+        issue: lang === 'CN' ? '香精/精油敏感风险' : 'Fragrance sensitivity risk',
+        likelihood: 'uncommon',
+        what_to_do: lang === 'CN' ? '敏感肌或屏障受损时先做局部试用。' : 'Patch test first if you are sensitive or currently barrier-compromised.',
+      },
+    ];
+  }
+  return [];
+}
+
+function buildIngredientReferenceFallback(reference, language = 'EN', inputName = '') {
+  if (!reference || typeof reference !== 'object') return null;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const displayName = pickFirstTrimmed(reference.canonical_display_name, reference.canonical_inci_name, inputName) || inputName;
+  const category = buildIngredientReferenceCategory(reference, lang);
+  return {
+    inci: pickFirstTrimmed(reference.canonical_inci_name, displayName, inputName),
+    display_name: displayName,
+    aliases: buildIngredientReferenceAliases(reference),
+    category,
+    one_liner:
+      lang === 'CN'
+        ? `${displayName} 已在 reviewed ingredient reference 中登记，当前归类为 ${category}。`
+        : `${displayName} is tracked in the reviewed ingredient reference seed and currently classified as ${category}.`,
+    benefits: buildIngredientReferenceBenefits(reference, lang),
+    watchouts: buildIngredientReferenceWatchouts(reference, lang),
+    pair_well: [],
+    separate: [],
+  };
+}
+
+async function extractIngredientLookupTargetFromText(message, language = 'EN') {
   const raw = String(message || '').trim();
   if (!raw) return '';
   const lang = language === 'CN' ? 'CN' : 'EN';
@@ -39800,6 +40040,10 @@ function extractIngredientLookupTargetFromText(message, language = 'EN') {
 
   const normalized = normalizeIngredientLookupToken(raw);
   const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
+  const referenceMatch = await resolveIngredientReferenceRuntimeMatch(raw, lang);
+  if (referenceMatch && referenceMatch.canonical_query) {
+    return String(referenceMatch.canonical_query).slice(0, 120);
+  }
   if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
 
   const ontologyAny = pickFirstTrimmed(
@@ -41262,6 +41506,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   const inputName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
   const researchObj = asResearchObject(research);
   const metaObj = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  const ingredientReference = sanitizeIngredientReferenceRuntimeMatch(metaObj.ingredient_reference);
   const normalizedQuery = pickFirstTrimmed(
     metaObj.normalized_query,
     researchObj && researchObj.normalized_query,
@@ -41920,8 +42165,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
 
   const entityRow = token ? INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === token) : null;
   const inferredFamilyKey = inferIngredientFamilyKeyFromInputName(inputName);
+  const familyKeyFromReference = ingredientReference && ingredientReference.ingredient_family
+    ? String(ingredientReference.ingredient_family).trim().toLowerCase()
+    : '';
   const familyKeyFromEntity = entityRow && entityRow.family ? String(entityRow.family).trim().toLowerCase() : '';
-  const familyKey = familyKeyFromEntity || inferredFamilyKey;
+  const familyKey = familyKeyFromEntity || familyKeyFromReference || inferredFamilyKey;
 
   const familyProfiles = {
     retinoid: {
@@ -42119,8 +42367,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   };
 
   const familyFallback = familyKey && familyProfiles[familyKey] ? familyProfiles[familyKey] : null;
+  const referenceFallback = buildIngredientReferenceFallback(ingredientReference, lang, inputName);
 
-  const picked = library[token] || (familyFallback ? {
+  const picked = library[token] || referenceFallback || (familyFallback ? {
     inci: inputName,
     display_name: inputName,
     aliases: entityRow && Array.isArray(entityRow.aliases) ? entityRow.aliases : [],
@@ -42189,8 +42438,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     .filter((row) => row.title || row.url)
     .slice(0, 8);
   const isLibraryHit = Boolean(library[token]);
+  const isReferenceHit = Boolean(referenceFallback);
   const isFamilyHit = Boolean(familyFallback);
-  const ingredientKey = token || normalizeIngredientSlugKey(normalizedQuery || inputName);
+  const ingredientKey = token || (ingredientReference && ingredientReference.normalized_key) || normalizeIngredientSlugKey(normalizedQuery || inputName);
   const providerAttemptTimedOut = providerAttempts.some((row) => /timeout/i.test(String(row && row.reason_code ? row.reason_code : '')));
   const researchTimeout = researchStatus === 'fallback' && (/timeout/i.test(String(researchErrorCode || '')) || providerAttemptTimedOut);
   const reportMode =
@@ -42212,6 +42462,8 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
           ? 'research_queued'
           : isLibraryHit
             ? 'library_hit'
+            : isReferenceHit
+              ? 'reference_seed_hit'
             : isFamilyHit
               ? 'family_match'
               : researchStatus === 'fallback'
@@ -42219,14 +42471,18 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
                 : 'generic_fallback';
   const personalizationBasis = researchReady
     ? 'mixed'
+    : isReferenceHit
+      ? 'ingredient_reference'
     : isFamilyHit && !isLibraryHit
       ? 'ingredient_family'
       : 'ingredient';
-  const evidenceGradeFallback = isLibraryHit ? 'B' : isFamilyHit ? 'B' : null;
+  const evidenceGradeFallback = isLibraryHit || isReferenceHit || isFamilyHit ? 'B' : null;
   const evidenceGrade = normalizeIngredientEvidenceGrade(researchEvidence.grade, evidenceGradeFallback);
   const commonIrritationFamilies = ['retinoid', 'aha', 'bha', 'acne_active', 'exfoliant'];
   const irritationRiskFallback = isLibraryHit
     ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
+    : isReferenceHit
+      ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
     : isFamilyHit
       ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
       : null;
@@ -42259,7 +42515,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     picked.one_liner,
   );
   const confidence = (() => {
-    if (!researchReady) return isLibraryHit ? 0.8 : isFamilyHit ? 0.68 : 0.55;
+    if (!researchReady) return isLibraryHit ? 0.8 : isReferenceHit ? 0.72 : isFamilyHit ? 0.68 : 0.55;
     let base = 0.7;
     if (evidenceGrade === 'A') base = 0.9;
     else if (evidenceGrade === 'B') base = 0.82;
@@ -42300,14 +42556,14 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
         researchReady && researchReady.what_it_is,
         researchReady && researchReady.overview,
       ) || null,
-      category: picked.category,
+      category: pickFirstTrimmed(researchIngredient.category, picked.category),
     },
     verdict: {
       one_liner: oneLiner,
       top_benefits: benefits.map((row) => row && row.what_it_means).filter(Boolean).slice(0, 3),
       evidence_grade: evidenceGrade,
       irritation_risk: irritationRisk,
-      time_to_results: token || researchReady ? '4-8w' : null,
+      time_to_results: token || isReferenceHit || researchReady ? '4-8w' : null,
       confidence,
       confidence_level: confidenceLevelFromResearch || (confidence >= 0.85 ? 'high' : confidence >= 0.65 ? 'medium' : 'low'),
       personalization_basis: personalizationBasis,
@@ -42343,12 +42599,12 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     report_state: {
       mode: reportMode,
       status: reportStatus,
-      completion_score: researchReady ? 0.95 : reportStatus === 'pending' ? 0.7 : isLibraryHit ? 0.82 : isFamilyHit ? 0.6 : 0.3,
+      completion_score: researchReady ? 0.95 : reportStatus === 'pending' ? 0.7 : isLibraryHit ? 0.82 : isReferenceHit ? 0.74 : isFamilyHit ? 0.6 : 0.3,
       missing_sections: (() => {
         const missing = [];
         if (!researchReady) {
           if (reportStatus === 'pending') missing.push('evidence', 'top_products');
-          else if (!isLibraryHit && !isFamilyHit) missing.push('benefits', 'watchouts', 'evidence');
+          else if (!isLibraryHit && !isReferenceHit && !isFamilyHit) missing.push('benefits', 'watchouts', 'evidence');
           else if (!researchCitations.length) missing.push('evidence');
         }
         return missing;
@@ -42358,7 +42614,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     },
     sections: [
       { id: 'benefits', title: lang === 'CN' ? '功效' : 'Benefits', status: benefits.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-      { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: isLibraryHit || isFamilyHit ? 'ready' : 'pending', source: 'kb' },
+      { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: isLibraryHit || isReferenceHit || isFamilyHit ? 'ready' : 'pending', source: 'kb' },
       { id: 'watchouts', title: lang === 'CN' ? '注意事项' : 'Watchouts', status: watchouts.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
       { id: 'evidence', title: lang === 'CN' ? '证据' : 'Evidence', status: researchCitations.length ? 'ready' : 'pending', source: researchReady ? 'hybrid' : 'kb' },
     ],
@@ -59582,7 +59838,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         : '';
       const ingredientTextMessage = String(message || '').trim();
       const ingredientLookupTargetFromText = ingredientTextTrigger
-        ? extractIngredientLookupTargetFromText(message, ctx.lang)
+        ? await extractIngredientLookupTargetFromText(message, ctx.lang)
         : '';
       const ingredientEntityMatch = ingredientTextTrigger
         ? ingredientEntityMatchFromText(message, ctx.lang)
@@ -59776,12 +60032,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         explicitRouteReasons = [],
         skipRateLimit = false,
       } = {}) => {
-        const target = String(lookupTarget || '').trim().slice(0, 120);
-        if (!target) return null;
+        const targetInput = String(lookupTarget || '').trim().slice(0, 120);
+        if (!targetInput) return null;
+        const ingredientReferenceMatch = await resolveIngredientReferenceRuntimeMatch(targetInput, ctx.lang);
+        const target =
+          ingredientReferenceMatch && ingredientReferenceMatch.canonical_query
+            ? String(ingredientReferenceMatch.canonical_query).slice(0, 120)
+            : targetInput;
         const currentIngredientAnalysisTaskContext =
           ingredientAnalysisTaskContext || await ensureTaskAnalysisContextForConversation('ingredient');
         const normalizedQuery = normalizeIngredientResearchKey(target);
-        const entityMatch = ingredientEntityMatchFromText(target, ctx.lang);
+        const entityMatch = ingredientEntityMatchFromText(targetInput, ctx.lang);
         const routeReasons = Array.isArray(explicitRouteReasons)
           ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean)
           : [];
@@ -59809,7 +60070,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (entityMatch.entity_match_type && entityMatch.entity_match_type !== 'none') {
           routeReasons.push(`entity_${entityMatch.entity_match_type}_match`);
         }
-        if (!entityMatch.entity_match_type || entityMatch.entity_match_type === 'none') {
+        if (ingredientReferenceMatch && ingredientReferenceMatch.reference) {
+          routeReasons.push('reference_seed_match');
+        } else if (!entityMatch.entity_match_type || entityMatch.entity_match_type === 'none') {
           routeReasons.push('entity_no_match');
         }
 
@@ -59948,6 +60211,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           research: resolvedResearch || researchJob || null,
           meta: {
             normalized_query: normalizedQuery,
+            ingredient_reference:
+              ingredientReferenceMatch && ingredientReferenceMatch.reference
+                ? ingredientReferenceMatch.reference
+                : null,
             route_decision_reasons: routeReasons.slice(0, 12),
             route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
             provider_model_tier: resolvedResearch && resolvedResearch.provider_model_tier,
@@ -62172,7 +62439,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null,
         );
         if (!recoIngredientContext) {
-          const lookupTargetFromRecoText = extractIngredientLookupTargetFromText(message, ctx.lang);
+          const lookupTargetFromRecoText = await extractIngredientLookupTargetFromText(message, ctx.lang);
           recoIngredientContext = mergeIngredientRecoContextValue(recoIngredientContext, {
             query: lookupTargetFromRecoText,
             source: lookupTargetFromRecoText ? 'text_reco' : '',
@@ -65117,6 +65384,8 @@ const __internal = {
   buildAuroraRecoAlternativesQuery,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
+  resolveIngredientReferenceRuntimeMatch,
+  extractIngredientLookupTargetFromText,
   buildIngredientReportPayload,
   buildIngredientReportPayloadWithResearch,
   buildIngredientResearchPrompts,
@@ -65310,6 +65579,12 @@ const __internal = {
   },
   __resetCallOpenAiJsonObjectForTest() {
     callOpenAiJsonObjectImpl = callOpenAiJsonObject;
+  },
+  __setGetBestIngredientReferenceMatchForTest(fn) {
+    getBestIngredientReferenceMatchImpl = typeof fn === 'function' ? fn : getBestIngredientReferenceMatch;
+  },
+  __resetGetBestIngredientReferenceMatchForTest() {
+    getBestIngredientReferenceMatchImpl = getBestIngredientReferenceMatch;
   },
 };
 
