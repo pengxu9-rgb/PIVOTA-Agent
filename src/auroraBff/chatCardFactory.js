@@ -611,6 +611,12 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'analysis_story_v2') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '分析解读' : 'Analysis story' })];
   }
+  if (type === 'aurora_debug') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '调试信息' : 'Aurora debug' })];
+  }
+  if (type === 'aurora_alt_debug') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '调试补充信息' : 'Aurora alt debug' })];
+  }
   if (type === 'routine_fit_summary') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? 'Routine 匹配度' : 'Routine fit' })];
   }

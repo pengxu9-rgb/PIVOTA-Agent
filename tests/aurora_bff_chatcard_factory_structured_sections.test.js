@@ -272,4 +272,26 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(cards[0].payload.summary).toBe('Some strong matches, with a few gaps to adjust.');
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
+
+  test('aurora_debug card stays visible in chatcards mode for live debug triage', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'aurora_debug',
+        card_id: 'legacy_aurora_debug',
+        payload: {
+          contract_status: 'empty_structured',
+          mainline_status: 'severe_parse_or_prompt_failure',
+          primary_failure_reason: 'artifact_missing',
+          telemetry_failure_reason: 'empty_structured',
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('aurora_debug');
+    expect(cards[0].title).toBe('Aurora debug');
+    expect(cards[0].payload.contract_status).toBe('empty_structured');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
 });

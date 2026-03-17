@@ -2112,6 +2112,10 @@ const AURORA_PRODUCT_MATCHER_ENABLED = (() => {
   const raw = String(process.env.AURORA_PRODUCT_MATCHER_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED = (() => {
   const raw = String(process.env.AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED || 'false').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -37137,6 +37141,16 @@ function envelopeRequiresConservativeRecoGuard(envelope) {
     if (type === 'confidence_notice' && String(payload.reason || '').trim().toLowerCase() === 'low_confidence') {
       return true;
     }
+    if (type === 'recommendations') {
+      const hasExplicitRecommendationConfidence =
+        pickFirstTrimmed(payload.recommendation_confidence_level) ||
+        Number.isFinite(Number(payload.recommendation_confidence_score));
+      if (hasExplicitRecommendationConfidence) {
+        if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
+        if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
+        continue;
+      }
+    }
     if (isLowOrMediumConfidenceNode(payload.confidence)) return true;
     if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
     if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
@@ -37162,6 +37176,22 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
     if (!isPlainObject(card)) continue;
     const payload = isPlainObject(card.payload) ? card.payload : null;
     if (!payload) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    if (type === 'recommendations') {
+      const explicitLevel = pickFirstTrimmed(payload.recommendation_confidence_level);
+      const explicitScoreRaw = Number(payload.recommendation_confidence_score);
+      const explicitScore = Number.isFinite(explicitScoreRaw) ? explicitScoreRaw : null;
+      if (isLowOrMediumConfidenceLevelToken(explicitLevel) || isLowOrMediumConfidenceScore(explicitScore)) {
+        return {
+          score: explicitScore != null ? explicitScore : LOW_CONFIDENCE_THRESHOLD,
+          level: explicitLevel || (explicitScore != null && explicitScore <= LOW_CONFIDENCE_THRESHOLD ? 'low' : 'medium'),
+          rationale: ['recommendation_confidence_contract'],
+        };
+      }
+      if (explicitLevel || explicitScore != null) {
+        continue;
+      }
+    }
     if (isLowOrMediumConfidenceNode(payload.confidence)) {
       return payload.confidence;
     }
@@ -61356,6 +61386,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             const planForMatcher =
               mappedIngredientPlan ||
               buildIngredientPlan({ artifact: artifactPayload, profile: profile || {} });
+            const allowBundledSeedCatalog =
+              AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
+              && !DIAG_PRODUCT_CATALOG_PATH;
             if (!mappedIngredientPlan) mappedIngredientPlan = planForMatcher;
 
             matcherBundle = buildProductRecommendationsBundle({
@@ -61365,6 +61398,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               language: ctx.lang,
               disallowTreatment: false,
               catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+              allowDefaultSeedCatalog: allowBundledSeedCatalog,
             });
             matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
           } catch (err) {

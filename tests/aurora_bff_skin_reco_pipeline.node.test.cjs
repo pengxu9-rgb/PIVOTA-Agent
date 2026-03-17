@@ -577,6 +577,10 @@ test('product matcher: filters avoid/risky products and returns explainable slot
   const legacy = toLegacyRecommendationsPayload(bundle, { language: 'EN' });
   assert.equal(Array.isArray(legacy.recommendations), true);
   assert.equal(legacy.recommendations.length > 0, true);
+  assert.equal(legacy.grounding_status, 'ungrounded');
+  assert.equal(legacy.grounded_count, 0);
+  assert.equal(legacy.ungrounded_count, legacy.recommendations.length);
+  assert.equal(legacy.recommendations.every((row) => row && row.grounding_status === 'ungrounded'), true);
 });
 
 test('product matcher: default seed catalog is disabled unless explicitly allowed', (t) => {
@@ -628,6 +632,16 @@ test('product matcher: default seed catalog is disabled unless explicitly allowe
     language: 'EN',
   });
   assert.equal(countCandidates(allowed) > 0, true);
+
+  process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG = 'false';
+  const explicitAllowed = buildProductRecommendationsBundle({
+    ingredientPlan,
+    artifact,
+    profile,
+    language: 'EN',
+    allowDefaultSeedCatalog: true,
+  });
+  assert.equal(countCandidates(explicitAllowed) > 0, true);
 });
 
 test('product matcher: legacy payload de-duplicates repeated product ids across AM/PM rows', () => {
@@ -671,6 +685,7 @@ test('product matcher: legacy payload de-duplicates repeated product ids across 
   assert.deepEqual(ids, ['prod_repeat_1', 'prod_repeat_2']);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(legacy.recommendations.every((row) => row && (row.slot === 'am' || row.slot === 'pm')), true);
+  assert.equal(legacy.recommendations.every((row) => row && row.grounding_status === 'ungrounded'), true);
 });
 
 test('safety boundary: red-flag messages block recommendations', () => {

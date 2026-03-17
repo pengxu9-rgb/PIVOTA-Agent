@@ -10,6 +10,11 @@ CURL_RETRY_MAX="${CURL_RETRY_MAX:-30}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 CURL_RETRY_MAX_TIME_SEC="${CURL_RETRY_MAX_TIME_SEC:-240}"
 LAB_SERIES_URL="${LAB_SERIES_URL:-https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one}"
+ALL_EVENTS_JQ='(
+  ((.events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
+  +
+  ((.ops.experiment_events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
+)'
 
 COMMON_HEADERS=(
   -H "X-Aurora-UID: ${AURORA_UID}"
@@ -17,6 +22,8 @@ COMMON_HEADERS=(
   -H "X-Trace-ID: ${TRACE_ID}"
   -H "X-Brief-ID: ${BRIEF_ID}"
 )
+INGREDIENT_PLAN_CARD_JQ='any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
+ROUTINE_ANALYSIS_CARD_JQ='any(.type=="routine_fit_summary" or .type=="routine_product_audit_v1" or .type=="routine_adjustment_plan_v1" or .type=="routine_products_preview")'
 
 say() {
   printf "\n== %s ==\n" "$1"
@@ -95,7 +102,7 @@ printf "%s\n" "$gate_json" | jq_assert "answer-first output exists (recommendati
     or any(.type=="product_verdict")
     or any(.type=="confidence_notice")
 '
-printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_gate_require_info")) | not'
 
 say "profile update (core + itinerary)"
 profile_json="$(curl_do -fsS -X POST "${BASE}/v1/profile/update" \
@@ -129,7 +136,7 @@ skin_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{}')"
 
 printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1|type)=="object") and ((.payload.ui_card_v1.headline//"")|length>0))'
-printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists" '.cards | any(.type=="ingredient_plan")'
+printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists" ".cards | ${INGREDIENT_PLAN_CARD_JQ}"
 printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story exists" '
   if (.cards | any(.type=="analysis_story_v2"))
   then (.cards | any(.type=="analysis_summary")) | not
@@ -146,10 +153,19 @@ skin_routine_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   "${COMMON_HEADERS[@]}" \
   --data '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Vitamin C serum","moisturizer":"Barrier cream","spf":"SPF50"},"pm":{"cleanser":"Gentle cleanser","treatment":"Retinol serum","moisturizer":"Barrier cream"}}}')"
 
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has story card" '.cards | any(.type=="analysis_story_v2")'
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has ingredient_plan" '.cards | any(.type=="ingredient_plan")'
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis exposes deep-dive chip" '(.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis returns preview/v2/legacy supported contract" "((.cards | any(.type==\"routine_products_preview\")) or (.cards | any(.type==\"routine_product_audit_v1\" or .type==\"routine_adjustment_plan_v1\")) or ((.cards | any(.type==\"analysis_story_v2\")) and (.cards | ${INGREDIENT_PLAN_CARD_JQ}) and (.cards | any(.type==\"routine_fit_summary\"))))"
+printf "%s\n" "$skin_routine_json" | jq_assert "routine preview payload is populated when preview contract is present" '
+  if (.cards | any(.type=="routine_products_preview"))
+  then (.cards | any((.type=="routine_products_preview") and ((.payload.deferred_product_enrichment // false) == true) and ((.payload.counts.total // 0) > 0)))
+  else true
+  end
+'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine deep-dive chip is only required on legacy/v2 non-preview contracts" '
+  if (.cards | any(.type=="routine_products_preview"))
+  then true
+  else (.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))
+  end
+'
 printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis does not expose public analysis_summary" '
   if (.cards | any(.type=="analysis_story_v2"))
   then (.cards | any(.type=="analysis_summary")) | not
@@ -171,18 +187,22 @@ analysis_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
 printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
 printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '(((.assistant_text // .assistant_message.content // "") | length) > 0)'
 
-analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
-  -H 'Content-Type: application/json' \
-  "${COMMON_HEADERS[@]}" \
-  --data '{
-    "action":{
-      "action_id":"chip.aurora.next_action.routine_deep_dive",
-      "kind":"action",
-      "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
-    }
-  }')"
-printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
-printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
+if printf "%s\n" "$skin_routine_json" | jq -e '(.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))' >/dev/null; then
+  analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
+    -H 'Content-Type: application/json' \
+    "${COMMON_HEADERS[@]}" \
+    --data '{
+      "action":{
+        "action_id":"chip.aurora.next_action.routine_deep_dive",
+        "kind":"action",
+        "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
+      }
+    }')"
+  printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine-specific output" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}"
+  printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
+else
+  printf "[WARN] routine_deep_dive follow-up skipped because preview contract did not expose that chip\n"
+fi
 
 say "/v1/chat free-form with context (v2-compatible path)"
 v1_chat_v2_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -191,7 +211,13 @@ v1_chat_v2_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   --data '{"message":"what ingredient is best for acne?","context":{"locale":"en","profile":{}}}')"
 
 printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns cards array" '.cards | type=="array" and (length >= 1)'
-printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns text_response" '.cards | any(.card_type=="text_response")'
+printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns ingredient-answer output" '
+  .cards | any(
+    ((.type // .card_type // "")=="text_response")
+    or ((.type // .card_type // "")=="aurora_ingredient_report")
+    or ((.type // .card_type // "")=="ingredient_goal_match")
+  )
+'
 printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns next_actions" '.next_actions | type=="array"'
 
 say "product analyze (Nivea Creme)"
@@ -307,9 +333,9 @@ printf "%s\n" "$chat_json" | jq_assert "chat returns compatibility guidance (leg
     ))
   )
   or any(
-    .card_type=="text_response" and
+    ((.type // .card_type // "")=="text_response") and
     ((.sections // []) | any(
-      .type=="text_answer" and
+      ((.type // .kind // "")=="text_answer") and
       (
         ((.text_en // .text_zh // "") | ascii_downcase)
         | test("retinol|glycolic|irritation|alternate|different nights|sunscreen")
@@ -318,12 +344,12 @@ printf "%s\n" "$chat_json" | jq_assert "chat returns compatibility guidance (leg
   )
 '
 printf "%s\n" "$chat_json" | jq_assert "chat v2 conflict guidance includes a mitigation suggestion when text_response is used" '
-  if (.cards | any(.card_type=="text_response")) then
+  if (.cards | any((.type // .card_type // "")=="text_response")) then
     (
       .cards | any(
-        .card_type=="text_response" and
+        ((.type // .card_type // "")=="text_response") and
         ((.sections // []) | any(
-          .type=="text_answer" and
+          ((.type // .kind // "")=="text_answer") and
           (
             ((.text_en // .text_zh // "") | ascii_downcase)
             | test("irritat|different night|few times a week|watch for|am instead|sunscreen|patch test")
@@ -339,20 +365,20 @@ printf "%s\n" "$chat_json" | jq_assert "chat passive advisory cards are suppress
   ([.cards[]? | select(.type=="confidence_notice" and (.payload.reason=="safety_optional_profile_missing" or .payload.reason=="gate_advisory" or .payload.reason=="pregnancy_optional_profile"))] | length) == 0
 '
 printf "%s\n" "$chat_json" | jq_assert "chat passive-gate meta is present when advisory events exist" '
-  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+  if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
     ((.session_patch.meta.passive_gate_suppressed // false) == true)
   else
     true
   end
 '
 printf "%s\n" "$chat_json" | jq_assert "chat suppressed_gate_ids is present when advisory events exist" '
-  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+  if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
     ((.session_patch.meta.suppressed_gate_ids // []) | type=="array") and ((.session_patch.meta.suppressed_gate_ids // []) | length >= 1)
   else
     true
   end
 '
-printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_gate_require_info")) | not'
 
 say "chat follow-up alternatives (goal+anchor should stay anchored)"
 followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -527,7 +553,7 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
     '
   fi
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source when event stream is present" '
-    (.events // []) as $ev |
+    ('"${ALL_EVENTS_JQ}"') as $ev |
     if ($ev | length) == 0 then
       true
     else
@@ -538,7 +564,7 @@ else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes reco degrade reason" '
-    (.events // []) |
+    ('"${ALL_EVENTS_JQ}"') |
     any(
       (.event_name=="recos_requested") and
       (
@@ -576,7 +602,7 @@ preg_reset_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   }')"
 printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy seed response has cards" '.cards | type=="array" and (length >= 1)'
 printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy_status_auto_reset event (optional stream) is valid when present" '
-  (.events // []) as $ev |
+  ('"${ALL_EVENTS_JQ}"') as $ev |
   if ($ev | length) == 0 then
     true
   else

@@ -19,6 +19,8 @@ const CHAT_CARD_TYPES = [
   'analysis_story_v2',
   'routine_fit_summary',
   'confidence_notice',
+  'aurora_debug',
+  'aurora_alt_debug',
   'product_parse',
   'offers_resolved',
   'budget_gate',

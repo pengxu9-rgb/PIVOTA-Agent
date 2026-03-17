@@ -100,10 +100,11 @@ function parseCatalogProduct(raw) {
   };
 }
 
-function loadCatalog(catalogPath) {
+function loadCatalog(catalogPath, { allowDefaultSeedCatalog = false } = {}) {
   const resolved = path.resolve(catalogPath || process.env.AURORA_PRODUCT_REC_CATALOG_PATH || DEFAULT_CATALOG_PATH);
   const usingDefaultSeedCatalog = resolved === DEFAULT_CATALOG_PATH_RESOLVED;
   const allowSeedCatalog =
+    allowDefaultSeedCatalog === true ||
     parseBoolEnv(process.env.AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG, false) ||
     parseBoolEnv(process.env.INTERNAL_TEST_MODE, false);
   if (usingDefaultSeedCatalog && !allowSeedCatalog) {
@@ -433,16 +434,23 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
       slot: row.slot,
       product_id: candidate.product_id,
       name: candidate.name,
+      product_name: candidate.name,
       brand: candidate.brand || null,
       reasons: fitReasons.slice(0, 6),
       matched_ingredients: asArray(candidate.matched_ingredients),
       routine_slot: candidate.routine_slot,
       score: Number(candidate.score || 0),
       price_band: candidate.price_band || null,
+      grounding_status: 'ungrounded',
       confidence: normalizeObject(bundle && bundle.confidence) || {
         score: 0.6,
         level: 'medium',
         rationale: ['rule_based_matcher'],
+      },
+      metadata: {
+        grounding_status: 'ungrounded',
+        reco_render_mode: 'editorial',
+        recommendation_source: 'artifact_matcher_v1',
       },
       language: String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN',
     };
@@ -452,6 +460,9 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
     recommendations,
     products_by_slot: bySlot,
     top_messages: asArray(bundle && bundle.top_messages),
+    grounding_status: recommendations.length ? 'ungrounded' : null,
+    grounded_count: 0,
+    ungrounded_count: recommendations.length,
     confidence: normalizeObject(bundle && bundle.confidence) || {
       score: 0.6,
       level: 'medium',
@@ -467,6 +478,7 @@ function buildProductRecommendationsBundle({
   language,
   maxPerSlot = 4,
   catalogPath,
+  allowDefaultSeedCatalog = false,
   seedRecommendations,
   disallowTreatment = false,
 } = {}) {
@@ -477,7 +489,7 @@ function buildProductRecommendationsBundle({
   const avoidMap = buildAvoidMap(plan);
   const targetIds = new Set(Array.from(targetMap.keys()));
 
-  const products = loadCatalog(catalogPath);
+  const products = loadCatalog(catalogPath, { allowDefaultSeedCatalog });
   const fromCatalog = asArray(products);
   const fromSeed = asArray(seedRecommendations)
     .map((item) => buildCandidateFromSeed(item, targetIds))

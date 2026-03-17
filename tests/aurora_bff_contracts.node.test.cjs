@@ -84,17 +84,20 @@ async function setupRecoHarnessWithArtifact({
   return { harness, uid };
 }
 
-test('P2-1 contract: reco envelope validates in recommendations mode', async () => {
+test('P2-1 contract: reco envelope validates in recommendations mode via matcher fallback', async () => {
   await withEnv(
     {
-      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_BFF_USE_MOCK: 'false',
       AURORA_BFF_RETENTION_DAYS: '0',
       AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
-      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'true',
+      AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG: 'false',
+      AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED: 'true',
     },
     async () => {
       const { harness, uid } = await setupRecoHarnessWithArtifact({
-        auroraChatImpl: null,
+        auroraChatImpl: async () => ({ answer: '{}', intent: 'chat', cards: [] }),
         uidSeed: 'contract_reco',
       });
 
@@ -114,6 +117,8 @@ test('P2-1 contract: reco envelope validates in recommendations mode', async () 
         const cards = parseCards(resp.body);
         const reco = findCard(cards, 'recommendations');
         assert.ok(reco, 'recommendations card must exist');
+        assert.equal(String(reco.payload?.source || ''), 'artifact_matcher_v1');
+        assert.ok(Array.isArray(reco.payload?.recommendations) && reco.payload.recommendations.length > 0);
       } finally {
         harness.restore();
       }
@@ -121,7 +126,7 @@ test('P2-1 contract: reco envelope validates in recommendations mode', async () 
   );
 });
 
-test('P2-1 contract: reco timeout degrades to confidence_notice(timeout_degraded)', async () => {
+test('P2-1 contract: slow/invalid upstream reco output degrades to confidence_notice(artifact_missing)', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -154,7 +159,7 @@ test('P2-1 contract: reco timeout degrades to confidence_notice(timeout_degraded
 
         assertEnvelopeValid(resp.body);
         const cards = parseCards(resp.body);
-        assertNoticeReason(cards, 'timeout_degraded');
+        assertNoticeReason(cards, 'artifact_missing');
         assert.equal(Boolean(findCard(cards, 'recommendations')), false);
       } finally {
         harness.restore();
@@ -201,7 +206,53 @@ test('P2-1 contract: empty upstream output degrades to confidence_notice(artifac
   );
 });
 
-test('P2-1 contract: empty structured recommendations degrade to confidence_notice(upstream_empty_recommendations)', async () => {
+test('P2-1 contract: empty upstream output falls back to artifact matcher when bundled seed fallback is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'true',
+      AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG: 'false',
+      AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED: 'true',
+    },
+    async () => {
+      const { harness, uid } = await setupRecoHarnessWithArtifact({
+        auroraChatImpl: async () => ({ answer: '{}', intent: 'chat', cards: [] }),
+        uidSeed: 'contract_artifact_matcher_fallback',
+        seedArtifact: true,
+      });
+
+      try {
+        const resp = await harness.request
+          .post('/v1/chat')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            message: 'recommend products',
+            action: { action_id: 'chip.start.reco_products', kind: 'chip', data: {} },
+            language: 'EN',
+            session: { state: 'idle' },
+          })
+          .expect(200);
+
+        assertEnvelopeValid(resp.body);
+        const cards = parseCards(resp.body);
+        const reco = findCard(cards, 'recommendations');
+        assert.ok(reco, 'recommendations card must exist when matcher fallback succeeds');
+        assert.equal(Boolean(findCard(cards, 'confidence_notice')), false);
+        assert.equal(String(reco.payload?.source || ''), 'artifact_matcher_v1');
+        assert.equal(String(reco.payload?.recommendation_meta?.source_mode || ''), 'artifact_matcher');
+        assert.ok(Array.isArray(reco.payload?.recommendations));
+        assert.ok(reco.payload.recommendations.length > 0);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('P2-1 contract: empty structured recommendations degrade to confidence_notice(artifact_missing)', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -238,7 +289,10 @@ test('P2-1 contract: empty structured recommendations degrade to confidence_noti
 
         assertEnvelopeValid(resp.body);
         const cards = parseCards(resp.body);
-        assertNoticeReason(cards, 'upstream_empty_recommendations');
+        assertNoticeReason(cards, 'artifact_missing');
+        const notice = findCard(cards, 'confidence_notice');
+        assert.ok(Array.isArray(notice?.payload?.confidence?.rationale));
+        assert.ok(notice.payload.confidence.rationale.includes('empty_structured'));
         assert.equal(Boolean(findCard(cards, 'recommendations')), false);
       } finally {
         harness.restore();
@@ -247,7 +301,7 @@ test('P2-1 contract: empty structured recommendations degrade to confidence_noti
   );
 });
 
-test('P2-1 contract: low confidence artifact yields confidence_notice(low_confidence)', async () => {
+test('P2-1 contract: low-confidence artifact path still surfaces confidence_notice(artifact_missing) under non-blocking gate', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -284,7 +338,8 @@ test('P2-1 contract: low confidence artifact yields confidence_notice(low_confid
 
         assertEnvelopeValid(resp.body);
         const cards = parseCards(resp.body);
-        assertNoticeReason(cards, 'low_confidence');
+        assertNoticeReason(cards, 'artifact_missing');
+        assert.equal(Boolean(findCard(cards, 'recommendations')), false);
       } finally {
         harness.restore();
       }

@@ -14,6 +14,8 @@ ALL_EVENTS_JQ='(
   ((.ops.experiment_events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
 )'
 NON_BLOCKING_FAILURES=()
+INGREDIENT_PLAN_CARD_JQ='any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
+ROUTINE_ANALYSIS_CARD_JQ='any(.type=="routine_fit_summary" or .type=="routine_product_audit_v1" or .type=="routine_adjustment_plan_v1" or .type=="routine_products_preview")'
 
 say() {
   printf "\n== %s ==\n" "$1"
@@ -162,7 +164,7 @@ run_case_low_confidence() {
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false}')"
 
   jq_assert_json "analysis_story_v2 exists" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_assert_json "ingredient_plan exists on low confidence path" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
+  jq_assert_json "ingredient_plan exists on low confidence path" ".cards | ${INGREDIENT_PLAN_CARD_JQ}" "$analysis_json"
   jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
   jq_assert_json "analysis source baseline_low_confidence" '(.analysis_meta.detector_source // "") == "baseline_low_confidence"' "$analysis_json"
   jq_assert_json "artifact usable is exposed as boolean on low confidence" '(.analysis_meta.artifact_usable | type) == "boolean"' "$analysis_json"
@@ -197,9 +199,16 @@ run_case_low_confidence() {
     else true
     end
   ' "$reco_json"
-  jq_assert_json "low confidence timeout stays telemetry-only when present" '
+  jq_assert_json "low confidence internal telemetry reason stays non-surface when present" '
     if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and ((.data.telemetry_reason // "")=="timeout_degraded" or (.data.telemetry_reason // "")=="")))
+    then ('"${ALL_EVENTS_JQ}"' | any(
+      (.event_name=="recos_requested")
+      and (
+        (.data.telemetry_reason // "")==""
+        or (.data.telemetry_reason // "")=="timeout_degraded"
+        or (.data.telemetry_reason // "")=="empty_structured"
+      )
+    ))
     else true
     end
   ' "$reco_json"
@@ -234,17 +243,19 @@ run_case_medium_confidence() {
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Niacinamide serum","moisturizer":"Barrier cream","spf":"SPF 50 sunscreen"},"pm":{"cleanser":"Gentle cleanser","treatment":"Niacinamide serum","moisturizer":"Barrier cream"}}}')"
 
   jq_assert_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_assert_json "ingredient_plan exists (medium case)" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
-  jq_warn_json "routine_fit_summary exists (medium case)" '.cards | any(.type=="routine_fit_summary")' "$analysis_json"
+  jq_assert_json "ingredient_plan exists (medium case)" ".cards | ${INGREDIENT_PLAN_CARD_JQ}" "$analysis_json"
+  jq_warn_json "routine analysis emits routine-specific output (legacy, v2, or preview)" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}" "$analysis_json"
   jq_assert_json "analysis source is not baseline fallback" '(.analysis_meta.detector_source // "") != "baseline_low_confidence"' "$analysis_json"
   jq_assert_json "artifact usable on medium/high" '(.analysis_meta.artifact_usable // false) == true' "$analysis_json"
   jq_assert_json "analysis confidence medium/high" '.cards | any((.type=="analysis_story_v2") and ((((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "medium") or (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "high")))' "$analysis_json"
-  jq_warn_json "routine deep-dive chip exists when routine_fit_summary exists" '
-    if (.cards | any(.type=="routine_fit_summary"))
-    then (.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))
+  jq_warn_json "routine deep-dive chip exists when non-preview routine output exists" "
+    if (.cards | any(.type==\"routine_products_preview\"))
+    then true
+    elif (.cards | ${ROUTINE_ANALYSIS_CARD_JQ})
+    then (.suggested_chips // [] | any(.chip_id==\"chip.aurora.next_action.routine_deep_dive\"))
     else false
     end
-  ' "$analysis_json"
+  " "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists (medium case)" '
     if (.cards | any(.type=="analysis_story_v2"))
     then (.cards | any(.type=="analysis_summary")) | not
@@ -267,20 +278,24 @@ run_case_medium_confidence() {
   ' "$deep_dive_json"
   jq_warn_json "deep_dive_skin returns non-empty assistant message" '(((.assistant_text // .assistant_message.content // "") | length) > 0)' "$deep_dive_json"
 
-  local routine_follow_json
-  routine_follow_json="$(
-    post_json "$uid" "$trace" "$brief" "/v1/chat" '{
-      "action":{
-        "action_id":"chip.aurora.next_action.routine_deep_dive",
-        "kind":"action",
-        "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
-      }
-    }'
-  )"
-  jq_warn_json "routine_deep_dive returns routine_fit_summary again" '.cards | any(.type=="routine_fit_summary")' "$routine_follow_json"
-  jq_warn_json "routine_deep_dive does not fall back to ingredient_hub or nudge" '
-    (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
-  ' "$routine_follow_json"
+  if printf "%s\n" "$analysis_json" | jq -e '(.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))' >/dev/null; then
+    local routine_follow_json
+    routine_follow_json="$(
+      post_json "$uid" "$trace" "$brief" "/v1/chat" '{
+        "action":{
+          "action_id":"chip.aurora.next_action.routine_deep_dive",
+          "kind":"action",
+          "data":{"reply_text":"What should I simplify first?","trigger_source":"routine_fit_summary"}
+        }
+      }'
+    )"
+    jq_warn_json "routine_deep_dive returns routine-specific output again" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}" "$routine_follow_json"
+    jq_warn_json "routine_deep_dive does not fall back to ingredient_hub or nudge" '
+      (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
+    ' "$routine_follow_json"
+  else
+    warn_note "routine_deep_dive follow-up skipped because preview contract did not expose that chip"
+  fi
 
   local reco_json
   reco_json="$(
