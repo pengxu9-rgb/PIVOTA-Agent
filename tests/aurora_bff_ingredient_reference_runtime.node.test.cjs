@@ -126,3 +126,34 @@ test('ingredient reference runtime: reviewed reference beats conflicting legacy 
   assert.equal(payload.verdict.personalization_basis, 'ingredient_reference');
   assert.equal(payload.report_state.reason_code, 'reference_seed_hit');
 });
+
+test('ingredient reference runtime: aligned reviewed reference still wins final report semantics over legacy library hits', () => {
+  const payload = routeInternals.buildIngredientReportPayload({
+    language: 'EN',
+    query: 'Vitamin C',
+    research: null,
+    meta: {
+      normalized_query: 'vitamin c',
+      ingredient_reference: {
+        record_id: 'ING-0301',
+        normalized_key: 'ascorbicacid',
+        canonical_inci_name: 'Ascorbic Acid',
+        canonical_display_name: 'Ascorbic Acid',
+        ingredient_family: 'vitamin',
+        primary_bucket: 'anti-aging',
+        aliases_common_list: ['Vitamin C'],
+        deprecated_aliases_list: [],
+        benefit_tags_list: ['brightening', 'antioxidant'],
+        function_tags_list: ['antioxidant'],
+        risk_flags_list: [],
+        flags: {},
+      },
+    },
+  });
+
+  assert.ok(payload);
+  assert.equal(payload.ingredient.key, 'ascorbicacid');
+  assert.equal(payload.ingredient.inci, 'Ascorbic Acid');
+  assert.equal(payload.verdict.personalization_basis, 'ingredient_reference');
+  assert.equal(payload.report_state.reason_code, 'reference_seed_hit');
+});

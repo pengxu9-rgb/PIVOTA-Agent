@@ -39981,6 +39981,17 @@ function shouldPreferIngredientReferenceProfile(reference, libraryProfile) {
   return Boolean(referenceKey && libraryKey && referenceKey !== libraryKey);
 }
 
+function doesIngredientReferenceMatchLibraryProfile(reference, libraryProfile) {
+  if (!reference || typeof reference !== 'object' || !libraryProfile || typeof libraryProfile !== 'object') return false;
+  const referenceKey = normalizeIngredientSlugKey(
+    pickFirstTrimmed(reference.canonical_inci_name, reference.canonical_display_name),
+  );
+  const libraryKey = normalizeIngredientSlugKey(
+    pickFirstTrimmed(libraryProfile.inci, libraryProfile.display_name),
+  );
+  return Boolean(referenceKey && libraryKey && referenceKey === libraryKey);
+}
+
 function inferIngredientFamilyKeyFromInputName(inputName) {
   const text = ingredient_query_normalize(inputName);
   if (!text) return '';
@@ -40877,6 +40888,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   } : null;
   const referenceFallback = buildIngredientReferenceFallback(ingredientReference, lang, inputName);
   const preferReferenceFallback = shouldPreferIngredientReferenceProfile(ingredientReference, libraryFallback);
+  const referenceMatchesLibraryFallback = doesIngredientReferenceMatchLibraryProfile(ingredientReference, libraryFallback);
+  const useLibraryContent = Boolean(!preferReferenceFallback && libraryFallback);
+  const referenceBackedHit = Boolean(referenceFallback && (preferReferenceFallback || referenceMatchesLibraryFallback || !libraryFallback));
   const genericFallback = {
     inci: inputName,
     display_name: inputName,
@@ -40903,7 +40917,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     pair_well: [],
     separate: [],
   };
-  const picked = (!preferReferenceFallback && libraryFallback)
+  const picked = (useLibraryContent && libraryFallback)
     || referenceFallback
     || familyFallbackProfile
     || genericFallback;
@@ -40944,9 +40958,9 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     }))
     .filter((row) => row.title || row.url)
     .slice(0, 8);
-  const isLibraryHit = Boolean(!preferReferenceFallback && libraryFallback);
-  const isReferenceHit = Boolean(!isLibraryHit && referenceFallback);
-  const isFamilyHit = Boolean(!isLibraryHit && !isReferenceHit && familyFallbackProfile);
+  const isReferenceHit = referenceBackedHit;
+  const isLibraryHit = Boolean(useLibraryContent && !isReferenceHit);
+  const isFamilyHit = Boolean(!useLibraryContent && !isReferenceHit && familyFallbackProfile);
   const ingredientKey = isReferenceHit
     ? normalizeIngredientSlugKey(
       pickFirstTrimmed(
@@ -40975,10 +40989,10 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
         ? 'timeout'
         : researchStatus === 'queued'
           ? 'research_queued'
-          : isLibraryHit
-            ? 'library_hit'
-            : isReferenceHit
-              ? 'reference_seed_hit'
+          : isReferenceHit
+            ? 'reference_seed_hit'
+            : isLibraryHit
+              ? 'library_hit'
             : isFamilyHit
               ? 'family_match'
               : researchStatus === 'fallback'
@@ -41030,7 +41044,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     picked.one_liner,
   );
   const confidence = (() => {
-    if (!researchReady) return isLibraryHit ? 0.8 : isReferenceHit ? 0.72 : isFamilyHit ? 0.68 : 0.55;
+    if (!researchReady) return useLibraryContent ? 0.8 : isReferenceHit ? 0.72 : isFamilyHit ? 0.68 : 0.55;
     let base = 0.7;
     if (evidenceGrade === 'A') base = 0.9;
     else if (evidenceGrade === 'B') base = 0.82;
