@@ -84,6 +84,7 @@ test('/v1/analysis/skin: returns routine_expert contract when routine intake is 
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'false',
       AURORA_ROUTINE_EXPERT_HARDSTOP_ENABLED: 'true',
       AURORA_ROUTINE_EVIDENCE_REFS_ENABLED: 'true',
     },
@@ -145,6 +146,97 @@ test('/v1/analysis/skin: returns routine_expert contract when routine intake is 
         assert.ok(Array.isArray(expert.conditional_followups));
         assert.ok(Array.isArray(expert.ask_3_questions) && expert.ask_3_questions.length === 3);
         assert.equal(expert.ask_3_questions[0], expert.primary_question);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: emits routine_products_preview and defers routine product enhancement from main path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED: 'true',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT: '4',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT: '12',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_contract');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'Biotherm Force Cleanser' },
+                { step: 'moisturizer', product: 'Aquasource Hydra Barrier Cream' },
+              ],
+              pm: [
+                { step: 'cleanser', product: 'Biotherm Force Cleanser' },
+                { step: 'treatment', product: 'Retinal serum' },
+                { step: 'moisturizer', product: 'Aquasource Hydra Barrier Cream' },
+              ],
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const analysisSummary = findCard(cards, 'analysis_summary') || findCard(cards, 'analysis_story_v2');
+        const preview = findCard(cards, 'routine_products_preview');
+        const productAnalysis = findCard(cards, 'product_analysis');
+        const routineFitSummary = findCard(cards, 'routine_fit_summary');
+
+        assert.ok(analysisSummary, 'analysis summary card should exist');
+        assert.ok(preview, 'routine_products_preview should exist');
+        assert.equal(productAnalysis, null, 'product_analysis should not be emitted on /v1/analysis/skin');
+        assert.equal(routineFitSummary, null, 'routine_fit_summary should not be emitted in summary-first mode');
+        assert.equal(preview.payload && preview.payload.contract, 'aurora.routine_products_preview.v1');
+        assert.equal(preview.payload && preview.payload.deferred_product_enrichment, true);
+        assert.ok(['structured_v1', 'structured_v2'].includes(preview.payload && preview.payload.payload_shape));
+        assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total > 0, true);
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.routine_product_enrichment_deferred, true);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: legacy routine string also emits routine_products_preview', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_legacy');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: 'AM\nCleanser: CeraVe Foaming Cleanser\nMoisturizer: CeraVe PM\nPM\nTreatment: Retinol serum',
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const preview = findCard(cards, 'routine_products_preview');
+        assert.ok(preview, 'legacy string routine should still produce routine_products_preview');
+        assert.equal(preview.payload && preview.payload.payload_shape, 'legacy_string');
+        assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total >= 2, true);
       } finally {
         harness.restore();
       }

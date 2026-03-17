@@ -706,6 +706,12 @@ const AURORA_ROUTINE_ANALYSIS_V2_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_ROUTINE_SUMMARY_FIRST_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_SUMMARY_FIRST_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return !(raw === 'false' || raw === '0' || raw === 'no' || raw === 'off');
+})();
 const AURORA_RULE_RELAX_MODE = (() => {
   const raw = String(process.env.AURORA_RULE_RELAX_MODE || 'aggressive')
     .trim()
@@ -27709,6 +27715,7 @@ const CHATBOX_UI_RENDERABLE_CARD_TYPES = new Set([
   'routine_simulation',
   'conflict_heatmap',
   'analysis_summary',
+  'routine_products_preview',
   'analysis_story_v2',
   'routine_fit_summary',
   'ingredient_hub',
@@ -28066,14 +28073,41 @@ function tryParseRoutineObject(value) {
   return isPlainObject(normalized) ? normalized : null;
 }
 
+function detectRoutinePayloadShape(value) {
+  if (value == null) return 'none';
+  if (typeof value === 'string') {
+    const parsed = tryParseRoutineObject(value);
+    return parsed ? 'legacy_json_string' : 'legacy_string';
+  }
+  if (!isPlainObject(value)) return 'unknown';
+  const schemaVersion = String(value.schema_version || '').trim().toLowerCase();
+  if (schemaVersion === 'aurora.routine_intake.v1' || schemaVersion === 'aurora_routine_intake_v1') {
+    return 'structured_v1';
+  }
+  if (schemaVersion === 'aurora.routine_intake.v2' || schemaVersion === 'aurora_routine_intake_v2') {
+    return 'structured_v2';
+  }
+  if (
+    Array.isArray(value.am) ||
+    Array.isArray(value.pm) ||
+    isPlainObject(value.am) ||
+    isPlainObject(value.pm) ||
+    Array.isArray(value.am_steps) ||
+    Array.isArray(value.pm_steps)
+  ) {
+    return 'structured_v1';
+  }
+  return 'object_unclassified';
+}
+
 function hasRoutineData(profile) {
   const profileState = normalizeRoutineStateFromProfile(profile);
   if (profileState.has_current_routine) return true;
   const p = isPlainObject(profile) ? profile : {};
-  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
-  if (!routine) return false;
-  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
-  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const rawRoutine = p.currentRoutine != null ? p.currentRoutine : p.current_routine;
+  const routine = parseRoutineIntake(rawRoutine);
+  const am = Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
   return hasFilledRoutineRows(am) || hasFilledRoutineRows(pm);
 }
 
@@ -28086,10 +28120,10 @@ function deriveRoutineMissingFields(profile) {
     return buildMissingRoutineFields(profileState.current_routine_struct);
   }
   const p = isPlainObject(profile) ? profile : {};
-  const routine = tryParseRoutineObject(p.currentRoutine) || tryParseRoutineObject(p.current_routine);
-  if (!routine) return ['currentRoutine.am', 'currentRoutine.pm'];
-  const am = Array.isArray(routine.am) ? routine.am : Array.isArray(routine.am_steps) ? routine.am_steps : [];
-  const pm = Array.isArray(routine.pm) ? routine.pm : Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
+  const rawRoutine = p.currentRoutine != null ? p.currentRoutine : p.current_routine;
+  const routine = parseRoutineIntake(rawRoutine);
+  const am = Array.isArray(routine.am_steps) ? routine.am_steps : [];
+  const pm = Array.isArray(routine.pm_steps) ? routine.pm_steps : [];
   const missing = [];
   if (!hasFilledRoutineRows(am)) missing.push('currentRoutine.am');
   if (!hasFilledRoutineRows(pm)) missing.push('currentRoutine.pm');
@@ -28218,11 +28252,21 @@ function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
   };
 }
 
-function extractRoutineProductCandidatesForDeepScan(routineInput, { maxTotal = AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT } = {}) {
-  const routine = tryParseRoutineObject(routineInput) ||
-    (isPlainObject(routineInput) ? routineInput : null);
-  if (!routine) return [];
+function buildRoutineProductCandidateFromNormalizedStep(row, { slot, rank = 0 } = {}) {
+  const stepRow = isPlainObject(row) ? row : null;
+  if (!stepRow) return null;
+  return buildRoutineProductCandidateFromRow(
+    {
+      step: stepRow.step || stepRow.role || 'other',
+      product: stepRow.product || '',
+      product_id: stepRow.product_id,
+      sku_id: stepRow.sku_id,
+    },
+    { slot, step: stepRow.step || stepRow.role || 'other', rank },
+  );
+}
 
+function extractRoutineProductCandidatesForDeepScan(routineInput, { maxTotal = AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT } = {}) {
   const out = [];
   const seen = new Set();
   const slotOrder = { am: 0, pm: 1 };
@@ -28256,6 +28300,34 @@ function extractRoutineProductCandidatesForDeepScan(routineInput, { maxTotal = A
     seen.add(key);
     out.push(row);
   };
+
+  const normalizedRoutine = parseRoutineIntake(routineInput);
+  const normalizedAm = Array.isArray(normalizedRoutine.am_steps) ? normalizedRoutine.am_steps : [];
+  const normalizedPm = Array.isArray(normalizedRoutine.pm_steps) ? normalizedRoutine.pm_steps : [];
+  normalizedAm.forEach((row, idx) => {
+    const candidate = buildRoutineProductCandidateFromNormalizedStep(row, { slot: 'am', rank: idx });
+    if (candidate) addCandidate(candidate);
+  });
+  normalizedPm.forEach((row, idx) => {
+    const candidate = buildRoutineProductCandidateFromNormalizedStep(row, {
+      slot: 'pm',
+      rank: normalizedAm.length + idx,
+    });
+    if (candidate) addCandidate(candidate);
+  });
+
+  const routine = tryParseRoutineObject(routineInput) || (isPlainObject(routineInput) ? routineInput : null);
+  if (!routine) {
+    return out
+      .sort((a, b) => {
+        const slotCmp = (slotOrder[a.slot] ?? 8) - (slotOrder[b.slot] ?? 8);
+        if (slotCmp !== 0) return slotCmp;
+        const stepCmp = (stepOrder[a.step] ?? 9) - (stepOrder[b.step] ?? 9);
+        if (stepCmp !== 0) return stepCmp;
+        return (a.rank || 0) - (b.rank || 0);
+      })
+      .slice(0, Math.max(1, Math.min(40, Number(maxTotal) || AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT)));
+  }
 
   const consumeRow = (row, { slot, step, rank }) => {
     const candidate = buildRoutineProductCandidateFromRow(row, { slot, step, rank });
@@ -28346,6 +28418,87 @@ function extractRoutineProductCandidatesForDeepScan(routineInput, { maxTotal = A
     })
     .slice(0, Math.max(1, Math.min(40, Number(maxTotal) || AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT)));
   return capped;
+}
+
+function buildRoutineProductsPreviewCard({
+  ctx,
+  language = 'EN',
+  candidates = [],
+  payloadShape = 'none',
+} = {}) {
+  const list = Array.isArray(candidates)
+    ? candidates.filter((row) => isPlainObject(row) && String(row.product_text || '').trim())
+    : [];
+  if (!list.length) return null;
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const slotTitle = (slot) => (slot === 'pm' ? (isCn ? '夜间 PM' : 'PM routine') : isCn ? '早间 AM' : 'AM routine');
+  const stepLabel = (step) => {
+    const token = normalizeRoutineIntakeStep(step);
+    if (token === 'cleanser') return isCn ? '洁面' : 'Cleanser';
+    if (token === 'treatment') return isCn ? '活性/精华' : 'Treatment';
+    if (token === 'moisturizer') return isCn ? '保湿' : 'Moisturizer';
+    if (token === 'spf') return isCn ? '防晒' : 'SPF';
+    return token || (isCn ? '步骤' : 'Step');
+  };
+  const grouped = [
+    { slot: 'am', title: slotTitle('am'), items: [] },
+    { slot: 'pm', title: slotTitle('pm'), items: [] },
+  ];
+  for (const row of list) {
+    const slot = normalizeRoutineIntakeSlot(row.slot);
+    const target = grouped.find((group) => group.slot === slot) || grouped[0];
+    const displayName = pickFirstString(
+      row.display_name,
+      row.displayName,
+      row.parsed_product_hint && row.parsed_product_hint.display_name,
+      row.product_text,
+      row.product_url,
+    );
+    const actionInput = /^https?:\/\/\S+/i.test(String(row.product_url || '').trim())
+      ? String(row.product_url || '').trim()
+      : String(row.product_text || '').trim();
+    const stableId = crypto
+      .createHash('sha1')
+      .update(`${slot}|${String(row.step || '')}|${String(row.product_text || '')}|${String(row.product_url || '')}`)
+      .digest('hex')
+      .slice(0, 12);
+    target.items.push({
+      item_id: `routine_preview_${stableId}`,
+      slot,
+      step: normalizeRoutineIntakeStep(row.step),
+      step_label: stepLabel(row.step),
+      rank: Number.isFinite(Number(row.rank)) ? Math.trunc(Number(row.rank)) : 0,
+      display_name: displayName,
+      product_text: String(row.product_text || '').trim(),
+      product_url: String(row.product_url || '').trim(),
+      analysis_input: actionInput,
+    });
+  }
+  for (const group of grouped) {
+    group.items.sort((left, right) => Number(left.rank || 0) - Number(right.rank || 0));
+  }
+  const nonEmptyGroups = grouped.filter((group) => group.items.length > 0);
+  if (!nonEmptyGroups.length) return null;
+  return {
+    card_id: `routine_products_preview_${ctx && ctx.request_id ? ctx.request_id : Date.now()}`,
+    type: 'routine_products_preview',
+    payload: {
+      contract: 'aurora.routine_products_preview.v1',
+      source: 'routine_intake',
+      deferred_product_enrichment: true,
+      payload_shape: payloadShape,
+      title: isCn ? '识别到这些当前使用产品' : 'Products found in your current routine',
+      subtitle: isCn
+        ? '先给你肤况结论；单品 deep scan 改成按需点击，不再阻塞主分析。'
+        : 'Skin summary is ready first. Product deep scans are now on-demand instead of blocking analysis.',
+      groups: nonEmptyGroups,
+      counts: {
+        total: list.length,
+        am: grouped.find((group) => group.slot === 'am')?.items.length || 0,
+        pm: grouped.find((group) => group.slot === 'pm')?.items.length || 0,
+      },
+    },
+  };
 }
 
 function buildRoutineProductAnalysisFallbackPayload({
@@ -31873,7 +32026,8 @@ async function applyAnalysisStoryAndRoutineSoftGate(
     if (type === 'photo_modules_v1') return 10;
     if (type === 'analysis_story_v2') return 20;
     if (type === 'analysis_summary') return 25;
-    if (type === 'routine_prompt') return 30;
+    if (type === 'routine_products_preview') return 30;
+    if (type === 'routine_prompt') return 35;
     if (type === 'ingredient_plan_v2') return 40;
     if (type === 'ingredient_plan') return 45;
     if (type === 'confidence_notice') return 50;
@@ -52304,6 +52458,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const effectiveRoutineState =
           routineFromRequest !== undefined ? normalizeRoutineStateValue(profile && profile.currentRoutine) : previousRoutineState;
         const routineCandidate = effectiveRoutineState.routine_candidate;
+        const routinePayloadShape = detectRoutinePayloadShape(routineCandidate);
         const hasRoutine = Boolean(effectiveRoutineState.has_current_routine);
         const routineStateMeta = {
           source_shape: effectiveRoutineState.source_shape,
@@ -52345,7 +52500,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         };
         let routineProductCandidates = [];
-        if (AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED && hasRoutine) {
+        if (hasRoutine) {
           try {
             routineProductCandidates = extractRoutineProductCandidatesForDeepScan(routineCandidate, {
               maxTotal: AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT,
@@ -52358,6 +52513,28 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
         }
         profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
+        logger?.info(
+          {
+            event: 'aurora_analysis_skin_routine_intake',
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            routine_payload_shape: routinePayloadShape,
+            analysis_skin_has_routine: hasRoutine,
+            analysis_skin_routine_preview_items_count: routineProductCandidates.length,
+            routine_product_enrichment_deferred: routineProductCandidates.length > 0,
+            config_snapshot: {
+              analysis_budget_ms: AURORA_BFF_ANALYSIS_BUDGET_MS,
+              routine_product_autoscan_enabled: AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED,
+              routine_product_autoscan_sync_limit: AURORA_ROUTINE_PRODUCT_AUTOSCAN_SYNC_LIMIT,
+              routine_product_autoscan_total_limit: AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT,
+              diag_pipeline_version: outputPipelineVersion,
+              diag_shadow_mode: rollout.shadowMode,
+              diag_canary_percent: rollout.canaryPercent,
+              routine_summary_first_enabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+            },
+          },
+          'aurora bff: analysis skin routine intake snapshot',
+        );
 
         // "Dual input" policy:
         // - routine/recent logs are primary for personalization
@@ -53552,6 +53729,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
           routine_analysis_version: routineAnalysisV2Result ? 'v2' : 'legacy',
+          routine_payload_shape: routinePayloadShape,
+          routine_preview_items_count: routineProductCandidates.length,
+          routine_product_enrichment_deferred: routineProductCandidates.length > 0,
+          analysis_mode: 'analysis_summary',
           profile_context_source: requestProfileContextSource,
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
@@ -53610,6 +53791,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           recommendation_ready: Boolean(recommendationReady),
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
           analysis_meta: {
+            analysis_mode: 'analysis_summary',
+            routine_payload_shape: routinePayloadShape,
+            routine_preview_items_count: routineProductCandidates.length,
+            routine_product_enrichment_deferred: routineProductCandidates.length > 0,
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(
               AURORA_RULE_RELAX_AGGRESSIVE &&
@@ -53642,7 +53827,33 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         const routineProductEvents = [];
-        if (AURORA_ROUTINE_ANALYSIS_V2_ENABLED && hasRoutine && routineProductCandidates.length > 0) {
+        const routineProductsPreviewCard = buildRoutineProductsPreviewCard({
+          ctx,
+          language: ctx.lang,
+          candidates: routineProductCandidates,
+          payloadShape: routinePayloadShape,
+        });
+        if (routineProductsPreviewCard) {
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_products_preview_ready', {
+              payload_shape: routinePayloadShape,
+              total_candidates: routineProductCandidates.length,
+            }),
+          );
+          routineProductEvents.push(
+            makeEvent(ctx, 'routine_product_enrichment_deferred', {
+              deferred: true,
+              total_candidates: routineProductCandidates.length,
+              source: 'routine_intake',
+            }),
+          );
+        }
+        if (
+          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
+          AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
+          hasRoutine &&
+          routineProductCandidates.length > 0
+        ) {
           try {
             routineAnalysisV2Result = await runRoutineAnalysisV2({
               requestId: ctx.request_id,
@@ -53706,10 +53917,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
         }
 
-        const routineFitPlan = resolveRoutineFitAnalysisPlan({
-          routineProductCandidates,
-          lowConfidenceRuleBased,
-        });
+        const routineFitPlan = AURORA_ROUTINE_SUMMARY_FIRST_ENABLED
+          ? { shouldEvaluateRoutineFit: false, shouldQueueKbBackfill: false }
+          : resolveRoutineFitAnalysisPlan({
+              routineProductCandidates,
+              lowConfidenceRuleBased,
+            });
         let routineFitCard = null;
         let routineFitFailureReason = null;
         let routineFitRetryCount = 0;
@@ -54036,6 +54249,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           cards: routineAnalysisV2Result
             ? [
                 ...((Array.isArray(routineAnalysisV2Result.cards) ? routineAnalysisV2Result.cards : [])),
+                ...(routineProductsPreviewCard ? [routineProductsPreviewCard] : []),
                 ...(photoModulesCard ? [photoModulesCard] : []),
                 ...extraCards,
               ]
@@ -54046,6 +54260,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   payload: analysisSummaryPayload,
                   ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
                 },
+                ...(routineProductsPreviewCard ? [routineProductsPreviewCard] : []),
                 ...(routineFitCard ? [routineFitCard] : []),
                 ...(photoModulesCard ? [photoModulesCard] : []),
                 ...extraCards,
@@ -54077,6 +54292,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             photo_quality_grade: photoQuality && typeof photoQuality.grade === 'string' ? photoQuality.grade : 'unknown',
             profile_context_source: requestProfileContextSource,
             request_profile_overlay_keys: requestProfileOverlayKeys,
+            routine_payload_shape: routinePayloadShape,
+            routine_preview_items_count: routineProductCandidates.length,
+            routine_product_enrichment_deferred: Boolean(routineProductsPreviewCard),
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,
             stages: report.stages,
@@ -54089,6 +54307,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
 	        if (!shadowRun) {
 	          logger?.info({ kind: 'metric', name: 'aurora.skin_analysis.total_ms', value: report.total_ms }, 'metric');
+	          logger?.info({ kind: 'metric', name: 'aurora.skin.analysis_skin_mainpath_ms', value: report.total_ms }, 'metric');
 	        }
 
         if (experimentsSlim.length) {
@@ -54371,6 +54590,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         const timeoutReasonText = ctx.lang === 'CN'
           ? '分析超时，已降级为低置信度基础方案。'
           : 'Analysis timed out and was downgraded to a low-confidence baseline.';
+        const timeoutRoutineCandidate = parsed.data && Object.prototype.hasOwnProperty.call(parsed.data, 'currentRoutine')
+          ? parsed.data.currentRoutine
+          : null;
+        const timeoutRoutinePayloadShape = detectRoutinePayloadShape(timeoutRoutineCandidate);
+        const timeoutRoutineCandidates = timeoutRoutineCandidate
+          ? extractRoutineProductCandidatesForDeepScan(timeoutRoutineCandidate, {
+              maxTotal: AURORA_ROUTINE_PRODUCT_AUTOSCAN_TOTAL_LIMIT,
+            })
+          : [];
+        const timeoutRoutinePreviewCard = buildRoutineProductsPreviewCard({
+          ctx,
+          language: ctx.lang,
+          candidates: timeoutRoutineCandidates,
+          payloadShape: timeoutRoutinePayloadShape,
+        });
         const timeoutPayload = {
           analysis: degradedAnalysis,
           low_confidence: true,
@@ -54391,6 +54625,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           recommendation_ready: false,
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
           analysis_meta: {
+            analysis_mode: 'timeout_degraded',
+            routine_payload_shape: timeoutRoutinePayloadShape,
+            routine_preview_items_count: timeoutRoutineCandidates.length,
+            routine_product_enrichment_deferred: Boolean(timeoutRoutinePreviewCard),
+            reco_artifact_eligible: false,
+            product_surface_mode: 'guidance_only',
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
           },
@@ -54404,6 +54649,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
+            routine_payload_shape: timeoutRoutinePayloadShape,
+            routine_preview_items_count: timeoutRoutineCandidates.length,
+            routine_product_enrichment_deferred: Boolean(timeoutRoutinePreviewCard),
+            analysis_mode: 'timeout_degraded',
+            reco_artifact_eligible: false,
+            product_surface_mode: 'guidance_only',
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
@@ -54431,6 +54687,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: timeoutPayload,
               field_missing: [{ field: 'analysis', reason: 'analysis_budget_timeout' }],
             },
+            ...(timeoutRoutinePreviewCard ? [timeoutRoutinePreviewCard] : []),
             {
               card_id: `conf_${ctx.request_id}`,
               type: 'confidence_notice',
@@ -54453,6 +54710,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_vision_called: false,
             llm_report_called: false,
             artifact_usable: false,
+            routine_payload_shape: timeoutRoutinePayloadShape,
+            routine_preview_items_count: timeoutRoutineCandidates.length,
+            routine_product_enrichment_deferred: Boolean(timeoutRoutinePreviewCard),
+            analysis_mode: 'timeout_degraded',
+            reco_artifact_eligible: false,
+            product_surface_mode: 'guidance_only',
+            artifact_gate: {
+              tier: 'ineligible',
+              reason: 'artifact_missing',
+              missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+            },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
