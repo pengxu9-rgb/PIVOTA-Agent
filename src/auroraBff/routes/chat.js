@@ -1,36 +1,18 @@
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
-const {
-  extractTravelPlanFromMessage,
-  hasCompleteTravelPlan,
-  hasTravelCue,
-  normalizeTravelPlan,
-  resolveTravelPlanFromSources,
-} = require('../travelPlanUtils');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
-const { runTravelPipeline } = require('../travelSkills/contracts');
 const { buildRequestContext } = require('../requestContext');
-
-let routerSingleton = null;
-let travelPipelineImpl = runTravelPipeline;
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
-  'chip.aurora.next_action.solution_next_steps',
   'chip.aurora.next_action.ingredient_plan',
   'chip.aurora.next_action.routine_deep_dive',
   'chip.aurora.next_action.safety_concerns',
 ]);
 
-const IMPLICIT_DEEP_DIVE_MESSAGES = new Set([
-  'tell me more about my skin',
-  'dive deeper into skin',
-  'deep dive into skin',
-  '深入了解我的皮肤状态',
-  '深入了解皮肤状态',
-]);
+let routerSingleton = null;
 
 function toBool(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -53,15 +35,6 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
-  travelPipelineImpl = runTravelPipeline;
-}
-
-function __setRouterForTests(router) {
-  routerSingleton = router || null;
-}
-
-function __setTravelPipelineForTests(fn) {
-  travelPipelineImpl = typeof fn === 'function' ? fn : runTravelPipeline;
 }
 
 function hasAuthorizationHeader(req) {
@@ -91,19 +64,19 @@ function mergeResponseMeta(payload, authMeta) {
   };
 }
 
-async function resolveRequestIdentity(req) {
+async function resolveRequestIdentity(req, internal = null) {
   const body = isPlainObject(req.body) ? req.body : {};
   const ctx = buildRequestContext(req, body);
-  const helpers = hasAuthorizationHeader(req) ? getRoutesInternal() : {};
+  const helpers = internal || (hasAuthorizationHeader(req) ? getRoutesInternal() : {});
   if (!hasAuthorizationHeader(req) || typeof helpers.resolveIdentity !== 'function') {
-    return { ctx };
+    return { ctx, internal: helpers };
   }
   try {
     req._identity = await helpers.resolveIdentity(req, ctx);
   } catch {
     // Ignore auth resolution failures here and let the route continue as guest.
   }
-  return { ctx };
+  return { ctx, internal: helpers };
 }
 
 function normalizeLocaleToken(value) {
@@ -149,28 +122,6 @@ function pickFirstTrimmed(...values) {
   return null;
 }
 
-function compactStringArray(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => (typeof item === 'string' ? item.trim() : ''))
-    .filter(Boolean);
-}
-
-function uniqTrimmedStrings(values, limit = 12) {
-  const out = [];
-  const seen = new Set();
-  for (const value of Array.isArray(values) ? values : []) {
-    const normalized = typeof value === 'string' ? value.trim() : '';
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(normalized);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
 function extractLastUserMessageFromMessages(messages) {
   const rows = Array.isArray(messages) ? messages : [];
   for (let index = rows.length - 1; index >= 0; index -= 1) {
@@ -186,15 +137,14 @@ function extractLastUserMessageFromMessages(messages) {
 
 function extractLatestArtifactIdFromSession(session) {
   const state = isPlainObject(session && session.state) ? session.state : null;
-  const meta = isPlainObject(session && session.meta) ? session.meta : null;
-  return pickFirstTrimmed(
-    state && state.latest_artifact_id,
-    meta && meta.latest_artifact_id,
-    session && session.latest_artifact_id,
-    state && state.artifact_id,
-    meta && meta.artifact_id,
-    session && session.artifact_id,
-  );
+  return pickFirstTrimmed(state && state.latest_artifact_id);
+}
+
+function compactStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
 }
 
 function omitLegacyActionAliases(value) {
@@ -240,105 +190,98 @@ function normalizeProfileShape(value) {
   return normalized;
 }
 
-function extractGoalsFromGoalProfile(value) {
-  const row = isPlainObject(value) ? value : null;
-  if (!row) return [];
-  return uniqTrimmedStrings([
-    ...(Array.isArray(row.selected_goals) ? row.selected_goals : []),
-    ...(Array.isArray(row.selectedGoals) ? row.selectedGoals : []),
-    ...(Array.isArray(row.goals) ? row.goals : []),
-    ...(Array.isArray(row.concerns) ? row.concerns : []),
-  ], 6);
-}
+function normalizeTravelPlanShape(value) {
+  if (!isPlainObject(value)) return null;
 
-function extractProfileOverlayFromParams(...sources) {
-  const patch = {};
-  const mergeFrom = (node) => {
-    const row = isPlainObject(node) ? node : null;
-    if (!row) return;
-    const profilePatch = isPlainObject(row.profile_patch)
-      ? row.profile_patch
-      : isPlainObject(row.profilePatch)
-        ? row.profilePatch
-        : null;
-    const profileLike = isPlainObject(row.profile)
-      ? row.profile
-      : isPlainObject(row.context)
-        ? row.context
-        : null;
-    const goalProfile = isPlainObject(row.goal_profile)
-      ? row.goal_profile
-      : isPlainObject(row.goalProfile)
-        ? row.goalProfile
-        : null;
-    const quickProfileNode = profilePatch || profileLike || row;
-    const skinType = pickFirstTrimmed(
-      quickProfileNode?.skinType,
-      quickProfileNode?.skin_type,
-      quickProfileNode?.skin_feel,
-    );
-    const sensitivity = pickFirstTrimmed(
-      quickProfileNode?.sensitivity,
-      quickProfileNode?.sensitivity_flag,
-      quickProfileNode?.sensitivityFlag,
-    );
-    const barrierStatus = pickFirstTrimmed(
-      quickProfileNode?.barrierStatus,
-      quickProfileNode?.barrier_status,
-    );
-    const goals = uniqTrimmedStrings([
-      ...(Array.isArray(quickProfileNode?.goals) ? quickProfileNode.goals : []),
-      ...(Array.isArray(quickProfileNode?.concerns) ? quickProfileNode.concerns : []),
-      ...(quickProfileNode?.goal_primary ? [quickProfileNode.goal_primary] : []),
-      ...extractGoalsFromGoalProfile(goalProfile),
-    ], 6);
-    if (skinType) patch.skinType = skinType;
-    if (sensitivity) patch.sensitivity = sensitivity;
-    if (barrierStatus) patch.barrierStatus = barrierStatus;
-    if (goals.length) patch.goals = goals;
-  };
+  const normalized = { ...value };
+  const destinationPlace = isPlainObject(value.destination_place)
+    ? value.destination_place
+    : isPlainObject(value.destinationPlace)
+      ? value.destinationPlace
+      : null;
+  const departurePlace = isPlainObject(value.departure_place)
+    ? value.departure_place
+    : isPlainObject(value.departurePlace)
+      ? value.departurePlace
+      : null;
+  const rawDates = isPlainObject(value.dates) ? value.dates : null;
 
-  for (const source of sources) mergeFrom(source);
-  return Object.keys(patch).length ? patch : null;
-}
+  const destination = pickFirstTrimmed(
+    value.destination,
+    value.destination_name,
+    value.destinationName,
+    destinationPlace && destinationPlace.canonical_name,
+    destinationPlace && destinationPlace.label,
+  );
+  const departureRegion = pickFirstTrimmed(
+    value.departure_region,
+    value.departureRegion,
+    departurePlace && departurePlace.canonical_name,
+    departurePlace && departurePlace.label,
+  );
+  const startDate = pickFirstTrimmed(
+    value.start_date,
+    value.startDate,
+    rawDates && rawDates.start,
+    rawDates && rawDates.start_date,
+  );
+  const endDate = pickFirstTrimmed(
+    value.end_date,
+    value.endDate,
+    rawDates && rawDates.end,
+    rawDates && rawDates.end_date,
+  );
 
-function normalizeGoalLabel(value) {
-  const token = String(value || '').trim();
-  if (!token) return '';
-  return token
-    .replace(/[_-]+/g, ' ')
-    .replace(/\bface\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function shouldSynthesizeDiagnosisRecoMessage(actionId, actionData, userMessage) {
-  if (String(actionId || '').trim() !== 'chip.start.reco_products') return false;
-  if (pickFirstTrimmed(actionData?.trigger_source, actionData?.entry_source) !== 'diagnosis_v2') return false;
-  const normalized = String(userMessage || '').trim().toLowerCase();
-  if (!normalized) return true;
-  return [
-    'see recommendations',
-    'see product recommendations',
-    'recommend products',
-    'recommend a few products',
-    'show recommendations',
-    'show product recommendations',
-    'get recommendations',
-    'get product recommendations',
-  ].includes(normalized);
-}
-
-function buildDiagnosisRecoMessage(goals = [], locale = 'en-US') {
-  const isCn = String(locale || '').toLowerCase().startsWith('zh');
-  const normalizedGoals = uniqTrimmedStrings(goals.map(normalizeGoalLabel), 3);
-  if (!normalizedGoals.length) {
-    return isCn ? '根据我的诊断结果给我推荐护肤产品。' : 'Recommend skincare products based on my diagnosis.';
+  if (destination) normalized.destination = destination;
+  if (departureRegion) {
+    normalized.departure_region = departureRegion;
+    if (!normalized.departureRegion) normalized.departureRegion = departureRegion;
   }
-  if (isCn) {
-    return `根据我的诊断结果，推荐适合${normalizedGoals.join('、')}的护肤产品。`;
+  if (destinationPlace) normalized.destination_place = destinationPlace;
+  if (departurePlace) normalized.departure_place = departurePlace;
+  if (startDate) {
+    normalized.start_date = startDate;
+    if (!normalized.startDate) normalized.startDate = startDate;
   }
-  return `Recommend skincare products for ${normalizedGoals.join(', ')} based on my diagnosis.`;
+  if (endDate) {
+    normalized.end_date = endDate;
+    if (!normalized.endDate) normalized.endDate = endDate;
+  }
+  if (rawDates || startDate || endDate) {
+    normalized.dates = {
+      ...(rawDates || {}),
+      ...(startDate ? { start: startDate, start_date: startDate } : {}),
+      ...(endDate ? { end: endDate, end_date: endDate } : {}),
+    };
+  }
+
+  return normalized;
+}
+
+function resolveTravelPlanContext(bodyContext, profiles = []) {
+  const directCandidates = [
+    bodyContext && bodyContext.travel_plan,
+    bodyContext && bodyContext.travelPlan,
+  ];
+  const profileCandidates = [];
+
+  for (const profile of Array.isArray(profiles) ? profiles : []) {
+    if (!isPlainObject(profile)) continue;
+    profileCandidates.push(profile.travel_plan, profile.travelPlan);
+    if (Array.isArray(profile.travel_plans) && profile.travel_plans.length > 0) {
+      profileCandidates.push(profile.travel_plans[0]);
+    }
+    if (Array.isArray(profile.travelPlans) && profile.travelPlans.length > 0) {
+      profileCandidates.push(profile.travelPlans[0]);
+    }
+  }
+
+  const candidates = [...directCandidates, ...profileCandidates];
+  for (const candidate of candidates) {
+    const normalized = normalizeTravelPlanShape(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 function normalizeRoutineProducts(value) {
@@ -489,288 +432,356 @@ function resolveCurrentRoutine(bodyContext, profileSources) {
   return null;
 }
 
-function resolveHeader(req, name) {
-  if (req && typeof req.get === 'function') return req.get(name);
-  const headers = req && req.headers && typeof req.headers === 'object' ? req.headers : {};
-  return headers[name] || headers[name.toLowerCase()] || null;
+function readProductIdentity(value) {
+  const product = isPlainObject(value) ? value : {};
+  const productId = pickFirstTrimmed(product.product_id, product.productId, product.sku_id, product.skuId);
+  const url = pickFirstTrimmed(product.url, product.product_url, product.productUrl, product.pdp_url, product.pdpUrl);
+  const brand = pickFirstTrimmed(product.brand);
+  const name = pickFirstTrimmed(product.display_name, product.displayName, product.name, product.title, product.product_name, product.productName);
+  return { productId, url, brand, name };
 }
 
-function normalizeUiLanguage(value) {
-  return String(value || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+function buildCandidateIdentityKey(value) {
+  const identity = readProductIdentity(value);
+  const productId = identity.productId ? String(identity.productId).trim().toLowerCase() : '';
+  if (productId) return `id:${productId}`;
+  const url = identity.url ? String(identity.url).trim().toLowerCase() : '';
+  if (url) return `url:${url}`;
+  const brand = identity.brand ? String(identity.brand).trim().toLowerCase() : '';
+  const name = identity.name ? String(identity.name).trim().toLowerCase() : '';
+  if (brand || name) return `name:${brand}::${name}`;
+  return '';
 }
 
-function buildTravelPipelineCanonicalIntent(skillRequest) {
-  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
-  return {
-    intent: 'travel_adjust',
-    confidence: 1,
-    entities: {
-      destination: travelPlan?.destination || null,
-      date_range: {
-        start: travelPlan?.start_date || null,
-        end: travelPlan?.end_date || null,
-      },
-    },
-  };
+function joinBrandAndName(brandRaw, nameRaw) {
+  const brand = String(brandRaw || '').trim();
+  const name = String(nameRaw || '').trim();
+  if (!brand) return name;
+  if (!name) return brand;
+  const brandLower = brand.toLowerCase();
+  const nameLower = name.toLowerCase();
+  if (nameLower === brandLower || nameLower.startsWith(`${brandLower} `)) return name;
+  return `${brand} ${name}`.trim();
 }
 
-function buildTravelPipelineResponse({ req, skillRequest, pipelineOut }) {
-  const body = req.body || {};
-  const requestId =
-    pickFirstTrimmed(resolveHeader(req, 'x-request-id'), resolveHeader(req, 'x-requestid'))
-    || `travel_${Date.now()}`;
-  const traceId = pickFirstTrimmed(resolveHeader(req, 'x-trace-id')) || requestId;
-  const lang = normalizeUiLanguage(body.language);
-  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
-  const pendingTravelClarification =
-    pipelineOut?.pending_clarification &&
-    typeof pipelineOut.pending_clarification === 'object' &&
-    !Array.isArray(pipelineOut.pending_clarification)
-      ? pipelineOut.pending_clarification
-      : null;
-  const pipelinePatch =
-    pipelineOut?.env_stress_patch &&
-    typeof pipelineOut.env_stress_patch === 'object' &&
-    !Array.isArray(pipelineOut.env_stress_patch)
-      ? pipelineOut.env_stress_patch
-      : {};
-  const pipelineEpi = Number(pipelinePatch.epi);
-  const envStressUi = {
-    ...pipelinePatch,
-    schema_version: 'aurora.ui.env_stress.v1',
-    ess: Number.isFinite(pipelineEpi) ? pipelineEpi : null,
-  };
+function normalizeProductCatalogQuery(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return '';
+  try {
+    text = decodeURIComponent(text);
+  } catch {
+    // Ignore malformed URI fragments in best-effort compat parsing.
+  }
+  text = text
+    .replace(/\+/g, ' ')
+    .replace(/[_]+/g, ' ')
+    .replace(/[|]+/g, ' ')
+    .replace(/\.(html?|php|aspx?)$/i, ' ')
+    .replace(/\b(en|cn|zh|us|uk|jp|kr|fr|de|es|pt|it|ca|au)\b/gi, ' ')
+    .replace(/\b(product|products|item|items)\b/gi, ' ')
+    .replace(/[-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length > 160) text = text.slice(0, 160).trim();
+  return text;
+}
 
-  if (
-    !pendingTravelClarification &&
-    !envStressUi.travel_readiness &&
-    pipelineOut?.travel_readiness &&
-    typeof pipelineOut.travel_readiness === 'object' &&
-    !Array.isArray(pipelineOut.travel_readiness)
-  ) {
-    envStressUi.travel_readiness = pipelineOut.travel_readiness;
+function extractProductCatalogQueryFromUrl(rawUrl) {
+  const urlText = String(rawUrl || '').trim();
+  if (!urlText) return null;
+
+  let parsed = null;
+  try {
+    parsed = new URL(urlText);
+  } catch {
+    return null;
   }
 
-  const travelReadiness =
-    envStressUi.travel_readiness &&
-    typeof envStressUi.travel_readiness === 'object' &&
-    !Array.isArray(envStressUi.travel_readiness)
-      ? envStressUi.travel_readiness
-      : null;
+  const hostLabels = String(parsed.hostname || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, '')
+    .split('.')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const hostStop = new Set(['com', 'net', 'org', 'co', 'io', 'ai', 'shop', 'store', 'www', 'cn', 'cc', 'us', 'uk']);
+  const hostToken = normalizeProductCatalogQuery(hostLabels.filter((value) => !hostStop.has(value)).join(' '));
 
-  const sessionPatch = {
-    meta: {
-      travel_skills_version: pipelineOut?.travel_skills_version || 'travel_skills_dag_v1',
-      travel_skills_trace: Array.isArray(pipelineOut?.travel_skills_trace)
-        ? pipelineOut.travel_skills_trace.slice(0, 24)
-        : [],
-      travel_kb_hit: Boolean(pipelineOut?.travel_kb_hit),
-      travel_kb_write_queued: Boolean(pipelineOut?.travel_kb_write_queued),
-      travel_skill_invocation_matrix:
-        pipelineOut?.travel_skill_invocation_matrix &&
-        typeof pipelineOut.travel_skill_invocation_matrix === 'object' &&
-        !Array.isArray(pipelineOut.travel_skill_invocation_matrix)
-          ? pipelineOut.travel_skill_invocation_matrix
-          : {},
-      env_source: pipelineOut?.env_source || null,
-      degraded: Boolean(pipelineOut?.degraded),
-      ...(pipelineOut?.travel_followup_state &&
-      typeof pipelineOut.travel_followup_state === 'object' &&
-      !Array.isArray(pipelineOut.travel_followup_state) &&
-      !pendingTravelClarification
-        ? { travel_followup: pipelineOut.travel_followup_state }
-        : {}),
-      ...(pendingTravelClarification ? { travel_pending_clarification: pendingTravelClarification } : {}),
-    },
-  };
-
-  if (travelReadiness && !pendingTravelClarification) {
-    sessionPatch.last_travel_readiness = {
-      destination: travelReadiness.destination_context?.destination || null,
-      start_date: travelReadiness.destination_context?.start_date || null,
-      end_date: travelReadiness.destination_context?.end_date || null,
-      reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
-      shopping_preview: travelReadiness.shopping_preview || null,
-    };
-  }
-
-  const envelope = {
-    request_id: requestId,
-    trace_id: traceId,
-    assistant_message: {
-      role: 'assistant',
-      content:
-        typeof pipelineOut?.assistant_text === 'string' && pipelineOut.assistant_text.trim()
-          ? pipelineOut.assistant_text.trim()
-          : '',
-      format: 'markdown',
-    },
-    suggested_chips:
-      pendingTravelClarification && Array.isArray(pipelineOut?.suggested_chips)
-        ? pipelineOut.suggested_chips.slice(0, 10)
-        : [],
-    cards:
-      envStressUi && !pendingTravelClarification
-        ? [{ card_id: `env_${requestId}`, type: 'env_stress', payload: envStressUi }]
-        : [],
-    session_patch: sessionPatch,
-    events: [
-      {
-        event_name: 'travel_pipeline_routed',
-        data: {
-          env_source: pipelineOut?.env_source || null,
-          degraded: Boolean(pipelineOut?.degraded),
-          pending_clarification: Boolean(pendingTravelClarification),
-        },
-      },
-    ],
-    telemetry: {
-      env_source: pipelineOut?.env_source || null,
-      degraded: Boolean(pipelineOut?.degraded),
-      intent_source: 'travel_pipeline_short_circuit',
-      route_decision: 'travel_pipeline',
-    },
-  };
-
-  return buildChatCardsResponse({
-    envelope,
-    ctx: {
-      request_id: requestId,
-      trace_id: traceId,
-      lang,
-      ui_lang: lang,
-      match_lang: lang,
-    },
-    intent: 'travel_adjust',
-    intentConfidence: 1,
-    entities: [buildTravelPipelineCanonicalIntent(skillRequest).entities],
-    safetyDecision: null,
-    threadOps: [],
-  });
-}
-
-async function maybeRunTravelPipeline(req, skillRequest) {
-  const travelPlan = normalizeTravelPlan(skillRequest?.context?.travel_plan);
-  const userMessage = pickFirstTrimmed(
-    skillRequest?.params?.user_message,
-    skillRequest?.params?.message,
-    skillRequest?.params?.text,
+  const pathTokens = String(parsed.pathname || '')
+    .split('/')
+    .map((value) => normalizeProductCatalogQuery(value))
+    .filter(Boolean);
+  const tailToken = normalizeProductCatalogQuery(pathTokens.slice(-2).join(' '));
+  const bestPathToken = pathTokens
+    .filter((value) => value && !/^\d+$/.test(value))
+    .sort((left, right) => right.length - left.length)[0] || '';
+  const queryToken = normalizeProductCatalogQuery(
+    parsed.searchParams.get('product') ||
+      parsed.searchParams.get('name') ||
+      parsed.searchParams.get('title') ||
+      parsed.searchParams.get('sku') ||
+      '',
   );
 
-  if (!travelPlan || !hasCompleteTravelPlan(travelPlan) || !hasTravelCue(userMessage)) {
-    return null;
-  }
-
-  const body = req.body || {};
-  const session = isPlainObject(body.session) ? body.session : {};
-  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
-  const travelWeatherLiveEnabled = toBool(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED, false);
-  const pipelineOut = await travelPipelineImpl({
-    message: userMessage,
-    language: normalizeUiLanguage(body.language),
-    profile: skillRequest.context?.profile || {},
-    recentLogs: skillRequest.context?.recent_logs || [],
-    canonicalIntent: buildTravelPipelineCanonicalIntent(skillRequest),
-    plannerDecision: {},
-    chatContext: sessionMeta,
-    travelWeatherLiveEnabled,
-    openaiClient: null,
-    logger: console,
-    nowMs: Date.now(),
-    userLocale: skillRequest.context?.locale || null,
-    hasSafetyConflict: false,
-  });
-
-  if (!pipelineOut || pipelineOut.ok !== true) {
-    return null;
-  }
-
-  return buildTravelPipelineResponse({ req, skillRequest, pipelineOut });
-}
-
-function shouldResolveArtifactSnapshotForSkillRequest(skillRequest) {
-  const request = isPlainObject(skillRequest) ? skillRequest : {};
-  const params = isPlainObject(request.params) ? request.params : {};
-  const explicitSkillId = pickFirstTrimmed(request.skill_id);
-  if (explicitSkillId === 'reco.step_based') return true;
-  if (pickFirstTrimmed(params.target_step, params.target_ingredient)) return true;
-  const entrySource = String(pickFirstTrimmed(params.entry_source) || '').toLowerCase();
-  if (entrySource.includes('reco')) return true;
-  const userMessage = String(pickFirstTrimmed(params.user_message, params.message, params.text) || '').toLowerCase();
-  return /\brecommend|recommendation|products?\b/.test(userMessage) || /推荐|护肤品|产品推荐/.test(userMessage);
-}
-
-async function enrichSkillRequestWithArtifactSnapshot(req, skillRequest, ctx) {
-  const internal = getRoutesInternal();
-  if (!skillRequest || !isPlainObject(skillRequest.context)) return skillRequest;
-  if (!shouldResolveArtifactSnapshotForSkillRequest(skillRequest)) return skillRequest;
-  if (typeof internal.resolveArtifactBackedSnapshotForRoute !== 'function') {
-    skillRequest.context.analysis_context_artifact_meta = {
-      artifact_readback_source: 'none',
-      artifact_readback_hit: false,
-    };
-    return skillRequest;
-  }
-
-  const body = isPlainObject(req.body) ? req.body : {};
-  const session = isPlainObject(body.session) ? body.session : null;
-  const identity = isPlainObject(req._identity)
-    ? req._identity
-    : { auroraUid: ctx && ctx.aurora_uid ? ctx.aurora_uid : null, userId: null };
-  const requestProfile = isPlainObject(skillRequest.context.profile) ? skillRequest.context.profile : {};
-  const requestRecentLogs = Array.isArray(skillRequest.context.recent_logs) ? skillRequest.context.recent_logs : [];
-  const storedProfile =
-    typeof internal.getProfileForIdentity === 'function'
-      ? await internal.getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null)
-      : null;
-  const storedRecentLogs =
-    typeof internal.getRecentSkinLogsForIdentity === 'function'
-      ? await internal.getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => [])
-      : [];
-  const resolvedProfile = normalizeProfileShape({
-    ...(isPlainObject(storedProfile) ? storedProfile : {}),
-    ...requestProfile,
-  });
-  const resolvedRecentLogs = requestRecentLogs.length > 0 ? requestRecentLogs : storedRecentLogs;
-
-  skillRequest.context.profile = resolvedProfile;
-  skillRequest.context.recent_logs = resolvedRecentLogs;
-  const readback = await internal.resolveArtifactBackedSnapshotForRoute({
-    identity,
-    session,
-    profile: resolvedProfile || null,
-    recentLogs: Array.isArray(resolvedRecentLogs) ? resolvedRecentLogs : [],
-    ctx: {
-      brief_id: session && typeof session.brief_id === 'string' ? session.brief_id : null,
-      request_id:
-        (typeof req.get === 'function' ? req.get('x-request-id') || req.get('X-Request-Id') : null)
-        || null,
-    },
-    logger: console,
-    allowRequestSnapshot: true,
-  });
-
-  skillRequest.context.artifact_analysis_context_snapshot =
-    isPlainObject(readback && readback.analysis_context_snapshot)
-      ? readback.analysis_context_snapshot
-      : null;
-  skillRequest.context.analysis_context_artifact_meta = {
-    artifact_readback_source: pickFirstTrimmed(readback && readback.artifact_readback_source) || 'none',
-    artifact_readback_hit: Boolean(readback && readback.artifact_readback_hit),
-    latest_artifact_id: pickFirstTrimmed(readback && readback.latest_artifact_id) || null,
+  return {
+    raw_url: urlText,
+    host_token: hostToken,
+    tail_token: tailToken,
+    best_path_token: bestPathToken,
+    query_token: queryToken,
   };
-  return skillRequest;
+}
+
+function buildCompatProductCatalogQueries({ inputText, inputUrl, productAnchor } = {}) {
+  const out = [];
+  const seen = new Set();
+  const add = (value, { normalize = true } = {}) => {
+    let text = String(value || '').trim();
+    if (!text) return;
+    if (normalize) text = normalizeProductCatalogQuery(text);
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  const productIdentity = readProductIdentity(productAnchor);
+  add(joinBrandAndName(productIdentity.brand, productIdentity.name));
+  add(productIdentity.name);
+  add(productIdentity.productId);
+
+  const urlCandidate =
+    String(inputUrl || '').trim() ||
+    (/^https?:\/\//i.test(String(inputText || '').trim()) ? String(inputText || '').trim() : '');
+  const fromUrl = extractProductCatalogQueryFromUrl(urlCandidate);
+  if (fromUrl) {
+    add(fromUrl.raw_url, { normalize: false });
+    if (fromUrl.host_token && fromUrl.best_path_token) add(`${fromUrl.host_token} ${fromUrl.best_path_token}`);
+    add(fromUrl.best_path_token);
+    if (fromUrl.host_token && fromUrl.tail_token) add(`${fromUrl.host_token} ${fromUrl.tail_token}`);
+    add(fromUrl.tail_token);
+    add(fromUrl.query_token);
+    add(fromUrl.host_token);
+  }
+
+  if (!urlCandidate || String(inputText || '').trim() !== urlCandidate) add(inputText);
+
+  return out;
+}
+
+function mapRecoAlternativeToCompatCandidate(value) {
+  const alternative = isPlainObject(value) ? value : null;
+  const product = isPlainObject(alternative && alternative.product) ? alternative.product : null;
+  if (!product) return null;
+
+  const brand = pickFirstTrimmed(product.brand);
+  const name = pickFirstTrimmed(product.name, product.display_name, product.displayName);
+  const productId = pickFirstTrimmed(product.product_id, product.productId, product.sku_id, product.skuId);
+  const url = pickFirstTrimmed(product.url, product.pdp_url, product.pdpUrl, product.product_url, product.productUrl);
+  if (!name && !productId && !url) return null;
+
+  const score = Number.isFinite(Number(alternative.similarity))
+    ? Math.max(1, Math.min(100, Math.round(Number(alternative.similarity))))
+    : Number.isFinite(Number(alternative.similarity_score))
+      ? Math.max(1, Math.min(100, Math.round(Number(alternative.similarity_score))))
+      : null;
+
+  return {
+    ...(productId ? { product_id: productId } : {}),
+    ...(brand ? { brand } : {}),
+    ...(name ? { name } : {}),
+    ...(url ? { url } : {}),
+    ...(score != null ? { similarity_score: score } : {}),
+    ...(Array.isArray(alternative.reasons) ? { reasons: alternative.reasons.slice(0, 2) } : {}),
+    ...(Array.isArray(alternative.tradeoffs) ? { compare_highlights: alternative.tradeoffs.slice(0, 2) } : {}),
+    ...(alternative.kind ? { recommendation_kind: String(alternative.kind) } : {}),
+  };
+}
+
+async function buildDupeSuggestCompatFallbackCandidates({ req, internal, productAnchor, inputText, anchorId, anchorUrl } = {}) {
+  const fetchRecoAlternativesForProduct = typeof internal.fetchRecoAlternativesForProduct === 'function'
+    ? internal.fetchRecoAlternativesForProduct
+    : null;
+  if (!fetchRecoAlternativesForProduct) return [];
+
+  const anchorIdentity = readProductIdentity(productAnchor);
+  const parsedUrl = extractProductCatalogQueryFromUrl(anchorUrl || inputText || '');
+  const fallbackName = pickFirstTrimmed(
+    anchorIdentity.name,
+    parsedUrl && parsedUrl.best_path_token,
+    parsedUrl && parsedUrl.tail_token,
+  );
+  const fallbackBrand = pickFirstTrimmed(anchorIdentity.brand);
+  const recoInput = pickFirstTrimmed(
+    joinBrandAndName(fallbackBrand, fallbackName),
+    fallbackName,
+    inputText,
+    anchorUrl,
+  );
+  if (!recoInput) return [];
+
+  const recoProductObj = {
+    ...(isPlainObject(productAnchor) ? productAnchor : {}),
+    ...(fallbackBrand && !pickFirstTrimmed(productAnchor && productAnchor.brand) ? { brand: fallbackBrand } : {}),
+    ...(fallbackName && !pickFirstTrimmed(productAnchor && productAnchor.name, productAnchor && productAnchor.display_name, productAnchor && productAnchor.displayName)
+      ? { name: fallbackName }
+      : {}),
+  };
+
+  try {
+    const ctx = buildRequestContext(req || {}, isPlainObject(req && req.body) ? req.body : {});
+    const out = await fetchRecoAlternativesForProduct({
+      ctx,
+      profileSummary: null,
+      recentLogs: [],
+      productInput: recoInput,
+      productObj: recoProductObj,
+      anchorId: anchorId || '',
+      maxTotal: 3,
+      candidatePool: [],
+      logger: null,
+      options: {
+        recommendation_mode: 'pool_only',
+        profile_mode: 'anchor_only',
+        disable_async_refresh: true,
+      },
+    });
+    return Array.isArray(out && out.alternatives)
+      ? out.alternatives.map(mapRecoAlternativeToCompatCandidate).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function shouldEnrichDupeSuggestRequest(skillRequest) {
+  const skillId = pickFirstTrimmed(skillRequest && skillRequest.skill_id);
+  const entrySource = pickFirstTrimmed(skillRequest && skillRequest.params && skillRequest.params.entry_source);
+  return skillId === 'dupe.suggest' || entrySource === 'chip.start.dupes' || entrySource === 'chip.action.dupe_suggest';
+}
+
+async function buildDupeSuggestCandidatePoolCompat(req, skillRequest, internal = {}) {
+  if (!shouldEnrichDupeSuggestRequest(skillRequest)) return [];
+
+  const params = isPlainObject(skillRequest && skillRequest.params) ? skillRequest.params : {};
+  const productAnchor = isPlainObject(params.product_anchor) ? params.product_anchor : null;
+  if (!productAnchor) return [];
+
+  const buildProductInputText = typeof internal.buildProductInputText === 'function'
+    ? internal.buildProductInputText
+    : null;
+  const buildRecoAlternativesCandidatePool = typeof internal.buildRecoAlternativesCandidatePool === 'function'
+    ? internal.buildRecoAlternativesCandidatePool
+    : null;
+  const searchPivotaBackendProducts = typeof internal.searchPivotaBackendProducts === 'function'
+    ? internal.searchPivotaBackendProducts
+    : null;
+
+  const anchorIdentity = readProductIdentity(productAnchor);
+  const anchorId = pickFirstTrimmed(params.anchor_product_id, anchorIdentity.productId);
+  const anchorUrl = pickFirstTrimmed(params.anchor_product_url, anchorIdentity.url);
+  const fallbackInputText = pickFirstTrimmed(params.user_message, params.message, params.text);
+  const inputText = buildProductInputText
+    ? pickFirstTrimmed(buildProductInputText(productAnchor, anchorUrl), fallbackInputText)
+    : fallbackInputText;
+
+  const out = [];
+  const seen = new Set();
+  const anchorKey = buildCandidateIdentityKey({
+    product_id: anchorId,
+    url: anchorUrl,
+    brand: anchorIdentity.brand,
+    name: anchorIdentity.name,
+  });
+  const maybePush = (candidate) => {
+    if (!isPlainObject(candidate)) return;
+    const key = buildCandidateIdentityKey(candidate);
+    if (!key || seen.has(key) || (anchorKey && key === anchorKey)) return;
+    seen.add(key);
+    out.push(candidate);
+  };
+
+  if (buildRecoAlternativesCandidatePool) {
+    const embedded = buildRecoAlternativesCandidatePool({
+      sharedCandidates: [],
+      productObj: productAnchor,
+      anchorId: anchorId || '',
+      maxCandidates: 12,
+    });
+    for (const row of Array.isArray(embedded) ? embedded : []) {
+      maybePush(row);
+      if (out.length >= 12) return out.slice(0, 12);
+    }
+  }
+
+  if (!searchPivotaBackendProducts || !inputText) return out.slice(0, 12);
+
+  const queries = buildCompatProductCatalogQueries({
+    inputText,
+    inputUrl: anchorUrl,
+    productAnchor,
+  });
+
+  for (const query of queries.slice(0, 5)) {
+    try {
+      const response = await searchPivotaBackendProducts({
+        query,
+        limit: Math.max(4, 12 - out.length),
+        logger: null,
+        timeoutMs: 3000,
+        mode: 'main_path',
+        searchAllMerchants: true,
+        fastMode: true,
+      });
+      for (const row of Array.isArray(response && response.products) ? response.products : []) {
+        maybePush(row);
+        if (out.length >= 12) return out.slice(0, 12);
+      }
+    } catch {
+      // Keep chat compat best-effort; dupe search still has a direct rollback path.
+    }
+  }
+
+  if (out.length === 0) {
+    const recoFallbackCandidates = await buildDupeSuggestCompatFallbackCandidates({
+      req,
+      internal,
+      productAnchor,
+      inputText,
+      anchorId,
+      anchorUrl,
+    });
+    for (const row of recoFallbackCandidates) {
+      maybePush(row);
+      if (out.length >= 12) return out.slice(0, 12);
+    }
+  }
+
+  return out.slice(0, 12);
+}
+
+async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
+  if (!shouldEnrichDupeSuggestRequest(skillRequest)) return skillRequest;
+  const params = isPlainObject(skillRequest && skillRequest.params) ? skillRequest.params : {};
+  if (Array.isArray(params._candidate_pool) && params._candidate_pool.length > 0) return skillRequest;
+
+  const candidatePool = await buildDupeSuggestCandidatePoolCompat(req, skillRequest, internal);
+  if (!candidatePool.length) return skillRequest;
+
+  return {
+    ...skillRequest,
+    params: {
+      ...params,
+      _candidate_pool: candidatePool,
+    },
+  };
 }
 
 async function handleChat(req, res) {
   try {
-    const auth = await resolveRequestIdentity(req);
-    const skillRequest = await enrichSkillRequestWithArtifactSnapshot(req, buildSkillRequest(req), auth.ctx);
-    const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
-    if (travelResponse) {
-      res.json(mergeResponseMeta(travelResponse, auth.ctx.auth_meta));
-      return;
-    }
+    const auth = await resolveRequestIdentity(req, getRoutesInternal());
+    const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
     const skillResponse = await getRouter().route(skillRequest);
     res.json(mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta));
   } catch (error) {
@@ -805,7 +816,6 @@ function resolveAnalysisFollowupActionId(req, internal = {}) {
     const implicitActionId = internal.resolveImplicitAnalysisFollowupActionId({
       actionId: explicitActionId,
       message,
-      sessionMeta,
       sessionAnalysisContext,
       lastAnalysis: isPlainObject(session.profile) ? session.profile.lastAnalysis || null : null,
       latestArtifactId: extractLatestArtifactIdFromSession(session),
@@ -830,10 +840,8 @@ async function handleChatStream(req, res) {
   };
 
   try {
-    const auth = await resolveRequestIdentity(req);
-    let routes;
-    try { routes = require('../routes'); } catch { routes = null; }
-    const internal = routes && routes.__internal ? routes.__internal : {};
+    const auth = await resolveRequestIdentity(req, getRoutesInternal());
+    const internal = auth.internal;
     const followupResolution = resolveAnalysisFollowupActionId(req, internal);
     const analysisFollowupActionId = followupResolution.actionId;
     if (analysisFollowupActionId) {
@@ -852,44 +860,32 @@ async function handleChatStream(req, res) {
       );
 
       const isDeepDive = analysisFollowupActionId === 'chip.aurora.next_action.deep_dive_skin';
-      const isSolutionAction = analysisFollowupActionId === 'chip.aurora.next_action.solution_next_steps';
       let followupResult;
 
-      if ((isDeepDive || isSolutionAction) && typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
+      if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
         const lastAnalysis = sessionProfile.lastAnalysis || null;
         const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
         const sessionAnalysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
         let diagnosisArtifact = null;
-        diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
-          identity: req._identity || {},
-          session,
-          ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
-          logger: console,
-        });
-        if (isDeepDive && typeof internal.buildAnalysisDeepDiveContentWithLlm === 'function') {
-          followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
-            lastAnalysis,
-            diagnosisArtifact,
-            profile: sessionProfile,
-            language: body.language || 'EN',
-            requestId: req.get?.('x-request-id') || 'stream',
-            replyText,
-            actionData,
-            sessionAnalysisContext,
+        if (typeof internal.loadLatestDiagnosisArtifactForRoute === 'function') {
+          diagnosisArtifact = await internal.loadLatestDiagnosisArtifactForRoute({
+            identity: req._identity || {},
+            session,
+            ctx: { brief_id: session.brief_id || null, request_id: req.get?.('x-request-id') || null },
             logger: console,
           });
-        } else if (isSolutionAction && typeof internal.buildSavedAnalysisSolutionContent === 'function') {
-          followupResult = await internal.buildSavedAnalysisSolutionContent({
-            lastAnalysis,
-            diagnosisArtifact,
-            profile: sessionProfile,
-            language: body.language || 'EN',
-            requestId: req.get?.('x-request-id') || 'stream',
-            replyText,
-            actionData,
-            sessionAnalysisContext,
-          });
         }
+        followupResult = await internal.buildAnalysisDeepDiveContentWithLlm({
+          lastAnalysis,
+          diagnosisArtifact,
+          profile: sessionProfile,
+          language: body.language || 'EN',
+          requestId: req.get?.('x-request-id') || 'stream',
+          replyText,
+          actionData,
+          sessionAnalysisContext,
+          logger: console,
+        });
       } else if (typeof internal.buildAnalysisFollowupContent === 'function') {
         followupResult = internal.buildAnalysisFollowupContent({
           actionId: analysisFollowupActionId,
@@ -904,18 +900,7 @@ async function handleChatStream(req, res) {
         const requestId = pickFirstTrimmed(req.get?.('x-request-id'), req.get?.('x-requestid')) || `stream_${Date.now()}`;
         const traceId = pickFirstTrimmed(req.get?.('x-trace-id')) || requestId;
         const lang = pickFirstTrimmed(body.language) || 'EN';
-        const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
-        const analysisContext = isPlainObject(sessionMeta.analysis_context) ? sessionMeta.analysis_context : null;
-        const followupSessionMeta =
-          typeof internal.buildAnalysisFollowupSessionMeta === 'function'
-            ? internal.buildAnalysisFollowupSessionMeta({
-                existingMeta: sessionMeta,
-                existingAnalysisContext: analysisContext,
-                followup: followupResult,
-                actionId: analysisFollowupActionId,
-                latestArtifactId: extractLatestArtifactIdFromSession(session),
-              })
-            : {};
+
         const legacyEnvelope = {
           request_id: requestId,
           trace_id: traceId,
@@ -926,7 +911,7 @@ async function handleChatStream(req, res) {
           },
           suggested_chips: Array.isArray(followupResult.suggested_chips) ? followupResult.suggested_chips : [],
           cards: Array.isArray(followupResult.cards) ? followupResult.cards : [],
-          session_patch: Object.keys(followupSessionMeta).length ? { meta: followupSessionMeta } : {},
+          session_patch: {},
           events: [
             {
               event_name: 'analysis_followup_action_routed',
@@ -936,20 +921,19 @@ async function handleChatStream(req, res) {
                 used_last_analysis: Boolean(followupResult.used_last_analysis),
                 missing_context: Boolean(followupResult.missing_context),
                 fell_back_to_generic: false,
-                ...((isDeepDive || isSolutionAction) ? {
+                ...(isDeepDive ? {
                   analysis_origin: followupResult.analysis_origin || null,
                   photo_ref_count: Number(followupResult.photo_ref_count || 0),
                   used_diagnosis_artifact: Boolean(followupResult.used_diagnosis_artifact),
                   used_analysis_story_snapshot: Boolean(followupResult.used_analysis_story_snapshot),
-                  ...(isDeepDive ? {
-                    fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
-                    llm_used: Boolean(followupResult.llm_used),
-                  } : {}),
+                  fell_back_to_snapshot: Boolean(followupResult.fell_back_to_snapshot),
+                  llm_used: Boolean(followupResult.llm_used),
                 } : {}),
               },
             },
           ],
         };
+
         const ctx = {
           request_id: requestId,
           trace_id: traceId,
@@ -957,6 +941,7 @@ async function handleChatStream(req, res) {
           ui_lang: lang === 'CN' ? 'CN' : 'EN',
           match_lang: lang === 'CN' ? 'CN' : 'EN',
         };
+
         const v1Response = buildChatCardsResponse({
           envelope: legacyEnvelope,
           ctx,
@@ -966,19 +951,14 @@ async function handleChatStream(req, res) {
           safetyDecision: null,
           threadOps: [],
         });
+
         sendEvent('result', mergeResponseMeta(v1Response, auth.ctx.auth_meta));
         sendEvent('done', {});
         return;
       }
     }
-    const skillRequest = await enrichSkillRequestWithArtifactSnapshot(req, buildSkillRequest(req), auth.ctx);
-    const travelResponse = await maybeRunTravelPipeline(req, skillRequest);
-    if (travelResponse) {
-      sendEvent('thinking', { step: 'travel_context', message: 'Checking destination conditions...' });
-      sendEvent('result', mergeResponseMeta(travelResponse, auth.ctx.auth_meta));
-      sendEvent('done', {});
-      return;
-    }
+
+    const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), internal);
     const thinkingSteps = [];
     let resultSent = false;
 
@@ -1016,13 +996,12 @@ function buildSkillRequest(req) {
   const bodyContext = isPlainObject(body.context) ? body.context : {};
   const bodyParams = isPlainObject(body.params) ? body.params : {};
   const session = isPlainObject(body.session) ? body.session : {};
-  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
   const action = isPlainObject(body.action) ? body.action : {};
   const actionData = isPlainObject(action.data) ? action.data : {};
   const normalizedActionData = omitLegacyActionAliases(actionData);
   const actionId = pickFirstTrimmed(body.action_id, action.action_id);
-  const rawUserMessage = pickFirstTrimmed(
+  const userMessage = pickFirstTrimmed(
     body.message,
     body.text,
     bodyParams.user_message,
@@ -1033,30 +1012,18 @@ function buildSkillRequest(req) {
   );
   const priorMessages = Array.isArray(body.messages) ? body.messages : [];
   const locale = resolveRequestLocale(body, req.headers || {}, bodyContext);
-  const profileOverlay = extractProfileOverlayFromParams(bodyParams, normalizedActionData);
-  const resolvedProfile = normalizeProfileShape({
-    ...(bodyContext.profile || req._userProfile || sessionProfile || {}),
-    ...(profileOverlay || {}),
-  });
-  const diagnosisGoals = uniqTrimmedStrings([
-    ...extractGoalsFromGoalProfile(normalizedActionData.goal_profile),
-    ...extractGoalsFromGoalProfile(normalizedActionData.goalProfile),
-    ...(Array.isArray(profileOverlay?.goals) ? profileOverlay.goals : []),
-  ], 6);
-  const userMessage = shouldSynthesizeDiagnosisRecoMessage(actionId, normalizedActionData, rawUserMessage)
-    ? buildDiagnosisRecoMessage(diagnosisGoals, locale)
-    : rawUserMessage;
+  const resolvedProfile = normalizeProfileShape(bodyContext.profile || req._userProfile || sessionProfile || {});
+  const travelPlan = resolveTravelPlanContext(bodyContext, [
+    bodyContext.profile,
+    req._userProfile,
+    sessionProfile,
+    resolvedProfile,
+  ]);
   const currentRoutine = resolveCurrentRoutine(bodyContext, [
     bodyContext.profile,
     req._userProfile,
     sessionProfile,
   ]);
-  const resolvedTravelPlan = resolveTravelPlanFromSources(
-    bodyContext.travel_plan,
-    session.travel_plan,
-    sessionProfile?.travel_plan,
-    extractTravelPlanFromMessage(userMessage),
-  );
   const anchorProductId = pickFirstTrimmed(
     body.anchor_product_id,
     body.anchorProductId,
@@ -1075,10 +1042,6 @@ function buildSkillRequest(req) {
       ? normalizedActionData.product_anchor
       : null;
 
-  const baseThreadState = body.thread_state || req._threadState || {};
-  const threadState = resolvedTravelPlan
-    ? { ...baseThreadState, travel_plan: resolvedTravelPlan }
-    : baseThreadState;
   const comparisonTargets =
     Array.isArray(bodyParams.comparison_targets) ? bodyParams.comparison_targets
     : Array.isArray(normalizedActionData.comparison_targets) ? normalizedActionData.comparison_targets
@@ -1101,36 +1064,25 @@ function buildSkillRequest(req) {
       ...(comparisonTargets ? { comparison_targets: comparisonTargets } : {}),
       ...(anchorProductId ? { anchor_product_id: anchorProductId } : {}),
       ...(anchorProductUrl ? { anchor_product_url: anchorProductUrl } : {}),
-      ...(!normalizedBodyParams._extracted_concerns && diagnosisGoals.length > 0 ? { _extracted_concerns: diagnosisGoals } : {}),
       ...(priorMessages.length > 0 ? { messages: priorMessages } : {}),
     },
     context: {
       profile: resolvedProfile,
       recent_logs: bodyContext.recent_logs || req._recentLogs || [],
-      analysis_context_snapshot:
-        isPlainObject(bodyContext.analysis_context_snapshot)
-          ? bodyContext.analysis_context_snapshot
-          : isPlainObject(sessionMeta.analysis_context_snapshot)
-            ? sessionMeta.analysis_context_snapshot
-            : null,
-      travel_plan: resolvedTravelPlan,
+      travel_plan: travelPlan,
       current_routine: currentRoutine,
       inventory: bodyContext.inventory || [],
       locale,
       safety_flags: bodyContext.safety_flags || [],
     },
-    thread_state: threadState,
+    thread_state: body.thread_state || req._threadState || {},
   };
 }
 
 module.exports = {
   buildSkillRequest,
-  buildTravelPipelineResponse,
-  extractTravelPlanFromMessage,
+  enrichSkillRequestForCompat,
   handleChat,
   handleChatStream,
   __resetRouterForTests,
-  __setRouterForTests,
-  __setTravelPipelineForTests,
-  normalizeTravelPlan,
 };

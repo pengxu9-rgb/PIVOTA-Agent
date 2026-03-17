@@ -64,23 +64,6 @@ test('V1ChatRequestSchema accepts optional context on legacy /v1/chat bodies', (
   assert.equal(parsed.success, true);
 });
 
-test('V1ChatRequestSchema accepts optional thread_state on /v1/chat bodies', () => {
-  resetAuroraModules();
-  const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
-  const parsed = V1ChatRequestSchema.safeParse({
-    message: 'Recommend a moisturizer for me',
-    thread_state: {
-      latest_reco_context: {
-        diagnosis_goal: 'barrier_repair',
-        target_step: 'moisturizer',
-        reco_artifact_eligible: false,
-      },
-    },
-  });
-
-  assert.equal(parsed.success, true);
-});
-
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
@@ -178,6 +161,48 @@ test('buildSkillRequest derives action params, reply_text, and normalized curren
   assert.equal(skillRequest.context.current_routine?.am_steps?.length, 1);
 });
 
+test('buildSkillRequest lifts session.profile.travel_plan into context.travel_plan with normalized dates', () => {
+  resetAuroraModules();
+  const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
+
+  const skillRequest = buildSkillRequest({
+    body: {
+      action: {
+        action_id: 'chip.start.travel',
+        kind: 'chip',
+        data: {
+          reply_text: 'Open travel plan',
+        },
+      },
+      session: {
+        state: 'IDLE_CHAT',
+        profile: {
+          travel_plan: {
+            trip_id: 'trip_tokyo_1',
+            destination: 'Tokyo',
+            departure_region: 'San Francisco',
+            start_date: '2026-03-10',
+            end_date: '2026-03-15',
+          },
+        },
+      },
+      language: 'EN',
+    },
+    headers: buildHeaders(),
+  });
+
+  assert.equal(skillRequest.params.entry_source, 'chip.start.travel');
+  assert.equal(skillRequest.context.travel_plan.destination, 'Tokyo');
+  assert.equal(skillRequest.context.travel_plan.start_date, '2026-03-10');
+  assert.equal(skillRequest.context.travel_plan.end_date, '2026-03-15');
+  assert.deepEqual(skillRequest.context.travel_plan.dates, {
+    start: '2026-03-10',
+    start_date: '2026-03-10',
+    end: '2026-03-15',
+    end_date: '2026-03-15',
+  });
+});
+
 test('buildSkillRequest does not coerce dupe compare chip anchor/targets fallbacks into canonical params', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
@@ -209,6 +234,191 @@ test('buildSkillRequest does not coerce dupe compare chip anchor/targets fallbac
   assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'comparison_targets'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'anchor'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(skillRequest.params, 'targets'), false);
+});
+
+test('enrichSkillRequestForCompat hydrates dupe suggest candidate pool when product_anchor is present', async () => {
+  resetAuroraModules();
+  const { buildSkillRequest, enrichSkillRequestForCompat } = require('../src/auroraBff/routes/chat');
+
+  const skillRequest = buildSkillRequest({
+    body: {
+      action: {
+        action_id: 'chip.start.dupes',
+        kind: 'chip',
+        data: {
+          reply_text: 'Find dupes for this cream',
+          product_anchor: {
+            brand: 'Glow Lab',
+            name: 'Barrier Cloud Cream',
+            product_id: 'anchor_1',
+            candidates: [
+              {
+                product_id: 'dupe_1',
+                brand: 'Budget Lab',
+                name: 'Barrier Daily Cream',
+              },
+            ],
+          },
+        },
+      },
+    },
+    headers: {},
+  });
+
+  const enriched = await enrichSkillRequestForCompat(
+    { body: {}, headers: {} },
+    skillRequest,
+    {
+      buildProductInputText: () => 'Glow Lab Barrier Cloud Cream',
+      buildRecoAlternativesCandidatePool: () => ([
+        {
+          product_id: 'dupe_1',
+          brand: 'Budget Lab',
+          name: 'Barrier Daily Cream',
+        },
+      ]),
+      searchPivotaBackendProducts: async () => ({ ok: true, products: [] }),
+    },
+  );
+
+  assert.equal(Array.isArray(enriched.params._candidate_pool), true);
+  assert.equal(enriched.params._candidate_pool.length, 1);
+  assert.equal(enriched.params._candidate_pool[0].product_id, 'dupe_1');
+  assert.deepEqual(enriched.params.product_anchor, skillRequest.params.product_anchor);
+});
+
+test('enrichSkillRequestForCompat derives URL-based catalog queries for dupe suggest url-only anchors', async () => {
+  resetAuroraModules();
+  const { buildSkillRequest, enrichSkillRequestForCompat } = require('../src/auroraBff/routes/chat');
+
+  const anchorUrl = 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one';
+  const seenQueries = [];
+  const skillRequest = buildSkillRequest({
+    body: {
+      action: {
+        action_id: 'chip.start.dupes',
+        kind: 'chip',
+        data: {
+          reply_text: 'Find dupes for this lotion',
+          anchor_product_url: anchorUrl,
+          product_anchor: {
+            url: anchorUrl,
+          },
+        },
+      },
+    },
+    headers: {},
+  });
+
+  const enriched = await enrichSkillRequestForCompat(
+    { body: {}, headers: {} },
+    skillRequest,
+    {
+      buildProductInputText: () => anchorUrl,
+      buildRecoAlternativesCandidatePool: () => [],
+      searchPivotaBackendProducts: async ({ query }) => {
+        seenQueries.push(query);
+        if (String(query).toLowerCase().includes('all in one defense lotion moisturizer spf 35')) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'dupe_url_1',
+                brand: 'Budget Lab',
+                name: 'Defense Lotion Alternative',
+                url: 'https://example.com/products/defense-lotion-alternative',
+              },
+            ],
+          };
+        }
+        return { ok: true, products: [] };
+      },
+    },
+  );
+
+  assert.equal(Array.isArray(enriched.params._candidate_pool), true);
+  assert.equal(enriched.params._candidate_pool.length, 1);
+  assert.equal(enriched.params._candidate_pool[0].product_id, 'dupe_url_1');
+  assert.equal(
+    seenQueries.some((query) => String(query).toLowerCase().includes('all in one defense lotion moisturizer spf 35')),
+    true,
+  );
+  assert.equal(
+    seenQueries.some((query) => String(query).toLowerCase() === 'all in one defense lotion moisturizer spf 35'),
+    true,
+  );
+});
+
+test('enrichSkillRequestForCompat falls back to reco alternatives when dupe search candidate pool stays empty', async () => {
+  resetAuroraModules();
+  const { buildSkillRequest, enrichSkillRequestForCompat } = require('../src/auroraBff/routes/chat');
+
+  const anchorUrl = 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one';
+  const skillRequest = buildSkillRequest({
+    body: {
+      action: {
+        action_id: 'chip.start.dupes',
+        kind: 'chip',
+        data: {
+          reply_text: `Find dupes: ${anchorUrl}`,
+          anchor_product_url: anchorUrl,
+          product_anchor: {
+            url: anchorUrl,
+          },
+        },
+      },
+      anchor_product_url: anchorUrl,
+      session: {
+        state: 'IDLE_CHAT',
+      },
+    },
+    headers: buildHeaders(),
+  });
+
+  const enriched = await enrichSkillRequestForCompat(
+    {
+      body: {
+        action: {
+          action_id: 'chip.start.dupes',
+          kind: 'chip',
+          data: {
+            reply_text: `Find dupes: ${anchorUrl}`,
+            product_anchor: { url: anchorUrl },
+          },
+        },
+      },
+      headers: buildHeaders(),
+      get: () => null,
+    },
+    skillRequest,
+    {
+      buildProductInputText: () => anchorUrl,
+      buildRecoAlternativesCandidatePool: () => [],
+      searchPivotaBackendProducts: async () => ({ ok: true, products: [] }),
+      fetchRecoAlternativesForProduct: async () => ({
+        ok: true,
+        alternatives: [
+          {
+            kind: 'dupe',
+            similarity: 78,
+            product: {
+              brand: 'Budget Lab',
+              name: 'Defense Lotion Alternative',
+              url: 'https://example.com/products/defense-lotion-alternative',
+            },
+            reasons: ['fallback_reco'],
+            tradeoffs: ['slightly lighter texture'],
+          },
+        ],
+      }),
+    },
+  );
+
+  assert.equal(Array.isArray(enriched.params._candidate_pool), true);
+  assert.equal(enriched.params._candidate_pool.length, 1);
+  assert.equal(enriched.params._candidate_pool[0].brand, 'Budget Lab');
+  assert.equal(enriched.params._candidate_pool[0].name, 'Defense Lotion Alternative');
+  assert.equal(enriched.params._candidate_pool[0].similarity_score, 78);
 });
 
 test('buildSkillRequest preserves same_as_am routine semantics in current routine context', () => {
@@ -510,31 +720,171 @@ test('/v1/chat delegates chip.action.add_to_routine to v2 when skill_router_v2 i
   );
 });
 
-test('/v1/chat keeps chip.start.diagnosis on legacy interactive diagnosis flow when skill_router_v2 is enabled', async () => {
+test('/v1/chat delegates chip.start.ingredients.entry to v2 and returns ingredient_hub in v2 card shape', async () => {
   await withEnv(
     {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
-      AURORA_CHAT_V2_STUB_RESPONSES: null,
     },
     async () => {
-      const app = createApp();
-      const res = await supertest(app)
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
         .post('/v1/chat')
         .set(buildHeaders())
         .send({
           action: {
-            action_id: 'chip.start.diagnosis',
+            action_id: 'chip.start.ingredients.entry',
             kind: 'chip',
-            data: { reply_text: 'Start skin diagnosis' },
+            data: {
+              reply_text: 'Open ingredient hub',
+              trigger_source: 'chip',
+            },
           },
-          session: { profile: {} },
+          session: {
+            state: 'S6_BUDGET',
+          },
         })
         .expect(200);
 
-      assert.equal(Array.isArray(res.body.cards), true);
-      assert.equal(res.body.cards[0]?.type, 'diagnosis_gate');
-      assert.equal(Array.isArray(res.body.suggested_quick_replies), true);
-      assert.equal(res.body.session_patch?.next_state, 'DIAG_PROFILE');
+      assert.ok(Array.isArray(response.body.cards));
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'ingredient_hub'), true);
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'text_response'), true);
+    },
+  );
+});
+
+test('/v1/chat delegates chip.start.travel to v2 and keeps session travel plan context', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.start.travel',
+            kind: 'chip',
+            data: {
+              reply_text: 'Open travel skincare plan',
+              trigger_source: 'chip',
+            },
+          },
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              travel_plan: {
+                trip_id: 'trip_tokyo_1',
+                destination: 'Tokyo',
+                departure_region: 'San Francisco',
+                start_date: '2026-03-10',
+                end_date: '2026-03-15',
+              },
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(Array.isArray(response.body.cards));
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'travel'), true);
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
+      assert.ok(Array.isArray(response.body.next_actions));
+    },
+  );
+});
+
+test('/v1/chat delegates chip.action.analyze_product to v2 when skill_router_v2 is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.action.analyze_product',
+            kind: 'chip',
+            data: {
+              reply_text: 'Analyze this product',
+              product_anchor: {
+                brand: 'Lab Series',
+                name: 'Defense Lotion SPF 35',
+                product_type: 'sunscreen',
+              },
+            },
+          },
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skin_type: 'dry',
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(Array.isArray(response.body.cards));
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'product_verdict'), true);
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
+      assert.ok(Array.isArray(response.body.next_actions));
+    },
+  );
+});
+
+test('/v1/chat delegates chip.action.analyze_product with a url-only product anchor to v2', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.action.analyze_product',
+            kind: 'chip',
+            data: {
+              reply_text: 'Analyze this product',
+              anchor_product_url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+              product_anchor: {
+                url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+              },
+            },
+          },
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skin_type: 'dry',
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(Array.isArray(response.body.cards));
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'product_verdict'), true);
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
     },
   );
 });
@@ -572,7 +922,7 @@ test('/v1/chat delegates chip.start.dupes to v2 and returns the dupe-suggest anc
   );
 });
 
-test('/v1/chat delegates chip.start.routine to v2 and returns a routine blueprint when thread_state includes blueprint_id', async () => {
+test('/v1/chat delegates chip.start.dupes with product_anchor into a dupe result instead of the precondition empty state', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -588,27 +938,181 @@ test('/v1/chat delegates chip.start.routine to v2 and returns a routine blueprin
         .set(buildHeaders())
         .send({
           action: {
-            action_id: 'chip.start.routine',
+            action_id: 'chip.start.dupes',
             kind: 'chip',
             data: {
-              reply_text: 'Build an AM/PM routine',
+              reply_text: 'Find dupes for Barrier Cloud Cream',
+              product_anchor: {
+                brand: 'Glow Lab',
+                name: 'Barrier Cloud Cream',
+                product_id: 'anchor_1',
+                candidates: [
+                  {
+                    product_id: 'dupe_1',
+                    brand: 'Budget Lab',
+                    name: 'Barrier Daily Cream',
+                    similarity_score: 84,
+                  },
+                  {
+                    product_id: 'dupe_2',
+                    brand: 'Calm Lab',
+                    name: 'Barrier Water Cream',
+                    similarity_score: 76,
+                  },
+                ],
+              },
             },
-          },
-          context: {
-            profile: {
-              primary_concerns: ['acne'],
-            },
-          },
-          thread_state: {
-            blueprint_id: 'bp_test_001',
           },
         })
         .expect(200);
 
-      assert.equal(response.body.cards?.[0]?.card_type, 'routine');
-      assert.equal(response.body.cards?.[0]?.sections?.[0]?.type, 'routine_structured');
-      assert.equal(response.body.cards?.[0]?.sections?.[0]?.routine_id?.startsWith('routine_'), true);
-      assert.equal(response.body.next_actions?.[0]?.target_skill_id, 'routine.intake_products');
+      assert.equal(response.body.cards?.[0]?.card_type, 'dupe_suggest');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.type, 'dupe_suggest_structured');
+      assert.equal(response.body.cards?.[0]?.metadata?.original?.name, 'Barrier Cloud Cream');
+      assert.equal(Array.isArray(response.body.cards?.[0]?.metadata?.dupes), true);
+    },
+  );
+});
+
+test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a dupe result when compat search finds candidates', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const routes = require('../src/auroraBff/routes');
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const originalBuildRecoAlternativesCandidatePool = routes.__internal.buildRecoAlternativesCandidatePool;
+      const originalSearchPivotaBackendProducts = routes.__internal.searchPivotaBackendProducts;
+      const seenQueries = [];
+
+      routes.__internal.buildRecoAlternativesCandidatePool = () => [];
+      routes.__internal.searchPivotaBackendProducts = async ({ query }) => {
+        seenQueries.push(query);
+        if (String(query).toLowerCase().includes('all in one defense lotion moisturizer spf 35')) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'dupe_url_1',
+                brand: 'Budget Lab',
+                name: 'Defense Lotion Alternative',
+                url: 'https://example.com/products/defense-lotion-alternative',
+              },
+              {
+                product_id: 'dupe_url_2',
+                brand: 'Calm Lab',
+                name: 'Daily Shield Lotion SPF 30',
+                url: 'https://example.com/products/daily-shield-lotion-spf-30',
+              },
+            ],
+          };
+        }
+        return { ok: true, products: [] };
+      };
+
+      try {
+        __resetRouterForTests();
+
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set(buildHeaders())
+          .send({
+            action: {
+              action_id: 'chip.start.dupes',
+              kind: 'chip',
+              data: {
+                reply_text: 'Find dupes for this lotion',
+                anchor_product_url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+                product_anchor: {
+                  url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+                },
+              },
+            },
+          })
+          .expect(200);
+
+        assert.equal(response.body.cards?.[0]?.card_type, 'dupe_suggest');
+        assert.equal(
+          seenQueries.some((query) => String(query).toLowerCase().includes('all in one defense lotion moisturizer spf 35')),
+          true,
+        );
+        assert.equal(
+          seenQueries.some((query) => String(query).toLowerCase() === 'all in one defense lotion moisturizer spf 35'),
+          true,
+        );
+      } finally {
+        routes.__internal.buildRecoAlternativesCandidatePool = originalBuildRecoAlternativesCandidatePool;
+        routes.__internal.searchPivotaBackendProducts = originalSearchPivotaBackendProducts;
+        __resetRouterForTests();
+      }
+    },
+  );
+});
+
+test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a dupe result via reco fallback when search returns nothing', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const routes = require('../src/auroraBff/routes');
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const originalBuildRecoAlternativesCandidatePool = routes.__internal.buildRecoAlternativesCandidatePool;
+      const originalSearchPivotaBackendProducts = routes.__internal.searchPivotaBackendProducts;
+      const originalFetchRecoAlternativesForProduct = routes.__internal.fetchRecoAlternativesForProduct;
+
+      routes.__internal.buildRecoAlternativesCandidatePool = () => [];
+      routes.__internal.searchPivotaBackendProducts = async () => ({ ok: true, products: [] });
+      routes.__internal.fetchRecoAlternativesForProduct = async () => ({
+        ok: true,
+        alternatives: [
+          {
+            kind: 'dupe',
+            similarity: 78,
+            product: {
+              brand: 'Budget Lab',
+              name: 'Defense Lotion Alternative',
+              url: 'https://example.com/products/defense-lotion-alternative',
+            },
+            reasons: ['fallback_reco'],
+            tradeoffs: ['slightly lighter texture'],
+          },
+        ],
+      });
+
+      try {
+        __resetRouterForTests();
+
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set(buildHeaders())
+          .send({
+            action: {
+              action_id: 'chip.start.dupes',
+              kind: 'chip',
+              data: {
+                reply_text: 'Find dupes for this lotion',
+                anchor_product_url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+                product_anchor: {
+                  url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+                },
+              },
+            },
+          })
+          .expect(200);
+
+        assert.equal(response.body.cards?.[0]?.card_type, 'dupe_suggest');
+      } finally {
+        routes.__internal.buildRecoAlternativesCandidatePool = originalBuildRecoAlternativesCandidatePool;
+        routes.__internal.searchPivotaBackendProducts = originalSearchPivotaBackendProducts;
+        routes.__internal.fetchRecoAlternativesForProduct = originalFetchRecoAlternativesForProduct;
+        __resetRouterForTests();
+      }
     },
   );
 });
