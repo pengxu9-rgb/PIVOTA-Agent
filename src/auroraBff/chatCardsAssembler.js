@@ -14,6 +14,44 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function sanitizeClientVisibleSentinelToken(value) {
+  const token = asString(value).toLowerCase();
+  if (!token || token === 'none') return '';
+  return token;
+}
+
+function sanitizeExperimentEventData(data) {
+  const next = isPlainObject(data) ? { ...data } : {};
+  const reason = sanitizeClientVisibleSentinelToken(next.reason);
+  const telemetryReason = sanitizeClientVisibleSentinelToken(next.telemetry_reason);
+  const surfaceReason = sanitizeClientVisibleSentinelToken(next.surface_reason);
+  const productsEmptyReason = sanitizeClientVisibleSentinelToken(next.products_empty_reason);
+  const failureClass = sanitizeClientVisibleSentinelToken(next.failure_class);
+  const effectiveFailureClass = sanitizeClientVisibleSentinelToken(next.effective_failure_class);
+  const failureOrigin = sanitizeClientVisibleSentinelToken(next.failure_origin);
+  if (reason) next.reason = reason;
+  else delete next.reason;
+  if (telemetryReason) next.telemetry_reason = telemetryReason;
+  else delete next.telemetry_reason;
+  if (surfaceReason) next.surface_reason = surfaceReason;
+  else delete next.surface_reason;
+  if (productsEmptyReason) next.products_empty_reason = productsEmptyReason;
+  else delete next.products_empty_reason;
+  if (failureClass) next.failure_class = failureClass;
+  else delete next.failure_class;
+  if (effectiveFailureClass) next.effective_failure_class = effectiveFailureClass;
+  else delete next.effective_failure_class;
+  if (failureOrigin) next.failure_origin = failureOrigin;
+  else delete next.failure_origin;
+  if (!next.reason && asString(next.upstream_status).toLowerCase() === 'artifact_missing') {
+    next.reason = 'artifact_missing';
+  }
+  if (!next.surface_reason && next.reason === 'artifact_missing') {
+    next.surface_reason = 'artifact_missing';
+  }
+  return next;
+}
+
 function hasAnalysisFollowupRoutedEvent(envelope) {
   return asArray(envelope && envelope.events).some((evt) => {
     if (!isPlainObject(evt)) return false;
@@ -385,7 +423,12 @@ function normalizeOps({ envelope, threadOps } = {}) {
       : isPlainObject(sessionPatch.currentRoutine)
         ? { currentRoutine: sessionPatch.currentRoutine }
         : null;
-  const sessionExperiments = asArray(sessionPatch.experiment_events).filter((row) => isPlainObject(row));
+  const sessionExperiments = asArray(sessionPatch.experiment_events)
+    .filter((row) => isPlainObject(row))
+    .map((row) => ({
+      ...row,
+      ...(isPlainObject(row.event_data) ? { event_data: sanitizeExperimentEventData(row.event_data) } : {}),
+    }));
   const eventDerivedExperiments = asArray(envelope && envelope.events)
     .map((evt) => {
       if (!isPlainObject(evt)) return null;
@@ -398,7 +441,7 @@ function normalizeOps({ envelope, threadOps } = {}) {
       const tsRaw = Number(evt.timestamp_ms);
       return {
         event_type: eventName,
-        event_data: data,
+        event_data: sanitizeExperimentEventData(data),
         timestamp_ms: Number.isFinite(tsRaw) ? Math.max(0, Math.trunc(tsRaw)) : Date.now(),
       };
     })

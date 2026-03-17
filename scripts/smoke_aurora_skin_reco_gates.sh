@@ -8,7 +8,11 @@ RUN_ID="${RUN_ID:-$(date +%s)}"
 CURL_RETRY_MAX="${CURL_RETRY_MAX:-20}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 CURL_RETRY_MAX_TIME_SEC="${CURL_RETRY_MAX_TIME_SEC:-180}"
-ALL_EVENTS_JQ='((.events // []) + (.ops.experiment_events // []))'
+ALL_EVENTS_JQ='(
+  ((.events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
+  +
+  ((.ops.experiment_events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
+)'
 NON_BLOCKING_FAILURES=()
 
 say() {
@@ -115,6 +119,35 @@ run_case_artifact_missing() {
     else true
     end
   ' "$reco_json"
+  jq_assert_json "artifact_missing ops mirror reason stays artifact_missing when ops stream is present" '
+    if ((.ops.experiment_events // []) | any((.event_name // .event_type // "")=="recos_requested"))
+    then ((.ops.experiment_events // []) | any(
+      ((.event_name // .event_type // "")=="recos_requested")
+      and (
+        (((.event_data.reason // .data.reason // "")=="artifact_missing"))
+        or ((.event_data.grounded_count // .data.grounded_count // 0) > 0)
+        or ((.event_data.ungrounded_count // .data.ungrounded_count // 0) > 0)
+      )
+    ))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "artifact_missing stream never leaks none sentinel" '
+    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
+    then ('"${ALL_EVENTS_JQ}"' | all(
+      if .event_name=="recos_requested"
+      then (
+        ((.data.reason // "") != "none")
+        and ((.data.telemetry_reason // "") != "none")
+        and ((.data.surface_reason // "") != "none")
+        and ((.data.products_empty_reason // "") != "none")
+      )
+      else true
+      end
+    ))
+    else true
+    end
+  ' "$reco_json"
 }
 
 run_case_low_confidence() {
@@ -167,6 +200,22 @@ run_case_low_confidence() {
   jq_assert_json "low confidence timeout stays telemetry-only when present" '
     if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
     then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and ((.data.telemetry_reason // "")=="timeout_degraded" or (.data.telemetry_reason // "")=="")))
+    else true
+    end
+  ' "$reco_json"
+  jq_assert_json "low confidence stream never leaks none sentinel" '
+    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
+    then ('"${ALL_EVENTS_JQ}"' | all(
+      if .event_name=="recos_requested"
+      then (
+        ((.data.reason // "") != "none")
+        and ((.data.telemetry_reason // "") != "none")
+        and ((.data.surface_reason // "") != "none")
+        and ((.data.products_empty_reason // "") != "none")
+      )
+      else true
+      end
+    ))
     else true
     end
   ' "$reco_json"
