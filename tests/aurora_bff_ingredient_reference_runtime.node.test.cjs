@@ -92,3 +92,37 @@ test('ingredient reference runtime: payload overlay upgrades generic ingredient 
   assert.ok(Array.isArray(payload.benefits) && payload.benefits.length >= 1);
   assert.ok(Array.isArray(payload.watchouts) && payload.watchouts.length >= 1);
 });
+
+test('ingredient reference runtime: reviewed reference beats conflicting legacy alias library profile', () => {
+  const payload = routeInternals.buildIngredientReportPayload({
+    language: 'EN',
+    query: 'Alpha-Arbutin',
+    research: null,
+    meta: {
+      normalized_query: 'alpha_arbutin',
+      ingredient_reference: {
+        record_id: 'ING-0501',
+        normalized_key: 'alphaarbutin',
+        canonical_inci_name: 'Alpha-Arbutin',
+        canonical_display_name: 'Alpha-Arbutin',
+        ingredient_family: 'other',
+        primary_bucket: 'brightening',
+        aliases_common_list: ['Alpha Arbutin'],
+        deprecated_aliases_list: [],
+        benefit_tags_list: ['brightening'],
+        function_tags_list: ['depigmenting'],
+        risk_flags_list: [],
+        flags: {},
+      },
+    },
+  });
+
+  assert.ok(payload);
+  assert.equal(payload.ingredient.key, 'alphaarbutin');
+  assert.equal(payload.ingredient.inci, 'Alpha-Arbutin');
+  assert.equal(payload.ingredient.display_name, 'Alpha-Arbutin');
+  assert.equal(payload.ingredient.aliases.includes('Alpha Arbutin'), true);
+  assert.match(payload.ingredient.category, /brightening/i);
+  assert.equal(payload.verdict.personalization_basis, 'ingredient_reference');
+  assert.equal(payload.report_state.reason_code, 'reference_seed_hit');
+});
