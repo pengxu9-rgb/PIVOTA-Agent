@@ -1,6 +1,108 @@
-const { query } = require('../db');
-
 const VIEW_NAME = 'pci_kb.ingredient_reference_dictionary_v1';
+const INGREDIENT_REFERENCE_DB_ENV_NAMES = ['INGREDIENT_REFERENCE_DATABASE_URL', 'PIVOTA_KB_DATABASE_URL'];
+
+let ingredientReferencePool = null;
+let ingredientReferencePoolCtor = null;
+let ingredientReferencePoolCtorResolved = false;
+let ingredientReferencePoolDatabaseUrl = '';
+
+function normalizeBooleanEnv(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!raw) return null;
+  if (['true', '1', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['false', '0', 'no', 'n', 'off'].includes(raw)) return false;
+  return null;
+}
+
+function getIngredientReferenceDatabaseUrl() {
+  for (const envName of INGREDIENT_REFERENCE_DB_ENV_NAMES) {
+    const value = String(process.env[envName] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function getIngredientReferencePoolConstructor() {
+  if (ingredientReferencePoolCtorResolved) return ingredientReferencePoolCtor;
+  ingredientReferencePoolCtorResolved = true;
+  try {
+    const mod = require('pg');
+    ingredientReferencePoolCtor = mod && typeof mod.Pool === 'function' ? mod.Pool : null;
+  } catch (_err) {
+    ingredientReferencePoolCtor = null;
+  }
+  return ingredientReferencePoolCtor;
+}
+
+function shouldUseIngredientReferenceSsl(databaseUrl) {
+  const explicitSsl = normalizeBooleanEnv(process.env.INGREDIENT_REFERENCE_DB_SSL);
+  if (explicitSsl !== null) return explicitSsl;
+
+  const sharedSsl = normalizeBooleanEnv(process.env.DB_SSL);
+  if (sharedSsl !== null) return sharedSsl;
+
+  const url = String(databaseUrl || '');
+  return (
+    /[?&]sslmode=(require|verify-full|verify-ca)\b/i.test(url) ||
+    /[?&]ssl=true\b/i.test(url)
+  );
+}
+
+function shouldRejectIngredientReferenceUnauthorized() {
+  const explicit = normalizeBooleanEnv(process.env.INGREDIENT_REFERENCE_DB_SSL_REJECT_UNAUTHORIZED);
+  if (explicit !== null) return explicit;
+
+  const shared = normalizeBooleanEnv(process.env.DB_SSL_REJECT_UNAUTHORIZED);
+  if (shared !== null) return shared;
+
+  return true;
+}
+
+function getIngredientReferencePool() {
+  const databaseUrl = getIngredientReferenceDatabaseUrl();
+  if (!databaseUrl) return null;
+
+  const Pool = getIngredientReferencePoolConstructor();
+  if (!Pool) return null;
+
+  if (ingredientReferencePool && ingredientReferencePoolDatabaseUrl !== databaseUrl) {
+    if (typeof ingredientReferencePool.end === 'function') {
+      Promise.resolve(ingredientReferencePool.end()).catch(() => {});
+    }
+    ingredientReferencePool = null;
+    ingredientReferencePoolDatabaseUrl = '';
+  }
+
+  if (!ingredientReferencePool) {
+    const useSsl = shouldUseIngredientReferenceSsl(databaseUrl);
+    ingredientReferencePool = new Pool({
+      connectionString: databaseUrl,
+      max: Number(process.env.INGREDIENT_REFERENCE_DB_POOL_MAX || process.env.DB_POOL_MAX || 3),
+      idleTimeoutMillis: Number(
+        process.env.INGREDIENT_REFERENCE_DB_IDLE_TIMEOUT_MS || process.env.DB_IDLE_TIMEOUT_MS || 30000,
+      ),
+      connectionTimeoutMillis: Number(
+        process.env.INGREDIENT_REFERENCE_DB_CONN_TIMEOUT_MS || process.env.DB_CONN_TIMEOUT_MS || 10000,
+      ),
+      ssl: useSsl ? { rejectUnauthorized: shouldRejectIngredientReferenceUnauthorized() } : undefined,
+    });
+    ingredientReferencePoolDatabaseUrl = databaseUrl;
+  }
+
+  return ingredientReferencePool;
+}
+
+async function queryIngredientReference(text, params) {
+  const pool = getIngredientReferencePool();
+  if (!pool) {
+    const err = new Error('Ingredient reference database not configured or pg driver unavailable');
+    err.code = 'NO_DATABASE';
+    throw err;
+  }
+  return pool.query(text, params);
+}
 
 function normalizeIngredientReferenceKey(value) {
   const raw = String(value || '');
@@ -91,7 +193,7 @@ async function getIngredientReferenceByNormalizedKey(input) {
   const normalizedKey = normalizeIngredientReferenceKey(input);
   if (!normalizedKey) return null;
   try {
-    const res = await query(
+    const res = await queryIngredientReference(
       `
         SELECT *
         FROM ${VIEW_NAME}
@@ -114,7 +216,7 @@ async function lookupIngredientReferenceCandidates(input, options = {}) {
   if (!normalizedKey && !normalizedText) return [];
 
   try {
-    const res = await query(
+    const res = await queryIngredientReference(
       `
         WITH candidates AS (
           SELECT
@@ -170,5 +272,18 @@ module.exports = {
   _internals: {
     mapIngredientReferenceRow,
     normalizeLimit,
+    normalizeBooleanEnv,
+    getIngredientReferenceDatabaseUrl,
+    getIngredientReferencePool,
+    queryIngredientReference,
+    resetForTest() {
+      if (ingredientReferencePool && typeof ingredientReferencePool.end === 'function') {
+        Promise.resolve(ingredientReferencePool.end()).catch(() => {});
+      }
+      ingredientReferencePool = null;
+      ingredientReferencePoolDatabaseUrl = '';
+      ingredientReferencePoolCtor = null;
+      ingredientReferencePoolCtorResolved = false;
+    },
   },
 };
