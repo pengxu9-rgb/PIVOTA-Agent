@@ -631,6 +631,7 @@ function buildRoutineProductAuditPrompt() {
     '- product_ref: preserve the stable input-side identifier exactly.',
     '- slot: the usage slot for this occurrence. The same product used in AM and PM should be audited separately if it appears twice.',
     '- original_step_label: the claimed current step label if provided; do not invent one.',
+    '- INPUT_CONTEXT.routine_products may include step_group, which is a deterministic grouping hint such as sunscreen, serum, treatment, moisturizer, or oil. Use it to avoid collapsing richer routine steps into a generic treatment bucket.',
     '- evidence_basis: only use these allowed values: resolved_name, step_label, brand_signal, product_type_hint, ingredient_hint, unknown.',
     '- inferred_product_type: describe the practical product category, such as cleanser, hydrating serum, retinoid serum, moisturizer, sunscreen, exfoliant, or spot treatment.',
     '- likely_role: describe the practical routine role this product seems to play.',
@@ -2235,6 +2236,7 @@ class LlmGateway {
       products: products.map((product, index) => {
         const inputLabel = compactText(product?.input_label || product?.product_text || `Product ${index + 1}`);
         const lower = inputLabel.toLowerCase();
+        const stepGroup = compactText(product?.step_group).toLowerCase();
         const inferredProductType = lower.includes('spf') || lower.includes('sunscreen')
           ? 'sunscreen'
           : lower.includes('retinol') || lower.includes('retinal')
@@ -2245,7 +2247,15 @@ class LlmGateway {
                 ? 'moisturizer'
                 : lower.includes('serum')
                   ? 'serum'
-                  : compactText(product?.inferred_product_type_hint) || 'treatment';
+                  : stepGroup === 'oil'
+                    ? 'face oil'
+                    : stepGroup === 'moisturizer'
+                      ? 'moisturizer'
+                      : stepGroup === 'sunscreen'
+                        ? 'sunscreen'
+                        : stepGroup === 'serum'
+                          ? 'serum'
+                          : compactText(product?.inferred_product_type_hint) || 'treatment';
         const suggestedAction =
           inferredProductType === 'sunscreen' && compactText(product?.slot).toLowerCase() === 'pm'
             ? 'move_to_am'

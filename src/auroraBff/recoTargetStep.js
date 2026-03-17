@@ -282,15 +282,6 @@ function resolveRecoTargetStepIntent({ explicitStep = '', focus = '', text = '' 
 
   const focusText = normalizeText(focus);
   const textBody = normalizeText(text);
-  const focusMedium = collectMediumConfidenceMatches(focusText);
-  if (focusMedium.length === 1) {
-    return {
-      resolved_target_step: focusMedium[0],
-      resolved_target_step_confidence: 'medium',
-      resolved_target_step_source: 'focus_concept',
-      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
-    };
-  }
   const focusHigh = collectHighConfidenceMatches(focusText);
   if (focusHigh.length === 1) {
     return {
@@ -306,6 +297,16 @@ function resolveRecoTargetStepIntent({ explicitStep = '', focus = '', text = '' 
       resolved_target_step: textHigh[0],
       resolved_target_step_confidence: 'high',
       resolved_target_step_source: 'message_alias',
+      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
+    };
+  }
+
+  const focusMedium = collectMediumConfidenceMatches(focusText);
+  if (focusMedium.length === 1) {
+    return {
+      resolved_target_step: focusMedium[0],
+      resolved_target_step_confidence: 'medium',
+      resolved_target_step_source: 'focus_concept',
       step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
     };
   }
