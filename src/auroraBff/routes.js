@@ -1297,7 +1297,52 @@ const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   dupe_suggest_sanitize_v1: AURORA_DUPE_SUGGEST_SANITIZE_V1,
 });
 
-function shouldDelegateV1ChatToV2(body) {
+async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
+  const message = pickFirstTrimmed(
+    payload.message,
+    payload.text,
+    extractLastUserMessageFromChatRequestMessages(payload.messages),
+  );
+  const trimmedMessage = String(message || '').trim();
+  if (!trimmedMessage || trimmedMessage.length > 64) return false;
+
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  if (
+    looksLikeProductEvaluationIntentV2(trimmedMessage, actionId) ||
+    looksLikeRecommendationRequest(trimmedMessage) ||
+    looksLikeRoutineRequest(trimmedMessage, action) ||
+    looksLikeSuitabilityRequest(trimmedMessage) ||
+    looksLikeCompatibilityOrConflictQuestion(trimmedMessage) ||
+    looksLikeWeatherOrEnvironmentQuestion(trimmedMessage)
+  ) {
+    return false;
+  }
+
+  if (
+    looksLikeIngredientScienceIntent(trimmedMessage, action) ||
+    messageContainsSpecificIngredientScienceTarget(trimmedMessage)
+  ) {
+    return true;
+  }
+
+  const requestLang = pickFirstTrimmed(
+    payload.language,
+    payload.lang,
+    payload.locale,
+    isPlainObject(payload.context) ? payload.context.locale : null,
+  );
+  const language = /^(zh|cn)/i.test(String(requestLang || '').trim()) ? 'CN' : 'EN';
+  const entityMatch = ingredientEntityMatchFromText(trimmedMessage, language);
+  if (entityMatch && entityMatch.entity_match_type && entityMatch.entity_match_type !== 'none') {
+    return true;
+  }
+
+  const referenceMatch = await resolveIngredientReferenceRuntimeMatch(trimmedMessage, language);
+  return Boolean(referenceMatch && referenceMatch.reference);
+}
+
+async function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
@@ -1357,6 +1402,9 @@ function shouldDelegateV1ChatToV2(body) {
       ? shouldAllowCatalogAvailabilityShortCircuit(message)
       : true;
     if (availabilityIntent && allowCatalogShortCircuit) return false;
+  }
+  if (hasMessage && await shouldKeepV1ChatOnLegacyIngredientPath(payload)) {
+    return false;
   }
   if (hasMessage) return true;
 
@@ -56222,7 +56270,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
     try {
       requireAuroraUid(ctx);
-      if (effectiveChatFlags.skill_router_v2 && shouldDelegateV1ChatToV2(req.body || {})) {
+      if (effectiveChatFlags.skill_router_v2 && await shouldDelegateV1ChatToV2(req.body || {})) {
         const { handleChat: handleChatV2 } = require('./routes/chat');
         return handleChatV2(req, res);
       }

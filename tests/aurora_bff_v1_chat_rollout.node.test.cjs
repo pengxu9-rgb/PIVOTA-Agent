@@ -523,6 +523,61 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
   );
 });
 
+test('/v1/chat keeps bare ingredient alias messages on the legacy ingredient path when skill_router_v2 is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const routes = require('../src/auroraBff/routes');
+      __resetRouterForTests();
+      routes.__internal.__setGetBestIngredientReferenceMatchForTest(async (input) => {
+        const token = String(input || '').trim();
+        if (token !== 'MCI' && token !== 'Methylchloroisothiazolinone') return null;
+        return {
+          record_id: 'ING-0400',
+          normalized_key: 'methylchloroisothiazolinone',
+          canonical_inci_name: 'Methylchloroisothiazolinone',
+          canonical_display_name: 'Methylchloroisothiazolinone',
+          ingredient_family: 'preservative',
+          primary_bucket: 'preservative',
+          aliases_common_list: ['MCI'],
+          deprecated_aliases_list: [],
+          benefit_tags_list: ['formula_stability'],
+          function_tags_list: ['preservative'],
+          risk_flags_list: ['sensitizer'],
+          flags: { is_preservative: true },
+        };
+      });
+
+      try {
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set(buildHeaders())
+          .send({
+            message: 'MCI',
+            session: { state: 'idle' },
+            language: 'EN',
+          })
+          .expect(200);
+
+        assert.ok(Array.isArray(response.body.cards));
+        assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), true);
+        assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'card_type')), false);
+
+        const report = response.body.cards.find((card) => card && card.type === 'aurora_ingredient_report')?.payload || {};
+        assert.equal(report.ingredient?.inci, 'Methylchloroisothiazolinone');
+        assert.equal(report.report_state?.reason_code, 'reference_seed_hit');
+      } finally {
+        routes.__internal.__resetGetBestIngredientReferenceMatchForTest();
+      }
+    },
+  );
+});
+
 test('/v1/chat answers dryness questions even when profile says oily', async () => {
   await withEnv(
     {
