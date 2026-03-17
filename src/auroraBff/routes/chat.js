@@ -441,6 +441,78 @@ function readProductIdentity(value) {
   return { productId, url, brand, name };
 }
 
+function hasNonEmptyProductAnchor(value) {
+  return isPlainObject(value) && Object.keys(value).length > 0;
+}
+
+function extractProductInputFromFitCheckCompat(message, internal = {}) {
+  if (typeof internal.extractProductInputFromFitCheckText === 'function') {
+    const extracted = pickFirstTrimmed(internal.extractProductInputFromFitCheckText(message));
+    if (extracted) return extracted;
+  }
+
+  const raw = String(message || '').trim();
+  if (!raw) return '';
+  const suffix = raw.match(/[:：]\s*([^:：]{2,400})\s*$/);
+  return suffix && suffix[1] ? String(suffix[1]).trim() : raw;
+}
+
+function enrichProductAnalyzeRequestForCompat(skillRequest, internal = {}) {
+  const params = isPlainObject(skillRequest && skillRequest.params) ? skillRequest.params : {};
+  const message = pickFirstTrimmed(params.user_message, params.message, params.text);
+  if (!message) return skillRequest;
+
+  const skillId = pickFirstTrimmed(skillRequest && skillRequest.skill_id);
+  const intent = pickFirstTrimmed(skillRequest && skillRequest.intent);
+  const entrySource = pickFirstTrimmed(params.entry_source);
+  const explicitProductAnchor = hasNonEmptyProductAnchor(params.product_anchor) ? params.product_anchor : null;
+  const anchorProductId = pickFirstTrimmed(params.anchor_product_id);
+  const anchorProductUrl = pickFirstTrimmed(params.anchor_product_url);
+  const isProductAnalyzeRequest =
+    skillId === 'product.analyze' ||
+    intent === 'evaluate_product' ||
+    intent === 'product_analysis' ||
+    (typeof internal.looksLikeProductEvaluationIntentV2 === 'function' &&
+      internal.looksLikeProductEvaluationIntentV2(message, entrySource));
+  if (!isProductAnalyzeRequest) return skillRequest;
+
+  const hasMeaningfulAnchor =
+    Boolean(explicitProductAnchor) ||
+    (typeof internal.hasMeaningfulFitCheckAnchor === 'function'
+      ? internal.hasMeaningfulFitCheckAnchor({
+          message,
+          anchorProductId,
+          anchorProductUrl,
+        })
+      : Boolean(anchorProductId || anchorProductUrl));
+  if (!hasMeaningfulAnchor) return skillRequest;
+
+  let productAnchor = explicitProductAnchor ? { ...explicitProductAnchor } : null;
+  if (!productAnchor) {
+    const extractedInput = extractProductInputFromFitCheckCompat(message, internal);
+    const derivedName = /^https?:\/\//i.test(String(extractedInput || '').trim()) ? null : pickFirstTrimmed(extractedInput);
+    productAnchor = {
+      ...(anchorProductId ? { product_id: anchorProductId, sku_id: anchorProductId } : {}),
+      ...(anchorProductUrl ? { url: anchorProductUrl } : {}),
+      ...(derivedName ? { name: derivedName } : {}),
+    };
+  } else if (anchorProductUrl && !pickFirstTrimmed(productAnchor.url, productAnchor.product_url, productAnchor.productUrl)) {
+    productAnchor = { ...productAnchor, url: anchorProductUrl };
+  }
+
+  if (!hasNonEmptyProductAnchor(productAnchor)) return skillRequest;
+
+  return {
+    ...skillRequest,
+    skill_id: skillId || 'product.analyze',
+    intent: intent || 'evaluate_product',
+    params: {
+      ...params,
+      product_anchor: productAnchor,
+    },
+  };
+}
+
 function buildCandidateIdentityKey(value) {
   const identity = readProductIdentity(value);
   const productId = identity.productId ? String(identity.productId).trim().toLowerCase() : '';
@@ -762,15 +834,16 @@ async function buildDupeSuggestCandidatePoolCompat(req, skillRequest, internal =
 }
 
 async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
-  if (!shouldEnrichDupeSuggestRequest(skillRequest)) return skillRequest;
-  const params = isPlainObject(skillRequest && skillRequest.params) ? skillRequest.params : {};
-  if (Array.isArray(params._candidate_pool) && params._candidate_pool.length > 0) return skillRequest;
+  const fitCheckCompatRequest = enrichProductAnalyzeRequestForCompat(skillRequest, internal);
+  if (!shouldEnrichDupeSuggestRequest(fitCheckCompatRequest)) return fitCheckCompatRequest;
+  const params = isPlainObject(fitCheckCompatRequest && fitCheckCompatRequest.params) ? fitCheckCompatRequest.params : {};
+  if (Array.isArray(params._candidate_pool) && params._candidate_pool.length > 0) return fitCheckCompatRequest;
 
-  const candidatePool = await buildDupeSuggestCandidatePoolCompat(req, skillRequest, internal);
-  if (!candidatePool.length) return skillRequest;
+  const candidatePool = await buildDupeSuggestCandidatePoolCompat(req, fitCheckCompatRequest, internal);
+  if (!candidatePool.length) return fitCheckCompatRequest;
 
   return {
-    ...skillRequest,
+    ...fitCheckCompatRequest,
     params: {
       ...params,
       _candidate_pool: candidatePool,

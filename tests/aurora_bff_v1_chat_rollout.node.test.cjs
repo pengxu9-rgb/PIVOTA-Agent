@@ -523,6 +523,55 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
   );
 });
 
+test('shouldDelegateV1ChatToV2 keeps anchorless fit-check prompts on the legacy path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const delegated = await __internal.shouldDelegateV1ChatToV2({
+    message: 'Is this toner good for me?',
+    language: 'EN',
+    session: { state: 'idle' },
+  });
+
+  assert.equal(delegated, false);
+});
+
+test('/v1/chat delegates free-text fit-check with a meaningful product anchor into v2 product verdict cards', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          message: 'Is this suitable for me: The Ordinary Niacinamide 10% + Zinc 1%?',
+          language: 'EN',
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skin_type: 'combination',
+              sensitivity: 'medium',
+            },
+          },
+        })
+        .expect(200);
+
+      assert.ok(Array.isArray(response.body.cards));
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'product_verdict'), true);
+      assert.equal(response.body.cards.some((card) => card && card.card_type === 'text_response'), false);
+      assert.equal(response.body.cards.some((card) => card && Object.prototype.hasOwnProperty.call(card, 'type')), false);
+      assert.ok(Array.isArray(response.body.next_actions));
+    },
+  );
+});
+
 test('/v1/chat keeps bare ingredient alias messages on the legacy ingredient path when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
