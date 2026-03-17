@@ -39922,6 +39922,17 @@ function normalizeIngredientSlugKey(raw) {
     .slice(0, 96);
 }
 
+function shouldPreferIngredientReferenceProfile(reference, libraryProfile) {
+  if (!reference || typeof reference !== 'object' || !libraryProfile || typeof libraryProfile !== 'object') return false;
+  const referenceKey = normalizeIngredientSlugKey(
+    pickFirstTrimmed(reference.canonical_inci_name, reference.canonical_display_name),
+  );
+  const libraryKey = normalizeIngredientSlugKey(
+    pickFirstTrimmed(libraryProfile.inci, libraryProfile.display_name),
+  );
+  return Boolean(referenceKey && libraryKey && referenceKey !== libraryKey);
+}
+
 function inferIngredientFamilyKeyFromInputName(inputName) {
   const text = ingredient_query_normalize(inputName);
   if (!text) return '';
@@ -40809,14 +40820,16 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   };
 
   const familyFallback = familyKey && familyProfiles[familyKey] ? familyProfiles[familyKey] : null;
-  const referenceFallback = buildIngredientReferenceFallback(ingredientReference, lang, inputName);
-
-  const picked = library[token] || referenceFallback || (familyFallback ? {
+  const libraryFallback = token && library[token] ? library[token] : null;
+  const familyFallbackProfile = familyFallback ? {
     inci: inputName,
     display_name: inputName,
     aliases: entityRow && Array.isArray(entityRow.aliases) ? entityRow.aliases : [],
     ...familyFallback,
-  } : {
+  } : null;
+  const referenceFallback = buildIngredientReferenceFallback(ingredientReference, lang, inputName);
+  const preferReferenceFallback = shouldPreferIngredientReferenceProfile(ingredientReference, libraryFallback);
+  const genericFallback = {
     inci: inputName,
     display_name: inputName,
     aliases: [],
@@ -40841,7 +40854,11 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     ],
     pair_well: [],
     separate: [],
-  });
+  };
+  const picked = (!preferReferenceFallback && libraryFallback)
+    || referenceFallback
+    || familyFallbackProfile
+    || genericFallback;
 
   const researchIngredient = asResearchObject(researchReady && researchReady.ingredient) || {};
   const researchSafety = asResearchObject(researchReady && researchReady.safety) || {};
@@ -40879,10 +40896,18 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     }))
     .filter((row) => row.title || row.url)
     .slice(0, 8);
-  const isLibraryHit = Boolean(library[token]);
-  const isReferenceHit = Boolean(referenceFallback);
-  const isFamilyHit = Boolean(familyFallback);
-  const ingredientKey = token || (ingredientReference && ingredientReference.normalized_key) || normalizeIngredientSlugKey(normalizedQuery || inputName);
+  const isLibraryHit = Boolean(!preferReferenceFallback && libraryFallback);
+  const isReferenceHit = Boolean(!isLibraryHit && referenceFallback);
+  const isFamilyHit = Boolean(!isLibraryHit && !isReferenceHit && familyFallbackProfile);
+  const ingredientKey = isReferenceHit
+    ? normalizeIngredientSlugKey(
+      pickFirstTrimmed(
+        ingredientReference && ingredientReference.normalized_key,
+        ingredientReference && ingredientReference.canonical_inci_name,
+        ingredientReference && ingredientReference.canonical_display_name,
+      ),
+    ) || token || normalizeIngredientSlugKey(normalizedQuery || inputName)
+    : token || (ingredientReference && ingredientReference.normalized_key) || normalizeIngredientSlugKey(normalizedQuery || inputName);
   const providerAttemptTimedOut = providerAttempts.some((row) => /timeout/i.test(String(row && row.reason_code ? row.reason_code : '')));
   const researchTimeout = researchStatus === 'fallback' && (/timeout/i.test(String(researchErrorCode || '')) || providerAttemptTimedOut);
   const reportMode =
