@@ -1345,6 +1345,8 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
 async function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const bodyParams = isPlainObject(payload.params) ? payload.params : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
@@ -1389,6 +1391,45 @@ async function shouldDelegateV1ChatToV2(body) {
   if (canDelegateActionToV2) return true;
 
   const hasMessage = Boolean(pickFirstTrimmed(payload.message, payload.text));
+  const message = pickFirstTrimmed(
+    payload.message,
+    payload.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromChatRequestMessages(payload.messages),
+  ) || '';
+  const anchorProductId = pickFirstTrimmed(
+    payload.anchor_product_id,
+    payload.anchorProductId,
+    bodyParams.anchor_product_id,
+    bodyParams.anchorProductId,
+    actionData.anchor_product_id,
+    actionData.anchorProductId,
+  );
+  const anchorProductUrl = pickFirstTrimmed(
+    payload.anchor_product_url,
+    payload.anchorProductUrl,
+    bodyParams.anchor_product_url,
+    bodyParams.anchorProductUrl,
+    actionData.anchor_product_url,
+    actionData.anchorProductUrl,
+  );
+  const productAnchor =
+    (isPlainObject(bodyParams.product_anchor) && Object.keys(bodyParams.product_anchor).length > 0)
+      ? bodyParams.product_anchor
+      : (isPlainObject(actionData.product_anchor) && Object.keys(actionData.product_anchor).length > 0)
+        ? actionData.product_anchor
+        : null;
+  const shouldKeepFitCheckOnLegacy =
+    hasMessage &&
+    looksLikeProductEvaluationIntentV2(message, actionId) &&
+    !productAnchor &&
+    !hasMeaningfulFitCheckAnchor({
+      message,
+      anchorProductId,
+      anchorProductUrl,
+    });
+  if (shouldKeepFitCheckOnLegacy) return false;
   if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
     const requestLang = pickFirstTrimmed(
       payload.language,
@@ -1396,7 +1437,6 @@ async function shouldDelegateV1ChatToV2(body) {
       payload.locale,
       isPlainObject(payload.context) ? payload.context.locale : null,
     );
-    const message = pickFirstTrimmed(payload.message, payload.text) || '';
     const availabilityIntent = detectCatalogAvailabilityIntent(message, requestLang || 'EN');
     const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
       ? shouldAllowCatalogAvailabilityShortCircuit(message)
@@ -63560,11 +63600,13 @@ const __internal = {
   addEmotionalPreambleToAssistantText,
   stripMismatchedLeadingGreeting,
   looksLikeGreetingAlready,
+  extractProductInputFromFitCheckText,
   looksLikeProductEvaluationIntentV2,
   isMeaningfulFitCheckProductInput,
   hasMeaningfulFitCheckAnchor,
   FIT_CHECK_ANCHOR_PROMPT_VERSION,
   buildFitCheckAnchorPrompt,
+  shouldDelegateV1ChatToV2,
   isRecoKnownTestSeedItem,
   limitRecoKnownTestSeedRecommendations,
   buildRecoDiversityToken,
