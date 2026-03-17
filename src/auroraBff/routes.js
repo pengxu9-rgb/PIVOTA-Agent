@@ -39781,6 +39781,19 @@ function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
   return '';
 }
 
+let lastIngredientReferenceLookupErrorLogAt = 0;
+
+function logIngredientReferenceRuntimeLookupError(input, err) {
+  const now = Date.now();
+  if (now - lastIngredientReferenceLookupErrorLogAt < 60000) return;
+  lastIngredientReferenceLookupErrorLogAt = now;
+  console.warn('aurora ingredient reference lookup failed', {
+    input: String(input || '').trim().slice(0, 120),
+    code: err && err.code ? String(err.code).slice(0, 64) : null,
+    message: err && err.message ? String(err.message).slice(0, 240) : null,
+  });
+}
+
 function sanitizeIngredientReferenceRuntimeMatch(reference) {
   if (!reference || typeof reference !== 'object' || Array.isArray(reference)) return null;
   const takeList = (value, max = 12) =>
@@ -39842,7 +39855,8 @@ async function resolveIngredientReferenceRuntimeMatch(input, language = 'EN') {
       language: language === 'CN' ? 'CN' : 'EN',
       reference,
     };
-  } catch {
+  } catch (err) {
+    logIngredientReferenceRuntimeLookupError(raw, err);
     return null;
   }
 }
