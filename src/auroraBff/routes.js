@@ -38093,6 +38093,96 @@ function coerceRecoItemForUi(item, { lang } = {}) {
   };
 }
 
+function normalizeRoutineRecoItemForUiGuardrails(item, { lang = 'EN' } = {}) {
+  const baseCandidate = coerceRecoCandidateForGuardrail(item);
+  const base = baseCandidate && typeof baseCandidate === 'object' && !Array.isArray(baseCandidate)
+    ? { ...baseCandidate }
+    : null;
+  if (!base) return item;
+
+  if (isRecoUngroundedItem(base)) {
+    return coerceRecoItemForUi(base, { lang });
+  }
+
+  const sku = isPlainObject(base.sku)
+    ? base.sku
+    : isPlainObject(base.product)
+      ? base.product
+      : {};
+  const canonicalRef = normalizeCanonicalProductRef(
+    base.canonical_product_ref
+    || base.canonicalProductRef
+    || sku.canonical_product_ref
+    || sku.canonicalProductRef
+    || {
+      product_id: pickFirstString(base.product_id, base.productId, sku.product_id, sku.productId),
+      merchant_id: pickFirstString(base.merchant_id, base.merchantId, sku.merchant_id, sku.merchantId),
+    },
+    { requireMerchant: true, allowOpaqueProductId: false },
+  );
+  const directUrl = pickFirstTrimmed(
+    base.pdp_url,
+    base.pdpUrl,
+    base.url,
+    base.product_url,
+    base.productUrl,
+    base.purchase_path,
+    base.purchasePath,
+    sku.canonical_pdp_url,
+    sku.canonicalPdpUrl,
+    sku.pdp_url,
+    sku.pdpUrl,
+    sku.url,
+    sku.product_url,
+    sku.productUrl,
+    sku.purchase_path,
+    sku.purchasePath,
+  );
+  const hasDirectPdpUrl = Boolean(directUrl && PRODUCT_INTEL_HTTP_URL_RE.test(String(directUrl)) && !isSearchLikeUrl(directUrl));
+  const hasProductIds = Boolean(
+    pickFirstTrimmed(base.product_id, base.productId, sku.product_id, sku.productId)
+    && pickFirstTrimmed(base.merchant_id, base.merchantId, sku.merchant_id, sku.merchantId),
+  );
+  const pdpPath = String(base?.pdp_open?.path || '').trim().toLowerCase();
+  const hasGroundedPdpOpen = Boolean(hasOpenableUrl(base) && pdpPath && pdpPath !== 'external');
+  if (canonicalRef || hasDirectPdpUrl || hasProductIds || hasGroundedPdpOpen) {
+    return coerceRecoItemForUi(base, { lang });
+  }
+
+  const hasRenderableIdentity = Boolean(
+    pickFirstTrimmed(
+      base.display_name,
+      base.displayName,
+      base.name,
+      base.title,
+      base.brand,
+      base.step,
+      base.product_type,
+      base.productType,
+      sku.display_name,
+      sku.displayName,
+      sku.name,
+      sku.title,
+      sku.brand,
+      sku.category,
+      sku.product_type,
+      sku.productType,
+    ),
+  );
+  if (!hasRenderableIdentity) {
+    return coerceRecoItemForUi(base, { lang });
+  }
+
+  return coerceRecoItemForUi({
+    ...base,
+    grounding_status: 'ungrounded',
+    metadata: {
+      ...(isPlainObject(base.metadata) ? base.metadata : {}),
+      routine_editorial_fallback: true,
+    },
+  }, { lang });
+}
+
 const LOW_CONF_TREATMENT_TOKEN_RE = /\b(treatment|retinol|retinoid|retinal|tretinoin|adapalene|exfoliant|chemical peel|aha|bha|pha|glycolic|salicylic|mandelic|lactic)\b|(?:视黄醇|阿达帕林|维a|果酸|水杨酸|杏仁酸|乳酸|焕肤|去角质|刷酸)/i;
 const MEDIUM_CONFIDENCE_UPPER_BOUND = 0.75;
 
@@ -45449,9 +45539,12 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
       logger,
       lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
     });
+    const routineGuardrailReadyRecommendations = Array.isArray(pdpOpenOut.recommendations)
+      ? pdpOpenOut.recommendations.map((item) => normalizeRoutineRecoItemForUiGuardrails(item, { lang: ctx.lang }))
+      : [];
     norm.payload = {
       ...norm.payload,
-      recommendations: pdpOpenOut.recommendations,
+      recommendations: routineGuardrailReadyRecommendations,
       metadata: {
         ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
         pdp_open_path_stats: pdpOpenOut.path_stats,
@@ -64943,6 +65036,7 @@ const __internal = {
   hasOpenableUrl,
   coerceRecoCandidateForGuardrail,
   coerceRecoItemForUi,
+  normalizeRoutineRecoItemForUiGuardrails,
   sanitizeRecoCandidatesForUi,
   collectPurchasableFallbackQueries,
   buildPurchasableFallbackCandidates,
