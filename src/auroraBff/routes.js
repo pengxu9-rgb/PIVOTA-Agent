@@ -1311,6 +1311,7 @@ function shouldDelegateV1ChatToV2(body) {
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
+    'chip.start.routine',
     'chip.start.dupes',
     'chip.action.dupe_compare',
   ].includes(actionId);
@@ -45503,14 +45504,67 @@ async function generateRoutineReco({ ctx, profile, recentLogs, focus, constraint
   }
 
   const contextObj = upstream && upstream.context && typeof upstream.context === 'object' ? upstream.context : null;
-  const routine = contextObj ? contextObj.routine : null;
+  const routineCandidates = [
+    contextObj ? contextObj.routine : null,
+    contextObj ? contextObj.recommended_routine : null,
+    contextObj ? contextObj.recommendedRoutine : null,
+    contextObj ? contextObj.current_routine : null,
+    contextObj ? contextObj.currentRoutine : null,
+    contextObj ? contextObj.routine_v1 : null,
+    contextObj ? contextObj.routineV1 : null,
+    contextObj && isPlainObject(contextObj.today) ? contextObj.today : null,
+  ];
+  const routine = routineCandidates.find((value) => isPlainObject(value)) || null;
   const contextMeta = contextObj && typeof contextObj === 'object' && !Array.isArray(contextObj) ? { ...contextObj } : {};
   if (profileSummary && profileSummary.budgetTier && !contextMeta.budget && !contextMeta.budget_cny) {
     contextMeta.budget = profileSummary.budgetTier;
   }
   const mapped = mapAuroraRoutineToRecoGenerate(routine, contextMeta);
   const norm = normalizeRecoGenerate(mapped);
-  norm.payload = { ...norm.payload, intent: 'routine', profile: profileSummary || null };
+  const routineRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
+  const ungroundedCount = routineRecommendations.filter((row) => {
+    const status = normalizeRecoGroundingStatus(
+      row && (row.grounding_status || row.groundingStatus || row?.recommendation_meta?.grounding_status || row?.metadata?.grounding_status),
+    );
+    return status === 'ungrounded';
+  }).length;
+  const groundedCount = Math.max(0, routineRecommendations.length - ungroundedCount);
+  const groundingStatus = routineRecommendations.length
+    ? groundedCount > 0
+      ? ungroundedCount > 0
+        ? 'partially_grounded'
+        : 'grounded'
+      : 'ungrounded'
+    : '';
+  const mainlineStatus = routineRecommendations.length
+    ? groundingStatus === 'partially_grounded'
+      ? 'partially_grounded'
+      : groundingStatus === 'ungrounded'
+        ? 'ungrounded_success'
+        : 'grounded_success'
+    : 'empty_structured';
+  norm.payload = {
+    ...norm.payload,
+    intent: 'routine',
+    profile: profileSummary || null,
+    ...(routineRecommendations.length
+      ? {
+        source: groundedCount > 0 ? 'llm_primary_v1' : 'llm_editorial_v1',
+        grounding_status: groundingStatus,
+        grounded_count: groundedCount,
+        ungrounded_count: ungroundedCount,
+        mainline_status: mainlineStatus,
+        recommendation_meta: {
+          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+          source_mode: 'llm_primary',
+          grounding_status: groundingStatus,
+          grounded_count: groundedCount,
+          ungrounded_count: ungroundedCount,
+          mainline_status: mainlineStatus,
+        },
+      }
+      : {}),
+  };
 
   if (includeAlternatives) {
     try {
@@ -61826,6 +61880,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          const recoRequestedEventData = buildRecoRequestedEventData({
+            explicit: true,
+            payload,
+            source: pickFirstTrimmed(payload?.source, payload?.recommendation_meta?.source_mode, 'rules_only'),
+          });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeChatAssistantMessage(
@@ -61849,7 +61908,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session_patch: nextState ? { next_state: nextState } : {},
             events: [
               makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
-              makeEvent(ctx, 'recos_requested', { explicit: true }),
+              makeEvent(ctx, 'recos_requested', recoRequestedEventData),
             ],
           });
           return sendChatEnvelope(envelope);
@@ -61918,6 +61977,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
+        const recoRequestedEventData = buildRecoRequestedEventData({
+          explicit: true,
+          payload,
+          source: pickFirstTrimmed(payload?.source, payload?.recommendation_meta?.source_mode, 'rules_only'),
+        });
 
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeChatAssistantMessage(
@@ -61941,7 +62005,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           session_patch: nextState ? { next_state: nextState } : {},
           events: [
             makeEvent(ctx, 'value_moment', { kind: 'routine_generated' }),
-            makeEvent(ctx, 'recos_requested', { explicit: true }),
+            makeEvent(ctx, 'recos_requested', recoRequestedEventData),
           ],
         });
         return sendChatEnvelope(envelope);

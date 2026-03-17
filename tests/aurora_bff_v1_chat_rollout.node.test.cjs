@@ -572,6 +572,47 @@ test('/v1/chat delegates chip.start.dupes to v2 and returns the dupe-suggest anc
   );
 });
 
+test('/v1/chat delegates chip.start.routine to v2 and returns a routine blueprint when thread_state includes blueprint_id', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          action: {
+            action_id: 'chip.start.routine',
+            kind: 'chip',
+            data: {
+              reply_text: 'Build an AM/PM routine',
+            },
+          },
+          context: {
+            profile: {
+              primary_concerns: ['acne'],
+            },
+          },
+          thread_state: {
+            blueprint_id: 'bp_test_001',
+          },
+        })
+        .expect(200);
+
+      assert.equal(response.body.cards?.[0]?.card_type, 'routine');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.type, 'routine_structured');
+      assert.equal(response.body.cards?.[0]?.sections?.[0]?.routine_id?.startsWith('routine_'), true);
+      assert.equal(response.body.next_actions?.[0]?.target_skill_id, 'routine.intake_products');
+    },
+  );
+});
+
 test('/v1/chat delegates chip.action.dupe_compare to v2 and rejects non-canonical anchor/targets payloads', async () => {
   await withEnv(
     {
