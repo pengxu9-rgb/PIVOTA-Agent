@@ -522,12 +522,26 @@ test('extractExistingProducts: skips empty product entries', () => {
 
 test('extractRoutineProducts: extracts am/pm/notes', () => {
   const rp = extractRoutineProducts({
-    am: [{ step: 'cleanser', product: 'CeraVe Cleanser' }],
-    pm: [{ step: 'treatment', product: 'Retinol Serum' }],
+    am: [{ step: 'cleanser', product: 'CeraVe Cleanser', product_id: 'PID_1' }],
+    pm: [{ step: 'face_oil', product: 'Retinol Face Oil', step_label: 'Night oil' }],
     notes: 'EViDenS mask at night',
   });
   assert.equal(rp.am.length, 1);
   assert.equal(rp.pm.length, 1);
+  assert.deepEqual(rp.am[0], {
+    order: 1,
+    step: 'cleanser',
+    step_group: 'cleanser',
+    product: 'CeraVe Cleanser',
+    product_id: 'PID_1',
+  });
+  assert.deepEqual(rp.pm[0], {
+    order: 1,
+    step: 'face_oil',
+    step_group: 'oil',
+    step_label: 'Night oil',
+    product: 'Retinol Face Oil',
+  });
   assert.equal(rp.notes, 'EViDenS mask at night');
 });
 

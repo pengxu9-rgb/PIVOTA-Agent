@@ -158,7 +158,14 @@ test('vision prompt: fail grade says return NO findings', () => {
 // ---------------------------------------------------------------------------
 
 test('report prompt: EN contains structured separation and routine step rules', () => {
-  const bundle = buildSkinReportPromptBundle({ language: 'en-US', dto: { quality: { grade: 'pass' } } });
+  const bundle = buildSkinReportPromptBundle({
+    language: 'en-US',
+    dto: {
+      quality: { grade: 'pass' },
+      routine_summary: { cleanser_freq: '1/day' },
+      routine_products: { am: [{ order: 1, step: 'essence', step_group: 'essence', product: 'Ferment essence' }], pm: [], notes: null },
+    },
+  });
   assert.ok(bundle.userPrompt.includes('[OUTPUT_CONTRACT]'));
   assert.ok(bundle.userPrompt.includes('[HARD_RULES]'));
   assert.ok(bundle.userPrompt.includes('Separation rule'));
@@ -166,6 +173,8 @@ test('report prompt: EN contains structured separation and routine step rules', 
   assert.ok(bundle.userPrompt.includes('two_week_focus'));
   assert.ok(bundle.userPrompt.includes('findings'));
   assert.ok(bundle.userPrompt.includes('guidance_brief'));
+  assert.ok(bundle.userPrompt.includes('routine_summary_json'));
+  assert.ok(bundle.userPrompt.includes('routine_products_json'));
 });
 
 test('report prompt: CN contains structured separation and findings rules', () => {

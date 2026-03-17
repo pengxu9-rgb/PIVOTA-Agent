@@ -84,6 +84,77 @@ function summarizeRoutineActives(routineCandidate) {
   return Array.from(found).slice(0, 8);
 }
 
+function summarizeRoutine(routineCandidate) {
+  const raw = typeof routineCandidate === 'string'
+    ? routineCandidate
+    : routineCandidate && typeof routineCandidate === 'object'
+      ? JSON.stringify(routineCandidate)
+      : '';
+  const text = String(raw || '').toLowerCase();
+  const cleanser_freq = /2x|twice|2\/day|早晚|morning.*night|am.*pm/.test(text)
+    ? '1-2/day'
+    : /cleanser|cleanse|洗面|洁面/.test(text)
+      ? '1/day'
+      : 'unknown';
+  const moisturizer = /moistur|cream|lotion|保湿|面霜/.test(text) ? 'yes' : text ? 'unknown' : 'unknown';
+  const sunscreen = /spf|sunscreen|防晒/.test(text) ? 'yes' : text ? 'unknown' : 'unknown';
+  return {
+    cleanser_freq,
+    moisturizer,
+    sunscreen,
+    actives: summarizeRoutineActives(routineCandidate).slice(0, 4),
+  };
+}
+
+function normalizeRoutinePromptStep(rawStep) {
+  const token = String(rawStep || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+  if (!token) return 'other';
+  if (token === 'sunscreen') return 'spf';
+  if (token === 'eyecream') return 'eye_cream';
+  if (token === 'faceoil') return 'face_oil';
+  if (token === 'spottreatment') return 'spot_treatment';
+  return token;
+}
+
+function mapRoutinePromptStepGroup(step) {
+  const token = normalizeRoutinePromptStep(step);
+  if (token === 'spf') return 'sunscreen';
+  if (token === 'face_oil' || token === 'oil') return 'oil';
+  if (token === 'ampoule') return 'serum';
+  if (token === 'spot_treatment') return 'treatment';
+  if (token === 'eye_cream') return 'moisturizer';
+  return token || 'other';
+}
+
+function extractRoutineProducts(routineCandidate) {
+  if (!routineCandidate || typeof routineCandidate !== 'object' || Array.isArray(routineCandidate)) return null;
+  const mapSlot = (value) => (Array.isArray(value) ? value : []);
+  const mapStep = (entry, index) => {
+    if (!entry || typeof entry !== 'object') return null;
+    const step = normalizeRoutinePromptStep(entry.step);
+    const product = String(entry.product || '').trim();
+    const stepLabel = clampText(entry.step_label || entry.stepLabel || entry.original_step_label || entry.originalStepLabel, 120);
+    if (!step || !product) return null;
+    return {
+      order: index + 1,
+      step,
+      step_group: mapRoutinePromptStepGroup(step),
+      ...(stepLabel ? { step_label: stepLabel } : {}),
+      product: product.slice(0, 200),
+      ...(clampText(entry.product_id || entry.productId, 120) ? { product_id: clampText(entry.product_id || entry.productId, 120) } : {}),
+      ...(clampText(entry.sku_id || entry.skuId, 120) ? { sku_id: clampText(entry.sku_id || entry.skuId, 120) } : {}),
+    };
+  };
+  const am = mapSlot(routineCandidate.am).map((entry, index) => mapStep(entry, index)).filter(Boolean).slice(0, 8);
+  const pm = mapSlot(routineCandidate.pm).map((entry, index) => mapStep(entry, index)).filter(Boolean).slice(0, 8);
+  const notes = clampText(routineCandidate.notes, 800) || null;
+  return am.length || pm.length || notes ? { am, pm, notes } : null;
+}
+
 function normalizeLang(language) {
   const token = String(language || '').trim().toLowerCase();
   if (token === 'cn' || token === 'zh-cn' || token === 'zh') return 'zh-CN';
@@ -200,6 +271,7 @@ function buildReportCanonicalPrompt({ dto } = {}) {
       'decision rubric:',
       '- summary_focus is a recommendation only; downstream deterministic adjudication may refine the final priority.',
       '- Base your reasoning on structured vision_cues and deterministic_signals, not on free-text narrative summaries.',
+      '- When routine_products or routine_summary are present, use them as the routine grounding layer instead of compressing everything into routine_actives.',
       '- routine_steps must be grounded in linked_cues.',
       '- watchouts and two_week_focus must stay conservative and actionable.',
       'hard constraints:',
@@ -234,6 +306,7 @@ function buildDeepeningCanonicalPrompt({ dto } = {}) {
       'decision rubric:',
       '- phase must match the conversation stage.',
       '- question_intent must choose the single best next question intent for the given phase.',
+      '- When routine_products or routine_summary are present, use them as the primary routine context rather than relying only on routine_actives.',
       'hard constraints:',
       '- English-only canonical semantics.',
       '- No free-form narrative.',
@@ -312,6 +385,9 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
   const version = normalizePromptVersion(promptVersion, SKIN_REPORT_MAINLINE_PROMPT_VERSION);
   if (isSkinPromptV3(version)) return buildReportCanonicalPrompt({ dto });
   const qRule = qualityGradeInstruction(dto, lang);
+  const d = dto && typeof dto === 'object' ? dto : {};
+  const routineSummaryStr = JSON.stringify(d.routine_summary || {});
+  const routineProductsStr = JSON.stringify(d.routine_products || null);
   if (lang === 'zh-CN') {
     return {
       promptVersion: version,
@@ -369,6 +445,8 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
         '',
         '[INPUT_CONTEXT]',
         qRule,
+        `routine_summary_json: ${routineSummaryStr}`,
+        `routine_products_json: ${routineProductsStr}`,
         `dto: ${JSON.stringify(dto || {})}`,
         '[/INPUT_CONTEXT]',
       ].filter(Boolean).join('\n'),
@@ -430,6 +508,8 @@ function buildSkinReportPromptBundle({ language, dto, promptVersion } = {}) {
       '',
       '[INPUT_CONTEXT]',
       qRule,
+      `routine_summary_json: ${routineSummaryStr}`,
+      `routine_products_json: ${routineProductsStr}`,
       `dto: ${JSON.stringify(dto || {})}`,
       '[/INPUT_CONTEXT]',
     ].filter(Boolean).join('\n'),
@@ -469,6 +549,8 @@ function buildSkinReportPrompt({
     dto: {
       profile: compactProfile(profileSummary),
       recent_logs_n: Array.isArray(recentLogsSummary) ? recentLogsSummary.length : 0,
+      routine_summary: summarizeRoutine(routineCandidate),
+      routine_products: extractRoutineProducts(routineCandidate),
       routine_actives: summarizeRoutineActives(routineCandidate),
       photo_quality: photoQuality && typeof photoQuality === 'object'
         ? { grade: photoQuality.grade || 'unknown', reasons: Array.isArray(photoQuality.reasons) ? photoQuality.reasons.slice(0, 6) : [] }
@@ -486,6 +568,8 @@ function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
   if (isSkinDeepeningV2(version)) return buildDeepeningCanonicalPrompt({ dto });
   const d = dto && typeof dto === 'object' ? dto : {};
   const profileStr = JSON.stringify(d.profile || {});
+  const routineSummaryStr = JSON.stringify(d.routine_summary || {});
+  const routineProductsStr = JSON.stringify(d.routine_products || null);
   const phaseStr = String(d.phase || 'photo_optin');
   const photoChoice = String(d.photo_choice || 'unknown');
   const productsSubmitted = Boolean(d.products_submitted);
@@ -558,6 +642,8 @@ function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
         `profile: ${profileStr}`,
         `photo_choice: ${photoChoice}`,
         `products_submitted: ${productsSubmitted}`,
+        `routine_summary_json: ${routineSummaryStr}`,
+        `routine_products_json: ${routineProductsStr}`,
         routineActives ? `routine_actives: ${routineActives}` : '',
         reactionsStr ? `reactions_so_far: ${reactionsStr}` : '',
         '[/INPUT_CONTEXT]',
@@ -630,6 +716,8 @@ function buildSkinDeepeningPromptBundle({ language, dto, promptVersion } = {}) {
       `profile: ${profileStr}`,
       `photo_choice: ${photoChoice}`,
       `products_submitted: ${productsSubmitted}`,
+      `routine_summary_json: ${routineSummaryStr}`,
+      `routine_products_json: ${routineProductsStr}`,
       routineActives ? `routine_actives: ${routineActives}` : '',
       reactionsStr ? `reactions_so_far: ${reactionsStr}` : '',
       '[/INPUT_CONTEXT]',

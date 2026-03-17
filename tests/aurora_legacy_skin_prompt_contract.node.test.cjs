@@ -54,6 +54,8 @@ test('legacy skin report mainline prompt uses explicit hardened version and stru
   assert.match(bundle.userPrompt, /\[FORBIDDEN_BEHAVIOR\]/);
   assert.match(bundle.userPrompt, /two_week_focus/i);
   assert.match(bundle.userPrompt, /next_step_options/i);
+  assert.match(bundle.userPrompt, /routine_summary_json:/i);
+  assert.match(bundle.userPrompt, /routine_products_json:/i);
 });
 
 test('legacy skin report canonical v3 path remains unchanged when explicitly requested', () => {
@@ -104,6 +106,8 @@ test('legacy skin deepening mainline prompt uses explicit hardened version and p
   assert.match(bundle.userPrompt, /Current phase = reactions/i);
   assert.match(bundle.userPrompt, /\[MISSING_DATA_POLICY\]/);
   assert.match(bundle.userPrompt, /\[FORBIDDEN_BEHAVIOR\]/);
+  assert.match(bundle.userPrompt, /routine_summary_json:/i);
+  assert.match(bundle.userPrompt, /routine_products_json:/i);
 });
 
 test('legacy skin deepening canonical v2 path remains unchanged when explicitly requested', () => {

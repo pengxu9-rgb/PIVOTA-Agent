@@ -23,6 +23,11 @@ test('normalizeStep: preserves product_id and sku_id', () => {
   assert.deepEqual(result, { step: 'spf', product: 'SPF 50', product_id: 'P1', sku_id: 'S1' });
 });
 
+test('normalizeStep: preserves step_label when provided', () => {
+  const result = normalizeStep({ step: 'other', product: 'Custom peptide mist', step_label: 'Peptide mist' });
+  assert.deepEqual(result, { step: 'other', product: 'Custom peptide mist', step_label: 'Peptide mist' });
+});
+
 test('normalizeStep: null for missing step', () => {
   assert.equal(normalizeStep({ step: '', product: 'X' }), null);
 });
@@ -152,6 +157,15 @@ test('normalizeCurrentRoutineToV2: v2 → returned as-is (with step normalizatio
   assert.equal(result.schema_version, SCHEMA_VERSION);
   assert.equal(result.am[0].product_id, 'P1');
   assert.equal(result.notes, 'Added retinol');
+});
+
+test('normalizeCurrentRoutineToV2: preserves step_label on v2 entries', () => {
+  const result = normalizeCurrentRoutineToV2({
+    schema_version: 'aurora.routine_intake.v2',
+    am: [{ step: 'other', product: 'Custom peptide mist', step_label: 'Peptide mist' }],
+    pm: [],
+  });
+  assert.equal(result.am[0].step_label, 'Peptide mist');
 });
 
 test('normalizeCurrentRoutineToV2: v2 empty am/pm with notes → kept', () => {

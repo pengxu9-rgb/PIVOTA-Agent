@@ -333,22 +333,57 @@ function summarizeRoutine(routineCandidate) {
   };
 }
 
+function normalizeRoutineProductStep(rawStep) {
+  const token = String(rawStep || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+  if (!token) return 'other';
+  if (token === 'sunscreen' || token === 'sun_screen') return 'spf';
+  if (token === 'eyecream') return 'eye_cream';
+  if (token === 'faceoil') return 'face_oil';
+  if (token === 'spottreatment') return 'spot_treatment';
+  return token;
+}
+
+function mapRoutineStepGroup(step) {
+  const token = normalizeRoutineProductStep(step);
+  if (token === 'spf' || token === 'sunscreen') return 'sunscreen';
+  if (token === 'face_oil' || token === 'oil') return 'oil';
+  if (token === 'ampoule') return 'serum';
+  if (token === 'spot_treatment') return 'treatment';
+  if (token === 'eye_cream') return 'moisturizer';
+  return token || 'other';
+}
+
 function extractRoutineProducts(routineCandidate) {
   if (!routineCandidate || typeof routineCandidate !== 'object' || Array.isArray(routineCandidate)) return null;
   const amSteps = Array.isArray(routineCandidate.am) ? routineCandidate.am : [];
   const pmSteps = Array.isArray(routineCandidate.pm) ? routineCandidate.pm : [];
   if (!amSteps.length && !pmSteps.length) return null;
 
-  const mapStep = (entry) => {
+  const mapStep = (entry, index) => {
     if (!entry || typeof entry !== 'object') return null;
-    const step = String(entry.step || '').trim();
+    const step = normalizeRoutineProductStep(entry.step);
+    const stepLabel = clampText(entry.step_label || entry.stepLabel || entry.original_step_label || entry.originalStepLabel, 120);
     const product = String(entry.product || '').trim();
     if (!step || !product) return null;
-    return { step, product: product.slice(0, 200) };
+    const productId = clampText(entry.product_id || entry.productId, 120);
+    const skuId = clampText(entry.sku_id || entry.skuId, 120);
+    return {
+      order: index + 1,
+      step,
+      step_group: mapRoutineStepGroup(step),
+      ...(stepLabel ? { step_label: stepLabel } : {}),
+      product: product.slice(0, 200),
+      ...(productId ? { product_id: productId } : {}),
+      ...(skuId ? { sku_id: skuId } : {}),
+    };
   };
 
-  const am = amSteps.map(mapStep).filter(Boolean).slice(0, 8);
-  const pm = pmSteps.map(mapStep).filter(Boolean).slice(0, 8);
+  const am = amSteps.map((entry, index) => mapStep(entry, index)).filter(Boolean).slice(0, 8);
+  const pm = pmSteps.map((entry, index) => mapStep(entry, index)).filter(Boolean).slice(0, 8);
   const notes = String(routineCandidate.notes || '').trim().slice(0, 800) || null;
 
   return am.length || pm.length || notes ? { am, pm, notes } : null;
@@ -508,11 +543,14 @@ function buildDeepeningSignalsDto({
   twoWeekFocus,
   qualityObject,
 } = {}) {
+  const routineProducts = extractRoutineProducts(routineCandidate);
   const dtoBase = {
     phase: typeof phase === 'string' && phase.trim() ? phase.trim() : 'photo_optin',
     question_intent: typeof questionIntent === 'string' && questionIntent.trim() ? questionIntent.trim() : 'photo_upload',
     photo_choice: typeof photoChoice === 'string' && photoChoice.trim() ? photoChoice.trim() : 'unknown',
     products_submitted: productsSubmitted === true,
+    routine_summary: summarizeRoutine(routineCandidate),
+    ...(routineProducts ? { routine_products: routineProducts } : {}),
     routine_actives: summarizeRoutineActives(routineCandidate).slice(0, 4),
     reaction_flags: extractReactionFlags(reactions),
     summary_priority: typeof summaryPriority === 'string' && summaryPriority.trim() ? summaryPriority.trim() : 'mixed',

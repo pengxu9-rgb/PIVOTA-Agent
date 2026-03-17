@@ -60,13 +60,29 @@ function normalizeStep(step) {
   if (!token) return 'other';
   if (/(spf|sunscreen|sun screen|uv|防晒)/i.test(token)) return 'sunscreen';
   if (/(cleanser|cleanse|face wash|洁面|洗面|清洁)/i.test(token)) return 'cleanser';
+  if (/(eye[\s_-]*cream|eye[\s_-]*serum|眼霜|眼部精华)/i.test(token)) return 'eye_cream';
   if (/(moistur|cream|lotion|balm|gel|面霜|乳液|保湿|修护)/i.test(token)) return 'moisturizer';
   if (/(toner|mist|softener|化妆水|爽肤水|喷雾)/i.test(token)) return 'toner';
   if (/(essence|精华水)/i.test(token)) return 'essence';
+  if (/(ampoule|ampule|安瓶)/i.test(token)) return 'ampoule';
+  if (/(serum|booster|精华)(?!水)/i.test(token)) return 'serum';
+  if (/(spot[\s_-]*treatment|spot[\s_-]*gel|acne[\s_-]*treatment|局部点涂|点痘)/i.test(token)) return 'spot_treatment';
+  if (/(face[\s_-]*oil|facial[\s_-]*oil|护肤油|面油)/i.test(token)) return 'face_oil';
+  if (/(mask|sheet mask|sleeping mask|面膜|冻膜)/i.test(token)) return 'mask';
   if (/(serum|ampoule|booster|retinol|retinoid|acid|aha|bha|azelaic|niacinamide|vitamin c|peptide|benzoyl|精华|活性|酸|维a|烟酰胺|壬二酸|过氧化苯甲酰)/i.test(token)) {
     return 'treatment';
   }
   return token;
+}
+
+function mapRoutineStepGroup(step) {
+  const normalized = normalizeStep(step);
+  if (normalized === 'sunscreen') return 'sunscreen';
+  if (normalized === 'face_oil') return 'oil';
+  if (normalized === 'ampoule') return 'serum';
+  if (normalized === 'spot_treatment') return 'treatment';
+  if (normalized === 'eye_cream') return 'moisturizer';
+  return normalized;
 }
 
 function inferProductType(candidate) {
@@ -1314,7 +1330,8 @@ async function runRoutineAnalysisV2({
   const stageAInputProducts = prioritized.audited.map((candidate) => ({
     product_ref: candidate.product_ref,
     slot: normalizeSlot(candidate.slot),
-    original_step_label: normalizeStep(candidate.step),
+    original_step_label: asString(candidate.step_label) || normalizeStep(candidate.step),
+    step_group: mapRoutineStepGroup(candidate.step),
     input_label: asString(candidate.product_text),
     resolved_name_or_null: pickFirstTrimmed(candidate.parsed_product_hint && candidate.parsed_product_hint.display_name) || null,
     evidence_basis: buildEvidenceBasis(candidate),

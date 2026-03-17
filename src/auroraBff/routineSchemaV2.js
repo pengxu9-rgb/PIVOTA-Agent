@@ -4,7 +4,7 @@ const SCHEMA_VERSION = 'aurora.routine_intake.v2';
 const LEGACY_ENUM_VALUES = new Set(['none', 'basic', 'full', '']);
 
 /**
- * Normalize a single routine step entry to { step, product, product_id?, sku_id? }.
+ * Normalize a single routine step entry to { step, product, product_id?, sku_id?, step_label? }.
  * Returns null for invalid entries.
  */
 function normalizeStep(entry) {
@@ -15,6 +15,12 @@ function normalizeStep(entry) {
   const out = { step, product };
   if (entry.product_id) out.product_id = String(entry.product_id);
   if (entry.sku_id) out.sku_id = String(entry.sku_id);
+  const stepLabel = typeof entry.step_label === 'string'
+    ? entry.step_label.trim()
+    : typeof entry.stepLabel === 'string'
+      ? entry.stepLabel.trim()
+      : '';
+  if (stepLabel) out.step_label = stepLabel;
   return out;
 }
 

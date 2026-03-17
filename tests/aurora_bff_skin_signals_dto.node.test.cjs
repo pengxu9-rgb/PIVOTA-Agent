@@ -45,7 +45,16 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
       sensitivity: 'high',
       contraindications: ['pregnancy unknown'],
     },
-    routineCandidate: 'AM cleanser + SPF; PM cleanser + moisturizer',
+    routineCandidate: {
+      am: [
+        { step: 'cleanser', product: 'CeraVe Cleanser' },
+        { step: 'toner', product: 'Hydrating toner' },
+      ],
+      pm: [
+        { step: 'face_oil', product: 'Rosehip oil' },
+      ],
+      notes: 'keep it simple',
+    },
     photoQuality: { grade: 'pass', reasons: ['qc_passed'] },
     factLayer: {
       features: [{ observation: 'mild redness around cheeks', confidence: 'somewhat_sure' }],
@@ -65,6 +74,7 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
     'concern_rank',
     'deterministic_signals',
     'routine_summary',
+    'routine_products',
     'constraints',
     'open_questions',
     'photo_quality',
@@ -75,6 +85,31 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
   }
   assert.equal(keys.includes('lang'), false);
   assert.equal(keys.includes('locked_features_summary'), false);
+  assert.deepEqual(dto.routine_products, {
+    am: [
+      {
+        order: 1,
+        step: 'cleanser',
+        step_group: 'cleanser',
+        product: 'CeraVe Cleanser',
+      },
+      {
+        order: 2,
+        step: 'toner',
+        step_group: 'toner',
+        product: 'Hydrating toner',
+      },
+    ],
+    pm: [
+      {
+        order: 1,
+        step: 'face_oil',
+        step_group: 'oil',
+        product: 'Rosehip oil',
+      },
+    ],
+    notes: 'keep it simple',
+  });
   assert.deepEqual(
     dto.vision_cues,
     [
@@ -84,7 +119,7 @@ test('skin signals dto: report dto contains signals-only fields and remains comp
   );
 
   const size = Buffer.byteLength(JSON.stringify(dto), 'utf8');
-  assert.ok(size < 1400, `dto size too large: ${size}`);
+  assert.ok(size < 1900, `dto size too large: ${size}`);
 });
 
 test('skin signals dto: deepening dto removes locale/profile text and canonicalizes reactions/advice', () => {
@@ -95,7 +130,10 @@ test('skin signals dto: deepening dto removes locale/profile text and canonicali
     photoChoice: 'uploaded',
     productsSubmitted: true,
     profileSummary: { goals: ['calm redness'] },
-    routineCandidate: 'retinoid pm',
+    routineCandidate: {
+      am: [{ step: 'cleanser', product: 'Gentle cleanser' }],
+      pm: [{ step: 'serum', product: 'Retinoid serum' }],
+    },
     reactions: ['stinging', 'unknown', 'redness'],
     summaryPriority: 'barrier',
     watchouts: ['pause_if_stinging'],
@@ -106,6 +144,48 @@ test('skin signals dto: deepening dto removes locale/profile text and canonicali
   assert.equal('lang' in dto, false);
   assert.equal('profile' in dto, false);
   assert.equal('quality' in dto, false);
+  assert.equal(Array.isArray(dto.routine_products?.am), true);
+  assert.equal(dto.routine_summary?.actives?.includes('retinoid'), true);
   assert.deepEqual(dto.reaction_flags, ['stinging', 'redness']);
   assert.deepEqual(dto.suggested_advice_items, ['pause_if_stinging', 'track_redness']);
+});
+
+test('skin signals dto: input hash changes when routine products gain extra steps', () => {
+  const base = buildReportSignalsDto({
+    lang: 'EN',
+    diagnosisV1: null,
+    diagnosisPolicy: { uncertainty: false, detector_confidence_level: 'high' },
+    profileSummary: { goals: ['hydration'] },
+    routineCandidate: {
+      am: [{ step: 'cleanser', product: 'Gentle cleanser' }],
+      pm: [{ step: 'moisturizer', product: 'Barrier cream' }],
+    },
+    photoQuality: { grade: 'pass', reasons: [] },
+    factLayer: null,
+    visionCanonical: null,
+    imageBuffer: Buffer.from('same-image'),
+  });
+  const richer = buildReportSignalsDto({
+    lang: 'EN',
+    diagnosisV1: null,
+    diagnosisPolicy: { uncertainty: false, detector_confidence_level: 'high' },
+    profileSummary: { goals: ['hydration'] },
+    routineCandidate: {
+      am: [
+        { step: 'cleanser', product: 'Gentle cleanser' },
+        { step: 'toner', product: 'Hydrating toner' },
+        { step: 'essence', product: 'Ferment essence' },
+      ],
+      pm: [
+        { step: 'serum', product: 'Peptide serum' },
+        { step: 'face_oil', product: 'Rosehip oil' },
+      ],
+    },
+    photoQuality: { grade: 'pass', reasons: [] },
+    factLayer: null,
+    visionCanonical: null,
+    imageBuffer: Buffer.from('same-image'),
+  });
+
+  assert.notEqual(base.input_hash, richer.input_hash);
 });

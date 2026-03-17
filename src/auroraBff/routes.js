@@ -27776,7 +27776,15 @@ function normalizeRoutineIntakeStep(rawStep) {
   const token = String(rawStep || '').trim().toLowerCase();
   if (!token) return 'other';
   if (/(cleanser|cleanse|wash|face wash|洁面|洗面|清洁)/i.test(token)) return 'cleanser';
-  if (/(treatment|active|serum|essence|retinol|acid|bha|aha|niacinamide|vitamin c|精华|活性|酸|维a|维A|烟酰胺|壬二酸)/i.test(token)) return 'treatment';
+  if (/(toner|mist|softener|化妆水|爽肤水|喷雾)/i.test(token)) return 'toner';
+  if (/(essence|精华水)/i.test(token)) return 'essence';
+  if (/(serum|精华)(?!水)/i.test(token)) return 'serum';
+  if (/(ampoule|ampule|安瓶)/i.test(token)) return 'ampoule';
+  if (/(spot[\s_-]*treatment|spot[\s_-]*gel|acne[\s_-]*treatment|局部点涂|点痘)/i.test(token)) return 'spot_treatment';
+  if (/(eye[\s_-]*cream|eye[\s_-]*serum|眼霜|眼部精华)/i.test(token)) return 'eye_cream';
+  if (/(face[\s_-]*oil|facial[\s_-]*oil|护肤油|面油)/i.test(token)) return 'face_oil';
+  if (/(mask|sheet mask|sleeping mask|面膜|冻膜)/i.test(token)) return 'mask';
+  if (/(treatment|active|retinol|acid|bha|aha|niacinamide|vitamin c|精华|活性|酸|维a|维A|烟酰胺|壬二酸)/i.test(token)) return 'treatment';
   if (/(moistur|cream|lotion|gel|balm|面霜|乳液|保湿|修护霜|凝霜)/i.test(token)) return 'moisturizer';
   if (/(spf|sunscreen|sun screen|uv|防晒)/i.test(token)) return 'spf';
   return token;
@@ -27814,6 +27822,12 @@ function buildRoutineProductParsedHint(entry, { inputText = '', inputUrl = '', i
 
 function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
   const rowObj = isPlainObject(row) ? row : null;
+  const rawStepLabel = pickFirstTrimmed(
+    rowObj?.step_label,
+    rowObj?.stepLabel,
+    rowObj?.original_step_label,
+    rowObj?.originalStepLabel,
+  );
   const rawText = typeof row === 'string'
     ? row
     : pickFirstTrimmed(
@@ -27863,6 +27877,7 @@ function buildRoutineProductCandidateFromRow(row, { slot, step, rank }) {
   return {
     slot: normalizeRoutineIntakeSlot(slot),
     step: normalizeRoutineIntakeStep(step || rowObj?.step || ''),
+    ...(rawStepLabel ? { step_label: rawStepLabel.slice(0, 120) } : {}),
     rank: Number.isFinite(Number(rank)) ? Math.trunc(Number(rank)) : 0,
     product_text: productText || productUrl,
     product_url: productUrl,
@@ -27882,12 +27897,18 @@ function extractRoutineProductCandidatesForDeepScan(routineInput, { maxTotal = A
   const stepOrder = {
     cleanser: 0,
     toner: 1,
-    treatment: 2,
-    essence: 3,
-    moisturizer: 4,
-    spf: 5,
-    sunscreen: 5,
-    other: 9,
+    essence: 2,
+    serum: 3,
+    ampoule: 4,
+    treatment: 5,
+    spot_treatment: 6,
+    eye_cream: 7,
+    moisturizer: 8,
+    face_oil: 9,
+    mask: 10,
+    spf: 11,
+    sunscreen: 11,
+    other: 20,
   };
 
   const addCandidate = (candidate) => {
