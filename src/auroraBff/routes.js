@@ -51036,12 +51036,62 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestOverride: extractProfilePatchFromSession(parsed.data.session),
         includeAlternatives: false,
         logger,
-        recoTriggerSource: 'goal_driven',
-        entryType: 'direct',
-      });
-      const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
+	        recoTriggerSource: 'goal_driven',
+	        entryType: 'direct',
+	      });
+      let norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
         : normalizeRecoGenerate(null);
+      let matcherBundle = null;
+      let matcherFallbackUsed = false;
+      if (
+        AURORA_PRODUCT_MATCHER_ENABLED
+        && latestArtifact
+        && (!Array.isArray(norm?.payload?.recommendations) || norm.payload.recommendations.length === 0)
+      ) {
+        try {
+          const matcherPlan = buildIngredientPlan({ artifact: latestArtifact, profile: profile || {} });
+          const allowBundledSeedCatalog =
+            AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
+            && !DIAG_PRODUCT_CATALOG_PATH;
+          matcherBundle = buildProductRecommendationsBundle({
+            ingredientPlan: matcherPlan,
+            artifact: latestArtifact,
+            profile,
+            language: ctx.lang,
+            disallowTreatment: false,
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            allowDefaultSeedCatalog: allowBundledSeedCatalog,
+          });
+          const matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
+          if (Array.isArray(matcherPayload?.recommendations) && matcherPayload.recommendations.length > 0) {
+            const matcherRecommendationCount = matcherPayload.recommendations.length;
+            norm = {
+              payload: {
+                ...matcherPayload,
+                intent: 'reco_products',
+                profile: profileSummary,
+                source: 'artifact_matcher_v1',
+                mainline_status: 'ungrounded_success',
+                recommendation_meta: {
+                  source_mode: 'artifact_matcher',
+                  mainline_status: 'ungrounded_success',
+                  grounding_status: 'ungrounded',
+                  grounded_count: 0,
+                  ungrounded_count: matcherRecommendationCount,
+                },
+              },
+              field_missing: [],
+            };
+            matcherFallbackUsed = true;
+          }
+        } catch (matcherErr) {
+          logger?.warn(
+            { err: matcherErr && matcherErr.message ? matcherErr.message : String(matcherErr), request_id: ctx.request_id },
+            'aurora bff: direct reco matcher fallback failed',
+          );
+        }
+      }
       const baseContract =
         upstreamReco && upstreamReco.contract && typeof upstreamReco.contract === 'object'
           ? upstreamReco.contract
@@ -51200,7 +51250,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           eventData: buildRecoRequestedEventData({
             explicit: true,
             payload,
-            source: String(payload?.source || recoMeta.source_mode || 'catalog_grounded_v1'),
+            source: String(payload?.source || recoMeta.source_mode || (matcherFallbackUsed ? 'artifact_matcher_v1' : 'catalog_grounded_v1')),
             llmTraceRef,
             failureClass: upstreamReco && upstreamReco.llmFailureClass ? upstreamReco.llmFailureClass : '',
             upstreamFailureCode: upstreamReco?.upstreamFailureCode,

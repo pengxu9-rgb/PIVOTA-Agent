@@ -581,6 +581,8 @@ test('product matcher: filters avoid/risky products and returns explainable slot
   assert.equal(legacy.grounded_count, 0);
   assert.equal(legacy.ungrounded_count, legacy.recommendations.length);
   assert.equal(legacy.recommendations.every((row) => row && row.grounding_status === 'ungrounded'), true);
+  assert.equal(legacy.recommendations.every((row) => row && row.retrieval_source === 'artifact_matcher_v1'), true);
+  assert.equal(legacy.recommendations.every((row) => row && row.retrieval_reason === 'ingredient_plan_match'), true);
 });
 
 test('product matcher: default seed catalog is disabled unless explicitly allowed', (t) => {
@@ -686,6 +688,8 @@ test('product matcher: legacy payload de-duplicates repeated product ids across 
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(legacy.recommendations.every((row) => row && (row.slot === 'am' || row.slot === 'pm')), true);
   assert.equal(legacy.recommendations.every((row) => row && row.grounding_status === 'ungrounded'), true);
+  assert.equal(legacy.recommendations.every((row) => row && row.retrieval_source === 'artifact_matcher_v1'), true);
+  assert.equal(legacy.recommendations.every((row) => row && row.retrieval_reason === 'ingredient_plan_match'), true);
 });
 
 test('safety boundary: red-flag messages block recommendations', () => {

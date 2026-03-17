@@ -436,6 +436,8 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
       name: candidate.name,
       product_name: candidate.name,
       brand: candidate.brand || null,
+      retrieval_source: 'artifact_matcher_v1',
+      retrieval_reason: 'ingredient_plan_match',
       reasons: fitReasons.slice(0, 6),
       matched_ingredients: asArray(candidate.matched_ingredients),
       routine_slot: candidate.routine_slot,
@@ -451,6 +453,8 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
         grounding_status: 'ungrounded',
         reco_render_mode: 'editorial',
         recommendation_source: 'artifact_matcher_v1',
+        retrieval_source: 'artifact_matcher_v1',
+        retrieval_reason: 'ingredient_plan_match',
       },
       language: String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN',
     };
