@@ -20693,9 +20693,14 @@ function buildConfidenceNoticeCardPayload({
   details,
 } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
-  const rationale = Array.isArray(confidence && confidence.rationale) ? confidence.rationale : [];
+  const rationale = Array.isArray(confidence && confidence.rationale)
+    ? confidence.rationale
+      .map((value) => sanitizeRecoClientVisibleToken(value, { allowDefault: true }))
+      .filter(Boolean)
+    : [];
   const score = Number(confidence && confidence.score);
   const level = String(confidence && confidence.level || '').trim().toLowerCase() || confidenceLevelFromScoreV1(score);
+  const normalizedReason = sanitizeRecoClientVisibleToken(reason, { allowDefault: true }) || 'default';
   const messageByReason = {
     artifact_missing:
       lang === 'CN'
@@ -20746,14 +20751,14 @@ function buildConfidenceNoticeCardPayload({
   };
 
   return {
-    reason: reason || 'default',
+    reason: normalizedReason,
     severity,
     confidence: {
       score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0,
       level,
       rationale,
     },
-    message: messageByReason[reason] || messageByReason.default,
+    message: messageByReason[normalizedReason] || messageByReason.default,
     actions: Array.isArray(actions) ? actions : [],
     details: Array.isArray(details) ? details.slice(0, 6) : [],
   };
@@ -22297,7 +22302,7 @@ function inferCardGuardReasonFromEvents(events) {
 
 function normalizeRecoRequestedEventsForPrimaryReason(events, primaryReason) {
   const rows = Array.isArray(events) ? events : [];
-  const reasonToken = String(primaryReason || '').trim().toLowerCase();
+  const reasonToken = sanitizeRecoClientVisibleToken(primaryReason);
   const normalizedReason = reasonToken === 'timeout_degraded'
     ? 'timeout_degraded'
     : reasonToken === 'artifact_missing'
@@ -22317,7 +22322,7 @@ function normalizeRecoRequestedEventsForPrimaryReason(events, primaryReason) {
     hasRecoRequested = true;
     const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? { ...evt.data } : {};
     if (normalizedReason === 'artifact_missing') {
-      const previousReason = String(data.reason || '').trim().toLowerCase();
+      const previousReason = sanitizeRecoClientVisibleToken(data.reason);
       if (previousReason && previousReason !== 'artifact_missing') {
         data.telemetry_reason = previousReason;
       }
@@ -22336,6 +22341,17 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
   const rows = Array.isArray(events) ? events : [];
   const contractObj = isPlainObject(contract) ? contract : {};
   const normalized = normalizeRecoRequestedEventsForPrimaryReason(rows, contractObj.primary_failure_reason);
+  const resolvedFailure = resolveRecoFailureReasonContract({
+    contract: contractObj,
+    allowEmpty:
+      !sanitizeRecoClientVisibleToken(contractObj.primary_failure_reason)
+      && !sanitizeRecoClientVisibleToken(contractObj.surface_reason)
+      && !sanitizeRecoClientVisibleToken(contractObj.products_empty_reason)
+      && String(contractObj.upstream_status || '').trim().toLowerCase() === 'ok',
+  });
+  const failureClass = sanitizeRecoClientVisibleFailureClass(contractObj.failure_class);
+  const effectiveFailureClass = sanitizeRecoClientVisibleFailureClass(contractObj.effective_failure_class);
+  const failureOrigin = sanitizeRecoClientVisibleFailureOrigin(contractObj.failure_origin);
   const next = [];
   let hasRecoRequested = normalized.hasRecoRequested;
   for (const evt of normalized.events) {
@@ -22351,25 +22367,28 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     if (eventData && typeof eventData === 'object' && !Array.isArray(eventData)) {
       Object.assign(data, eventData);
     }
-    if (contractObj.primary_failure_reason) {
-      const previousReason = String(data.reason || '').trim().toLowerCase();
-      if (previousReason && previousReason !== String(contractObj.primary_failure_reason || '').trim().toLowerCase() && !pickFirstTrimmed(data.telemetry_reason)) {
+    const previousReason = sanitizeRecoClientVisibleToken(data.reason);
+    const previousTelemetryReason = sanitizeRecoClientVisibleToken(data.telemetry_reason);
+    delete data.reason;
+    delete data.telemetry_reason;
+    delete data.failure_class;
+    delete data.effective_failure_class;
+    delete data.failure_origin;
+    delete data.products_empty_reason;
+    delete data.surface_reason;
+    if (previousTelemetryReason) {
+      data.telemetry_reason = previousTelemetryReason;
+    }
+    if (resolvedFailure.primaryReason) {
+      if (previousReason && previousReason !== resolvedFailure.primaryReason && !previousTelemetryReason) {
         data.telemetry_reason = previousReason;
       }
-      data.reason = contractObj.primary_failure_reason;
-    } else {
-      delete data.reason;
+      data.reason = resolvedFailure.primaryReason;
     }
-    if (contractObj.telemetry_failure_reason) {
-      data.telemetry_reason = contractObj.telemetry_failure_reason;
-    } else {
-      delete data.telemetry_reason;
-    }
-    if (contractObj.failure_class) {
-      data.failure_class = contractObj.failure_class;
-    } else {
-      delete data.failure_class;
-    }
+    if (resolvedFailure.telemetryReason) data.telemetry_reason = resolvedFailure.telemetryReason;
+    if (failureClass) data.failure_class = failureClass;
+    if (effectiveFailureClass) data.effective_failure_class = effectiveFailureClass;
+    if (failureOrigin) data.failure_origin = failureOrigin;
     if (contractObj.source && !pickFirstTrimmed(data.source)) {
       data.source = contractObj.source;
     }
@@ -22403,16 +22422,8 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     } else {
       delete data.catalog_skip_reason;
     }
-    if (contractObj.products_empty_reason) {
-      data.products_empty_reason = contractObj.products_empty_reason;
-    } else {
-      delete data.products_empty_reason;
-    }
-    if (contractObj.surface_reason) {
-      data.surface_reason = contractObj.surface_reason;
-    } else {
-      delete data.surface_reason;
-    }
+    if (resolvedFailure.productsEmptyReason) data.products_empty_reason = resolvedFailure.productsEmptyReason;
+    if (resolvedFailure.surfaceReason) data.surface_reason = resolvedFailure.surfaceReason;
     if (contractObj.upstream_status) {
       data.upstream_status = contractObj.upstream_status;
     } else {
@@ -22426,21 +22437,33 @@ function applyRecoContractToRecoRequestedEvents(events, contract, { ctx = null, 
     next.push({ ...evt, data });
   }
   if (!hasRecoRequested && emitIfMissing) {
+    const sanitizedEventData = eventData && typeof eventData === 'object' && !Array.isArray(eventData)
+      ? { ...eventData }
+      : {};
+    delete sanitizedEventData.reason;
+    delete sanitizedEventData.telemetry_reason;
+    delete sanitizedEventData.failure_class;
+    delete sanitizedEventData.effective_failure_class;
+    delete sanitizedEventData.failure_origin;
+    delete sanitizedEventData.products_empty_reason;
+    delete sanitizedEventData.surface_reason;
     const data = {
       explicit: true,
-      ...(eventData && typeof eventData === 'object' && !Array.isArray(eventData) ? eventData : {}),
+      ...sanitizedEventData,
       ...(contractObj.source ? { source: contractObj.source } : {}),
       ...(contractObj.source_mode ? { source_mode: contractObj.source_mode } : {}),
-      ...(contractObj.primary_failure_reason ? { reason: contractObj.primary_failure_reason } : {}),
-      ...(contractObj.telemetry_failure_reason ? { telemetry_reason: contractObj.telemetry_failure_reason } : {}),
-      ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
+      ...(resolvedFailure.primaryReason ? { reason: resolvedFailure.primaryReason } : {}),
+      ...(resolvedFailure.telemetryReason ? { telemetry_reason: resolvedFailure.telemetryReason } : {}),
+      ...(failureClass ? { failure_class: failureClass } : {}),
+      ...(effectiveFailureClass ? { effective_failure_class: effectiveFailureClass } : {}),
+      ...(failureOrigin ? { failure_origin: failureOrigin } : {}),
       ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
       ...(contractObj.grounding_status ? { grounding_status: contractObj.grounding_status } : {}),
       ...(Number.isFinite(Number(contractObj.grounded_count)) ? { grounded_count: Number(contractObj.grounded_count) } : {}),
       ...(Number.isFinite(Number(contractObj.ungrounded_count)) ? { ungrounded_count: Number(contractObj.ungrounded_count) } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
-      ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
-      ...(contractObj.surface_reason ? { surface_reason: contractObj.surface_reason } : {}),
+      ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
+      ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
     };
@@ -22983,6 +23006,19 @@ function normalizeRecoProductsEmptyReason(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function sanitizeRecoClientVisibleToken(value, { allowDefault = false } = {}) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token === 'none') return '';
+  if (!allowDefault && token === 'default') return '';
+  return token;
+}
+
+function hasMeaningfulRecoEffectiveFailureClass(value) {
+  const token = normalizeRecoEffectiveFailureClass(value);
+  return Boolean(token && token !== 'none');
+}
+
 function normalizeRecoEffectiveFailureClass(value) {
   const token = String(value || '').trim().toLowerCase();
   if (
@@ -23035,6 +23071,85 @@ function normalizeRecoTargetFidelityLevel(value) {
   return '';
 }
 
+function sanitizeRecoClientVisibleFailureClass(value) {
+  const effective = normalizeRecoEffectiveFailureClass(value);
+  if (effective && effective !== 'none') return effective;
+  return normalizeRecoFailureClass(value);
+}
+
+function sanitizeRecoClientVisibleFailureOrigin(value) {
+  const token = normalizeRecoFailureOrigin(value);
+  return token === 'none' ? '' : token;
+}
+
+function resolveRecoFailureReasonContract({ payload, contract, fallback = 'artifact_missing', allowEmpty = false } = {}) {
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const contractObj = isPlainObject(contract) ? contract : {};
+  const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const primaryReason = sanitizeRecoClientVisibleToken(
+    pickFirstTrimmed(contractObj.primary_failure_reason, meta.primary_failure_reason),
+  );
+  const surfaceReason = sanitizeRecoClientVisibleToken(
+    pickFirstTrimmed(contractObj.surface_reason, meta.surface_reason),
+  );
+  const telemetryReason = sanitizeRecoClientVisibleToken(
+    pickFirstTrimmed(contractObj.telemetry_failure_reason, meta.telemetry_failure_reason),
+  );
+  const productsEmptyReasonRaw = normalizeRecoProductsEmptyReason(
+    pickFirstTrimmed(
+      payloadObj.products_empty_reason,
+      contractObj.products_empty_reason,
+      meta.products_empty_reason,
+    ),
+  );
+  const productsEmptyReason = sanitizeRecoClientVisibleToken(productsEmptyReasonRaw);
+  if (surfaceReason) {
+    return {
+      userFacingReason: surfaceReason,
+      primaryReason: primaryReason || surfaceReason,
+      telemetryReason,
+      surfaceReason,
+      productsEmptyReason: productsEmptyReason || surfaceReason,
+    };
+  }
+  if (productsEmptyReasonRaw === 'strict_filter_fallback_only') {
+    return {
+      userFacingReason: 'strict_filter_dropped',
+      primaryReason: primaryReason || 'strict_filter_dropped',
+      telemetryReason,
+      surfaceReason: 'strict_filter_dropped',
+      productsEmptyReason: 'strict_filter_fallback_only',
+    };
+  }
+  if (productsEmptyReason) {
+    return {
+      userFacingReason: productsEmptyReason,
+      primaryReason: primaryReason || productsEmptyReason,
+      telemetryReason,
+      surfaceReason: productsEmptyReason,
+      productsEmptyReason,
+    };
+  }
+  const fallbackReason = primaryReason || sanitizeRecoClientVisibleToken(fallback);
+  if (!fallbackReason && allowEmpty) {
+    return {
+      userFacingReason: '',
+      primaryReason: '',
+      telemetryReason,
+      surfaceReason: '',
+      productsEmptyReason: '',
+    };
+  }
+  const canonicalFallbackReason = fallbackReason || 'artifact_missing';
+  return {
+    userFacingReason: canonicalFallbackReason,
+    primaryReason: canonicalFallbackReason,
+    telemetryReason,
+    surfaceReason: canonicalFallbackReason,
+    productsEmptyReason: canonicalFallbackReason,
+  };
+}
+
 function getRecoMetaScalar(meta, key) {
   if (!isPlainObject(meta)) return null;
   if (typeof meta[key] === 'boolean') return meta[key];
@@ -23067,7 +23182,7 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
     return null;
   };
   const terminalSuccessRaw = getRecoMetaScalar(meta, 'terminal_success');
-  if (!stepAwareSignal && !normalizeRecoEffectiveFailureClass(fallbackObj.effective_failure_class || fallbackObj.failure_class)) {
+  if (!stepAwareSignal && !hasMeaningfulRecoEffectiveFailureClass(fallbackObj.effective_failure_class || fallbackObj.failure_class)) {
     return {
       effectiveFailureClass: null,
       failureOrigin: 'none',
@@ -23081,14 +23196,17 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
       postGuardrailCount: null,
     };
   }
+  const normalizedEffectiveFailureClass = normalizeRecoEffectiveFailureClass(
+    pickFirstTrimmed(
+      typeof meta.effective_failure_class === 'string' ? meta.effective_failure_class : '',
+      typeof fallbackObj.effective_failure_class === 'string' ? fallbackObj.effective_failure_class : '',
+      typeof fallbackObj.failure_class === 'string' ? fallbackObj.failure_class : '',
+    ),
+  );
   return {
-    effectiveFailureClass: normalizeRecoEffectiveFailureClass(
-      pickFirstTrimmed(
-        typeof meta.effective_failure_class === 'string' ? meta.effective_failure_class : '',
-        typeof fallbackObj.effective_failure_class === 'string' ? fallbackObj.effective_failure_class : '',
-        typeof fallbackObj.failure_class === 'string' ? fallbackObj.failure_class : '',
-      ),
-    ) || null,
+    effectiveFailureClass: hasMeaningfulRecoEffectiveFailureClass(normalizedEffectiveFailureClass)
+      ? normalizedEffectiveFailureClass
+      : null,
     failureOrigin: normalizeRecoFailureOrigin(
       pickFirstTrimmed(
         typeof meta.failure_origin === 'string' ? meta.failure_origin : '',
@@ -23241,7 +23359,8 @@ function resolveRecoCentralOutcome({
   sourceMode = '',
   groundingStatus = '',
 } = {}) {
-  const effective = normalizeRecoEffectiveFailureClass(effectiveFailureClass) || 'none';
+  const normalizedEffective = normalizeRecoEffectiveFailureClass(effectiveFailureClass);
+  const effective = normalizedEffective === 'none' ? '' : normalizedEffective;
   const origin = normalizeRecoFailureOrigin(failureOrigin);
   const normalizedSuccessMode = normalizeRecoSuccessMode(successMode)
     || (terminalSuccess ? (normalizeRecoPresentationMode(presentationMode) === 'deterministic_degraded' ? 'degraded_success' : 'full_success') : '');
@@ -23303,7 +23422,7 @@ function resolveRecoCentralOutcome({
     telemetry_reason: telemetryReason,
     products_empty_reason: effective || 'artifact_missing',
     user_fixable: false,
-    effective_failure_class: effective,
+    effective_failure_class: effective || 'none',
     failure_origin: origin,
     presentation_mode: normalizedPresentationMode || null,
     success_mode: normalizedSuccessMode || null,
@@ -23313,14 +23432,6 @@ function resolveRecoCentralOutcome({
 function deriveRecoEmptyReason(payload, contract) {
   const payloadObj = isPlainObject(payload) ? payload : {};
   const contractObj = isPlainObject(contract) ? contract : {};
-  const surfaceReason = pickFirstTrimmed(
-    contractObj.surface_reason,
-    payloadObj.recommendation_meta && payloadObj.recommendation_meta.surface_reason,
-  );
-  if (surfaceReason) return surfaceReason;
-  const productsEmptyReason = normalizeRecoProductsEmptyReason(
-    payloadObj.products_empty_reason || contractObj.products_empty_reason,
-  );
   const groundedCount = Number.isFinite(Number(payloadObj.grounded_count))
     ? Number(payloadObj.grounded_count)
     : Number.isFinite(Number(contractObj.grounded_count))
@@ -23332,9 +23443,7 @@ function deriveRecoEmptyReason(payload, contract) {
       ? Number(contractObj.ungrounded_count)
       : 0;
   if (groundedCount > 0 || ungroundedCount > 0) return '';
-  if (productsEmptyReason && productsEmptyReason !== 'strict_filter_fallback_only') return productsEmptyReason;
-  if (productsEmptyReason === 'strict_filter_fallback_only') return 'strict_filter_dropped';
-  return pickFirstTrimmed(contractObj.primary_failure_reason, 'artifact_missing') || 'artifact_missing';
+  return resolveRecoFailureReasonContract({ payload: payloadObj, contract: contractObj }).userFacingReason || 'artifact_missing';
 }
 
 function restorePlanOnlyRecommendations(payload, { sourceMode = '' } = {}) {
@@ -23473,6 +23582,9 @@ function buildRecoMainlineContract({
   const normalizedEffectiveFailureClass = normalizeRecoEffectiveFailureClass(
     effectiveFailureClass || llmFailureClass,
   );
+  const meaningfulEffectiveFailureClass = hasMeaningfulRecoEffectiveFailureClass(normalizedEffectiveFailureClass)
+    ? normalizedEffectiveFailureClass
+    : '';
   const normalizedFailureOrigin = normalizeRecoFailureOrigin(failureOrigin);
   const normalizedPresentationMode = normalizeRecoPresentationMode(presentationMode);
   const normalizedSuccessMode = normalizeRecoSuccessMode(successMode);
@@ -23485,7 +23597,7 @@ function buildRecoMainlineContract({
   const useCentralizedFailureMapping = Boolean(
     AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED
       && (
-        normalizedEffectiveFailureClass
+        meaningfulEffectiveFailureClass
         || normalizedPresentationMode
         || normalizedSuccessMode
         || normalizedViablePoolStrength
@@ -23494,7 +23606,7 @@ function buildRecoMainlineContract({
   if (useCentralizedFailureMapping) {
     const outcome = resolveRecoCentralOutcome({
       entryType,
-      effectiveFailureClass: normalizedEffectiveFailureClass || 'none',
+      effectiveFailureClass: meaningfulEffectiveFailureClass,
       failureOrigin: normalizedFailureOrigin,
       terminalSuccess: normalizedTerminalSuccess,
       viablePoolStrength: normalizedViablePoolStrength,
@@ -23520,8 +23632,10 @@ function buildRecoMainlineContract({
       source_mode: normalizedSourceMode,
       source: String(source || '').trim() || null,
       primary_failure_reason: normalizedTerminalSuccess ? null : outcome.products_empty_reason || 'artifact_missing',
-      telemetry_failure_reason: outcome.telemetry_reason || null,
-      failure_class: normalizedTerminalSuccess ? null : (outcome.effective_failure_class || null),
+      telemetry_failure_reason: sanitizeRecoClientVisibleToken(outcome.telemetry_reason) || null,
+      failure_class: normalizedTerminalSuccess
+        ? null
+        : (hasMeaningfulRecoEffectiveFailureClass(outcome.effective_failure_class) ? outcome.effective_failure_class : null),
       effective_failure_class: outcome.effective_failure_class || 'none',
       failure_origin: outcome.failure_origin || 'none',
       upstream_status: normalizedTerminalSuccess
@@ -23539,10 +23653,14 @@ function buildRecoMainlineContract({
                   : 'artifact_missing',
       mainline_status: outcome.mainline_status,
       surface_kind: outcome.surface_kind,
-      surface_reason: pickFirstTrimmed(surfaceReason, outcome.surface_reason) || null,
+      surface_reason: normalizedTerminalSuccess
+        ? null
+        : (sanitizeRecoClientVisibleToken(surfaceReason) || sanitizeRecoClientVisibleToken(outcome.surface_reason) || null),
       user_fixable: outcome.user_fixable,
       catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
-      products_empty_reason: normalizedTerminalSuccess ? null : (outcome.products_empty_reason || null),
+      products_empty_reason: normalizedTerminalSuccess
+        ? null
+        : (sanitizeRecoClientVisibleToken(outcome.products_empty_reason) || null),
       grounding_status: normalizedGroundingStatus || null,
       grounded_count: groundedCountValue,
       ungrounded_count: ungroundedCountValue,
@@ -23614,6 +23732,17 @@ function buildRecoMainlineContract({
     : normalizedProductsEmptyReason === 'strict_filter_fallback_only'
       ? 'strict_filter_dropped'
       : 'artifact_missing';
+  const clientVisibleProductsEmptyReason = hasRecommendations
+    ? null
+    : normalizedProductsEmptyReason === 'strict_filter_fallback_only'
+      ? 'strict_filter_fallback_only'
+      : (sanitizeRecoClientVisibleToken(normalizedProductsEmptyReason) || primaryFailureReason);
+  const clientVisibleSurfaceReason = hasRecommendations
+    ? null
+    : sanitizeRecoClientVisibleToken(surfaceReason)
+      || (normalizedProductsEmptyReason === 'strict_filter_fallback_only'
+        ? 'strict_filter_dropped'
+        : (sanitizeRecoClientVisibleToken(normalizedProductsEmptyReason) || primaryFailureReason));
 
   return {
     ok: hasRecommendations,
@@ -23625,9 +23754,9 @@ function buildRecoMainlineContract({
     failure_class: failureClass || null,
     upstream_status: upstreamStatus,
     mainline_status: mainlineStatus,
-    surface_reason: pickFirstTrimmed(surfaceReason, normalizedProductsEmptyReason, primaryFailureReason) || null,
+    surface_reason: clientVisibleSurfaceReason,
     catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
-    products_empty_reason: normalizedProductsEmptyReason || null,
+    products_empty_reason: clientVisibleProductsEmptyReason,
     grounding_status: normalizedGroundingStatus || null,
     grounded_count: groundedCountValue,
     ungrounded_count: ungroundedCountValue,
@@ -23639,6 +23768,24 @@ function attachRecoContractMeta(payload, contract) {
   if (!isPlainObject(payload)) return payload;
   const contractObj = isPlainObject(contract) ? contract : {};
   const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const resolvedFailure = resolveRecoFailureReasonContract({
+    payload,
+    contract: contractObj,
+    allowEmpty: Array.isArray(payload.recommendations) && payload.recommendations.length > 0,
+  });
+  const failureClass = sanitizeRecoClientVisibleFailureClass(contractObj.failure_class);
+  const effectiveFailureClass = sanitizeRecoClientVisibleFailureClass(contractObj.effective_failure_class);
+  const failureOrigin = sanitizeRecoClientVisibleFailureOrigin(contractObj.failure_origin);
+  const nextRecommendationMeta = {
+    ...metaExisting,
+  };
+  delete nextRecommendationMeta.primary_failure_reason;
+  delete nextRecommendationMeta.telemetry_failure_reason;
+  delete nextRecommendationMeta.failure_class;
+  delete nextRecommendationMeta.effective_failure_class;
+  delete nextRecommendationMeta.failure_origin;
+  delete nextRecommendationMeta.surface_reason;
+  delete nextRecommendationMeta.products_empty_reason;
   return {
     ...payload,
     ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
@@ -23647,21 +23794,21 @@ function attachRecoContractMeta(payload, contract) {
     ...(Number.isFinite(Number(contractObj.ungrounded_count)) ? { ungrounded_count: Number(contractObj.ungrounded_count) } : {}),
     ...(contractObj.prompt_template_id ? { prompt_template_id: contractObj.prompt_template_id } : {}),
     recommendation_meta: {
-      ...metaExisting,
+      ...nextRecommendationMeta,
       ...(contractObj.source_mode ? { source_mode: contractObj.source_mode } : {}),
       ...(contractObj.contract_status ? { contract_status: contractObj.contract_status } : {}),
-      ...(contractObj.primary_failure_reason ? { primary_failure_reason: contractObj.primary_failure_reason } : {}),
-      ...(contractObj.telemetry_failure_reason ? { telemetry_failure_reason: contractObj.telemetry_failure_reason } : {}),
-      ...(contractObj.failure_class ? { failure_class: contractObj.failure_class } : {}),
-      ...(contractObj.effective_failure_class ? { effective_failure_class: contractObj.effective_failure_class } : {}),
-      ...(contractObj.failure_origin ? { failure_origin: contractObj.failure_origin } : {}),
+      ...(resolvedFailure.primaryReason ? { primary_failure_reason: resolvedFailure.primaryReason } : {}),
+      ...(resolvedFailure.telemetryReason ? { telemetry_failure_reason: resolvedFailure.telemetryReason } : {}),
+      ...(failureClass ? { failure_class: failureClass } : {}),
+      ...(effectiveFailureClass ? { effective_failure_class: effectiveFailureClass } : {}),
+      ...(failureOrigin ? { failure_origin: failureOrigin } : {}),
       ...(contractObj.upstream_status ? { upstream_status: contractObj.upstream_status } : {}),
       ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
       ...(contractObj.surface_kind ? { surface_kind: contractObj.surface_kind } : {}),
-      ...(contractObj.surface_reason ? { surface_reason: contractObj.surface_reason } : {}),
+      ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
       ...(typeof contractObj.user_fixable === 'boolean' ? { user_fixable: contractObj.user_fixable } : {}),
       ...(contractObj.catalog_skip_reason ? { catalog_skip_reason: contractObj.catalog_skip_reason } : {}),
-      ...(contractObj.products_empty_reason ? { products_empty_reason: contractObj.products_empty_reason } : {}),
+      ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
       ...(contractObj.grounding_status ? { grounding_status: contractObj.grounding_status } : {}),
       ...(contractObj.viable_pool_strength ? { viable_pool_strength: contractObj.viable_pool_strength } : {}),
       ...(contractObj.target_fidelity_level ? { target_fidelity_level: contractObj.target_fidelity_level } : {}),
@@ -23725,6 +23872,17 @@ function buildRecoRequestedEventData({
   const payloadObj = isPlainObject(payload) ? payload : {};
   const recommendations = Array.isArray(payloadObj.recommendations) ? payloadObj.recommendations : [];
   const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
+  const resolvedFailure = resolveRecoFailureReasonContract({
+    payload: payloadObj,
+    contract: meta,
+    fallback: recommendations.length ? '' : 'artifact_missing',
+    allowEmpty: recommendations.length > 0,
+  });
+  const eventReason = sanitizeRecoClientVisibleToken(reason)
+    || resolvedFailure.primaryReason
+    || (recommendations.length ? '' : resolvedFailure.primaryReason || 'artifact_missing');
+  const eventTelemetryReason = sanitizeRecoClientVisibleToken(telemetryReason) || resolvedFailure.telemetryReason;
+  const eventFailureClass = sanitizeRecoClientVisibleFailureClass(failureClass) || sanitizeRecoClientVisibleFailureClass(meta.failure_class);
   const data = {
     explicit: explicit === true,
     source: String(source || payloadObj.source || meta.source_mode || 'rules_only').trim() || 'rules_only',
@@ -23733,17 +23891,16 @@ function buildRecoRequestedEventData({
     ...(typeof lowConfidence === 'boolean' ? { low_confidence: lowConfidence } : {}),
     ...(pickFirstTrimmed(confidenceLevel) ? { confidence_level: pickFirstTrimmed(confidenceLevel) } : {}),
     ...(blocked === true ? { blocked: true } : {}),
-    ...(pickFirstTrimmed(reason, recommendations.length ? '' : meta.primary_failure_reason, recommendations.length ? '' : 'artifact_missing')
-      ? { reason: pickFirstTrimmed(reason, recommendations.length ? '' : meta.primary_failure_reason, recommendations.length ? '' : 'artifact_missing') }
-      : {}),
-    ...(pickFirstTrimmed(telemetryReason, meta.telemetry_failure_reason) ? { telemetry_reason: pickFirstTrimmed(telemetryReason, meta.telemetry_failure_reason) } : {}),
-    ...(pickFirstTrimmed(failureClass, meta.failure_class) ? { failure_class: pickFirstTrimmed(failureClass, meta.failure_class) } : {}),
+    ...(eventReason ? { reason: eventReason } : {}),
+    ...(eventTelemetryReason ? { telemetry_reason: eventTelemetryReason } : {}),
+    ...(eventFailureClass ? { failure_class: eventFailureClass } : {}),
     ...(pickFirstTrimmed(payloadObj.grounding_status, meta.grounding_status) ? { grounding_status: pickFirstTrimmed(payloadObj.grounding_status, meta.grounding_status) } : {}),
     ...(Number.isFinite(Number(payloadObj.grounded_count)) ? { grounded_count: Number(payloadObj.grounded_count) } : Number.isFinite(Number(meta.grounded_count)) ? { grounded_count: Number(meta.grounded_count) } : {}),
     ...(Number.isFinite(Number(payloadObj.ungrounded_count)) ? { ungrounded_count: Number(payloadObj.ungrounded_count) } : Number.isFinite(Number(meta.ungrounded_count)) ? { ungrounded_count: Number(meta.ungrounded_count) } : {}),
     ...(pickFirstTrimmed(meta.mainline_status) ? { mainline_status: pickFirstTrimmed(meta.mainline_status) } : {}),
     ...(pickFirstTrimmed(meta.catalog_skip_reason) ? { catalog_skip_reason: pickFirstTrimmed(meta.catalog_skip_reason) } : {}),
-    ...(pickFirstTrimmed(meta.products_empty_reason, payloadObj.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(meta.products_empty_reason, payloadObj.products_empty_reason) } : {}),
+    ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
+    ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
     ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
     ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
@@ -63318,6 +63475,12 @@ const __internal = {
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
   applyRecoCardContractInvariant,
+  attachRecoContractMeta,
+  buildConfidenceNoticeCardPayload,
+  buildRecoMainlineContract,
+  buildRecoRequestedEventData,
+  deriveRecoEmptyReason,
+  resolveRecoFailureReasonContract,
   buildAnalysisSuggestedChips,
   buildAnalysisAssistantMessage,
   buildAssistantMessageFromStoryV2,

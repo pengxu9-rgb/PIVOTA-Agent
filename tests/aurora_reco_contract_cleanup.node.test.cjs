@@ -1,0 +1,300 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { __internal } = require('../src/auroraBff/routes');
+const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+
+function loadRoutesWithEnv(overrides = {}) {
+  const routeModulePath = require.resolve('../src/auroraBff/routes');
+  const previous = new Map();
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value == null) delete process.env[key];
+    else process.env[key] = value;
+  }
+  delete require.cache[routeModulePath];
+  try {
+    return require('../src/auroraBff/routes');
+  } finally {
+    delete require.cache[routeModulePath];
+    for (const [key, value] of previous.entries()) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test('reco contract maps effective_failure_class=none to artifact_missing surface fields', () => {
+  const contract = __internal.buildRecoMainlineContract({
+    recommendations: [],
+    sourceMode: 'rules_only',
+    source: 'rules_only',
+    entryType: 'chat',
+    effectiveFailureClass: 'none',
+    failureOrigin: 'none',
+    terminalSuccess: false,
+    viablePoolStrength: 'empty',
+  });
+
+  assert.equal(contract.primary_failure_reason, 'artifact_missing');
+  assert.equal(contract.surface_reason, 'artifact_missing');
+  assert.equal(contract.products_empty_reason, 'artifact_missing');
+  assert.equal(contract.telemetry_failure_reason, null);
+  assert.equal(contract.upstream_status, 'artifact_missing');
+  assert.equal(contract.failure_class, null);
+});
+
+test('reco failure helper collapses none sentinel to artifact_missing fallback', () => {
+  const failure = __internal.resolveRecoFailureReasonContract({
+    contract: {
+      primary_failure_reason: 'none',
+      surface_reason: 'none',
+      telemetry_failure_reason: 'none',
+      upstream_status: 'artifact_missing',
+    },
+  });
+
+  assert.equal(failure.userFacingReason, 'artifact_missing');
+  assert.equal(failure.primaryReason, 'artifact_missing');
+  assert.equal(failure.surfaceReason, 'artifact_missing');
+  assert.equal(failure.productsEmptyReason, 'artifact_missing');
+  assert.equal(failure.telemetryReason, '');
+});
+
+test('centralized reco failure mapping also collapses none sentinel to artifact_missing', () => {
+  const { __internal: centralInternal } = loadRoutesWithEnv({
+    AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED: 'true',
+  });
+  const contract = centralInternal.buildRecoMainlineContract({
+    recommendations: [],
+    sourceMode: 'rules_only',
+    source: 'rules_only',
+    entryType: 'chat',
+    effectiveFailureClass: 'none',
+    failureOrigin: 'none',
+    terminalSuccess: false,
+    viablePoolStrength: 'empty',
+  });
+
+  assert.equal(contract.primary_failure_reason, 'artifact_missing');
+  assert.equal(contract.surface_reason, 'artifact_missing');
+  assert.equal(contract.products_empty_reason, 'artifact_missing');
+  assert.equal(contract.telemetry_failure_reason, null);
+  assert.equal(contract.upstream_status, 'artifact_missing');
+  assert.equal(contract.mainline_status, 'severe_parse_or_prompt_failure');
+});
+
+test('attachRecoContractMeta strips none sentinel from client-visible reco metadata', () => {
+  const payload = __internal.attachRecoContractMeta(
+    {
+      recommendations: [],
+      recommendation_meta: {
+        primary_failure_reason: 'none',
+        surface_reason: 'none',
+        telemetry_failure_reason: 'none',
+      },
+    },
+    {
+      primary_failure_reason: 'none',
+      surface_reason: 'none',
+      telemetry_failure_reason: 'none',
+      upstream_status: 'artifact_missing',
+      mainline_status: 'severe_parse_or_prompt_failure',
+    },
+  );
+
+  assert.equal(payload.recommendation_meta.primary_failure_reason, 'artifact_missing');
+  assert.equal(payload.recommendation_meta.surface_reason, 'artifact_missing');
+  assert.ok(!('telemetry_failure_reason' in payload.recommendation_meta));
+  assert.equal(payload.recommendation_meta.upstream_status, 'artifact_missing');
+});
+
+test('buildRecoRequestedEventData keeps artifact_missing and never leaks none sentinel', () => {
+  const eventData = __internal.buildRecoRequestedEventData({
+    payload: {
+      recommendations: [],
+      recommendation_meta: {
+        primary_failure_reason: 'none',
+        surface_reason: 'none',
+        telemetry_failure_reason: 'none',
+        mainline_status: 'severe_parse_or_prompt_failure',
+        upstream_status: 'artifact_missing',
+      },
+    },
+    source: 'rules_only',
+  });
+
+  assert.equal(eventData.reason, 'artifact_missing');
+  assert.equal(eventData.surface_reason, 'artifact_missing');
+  assert.ok(!('telemetry_reason' in eventData));
+  assert.ok(!('failure_class' in eventData));
+});
+
+test('applyRecoContractToRecoRequestedEvents emits artifact_missing instead of none in recos_requested', () => {
+  const out = __internal.applyRecoContractToRecoRequestedEvents([], {
+    primary_failure_reason: 'none',
+    surface_reason: 'none',
+    telemetry_failure_reason: 'none',
+    upstream_status: 'artifact_missing',
+    mainline_status: 'severe_parse_or_prompt_failure',
+    source_mode: 'rules_only',
+  }, {
+    ctx: { request_id: 'req_reco_cleanup', trace_id: 'trace_reco_cleanup' },
+    emitIfMissing: true,
+    eventData: {
+      explicit: true,
+      reason: 'none',
+      telemetry_reason: 'none',
+      source: 'rules_only',
+    },
+  });
+
+  assert.equal(out.hasRecoRequested, true);
+  assert.equal(out.events.length, 1);
+  assert.equal(out.events[0].event_name, 'recos_requested');
+  assert.equal(out.events[0].data.reason, 'artifact_missing');
+  assert.equal(out.events[0].data.surface_reason, 'artifact_missing');
+  assert.ok(!('telemetry_reason' in out.events[0].data));
+});
+
+test('buildConfidenceNoticeCardPayload filters none rationale tokens', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'artifact_missing',
+    confidence: {
+      score: 0,
+      level: 'low',
+      rationale: ['none', 'artifact_missing'],
+    },
+    actions: ['retry_recommendations'],
+  });
+
+  assert.equal(payload.reason, 'artifact_missing');
+  assert.deepEqual(payload.confidence.rationale, ['artifact_missing']);
+});
+
+test('chatCardsAssembler sanitizes derived ops experiment events from envelope events', () => {
+  const out = buildChatCardsResponse({
+    envelope: {
+      request_id: 'req_chatcards_cleanup',
+      trace_id: 'trace_chatcards_cleanup',
+      assistant_message: { role: 'assistant', content: 'test' },
+      cards: [
+        {
+          card_id: 'conf_cleanup',
+          type: 'confidence_notice',
+          payload: {
+            reason: 'artifact_missing',
+          },
+        },
+      ],
+      suggested_chips: [],
+      session_patch: {},
+      events: [
+        {
+          event_name: 'recos_requested',
+          data: {
+            explicit: true,
+            source: 'rules_only',
+            reason: 'none',
+            telemetry_reason: 'none',
+            surface_reason: 'none',
+            products_empty_reason: 'none',
+            failure_class: 'none',
+            effective_failure_class: 'none',
+            failure_origin: 'none',
+            upstream_status: 'artifact_missing',
+          },
+        },
+      ],
+    },
+    ctx: {
+      request_id: 'req_chatcards_cleanup',
+      trace_id: 'trace_chatcards_cleanup',
+      lang: 'EN',
+      ui_lang: 'EN',
+      match_lang: 'EN',
+    },
+    intent: 'recommend_products',
+    intentConfidence: 1,
+    entities: [],
+    safetyDecision: null,
+    threadOps: [],
+  });
+
+  const recoEvent = Array.isArray(out.ops?.experiment_events)
+    ? out.ops.experiment_events.find((evt) => evt && evt.event_type === 'recos_requested')
+    : null;
+
+  assert.ok(recoEvent);
+  assert.equal(recoEvent.event_data.reason, 'artifact_missing');
+  assert.equal(recoEvent.event_data.surface_reason, 'artifact_missing');
+  assert.ok(!('telemetry_reason' in recoEvent.event_data));
+  assert.ok(!('products_empty_reason' in recoEvent.event_data));
+  assert.ok(!('failure_class' in recoEvent.event_data));
+  assert.ok(!('effective_failure_class' in recoEvent.event_data));
+  assert.ok(!('failure_origin' in recoEvent.event_data));
+});
+
+test('chatCardsAssembler sanitizes session patch experiment events before exposing ops mirror', () => {
+  const out = buildChatCardsResponse({
+    envelope: {
+      request_id: 'req_chatcards_patch_cleanup',
+      trace_id: 'trace_chatcards_patch_cleanup',
+      assistant_message: { role: 'assistant', content: 'test' },
+      cards: [
+        {
+          card_id: 'conf_patch_cleanup',
+          type: 'confidence_notice',
+          payload: {
+            reason: 'artifact_missing',
+          },
+        },
+      ],
+      suggested_chips: [],
+      session_patch: {
+        experiment_events: [
+          {
+            event_type: 'recos_requested',
+            event_data: {
+              reason: 'none',
+              telemetry_reason: 'none',
+              surface_reason: 'none',
+              products_empty_reason: 'none',
+              failure_class: 'none',
+              effective_failure_class: 'none',
+              failure_origin: 'none',
+              upstream_status: 'artifact_missing',
+            },
+          },
+        ],
+      },
+      events: [],
+    },
+    ctx: {
+      request_id: 'req_chatcards_patch_cleanup',
+      trace_id: 'trace_chatcards_patch_cleanup',
+      lang: 'EN',
+      ui_lang: 'EN',
+      match_lang: 'EN',
+    },
+    intent: 'recommend_products',
+    intentConfidence: 1,
+    entities: [],
+    safetyDecision: null,
+    threadOps: [],
+  });
+
+  const recoEvent = Array.isArray(out.ops?.experiment_events)
+    ? out.ops.experiment_events.find((evt) => evt && evt.event_type === 'recos_requested')
+    : null;
+
+  assert.ok(recoEvent);
+  assert.equal(recoEvent.event_data.reason, 'artifact_missing');
+  assert.equal(recoEvent.event_data.surface_reason, 'artifact_missing');
+  assert.ok(!('telemetry_reason' in recoEvent.event_data));
+  assert.ok(!('products_empty_reason' in recoEvent.event_data));
+  assert.ok(!('failure_class' in recoEvent.event_data));
+  assert.ok(!('effective_failure_class' in recoEvent.event_data));
+  assert.ok(!('failure_origin' in recoEvent.event_data));
+});
