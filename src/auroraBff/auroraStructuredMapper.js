@@ -1,3 +1,5 @@
+const { normalizeRoutineInputWithPmShortcut } = require('./routineState');
+
 function asPlainObject(value) {
   if (!value || typeof value !== 'object') return null;
   if (Array.isArray(value)) return null;
@@ -100,6 +102,266 @@ function pickFirstString(...values) {
     if (s) return s;
   }
   return null;
+}
+
+function normalizeRoutineSlot(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return 'am';
+  if (['am', 'morning', 'day', 'daytime', '早', '早上'].includes(token)) return 'am';
+  if (['pm', 'night', 'evening', 'bedtime', '晚', '晚上'].includes(token)) return 'pm';
+  if (token.includes('pm') || token.includes('night') || token.includes('evening')) return 'pm';
+  return 'am';
+}
+
+function normalizeRoutineStepKind(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return 'treatment';
+  if (/(cleanser|cleanse|face wash|wash|洁面|清洁)/i.test(token)) return 'cleanser';
+  if (/(spf|sunscreen|sun screen|uv|防晒)/i.test(token)) return 'spf';
+  if (/(moistur|cream|lotion|gel|balm|面霜|乳液|保湿)/i.test(token)) return 'moisturizer';
+  if (/(serum|toner|essence|treatment|active|retinol|acid|精华|活性|酸)/i.test(token)) return 'treatment';
+  return token;
+}
+
+function humanizeRoutineEditorialName(stepKind, slot, target) {
+  const targetText = pickFirstString(target);
+  const titleCase = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return text
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(' ');
+  };
+  const targetLabel = titleCase(targetText);
+  const slotLabel = normalizeRoutineSlot(slot) === 'pm' ? 'Night' : 'Daily';
+  switch (normalizeRoutineStepKind(stepKind)) {
+    case 'cleanser':
+      return 'Gentle Cleanser';
+    case 'spf':
+      return 'Daily Sunscreen';
+    case 'moisturizer':
+      return targetLabel ? `${targetLabel} Moisturizer` : 'Barrier Moisturizer';
+    case 'treatment':
+      return targetLabel ? `${targetLabel} Treatment` : `${slotLabel} Treatment`;
+    default:
+      return targetLabel || titleCase(stepKind) || `${slotLabel} Skincare Step`;
+  }
+}
+
+function extractRoutineProductsArrayText(value) {
+  for (const item of Array.isArray(value) ? value : []) {
+    if (typeof item === 'string') {
+      const text = asString(item);
+      if (text) return text;
+      continue;
+    }
+    const obj = asPlainObject(item);
+    if (!obj) continue;
+    const text = pickFirstString(
+      obj.name,
+      obj.display_name,
+      obj.displayName,
+      obj.title,
+      obj.product,
+      obj.label,
+    );
+    if (text) return text;
+  }
+  return null;
+}
+
+function hasRoutineGroundingIdentity(step) {
+  const row = asPlainObject(step);
+  if (!row) return false;
+  const sku = pickFirstObject(row.sku, row.product, row.product_ref, row.productRef);
+  return Boolean(
+    pickFirstString(
+      row.product_id,
+      row.productId,
+      row.sku_id,
+      row.skuId,
+      row.url,
+      row.product_url,
+      row.productUrl,
+      row.pdp_url,
+      row.pdpUrl,
+      row.canonical_product_ref,
+      sku && sku.product_id,
+      sku && sku.productId,
+      sku && sku.sku_id,
+      sku && sku.skuId,
+      sku && sku.url,
+      sku && sku.product_url,
+      sku && sku.productUrl,
+      sku && sku.pdp_url,
+      sku && sku.pdpUrl,
+      sku && sku.canonical_product_ref,
+    ),
+  );
+}
+
+function buildRoutineRecommendationRow(step, { slotHint = '', index = 0 } = {}) {
+  if (typeof step === 'string') {
+    const text = asString(step);
+    if (!text) return null;
+    return {
+      slot: normalizeRoutineSlot(slotHint),
+      step: `step_${index + 1}`,
+      product: text,
+      name: text,
+      display_name: text,
+      displayName: text,
+      grounding_status: 'ungrounded',
+      metadata: { reco_render_mode: 'editorial' },
+    };
+  }
+
+  const row = asPlainObject(step);
+  if (!row) return null;
+
+  const slot = normalizeRoutineSlot(
+    pickFirstString(row.slot, row.time, row.time_of_day, row.timeOfDay, row.period, slotHint),
+  );
+  const stepKind = normalizeRoutineStepKind(
+    pickFirstString(
+      row.step,
+      row.category,
+      row.routine_step,
+      row.routineStep,
+      row.step_type,
+      row.stepType,
+      row.type,
+      row.role,
+      row.product_type,
+      row.productType,
+    ),
+  );
+  const sku = pickFirstObject(row.sku, row.product, row.product_ref, row.productRef);
+  const productText = pickFirstString(
+    typeof row.product === 'string' ? row.product : null,
+    row.name,
+    row.display_name,
+    row.displayName,
+    row.title,
+    row.text,
+    sku && sku.name,
+    sku && sku.display_name,
+    sku && sku.displayName,
+    sku && sku.title,
+    extractRoutineProductsArrayText(row.products),
+    humanizeRoutineEditorialName(stepKind, slot, pickFirstString(row.target, row.goal, row.concern)),
+  );
+  if (!productText && !sku) return null;
+
+  const next = { slot, ...row };
+  if (!pickFirstString(next.step)) next.step = stepKind || `step_${index + 1}`;
+  if (!pickFirstString(next.product_type, next.productType) && stepKind) next.product_type = stepKind;
+  if (!pickFirstString(next.name, next.display_name, next.displayName, next.title) && productText) {
+    next.name = productText;
+    next.display_name = productText;
+    next.displayName = productText;
+  }
+  if (typeof next.product !== 'string' && productText) {
+    next.product = productText;
+  }
+  if (!hasRoutineGroundingIdentity(next)) {
+    next.grounding_status = pickFirstString(next.grounding_status, next.groundingStatus, 'ungrounded');
+    next.metadata = {
+      ...(asPlainObject(next.metadata) || {}),
+      reco_render_mode: pickFirstString(next?.metadata?.reco_render_mode, next?.metadata?.recoRenderMode, 'editorial'),
+    };
+  }
+  return next;
+}
+
+function pushRoutineRows(rows, recommendations, { slotHint = '' } = {}) {
+  const list = Array.isArray(rows)
+    ? rows
+    : rows == null
+      ? []
+      : [rows];
+  for (const step of list) {
+    const built = buildRoutineRecommendationRow(step, {
+      slotHint,
+      index: recommendations.length,
+    });
+    if (built) recommendations.push(built);
+  }
+}
+
+function dedupeRoutineRecommendations(recommendations) {
+  const out = [];
+  const seen = new Set();
+  for (const row of Array.isArray(recommendations) ? recommendations : []) {
+    const step = asPlainObject(row);
+    if (!step) continue;
+    const key = [
+      normalizeRoutineSlot(step.slot),
+      pickFirstString(step.step, step.category, step.type, step.role, 'other'),
+      pickFirstString(
+        step.product_id,
+        step.productId,
+        step.sku_id,
+        step.skuId,
+        step.display_name,
+        step.displayName,
+        step.name,
+        step.product,
+      ),
+    ]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .join('|');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(step);
+  }
+  return out;
+}
+
+function collectRoutineRecommendations(contextRoutine) {
+  const routineCandidate = pickFirstObject(
+    normalizeRoutineInputWithPmShortcut(contextRoutine),
+    contextRoutine,
+  );
+  if (!routineCandidate) return [];
+
+  const recommendations = [];
+  const pushSlotKeys = (source, slotHint, keys) => {
+    const obj = asPlainObject(source);
+    if (!obj) return;
+    for (const key of keys) {
+      if (obj[key] == null) continue;
+      pushRoutineRows(obj[key], recommendations, { slotHint });
+    }
+  };
+
+  pushSlotKeys(routineCandidate, 'am', ['am', 'am_steps', 'morning']);
+  pushSlotKeys(routineCandidate, 'pm', ['pm', 'pm_steps', 'evening', 'night']);
+
+  if (!recommendations.length) {
+    const today = asPlainObject(routineCandidate.today);
+    pushSlotKeys(today, 'am', ['am', 'am_steps', 'morning']);
+    pushSlotKeys(today, 'pm', ['pm', 'pm_steps', 'evening', 'night']);
+  }
+
+  if (!recommendations.length) {
+    for (const key of ['routine_steps', 'routineSteps', 'steps']) {
+      if (routineCandidate[key] != null) pushRoutineRows(routineCandidate[key], recommendations);
+    }
+  }
+
+  if (!recommendations.length) {
+    const today = asPlainObject(routineCandidate.today);
+    if (today) {
+      for (const key of ['routine_steps', 'routineSteps', 'steps']) {
+        if (today[key] != null) pushRoutineRows(today[key], recommendations);
+      }
+    }
+  }
+
+  return dedupeRoutineRecommendations(recommendations);
 }
 
 function decodeURIComponentSafe(value) {
@@ -1129,18 +1391,9 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
 
 function mapAuroraRoutineToRecoGenerate(contextRoutine, contextMeta) {
   const routine = asPlainObject(contextRoutine);
-  const am = routine && Array.isArray(routine.am) ? routine.am : [];
-  const pm = routine && Array.isArray(routine.pm) ? routine.pm : [];
-
-  const recommendations = [];
-  for (const step of am) {
-    if (!asPlainObject(step)) continue;
-    recommendations.push({ slot: 'am', ...step });
-  }
-  for (const step of pm) {
-    if (!asPlainObject(step)) continue;
-    recommendations.push({ slot: 'pm', ...step });
-  }
+  const recommendations = collectRoutineRecommendations(routine);
+  const am = recommendations.filter((step) => normalizeRoutineSlot(step && step.slot) === 'am');
+  const pm = recommendations.filter((step) => normalizeRoutineSlot(step && step.slot) === 'pm');
 
   const keyIngredients = [];
   const fitNotes = [];
