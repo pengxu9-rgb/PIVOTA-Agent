@@ -275,6 +275,18 @@ describe('Aurora BFF (/v1)', () => {
     expect(result.requested_next_state).toBe('ROUTINE_INTAKE');
   });
 
+  test('Check-in: chip.start.reco_products is recognized by state machine from CHECKIN_FLOW', () => {
+    const { deriveRequestedTransitionFromAction } = require('../src/auroraBff/agentStateMachine');
+
+    const result = deriveRequestedTransitionFromAction({
+      fromState: 'CHECKIN_FLOW',
+      actionId: 'chip.start.reco_products',
+    });
+
+    expect(result).not.toBeNull();
+    expect(result.requested_next_state).toBe('RECO_GATE');
+  });
+
   test('Routine: initial request returns recommendations with optional budget optimization', async () => {
     const app = require('../src/server');
     const res = await request(app)
