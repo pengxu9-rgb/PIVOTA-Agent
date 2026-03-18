@@ -28077,6 +28077,51 @@ function tryParseRoutineObject(value) {
   return isPlainObject(normalized) ? normalized : null;
 }
 
+function readRoutineCandidateFromObject(rawValue) {
+  if (!isPlainObject(rawValue)) return { found: false, value: undefined, source: '' };
+  const directKeys = ['currentRoutine', 'current_routine'];
+  for (const key of directKeys) {
+    if (Object.prototype.hasOwnProperty.call(rawValue, key)) {
+      return { found: true, value: rawValue[key], source: key };
+    }
+  }
+
+  const loweredKeys = new Map(Object.keys(rawValue).map((key) => [String(key || '').trim().toLowerCase(), key]));
+  for (const key of directKeys) {
+    const actualKey = loweredKeys.get(String(key).toLowerCase());
+    if (!actualKey) continue;
+    return { found: true, value: rawValue[actualKey], source: actualKey };
+  }
+
+  return { found: false, value: undefined, source: '' };
+}
+
+function resolveSkinAnalysisRoutineInput({ parsedBody, rawBody } = {}) {
+  const parsedRoot = isPlainObject(parsedBody) ? parsedBody : null;
+  const rawRoot = isPlainObject(rawBody) ? rawBody : null;
+  const parsedProfile = parsedRoot && isPlainObject(parsedRoot.profile) ? parsedRoot.profile : null;
+  const rawProfile = rawRoot && isPlainObject(rawRoot.profile) ? rawRoot.profile : null;
+  const sources = [
+    { bucket: 'parsed_root', value: parsedRoot },
+    { bucket: 'parsed_profile', value: parsedProfile },
+    { bucket: 'raw_root', value: rawRoot },
+    { bucket: 'raw_profile', value: rawProfile },
+  ];
+
+  for (const source of sources) {
+    if (!source.value) continue;
+    const candidate = readRoutineCandidateFromObject(source.value);
+    if (!candidate.found) continue;
+    return {
+      found: true,
+      value: candidate.value,
+      source: `${source.bucket}.${candidate.source}`,
+    };
+  }
+
+  return { found: false, value: undefined, source: 'none' };
+}
+
 function detectRoutinePayloadShape(value) {
   if (value == null) return 'none';
   if (typeof value === 'string') {
@@ -51036,62 +51081,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestOverride: extractProfilePatchFromSession(parsed.data.session),
         includeAlternatives: false,
         logger,
-	        recoTriggerSource: 'goal_driven',
-	        entryType: 'direct',
-	      });
-      let norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
+        recoTriggerSource: 'goal_driven',
+        entryType: 'direct',
+      });
+      const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
         ? upstreamReco.norm
         : normalizeRecoGenerate(null);
-      let matcherBundle = null;
-      let matcherFallbackUsed = false;
-      if (
-        AURORA_PRODUCT_MATCHER_ENABLED
-        && latestArtifact
-        && (!Array.isArray(norm?.payload?.recommendations) || norm.payload.recommendations.length === 0)
-      ) {
-        try {
-          const matcherPlan = buildIngredientPlan({ artifact: latestArtifact, profile: profile || {} });
-          const allowBundledSeedCatalog =
-            AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
-            && !DIAG_PRODUCT_CATALOG_PATH;
-          matcherBundle = buildProductRecommendationsBundle({
-            ingredientPlan: matcherPlan,
-            artifact: latestArtifact,
-            profile,
-            language: ctx.lang,
-            disallowTreatment: false,
-            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
-            allowDefaultSeedCatalog: allowBundledSeedCatalog,
-          });
-          const matcherPayload = toLegacyRecommendationsPayload(matcherBundle, { language: ctx.lang });
-          if (Array.isArray(matcherPayload?.recommendations) && matcherPayload.recommendations.length > 0) {
-            const matcherRecommendationCount = matcherPayload.recommendations.length;
-            norm = {
-              payload: {
-                ...matcherPayload,
-                intent: 'reco_products',
-                profile: profileSummary,
-                source: 'artifact_matcher_v1',
-                mainline_status: 'ungrounded_success',
-                recommendation_meta: {
-                  source_mode: 'artifact_matcher',
-                  mainline_status: 'ungrounded_success',
-                  grounding_status: 'ungrounded',
-                  grounded_count: 0,
-                  ungrounded_count: matcherRecommendationCount,
-                },
-              },
-              field_missing: [],
-            };
-            matcherFallbackUsed = true;
-          }
-        } catch (matcherErr) {
-          logger?.warn(
-            { err: matcherErr && matcherErr.message ? matcherErr.message : String(matcherErr), request_id: ctx.request_id },
-            'aurora bff: direct reco matcher fallback failed',
-          );
-        }
-      }
       const baseContract =
         upstreamReco && upstreamReco.contract && typeof upstreamReco.contract === 'object'
           ? upstreamReco.contract
@@ -51250,7 +51245,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           eventData: buildRecoRequestedEventData({
             explicit: true,
             payload,
-            source: String(payload?.source || recoMeta.source_mode || (matcherFallbackUsed ? 'artifact_matcher_v1' : 'catalog_grounded_v1')),
+            source: String(payload?.source || recoMeta.source_mode || 'catalog_grounded_v1'),
             llmTraceRef,
             failureClass: upstreamReco && upstreamReco.llmFailureClass ? upstreamReco.llmFailureClass : '',
             upstreamFailureCode: upstreamReco?.upstreamFailureCode,
@@ -52493,12 +52488,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const previousRoutineState = normalizeRoutineStateFromProfile(profile);
         const previousRoutine = previousRoutineState.current_routine_struct;
         const recentLogsSummary = Array.isArray(recentLogs) ? recentLogs.slice(0, 7) : [];
-        const routineInputRaw =
-          parsed.data.currentRoutine !== undefined
-            ? parsed.data.currentRoutine
-            : parsed.data.current_routine !== undefined
-              ? parsed.data.current_routine
-              : undefined;
+        const routineRequestInput = resolveSkinAnalysisRoutineInput({
+          parsedBody: parsed.data,
+          rawBody: req.body || {},
+        });
+        const routineInputRaw = routineRequestInput.found ? routineRequestInput.value : undefined;
         const routineFromRequest =
           routineInputRaw !== undefined
             ? normalizeRoutineInputWithPmShortcut(routineInputRaw)
@@ -52602,6 +52596,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             analysis_skin_has_routine: hasRoutine,
             analysis_skin_routine_preview_items_count: routineProductCandidates.length,
             routine_product_enrichment_deferred: routineProductCandidates.length > 0,
+            routine_request_source: routineRequestInput.source,
             config_snapshot: {
               analysis_budget_ms: AURORA_BFF_ANALYSIS_BUDGET_MS,
               routine_product_autoscan_enabled: AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED,
@@ -54670,9 +54665,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const timeoutReasonText = ctx.lang === 'CN'
           ? '分析超时，已降级为低置信度基础方案。'
           : 'Analysis timed out and was downgraded to a low-confidence baseline.';
-        const timeoutRoutineCandidate = parsed.data && Object.prototype.hasOwnProperty.call(parsed.data, 'currentRoutine')
-          ? parsed.data.currentRoutine
-          : null;
+        const timeoutRoutineInput = resolveSkinAnalysisRoutineInput({
+          parsedBody: parsed.data,
+          rawBody: req.body || {},
+        });
+        const timeoutRoutineCandidate = timeoutRoutineInput.found ? timeoutRoutineInput.value : null;
         const timeoutRoutinePayloadShape = detectRoutinePayloadShape(timeoutRoutineCandidate);
         const timeoutRoutineCandidates = timeoutRoutineCandidate
           ? extractRoutineProductCandidatesForDeepScan(timeoutRoutineCandidate, {
