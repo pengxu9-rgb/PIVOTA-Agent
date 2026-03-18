@@ -201,7 +201,10 @@ if printf "%s\n" "$skin_routine_json" | jq -e '(.suggested_chips // [] | any(.ch
   printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine-specific output" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}"
   printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
 else
-  printf "[WARN] routine_deep_dive follow-up skipped because preview contract did not expose that chip\n"
+  printf "%s\n" "$skin_routine_json" | jq_assert "routine_products_preview intentionally omits routine_deep_dive chip" '
+    (.cards | any(.type=="routine_products_preview"))
+    and ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive") | not)
+  '
 fi
 
 say "/v1/chat free-form with context (v2-compatible path)"

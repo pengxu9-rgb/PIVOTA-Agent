@@ -194,6 +194,9 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
         const preview = findCard(cards, 'routine_products_preview');
         const productAnalysis = findCard(cards, 'product_analysis');
         const routineFitSummary = findCard(cards, 'routine_fit_summary');
+        const suggestedChipIds = Array.isArray(resp.body && resp.body.suggested_chips)
+          ? resp.body.suggested_chips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : ''))
+          : [];
 
         assert.ok(analysisSummary, 'analysis summary card should exist');
         assert.ok(preview, 'routine_products_preview should exist');
@@ -204,6 +207,11 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
         assert.ok(['structured_v1', 'structured_v2'].includes(preview.payload && preview.payload.payload_shape));
         assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total > 0, true);
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.routine_product_enrichment_deferred, true);
+        assert.equal(
+          suggestedChipIds.includes('chip.aurora.next_action.routine_deep_dive'),
+          false,
+          'routine_products_preview should not expose routine_deep_dive without routine_fit context',
+        );
       } finally {
         harness.restore();
       }

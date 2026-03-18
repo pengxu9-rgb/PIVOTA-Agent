@@ -294,7 +294,10 @@ run_case_medium_confidence() {
       (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
     ' "$routine_follow_json"
   else
-    warn_note "routine_deep_dive follow-up skipped because preview contract did not expose that chip"
+    jq_assert_json "routine_products_preview intentionally omits routine_deep_dive chip" '
+      (.cards | any(.type=="routine_products_preview"))
+      and ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive") | not)
+    ' "$analysis_json"
   fi
 
   local reco_json
