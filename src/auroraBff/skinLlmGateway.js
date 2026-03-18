@@ -532,22 +532,20 @@ function buildDeepeningAttemptBundle({ language, deepeningDto, promptVersion, re
   };
 }
 
-function sanitizeGeminiResponseSchema(schema) {
+function sanitizeGeminiResponseSchema(schema, { inPropertiesMap = false } = {}) {
   if (!schema || typeof schema !== 'object') return schema;
-  if (Array.isArray(schema)) return schema.map(sanitizeGeminiResponseSchema);
+  if (Array.isArray(schema)) {
+    return schema.map((item) => sanitizeGeminiResponseSchema(item, { inPropertiesMap: false }));
+  }
   const out = {};
   for (const [k, v] of Object.entries(schema)) {
     if (
-      k === 'maxItems' ||
-      k === 'minItems' ||
-      k === 'maxLength' ||
-      k === 'minLength' ||
-      k === 'default' ||
-      k === 'title' ||
-      k === 'description' ||
-      k === 'examples'
-    ) continue;
-    out[k] = sanitizeGeminiResponseSchema(v);
+      !inPropertiesMap &&
+      ['maxItems', 'minItems', 'maxLength', 'minLength', 'default', 'title', 'description', 'examples'].includes(k)
+    ) {
+      continue;
+    }
+    out[k] = sanitizeGeminiResponseSchema(v, { inPropertiesMap: k === 'properties' });
   }
   return out;
 }
@@ -1354,6 +1352,7 @@ module.exports = {
   SKIN_LLM_TIMEOUT_MS,
   classifyGeminiError,
   isGeminiSkinGatewayAvailable,
+  sanitizeGeminiResponseSchema,
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
