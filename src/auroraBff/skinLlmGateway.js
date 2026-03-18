@@ -375,6 +375,64 @@ function buildConservativeReportFallbackLayer(reportDto, { lang } = {}) {
   );
 }
 
+function shouldRecoverReportFailureWithDeterministicFallback(reason) {
+  const token = String(reason || '').trim().toUpperCase();
+  if (!token) return false;
+  return [
+    'UPSTREAM_SCHEMA_INVALID',
+    'SCHEMA_INVALID',
+    'UPSTREAM_5XX',
+    'TIMEOUT',
+    'RATE_LIMIT',
+    'SAFETY_INVALID',
+  ].includes(token);
+}
+
+function buildDeterministicReportFallbackResult({
+  reportDto,
+  language,
+  bundle,
+  retryAttempted,
+  failureReason,
+  canonical,
+  rawResponseText,
+  parseStatus,
+  schemaSanitized,
+  upstreamStatusCode,
+  latencyMs,
+} = {}) {
+  const normalizedFailureReason = String(failureReason || '').trim().toUpperCase() || 'UNKNOWN';
+  return {
+    ok: true,
+    provider: 'deterministic_local',
+    reason: null,
+    schema_violation: false,
+    safety_violation: false,
+    semantic_violation: false,
+    layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+    canonical: canonical || null,
+    semantic: {
+      ok: true,
+      useful_output: false,
+      issues: [normalizedFailureReason],
+    },
+    raw_response_text: rawResponseText,
+    parse_status: parseStatus,
+    schema_sanitized: Boolean(schemaSanitized),
+    retry: {
+      attempted: retryAttempted,
+      final: 'success',
+      last_reason: 'deterministic_fallback',
+    },
+    upstream_status_code: upstreamStatusCode,
+    latency_ms: latencyMs,
+    prompt_version: bundle && bundle.promptVersion ? bundle.promptVersion : null,
+    input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+    fallback_reason: normalizedFailureReason,
+    __deterministic_fallback: true,
+  };
+}
+
 function buildSemanticRevisionHint({ stage, issues } = {}) {
   const list = Array.isArray(issues) ? issues.map((item) => String(item || '').trim()).filter(Boolean) : [];
   if (stage === 'vision') {
@@ -993,10 +1051,28 @@ async function runGeminiReportStrategy({
       };
     }
 
+    const secondFailureReason = normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety);
+
+    if (shouldRecoverReportFailureWithDeterministicFallback(secondFailureReason)) {
+      return buildDeterministicReportFallbackResult({
+        reportDto,
+        language,
+        bundle,
+        retryAttempted,
+        failureReason: secondFailureReason,
+        canonical: secondAdjudicatedCanonical,
+        rawResponseText: second.response_text,
+        parseStatus: second.parse_status,
+        schemaSanitized: second.schema_sanitized,
+        upstreamStatusCode: second.upstream_status_code,
+        latencyMs: second.latency_ms,
+      });
+    }
+
     return {
       ok: false,
       provider: 'gemini',
-      reason: normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety),
+      reason: secondFailureReason,
       schema_violation: Boolean(second.ok && !secondValidation.ok),
       semantic_violation: Boolean(second.ok && secondValidation.ok && !secondSemantic.ok),
       safety_violation: Boolean(second.ok && secondValidation.ok && secondSemantic.ok && !secondSafety.ok),
@@ -1009,7 +1085,7 @@ async function runGeminiReportStrategy({
       retry: {
         attempted: retryAttempted,
         final: 'fail',
-        last_reason: normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety),
+        last_reason: secondFailureReason,
       },
       upstream_status_code: second.upstream_status_code,
       latency_ms: second.latency_ms,

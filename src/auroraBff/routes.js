@@ -53321,6 +53321,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         let reportStageElapsedMs = 0;
         let reportStageOutcome = 'not_requested';
         let reportStageAttempts = 0;
+        let reportStageRecovered = false;
+        let reportStageRecoveryMode = null;
+        let reportStagePrimaryFailureReason = null;
         let budgetAbortStage = null;
 
         let diagnosisPhoto = null;
@@ -53910,7 +53913,19 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportLayer = reportResult.layer;
             reportCanonical = reportResult.canonical || reportCanonical;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
-            reportStageOutcome = 'success';
+            if (reportResult.__deterministic_fallback) {
+              reportStageOutcome = 'deterministic_fallback';
+              reportStageRecovered = true;
+              reportStageRecoveryMode = 'deterministic_fallback';
+              reportStagePrimaryFailureReason = normalizeReportFailureReason(reportResult.fallback_reason) || 'UNKNOWN';
+            } else if (reportResult.__semantic_fallback) {
+              reportStageOutcome = 'semantic_fallback';
+              reportStageRecovered = true;
+              reportStageRecoveryMode = 'semantic_fallback';
+              reportStagePrimaryFailureReason = 'SEMANTIC_INVALID';
+            } else {
+              reportStageOutcome = 'success';
+            }
             recordAuroraSkinSemanticGuard({
               stage: 'report',
               outcome: reportResult.semantic && reportResult.semantic.useful_output ? 'pass' : 'limited',
@@ -53939,29 +53954,31 @@ function mountAuroraBffRoutes(app, { logger }) {
               visionCanonical: visionRuntime && visionRuntime.canonical ? visionRuntime.canonical : null,
             });
             if (deepeningContext && deepeningContext.dto) {
-              const deepeningStep = await executeAuroraOptionalStep({
-                logger,
-                route: '/v1/analysis/skin',
-                stepId: 'analysis_skin.deepening_child',
-                criticality: 'optional',
-                metricStage: 'analysis_optional_step',
-                fn: async () =>
-                  runGeminiDeepeningStrategyImpl({
-                    deepeningDto: deepeningContext.dto,
-                    language: ctx.lang,
-                    promptVersion: deepeningContext.promptVersion,
-                    profiler,
-                  }),
-              });
-              deepeningRuntime = deepeningStep.ok
-                ? deepeningStep.value
-                : {
-                    ok: false,
-                    provider: 'deterministic',
-                    reason: 'OPTIONAL_STEP_FAILED',
-                    optional_step_error_class: deepeningStep.error_class,
-                    layer: null,
-                  };
+              if (!(reportResult.__semantic_fallback || reportResult.__deterministic_fallback)) {
+                const deepeningStep = await executeAuroraOptionalStep({
+                  logger,
+                  route: '/v1/analysis/skin',
+                  stepId: 'analysis_skin.deepening_child',
+                  criticality: 'optional',
+                  metricStage: 'analysis_optional_step',
+                  fn: async () =>
+                    runGeminiDeepeningStrategyImpl({
+                      deepeningDto: deepeningContext.dto,
+                      language: ctx.lang,
+                      promptVersion: deepeningContext.promptVersion,
+                      profiler,
+                    }),
+                });
+                deepeningRuntime = deepeningStep.ok
+                  ? deepeningStep.value
+                  : {
+                      ok: false,
+                      provider: 'deterministic',
+                      reason: 'OPTIONAL_STEP_FAILED',
+                      optional_step_error_class: deepeningStep.error_class,
+                      layer: null,
+                    };
+              }
               if (deepeningRuntime && deepeningRuntime.ok && deepeningRuntime.layer) {
                 reportLayer = {
                   ...reportLayer,
@@ -54614,6 +54631,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 report_stage_elapsed_ms: Math.max(0, Number(reportStageElapsedMs) || 0),
                 report_stage_outcome: reportStageOutcome,
                 report_stage_attempts: Math.max(0, Math.trunc(Number(reportStageAttempts) || 0)),
+                ...(reportStageRecovered ? { report_stage_recovered: true } : {}),
+                ...(reportStageRecoveryMode ? { report_stage_recovery_mode: reportStageRecoveryMode } : {}),
+                ...(reportStagePrimaryFailureReason ? { report_stage_primary_failure_reason: reportStagePrimaryFailureReason } : {}),
               }
             : {}),
           ...(budgetAbortStage ? { budget_abort_stage: budgetAbortStage } : {}),
@@ -55236,6 +55256,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             report_stage_elapsed_ms: reportStageElapsedMs,
             report_stage_outcome: reportStageOutcome,
             report_stage_attempts: reportStageAttempts,
+            report_stage_recovered: reportStageRecovered,
+            report_stage_recovery_mode: reportStageRecoveryMode,
+            report_stage_primary_failure_reason: reportStagePrimaryFailureReason,
             budget_abort_stage: budgetAbortStage || null,
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,

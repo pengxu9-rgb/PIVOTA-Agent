@@ -553,3 +553,83 @@ test('/v1/analysis/skin: successful report stage exposes stage timing metadata',
     },
   );
 });
+
+test('/v1/analysis/skin: deterministic report fallback recovers summary without deepening retry fanout', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
+      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '2000',
+      AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
+      AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS: '0',
+      AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS: '100',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat();
+      let deepeningCalls = 0;
+      try {
+        harness.routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => ({
+            ...buildReportSuccessStub({ lang: 'en-US' }),
+            provider: 'deterministic_local',
+            retry: { attempted: 1, final: 'success', last_reason: 'deterministic_fallback' },
+            semantic: { ok: true, useful_output: false, issues: ['UPSTREAM_5XX'] },
+            fallback_reason: 'UPSTREAM_5XX',
+            __deterministic_fallback: true,
+          }),
+          deepening: async () => {
+            deepeningCalls += 1;
+            return {
+              ok: true,
+              provider: 'gemini',
+              reason: null,
+              layer: { summary: 'should not run' },
+            };
+          },
+        });
+        const uid = buildTestUid('routine_report_stage_recovered');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'CeraVe Foaming Cleanser' },
+                { step: 'sunscreen', product: 'La Roche-Posay Anthelios' },
+              ],
+              pm: [
+                { step: 'treatment', product: 'Retinoid serum' },
+                { step: 'moisturizer', product: 'CeraVe PM Lotion' },
+              ],
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const analysisSummary = findCard(cards, 'analysis_summary') || findCard(cards, 'analysis_story_v2');
+        const preview = findCard(cards, 'routine_products_preview');
+
+        assert.ok(analysisSummary, 'analysis card should still exist');
+        assert.ok(preview, 'routine preview should still exist');
+        assert.equal(deepeningCalls, 0, 'deepening should not run after recovered report fallback');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_outcome, 'deterministic_fallback');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_recovered, true);
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_recovery_mode, 'deterministic_fallback');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_primary_failure_reason, 'UPSTREAM_5XX');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_failure_reason == null, true);
+        assert.notEqual(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.degrade_reason, 'report_model_error');
+      } finally {
+        harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
+        harness.restore();
+      }
+    },
+  );
+});
