@@ -2169,6 +2169,17 @@ const AURORA_ANALYSIS_ARTIFACT_SLOW_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 600;
   return Math.max(1, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
 })();
+const AURORA_ANALYSIS_GUARDRAIL_SLOW_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_GUARDRAIL_SLOW_MS || 600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 600;
+  return Math.max(1, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_LIGHTWEIGHT_INGREDIENT_PLAN_GUARDRAIL_ON_DEGRADED = (() => {
+  const raw = String(process.env.AURORA_ANALYSIS_LIGHTWEIGHT_INGREDIENT_PLAN_GUARDRAIL_ON_DEGRADED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on';
+})();
 const AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS || 2500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
@@ -16725,6 +16736,54 @@ function buildAnalysisStageTimingMeta(report) {
   return meta;
 }
 
+function normalizeIngredientPlanGuardrailMode(mode) {
+  const token = String(mode || '').trim().toLowerCase();
+  return token === 'lightweight' ? 'lightweight' : 'full';
+}
+
+function shouldUseLightweightIngredientPlanGuardrail(analysisMeta) {
+  if (!AURORA_ANALYSIS_LIGHTWEIGHT_INGREDIENT_PLAN_GUARDRAIL_ON_DEGRADED) return false;
+  const meta = isPlainObject(analysisMeta) ? analysisMeta : null;
+  if (!meta) return false;
+  const analysisMode = String(meta.analysis_mode || '').trim().toLowerCase();
+  if (analysisMode !== 'analysis_summary' && analysisMode !== 'timeout_degraded') return false;
+  if (meta.report_stage_recovered === true) return true;
+  const reportStageOutcome = String(meta.report_stage_outcome || '').trim().toLowerCase();
+  if (
+    reportStageOutcome === 'budget_timeout' ||
+    reportStageOutcome === 'analysis_budget_timeout' ||
+    reportStageOutcome === 'upstream_error' ||
+    reportStageOutcome === 'schema_invalid' ||
+    reportStageOutcome === 'deterministic_fallback'
+  ) {
+    return true;
+  }
+  const degradeReason = String(meta.degrade_reason || '').trim().toLowerCase();
+  return degradeReason === 'report_model_error' || degradeReason === 'analysis_budget_timeout';
+}
+
+function appendAnalysisMetaStageTiming(meta, { stageName, elapsedMs, status = 'ok' } = {}) {
+  const nextMeta = isPlainObject(meta) ? { ...meta } : {};
+  const stage = String(stageName || '').trim();
+  const ms = Number(elapsedMs);
+  if (!stage || !Number.isFinite(ms) || ms < 0) return nextMeta;
+  const rounded = Math.round(ms * 1000) / 1000;
+  const stageTimings =
+    nextMeta.stage_timings_ms && typeof nextMeta.stage_timings_ms === 'object' && !Array.isArray(nextMeta.stage_timings_ms)
+      ? { ...nextMeta.stage_timings_ms }
+      : {};
+  stageTimings[stage] = rounded;
+  nextMeta.stage_timings_ms = stageTimings;
+
+  const currentSlowestMs = Number(nextMeta.slowest_stage_ms);
+  if (!Number.isFinite(currentSlowestMs) || rounded >= currentSlowestMs) {
+    nextMeta.slowest_stage = stage;
+    nextMeta.slowest_stage_ms = rounded;
+    nextMeta.slowest_stage_status = String(status || '').trim() || 'ok';
+  }
+  return nextMeta;
+}
+
 function buildAnalysisReportRecoveredMetricStage(primaryFailureReason) {
   const token = normalizeReportFailureReason(primaryFailureReason) || 'UNKNOWN';
   switch (token) {
@@ -16746,6 +16805,41 @@ function buildAnalysisReportRecoveredMetricStage(primaryFailureReason) {
     default:
       return 'analysis_report_recovered';
   }
+}
+
+function emitAnalysisGuardrailObservability({ envelope, ctx, logger = null, shadowRun = false } = {}) {
+  const analysisMeta =
+    envelope && envelope.analysis_meta && typeof envelope.analysis_meta === 'object' && !Array.isArray(envelope.analysis_meta)
+      ? envelope.analysis_meta
+      : null;
+  if (!analysisMeta) return;
+  const guardrailStageMs = Number(analysisMeta.guardrail_stage_elapsed_ms);
+  if (!Number.isFinite(guardrailStageMs) || guardrailStageMs < 0) return;
+  const guardrailStageMode = normalizeIngredientPlanGuardrailMode(analysisMeta.guardrail_stage_mode);
+  if (!shadowRun && guardrailStageMs >= AURORA_ANALYSIS_GUARDRAIL_SLOW_MS) {
+    recordAuroraSkinFlowMetric({ stage: 'analysis_guardrail_slow', hit: true });
+    logger?.info({ kind: 'metric', name: 'aurora.skin.analysis_guardrail_slow_rate', value: 1 }, 'metric');
+  }
+  logger?.info(
+    {
+      kind: shadowRun ? 'skin_analysis_guardrail_profile_shadow' : 'skin_analysis_guardrail_profile',
+      request_id: ctx && ctx.request_id ? ctx.request_id : null,
+      trace_id: ctx && ctx.trace_id ? ctx.trace_id : null,
+      guardrail_stage_ms: guardrailStageMs,
+      guardrail_stage_mode: guardrailStageMode,
+      guardrail_stage_reduced: analysisMeta.guardrail_stage_reduced === true,
+      stage_timings_ms:
+        analysisMeta.stage_timings_ms && typeof analysisMeta.stage_timings_ms === 'object'
+          ? analysisMeta.stage_timings_ms
+          : null,
+      slowest_stage: analysisMeta.slowest_stage || null,
+      slowest_stage_ms: Number.isFinite(Number(analysisMeta.slowest_stage_ms))
+        ? Number(analysisMeta.slowest_stage_ms)
+        : null,
+      slowest_stage_status: analysisMeta.slowest_stage_status || null,
+    },
+    'aurora bff: skin analysis guardrail profile',
+  );
 }
 
 function normalizeSkinmaskFallbackReason(rawReason, detail) {
@@ -30957,6 +31051,7 @@ async function sanitizeRecoCandidatesForUi(
     strictFilter,
     dualQa,
     qaMode,
+    ingredientPlanGuardrailMode = 'full',
     singleProvider,
     allowOpenAiFallback,
     qaContext = null,
@@ -30994,6 +31089,7 @@ async function sanitizeRecoCandidatesForUi(
     allowOpenAiFallback === undefined || allowOpenAiFallback === null
       ? AURORA_LLM_OPENAI_FALLBACK_ENABLED
       : Boolean(allowOpenAiFallback);
+  const effectiveIngredientPlanGuardrailMode = normalizeIngredientPlanGuardrailMode(ingredientPlanGuardrailMode);
 
   let dropped = 0;
   let externalized = 0;
@@ -31328,6 +31424,7 @@ async function sanitizeRecoCandidatesForUi(
     }
 
     if (type === 'ingredient_plan_v2' || type === 'ingredient_plan') {
+      const lightweightIngredientPlanGuardrail = effectiveIngredientPlanGuardrailMode === 'lightweight';
       const planNode = isPlainObject(payload.plan) ? { ...payload.plan } : null;
       const targets = Array.isArray(payload.targets)
         ? payload.targets
@@ -31358,12 +31455,14 @@ async function sanitizeRecoCandidatesForUi(
           if (!row) continue;
           const blacklistHit = isBlacklistedCategoryOrTitle(row);
           const skincareHit = isSkincareCategory(row);
-          const relevanceDecision = await evaluateIngredientCandidateWithQaMode(row, {
-            qaMode: effectiveQaMode,
-            singleProvider: effectiveSingleProvider,
-            allowOpenAiFallback: effectiveOpenAiFallback,
-            qaContext,
-          });
+          const relevanceDecision = lightweightIngredientPlanGuardrail
+            ? { pass: true, skip_reason: 'lightweight_guardrail' }
+            : await evaluateIngredientCandidateWithQaMode(row, {
+              qaMode: effectiveQaMode,
+              singleProvider: effectiveSingleProvider,
+              allowOpenAiFallback: effectiveOpenAiFallback,
+              qaContext,
+            });
           const directUrl = extractCandidateOpenUrl(row);
           const openable = hasOpenableUrl(row);
           const searchLike = isSearchLikeUrl(directUrl);
@@ -31462,7 +31561,12 @@ async function sanitizeRecoCandidatesForUi(
       }
 
       let keptProductsCount = countPurchasableProductsForTargets(nextTargets);
-      if (keptProductsCount === 0 && AURORA_PURCHASABLE_FALLBACK_ENABLED && typeof fallbackCandidateBuilder === 'function') {
+      if (
+        !lightweightIngredientPlanGuardrail &&
+        keptProductsCount === 0 &&
+        AURORA_PURCHASABLE_FALLBACK_ENABLED &&
+        typeof fallbackCandidateBuilder === 'function'
+      ) {
         const recoveryQueries = collectPurchasableFallbackQueries({
           payload,
           externalSearchCtas,
@@ -31512,7 +31616,7 @@ async function sanitizeRecoCandidatesForUi(
         }
       }
 
-      if (keptProductsCount === 0 && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
+      if (!lightweightIngredientPlanGuardrail && keptProductsCount === 0 && AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
         const llmQueries = collectPurchasableFallbackQueries({
           payload,
           externalSearchCtas,
@@ -31587,6 +31691,7 @@ async function sanitizeRecoCandidatesForUi(
 
       const mergedFieldMissing = mergeFieldMissing(card.field_missing, [
         ...(droppedForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'strict_skincare_filter' }] : []),
+        ...(lightweightIngredientPlanGuardrail ? [{ field: 'payload.targets[].products', reason: 'lightweight_guardrail' }] : []),
         ...(searchDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'search_url_demoted' }] : []),
         ...(contractDemotedForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'open_contract_only_demoted' }] : []),
         ...(missingUrlFallbackForCard > 0 ? [{ field: 'payload.external_search_ctas', reason: 'product_url_missing_fallback' }] : []),
@@ -32461,6 +32566,8 @@ async function applyProductIntelGuardrailsToEnvelope({
     return { envelope: base, dropped: 0, externalized: 0, rejected: [] };
   }
   const analysisMetaBase = isPlainObject(base.analysis_meta) ? { ...base.analysis_meta } : null;
+  const guardrailStartedAt = process.hrtime.bigint();
+  const ingredientPlanGuardrailMode = shouldUseLightweightIngredientPlanGuardrail(analysisMetaBase) ? 'lightweight' : 'full';
   const storyForceDeterministicReason = resolveAnalysisStoryForcedSkipReason(analysisMetaBase);
   const qaRuntimeObj = isPlainObject(qaRuntime) ? qaRuntime : {};
   const qaBudgetMsRaw = qaRuntimeObj.budget_ms;
@@ -32494,6 +32601,7 @@ async function applyProductIntelGuardrailsToEnvelope({
   const sanitized = await sanitizeRecoCandidatesForUi(withPhotoConsistency, {
     strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
     qaMode: productQaMode,
+    ingredientPlanGuardrailMode,
     singleProvider: qaContext.qa_provider,
     allowOpenAiFallback: qaContext.qa_openai_fallback_enabled,
     qaContext,
@@ -32512,10 +32620,21 @@ async function applyProductIntelGuardrailsToEnvelope({
       ? base.session_patch.meta.routine_analysis_v2
       : null;
   if (routineAnalysisV2Meta && routineAnalysisV2Meta.enabled === true) {
+    const guardrailElapsedMs = computeElapsedMs(guardrailStartedAt);
+    const nextAnalysisMeta = appendAnalysisMetaStageTiming(
+      {
+        ...(analysisMetaBase || {}),
+        guardrail_stage_elapsed_ms: Math.round(guardrailElapsedMs * 1000) / 1000,
+        guardrail_stage_mode: ingredientPlanGuardrailMode,
+        guardrail_stage_reduced: ingredientPlanGuardrailMode === 'lightweight',
+      },
+      { stageName: 'guardrail', elapsedMs: guardrailElapsedMs, status: 'ok' },
+    );
     return {
       envelope: {
         ...base,
         cards: sanitized.cards,
+        ...(nextAnalysisMeta ? { analysis_meta: nextAnalysisMeta } : {}),
         ...(isPlainObject(sanitized.lookup_meta) ? { lookup_meta: sanitized.lookup_meta } : {}),
       },
       dropped: sanitized.dropped,
@@ -32615,6 +32734,8 @@ async function applyProductIntelGuardrailsToEnvelope({
       recommendableCards.length > 0
         ? Number((recommendableCardsWithEmptyReason / recommendableCards.length).toFixed(4))
         : 0,
+    guardrail_stage_mode: ingredientPlanGuardrailMode,
+    guardrail_stage_reduced: ingredientPlanGuardrailMode === 'lightweight',
     invalid_url_drop_rate:
       Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0) > 0
         ? Number((Number(sanitized.externalized || 0) / (Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0))).toFixed(4))
@@ -32622,11 +32743,17 @@ async function applyProductIntelGuardrailsToEnvelope({
     ...(pickFirstString(lookupMeta.llm_fallback_last_reason) ? { product_lookup_fallback_last_reason: lookupMeta.llm_fallback_last_reason } : {}),
     ...(qaSkippedReason ? { qa_skipped_reason: qaSkippedReason } : {}),
   };
+  const guardrailElapsedMs = computeElapsedMs(guardrailStartedAt);
+  nextAnalysisMeta.guardrail_stage_elapsed_ms = Math.round(guardrailElapsedMs * 1000) / 1000;
+  const nextAnalysisMetaWithTiming = appendAnalysisMetaStageTiming(
+    nextAnalysisMeta,
+    { stageName: 'guardrail', elapsedMs: guardrailElapsedMs, status: 'ok' },
+  );
   return {
     envelope: {
       ...base,
       cards: withStoryAndGate,
-      ...(nextAnalysisMeta ? { analysis_meta: nextAnalysisMeta } : {}),
+      ...(nextAnalysisMetaWithTiming ? { analysis_meta: nextAnalysisMetaWithTiming } : {}),
     },
     dropped: sanitized.dropped,
     externalized: sanitized.externalized,
@@ -56314,6 +56441,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (degradedGuardrail && Array.isArray(degradedGuardrail.rejected) && degradedGuardrail.rejected.length > 0) {
           persistRejectedCatalogCandidates(ctx, degradedGuardrail.rejected);
         }
+        emitAnalysisGuardrailObservability({
+          envelope: degradedGuardrail && degradedGuardrail.envelope ? degradedGuardrail.envelope : envelope,
+          ctx,
+          logger,
+          shadowRun: false,
+        });
         return res.json(degradedGuardrail && degradedGuardrail.envelope ? degradedGuardrail.envelope : envelope);
       }
 
@@ -56348,6 +56481,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
       const finalEnvelope = guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope;
+      emitAnalysisGuardrailObservability({
+        envelope: finalEnvelope,
+        ctx,
+        logger,
+        shadowRun: false,
+      });
       if (isPlainObject(finalEnvelope) && Array.isArray(finalEnvelope.cards)) {
         const storyCard = finalEnvelope.cards.find(
           (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',

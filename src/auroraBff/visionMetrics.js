@@ -547,6 +547,7 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'analysis_report_recovered_rate_limit' ||
     token === 'analysis_report_recovered_safety_invalid' ||
     token === 'analysis_report_recovered_semantic_invalid' ||
+    token === 'analysis_guardrail_slow' ||
     token === 'analysis_quality_slow' ||
     token === 'analysis_artifact_slow' ||
     token === 'artifact_created' ||
