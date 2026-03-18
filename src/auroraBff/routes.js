@@ -2153,6 +2153,16 @@ const AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 300;
   return Math.max(200, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
 })();
+const AURORA_ANALYSIS_QUALITY_SLOW_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_QUALITY_SLOW_MS || 1000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1000;
+  return Math.max(1, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_ARTIFACT_SLOW_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_ARTIFACT_SLOW_MS || 600);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 600;
+  return Math.max(1, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
 const AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS || 2500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
@@ -16690,6 +16700,29 @@ function buildAnalysisStageTimingMeta(report) {
     meta.slowest_stage_status = slowest.status;
   }
   return meta;
+}
+
+function buildAnalysisReportRecoveredMetricStage(primaryFailureReason) {
+  const token = normalizeReportFailureReason(primaryFailureReason) || 'UNKNOWN';
+  switch (token) {
+    case 'UPSTREAM_SCHEMA_INVALID':
+      return 'analysis_report_recovered_upstream_schema_invalid';
+    case 'UPSTREAM_5XX':
+      return 'analysis_report_recovered_upstream_5xx';
+    case 'SCHEMA_INVALID':
+      return 'analysis_report_recovered_schema_invalid';
+    case 'REPORT_STAGE_BUDGET_TIMEOUT':
+    case 'TIMEOUT':
+      return 'analysis_report_recovered_timeout';
+    case 'RATE_LIMIT':
+      return 'analysis_report_recovered_rate_limit';
+    case 'SAFETY_INVALID':
+      return 'analysis_report_recovered_safety_invalid';
+    case 'SEMANTIC_INVALID':
+      return 'analysis_report_recovered_semantic_invalid';
+    default:
+      return 'analysis_report_recovered';
+  }
 }
 
 function normalizeSkinmaskFallbackReason(rawReason, detail) {
@@ -55227,11 +55260,34 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const report = profiler.report();
         const stageTimingMeta = buildAnalysisStageTimingMeta(report);
+        const stageTimings = stageTimingMeta && stageTimingMeta.stage_timings_ms && typeof stageTimingMeta.stage_timings_ms === 'object'
+          ? stageTimingMeta.stage_timings_ms
+          : {};
+        const qualityStageMs = Number(stageTimings.quality);
+        const artifactStageMs = Number(stageTimings.artifact);
         if (envelope && envelope.analysis_meta && typeof envelope.analysis_meta === 'object') {
           envelope.analysis_meta = {
             ...envelope.analysis_meta,
             ...stageTimingMeta,
           };
+        }
+        if (!shadowRun) {
+          if (reportStageRecovered) {
+            recordAuroraSkinFlowMetric({ stage: 'analysis_report_recovered', hit: true });
+            recordAuroraSkinFlowMetric({
+              stage: buildAnalysisReportRecoveredMetricStage(reportStagePrimaryFailureReason),
+              hit: true,
+            });
+            logger?.info({ kind: 'metric', name: 'aurora.skin.analysis_report_recovered_rate', value: 1 }, 'metric');
+          }
+          if (Number.isFinite(qualityStageMs) && qualityStageMs >= AURORA_ANALYSIS_QUALITY_SLOW_MS) {
+            recordAuroraSkinFlowMetric({ stage: 'analysis_quality_slow', hit: true });
+            logger?.info({ kind: 'metric', name: 'aurora.skin.analysis_quality_slow_rate', value: 1 }, 'metric');
+          }
+          if (Number.isFinite(artifactStageMs) && artifactStageMs >= AURORA_ANALYSIS_ARTIFACT_SLOW_MS) {
+            recordAuroraSkinFlowMetric({ stage: 'analysis_artifact_slow', hit: true });
+            logger?.info({ kind: 'metric', name: 'aurora.skin.analysis_artifact_slow_rate', value: 1 }, 'metric');
+          }
         }
         logger?.info(
           {
@@ -55259,6 +55315,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             report_stage_recovered: reportStageRecovered,
             report_stage_recovery_mode: reportStageRecoveryMode,
             report_stage_primary_failure_reason: reportStagePrimaryFailureReason,
+            quality_stage_ms: Number.isFinite(qualityStageMs) ? qualityStageMs : null,
+            artifact_stage_ms: Number.isFinite(artifactStageMs) ? artifactStageMs : null,
             budget_abort_stage: budgetAbortStage || null,
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,

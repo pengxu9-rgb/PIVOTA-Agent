@@ -539,6 +539,16 @@ function normalizeAuroraSkinFlowStage(stage) {
   const token = cleanMetricToken(stage, 'unknown');
   if (
     token === 'analysis_request' ||
+    token === 'analysis_report_recovered' ||
+    token === 'analysis_report_recovered_upstream_schema_invalid' ||
+    token === 'analysis_report_recovered_upstream_5xx' ||
+    token === 'analysis_report_recovered_schema_invalid' ||
+    token === 'analysis_report_recovered_timeout' ||
+    token === 'analysis_report_recovered_rate_limit' ||
+    token === 'analysis_report_recovered_safety_invalid' ||
+    token === 'analysis_report_recovered_semantic_invalid' ||
+    token === 'analysis_quality_slow' ||
+    token === 'analysis_artifact_slow' ||
     token === 'artifact_created' ||
     token === 'ingredient_plan' ||
     token === 'analysis_timeout_degraded' ||

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { resetVisionMetrics, snapshotVisionMetrics } = require('../src/auroraBff/visionMetrics');
 
 const {
   sleep,
@@ -14,6 +15,30 @@ const {
   adjudicateReportCanonicalLayer,
   renderReportCanonicalLayer,
 } = require('../src/auroraBff/skinAnalysisContract');
+
+function getLabeledCounterValue(entries, expectedLabels) {
+  const rows = Array.isArray(entries) ? entries : [];
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length < 2) continue;
+    const [key, value] = row;
+    let labels = null;
+    try {
+      labels = JSON.parse(key);
+    } catch (_err) {
+      labels = null;
+    }
+    if (!labels || typeof labels !== 'object') continue;
+    let matched = true;
+    for (const [k, v] of Object.entries(expectedLabels || {})) {
+      if (String(labels[k]) !== String(v)) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return Number(value) || 0;
+  }
+  return 0;
+}
 
 function buildReportSuccessStub({ lang = 'en-US', priority = 'barrier' } = {}) {
   const canonical = adjudicateReportCanonicalLayer(
@@ -637,8 +662,11 @@ test('/v1/analysis/skin: deterministic report fallback recovers summary without 
       AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
       AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS: '0',
       AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS: '100',
+      AURORA_ANALYSIS_QUALITY_SLOW_MS: '1',
+      AURORA_ANALYSIS_ARTIFACT_SLOW_MS: '1',
     },
     async () => {
+      resetVisionMetrics();
       const harness = createAppWithPatchedAuroraChat();
       let deepeningCalls = 0;
       try {
@@ -694,6 +722,20 @@ test('/v1/analysis/skin: deterministic report fallback recovers summary without 
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_primary_failure_reason, 'UPSTREAM_5XX');
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_failure_reason == null, true);
         assert.notEqual(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.degrade_reason, 'report_model_error');
+
+        const snap = snapshotVisionMetrics();
+        assert.ok(
+          getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'analysis_report_recovered', outcome: 'hit' }) >= 1,
+          'expected generic report recovery metric',
+        );
+        assert.ok(
+          getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'analysis_report_recovered_upstream_5xx', outcome: 'hit' }) >= 1,
+          'expected recovered report failure reason metric',
+        );
+        assert.ok(
+          getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'analysis_quality_slow', outcome: 'hit' }) >= 1,
+          'expected quality slow-stage metric',
+        );
       } finally {
         harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
         harness.restore();
