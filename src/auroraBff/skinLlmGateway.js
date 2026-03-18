@@ -50,13 +50,13 @@ const SKIN_MODEL_GEMINI =
     callPath: 'aurora_skin_vision_gateway',
   }).effectiveModel;
 
-function readTimeoutMs(raw, fallback) {
+function readTimeoutMs(raw, fallback, { min = 2000, max = 45000 } = {}) {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) return fallback;
-  return Math.max(2000, Math.min(45000, Math.trunc(value)));
+  return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
-const SKIN_LLM_TIMEOUT_MS = readTimeoutMs(process.env.AURORA_SKIN_VISION_TIMEOUT_MS, 12000);
+const SKIN_LLM_TIMEOUT_MS = readTimeoutMs(process.env.AURORA_SKIN_VISION_TIMEOUT_MS, 12000, { min: 2000, max: 45000 });
 
 function readOutputTokenBudget(envName, fallback) {
   const raw = Number(process.env[envName]);
@@ -87,6 +87,29 @@ function inferStructuredTimeoutMs(maxOutputTokens) {
   if (budget >= 3000) return Math.max(SKIN_LLM_TIMEOUT_MS, 25000);
   if (budget >= 1400) return Math.max(SKIN_LLM_TIMEOUT_MS, 15000);
   return SKIN_LLM_TIMEOUT_MS;
+}
+
+function normalizeGatewayTimeoutMs(raw, fallback = null, { min = 200, max = 45000 } = {}) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function resolveGeminiEffectiveTimeoutMs({ timeoutMs, maxOutputTokens } = {}) {
+  const explicitTimeoutMs = normalizeGatewayTimeoutMs(timeoutMs, null, { min: 200, max: 45000 });
+  if (Number.isFinite(explicitTimeoutMs) && explicitTimeoutMs > 0) return explicitTimeoutMs;
+  return inferStructuredTimeoutMs(maxOutputTokens);
+}
+
+function resolveReportAttemptTimeoutMs({ totalTimeoutMs, attempt = 1, previousElapsedMs = 0 } = {}) {
+  const total = normalizeGatewayTimeoutMs(totalTimeoutMs, null, { min: 200, max: 45000 });
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (attempt <= 1) {
+    if (total <= 1200) return total;
+    return Math.max(400, Math.min(total, Math.trunc(total * 0.7)));
+  }
+  const remaining = Math.max(0, total - Math.max(0, Math.trunc(Number(previousElapsedMs) || 0)));
+  return remaining;
 }
 
 const geminiClientsByKey = new Map();
@@ -430,6 +453,15 @@ function shouldRecoverReportFailureWithDeterministicFallback(reason) {
   ].includes(token);
 }
 
+function shouldRetryReportAttempt({ failureReason, totalTimeoutMs, firstAttemptLatencyMs } = {}) {
+  const reason = String(failureReason || '').trim().toUpperCase();
+  if (shouldRecoverReportFailureWithDeterministicFallback(reason)) return false;
+  const total = normalizeGatewayTimeoutMs(totalTimeoutMs, null, { min: 200, max: 45000 });
+  if (!Number.isFinite(total) || total <= 0) return true;
+  const remaining = Math.max(0, total - Math.max(0, Math.trunc(Number(firstAttemptLatencyMs) || 0)));
+  return remaining >= 700;
+}
+
 function buildDeterministicReportFallbackResult({
   reportDto,
   language,
@@ -615,10 +647,10 @@ async function callGeminiJson({
 
   try {
     const globalGate = getGeminiGlobalGate();
-    const effectiveTimeoutMs = Math.max(
-      readTimeoutMs(timeoutMs, SKIN_LLM_TIMEOUT_MS),
-      inferStructuredTimeoutMs(request.config && request.config.maxOutputTokens),
-    );
+    const effectiveTimeoutMs = resolveGeminiEffectiveTimeoutMs({
+      timeoutMs,
+      maxOutputTokens: request.config && request.config.maxOutputTokens,
+    });
     const invoke = () =>
       withTimeout(
         globalGate.withGate(kind || 'aurora_skin_llm', async () => client.models.generateContent(request)),
@@ -955,6 +987,10 @@ async function runGeminiReportStrategy({
   const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
   const isCanonical = isSkinPromptV3(promptVersion);
   let retryAttempted = 0;
+  const totalReportTimeoutMs = resolveGeminiEffectiveTimeoutMs({
+    timeoutMs,
+    maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
+  });
 
   const normalizeReportGatewayReason = (response, validation, semantic, safety) => {
     if (!response.ok) {
@@ -982,10 +1018,17 @@ async function runGeminiReportStrategy({
     };
   }
 
-  const attempt = async (revisionHint) => {
+  const attempt = async (revisionHint, attemptIndex = 1, previousElapsedMs = 0) => {
     const promptBundle = isCanonical
       ? buildReportAttemptBundle({ language, reportDto, promptVersion, revisionHint })
       : { bundle, userPrompt: revisionHint ? `${bundle.userPrompt}\n\n${revisionHint}` : bundle.userPrompt };
+    const attemptTimeoutMs = isCanonical
+      ? resolveReportAttemptTimeoutMs({
+          totalTimeoutMs: totalReportTimeoutMs,
+          attempt: attemptIndex,
+          previousElapsedMs,
+        })
+      : totalReportTimeoutMs;
     return await callGeminiJson({
       systemInstruction: promptBundle.bundle.systemInstruction,
       userText: promptBundle.userPrompt,
@@ -995,13 +1038,13 @@ async function runGeminiReportStrategy({
           ? (AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED ? SkinReportCanonicalLlmSchema : null)
           : SkinReportStrategySchema,
       maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
-      timeoutMs,
+      timeoutMs: attemptTimeoutMs || totalReportTimeoutMs,
       profiler,
       kind: 'skin_report_mainline',
     });
   };
 
-  const first = await attempt('');
+  const first = await attempt('', 1, 0);
   const firstCanonical = first.ok && isCanonical ? normalizeReportCanonicalLayer(first.parsed, { strict: true }) : null;
   const firstAdjudicatedCanonical = first.ok && isCanonical
     ? adjudicateReportCanonicalLayer(firstCanonical, { reportContext: reportDto })
@@ -1027,6 +1070,73 @@ async function runGeminiReportStrategy({
     : { ok: false, violations: [] };
 
   if (!first.ok || !firstValidation.ok || !firstSemantic.ok || !firstSafety.ok) {
+    const firstFailureReason = normalizeReportGatewayReason(first, firstValidation, firstSemantic, firstSafety);
+    if (shouldRecoverReportFailureWithDeterministicFallback(firstFailureReason)) {
+      return buildDeterministicReportFallbackResult({
+        reportDto,
+        language,
+        bundle,
+        retryAttempted,
+        failureReason: firstFailureReason,
+        canonical: firstAdjudicatedCanonical,
+        rawResponseText: first.response_text,
+        parseStatus: first.parse_status,
+        schemaSanitized: first.schema_sanitized,
+        upstreamStatusCode: first.upstream_status_code,
+        latencyMs: first.latency_ms,
+        failureDetail:
+          first.error ||
+          firstValidation.errors ||
+          firstSemantic.issues ||
+          firstSafety.violations,
+      });
+    }
+    if (!shouldRetryReportAttempt({
+      failureReason: firstFailureReason,
+      totalTimeoutMs: totalReportTimeoutMs,
+      firstAttemptLatencyMs: first.latency_ms,
+    })) {
+      if (first.ok && firstValidation.ok && !firstSemantic.ok && isCanonical) {
+        return {
+          ok: true,
+          provider: 'gemini',
+          reason: null,
+          schema_violation: false,
+          safety_violation: false,
+          semantic_violation: false,
+          layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+          canonical: firstAdjudicatedCanonical,
+          semantic: firstSemantic,
+          raw_response_text: first.response_text,
+          parse_status: first.parse_status,
+          schema_sanitized: Boolean(first.schema_sanitized),
+          retry: { attempted: retryAttempted, final: 'success', last_reason: 'semantic_fallback' },
+          upstream_status_code: first.upstream_status_code,
+          latency_ms: first.latency_ms,
+          prompt_version: bundle.promptVersion,
+          input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+          __semantic_fallback: true,
+        };
+      }
+      return buildDeterministicReportFallbackResult({
+        reportDto,
+        language,
+        bundle,
+        retryAttempted,
+        failureReason: firstFailureReason,
+        canonical: firstAdjudicatedCanonical,
+        rawResponseText: first.response_text,
+        parseStatus: first.parse_status,
+        schemaSanitized: first.schema_sanitized,
+        upstreamStatusCode: first.upstream_status_code,
+        latencyMs: first.latency_ms,
+        failureDetail:
+          first.error ||
+          firstValidation.errors ||
+          firstSemantic.issues ||
+          firstSafety.violations,
+      });
+    }
     retryAttempted = 1;
     const revisionHint = !firstValidation.ok || !firstSemantic.ok
       ? buildSemanticRevisionHint({
@@ -1034,7 +1144,7 @@ async function runGeminiReportStrategy({
           issues: !firstValidation.ok ? firstValidation.errors : firstSemantic.issues,
         })
       : 'Revise your previous output to comply with safety rules: remove disease names, prescription drug names, treatment claims, and brand-specific recommendations. Keep the same meaning and be concise.';
-    const second = await attempt(revisionHint);
+    const second = await attempt(revisionHint, 2, first.latency_ms);
     const secondCanonical = second.ok && isCanonical ? normalizeReportCanonicalLayer(second.parsed, { strict: true }) : null;
     const secondAdjudicatedCanonical = second.ok && isCanonical
       ? adjudicateReportCanonicalLayer(secondCanonical, { reportContext: reportDto })
@@ -1352,7 +1462,10 @@ module.exports = {
   SKIN_LLM_TIMEOUT_MS,
   classifyGeminiError,
   isGeminiSkinGatewayAvailable,
+  resolveGeminiEffectiveTimeoutMs,
+  resolveReportAttemptTimeoutMs,
   sanitizeGeminiResponseSchema,
+  shouldRetryReportAttempt,
   validateSkinAnalysisContent,
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
