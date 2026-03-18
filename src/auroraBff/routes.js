@@ -51307,6 +51307,63 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.warn({ err: altErr?.message, code: altErr?.code }, 'aurora bff: generic-reco enrichRecommendationsWithAlternatives failed, continuing without alternatives');
         }
       }
+      let directMatcherPayload = null;
+      const shouldAttemptDirectMatcherFallback =
+        AURORA_PRODUCT_MATCHER_ENABLED &&
+        (
+          Boolean(latestArtifact && typeof latestArtifact === 'object' && !Array.isArray(latestArtifact))
+          || AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
+        );
+      const hasUpstreamRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
+      if (!hasUpstreamRecommendations && shouldAttemptDirectMatcherFallback) {
+        try {
+          const matcherPlan = buildIngredientPlan({
+            artifact: latestArtifact || null,
+            profile: profile || {},
+          });
+          const allowBundledSeedCatalog =
+            AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED
+            && !DIAG_PRODUCT_CATALOG_PATH;
+          const directMatcherBundle = buildProductRecommendationsBundle({
+            ingredientPlan: matcherPlan,
+            artifact: latestArtifact || null,
+            profile,
+            language: ctx.lang,
+            disallowTreatment: false,
+            catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+            allowDefaultSeedCatalog: allowBundledSeedCatalog,
+          });
+          directMatcherPayload = toLegacyRecommendationsPayload(directMatcherBundle, { language: ctx.lang });
+          if (Array.isArray(directMatcherPayload?.recommendations) && directMatcherPayload.recommendations.length > 0) {
+            const existingMeta = isPlainObject(norm?.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {};
+            norm.payload = {
+              ...(isPlainObject(norm?.payload) ? norm.payload : {}),
+              ...directMatcherPayload,
+              intent: 'reco_products',
+              profile: summarizeProfileForContext(profile),
+              source: 'artifact_matcher_v1',
+              recommendation_meta: {
+                ...existingMeta,
+                source_mode: 'artifact_matcher',
+                grounding_status: directMatcherPayload.grounding_status || 'ungrounded',
+                grounded_count: Number(directMatcherPayload.grounded_count || 0),
+                ungrounded_count: Number(
+                  directMatcherPayload.ungrounded_count
+                    || (Array.isArray(directMatcherPayload.recommendations) ? directMatcherPayload.recommendations.length : 0),
+                ),
+              },
+            };
+            norm.field_missing = mergeFieldMissing(norm.field_missing, [
+              { field: 'payload.recommendations', reason: 'artifact_matcher_fallback_recovered' },
+            ]);
+          }
+        } catch (matcherErr) {
+          logger?.warn(
+            { err: matcherErr?.message, code: matcherErr?.code, request_id: ctx.request_id },
+            'aurora bff: direct reco matcher fallback failed',
+          );
+        }
+      }
       const payload = norm.payload;
       const llmTraceRef = buildRecoLlmTraceRef(upstreamReco && upstreamReco.llmTrace);
       const recoMeta = isPlainObject(payload?.recommendation_meta) ? payload.recommendation_meta : {};
@@ -51420,8 +51477,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           requestContextSignatureVersion:
             payload?.recommendation_meta?.request_context_signature_version || REQUEST_CONTEXT_SIGNATURE_VERSION,
           candidatePoolSignature: payload?.recommendation_meta?.candidate_pool_signature,
-          candidatePoolSignatureVersion:
-            payload?.recommendation_meta?.candidate_pool_signature_version || DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+          candidatePoolSignatureVersion: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
           strictnessSource: 'entry_default',
           minimumRecommendationContextSatisfied: recommendationContextState.satisfied,
           minContextRuleVersion: recommendationContextState.min_context_rule_version,

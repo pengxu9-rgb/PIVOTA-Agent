@@ -298,6 +298,71 @@ test('P2-1 contract: direct reco generate falls back to artifact matcher when bu
   );
 });
 
+test('P2-1 contract: direct reco generate falls back to profile-only matcher when bundled seed fallback is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'true',
+      AURORA_PRODUCT_REC_ALLOW_SEED_CATALOG: 'false',
+      AURORA_PRODUCT_MATCHER_BUNDLED_SEED_FALLBACK_ENABLED: 'true',
+    },
+    async () => {
+      const { harness, uid } = await setupRecoHarnessWithArtifact({
+        auroraChatImpl: async () => ({ answer: '{}', intent: 'chat', cards: [] }),
+        uidSeed: 'contract_direct_profile_only_matcher_fallback',
+        seedArtifact: false,
+      });
+
+      try {
+        const profileResp = await harness.request
+          .post('/v1/profile/update')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'healthy',
+            goals: ['acne', 'dark_spots'],
+            budgetTier: '¥500',
+          })
+          .expect(200);
+
+        assert.ok(Array.isArray(profileResp.body && profileResp.body.cards), 'profile update must return cards array');
+        assert.ok(findCard(parseCards(profileResp.body), 'profile'), 'profile update must return profile card');
+
+        const resp = await harness.request
+          .post('/v1/reco/generate')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            focus: 'dark spots and acne marks',
+            constraints: { fragrance_free: true },
+            include_alternatives: false,
+          })
+          .expect(200);
+
+        assert.ok(Array.isArray(resp.body && resp.body.cards), 'direct reco generate must return cards array');
+        const cards = parseCards(resp.body);
+        const reco = findCard(cards, 'recommendations');
+        assert.ok(reco, 'direct reco generate should return recommendations when profile-only matcher fallback succeeds');
+        assert.equal(String(reco.payload?.source || ''), 'artifact_matcher_v1');
+        assert.equal(String(reco.payload?.recommendation_meta?.source_mode || ''), 'artifact_matcher');
+        assert.ok(Array.isArray(reco.payload?.recommendations));
+        assert.ok(reco.payload.recommendations.length > 0);
+        assert.equal(String(reco.payload?.recommendations?.[0]?.retrieval_source || ''), 'artifact_matcher_v1');
+        assert.equal(String(reco.payload?.recommendations?.[0]?.retrieval_reason || ''), 'ingredient_plan_match');
+        assert.equal(
+          String(resp.body?.session_patch?.meta?.analysis_context_usage?.candidate_pool_signature_version || ''),
+          'candidate_pool_signature_v1',
+        );
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('P2-1 contract: empty structured recommendations degrade to confidence_notice(artifact_missing)', async () => {
   await withEnv(
     {
