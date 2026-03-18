@@ -10,6 +10,7 @@ function normalizeReportFailureReason(reason) {
 
   if (token === 'REPORT_OUTPUT_INVALID') return 'SCHEMA_INVALID';
   if (token === 'REPORT_SEMANTIC_INVALID') return 'SEMANTIC_INVALID';
+  if (token === 'AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT') return 'REPORT_STAGE_BUDGET_TIMEOUT';
   return token;
 }
 
@@ -36,6 +37,8 @@ function deriveSkinDegradeMeta({
       if (photoFailureCode) return `photo_${String(photoFailureCode).trim().toLowerCase()}`;
       return 'photo_qc_degraded';
     }
+    if (reportFailureReason === 'REPORT_STAGE_BUDGET_LOW') return 'report_stage_budget_low';
+    if (reportFailureReason === 'REPORT_STAGE_BUDGET_TIMEOUT') return 'report_stage_budget_timeout';
     if (reportFailureReason) return 'report_model_error';
     if (visionFailureReason) return visionFailureReason;
     return null;

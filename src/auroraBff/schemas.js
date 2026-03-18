@@ -118,6 +118,15 @@ const AnalysisMetaSchema = z
     degrade_reason: z.string().min(1).nullable().optional(),
     vision_failure_reason: z.string().min(1).nullable().optional(),
     report_failure_reason: z.string().min(1).nullable().optional(),
+    report_stage_budget_ms: z.number().int().nonnegative().optional(),
+    report_stage_elapsed_ms: z.number().nonnegative().optional(),
+    report_stage_outcome: z.string().min(1).optional(),
+    report_stage_attempts: z.number().int().nonnegative().optional(),
+    budget_abort_stage: z.string().min(1).optional(),
+    stage_timings_ms: z.record(z.string().min(1), z.number().nonnegative()).optional(),
+    slowest_stage: z.string().min(1).optional(),
+    slowest_stage_ms: z.number().nonnegative().optional(),
+    slowest_stage_status: z.string().min(1).optional(),
   })
   .passthrough();
 
