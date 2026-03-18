@@ -512,6 +512,7 @@ const { getBestIngredientSignalMatch } = require('../services/ingredientSignalSt
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   createArtifactId,
+  createPlanId,
   saveDiagnosisArtifact,
   getLatestDiagnosisArtifact,
   saveIngredientPlan,
@@ -2155,6 +2156,9 @@ const AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY = String(
 ).trim().toLowerCase() !== 'false';
 const AURORA_ANALYSIS_MEMORY_FAST_PATH_ROUTINE_ONLY_ENABLED = String(
   process.env.AURORA_ANALYSIS_MEMORY_FAST_PATH_ROUTINE_ONLY_ENABLED || 'true',
+).trim().toLowerCase() !== 'false';
+const AURORA_ANALYSIS_ARTIFACT_FAST_PATH_ROUTINE_ONLY_ENABLED = String(
+  process.env.AURORA_ANALYSIS_ARTIFACT_FAST_PATH_ROUTINE_ONLY_ENABLED || 'true',
 ).trim().toLowerCase() !== 'false';
 const AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS = (() => {
   const fallback = Math.min(600, AURORA_BFF_ANALYSIS_BUDGET_MS);
@@ -16722,6 +16726,19 @@ function shouldUseRoutineOnlyAnalysisMemoryFastPath({
   return !userRequestedPhoto && !hasSubmittedPhoto;
 }
 
+function shouldUseRoutineOnlyAnalysisArtifactFastPath({
+  parsedBody,
+  rawBody,
+  summaryFirstEnabled = AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+} = {}) {
+  if (!AURORA_ANALYSIS_ARTIFACT_FAST_PATH_ROUTINE_ONLY_ENABLED) return false;
+  return shouldUseRoutineOnlyAnalysisMemoryFastPath({
+    parsedBody,
+    rawBody,
+    summaryFirstEnabled,
+  });
+}
+
 function resolveAnalysisReportStageBudget({
   startedAtMs,
   analysisBudgetMs,
@@ -16915,6 +16932,59 @@ function deferLastAnalysisPersistence({
         'aurora bff: deferred last analysis persistence failed',
       );
     });
+  });
+  return true;
+}
+
+function deferDiagnosisArtifactPersistence({
+  identity,
+  sessionId = null,
+  diagnosisArtifact,
+  ingredientPlanPayload = null,
+  ingredientPlanId = null,
+  logger,
+  requestId = null,
+  traceId = null,
+  saveDiagnosisArtifactFn = saveDiagnosisArtifact,
+  saveIngredientPlanFn = saveIngredientPlan,
+} = {}) {
+  const artifact = isPlainObject(diagnosisArtifact) ? diagnosisArtifact : null;
+  if (!artifact) return false;
+  const planPayload = isPlainObject(ingredientPlanPayload) ? ingredientPlanPayload : null;
+  const auroraUid = identity && identity.auroraUid ? identity.auroraUid : null;
+  const userId = identity && identity.userId ? identity.userId : null;
+  const artifactId = artifact && artifact.artifact_id ? String(artifact.artifact_id).trim() : null;
+  setImmediate(async () => {
+    try {
+      const savedArtifact = await saveDiagnosisArtifactFn({
+        auroraUid,
+        userId,
+        sessionId,
+        artifact,
+        artifactId: artifactId || undefined,
+      });
+      const persistedArtifactId = savedArtifact && savedArtifact.artifact_id
+        ? String(savedArtifact.artifact_id).trim()
+        : artifactId;
+      if (planPayload && persistedArtifactId) {
+        await saveIngredientPlanFn({
+          artifactId: persistedArtifactId,
+          auroraUid,
+          userId,
+          plan: planPayload,
+          planId: ingredientPlanId || undefined,
+        });
+      }
+    } catch (err) {
+      logger?.warn(
+        {
+          err: err && err.message ? err.message : String(err),
+          request_id: requestId,
+          trace_id: traceId,
+        },
+        'aurora bff: deferred diagnosis artifact persistence failed',
+      );
+    }
   });
   return true;
 }
@@ -53617,6 +53687,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           rawBody: req.body || {},
           summaryFirstEnabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
         });
+        const routineOnlyArtifactFastPath = shouldUseRoutineOnlyAnalysisArtifactFastPath({
+          parsedBody: parsed.data,
+          rawBody: req.body || {},
+          summaryFirstEnabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+        });
         let qualityMemoryMode = routineOnlyMemoryFastPath ? 'routine_only_profile_only' : 'default';
         let qualityProfileTimedOut = false;
         let qualityLogsSkipped = false;
@@ -55418,20 +55493,26 @@ function mountAuroraBffRoutes(app, { logger }) {
               photos,
               photoQuality,
             });
-            const savedArtifact = await saveDiagnosisArtifact({
-              auroraUid: identity.auroraUid,
-              userId: identity.userId,
-              sessionId: ctx.brief_id || null,
-              artifact: artifactCandidate,
-              artifactId: artifactCandidate && artifactCandidate.artifact_id ? artifactCandidate.artifact_id : undefined,
-            });
-            diagnosisArtifact = savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
-              ? {
-                  ...savedArtifact.artifact_json,
-                  artifact_id: savedArtifact.artifact_id,
-                  created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
-                }
-              : artifactCandidate;
+            let ingredientPlanPersistPayload = null;
+            let ingredientPlanPersistId = null;
+            if (routineOnlyArtifactFastPath) {
+              diagnosisArtifact = artifactCandidate;
+            } else {
+              const savedArtifact = await saveDiagnosisArtifact({
+                auroraUid: identity.auroraUid,
+                userId: identity.userId,
+                sessionId: ctx.brief_id || null,
+                artifact: artifactCandidate,
+                artifactId: artifactCandidate && artifactCandidate.artifact_id ? artifactCandidate.artifact_id : undefined,
+              });
+              diagnosisArtifact = savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
+                ? {
+                    ...savedArtifact.artifact_json,
+                    artifact_id: savedArtifact.artifact_id,
+                    created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
+                  }
+                : artifactCandidate;
+            }
             logger?.info({ kind: 'metric', name: 'aurora.skin.artifact_created_rate', value: diagnosisArtifact ? 1 : 0 }, 'metric');
             recordAuroraSkinFlowMetric({ stage: 'artifact_created', hit: Boolean(diagnosisArtifact) });
             latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
@@ -55443,19 +55524,31 @@ function mountAuroraBffRoutes(app, { logger }) {
                 artifact: diagnosisArtifact,
                 profile: profileSummary || profile || {},
               });
-              const savedPlan = await saveIngredientPlan({
-                artifactId: latestArtifactId,
-                auroraUid: identity.auroraUid,
-                userId: identity.userId,
-                plan: planBuilt,
-              });
-              ingredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
-                ? {
-                    ...savedPlan.plan_json,
-                    plan_id: savedPlan.plan_id,
-                    created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
-                  }
-                : planBuilt;
+              if (routineOnlyArtifactFastPath) {
+                ingredientPlanPersistPayload = planBuilt && typeof planBuilt === 'object' ? { ...planBuilt } : null;
+                ingredientPlanPersistId = createPlanId();
+                ingredientPlan = ingredientPlanPersistPayload
+                  ? {
+                      ...ingredientPlanPersistPayload,
+                      plan_id: ingredientPlanPersistId,
+                      created_at: new Date().toISOString(),
+                    }
+                  : planBuilt;
+              } else {
+                const savedPlan = await saveIngredientPlan({
+                  artifactId: latestArtifactId,
+                  auroraUid: identity.auroraUid,
+                  userId: identity.userId,
+                  plan: planBuilt,
+                });
+                ingredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
+                  ? {
+                      ...savedPlan.plan_json,
+                      plan_id: savedPlan.plan_id,
+                      created_at: savedPlan.created_at || savedPlan.plan_json.created_at,
+                    }
+                  : planBuilt;
+              }
               logger?.info({ kind: 'metric', name: 'aurora.skin.ingredient_plan_rate', value: ingredientPlan ? 1 : 0 }, 'metric');
               recordAuroraSkinFlowMetric({ stage: 'ingredient_plan', hit: Boolean(ingredientPlan) });
             }
@@ -55477,6 +55570,19 @@ function mountAuroraBffRoutes(app, { logger }) {
                   }
                 : analysis,
             });
+
+            if (routineOnlyArtifactFastPath && diagnosisArtifact) {
+              deferDiagnosisArtifactPersistence({
+                identity,
+                sessionId: ctx.brief_id || null,
+                diagnosisArtifact,
+                ingredientPlanPayload: ingredientPlanPersistPayload,
+                ingredientPlanId: ingredientPlanPersistId,
+                logger,
+                requestId: ctx.request_id,
+                traceId: ctx.trace_id,
+              });
+            }
           } catch (err) {
             artifactStageFailed = true;
             profiler.fail('artifact', err, {
@@ -55495,6 +55601,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               artifact_created: Boolean(diagnosisArtifact),
               ingredient_plan_created: Boolean(ingredientPlan),
               recommendation_ready: Boolean(recommendationReady),
+              persistence_mode: routineOnlyArtifactFastPath ? 'deferred_async' : 'sync',
             });
           }
         } else {
@@ -65809,7 +65916,9 @@ const __internal = {
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   resolveAnalysisStoryForcedSkipReason,
+  shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
+  deferDiagnosisArtifactPersistence,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,

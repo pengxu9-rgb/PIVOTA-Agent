@@ -217,3 +217,82 @@ test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory loa
     delete require.cache[moduleId];
   }
 });
+
+test('shouldUseRoutineOnlyAnalysisArtifactFastPath mirrors routine-only no-photo fast-path gating', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    assert.equal(
+      __internal.shouldUseRoutineOnlyAnalysisArtifactFastPath({
+        parsedBody: {
+          currentRoutine: {
+            schema_version: 'aurora.routine_intake.v1',
+            am: [{ step: 'cleanser', product: 'Test Cleanser' }],
+          },
+        },
+        rawBody: {},
+        summaryFirstEnabled: true,
+      }),
+      true,
+    );
+    assert.equal(
+      __internal.shouldUseRoutineOnlyAnalysisArtifactFastPath({
+        parsedBody: {
+          use_photo: true,
+          currentRoutine: {
+            schema_version: 'aurora.routine_intake.v1',
+            am: [{ step: 'cleanser', product: 'Test Cleanser' }],
+          },
+        },
+        rawBody: {},
+        summaryFirstEnabled: true,
+      }),
+      false,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('deferDiagnosisArtifactPersistence saves artifact and plan asynchronously with stable ids', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const calls = [];
+    assert.equal(
+      __internal.deferDiagnosisArtifactPersistence({
+        identity: { auroraUid: 'guest_123', userId: 'user_123' },
+        sessionId: 'brief_123',
+        diagnosisArtifact: {
+          artifact_id: 'artifact_123',
+          created_at: '2026-03-19T00:00:00.000Z',
+          overall_confidence: { score: 0.82, level: 'high' },
+        },
+        ingredientPlanPayload: {
+          intensity: 'balanced',
+          targets: [{ ingredient_id: 'ceramide' }],
+        },
+        ingredientPlanId: 'plan_123',
+        saveDiagnosisArtifactFn: async (args) => {
+          calls.push({ kind: 'artifact', args });
+          return { artifact_id: args.artifactId, artifact_json: args.artifact, created_at: args.artifact.created_at };
+        },
+        saveIngredientPlanFn: async (args) => {
+          calls.push({ kind: 'plan', args });
+          return { plan_id: args.planId, artifact_id: args.artifactId, plan_json: args.plan };
+        },
+      }),
+      true,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].kind, 'artifact');
+    assert.equal(calls[0].args.artifactId, 'artifact_123');
+    assert.equal(calls[1].kind, 'plan');
+    assert.equal(calls[1].args.artifactId, 'artifact_123');
+    assert.equal(calls[1].args.planId, 'plan_123');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
