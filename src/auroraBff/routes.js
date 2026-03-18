@@ -20869,6 +20869,52 @@ function buildDiagnosisArtifactV1({
   return artifact;
 }
 
+function buildRoutineAuditFastPathArtifactAnalysis({ routineAnalysisResult } = {}) {
+  const cards = Array.isArray(routineAnalysisResult && routineAnalysisResult.cards)
+    ? routineAnalysisResult.cards
+    : [];
+  const userFitPayload = cards.find((card) => card && card.type === 'routine_user_fit_v1' && isPlainObject(card.payload))
+    ?.payload || null;
+  const findings = [];
+  const seen = new Set();
+  const pushFinding = (issueType, confidence = 0.62) => {
+    const token = String(issueType || '').trim();
+    if (!token) return;
+    const key = token.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    findings.push({
+      issue_type: token,
+      confidence: Number.isFinite(Number(confidence))
+        ? Math.max(0, Math.min(1, Number(confidence)))
+        : 0.62,
+    });
+  };
+
+  const priorityFindings = Array.isArray(userFitPayload && userFitPayload.priority_findings)
+    ? userFitPayload.priority_findings
+    : [];
+  for (const finding of priorityFindings.slice(0, 5)) {
+    pushFinding(finding, 0.68);
+  }
+
+  const goalGaps = Array.isArray(userFitPayload && userFitPayload.goal_gaps)
+    ? userFitPayload.goal_gaps
+    : [];
+  for (const row of goalGaps.slice(0, 4)) {
+    pushFinding(row && row.goal, 0.6);
+  }
+
+  const findingGaps = Array.isArray(userFitPayload && userFitPayload.finding_gaps)
+    ? userFitPayload.finding_gaps
+    : [];
+  for (const row of findingGaps.slice(0, 3)) {
+    pushFinding(row && row.finding, 0.58);
+  }
+
+  return { findings };
+}
+
 function buildConfidenceNoticeCardPayload({
   language,
   reason,
@@ -53179,11 +53225,61 @@ function mountAuroraBffRoutes(app, { logger }) {
               throw err;
             }
 
+            let diagnosisArtifact = null;
+            let latestArtifactId = null;
+            let artifactGate = null;
+            if (AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
+              fastPathFailureStage = 'diagnosis_artifact_handoff';
+              try {
+                const artifactCandidate = buildDiagnosisArtifactV1({
+                  ctx,
+                  identity,
+                  profileSummary,
+                  recentLogsSummary,
+                  analysis: buildRoutineAuditFastPathArtifactAnalysis({
+                    routineAnalysisResult: routineAnalysisV2Result,
+                  }),
+                  analysisSource: 'rule_based',
+                  usePhoto: false,
+                  usedPhotos: false,
+                  photos: [],
+                  photoQuality,
+                });
+                const savedArtifact = await saveDiagnosisArtifact({
+                  auroraUid: identity.auroraUid,
+                  userId: identity.userId,
+                  sessionId: ctx.brief_id || null,
+                  artifact: artifactCandidate,
+                  artifactId: artifactCandidate && artifactCandidate.artifact_id ? artifactCandidate.artifact_id : undefined,
+                });
+                diagnosisArtifact = savedArtifact && savedArtifact.artifact_json && typeof savedArtifact.artifact_json === 'object'
+                  ? {
+                      ...savedArtifact.artifact_json,
+                      artifact_id: savedArtifact.artifact_id,
+                      created_at: savedArtifact.created_at || savedArtifact.artifact_json.created_at,
+                    }
+                  : artifactCandidate;
+                latestArtifactId = diagnosisArtifact && diagnosisArtifact.artifact_id
+                  ? String(diagnosisArtifact.artifact_id).trim()
+                  : null;
+                artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
+              } catch (err) {
+                logger?.warn(
+                  {
+                    err: err && err.message ? err.message : String(err),
+                    request_id: ctx.request_id,
+                    candidate_count: routineProductCandidates.length,
+                  },
+                  'aurora bff: routine audit fast path artifact handoff failed',
+                );
+              }
+            }
+
             const analysisMeta = {
               detector_source: 'rule_based',
               llm_vision_called: false,
               llm_report_called: false,
-              artifact_usable: false,
+              artifact_usable: Boolean(artifactGate && artifactGate.ok),
               routine_analysis_version: 'v2',
               routine_payload_shape: routinePayloadShape,
               routine_preview_items_count: routineProductCandidates.length,
@@ -53195,11 +53291,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
               gate_relax_mode: AURORA_RULE_RELAX_MODE,
               low_quality_tolerated: false,
-              reco_artifact_eligible: Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
-                ? routineAnalysisV2Result.recommendation_groups.some(
-                    (group) => Array.isArray(group && group.candidate_pool) && group.candidate_pool.length > 0,
-                  )
-                : false,
+              reco_artifact_eligible:
+                Boolean(artifactGate && artifactGate.ok)
+                || (Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
+                  ? routineAnalysisV2Result.recommendation_groups.some(
+                      (group) => Array.isArray(group && group.candidate_pool) && group.candidate_pool.length > 0,
+                    )
+                  : false),
             };
 
             const sessionPatch = {
@@ -53225,6 +53323,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (profileSummary) {
               sessionPatch.profile = profileSummary;
             }
+            appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
 
             const analysisChips = buildAnalysisSuggestedChips({
               language: ctx.lang,

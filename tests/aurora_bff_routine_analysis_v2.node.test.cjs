@@ -264,9 +264,10 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
       const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
       try {
         const uid = buildTestUid('routine_audit_v1_surface');
+        const headers = headersFor(uid, 'EN');
         const resp = await harness.request
           .post('/v1/analysis/skin')
-          .set(headersFor(uid, 'EN'))
+          .set(headers)
           .send({
             use_photo: false,
             skinType: 'combination',
@@ -323,6 +324,23 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
         assert.equal(sessionPatch?.meta?.analysis_contract?.analysis_mode, 'routine_audit_v1');
         assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
         assert.equal(sessionPatch?.meta?.analysis_contract?.execution_path, 'routine_audit_fast_path');
+        assert.ok(String(sessionPatch?.state?.latest_artifact_id || '').trim());
+        assert.equal(analysisMeta.artifact_usable, true);
+        const { getLatestDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
+        const { hasUsableArtifactForRecommendations } = require('../src/auroraBff/gating');
+        const latestArtifact = await getLatestDiagnosisArtifact({
+          auroraUid: uid,
+          sessionId: headers['X-Brief-ID'],
+          maxAgeDays: 30,
+          preferArtifactId: sessionPatch?.state?.latest_artifact_id,
+          artifactUse: 'reco_context',
+        });
+        const latestArtifactPayload =
+          latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
+            ? { ...latestArtifact.artifact_json, artifact_id: latestArtifact.artifact_id }
+            : latestArtifact;
+        assert.equal(String(latestArtifactPayload?.artifact_id || ''), String(sessionPatch?.state?.latest_artifact_id || ''));
+        assert.equal(hasUsableArtifactForRecommendations(latestArtifactPayload).ok, true);
 
         const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
         const eventNames = events.map((event) => event && event.event_name).filter(Boolean);
@@ -351,6 +369,7 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
       const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
       try {
         const uid = buildTestUid('routine_audit_v1_profile_fast_path');
+        const headers = headersFor(uid, 'EN');
         await seedCompleteProfile(harness.request, uid, 'EN', {
           skinType: 'combination',
           sensitivity: 'medium',
@@ -360,7 +379,7 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
 
         const resp = await harness.request
           .post('/v1/analysis/skin')
-          .set(headersFor(uid, 'EN'))
+          .set(headers)
           .send({
             use_photo: false,
             currentRoutine: {
@@ -401,12 +420,121 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
           : {};
         assert.equal(sessionPatch.next_state, 'ROUTINE_REVIEW');
         assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
+        assert.ok(String(sessionPatch?.state?.latest_artifact_id || '').trim());
+        assert.equal(analysisMeta.artifact_usable, true);
+        const { getLatestDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
+        const { hasUsableArtifactForRecommendations } = require('../src/auroraBff/gating');
+        const latestArtifact = await getLatestDiagnosisArtifact({
+          auroraUid: uid,
+          sessionId: headers['X-Brief-ID'],
+          maxAgeDays: 30,
+          preferArtifactId: sessionPatch?.state?.latest_artifact_id,
+          artifactUse: 'reco_context',
+        });
+        const latestArtifactPayload =
+          latestArtifact && latestArtifact.artifact_json && typeof latestArtifact.artifact_json === 'object'
+            ? { ...latestArtifact.artifact_json, artifact_id: latestArtifact.artifact_id }
+            : latestArtifact;
+        assert.equal(String(latestArtifactPayload?.artifact_id || ''), String(sessionPatch?.state?.latest_artifact_id || ''));
+        assert.equal(hasUsableArtifactForRecommendations(latestArtifactPayload).ok, true);
 
         const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
         const eventNames = events.map((event) => event && event.event_name).filter(Boolean);
         assert.ok(eventNames.includes('routine_audit_fast_path_started'));
         assert.ok(eventNames.includes('routine_audit_fast_path_completed'));
         assert.equal(eventNames.includes('analysis_timeout_degraded'), false);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin -> /v1/chat reco: routine audit fast path persists usable artifact handoff', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_reco_handoff');
+        const headers = headersFor(uid, 'EN');
+        await seedCompleteProfile(harness.request, uid, 'EN', {
+          skinType: 'combination',
+          sensitivity: 'medium',
+          barrierStatus: 'impaired',
+          goals: ['acne', 'dark_spots'],
+        });
+
+        const analysisResp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headers)
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Niacinamide serum',
+                moisturizer: 'Barrier cream',
+                sunscreen: 'Daily SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum and glycolic acid toner',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const analysisSession = analysisResp.body && analysisResp.body.session_patch && typeof analysisResp.body.session_patch === 'object'
+          ? analysisResp.body.session_patch
+          : {};
+        assert.ok(String(analysisSession?.state?.latest_artifact_id || '').trim());
+
+        const recoResp = await harness.request
+          .post('/v1/chat')
+          .set(headers)
+          .send({
+            action: {
+              action_id: 'chip.start.reco_products',
+              kind: 'chip',
+              data: {
+                reply_text: 'Show me product recommendations',
+                force_route: 'reco_products',
+              },
+            },
+            session: analysisSession,
+            language: 'EN',
+          })
+          .expect(200);
+
+        const cards = parseCards(recoResp.body);
+        assert.equal(
+          cards.some((card) => card && (card.type === 'recommendations' || card.type === 'product_verdict')),
+          true,
+        );
+        assert.equal(String(findCard(cards, 'confidence_notice')?.payload?.reason || ''), '');
+
+        const recoEvent =
+          (Array.isArray(recoResp.body?.events) ? recoResp.body.events : []).find((evt) => evt && evt.event_name === 'recos_requested')
+          || (Array.isArray(recoResp.body?.ops?.experiment_events) ? recoResp.body.ops.experiment_events.find((evt) => evt && evt.event_type === 'recos_requested') : null);
+        if (recoEvent && (recoEvent.data || recoEvent.event_data)) {
+          const eventData = recoEvent.data || recoEvent.event_data || {};
+          const groundedCount = Number(eventData.grounded_count || 0);
+          const ungroundedCount = Number(eventData.ungrounded_count || 0);
+          assert.equal(
+            String(eventData.reason || '') !== 'artifact_missing' || groundedCount > 0 || ungroundedCount > 0,
+            true,
+          );
+        }
       } finally {
         harness.restore();
       }
