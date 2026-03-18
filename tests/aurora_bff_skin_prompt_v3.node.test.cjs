@@ -345,9 +345,64 @@ test('skin prompt v3: deepening adjudication pins phase and question intent to d
   assert.deepEqual(adjudicated.advice_items, ['protect_barrier', 'confirm_tolerance', 'stabilize_barrier']);
 });
 
-test('skin prompt v3: report LLM transport schema excludes deepening while internal canonical keeps it', () => {
+test('skin prompt v3: report LLM transport schema is compact while internal canonical keeps full plan fields', () => {
   assert.equal(Boolean(SkinReportCanonicalSchema.properties.deepening), true);
   assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.deepening), false);
+  assert.equal(Boolean(SkinReportCanonicalSchema.properties.routine_steps), true);
+  assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.routine_steps), false);
+  assert.equal(Boolean(SkinReportCanonicalSchema.properties.watchouts), true);
+  assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.watchouts), false);
+  assert.deepEqual(SkinReportCanonicalLlmSchema.required, ['needs_risk_check', 'summary_focus', 'insights']);
+});
+
+test('skin prompt v3: compact report transport payload adjudicates into a valid full canonical report', () => {
+  const compactCanonical = normalizeReportCanonicalLayer(
+    {
+      needs_risk_check: false,
+      summary_focus: { priority: 'redness', primary_cues: ['redness'] },
+      insights: [
+        {
+          cue: 'redness',
+          region: 'cheeks',
+          severity: 'moderate',
+          confidence: 'high',
+          evidence: 'diffuse cheek redness visible in daylight',
+        },
+        {
+          cue: 'texture',
+          region: 'chin',
+          severity: 'mild',
+          confidence: 'med',
+          evidence: 'slight rough texture on the chin area',
+        },
+      ],
+    },
+    { strict: true },
+  );
+  const adjudicated = adjudicateReportCanonicalLayer(compactCanonical, {
+    reportContext: {
+      concern_rank: ['redness', 'texture'],
+      deterministic_signals: { redness: 'mid', texture: 'rough' },
+      quality: { grade: 'pass' },
+      vision_cues: compactCanonical.insights,
+      routine_summary: { sunscreen: 'yes', actives: [] },
+      constraints: [],
+    },
+  });
+  assert.equal(validateReportCanonicalLayer(adjudicated).ok, true);
+  assert.equal(
+    evaluateReportCanonicalSemantic(adjudicated, {
+      reportContext: {
+        concern_rank: ['redness', 'texture'],
+      },
+      parseStatus: 'parsed',
+    }).ok,
+    true,
+  );
+  assert.equal(Array.isArray(adjudicated.routine_steps), true);
+  assert.equal(adjudicated.routine_steps.length > 0, true);
+  assert.equal(Array.isArray(adjudicated.watchouts), true);
+  assert.equal(adjudicated.follow_up && typeof adjudicated.follow_up.intent === 'string', true);
 });
 
 test('skin prompt v3: strict canonical ingress does not invent mixed priority or texture-linked steps', () => {

@@ -370,6 +370,19 @@ const CanonicalSummaryFocusSchema = {
   required: ['priority', 'primary_cues'],
 };
 
+const CanonicalSummaryFocusTransportSchema = {
+  type: 'object',
+  properties: {
+    priority: CanonicalSummaryFocusSchema.properties.priority,
+    primary_cues: {
+      type: 'array',
+      maxItems: 2,
+      items: { type: 'string', enum: CanonicalCueValues.slice() },
+    },
+  },
+  required: ['priority'],
+};
+
 const CanonicalRoutineStepSchema = {
   type: 'object',
   properties: {
@@ -476,15 +489,10 @@ const SkinReportCanonicalLlmSchema = {
   type: 'object',
   properties: {
     needs_risk_check: SkinReportCanonicalSchema.properties.needs_risk_check,
-    summary_focus: SkinReportCanonicalSchema.properties.summary_focus,
+    summary_focus: CanonicalSummaryFocusTransportSchema,
     insights: SkinReportCanonicalSchema.properties.insights,
-    routine_steps: SkinReportCanonicalSchema.properties.routine_steps,
-    watchouts: SkinReportCanonicalSchema.properties.watchouts,
-    follow_up: SkinReportCanonicalSchema.properties.follow_up,
-    two_week_focus: SkinReportCanonicalSchema.properties.two_week_focus,
-    risk_flags: SkinReportCanonicalSchema.properties.risk_flags,
   },
-  required: SkinReportCanonicalSchema.required.slice(),
+  required: ['needs_risk_check', 'summary_focus', 'insights'],
 };
 
 const SkinDeepeningCanonicalSchema = {

@@ -493,7 +493,16 @@ function sanitizeGeminiResponseSchema(schema) {
   if (Array.isArray(schema)) return schema.map(sanitizeGeminiResponseSchema);
   const out = {};
   for (const [k, v] of Object.entries(schema)) {
-    if (k === 'maxItems' || k === 'minItems' || k === 'default' || k === 'title' || k === 'examples') continue;
+    if (
+      k === 'maxItems' ||
+      k === 'minItems' ||
+      k === 'maxLength' ||
+      k === 'minLength' ||
+      k === 'default' ||
+      k === 'title' ||
+      k === 'description' ||
+      k === 'examples'
+    ) continue;
     out[k] = sanitizeGeminiResponseSchema(v);
   }
   return out;
