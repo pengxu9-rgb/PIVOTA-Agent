@@ -74,6 +74,12 @@ const SKIN_VISION_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_VISION_
 const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 1800);
 const SKIN_JSON_TEMPERATURE = readSamplingFloat('AURORA_SKIN_JSON_TEMPERATURE', 0, { min: 0, max: 1 });
 const SKIN_JSON_TOP_P = readSamplingFloat('AURORA_SKIN_JSON_TOP_P', 0.1, { min: 0.01, max: 1 });
+const AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED = (() => {
+  const raw = String(process.env.AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 
 function inferStructuredTimeoutMs(maxOutputTokens) {
   const budget = readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number(maxOutputTokens) || 700);
@@ -563,13 +569,13 @@ async function callGeminiJson({
     ],
     config: {
       responseMimeType: 'application/json',
-      responseSchema: sanitizedResponseSchema,
       temperature: SKIN_JSON_TEMPERATURE,
       topP: SKIN_JSON_TOP_P,
       candidateCount: 1,
       maxOutputTokens: readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700),
     },
   };
+  if (sanitizedResponseSchema) request.config.responseSchema = sanitizedResponseSchema;
 
   try {
     const globalGate = getGeminiGlobalGate();
@@ -949,7 +955,10 @@ async function runGeminiReportStrategy({
       systemInstruction: promptBundle.bundle.systemInstruction,
       userText: promptBundle.userPrompt,
       imageBuffer: null,
-      responseSchema: isCanonical ? SkinReportCanonicalLlmSchema : SkinReportStrategySchema,
+      responseSchema:
+        isCanonical
+          ? (AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED ? SkinReportCanonicalLlmSchema : null)
+          : SkinReportStrategySchema,
       maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
       timeoutMs,
       profiler,
