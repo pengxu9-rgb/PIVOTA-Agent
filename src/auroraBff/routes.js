@@ -15900,6 +15900,10 @@ function resolveAnalysisStoryForcedSkipReason(analysisMeta) {
     return 'report_stage_recovered_skip_story_llm';
   }
   const reportStageOutcome = pickFirstString(meta.report_stage_outcome);
+  const reportStageBudgetProfile = pickFirstString(meta.report_stage_budget_profile);
+  if (reportStageOutcome === 'skipped_policy' && reportStageBudgetProfile === 'routine_only') {
+    return 'routine_summary_fast_path_skip_story_llm';
+  }
   if (reportStageOutcome === 'budget_timeout' || reportStageOutcome === 'analysis_budget_timeout') {
     return 'report_stage_timeout_skip_story_llm';
   }
@@ -65733,6 +65737,7 @@ const __internal = {
   callEvalJudgeJson,
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
+  resolveAnalysisStoryForcedSkipReason,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,

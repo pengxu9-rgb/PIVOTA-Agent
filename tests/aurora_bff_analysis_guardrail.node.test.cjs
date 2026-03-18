@@ -89,3 +89,25 @@ test('applyProductIntelGuardrailsToEnvelope uses lightweight ingredient-plan gua
     delete require.cache[moduleId];
   }
 });
+
+test('resolveAnalysisStoryForcedSkipReason skips story LLM on routine-only summary fast path', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    assert.equal(
+      __internal.resolveAnalysisStoryForcedSkipReason({
+        report_stage_outcome: 'skipped_policy',
+        report_stage_budget_profile: 'routine_only',
+      }),
+      'routine_summary_fast_path_skip_story_llm',
+    );
+    assert.equal(
+      __internal.resolveAnalysisStoryForcedSkipReason({
+        report_stage_outcome: 'skipped_policy',
+        report_stage_budget_profile: 'default',
+      }),
+      null,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
