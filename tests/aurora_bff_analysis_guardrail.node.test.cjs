@@ -168,3 +168,52 @@ test('applyProductIntelGuardrailsToEnvelope uses lightweight guardrail on routin
     delete require.cache[moduleId];
   }
 });
+
+test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory load for no-photo routine summary requests', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    assert.equal(
+      __internal.shouldUseRoutineOnlyAnalysisMemoryFastPath({
+        parsedBody: {
+          currentRoutine: {
+            schema_version: 'aurora.routine_intake.v1',
+            am: [{ step: 'cleanser', product: 'Test Cleanser' }],
+          },
+        },
+        rawBody: {},
+        summaryFirstEnabled: true,
+      }),
+      true,
+    );
+    assert.equal(
+      __internal.shouldUseRoutineOnlyAnalysisMemoryFastPath({
+        parsedBody: {
+          use_photo: true,
+          currentRoutine: {
+            schema_version: 'aurora.routine_intake.v1',
+            am: [{ step: 'cleanser', product: 'Test Cleanser' }],
+          },
+        },
+        rawBody: {},
+        summaryFirstEnabled: true,
+      }),
+      false,
+    );
+    assert.equal(
+      __internal.shouldUseRoutineOnlyAnalysisMemoryFastPath({
+        parsedBody: {
+          currentRoutine: {
+            schema_version: 'aurora.routine_intake.v1',
+            am: [{ step: 'cleanser', product: 'Test Cleanser' }],
+          },
+          photos: [{ slot_id: 'front', photo_id: 'photo_123', qc_status: 'passed' }],
+        },
+        rawBody: {},
+        summaryFirstEnabled: true,
+      }),
+      false,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});

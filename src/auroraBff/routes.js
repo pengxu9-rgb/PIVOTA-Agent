@@ -2153,6 +2153,15 @@ const AURORA_ANALYSIS_REPORT_STAGE_ROUTINE_ONLY_BUDGET_MS = (() => {
 const AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY = String(
   process.env.AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY || 'true',
 ).trim().toLowerCase() !== 'false';
+const AURORA_ANALYSIS_MEMORY_FAST_PATH_ROUTINE_ONLY_ENABLED = String(
+  process.env.AURORA_ANALYSIS_MEMORY_FAST_PATH_ROUTINE_ONLY_ENABLED || 'true',
+).trim().toLowerCase() !== 'false';
+const AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS = (() => {
+  const fallback = Math.min(600, AURORA_BFF_ANALYSIS_BUDGET_MS);
+  const n = Number(process.env.AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS || fallback);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(100, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
 const AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS = (() => {
   const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS || 1800);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
@@ -16688,6 +16697,29 @@ function deriveAnalysisReportBudgetProfile({
   hasPhotoPrimaryInput = false,
 } = {}) {
   return summaryFirst && hasRoutine && !hasPhotoPrimaryInput ? 'routine_only' : 'default';
+}
+
+function shouldUseRoutineOnlyAnalysisMemoryFastPath({
+  parsedBody,
+  rawBody,
+  summaryFirstEnabled = AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+} = {}) {
+  if (!AURORA_ANALYSIS_MEMORY_FAST_PATH_ROUTINE_ONLY_ENABLED) return false;
+  if (!summaryFirstEnabled) return false;
+  const body = isPlainObject(parsedBody) ? parsedBody : {};
+  const routineRequestInput = resolveSkinAnalysisRoutineInput({
+    parsedBody: body,
+    rawBody: isPlainObject(rawBody) ? rawBody : {},
+  });
+  if (!routineRequestInput.found) return false;
+  const photos = Array.isArray(body.photos) ? body.photos : [];
+  const hasSubmittedPhoto = photos.some((p) => {
+    const photoId = typeof (p && p.photo_id) === 'string' ? p.photo_id.trim() : '';
+    const slotId = typeof (p && p.slot_id) === 'string' ? p.slot_id.trim() : '';
+    return Boolean(photoId && slotId);
+  });
+  const userRequestedPhoto = body.use_photo === true || (body.use_photo == null && hasSubmittedPhoto);
+  return !userRequestedPhoto && !hasSubmittedPhoto;
 }
 
 function resolveAnalysisReportStageBudget({
@@ -53579,27 +53611,53 @@ function mountAuroraBffRoutes(app, { logger }) {
         let profile = null;
         let recentLogs = [];
         let pregnancyPolicyEvents = [];
+        const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
+        const routineOnlyMemoryFastPath = shouldUseRoutineOnlyAnalysisMemoryFastPath({
+          parsedBody: parsed.data,
+          rawBody: req.body || {},
+          summaryFirstEnabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+        });
+        let qualityMemoryMode = routineOnlyMemoryFastPath ? 'routine_only_profile_only' : 'default';
+        let qualityProfileTimedOut = false;
+        let qualityLogsSkipped = false;
         profiler.start('quality', { kind: 'memory' });
         try {
-          const [profileRes, logsRes] = await Promise.allSettled([
-            getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
-            getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7),
-          ]);
-          if (profileRes.status === 'fulfilled') profile = profileRes.value;
-          else {
-            const r = profileRes.reason;
-            logger?.warn(
-              { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
-              'aurora bff: failed to load profile',
-            );
-          }
-          if (logsRes.status === 'fulfilled') recentLogs = logsRes.value;
-          else {
-            const r = logsRes.reason;
-            logger?.warn(
-              { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
-              'aurora bff: failed to load recent logs',
-            );
+          if (routineOnlyMemoryFastPath) {
+            qualityLogsSkipped = true;
+            try {
+              profile = await withTimeout(
+                getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
+                AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS,
+                'AURORA_ANALYSIS_PROFILE_FAST_PATH_TIMEOUT',
+              );
+            } catch (err) {
+              qualityProfileTimedOut = err && err.code === 'AURORA_ANALYSIS_PROFILE_FAST_PATH_TIMEOUT';
+              logger?.warn(
+                { err: err && (err.code || err.message) ? String(err.code || err.message) : String(err) },
+                'aurora bff: routine summary fast path profile load skipped or timed out',
+              );
+            }
+          } else {
+            const [profileRes, logsRes] = await Promise.allSettled([
+              getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
+              getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7),
+            ]);
+            if (profileRes.status === 'fulfilled') profile = profileRes.value;
+            else {
+              const r = profileRes.reason;
+              logger?.warn(
+                { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
+                'aurora bff: failed to load profile',
+              );
+            }
+            if (logsRes.status === 'fulfilled') recentLogs = logsRes.value;
+            else {
+              const r = logsRes.reason;
+              logger?.warn(
+                { err: r && (r.code || r.message) ? String(r.code || r.message) : String(r) },
+                'aurora bff: failed to load recent logs',
+              );
+            }
           }
         } catch (err) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
@@ -53633,7 +53691,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? { ...profile }
             : profile;
 
-        const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
         const photoQcParts = [];
         const passedPhotos = [];
         const degradedPhotos = [];
@@ -53789,7 +53846,14 @@ function mountAuroraBffRoutes(app, { logger }) {
             routineProductCandidates = [];
           }
         }
-        profiler.end('quality', { kind: 'memory', has_routine: hasRoutine, logs_n: recentLogsSummary.length });
+        profiler.end('quality', {
+          kind: 'memory',
+          has_routine: hasRoutine,
+          logs_n: recentLogsSummary.length,
+          memory_mode: qualityMemoryMode,
+          logs_skipped: qualityLogsSkipped,
+          profile_timed_out: qualityProfileTimedOut,
+        });
         logger?.info(
           {
             event: 'aurora_analysis_skin_routine_intake',
@@ -55481,6 +55545,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysis_mode: 'analysis_summary',
           profile_context_source: requestProfileContextSource,
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+          quality_memory_mode: qualityMemoryMode,
+          quality_logs_skipped: qualityLogsSkipped,
+          ...(qualityProfileTimedOut ? { quality_profile_timed_out: true } : {}),
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
           ...(reportModelCalled || reportStageOutcome !== 'not_requested' || reportStageAttempts > 0
@@ -65742,6 +65809,7 @@ const __internal = {
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   resolveAnalysisStoryForcedSkipReason,
+  shouldUseRoutineOnlyAnalysisMemoryFastPath,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,
