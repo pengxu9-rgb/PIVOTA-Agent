@@ -536,6 +536,19 @@ test('shouldDelegateV1ChatToV2 keeps anchorless fit-check prompts on the legacy 
   assert.equal(delegated, false);
 });
 
+test('shouldDelegateV1ChatToV2 keeps compatibility conflict prompts on the legacy path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const delegated = await __internal.shouldDelegateV1ChatToV2({
+    message: 'Can I use retinol and glycolic acid in the same night?',
+    language: 'EN',
+    session: { state: 'S7_PRODUCT_RECO' },
+  });
+
+  assert.equal(delegated, false);
+});
+
 test('/v1/chat delegates free-text fit-check with a meaningful product anchor into v2 product verdict cards', async () => {
   await withEnv(
     {

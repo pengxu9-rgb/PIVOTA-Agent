@@ -84,6 +84,32 @@ async function invokeRoute(app, method, routePath, { headers = {}, body = {}, qu
   return { status: res.statusCode, body: res.body };
 }
 
+function getExperimentEvents(body) {
+  const legacyEvents = Array.isArray(body?.events) ? body.events : [];
+  const opsEvents = Array.isArray(body?.ops?.experiment_events)
+    ? body.ops.experiment_events.map((evt) => ({
+      event_name: String(evt?.event_name || evt?.event_type || '').trim(),
+      data: evt?.data || evt?.event_data || {},
+    }))
+    : [];
+  return [...legacyEvents, ...opsEvents];
+}
+
+function hasCompatibilitySourceCard(cards, sourceCardType) {
+  return (Array.isArray(cards) ? cards : []).some((card) => {
+    if (!card || typeof card !== 'object') return false;
+    if (String(card.type || '').trim() === sourceCardType) return true;
+    const sections = Array.isArray(card.sections) ? card.sections : [];
+    return sections.some(
+      (section) =>
+        section &&
+        typeof section === 'object' &&
+        String(section.kind || '').trim() === 'compatibility_structured' &&
+        String(section.source_card_type || '').trim() === sourceCardType,
+    );
+  });
+}
+
 test('/v1/chat conflict: missing pregnancy defaults to not_pregnant without blocking cards', async () => {
   await withEnv(
     {
@@ -121,9 +147,9 @@ test('/v1/chat conflict: missing pregnancy defaults to not_pregnant without bloc
 
         assert.equal(resp.status, 200);
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        assert.ok(cards.some((c) => c && c.type === 'routine_simulation'));
-        assert.ok(cards.some((c) => c && c.type === 'conflict_heatmap'));
-        const events = Array.isArray(resp.body?.events) ? resp.body.events : [];
+        assert.equal(hasCompatibilitySourceCard(cards, 'routine_simulation'), true);
+        assert.equal(hasCompatibilitySourceCard(cards, 'conflict_heatmap'), true);
+        const events = getExperimentEvents(resp.body);
         assert.equal(events.some((evt) => evt && evt.event_name === 'pregnancy_status_defaulted'), true);
         assert.equal(resp.body?.session_patch?.meta?.pregnancy_status_defaulted, true);
 
@@ -229,12 +255,12 @@ test('/v1/chat conflict: pregnancy default event is emitted once per aurora_uid'
 
         const first = await invokeRoute(app, 'POST', '/v1/chat', { headers, body });
         assert.equal(first.status, 200);
-        const firstEvents = Array.isArray(first.body?.events) ? first.body.events : [];
+        const firstEvents = getExperimentEvents(first.body);
         assert.equal(firstEvents.some((evt) => evt && evt.event_name === 'pregnancy_status_defaulted'), true);
 
         const second = await invokeRoute(app, 'POST', '/v1/chat', { headers, body });
         assert.equal(second.status, 200);
-        const secondEvents = Array.isArray(second.body?.events) ? second.body.events : [];
+        const secondEvents = getExperimentEvents(second.body);
         assert.equal(secondEvents.some((evt) => evt && evt.event_name === 'pregnancy_status_defaulted'), false);
       } finally {
         delete require.cache[moduleId];
@@ -279,7 +305,13 @@ test('/v1/chat free text "trying to conceive" overrides default pregnancy status
           },
         });
         assert.equal(chatResp.status, 200);
-        assert.equal((Array.isArray(chatResp.body?.cards) ? chatResp.body.cards : []).some((c) => c && c.type === 'routine_simulation'), true);
+        assert.equal(
+          hasCompatibilitySourceCard(
+            Array.isArray(chatResp.body?.cards) ? chatResp.body.cards : [],
+            'routine_simulation',
+          ),
+          true,
+        );
 
         const bootstrapResp = await invokeRoute(app, 'GET', '/v1/session/bootstrap', {
           headers,
@@ -338,7 +370,7 @@ test('/v1/chat auto-resets pregnant profile when pregnancy_due_date is in the pa
           },
         });
         assert.equal(chatResp.status, 200);
-        const events = Array.isArray(chatResp.body?.events) ? chatResp.body.events : [];
+        const events = getExperimentEvents(chatResp.body);
         assert.equal(events.some((evt) => evt && evt.event_name === 'pregnancy_status_auto_reset'), true);
         assert.equal(chatResp.body?.session_patch?.meta?.pregnancy_status_auto_reset, true);
 

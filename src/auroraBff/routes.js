@@ -1436,6 +1436,7 @@ async function shouldDelegateV1ChatToV2(body) {
       anchorProductUrl,
     });
   if (shouldKeepFitCheckOnLegacy) return false;
+  if (hasMessage && looksLikeCompatibilityOrConflictQuestion(message)) return false;
   if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
     const requestLang = pickFirstTrimmed(
       payload.language,
@@ -24811,6 +24812,34 @@ function mergeMissingProfilePatchFields(target, source) {
   return base;
 }
 
+function extractQuickProfileLightweightPatch(raw = null) {
+  const node = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!node) return null;
+
+  const patch = {};
+  const skinFeel = pickFirstTrimmed(node.skin_feel, node.skinFeel).toLowerCase();
+  if (skinFeel === 'oily' || skinFeel === 'dry' || skinFeel === 'combination') patch.skinType = skinFeel;
+  else if (skinFeel === 'unsure') patch.skinType = 'unknown';
+
+  const goalPrimary = pickFirstTrimmed(node.goal_primary, node.goalPrimary).toLowerCase();
+  if (goalPrimary === 'breakouts') patch.goals = ['acne'];
+  else if (goalPrimary === 'brightening') patch.goals = ['brightening'];
+  else if (goalPrimary === 'antiaging') patch.goals = ['wrinkles'];
+  else if (goalPrimary === 'barrier') patch.goals = ['barrier'];
+  else if (goalPrimary === 'spf') patch.goals = ['uv_protection'];
+  else if (goalPrimary === 'other') patch.goals = ['other'];
+
+  const sensitivityFlag = pickFirstTrimmed(node.sensitivity_flag, node.sensitivityFlag).toLowerCase();
+  if (sensitivityFlag === 'yes') patch.sensitivity = 'high';
+  else if (sensitivityFlag === 'no') patch.sensitivity = 'low';
+  else if (sensitivityFlag === 'unsure') patch.sensitivity = 'unknown';
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
 function extractProfilePatchFromSession(session) {
   const s = session && typeof session === 'object' ? session : null;
   if (!s) return null;
@@ -24895,6 +24924,7 @@ function extractProfilePatchFromSession(session) {
     patch.travel_plan = rawProfile.travelPlan;
   }
   mergeMissingProfilePatchFields(patch, extractProfilePatchFromRoutinePayload(patch.currentRoutine));
+  mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(rawProfile));
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -24963,6 +24993,41 @@ function extractProfilePatchFromRequestContextPayload(payload) {
   if (barrierStatus) patch.barrierStatus = barrierStatus;
   const goals = readGoalArray();
   if (goals.length) patch.goals = goals;
+  for (const node of candidates) {
+    mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
+  }
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
+function extractAnalysisProfileContextOverlay(...sources) {
+  const patch = {};
+  const assignString = (key, value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    patch[key] = trimmed;
+  };
+  const assignGoals = (value) => {
+    if (!Array.isArray(value)) return;
+    const goals = value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 12);
+    if (goals.length) patch.goals = goals;
+  };
+
+  for (const source of sources) {
+    const node = source && typeof source === 'object' && !Array.isArray(source) ? source : null;
+    if (!node) continue;
+    assignString('skinType', node.skinType);
+    assignString('sensitivity', node.sensitivity);
+    assignString('barrierStatus', node.barrierStatus);
+    assignGoals(node.goals);
+  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -25033,6 +25098,9 @@ function extractProfilePatchFromRoutinePayload(routineInput) {
   if (barrierStatus) patch.barrierStatus = barrierStatus;
   const goals = readGoalArray();
   if (goals.length) patch.goals = goals;
+  for (const node of candidates) {
+    mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
+  }
 
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
@@ -26592,6 +26660,74 @@ function buildTaskAnalysisContextForPrefix({
     return buildRecommendationAnalysisContextFromSnapshot(resolved);
   }
   return buildChatAnalysisContextFromSnapshot(resolved);
+}
+
+const REQUEST_CONTEXT_SIGNATURE_VERSION = 'request_context_signature_v1';
+const DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION = 'candidate_pool_signature_v1';
+const MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION = 'minimum_recommendation_context_v1';
+
+function buildTaskAnalysisContextUsageMeta(
+  taskContext,
+  {
+    requestContextSignature = null,
+    requestContextSignatureVersion = REQUEST_CONTEXT_SIGNATURE_VERSION,
+    candidatePoolSignature = null,
+    candidatePoolSignatureVersion = DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+    strictnessSource = 'entry_default',
+    minimumRecommendationContextSatisfied = null,
+    minContextRuleVersion = MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
+  } = {},
+) {
+  const context = isPlainObject(taskContext) ? taskContext : {};
+  const usage = {
+    snapshot_present: Boolean(context.snapshot_present),
+    context_source_mode: String(context.context_source_mode || '').trim() || 'none',
+    analysis_context_available: Boolean(context.analysis_context_available),
+    snapshot_fields_used: Array.isArray(context.snapshot_fields_used) ? context.snapshot_fields_used : [],
+    hard_context_fields_used: Array.isArray(context.hard_context_fields_used) ? context.hard_context_fields_used : [],
+    soft_context_fields_used: Array.isArray(context.soft_context_fields_used) ? context.soft_context_fields_used : [],
+    explicit_override_applied: Boolean(context.explicit_override_applied),
+    context_mode: String(context.context_mode || '').trim() || 'no_context',
+    adapter_version: String(context.adapter_version || '').trim() || null,
+    request_context_signature_version: pickFirstTrimmed(requestContextSignatureVersion, REQUEST_CONTEXT_SIGNATURE_VERSION)
+      || REQUEST_CONTEXT_SIGNATURE_VERSION,
+    candidate_pool_signature_version:
+      pickFirstTrimmed(candidatePoolSignatureVersion, DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION)
+      || DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+    strictness_source: pickFirstTrimmed(strictnessSource, 'entry_default') || 'entry_default',
+  };
+  if (pickFirstTrimmed(requestContextSignature)) {
+    usage.request_context_signature = pickFirstTrimmed(requestContextSignature);
+  }
+  if (pickFirstTrimmed(candidatePoolSignature)) {
+    usage.candidate_pool_signature = pickFirstTrimmed(candidatePoolSignature);
+  }
+  if (typeof minimumRecommendationContextSatisfied === 'boolean') {
+    usage.minimum_recommendation_context_satisfied = minimumRecommendationContextSatisfied;
+  }
+  if (pickFirstTrimmed(minContextRuleVersion)) {
+    usage.min_context_rule_version = pickFirstTrimmed(minContextRuleVersion);
+  }
+  return usage;
+}
+
+function deriveRecommendationContextState(taskContext) {
+  const context = isPlainObject(taskContext) ? taskContext : {};
+  const hardFieldsUsed = Array.isArray(context.hard_context_fields_used)
+    ? context.hard_context_fields_used.map((field) => String(field || '').trim()).filter(Boolean)
+    : [];
+  const hasGoal = hardFieldsUsed.includes('active_goals');
+  const supportSignals = ['skin_type', 'sensitivity', 'barrier_status'];
+  const supportCount = supportSignals.filter((field) => hardFieldsUsed.includes(field)).length;
+  const satisfied = Boolean(context.snapshot_present) || Boolean(context.analysis_context_available) && hasGoal && supportCount >= 1;
+  return {
+    satisfied,
+    missing_context: satisfied ? [] : ['minimum_recommendation_context'],
+    request_context_signature_version: REQUEST_CONTEXT_SIGNATURE_VERSION,
+    candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+    strictness_source: 'entry_default',
+    min_context_rule_version: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
+  };
 }
 
 function buildRoutineFitRetryPrompt(basePrompt = '', language = 'EN') {
@@ -48468,6 +48604,9 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   app.post('/v1/product/analyze', async (req, res) => {
     const ctx = buildRequestContext(req, {});
+    let productAnalyzeProfileContextSource = 'db_only_profile';
+    let productAnalyzeRequestOverlayKeys = [];
+    let productAnalyzeSessionProfileSummary = null;
     const productAnalyzeSessionId = getRecoDogfoodSessionId(
       req,
       ctx,
@@ -48506,9 +48645,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         ...augmented,
         session_patch: {
           ...sessionPatchBase,
+          ...(productAnalyzeRequestOverlayKeys.length && productAnalyzeSessionProfileSummary
+            ? { profile: productAnalyzeSessionProfileSummary }
+            : {}),
           meta: {
             ...sessionPatchMeta,
             retrieval_path_version: 'aurora_retrieval_v2',
+            profile_context_source: productAnalyzeProfileContextSource,
+            request_profile_overlay_applied: productAnalyzeRequestOverlayKeys.length > 0,
+            ...(productAnalyzeRequestOverlayKeys.length ? { request_profile_overlay_keys: productAnalyzeRequestOverlayKeys } : {}),
             ...(productAnalysisContextMeta ? { analysis_context_usage: productAnalysisContextMeta } : {}),
           },
         },
@@ -48559,6 +48704,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                   },
               degraded: retrievalDegradation.degraded === true,
               resolver_first_applied: retrievalDegradation.resolver_first_applied === true,
+              profile_context_source: productAnalyzeProfileContextSource,
+              request_profile_overlay_keys: productAnalyzeRequestOverlayKeys,
             },
             'aurora bff: product analyze diagnostics',
           );
@@ -48616,8 +48763,21 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const identity = await resolveIdentity(req, ctx);
-      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
       const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+      const requestProfileOverlay = extractAnalysisProfileContextOverlay(
+        extractProfilePatchFromSession(incomingSession),
+        extractProfilePatchFromRequestContextPayload(parsed.data),
+      );
+      productAnalyzeRequestOverlayKeys =
+        requestProfileOverlay && typeof requestProfileOverlay === 'object'
+          ? Object.keys(requestProfileOverlay).sort()
+          : [];
+      productAnalyzeProfileContextSource = productAnalyzeRequestOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
+      const profile =
+        requestProfileOverlay && typeof requestProfileOverlay === 'object'
+          ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
+          : storedProfile;
       const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
         identity,
         session: incomingSession,
@@ -48625,16 +48785,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger,
       });
       const profileSummary = summarizeProfileForContext(profile);
+      productAnalyzeSessionProfileSummary = productAnalyzeRequestOverlayKeys.length ? profileSummary : null;
       const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
         latestArtifact,
-        profile,
+        profile: storedProfile,
         recentLogs,
       });
       const analysisTaskContext = buildTaskAnalysisContextForPrefix({
         task: 'product_analyze',
         snapshot: analysisContextSnapshot,
-        profile,
-        requestOverride: extractProfilePatchFromSession(incomingSession),
+        profile: storedProfile,
+        requestOverride: requestProfileOverlay,
         recentLogs,
       });
       const analysisContextBlock = buildAnalysisContextPromptBlock({
@@ -48642,7 +48803,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         taskContext: analysisTaskContext,
       });
       productAnalysisContextMeta = {
-        snapshot_present: Boolean(analysisContextSnapshot),
+        snapshot_present: Boolean(analysisTaskContext.snapshot_present),
+        context_source_mode: String(analysisTaskContext.context_source_mode || '').trim() || 'none',
+        analysis_context_available: Boolean(analysisTaskContext.analysis_context_available),
         snapshot_id: analysisContextSnapshot ? String(analysisContextSnapshot.snapshot_id || '').trim() || null : null,
         source_mix_summary:
           analysisContextSnapshot && Array.isArray(analysisContextSnapshot.source_mix_summary)
@@ -50979,8 +51142,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
 	      const identity = await resolveIdentity(req, ctx);
-	      const profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
+	      const storedProfile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }).catch(() => null);
 	      const recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7).catch(() => []);
+        const requestProfileOverlay = extractAnalysisProfileContextOverlay(
+          extractProfilePatchFromSession(parsed.data.session),
+          extractProfilePatchFromRequestContextPayload(req.body || {}),
+        );
+        const requestProfileOverlayKeys =
+          requestProfileOverlay && typeof requestProfileOverlay === 'object'
+            ? Object.keys(requestProfileOverlay).sort()
+            : [];
+        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
 	      const latestArtifact = await loadLatestDiagnosisArtifactForRoute({
 	        identity,
 	        session:
@@ -50992,9 +51164,20 @@ function mountAuroraBffRoutes(app, { logger }) {
 	      });
 	      const analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
 	        latestArtifact,
-	        profile,
+	        profile: storedProfile,
 	        recentLogs,
 	      });
+        const recommendationAnalysisTaskContext = buildTaskAnalysisContextForPrefix({
+          task: 'recommendation',
+          snapshot: analysisContextSnapshot,
+          profile: storedProfile,
+          requestOverride: requestProfileOverlay,
+          recentLogs,
+        });
+        const profile =
+          requestProfileOverlay && typeof requestProfileOverlay === 'object'
+            ? { ...(storedProfile && typeof storedProfile === 'object' && !Array.isArray(storedProfile) ? storedProfile : {}), ...requestProfileOverlay }
+            : storedProfile;
 	      const profileSummary = summarizeProfileForContext(profile);
 
       const gate = shouldDiagnosisGate({ message: 'recommend', triggerSource: 'action', profile });
@@ -51033,7 +51216,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	        message: requestText,
 	        focus: parsed.data.focus,
 	        analysisContextSnapshot,
-        requestOverride: extractProfilePatchFromSession(parsed.data.session),
+        requestOverride: requestProfileOverlay,
         includeAlternatives: false,
         logger,
 	        recoTriggerSource: 'goal_driven',
@@ -51222,6 +51405,76 @@ function mountAuroraBffRoutes(app, { logger }) {
           }),
         );
       }
+      const recommendationContextState = deriveRecommendationContextState(recommendationAnalysisTaskContext);
+      const explicitOnlyNeedsMoreContext =
+        !(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0)
+        && String(recommendationAnalysisTaskContext?.context_source_mode || '').trim() === 'explicit_only'
+        && recommendationContextState.satisfied === false;
+      if (explicitOnlyNeedsMoreContext) {
+        finalDirectContract.primary_failure_reason = 'needs_more_context';
+        finalDirectContract.surface_reason = 'needs_more_context';
+        finalDirectContract.products_empty_reason = 'needs_more_context';
+        finalDirectContract.telemetry_failure_reason = 'minimum_recommendation_context_unsatisfied';
+        finalDirectContract.mainline_status = 'needs_more_context';
+        finalDirectContract.upstream_status = 'artifact_missing';
+      }
+      const recommendationAnalysisContextMeta = buildTaskAnalysisContextUsageMeta(
+        recommendationAnalysisTaskContext,
+        {
+          requestContextSignature: payload?.recommendation_meta?.request_context_signature,
+          requestContextSignatureVersion:
+            payload?.recommendation_meta?.request_context_signature_version || REQUEST_CONTEXT_SIGNATURE_VERSION,
+          candidatePoolSignature: payload?.recommendation_meta?.candidate_pool_signature,
+          candidatePoolSignatureVersion:
+            payload?.recommendation_meta?.candidate_pool_signature_version || DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+          strictnessSource: 'entry_default',
+          minimumRecommendationContextSatisfied: recommendationContextState.satisfied,
+          minContextRuleVersion: recommendationContextState.min_context_rule_version,
+        },
+      );
+      if (isPlainObject(payload)) {
+        const payloadMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+        payload.recommendation_meta = {
+          ...payloadMeta,
+          analysis_context_usage: recommendationAnalysisContextMeta,
+          request_context_signature_version:
+            pickFirstTrimmed(payloadMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
+            || REQUEST_CONTEXT_SIGNATURE_VERSION,
+          candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+          ...(explicitOnlyNeedsMoreContext
+            ? {
+              primary_failure_reason: 'needs_more_context',
+              telemetry_failure_reason: 'minimum_recommendation_context_unsatisfied',
+              surface_reason: 'needs_more_context',
+              products_empty_reason: 'needs_more_context',
+              mainline_status: 'needs_more_context',
+            }
+            : {}),
+        };
+        if (explicitOnlyNeedsMoreContext) {
+          payload.mainline_status = 'needs_more_context';
+          payload.products_empty_reason = 'needs_more_context';
+          payload.telemetry_reason = 'minimum_recommendation_context_unsatisfied';
+        }
+      }
+      const directSessionPatchMeta = {
+        profile_context_source: requestProfileContextSource,
+        request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+        ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+        analysis_context_usage: recommendationAnalysisContextMeta,
+        ...(explicitOnlyNeedsMoreContext
+          ? {
+            recommendation_state: {
+              needs_more_context: true,
+              missing_context: recommendationContextState.missing_context,
+              mainline_status: 'needs_more_context',
+              request_context_signature_version: recommendationContextState.request_context_signature_version,
+              candidate_pool_signature_version: recommendationContextState.candidate_pool_signature_version,
+              strictness_source: recommendationContextState.strictness_source,
+            },
+          }
+          : {}),
+      };
       const directNoRecoReason = pickFirstTrimmed(
         finalDirectContract.surface_reason,
         payload?.recommendation_meta?.surface_reason,
@@ -51243,7 +51496,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
           ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
         ],
-        session_patch: payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {},
+        session_patch: {
+          ...(payload.recommendations && payload.recommendations.length ? { next_state: 'S7_PRODUCT_RECO' } : {}),
+          meta: directSessionPatchMeta,
+        },
         events: applyRecoContractToRecoRequestedEvents([], finalDirectContract, {
           ctx: { ...ctx, trigger_source: 'action' },
           emitIfMissing: true,
@@ -51277,7 +51533,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(gateAdvisoryCard ? [gateAdvisoryCard] : []),
             ],
             suggested_chips: suggestedChips.length ? suggestedChips : buildRecoEntryChips(ctx.lang),
-            session_patch: {},
+            session_patch: {
+              ...(isPlainObject(envelope.session_patch) ? envelope.session_patch : {}),
+            },
           };
           return res.json(noRecoEnvelope);
         }
@@ -51304,6 +51562,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         const guardedMeta = isPlainObject(guardedRecoCard.payload.recommendation_meta) ? guardedRecoCard.payload.recommendation_meta : {};
         guardedRecoCard.payload.recommendation_meta = {
           ...guardedMeta,
+          analysis_context_usage: recommendationAnalysisContextMeta,
+          request_context_signature_version:
+            pickFirstTrimmed(guardedMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
+            || REQUEST_CONTEXT_SIGNATURE_VERSION,
+          candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
           final_selected_candidate_count: guardedRecommendations.length,
           post_guardrail_count: guardedRecommendations.length,
         };
@@ -51385,6 +51648,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const finalNoRecoReason = deriveRecoEmptyReason(guardedRecoCard?.payload, finalContract);
       const nextSessionPatch = isPlainObject(guardedEnvelope.session_patch) ? { ...guardedEnvelope.session_patch } : {};
+      nextSessionPatch.meta = {
+        ...(isPlainObject(nextSessionPatch.meta) ? nextSessionPatch.meta : {}),
+        ...directSessionPatchMeta,
+      };
       const hasFinalRecommendations = Array.isArray(guardedRecoCard?.payload?.recommendations)
         ? guardedRecoCard.payload.recommendations.length > 0
         : hasGuardedRecommendations;
@@ -51419,6 +51686,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmTraceRef,
           failureClass: finalContract.failure_class,
           upstreamFailureCode: upstreamReco?.upstreamFailureCode,
+          ...(!hasFinalRecommendations && finalNoRecoReason ? { reason: finalNoRecoReason } : {}),
         }),
       }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
