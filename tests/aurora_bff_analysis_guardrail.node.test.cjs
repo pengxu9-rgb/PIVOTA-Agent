@@ -111,3 +111,60 @@ test('resolveAnalysisStoryForcedSkipReason skips story LLM on routine-only summa
     delete require.cache[moduleId];
   }
 });
+
+test('applyProductIntelGuardrailsToEnvelope uses lightweight guardrail on routine-only summary fast path', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.applyProductIntelGuardrailsToEnvelope({
+      envelope: {
+        cards: [
+          {
+            card_id: 'plan_2',
+            type: 'ingredient_plan_v2',
+            payload: {
+              schema_version: 'aurora.ingredient_plan.v2',
+              targets: [
+                {
+                  ingredient: 'niacinamide',
+                  products: {
+                    competitors: [
+                      {
+                        title: 'Niacinamide Serum',
+                        brand: 'Test Brand',
+                        category: 'serum',
+                        product_type: 'serum',
+                        product_url: 'https://example.com/products/niacinamide-serum',
+                        open_url: 'https://example.com/products/niacinamide-serum',
+                        url: 'https://example.com/products/niacinamide-serum',
+                      },
+                    ],
+                    dupes: [],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        analysis_meta: {
+          analysis_mode: 'analysis_summary',
+          report_stage_outcome: 'skipped_policy',
+          report_stage_budget_profile: 'routine_only',
+        },
+      },
+      ctx: {
+        request_id: 'req_guardrail_fast_path',
+        trace_id: 'trace_guardrail_fast_path',
+      },
+      profile: null,
+      language: 'EN',
+    });
+
+    const envelope = out && out.envelope ? out.envelope : null;
+    assert.ok(envelope && envelope.analysis_meta);
+    assert.equal(envelope.analysis_meta.guardrail_stage_mode, 'lightweight');
+    assert.equal(envelope.analysis_meta.guardrail_stage_reduced, true);
+    assert.equal(Number(envelope.analysis_meta.stage_timings_ms.guardrail) >= 0, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});

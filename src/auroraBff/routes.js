@@ -16900,6 +16900,10 @@ function shouldUseLightweightIngredientPlanGuardrail(analysisMeta) {
   if (analysisMode !== 'analysis_summary' && analysisMode !== 'timeout_degraded') return false;
   if (meta.report_stage_recovered === true) return true;
   const reportStageOutcome = String(meta.report_stage_outcome || '').trim().toLowerCase();
+  const reportStageBudgetProfile = String(meta.report_stage_budget_profile || '').trim().toLowerCase();
+  if (reportStageOutcome === 'skipped_policy' && reportStageBudgetProfile === 'routine_only') {
+    return true;
+  }
   if (
     reportStageOutcome === 'budget_timeout' ||
     reportStageOutcome === 'analysis_budget_timeout' ||
