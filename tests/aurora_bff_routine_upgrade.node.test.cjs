@@ -444,7 +444,7 @@ test('/v1/analysis/skin: nested legacy profile.current_routine also emits routin
   );
 });
 
-test('/v1/analysis/skin: summary-first still allows routine audit fast path when audit env is enabled', async () => {
+test('/v1/analysis/skin: summary-first blocks routine audit surfaces even when audit env is enabled', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -490,19 +490,20 @@ test('/v1/analysis/skin: summary-first still allows routine audit fast path when
           .expect(200);
 
         const cards = parseCards(resp.body);
-        assert.deepEqual(
-          cards.map((card) => card.type),
-          ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
-        );
-        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.analysis_mode, 'routine_audit_v1');
-        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.execution_path, 'routine_audit_fast_path');
+        assert.equal(cards.some((card) => card.type === 'routine_verdict_v1'), false);
+        assert.equal(cards.some((card) => card.type === 'routine_product_audit_v1'), false);
+        assert.ok(findCard(cards, 'routine_products_preview'));
+        assert.ok(findCard(cards, 'analysis_story_v2'));
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.analysis_mode, 'analysis_summary');
+        assert.notEqual(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.execution_path, 'routine_audit_fast_path');
         assert.equal(
-          resp.body &&
-            resp.body.session_patch &&
-            resp.body.session_patch.meta &&
-            resp.body.session_patch.meta.analysis_contract &&
-            resp.body.session_patch.meta.analysis_contract.card_contract,
-          'aurora.routine_audit_v1',
+          Boolean(
+            resp.body &&
+              resp.body.session_patch &&
+              resp.body.session_patch.meta &&
+              resp.body.session_patch.meta.analysis_contract
+          ),
+          false,
         );
       } finally {
         harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();

@@ -54825,7 +54825,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
         if (
-          (routineAuditV1Enabled || !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED) &&
+          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
           AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
           hasRoutine &&
           routineProductCandidates.length > 0
