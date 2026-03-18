@@ -52531,14 +52531,32 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const effectiveRoutineState =
           routineFromRequest !== undefined ? normalizeRoutineStateValue(profile && profile.currentRoutine) : previousRoutineState;
-        const routineCandidate = effectiveRoutineState.routine_candidate;
+        const routineCandidate = routineRequestInput.found ? routineInputRaw : effectiveRoutineState.routine_candidate;
         const routinePayloadShape = detectRoutinePayloadShape(routineCandidate);
-        const hasRoutine = Boolean(effectiveRoutineState.has_current_routine);
+        const hasRoutine = routineRequestInput.found
+          ? Boolean(
+              routineCandidate != null &&
+                (typeof routineCandidate === 'string'
+                  ? String(routineCandidate).trim()
+                  : Array.isArray(routineCandidate)
+                    ? routineCandidate.length > 0
+                    : isPlainObject(routineCandidate)
+                      ? Object.keys(routineCandidate).length > 0
+                      : false),
+            )
+          : Boolean(effectiveRoutineState.has_current_routine);
         const routineStateMeta = {
-          source_shape: effectiveRoutineState.source_shape,
-          missing_routine_fields: Array.isArray(effectiveRoutineState.missing_routine_fields)
-            ? effectiveRoutineState.missing_routine_fields.slice(0, 4)
-            : [],
+          source_shape: routineRequestInput.found
+            ? routinePayloadShape
+            : effectiveRoutineState.source_shape,
+          missing_routine_fields:
+            routineRequestInput.found
+              ? Array.isArray(requestedRoutineState && requestedRoutineState.missing_routine_fields)
+                ? requestedRoutineState.missing_routine_fields.slice(0, 4)
+                : []
+              : Array.isArray(effectiveRoutineState.missing_routine_fields)
+                ? effectiveRoutineState.missing_routine_fields.slice(0, 4)
+                : [],
         };
         const analysisFieldMissing = [];
         const qualityReportReasons = [];
