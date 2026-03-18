@@ -53358,6 +53358,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let reportStageRecovered = false;
         let reportStageRecoveryMode = null;
         let reportStagePrimaryFailureReason = null;
+        let reportStagePrimaryFailureDetail = null;
         let budgetAbortStage = null;
 
         let diagnosisPhoto = null;
@@ -53952,11 +53953,19 @@ function mountAuroraBffRoutes(app, { logger }) {
               reportStageRecovered = true;
               reportStageRecoveryMode = 'deterministic_fallback';
               reportStagePrimaryFailureReason = normalizeReportFailureReason(reportResult.fallback_reason) || 'UNKNOWN';
+              reportStagePrimaryFailureDetail =
+                typeof reportResult.fallback_detail === 'string' && reportResult.fallback_detail.trim()
+                  ? reportResult.fallback_detail.trim()
+                  : null;
             } else if (reportResult.__semantic_fallback) {
               reportStageOutcome = 'semantic_fallback';
               reportStageRecovered = true;
               reportStageRecoveryMode = 'semantic_fallback';
               reportStagePrimaryFailureReason = 'SEMANTIC_INVALID';
+              reportStagePrimaryFailureDetail =
+                Array.isArray(reportResult.semantic && reportResult.semantic.issues) && reportResult.semantic.issues.length
+                  ? reportResult.semantic.issues.join('; ').slice(0, 240)
+                  : null;
             } else {
               reportStageOutcome = 'success';
             }
@@ -54051,6 +54060,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
             const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
+            reportStagePrimaryFailureDetail =
+              typeof reportResult.error_detail === 'string' && reportResult.error_detail.trim()
+                ? reportResult.error_detail.trim()
+                : reportStagePrimaryFailureDetail;
             deterministicFallbackReason = deterministicFallbackReason || reportFailureRaw;
             reportModelErrored = true;
             reportModelErrorReason = reportFailureReason;
@@ -54668,6 +54681,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ...(reportStageRecovered ? { report_stage_recovered: true } : {}),
                 ...(reportStageRecoveryMode ? { report_stage_recovery_mode: reportStageRecoveryMode } : {}),
                 ...(reportStagePrimaryFailureReason ? { report_stage_primary_failure_reason: reportStagePrimaryFailureReason } : {}),
+                ...(reportStagePrimaryFailureDetail ? { report_stage_primary_failure_detail: reportStagePrimaryFailureDetail } : {}),
               }
             : {}),
           ...(budgetAbortStage ? { budget_abort_stage: budgetAbortStage } : {}),
@@ -55316,6 +55330,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             report_stage_recovered: reportStageRecovered,
             report_stage_recovery_mode: reportStageRecoveryMode,
             report_stage_primary_failure_reason: reportStagePrimaryFailureReason,
+            report_stage_primary_failure_detail: reportStagePrimaryFailureDetail,
             quality_stage_ms: Number.isFinite(qualityStageMs) ? qualityStageMs : null,
             artifact_stage_ms: Number.isFinite(artifactStageMs) ? artifactStageMs : null,
             budget_abort_stage: budgetAbortStage || null,

@@ -201,6 +201,9 @@ function classifyGeminiError(err) {
     const m = String(err.message || '').match(/got status:\s*(\d{3})/i);
     return m ? parseInt(m[1], 10) : null;
   })();
+  const schemaLike = /response[\s_]?schema|json[\s_]?schema|schema/i.test(message);
+  const sizeLike = /too large|request too large|payload too large|token limit|max(?:imum)? (?:input|request|context)|context length|input too long/i.test(message);
+  const invalidRequestLike = /invalid argument|bad request|unsupported|malformed|invalid json|invalid value/i.test(message);
 
   if (code === 'GEMINI_TIMEOUT' || message.includes('timeout') || message.includes('deadline exceeded')) {
     return { reason: 'TIMEOUT', upstream_status_code: null };
@@ -221,12 +224,43 @@ function classifyGeminiError(err) {
     if (containsImageInvalidHint(message)) {
       return { reason: 'IMAGE_INVALID', upstream_status_code: status };
     }
+    if (schemaLike) {
+      return { reason: 'UPSTREAM_SCHEMA_INVALID', upstream_status_code: status };
+    }
+    if (sizeLike) {
+      return { reason: 'UPSTREAM_REQUEST_TOO_LARGE', upstream_status_code: status };
+    }
+    if (invalidRequestLike) {
+      return { reason: 'UPSTREAM_REQUEST_INVALID', upstream_status_code: status };
+    }
     return { reason: 'UPSTREAM_4XX', upstream_status_code: status };
   }
   if (containsImageInvalidHint(message)) {
     return { reason: 'IMAGE_INVALID', upstream_status_code: status };
   }
   return { reason: 'UNKNOWN', upstream_status_code: status };
+}
+
+function summarizeFailureDetail(detail) {
+  if (!detail) return null;
+  if (typeof detail === 'string') {
+    const text = detail.trim();
+    return text ? text.slice(0, 240) : null;
+  }
+  if (Array.isArray(detail)) {
+    const text = detail.map((item) => String(item || '').trim()).filter(Boolean).join('; ');
+    return text ? text.slice(0, 240) : null;
+  }
+  if (detail && typeof detail === 'object') {
+    try {
+      const text = JSON.stringify(detail);
+      return text ? text.slice(0, 240) : null;
+    } catch {
+      return null;
+    }
+  }
+  const text = String(detail).trim();
+  return text ? text.slice(0, 240) : null;
 }
 
 function inferInvalidImageInsufficientReason(text) {
@@ -386,6 +420,8 @@ function shouldRecoverReportFailureWithDeterministicFallback(reason) {
   if (!token) return false;
   return [
     'UPSTREAM_SCHEMA_INVALID',
+    'UPSTREAM_REQUEST_INVALID',
+    'UPSTREAM_REQUEST_TOO_LARGE',
     'SCHEMA_INVALID',
     'UPSTREAM_5XX',
     'TIMEOUT',
@@ -406,6 +442,7 @@ function buildDeterministicReportFallbackResult({
   schemaSanitized,
   upstreamStatusCode,
   latencyMs,
+  failureDetail,
 } = {}) {
   const normalizedFailureReason = String(failureReason || '').trim().toUpperCase() || 'UNKNOWN';
   return {
@@ -435,6 +472,7 @@ function buildDeterministicReportFallbackResult({
     prompt_version: bundle && bundle.promptVersion ? bundle.promptVersion : null,
     input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
     fallback_reason: normalizedFailureReason,
+    fallback_detail: summarizeFailureDetail(failureDetail),
     __deterministic_fallback: true,
   };
 }
@@ -922,7 +960,6 @@ async function runGeminiReportStrategy({
 
   const normalizeReportGatewayReason = (response, validation, semantic, safety) => {
     if (!response.ok) {
-      if (response.reason === 'UPSTREAM_4XX' && Number(response.upstream_status_code) === 400) return 'UPSTREAM_SCHEMA_INVALID';
       return response.reason || 'UNKNOWN';
     }
     if (!validation.ok) return 'SCHEMA_INVALID';
@@ -1084,6 +1121,11 @@ async function runGeminiReportStrategy({
         schemaSanitized: second.schema_sanitized,
         upstreamStatusCode: second.upstream_status_code,
         latencyMs: second.latency_ms,
+        failureDetail:
+          second.error ||
+          secondValidation.errors ||
+          secondSemantic.issues ||
+          secondSafety.violations,
       });
     }
 
@@ -1112,6 +1154,12 @@ async function runGeminiReportStrategy({
       validation_errors: secondValidation.errors,
       semantic_issues: secondSemantic.issues,
       safety_violations: secondSafety.violations,
+      error_detail: summarizeFailureDetail(
+        second.error ||
+          secondValidation.errors ||
+          secondSemantic.issues ||
+          secondSafety.violations
+      ),
     };
   }
 

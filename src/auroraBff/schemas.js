@@ -125,6 +125,7 @@ const AnalysisMetaSchema = z
     report_stage_recovered: z.boolean().optional(),
     report_stage_recovery_mode: z.string().min(1).nullable().optional(),
     report_stage_primary_failure_reason: z.string().min(1).nullable().optional(),
+    report_stage_primary_failure_detail: z.string().min(1).nullable().optional(),
     budget_abort_stage: z.string().min(1).optional(),
     stage_timings_ms: z.record(z.string().min(1), z.number().nonnegative()).optional(),
     slowest_stage: z.string().min(1).optional(),
