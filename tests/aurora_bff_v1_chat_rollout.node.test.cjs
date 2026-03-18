@@ -549,6 +549,54 @@ test('shouldDelegateV1ChatToV2 keeps compatibility conflict prompts on the legac
   assert.equal(delegated, false);
 });
 
+test('shouldDelegateV1ChatToV2 keeps reviewed signal terms on the legacy ingredient path', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  __internal.__setGetBestIngredientSignalMatchForTest(async (input) => {
+    const raw = String(input || '').trim();
+    if (raw !== 'Miracle Broth™' && raw !== 'Miracle Broth') return null;
+    return {
+      signal_bucket: 'marketing_or_blend_signal',
+      signal_key: 'miracle_broth',
+      display_signal_name: 'Miracle Broth (sea kelp, vitamins, minerals, and other nutrients)',
+      raw_token_variants_list: ['Miracle Broth'],
+      normalized_token_variants_list: ['miraclebroth'],
+    };
+  });
+
+  try {
+    const delegated = await __internal.shouldDelegateV1ChatToV2({
+      message: 'Miracle Broth™',
+      language: 'EN',
+      session: { state: 'idle' },
+    });
+
+    assert.equal(delegated, false);
+  } finally {
+    __internal.__resetGetBestIngredientSignalMatchForTest();
+  }
+});
+
+test('shouldDelegateV1ChatToV2 keeps signal-like trademark text on the legacy ingredient path even if signal lookup is unavailable', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  __internal.__setGetBestIngredientSignalMatchForTest(async () => null);
+  __internal.__setGetBestIngredientReferenceMatchForTest(async () => null);
+
+  try {
+    const delegated = await __internal.shouldDelegateV1ChatToV2({
+      message: 'Miracle Broth™',
+      language: 'EN',
+      session: { state: 'idle' },
+    });
+
+    assert.equal(delegated, false);
+  } finally {
+    __internal.__resetGetBestIngredientSignalMatchForTest();
+    __internal.__resetGetBestIngredientReferenceMatchForTest();
+  }
+});
+
 test('/v1/chat delegates free-text fit-check with a meaningful product anchor into v2 product verdict cards', async () => {
   await withEnv(
     {

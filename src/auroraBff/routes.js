@@ -508,6 +508,7 @@ const {
   upsertIngredientResearchKbEntry,
 } = require('./ingredientResearchKbStore');
 const { getBestIngredientReferenceMatch } = require('../services/ingredientReferenceStore');
+const { getBestIngredientSignalMatch } = require('../services/ingredientSignalStore');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   createArtifactId,
@@ -534,6 +535,7 @@ const {
 } = require('../services/productGroundingResolver');
 let resolveProductRefDirectImpl = resolveProductRefDirect;
 let getBestIngredientReferenceMatchImpl = getBestIngredientReferenceMatch;
+let getBestIngredientSignalMatchImpl = getBestIngredientSignalMatch;
 const {
   normalizeBudgetHint,
   mapConcerns,
@@ -1351,7 +1353,11 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
   }
 
   const referenceMatch = await resolveIngredientReferenceRuntimeMatch(trimmedMessage, language);
-  return Boolean(referenceMatch && referenceMatch.reference);
+  if (referenceMatch && referenceMatch.reference) return true;
+
+  const signalMatch = await resolveIngredientSignalRuntimeMatch(trimmedMessage, language);
+  if (signalMatch && signalMatch.signal) return true;
+  return looksLikeIngredientSignalPhrase(trimmedMessage);
 }
 
 async function shouldDelegateV1ChatToV2(body) {
@@ -39013,6 +39019,42 @@ function mapRoutineActiveTokenToIngredientQuery(token, language = 'EN') {
   return '';
 }
 
+function looksLikeIngredientSignalPhrase(raw) {
+  const text = String(raw || '').trim();
+  if (!text || text.length > 64) return false;
+  const lower = text.toLowerCase();
+
+  if (/^(aha|bha|pha)$/i.test(text)) return true;
+  if (/\bspf\s*\d{1,3}\b/i.test(text)) return true;
+  if (/\b(alpha hydroxy acids?|beta hydroxy acids?|polyhydroxy acids?)\b/i.test(lower)) return true;
+  if (/[™®©]/.test(text)) return true;
+
+  const compact = lower.replace(/[^a-z0-9]+/g, ' ').trim();
+  const genericCategoryTerms = new Set([
+    'moisturizer',
+    'cleanser',
+    'serum',
+    'sunscreen',
+    'toner',
+    'cream',
+    'lotion',
+    'mask',
+    'scrub',
+    'essence',
+    'emulsion',
+    'product',
+    'products',
+    'routine',
+    'treatment',
+  ]);
+  if (genericCategoryTerms.has(compact)) return false;
+
+  if (/^[A-Z][A-Za-z0-9'-]{6,}$/.test(text)) return true;
+  if (/^[A-Z][A-Za-z0-9'-]+(?:\s+[A-Z][A-Za-z0-9'()/-]+){1,3}$/.test(text)) return true;
+
+  return false;
+}
+
 function sanitizeIngredientReferenceRuntimeMatch(reference) {
   if (!reference || typeof reference !== 'object' || Array.isArray(reference)) return null;
   const takeList = (value, max = 12) =>
@@ -39077,6 +39119,69 @@ async function resolveIngredientReferenceRuntimeMatch(input, language = 'EN') {
   } catch {
     return null;
   }
+}
+
+function sanitizeIngredientSignalRuntimeMatch(signal) {
+  if (!signal || typeof signal !== 'object') return null;
+  const takeList = (value, max = 12) =>
+    Array.isArray(value)
+      ? value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, max)
+      : [];
+  return {
+    signal_bucket: String(signal.signal_bucket || '').trim() || null,
+    signal_key: String(signal.signal_key || '').trim() || null,
+    display_signal_name: String(signal.display_signal_name || '').trim() || null,
+    raw_token_variants_list: takeList(signal.raw_token_variants_list),
+    normalized_token_variants_list: takeList(signal.normalized_token_variants_list),
+    source_packets_list: takeList(signal.source_packets_list),
+    source_decisions_list: takeList(signal.source_decisions_list),
+    confidence_levels_list: takeList(signal.confidence_levels_list),
+    top_categories_list: takeList(signal.top_categories_list),
+    example_brands_list: takeList(signal.example_brands_list),
+    example_products_list: takeList(signal.example_products_list),
+    example_urls_list: takeList(signal.example_urls_list),
+    resolution_rationales_list: takeList(signal.resolution_rationales_list),
+    row_count: Number.isFinite(Number(signal.row_count)) ? Number(signal.row_count) : 0,
+    total_sku_row_count: Number.isFinite(Number(signal.total_sku_row_count)) ? Number(signal.total_sku_row_count) : 0,
+  };
+}
+
+async function resolveIngredientSignalRuntimeMatch(input, language = 'EN') {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  try {
+    const signal = sanitizeIngredientSignalRuntimeMatch(await getBestIngredientSignalMatchImpl(raw));
+    if (!signal) return null;
+    const canonicalQuery = pickFirstTrimmed(signal.display_signal_name, raw) || raw;
+    return {
+      canonical_query: String(canonicalQuery).slice(0, 120),
+      language: language === 'CN' ? 'CN' : 'EN',
+      signal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function shouldPreferSignalRuntimeMatch(signalMatch, entityMatch, referenceMatch) {
+  if (!signalMatch || !signalMatch.signal || (referenceMatch && referenceMatch.reference)) return false;
+  const signalBucket = String(signalMatch.signal.signal_bucket || '').trim().toLowerCase();
+  if (
+    signalBucket === 'acid_family_signal' ||
+    signalBucket === 'ingredient_family_signal' ||
+    signalBucket === 'marketing_or_blend_signal' ||
+    signalBucket === 'strength_claim_signal' ||
+    signalBucket === 'claim_phrase_signal'
+  ) {
+    return true;
+  }
+  const entityType = String(entityMatch && entityMatch.entity_match_type ? entityMatch.entity_match_type : '')
+    .trim()
+    .toLowerCase();
+  return entityType === '' || entityType === 'none' || entityType === 'alias' || entityType === 'fuzzy';
 }
 
 function formatIngredientReferenceFacet(token, language = 'EN') {
@@ -39251,10 +39356,199 @@ function buildIngredientReferenceFallback(reference, language = 'EN', inputName 
   };
 }
 
+function formatIngredientSignalBucket(bucket, language = 'EN') {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const key = String(bucket || '').trim().toLowerCase();
+  const labels = {
+    ingredient_family_signal: { EN: 'Ingredient family signal', CN: '成分家族信号' },
+    acid_family_signal: { EN: 'Acid family signal', CN: '酸类家族信号' },
+    marketing_or_blend_signal: { EN: 'Marketing / blend signal', CN: '营销/复配信号' },
+    strength_claim_signal: { EN: 'Strength claim signal', CN: '浓度/强度信号' },
+    botanical_or_material_signal: { EN: 'Botanical / material signal', CN: '植物/材料信号' },
+    claim_phrase_signal: { EN: 'Claim phrase signal', CN: '功效表述信号' },
+    named_active_signal: { EN: 'Named active signal', CN: '命名活性信号' },
+  };
+  if (labels[key]) return labels[key][lang];
+  return lang === 'CN' ? '成分信号' : 'Ingredient signal';
+}
+
+function buildIngredientSignalAliases(signal) {
+  if (!signal || typeof signal !== 'object') return [];
+  const seen = new Set();
+  const out = [];
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+  push(signal.display_signal_name);
+  push(signal.signal_key);
+  for (const item of Array.isArray(signal.raw_token_variants_list) ? signal.raw_token_variants_list : []) push(item);
+  return out.slice(0, 12);
+}
+
+function buildIngredientSignalBenefits(signal, language = 'EN') {
+  if (!signal || typeof signal !== 'object') return [];
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const bucket = String(signal.signal_bucket || '').trim().toLowerCase();
+  const map = {
+    ingredient_family_signal: {
+      concern: 'ingredient-family',
+      EN: 'This label maps to an ingredient family umbrella, not one exact INCI row.',
+      CN: '这个标签更像成分家族总称，不是单一 INCI 行。',
+    },
+    acid_family_signal: {
+      concern: 'acid-family',
+      EN: 'This term captures an acid-family shorthand used on labels and marketing copy.',
+      CN: '这个词更像标签/营销中的酸类家族简称。',
+    },
+    marketing_or_blend_signal: {
+      concern: 'marketing-blend',
+      EN: 'This is a reviewed blend or trade-name signal worth preserving for product interpretation.',
+      CN: '这是一个已审核的复配/商标信号，适合保留用于解读产品文案。',
+    },
+    strength_claim_signal: {
+      concern: 'strength-claim',
+      EN: 'This captures a declared strength or SPF-style signal from product labeling.',
+      CN: '这个词捕捉的是产品标签里的浓度或 SPF 类强度信号。',
+    },
+    botanical_or_material_signal: {
+      concern: 'botanical-material',
+      EN: 'This points to a reviewed botanical or material callout commonly surfaced as a hero signal.',
+      CN: '这个词更像已审核的植物/材料型 hero signal。',
+    },
+    claim_phrase_signal: {
+      concern: 'claim-phrase',
+      EN: 'This phrase groups multiple actives or benefits into one product-level signal.',
+      CN: '这个短语通常把多个活性或功效打包成一个产品级信号。',
+    },
+    named_active_signal: {
+      concern: 'named-active',
+      EN: 'This is a reviewed named-active signal that should be preserved even when it is not a canonical INCI.',
+      CN: '这是一个已审核的命名活性信号，即使它不是 canonical INCI 也值得保留。',
+    },
+  };
+  const entry = map[bucket];
+  if (!entry) return [];
+  return [
+    {
+      concern: entry.concern,
+      strength: 2,
+      what_it_means: entry[lang],
+    },
+  ];
+}
+
+function buildIngredientSignalWatchouts(signal, language = 'EN') {
+  if (!signal || typeof signal !== 'object') return [];
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const bucket = String(signal.signal_bucket || '').trim().toLowerCase();
+  const map = {
+    ingredient_family_signal: {
+      issue: lang === 'CN' ? '家族词不等于具体成分' : 'Family term is not one exact ingredient',
+      what_to_do:
+        lang === 'CN'
+          ? '仍需结合完整 INCI 判断具体是哪一类成员和实际占比。'
+          : 'Use the full INCI list to confirm which member of the family is actually present.',
+    },
+    acid_family_signal: {
+      issue: lang === 'CN' ? '酸类总称不代表具体酸型和浓度' : 'Acid umbrella term hides the exact acid and strength',
+      what_to_do:
+        lang === 'CN'
+          ? '需要结合具体酸型、浓度和频率来判断刺激风险。'
+          : 'Check the exact acid type, strength, and usage frequency before estimating irritation risk.',
+    },
+    marketing_or_blend_signal: {
+      issue: lang === 'CN' ? '商标/复配名可能覆盖多个原料' : 'Trade or blend name can hide multiple ingredients',
+      what_to_do:
+        lang === 'CN'
+          ? '把它当成配方信号，而不是单一 INCI；具体成分仍以完整列表为准。'
+          : 'Treat it as a formulation signal rather than a single INCI; confirm the underlying actives separately.',
+    },
+    strength_claim_signal: {
+      issue: lang === 'CN' ? '强度标签不等于完整适配结论' : 'Strength claim alone is not a full fit verdict',
+      what_to_do:
+        lang === 'CN'
+          ? '还要结合剂型、体系和耐受度来判断是否适合。'
+          : 'Interpret it together with the vehicle, supporting actives, and your tolerance profile.',
+    },
+    botanical_or_material_signal: {
+      issue: lang === 'CN' ? 'hero 材料词不等于高占比' : 'Hero material callout does not guarantee high concentration',
+      what_to_do:
+        lang === 'CN'
+          ? '它更适合做配方信号，仍需回看完整 INCI 与排位。'
+          : 'Use it as a formulation signal and verify the actual INCI placement.',
+    },
+    claim_phrase_signal: {
+      issue: lang === 'CN' ? '功效短语通常打包了多项东西' : 'Claim phrase often bundles several actives together',
+      what_to_do:
+        lang === 'CN'
+          ? '不要把这类短语直接当作单一成分；需要拆回具体活性。'
+          : 'Do not treat it as one standalone ingredient; unpack it into specific actives where possible.',
+    },
+    named_active_signal: {
+      issue: lang === 'CN' ? '命名活性可能是专有词或单一活性' : 'Named active can be proprietary or context-dependent',
+      what_to_do:
+        lang === 'CN'
+          ? '保留它作为信号词，但具体机制仍要结合品牌说明与 INCI。'
+          : 'Preserve it as a signal term, then validate the underlying mechanism against brand docs and INCI.',
+    },
+  };
+  const entry = map[bucket];
+  if (!entry) return [];
+  return [
+    {
+      issue: entry.issue,
+      likelihood: 'common',
+      what_to_do: entry.what_to_do,
+    },
+  ];
+}
+
+function buildIngredientSignalFallback(signal, language = 'EN', inputName = '') {
+  if (!signal || typeof signal !== 'object') return null;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const displayName = pickFirstTrimmed(signal.display_signal_name, inputName) || inputName;
+  const category = formatIngredientSignalBucket(signal.signal_bucket, lang);
+  return {
+    inci: displayName,
+    display_name: displayName,
+    aliases: buildIngredientSignalAliases(signal),
+    category,
+    what_it_is:
+      lang === 'CN'
+        ? `${displayName} 是 reviewed signal dictionary 中登记的信号词，不一定对应单一 canonical INCI。`
+        : `${displayName} is a reviewed signal-dictionary term and may not correspond to one single canonical INCI row.`,
+    one_liner:
+      lang === 'CN'
+        ? `${displayName} 已在 reviewed signal dictionary 中登记，当前按 ${category} 处理。`
+        : `${displayName} is tracked in the reviewed signal dictionary and is currently treated as ${category}.`,
+    benefits: buildIngredientSignalBenefits(signal, lang),
+    watchouts: buildIngredientSignalWatchouts(signal, lang),
+    pair_well: [],
+    separate: [],
+  };
+}
+
 async function extractIngredientLookupTargetFromText(message, language = 'EN') {
   const raw = String(message || '').trim();
   if (!raw) return '';
   const lang = language === 'CN' ? 'CN' : 'EN';
+  const entityMatch = ingredientEntityMatchFromText(raw, lang);
+  const referenceMatch = await resolveIngredientReferenceRuntimeMatch(raw, lang);
+  if (referenceMatch && referenceMatch.canonical_query) {
+    return String(referenceMatch.canonical_query).slice(0, 120);
+  }
+  const signalMatch = await resolveIngredientSignalRuntimeMatch(raw, lang);
+  if (shouldPreferSignalRuntimeMatch(signalMatch, entityMatch, referenceMatch) && signalMatch.canonical_query) {
+    return String(signalMatch.canonical_query).slice(0, 120);
+  }
+  if (!referenceMatch && looksLikeIngredientSignalPhrase(raw)) {
+    return raw.slice(0, 120);
+  }
 
   const knownActives = extractKnownActivesFromText(raw, lang);
   for (const token of knownActives) {
@@ -39270,12 +39564,8 @@ async function extractIngredientLookupTargetFromText(message, language = 'EN') {
   );
   if (ontologyPreferred) return String(ontologyPreferred).slice(0, 120);
 
-  const normalized = normalizeIngredientLookupToken(raw);
+  const normalized = String(entityMatch.entity_key || '').trim();
   const normalizedQuery = mapIngredientLookupTokenToQuery(normalized, lang);
-  const referenceMatch = await resolveIngredientReferenceRuntimeMatch(raw, lang);
-  if (referenceMatch && referenceMatch.canonical_query) {
-    return String(referenceMatch.canonical_query).slice(0, 120);
-  }
   if (normalizedQuery) return String(normalizedQuery).slice(0, 120);
 
   const ontologyAny = pickFirstTrimmed(
@@ -40760,7 +41050,15 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   const inputName = String(query || '').trim() || (lang === 'CN' ? '该成分' : 'this ingredient');
   const researchObj = asResearchObject(research);
   const metaObj = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
-  const ingredientReference = sanitizeIngredientReferenceRuntimeMatch(metaObj.ingredient_reference);
+  const ingredientReference =
+    metaObj.ingredient_reference && typeof metaObj.ingredient_reference === 'object' && !Array.isArray(metaObj.ingredient_reference)
+      ? metaObj.ingredient_reference
+      : null;
+  const ingredientSignal =
+    metaObj.ingredient_signal && typeof metaObj.ingredient_signal === 'object' && !Array.isArray(metaObj.ingredient_signal)
+      ? metaObj.ingredient_signal
+      : null;
+  const preferSignalFallback = metaObj.ingredient_signal_preferred === true;
   const normalizedQuery = pickFirstTrimmed(
     metaObj.normalized_query,
     researchObj && researchObj.normalized_query,
@@ -41628,10 +41926,15 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     aliases: entityRow && Array.isArray(entityRow.aliases) ? entityRow.aliases : [],
     ...familyFallback,
   } : null;
-  const referenceFallback = buildIngredientReferenceFallback(ingredientReference, lang, inputName);
+  const referenceFallback = ingredientReference
+    ? buildIngredientReferenceFallback(ingredientReference, lang, inputName)
+    : null;
+  const signalFallback = ingredientSignal
+    ? buildIngredientSignalFallback(ingredientSignal, lang, inputName)
+    : null;
   const preferReferenceFallback = shouldPreferIngredientReferenceProfile(ingredientReference, libraryFallback);
   const referenceMatchesLibraryFallback = doesIngredientReferenceMatchLibraryProfile(ingredientReference, libraryFallback);
-  const useLibraryContent = Boolean(!preferReferenceFallback && libraryFallback);
+  const useLibraryContent = Boolean(!preferReferenceFallback && !preferSignalFallback && libraryFallback);
   const referenceBackedHit = Boolean(referenceFallback && (preferReferenceFallback || referenceMatchesLibraryFallback || !libraryFallback));
   const genericFallback = {
     inci: inputName,
@@ -41661,8 +41964,12 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
   };
   const picked = (useLibraryContent && libraryFallback)
     || referenceFallback
+    || (preferSignalFallback ? signalFallback : null)
+    || signalFallback
     || familyFallbackProfile
     || genericFallback;
+  const referenceAliases = ingredientReference ? buildIngredientReferenceAliases(ingredientReference) : [];
+  const signalAliases = ingredientSignal ? buildIngredientSignalAliases(ingredientSignal) : [];
 
   const researchIngredient = asResearchObject(researchReady && researchReady.ingredient) || {};
   const researchSafety = asResearchObject(researchReady && researchReady.safety) || {};
@@ -41702,7 +42009,8 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     .slice(0, 8);
   const isReferenceHit = referenceBackedHit;
   const isLibraryHit = Boolean(useLibraryContent && !isReferenceHit);
-  const isFamilyHit = Boolean(!useLibraryContent && !isReferenceHit && familyFallbackProfile);
+  const isSignalHit = Boolean(!isLibraryHit && !isReferenceHit && signalFallback);
+  const isFamilyHit = Boolean(!isLibraryHit && !isReferenceHit && !isSignalHit && familyFallbackProfile);
   const ingredientKey = isReferenceHit
     ? normalizeIngredientSlugKey(
       pickFirstTrimmed(
@@ -41711,7 +42019,14 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
         ingredientReference && ingredientReference.canonical_display_name,
       ),
     ) || token || normalizeIngredientSlugKey(normalizedQuery || inputName)
-    : token || (ingredientReference && ingredientReference.normalized_key) || normalizeIngredientSlugKey(normalizedQuery || inputName);
+    : isSignalHit
+      ? normalizeIngredientSlugKey(
+        pickFirstTrimmed(
+          ingredientSignal && ingredientSignal.signal_key,
+          ingredientSignal && ingredientSignal.display_signal_name,
+        ),
+      ) || token || normalizeIngredientSlugKey(normalizedQuery || inputName)
+      : token || normalizeIngredientSlugKey(normalizedQuery || inputName);
   const providerAttemptTimedOut = providerAttempts.some((row) => /timeout/i.test(String(row && row.reason_code ? row.reason_code : '')));
   const researchTimeout = researchStatus === 'fallback' && (/timeout/i.test(String(researchErrorCode || '')) || providerAttemptTimedOut);
   const reportMode =
@@ -41731,29 +42046,46 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
         ? 'timeout'
         : researchStatus === 'queued'
           ? 'research_queued'
-          : isReferenceHit
-            ? 'reference_seed_hit'
-            : isLibraryHit
-              ? 'library_hit'
-            : isFamilyHit
-              ? 'family_match'
-              : researchStatus === 'fallback'
-                ? 'fallback'
-                : 'generic_fallback';
+          : isLibraryHit
+            ? 'library_hit'
+            : isReferenceHit
+              ? 'reference_seed_hit'
+              : isSignalHit
+                ? 'signal_dict_hit'
+                : isFamilyHit
+                  ? 'family_match'
+                  : researchStatus === 'fallback'
+                    ? 'fallback'
+                    : 'generic_fallback';
   const personalizationBasis = researchReady
     ? 'mixed'
-    : isReferenceHit
+    : isReferenceHit && !isLibraryHit && !isFamilyHit
       ? 'ingredient_reference'
+    : isSignalHit && !isLibraryHit && !isReferenceHit
+      ? 'ingredient_signal'
     : isFamilyHit && !isLibraryHit
       ? 'ingredient_family'
       : 'ingredient';
-  const evidenceGradeFallback = isLibraryHit || isReferenceHit || isFamilyHit ? 'B' : null;
+  const evidenceGradeFallback = isLibraryHit || isFamilyHit || isReferenceHit || isSignalHit ? 'B' : null;
   const evidenceGrade = normalizeIngredientEvidenceGrade(researchEvidence.grade, evidenceGradeFallback);
   const commonIrritationFamilies = ['retinoid', 'aha', 'bha', 'acne_active', 'exfoliant'];
   const irritationRiskFallback = isLibraryHit
     ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
     : isReferenceHit
-      ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
+      ? (
+        ingredientReference?.flags?.is_retinoid || ingredientReference?.flags?.is_exfoliant
+          ? 'medium'
+          : ingredientReference?.flags?.is_fragrance_or_eo
+            ? 'medium'
+            : 'low'
+      )
+    : isSignalHit
+      ? (
+        ingredientSignal?.signal_bucket === 'acid_family_signal'
+        || ingredientSignal?.signal_bucket === 'strength_claim_signal'
+          ? 'medium'
+          : 'low'
+      )
     : isFamilyHit
       ? (commonIrritationFamilies.includes(familyKey) ? 'medium' : 'low')
       : null;
@@ -41786,7 +42118,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     picked.one_liner,
   );
   const confidence = (() => {
-    if (!researchReady) return useLibraryContent ? 0.8 : isReferenceHit ? 0.72 : isFamilyHit ? 0.68 : 0.55;
+    if (!researchReady) return isLibraryHit ? 0.8 : isReferenceHit ? 0.74 : isSignalHit ? 0.7 : isFamilyHit ? 0.68 : 0.55;
     let base = 0.7;
     if (evidenceGrade === 'A') base = 0.9;
     else if (evidenceGrade === 'B') base = 0.82;
@@ -41815,19 +42147,37 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     provider_circuit_state: providerCircuitState || 'closed',
     research_attempts: providerAttempts,
     ingredient: {
-      key: ingredientKey || null,
-      inci: pickFirstTrimmed(researchIngredient.inci, picked.inci, inputName),
-      display_name: pickFirstTrimmed(researchIngredient.display_name, picked.display_name, inputName),
+      key: ingredientKey || (ingredientReference && ingredientReference.normalized_key) || null,
+      inci: pickFirstTrimmed(
+        researchIngredient.inci,
+        ingredientReference && ingredientReference.canonical_inci_name,
+        picked.inci,
+        inputName,
+      ),
+      display_name: pickFirstTrimmed(
+        researchIngredient.display_name,
+        ingredientReference && ingredientReference.canonical_display_name,
+        picked.display_name,
+        inputName,
+      ),
       aliases: asResearchStringArray(researchIngredient.aliases, 8).length
         ? asResearchStringArray(researchIngredient.aliases, 8)
-        : picked.aliases,
+        : referenceAliases.length
+          ? referenceAliases
+          : signalAliases.length
+            ? signalAliases
+          : picked.aliases,
       what_it_is: pickFirstTrimmed(
         researchIngredient.what_it_is,
         researchIngredient.whatItIs,
         researchReady && researchReady.what_it_is,
         researchReady && researchReady.overview,
+        picked.what_it_is,
       ) || null,
-      category: pickFirstTrimmed(researchIngredient.category, picked.category),
+      category: pickFirstTrimmed(
+        picked.category,
+        ingredientReference ? buildIngredientReferenceCategory(ingredientReference, lang) : '',
+      ),
     },
     verdict: {
       one_liner: oneLiner,
@@ -41870,12 +42220,25 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     report_state: {
       mode: reportMode,
       status: reportStatus,
-      completion_score: researchReady ? 0.95 : reportStatus === 'pending' ? 0.7 : isLibraryHit ? 0.82 : isReferenceHit ? 0.74 : isFamilyHit ? 0.6 : 0.3,
+      completion_score:
+        researchReady
+          ? 0.95
+          : reportStatus === 'pending'
+            ? 0.7
+            : isLibraryHit
+              ? 0.82
+              : isReferenceHit
+                ? 0.72
+                : isSignalHit
+                  ? 0.66
+                  : isFamilyHit
+                    ? 0.6
+                    : 0.3,
       missing_sections: (() => {
         const missing = [];
         if (!researchReady) {
           if (reportStatus === 'pending') missing.push('evidence', 'top_products');
-          else if (!isLibraryHit && !isReferenceHit && !isFamilyHit) missing.push('benefits', 'watchouts', 'evidence');
+          else if (!isLibraryHit && !isFamilyHit && !isReferenceHit && !isSignalHit) missing.push('benefits', 'watchouts', 'evidence');
           else if (!researchCitations.length) missing.push('evidence');
         }
         return missing;
@@ -41885,7 +42248,7 @@ function buildIngredientReportPayload({ language, query, research = null, meta =
     },
     sections: [
       { id: 'benefits', title: lang === 'CN' ? '功效' : 'Benefits', status: benefits.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
-      { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: isLibraryHit || isReferenceHit || isFamilyHit ? 'ready' : 'pending', source: 'kb' },
+      { id: 'how_to_use', title: lang === 'CN' ? '使用方法' : 'How to use', status: isLibraryHit || isFamilyHit || isReferenceHit || isSignalHit ? 'ready' : 'pending', source: 'kb' },
       { id: 'watchouts', title: lang === 'CN' ? '注意事项' : 'Watchouts', status: watchouts.length ? 'ready' : 'insufficient', source: researchReady ? 'hybrid' : 'kb' },
       { id: 'evidence', title: lang === 'CN' ? '证据' : 'Evidence', status: researchCitations.length ? 'ready' : 'pending', source: researchReady ? 'hybrid' : 'kb' },
     ],
@@ -59685,14 +60048,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         const targetInput = String(lookupTarget || '').trim().slice(0, 120);
         if (!targetInput) return null;
         const ingredientReferenceMatch = await resolveIngredientReferenceRuntimeMatch(targetInput, ctx.lang);
+        const entityMatch = ingredientEntityMatchFromText(targetInput, ctx.lang);
+        const ingredientSignalMatch = await resolveIngredientSignalRuntimeMatch(targetInput, ctx.lang);
+        const shouldPreferSignalMatch = shouldPreferSignalRuntimeMatch(
+          ingredientSignalMatch,
+          entityMatch,
+          ingredientReferenceMatch,
+        );
         const target =
           ingredientReferenceMatch && ingredientReferenceMatch.canonical_query
             ? String(ingredientReferenceMatch.canonical_query).slice(0, 120)
-            : targetInput;
+            : shouldPreferSignalMatch && ingredientSignalMatch && ingredientSignalMatch.canonical_query
+              ? String(ingredientSignalMatch.canonical_query).slice(0, 120)
+              : targetInput;
         const currentIngredientAnalysisTaskContext =
           ingredientAnalysisTaskContext || await ensureTaskAnalysisContextForConversation('ingredient');
         const normalizedQuery = normalizeIngredientResearchKey(target);
-        const entityMatch = ingredientEntityMatchFromText(targetInput, ctx.lang);
         const routeReasons = Array.isArray(explicitRouteReasons)
           ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean)
           : [];
@@ -59722,9 +60093,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         if (ingredientReferenceMatch && ingredientReferenceMatch.reference) {
           routeReasons.push('reference_seed_match');
+        } else if (shouldPreferSignalMatch && ingredientSignalMatch && ingredientSignalMatch.signal) {
+          routeReasons.push('signal_dict_match');
         } else if (!entityMatch.entity_match_type || entityMatch.entity_match_type === 'none') {
           routeReasons.push('entity_no_match');
         }
+        const signalOnlyMatch = Boolean(
+          shouldPreferSignalMatch &&
+          ingredientSignalMatch &&
+          ingredientSignalMatch.signal &&
+          !(ingredientReferenceMatch && ingredientReferenceMatch.reference),
+        );
 
         const rateLimit = skipRateLimit
           ? { blocked: false, reason: '' }
@@ -59737,8 +60116,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'rate_limited', hit: true });
         }
 
-        let researchCache = getIngredientResearchCache(target);
-        if (!researchCache) {
+        let researchCache = signalOnlyMatch ? null : getIngredientResearchCache(target);
+        if (!signalOnlyMatch && !researchCache) {
           const genericKbHit = await getIngredientResearchKbEntry({
             query: target,
             lang: ctx.lang,
@@ -59773,6 +60152,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let resolvedResearch = researchCache || null;
         let syncResearch = null;
         if (
+          !signalOnlyMatch &&
           !researchReady &&
           INGREDIENT_ROUTE_V2_ENABLED &&
           !INGREDIENT_LEGACY_PATH_ENABLED &&
@@ -59839,7 +60219,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           recordAuroraIngredientsFlowMetric({ stage: 'kb_miss', hit: true });
         }
 
-        const shouldQueueResearch = !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
+        const shouldQueueResearch =
+          !signalOnlyMatch && !readyAfterSync && !INGREDIENT_KB_ONLY_MODE && AURORA_INGREDIENT_LLM_REPORT_ENABLED;
         const researchJob = shouldQueueResearch
           ? enqueueIngredientResearchJob({
             query: target,
@@ -59865,6 +60246,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientReferenceMatch && ingredientReferenceMatch.reference
                 ? ingredientReferenceMatch.reference
                 : null,
+            ingredient_signal:
+              shouldPreferSignalMatch && ingredientSignalMatch && ingredientSignalMatch.signal
+                ? ingredientSignalMatch.signal
+                : null,
+            ingredient_signal_preferred: shouldPreferSignalMatch,
             route_decision_reasons: routeReasons.slice(0, 12),
             route_rule_version: INGREDIENT_ROUTE_RULE_VERSION,
             provider_model_tier: resolvedResearch && resolvedResearch.provider_model_tier,
@@ -64951,6 +65337,7 @@ const __internal = {
   applyIngredientRecoConstraint,
   generateProductRecommendations,
   resolveIngredientReferenceRuntimeMatch,
+  resolveIngredientSignalRuntimeMatch,
   extractIngredientLookupTargetFromText,
   buildIngredientReportPayload,
   buildIngredientReportPayloadWithResearch,
@@ -65145,6 +65532,12 @@ const __internal = {
   },
   __resetGetBestIngredientReferenceMatchForTest() {
     getBestIngredientReferenceMatchImpl = getBestIngredientReferenceMatch;
+  },
+  __setGetBestIngredientSignalMatchForTest(fn) {
+    getBestIngredientSignalMatchImpl = typeof fn === 'function' ? fn : getBestIngredientSignalMatch;
+  },
+  __resetGetBestIngredientSignalMatchForTest() {
+    getBestIngredientSignalMatchImpl = getBestIngredientSignalMatch;
   },
 };
 
