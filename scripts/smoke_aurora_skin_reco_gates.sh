@@ -15,7 +15,15 @@ ALL_EVENTS_JQ='(
 )'
 NON_BLOCKING_FAILURES=()
 INGREDIENT_PLAN_CARD_JQ='any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
-ROUTINE_ANALYSIS_CARD_JQ='any(.type=="routine_fit_summary" or .type=="routine_product_audit_v1" or .type=="routine_adjustment_plan_v1" or .type=="routine_products_preview")'
+ROUTINE_AUDIT_V1_CARD_JQ='(any(.type=="routine_verdict_v1") and any(.type=="routine_product_audit_v1") and any(.type=="routine_user_fit_v1") and any(.type=="routine_adjustment_plan_v1"))'
+ROUTINE_V2_CARD_JQ='((any(.type=="routine_product_audit_v1") and any(.type=="routine_adjustment_plan_v1")) and (any(.type=="routine_verdict_v1" or .type=="routine_user_fit_v1") | not))'
+ROUTINE_PREVIEW_CARD_JQ='any(.type=="routine_products_preview")'
+ROUTINE_ANALYSIS_CARD_JQ="(${ROUTINE_AUDIT_V1_CARD_JQ} or ${ROUTINE_V2_CARD_JQ} or ${ROUTINE_PREVIEW_CARD_JQ} or any(.type==\"routine_fit_summary\"))"
+ROUTINE_AUDIT_V1_CONTRACT_JQ='
+  ((.cards | map(.type)) == ["routine_verdict_v1","routine_product_audit_v1","routine_user_fit_v1","routine_adjustment_plan_v1"])
+  and ((.analysis_meta.analysis_mode // "") == "routine_audit_v1")
+  and ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+'
 
 say() {
   printf "\n== %s ==\n" "$1"
@@ -242,14 +250,37 @@ run_case_medium_confidence() {
   local analysis_json
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Niacinamide serum","moisturizer":"Barrier cream","spf":"SPF 50 sunscreen"},"pm":{"cleanser":"Gentle cleanser","treatment":"Niacinamide serum","moisturizer":"Barrier cream"}}}')"
 
-  jq_assert_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_assert_json "ingredient_plan exists (medium case)" ".cards | ${INGREDIENT_PLAN_CARD_JQ}" "$analysis_json"
-  jq_warn_json "routine analysis emits routine-specific output (legacy, v2, or preview)" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}" "$analysis_json"
+  jq_assert_json "analysis returns routine audit or story card (medium case)" '
+    if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+    then true
+    else (.cards | any(.type=="analysis_story_v2"))
+    end
+  ' "$analysis_json"
+  jq_assert_json "routine analysis emits audit/preview/v2/legacy supported contract (medium case)" "
+    if ((.analysis_meta.analysis_mode // \"\") == \"routine_audit_v1\") or ((.session_patch.meta.analysis_contract.card_contract // \"\") == \"aurora.routine_audit_v1\")
+    then ${ROUTINE_AUDIT_V1_CONTRACT_JQ}
+    elif (.cards | ${ROUTINE_PREVIEW_CARD_JQ})
+    then true
+    elif (.cards | ${ROUTINE_V2_CARD_JQ})
+    then true
+    else ((.cards | any(.type==\"analysis_story_v2\")) and (.cards | ${INGREDIENT_PLAN_CARD_JQ}) and (.cards | any(.type==\"routine_fit_summary\")))
+    end
+  " "$analysis_json"
   jq_assert_json "analysis source is not baseline fallback" '(.analysis_meta.detector_source // "") != "baseline_low_confidence"' "$analysis_json"
   jq_assert_json "artifact usable on medium/high" '(.analysis_meta.artifact_usable // false) == true' "$analysis_json"
-  jq_assert_json "analysis confidence medium/high" '.cards | any((.type=="analysis_story_v2") and ((((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "medium") or (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "high")))' "$analysis_json"
-  jq_warn_json "routine deep-dive chip exists when non-preview routine output exists" "
-    if (.cards | any(.type==\"routine_products_preview\"))
+  jq_assert_json "analysis confidence medium/high" '
+    if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+    then true
+    else (.cards | any((.type=="analysis_story_v2") and ((((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "medium") or (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "high"))))
+    end
+  ' "$analysis_json"
+  jq_warn_json "routine follow-up chips align with active contract" "
+    if ((.analysis_meta.analysis_mode // \"\") == \"routine_audit_v1\") or ((.session_patch.meta.analysis_contract.card_contract // \"\") == \"aurora.routine_audit_v1\")
+    then (
+      ((.suggested_chips // []) | any(.chip_id==\"chip.aurora.next_action.deep_dive_skin\"))
+      and (((.suggested_chips // []) | any(.chip_id==\"chip.aurora.next_action.routine_deep_dive\")) | not)
+    )
+    elif (.cards | ${ROUTINE_PREVIEW_CARD_JQ})
     then true
     elif (.cards | ${ROUTINE_ANALYSIS_CARD_JQ})
     then (.suggested_chips // [] | any(.chip_id==\"chip.aurora.next_action.routine_deep_dive\"))
@@ -294,9 +325,17 @@ run_case_medium_confidence() {
       (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
     ' "$routine_follow_json"
   else
-    jq_assert_json "routine_products_preview intentionally omits routine_deep_dive chip" '
-      (.cards | any(.type=="routine_products_preview"))
-      and ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive") | not)
+    jq_assert_json "routine audit/preview contract intentionally omits legacy routine_deep_dive chip" '
+      if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+      then (
+        ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.deep_dive_skin"))
+        and (((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive")) | not)
+      )
+      else (
+        (.cards | any(.type=="routine_products_preview"))
+        and (((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive")) | not)
+      )
+      end
     ' "$analysis_json"
   fi
 

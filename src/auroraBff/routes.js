@@ -52970,6 +52970,231 @@ function mountAuroraBffRoutes(app, { logger }) {
         const hasPhotoPrimaryInput = Boolean(userRequestedPhoto && photosProvided);
         const hasLlmPrimaryInput = hasPrimaryInput || hasPhotoPrimaryInput;
         const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
+        const explicitPhotoFirstRequested = parsed.data.use_photo === true;
+        const routineAuditFastPathEligible =
+          AURORA_ROUTINE_AUDIT_V1_ENABLED &&
+          AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
+          hasRoutine &&
+          !explicitPhotoFirstRequested &&
+          !hasPhotoPrimaryInput &&
+          routineProductCandidates.length > 0;
+
+        if (routineAuditFastPathEligible) {
+          const expectedRoutineAuditCardTypes = [
+            'routine_verdict_v1',
+            'routine_product_audit_v1',
+            'routine_user_fit_v1',
+            'routine_adjustment_plan_v1',
+          ];
+          const fastPathEvents = [
+            makeEvent(ctx, 'routine_audit_fast_path_started', {
+              candidate_count: routineProductCandidates.length,
+              routine_source_shape: routineStateMeta.source_shape,
+              missing_routine_fields: routineStateMeta.missing_routine_fields,
+              profile_context_source: requestProfileContextSource,
+            }),
+          ];
+          let fastPathFailureStage = 'routine_context_build';
+          try {
+            const routineExpert = buildRoutineExpertV1({
+              routineCandidate,
+              profileSummary,
+              recentLogs: recentLogsSummary,
+              language: ctx.lang,
+            });
+            const routineLifecycleStage = detectRoutineLifecycleStage({
+              routineCandidate,
+              previousRoutine,
+              routineExpertIssues: Array.isArray(routineExpert && routineExpert.key_issues) ? routineExpert.key_issues : [],
+              intent: 'analysis_review_products',
+            });
+            const routineLifecycleContext = routineLifecycleStage
+              ? buildRoutineLifecycleContext({
+                stage: routineLifecycleStage,
+                routineCandidate,
+                previousRoutine,
+                profileSummary,
+                routineExpert,
+                language: ctx.lang,
+              })
+              : null;
+
+            fastPathFailureStage = 'routine_analysis_v2';
+            const routineAnalysisV2Result = await runRoutineAnalysisV2({
+              requestId: ctx.request_id,
+              language: ctx.lang,
+              profile,
+              profileSummary,
+              routineProductCandidates,
+              ingredientPlan: null,
+              analysisContextSnapshot: null,
+              requestProfileOverride: requestProfileOverlay,
+              surfaceMode: 'routine_audit_v1',
+              routineExpert,
+              routineLifecycleContext,
+              logger,
+            });
+
+            fastPathFailureStage = 'response_contract';
+            const fastPathCards = Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.cards)
+              ? routineAnalysisV2Result.cards
+              : [];
+            const fastPathCardTypes = fastPathCards
+              .map((card) => String(card && card.type || '').trim())
+              .filter(Boolean);
+            const hasExpectedRoutineAuditSurface =
+              fastPathCardTypes.length === expectedRoutineAuditCardTypes.length &&
+              expectedRoutineAuditCardTypes.every((type, index) => fastPathCardTypes[index] === type);
+            if (!hasExpectedRoutineAuditSurface) {
+              const err = new Error('ROUTINE_AUDIT_FAST_PATH_INVALID_SURFACE');
+              err.code = 'ROUTINE_AUDIT_FAST_PATH_INVALID_SURFACE';
+              throw err;
+            }
+
+            const analysisMeta = {
+              detector_source: 'rule_based',
+              llm_vision_called: false,
+              llm_report_called: false,
+              artifact_usable: false,
+              routine_analysis_version: 'v2',
+              routine_payload_shape: routinePayloadShape,
+              routine_preview_items_count: routineProductCandidates.length,
+              routine_product_enrichment_deferred: routineProductCandidates.length > 0,
+              analysis_mode: 'routine_audit_v1',
+              execution_path: 'routine_audit_fast_path',
+              profile_context_source: requestProfileContextSource,
+              request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+              gate_relax_mode: AURORA_RULE_RELAX_MODE,
+              low_quality_tolerated: false,
+              reco_artifact_eligible: Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
+                ? routineAnalysisV2Result.recommendation_groups.some(
+                    (group) => Array.isArray(group && group.candidate_pool) && group.candidate_pool.length > 0,
+                  )
+                : false,
+            };
+
+            const sessionPatch = {
+              next_state: 'ROUTINE_REVIEW',
+              meta: {
+                routine_analysis_v2: {
+                  ...(isPlainObject(routineAnalysisV2Result.debug_meta) ? routineAnalysisV2Result.debug_meta : {}),
+                  profile_context_source: requestProfileContextSource,
+                  request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+                  ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+                },
+                routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+                analysis_contract: {
+                  analysis_mode: 'routine_audit_v1',
+                  card_contract: 'aurora.routine_audit_v1',
+                  execution_path: 'routine_audit_fast_path',
+                  card_types: fastPathCardTypes.slice(0, 6),
+                },
+                ...(routineExpert ? { routine_expert: routineExpert } : {}),
+                ...(routineLifecycleContext ? { routine_lifecycle_context: routineLifecycleContext } : {}),
+              },
+            };
+            if (profileSummary) {
+              sessionPatch.profile = profileSummary;
+            }
+
+            const analysisChips = buildAnalysisSuggestedChips({
+              language: ctx.lang,
+              lowConfidence: false,
+              hasIngredientPlan: false,
+              hasRoutineFit: false,
+            });
+            const analysisAssistantText =
+              typeof routineAnalysisV2Result.assistant_text === 'string' && routineAnalysisV2Result.assistant_text.trim()
+                ? routineAnalysisV2Result.assistant_text
+                : buildAnalysisAssistantMessage({
+                    language: ctx.lang,
+                    skinProfile: {
+                      skin_type_tendency: profileSummary && profileSummary.skinType ? profileSummary.skinType : null,
+                      sensitivity_tendency: profileSummary && profileSummary.sensitivity ? profileSummary.sensitivity : null,
+                    },
+                    lowConfidence: false,
+                    ingredientPlan: null,
+                    routineFit: null,
+                  });
+
+            profiler.start('render', { kind: 'routine_audit_fast_path' });
+            const envelope = buildEnvelope(ctx, {
+              assistant_message: makeAssistantMessage(analysisAssistantText),
+              suggested_chips: analysisChips,
+              cards: fastPathCards,
+              session_patch: sessionPatch,
+              events: [
+                ...fastPathEvents,
+                makeEvent(ctx, 'routine_analysis_v2_completed', {
+                  audited_product_count:
+                    routineAnalysisV2Result &&
+                    routineAnalysisV2Result.audit &&
+                    Array.isArray(routineAnalysisV2Result.audit.products)
+                      ? routineAnalysisV2Result.audit.products.length
+                      : 0,
+                  recommendation_group_count: Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
+                    ? routineAnalysisV2Result.recommendation_groups.length
+                    : 0,
+                  deferred_product_count:
+                    routineAnalysisV2Result &&
+                    routineAnalysisV2Result.debug_meta &&
+                    routineAnalysisV2Result.debug_meta.stage_a &&
+                    Number.isFinite(Number(routineAnalysisV2Result.debug_meta.stage_a.deferred_product_count))
+                      ? Number(routineAnalysisV2Result.debug_meta.stage_a.deferred_product_count)
+                      : 0,
+                }),
+                makeEvent(ctx, 'routine_audit_fast_path_completed', {
+                  candidate_count: routineProductCandidates.length,
+                  card_count: fastPathCards.length,
+                  lifecycle_stage: routineLifecycleStage || null,
+                  expert_issue_count: Array.isArray(routineExpert && routineExpert.key_issues) ? routineExpert.key_issues.length : 0,
+                }),
+                ...pregnancyPolicyEvents,
+                makeEvent(ctx, 'value_moment', {
+                  kind: 'skin_analysis',
+                  used_photos: false,
+                  analysis_source: 'rule_based',
+                }),
+              ],
+              analysis_meta: analysisMeta,
+            });
+            profiler.end('render', { kind: 'routine_audit_fast_path' });
+            recordAuroraSkinFlowMetric({ stage: 'routine_audit_fast_path_completed', hit: true });
+
+            return {
+              envelope,
+              report: profiler.report(),
+              profile_for_guardrails: profile,
+              analysis_for_persist: null,
+              photo_refs: [],
+              skip_product_intel_guardrails: true,
+            };
+          } catch (err) {
+            analysisSubstageEvents.push(
+              makeEvent(ctx, 'routine_audit_fast_path_failed', {
+                failure_stage: fastPathFailureStage,
+                fallback_path: 'preview_or_routine_v2',
+                candidate_count: routineProductCandidates.length,
+                routine_source_shape: routineStateMeta.source_shape,
+                missing_routine_fields: routineStateMeta.missing_routine_fields,
+                error_code: err && err.code ? String(err.code) : null,
+              }),
+            );
+            recordAuroraSkinFlowMetric({ stage: 'routine_audit_fast_path_failed', hit: true });
+            logger?.warn(
+              {
+                err: err && err.message ? err.message : String(err),
+                code: err && err.code ? err.code : null,
+                request_id: ctx.request_id,
+                candidate_count: routineProductCandidates.length,
+                failure_stage: fastPathFailureStage,
+              },
+              'aurora bff: routine audit fast path failed, falling back to legacy routine path',
+            );
+          }
+        }
+
         const detectorConfidence = inferDetectorConfidence({ profileSummary, recentLogsSummary, routineCandidate });
         const selectedVisionProvider = {
           provider: 'gemini',
@@ -54251,11 +54476,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         const routineProductEvents = [];
-        const routineAuditV1Enabled =
-          AURORA_ROUTINE_AUDIT_V1_ENABLED &&
-          AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
-          hasRoutine &&
-          routineProductCandidates.length > 0;
+        const routineAuditV1Enabled = false;
         const routineExpert = routineAuditV1Enabled
           ? buildRoutineExpertV1({
             routineCandidate,
@@ -55232,6 +55453,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: v2 shadow run failed');
           });
         });
+      }
+
+      if (output && output.skip_product_intel_guardrails) {
+        return res.json(output.envelope);
       }
 
       const guardrailResult = await applyProductIntelGuardrailsToEnvelope({

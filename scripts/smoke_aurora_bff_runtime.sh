@@ -23,7 +23,15 @@ COMMON_HEADERS=(
   -H "X-Brief-ID: ${BRIEF_ID}"
 )
 INGREDIENT_PLAN_CARD_JQ='any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
-ROUTINE_ANALYSIS_CARD_JQ='any(.type=="routine_fit_summary" or .type=="routine_product_audit_v1" or .type=="routine_adjustment_plan_v1" or .type=="routine_products_preview")'
+ROUTINE_AUDIT_V1_CARD_JQ='(any(.type=="routine_verdict_v1") and any(.type=="routine_product_audit_v1") and any(.type=="routine_user_fit_v1") and any(.type=="routine_adjustment_plan_v1"))'
+ROUTINE_V2_CARD_JQ='((any(.type=="routine_product_audit_v1") and any(.type=="routine_adjustment_plan_v1")) and (any(.type=="routine_verdict_v1" or .type=="routine_user_fit_v1") | not))'
+ROUTINE_PREVIEW_CARD_JQ='any(.type=="routine_products_preview")'
+ROUTINE_ANALYSIS_CARD_JQ="(${ROUTINE_AUDIT_V1_CARD_JQ} or ${ROUTINE_V2_CARD_JQ} or ${ROUTINE_PREVIEW_CARD_JQ} or any(.type==\"routine_fit_summary\"))"
+ROUTINE_AUDIT_V1_CONTRACT_JQ='
+  ((.cards | map(.type)) == ["routine_verdict_v1","routine_product_audit_v1","routine_user_fit_v1","routine_adjustment_plan_v1"])
+  and ((.analysis_meta.analysis_mode // "") == "routine_audit_v1")
+  and ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+'
 
 say() {
   printf "\n== %s ==\n" "$1"
@@ -153,15 +161,29 @@ skin_routine_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   "${COMMON_HEADERS[@]}" \
   --data '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Vitamin C serum","moisturizer":"Barrier cream","spf":"SPF50"},"pm":{"cleanser":"Gentle cleanser","treatment":"Retinol serum","moisturizer":"Barrier cream"}}}')"
 
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis returns preview/v2/legacy supported contract" "((.cards | any(.type==\"routine_products_preview\")) or (.cards | any(.type==\"routine_product_audit_v1\" or .type==\"routine_adjustment_plan_v1\")) or ((.cards | any(.type==\"analysis_story_v2\")) and (.cards | ${INGREDIENT_PLAN_CARD_JQ}) and (.cards | any(.type==\"routine_fit_summary\"))))"
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis returns audit/preview/v2/legacy supported contract" "
+  if ((.analysis_meta.analysis_mode // \"\") == \"routine_audit_v1\") or ((.session_patch.meta.analysis_contract.card_contract // \"\") == \"aurora.routine_audit_v1\")
+  then ${ROUTINE_AUDIT_V1_CONTRACT_JQ}
+  elif (.cards | ${ROUTINE_PREVIEW_CARD_JQ})
+  then true
+  elif (.cards | ${ROUTINE_V2_CARD_JQ})
+  then true
+  else ((.cards | any(.type==\"analysis_story_v2\")) and (.cards | ${INGREDIENT_PLAN_CARD_JQ}) and (.cards | any(.type==\"routine_fit_summary\")))
+  end
+"
 printf "%s\n" "$skin_routine_json" | jq_assert "routine preview payload is populated when preview contract is present" '
   if (.cards | any(.type=="routine_products_preview"))
   then (.cards | any((.type=="routine_products_preview") and ((.payload.deferred_product_enrichment // false) == true) and ((.payload.counts.total // 0) > 0)))
   else true
   end
 '
-printf "%s\n" "$skin_routine_json" | jq_assert "routine deep-dive chip is only required on legacy/v2 non-preview contracts" '
-  if (.cards | any(.type=="routine_products_preview"))
+printf "%s\n" "$skin_routine_json" | jq_assert "routine follow-up chips align with active contract" '
+  if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+  then (
+    ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.deep_dive_skin"))
+    and (((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive")) | not)
+  )
+  elif (.cards | any(.type=="routine_products_preview"))
   then true
   else (.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))
   end
@@ -201,9 +223,17 @@ if printf "%s\n" "$skin_routine_json" | jq -e '(.suggested_chips // [] | any(.ch
   printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine-specific output" ".cards | ${ROUTINE_ANALYSIS_CARD_JQ}"
   printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
 else
-  printf "%s\n" "$skin_routine_json" | jq_assert "routine_products_preview intentionally omits routine_deep_dive chip" '
-    (.cards | any(.type=="routine_products_preview"))
-    and ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive") | not)
+  printf "%s\n" "$skin_routine_json" | jq_assert "routine audit/preview contract intentionally omits legacy routine_deep_dive chip" '
+    if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
+    then (
+      ((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.deep_dive_skin"))
+      and (((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive")) | not)
+    )
+    else (
+      (.cards | any(.type=="routine_products_preview"))
+      and (((.suggested_chips // []) | any(.chip_id=="chip.aurora.next_action.routine_deep_dive")) | not)
+    )
+    end
   '
 fi
 

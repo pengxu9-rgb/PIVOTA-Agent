@@ -6,6 +6,7 @@ const {
   buildTestUid,
   headersFor,
   createAppWithPatchedAuroraChat,
+  seedCompleteProfile,
   parseCards,
   findCard,
 } = require('./aurora_bff_test_harness.cjs');
@@ -313,6 +314,7 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
           ? resp.body.analysis_meta
           : {};
         assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
+        assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
 
         const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
           ? resp.body.session_patch
@@ -320,6 +322,195 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
         assert.equal(sessionPatch.next_state, 'ROUTINE_REVIEW');
         assert.equal(sessionPatch?.meta?.analysis_contract?.analysis_mode, 'routine_audit_v1');
         assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
+        assert.equal(sessionPatch?.meta?.analysis_contract?.execution_path, 'routine_audit_fast_path');
+
+        const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
+        const eventNames = events.map((event) => event && event.event_name).filter(Boolean);
+        assert.ok(eventNames.includes('routine_audit_fast_path_started'));
+        assert.ok(eventNames.includes('routine_audit_fast_path_completed'));
+        assert.equal(eventNames.includes('analysis_timeout_degraded'), false);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: profile-backed no-photo routine request uses routine audit fast path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_profile_fast_path');
+        await seedCompleteProfile(harness.request, uid, 'EN', {
+          skinType: 'combination',
+          sensitivity: 'medium',
+          barrierStatus: 'impaired',
+          goals: ['acne', 'dark_spots'],
+        });
+
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                sunscreen: 'Daily SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum and glycolic acid toner',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.deepEqual(
+          cards.map((card) => card && card.type),
+          ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
+        );
+        assert.equal(Boolean(findCard(cards, 'analysis_story_v2')), false);
+        assert.equal(Boolean(findCard(cards, 'routine_products_preview')), false);
+        assert.equal(Boolean(findCard(cards, 'ingredient_plan')), false);
+        assert.equal(Boolean(findCard(cards, 'ingredient_plan_v2')), false);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
+        assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
+        assert.equal(analysisMeta.detector_source, 'rule_based');
+
+        const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
+          ? resp.body.session_patch
+          : {};
+        assert.equal(sessionPatch.next_state, 'ROUTINE_REVIEW');
+        assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
+
+        const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
+        const eventNames = events.map((event) => event && event.event_name).filter(Boolean);
+        assert.ok(eventNames.includes('routine_audit_fast_path_started'));
+        assert.ok(eventNames.includes('routine_audit_fast_path_completed'));
+        assert.equal(eventNames.includes('analysis_timeout_degraded'), false);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: legacy string currentRoutine with persisted profile still uses routine audit fast path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_legacy_string_profile_fast_path');
+        await seedCompleteProfile(harness.request, uid, 'EN', {
+          skinType: 'oily',
+          sensitivity: 'high',
+          barrierStatus: 'impaired',
+          goals: ['acne', 'pores'],
+        });
+
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: 'AM\nCleanser: Gentle cleanser\nTreatment: Vitamin C serum\nSPF: Daily SPF 50\nPM\nCleanser: Gentle cleanser\nTreatment: Retinol serum\nMoisturizer: Barrier cream',
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.deepEqual(
+          cards.map((card) => card && card.type),
+          ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
+        );
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
+        assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
+        assert.equal(analysisMeta.profile_context_source, 'db_only_profile');
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: explicit photo-first request stays off routine audit fast path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_photo_request_stays_mainline');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: true,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Vitamin C serum',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+              },
+            },
+          })
+          .expect(200);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.notEqual(analysisMeta.execution_path, 'routine_audit_fast_path');
+
+        const cards = parseCards(resp.body);
+        assert.equal(
+          cards.some((card) => card && card.type === 'routine_products_preview') || cards.some((card) => card && card.type === 'analysis_story_v2'),
+          true,
+        );
+
+        const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
+        const eventNames = events.map((event) => event && event.event_name).filter(Boolean);
+        assert.equal(eventNames.includes('routine_audit_fast_path_started'), false);
       } finally {
         harness.restore();
       }
