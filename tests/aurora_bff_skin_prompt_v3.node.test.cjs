@@ -405,6 +405,36 @@ test('skin prompt v3: compact report transport payload adjudicates into a valid 
   assert.equal(adjudicated.follow_up && typeof adjudicated.follow_up.intent === 'string', true);
 });
 
+test('skin prompt v3: report prompt context strips bulky routine product payloads', () => {
+  const reportPrompt = buildSkinReportPromptBundle({
+    language: 'en-US',
+    promptVersion: 'skin_report_v3_canonical',
+    dto: {
+      quality: { grade: 'pass', issues: ['blur', 'lighting', 'occlusion', 'extra'] },
+      concern_rank: ['redness', 'texture', 'oiliness', 'pores', 'tone'],
+      deterministic_signals: { redness: 'mid', texture: 'rough' },
+      routine_summary: { cleanser: 'yes', moisturizer: 'yes', sunscreen: 'yes', actives: ['retinoid', 'acids', 'niacinamide', 'vitamin_c', 'azelaic_acid'] },
+      routine_products: [
+        { time: 'am', step: 'cleanser', product: 'Very Long Product Name A' },
+        { time: 'pm', step: 'treat', product: 'Very Long Product Name B' },
+      ],
+      image_hash: 'abcdef1234567890abcdef1234567890',
+      input_hash: '1234567890abcdef1234567890abcdef',
+      vision_cues: [
+        { cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high', evidence: 'diffuse cheek redness visible in daylight' },
+      ],
+      open_questions: ['Question 1', 'Question 2', 'Question 3', 'Question 4'],
+    },
+  });
+  assert.match(reportPrompt.userPrompt, /"routine_summary"/);
+  assert.match(reportPrompt.userPrompt, /"vision_cues"/);
+  assert.match(reportPrompt.userPrompt, /"input_hash":"1234567890abcde/);
+  assert.doesNotMatch(reportPrompt.userPrompt, /routine_products/);
+  assert.doesNotMatch(reportPrompt.userPrompt, /image_hash/);
+  assert.doesNotMatch(reportPrompt.userPrompt, /Question 4/);
+  assert.doesNotMatch(reportPrompt.userPrompt, /azelaic_acid/);
+});
+
 test('skin prompt v3: strict canonical ingress does not invent mixed priority or texture-linked steps', () => {
   const strictCanonical = normalizeReportCanonicalLayer(
     {

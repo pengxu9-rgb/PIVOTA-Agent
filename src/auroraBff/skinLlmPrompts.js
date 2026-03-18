@@ -113,6 +113,91 @@ function qualityGradeInstruction(dto, lang) {
   return '';
 }
 
+function compactStringArray(list, { maxItems = 4, maxLen = 80 } = {}) {
+  const out = [];
+  for (const item of Array.isArray(list) ? list : []) {
+    const text = clampText(item, maxLen);
+    if (!text) continue;
+    out.push(text);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function compactQualityForPrompt(quality) {
+  const q = quality && typeof quality === 'object' && !Array.isArray(quality) ? quality : null;
+  if (!q) return null;
+  const grade = clampText(q.grade, 16).toLowerCase();
+  if (!grade) return null;
+  const issues = compactStringArray(q.issues, { maxItems: 3, maxLen: 48 });
+  return {
+    grade,
+    ...(issues.length ? { issues } : {}),
+  };
+}
+
+function compactRoutineSummaryForPrompt(routineSummary) {
+  const node = routineSummary && typeof routineSummary === 'object' && !Array.isArray(routineSummary) ? routineSummary : null;
+  if (!node) return null;
+  const out = {};
+  for (const key of ['cleanser', 'moisturizer', 'sunscreen']) {
+    const value = clampText(node[key], 16).toLowerCase();
+    if (value) out[key] = value;
+  }
+  const actives = compactStringArray(node.actives, { maxItems: 4, maxLen: 24 });
+  if (actives.length) out.actives = actives;
+  return Object.keys(out).length ? out : null;
+}
+
+function compactVisionCuesForPrompt(visionCues) {
+  const out = [];
+  for (const row of Array.isArray(visionCues) ? visionCues : []) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const cue = clampText(row.cue, 24).toLowerCase();
+    const region = clampText(row.region, 24).toLowerCase();
+    if (!cue || !region) continue;
+    out.push({
+      cue,
+      region,
+      ...(clampText(row.severity, 16) ? { severity: clampText(row.severity, 16).toLowerCase() } : {}),
+      ...(clampText(row.confidence, 16) ? { confidence: clampText(row.confidence, 16).toLowerCase() } : {}),
+      ...(clampText(row.evidence, 80) ? { evidence: clampText(row.evidence, 80) } : {}),
+    });
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function compactReportPromptContext(dto) {
+  const safeDto = dto && typeof dto === 'object' && !Array.isArray(dto) ? dto : {};
+  const quality = compactQualityForPrompt(safeDto.quality);
+  const concernRank = compactStringArray(safeDto.concern_rank, { maxItems: 4, maxLen: 24 });
+  const constraints = compactStringArray(safeDto.constraints, { maxItems: 4, maxLen: 40 });
+  const openQuestions = compactStringArray(safeDto.open_questions, { maxItems: 3, maxLen: 60 });
+  const visionCues = compactVisionCuesForPrompt(safeDto.vision_cues);
+  const routineSummary = compactRoutineSummaryForPrompt(safeDto.routine_summary);
+  const deterministicSignals =
+    safeDto.deterministic_signals && typeof safeDto.deterministic_signals === 'object' && !Array.isArray(safeDto.deterministic_signals)
+      ? safeDto.deterministic_signals
+      : null;
+
+  return {
+    ...(quality ? { quality } : {}),
+    ...(concernRank.length ? { concern_rank: concernRank } : {}),
+    ...(deterministicSignals ? { deterministic_signals: deterministicSignals } : {}),
+    ...(routineSummary ? { routine_summary: routineSummary } : {}),
+    ...(constraints.length ? { constraints } : {}),
+    ...(openQuestions.length ? { open_questions: openQuestions } : {}),
+    ...(clampText(safeDto.photo_quality, 16) ? { photo_quality: clampText(safeDto.photo_quality, 16).toLowerCase() } : {}),
+    ...(clampText(safeDto.uncertainty_level, 16) ? { uncertainty_level: clampText(safeDto.uncertainty_level, 16).toLowerCase() } : {}),
+    ...(visionCues.length ? { vision_cues: visionCues } : {}),
+    ...(typeof safeDto.insufficient_visual_detail === 'boolean'
+      ? { insufficient_visual_detail: safeDto.insufficient_visual_detail }
+      : {}),
+    ...(clampText(safeDto.input_hash, 16) ? { input_hash: clampText(safeDto.input_hash, 16) } : {}),
+  };
+}
+
 function normalizePromptVersion(promptVersion, fallback) {
   return typeof promptVersion === 'string' && promptVersion.trim() ? promptVersion.trim() : fallback;
 }
@@ -188,7 +273,7 @@ function buildVisionCanonicalPrompt({ dto } = {}) {
 
 function buildReportCanonicalPrompt({ dto } = {}) {
   const safeDto = dto && typeof dto === 'object' ? dto : {};
-  const contextJson = JSON.stringify(safeDto || {});
+  const contextJson = JSON.stringify(compactReportPromptContext(safeDto));
   return {
     promptVersion: 'skin_report_v3_canonical',
     systemInstruction:
