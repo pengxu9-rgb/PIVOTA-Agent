@@ -611,6 +611,9 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'analysis_story_v2') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '分析解读' : 'Analysis story' })];
   }
+  if (type === 'routine_products_preview') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '当前 routine 预览' : 'Current routine preview' })];
+  }
   if (type === 'aurora_debug') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '调试信息' : 'Aurora debug' })];
   }
@@ -619,6 +622,21 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   }
   if (type === 'routine_fit_summary') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? 'Routine 匹配度' : 'Routine fit' })];
+  }
+  if (type === 'routine_verdict_v1') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? 'Routine 总结结论' : 'Routine verdict' })];
+  }
+  if (type === 'routine_product_audit_v1') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '产品组合审计' : 'Routine product audit' })];
+  }
+  if (type === 'routine_user_fit_v1') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '用户适配度' : 'Routine user fit' })];
+  }
+  if (type === 'routine_adjustment_plan_v1') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '调整计划' : 'Routine adjustment plan' })];
+  }
+  if (type === 'routine_recommendation_v1') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '补充推荐' : 'Routine recommendations' })];
   }
   if (type === 'ingredient_hub') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分查询入口' : 'Ingredient hub' })];

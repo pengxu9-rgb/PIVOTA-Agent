@@ -78,7 +78,13 @@ function deriveUiNextState({ cards = [], session_patch = {} } = {}) {
   if (has('analysis_summary')) return 'DIAG_ANALYSIS_SUMMARY';
   if (has('photo_confirm') || has('photo_modules_v1')) return 'DIAG_PHOTO_OPTIN';
 
-  if (has('routine_product_audit_v1') || has('routine_adjustment_plan_v1') || has('routine_recommendation_v1')) {
+  if (
+    has('routine_verdict_v1') ||
+    has('routine_product_audit_v1') ||
+    has('routine_user_fit_v1') ||
+    has('routine_adjustment_plan_v1') ||
+    has('routine_recommendation_v1')
+  ) {
     return 'ROUTINE_REVIEW';
   }
 

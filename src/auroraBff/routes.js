@@ -706,6 +706,12 @@ const AURORA_ROUTINE_ANALYSIS_V2_ENABLED = (() => {
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const AURORA_ROUTINE_AUDIT_V1_ENABLED = (() => {
+  const raw = String(process.env.AURORA_ROUTINE_AUDIT_V1_ENABLED || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
 const AURORA_ROUTINE_SUMMARY_FIRST_ENABLED = (() => {
   const raw = String(process.env.AURORA_ROUTINE_SUMMARY_FIRST_ENABLED || 'true')
     .trim()
@@ -52948,6 +52954,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               diag_shadow_mode: rollout.shadowMode,
               diag_canary_percent: rollout.canaryPercent,
               routine_summary_first_enabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+              routine_audit_v1_enabled: AURORA_ROUTINE_AUDIT_V1_ENABLED,
             },
           },
           'aurora bff: analysis skin routine intake snapshot',
@@ -54244,12 +54251,45 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const extraCards = [];
         const routineProductEvents = [];
-        const routineProductsPreviewCard = buildRoutineProductsPreviewCard({
-          ctx,
-          language: ctx.lang,
-          candidates: routineProductCandidates,
-          payloadShape: routinePayloadShape,
-        });
+        const routineAuditV1Enabled =
+          AURORA_ROUTINE_AUDIT_V1_ENABLED &&
+          AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
+          hasRoutine &&
+          routineProductCandidates.length > 0;
+        const routineExpert = routineAuditV1Enabled
+          ? buildRoutineExpertV1({
+            routineCandidate,
+            profileSummary,
+            recentLogs: recentLogsSummary,
+            language: ctx.lang,
+          })
+          : null;
+        const routineLifecycleStage = routineAuditV1Enabled
+          ? detectRoutineLifecycleStage({
+            routineCandidate,
+            previousRoutine,
+            routineExpertIssues: Array.isArray(routineExpert && routineExpert.key_issues) ? routineExpert.key_issues : [],
+            intent: 'analysis_review_products',
+          })
+          : null;
+        const routineLifecycleContext = routineLifecycleStage
+          ? buildRoutineLifecycleContext({
+            stage: routineLifecycleStage,
+            routineCandidate,
+            previousRoutine,
+            profileSummary,
+            routineExpert,
+            language: ctx.lang,
+          })
+          : null;
+        const routineProductsPreviewCard = routineAuditV1Enabled
+          ? null
+          : buildRoutineProductsPreviewCard({
+            ctx,
+            language: ctx.lang,
+            candidates: routineProductCandidates,
+            payloadShape: routinePayloadShape,
+          });
         if (routineProductsPreviewCard) {
           routineProductEvents.push(
             makeEvent(ctx, 'routine_products_preview_ready', {
@@ -54266,7 +54306,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
         if (
-          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
+          (routineAuditV1Enabled || !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED) &&
           AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
           hasRoutine &&
           routineProductCandidates.length > 0
@@ -54281,9 +54321,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientPlan,
               analysisContextSnapshot,
               requestProfileOverride: requestProfileOverlay,
+              surfaceMode: routineAuditV1Enabled ? 'routine_audit_v1' : 'routine_v2',
+              routineExpert,
+              routineLifecycleContext,
               logger,
             });
             analysisMeta.routine_analysis_version = 'v2';
+            analysisMeta.analysis_mode = routineAuditV1Enabled ? 'routine_audit_v1' : 'routine_v2';
+            analysisMeta.reco_artifact_eligible = Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.recommendation_groups)
+              ? routineAnalysisV2Result.recommendation_groups.some((group) => Array.isArray(group && group.candidate_pool) && group.candidate_pool.length > 0)
+              : false;
             routineProductEvents.push(
               makeEvent(ctx, 'routine_analysis_v2_completed', {
                 audited_product_count:
@@ -54326,6 +54373,15 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
             },
             routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
+            analysis_contract: {
+              analysis_mode: routineAuditV1Enabled ? 'routine_audit_v1' : 'routine_v2',
+              card_contract: routineAuditV1Enabled ? 'aurora.routine_audit_v1' : 'aurora.routine_analysis_v2',
+              card_types: Array.isArray(routineAnalysisV2Result.cards)
+                ? routineAnalysisV2Result.cards.map((card) => String(card && card.type || '')).filter(Boolean).slice(0, 6)
+                : [],
+            },
+            ...(routineExpert ? { routine_expert: routineExpert } : {}),
+            ...(routineLifecycleContext ? { routine_lifecycle_context: routineLifecycleContext } : {}),
           };
         } else if (analysisContextSnapshot) {
           sessionPatch.meta = {
@@ -54623,7 +54679,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
 
-        if (artifactConfidence && String(artifactConfidence.level || '').toLowerCase() === 'low') {
+        if (
+          artifactConfidence &&
+          String(artifactConfidence.level || '').toLowerCase() === 'low' &&
+          !(routineAuditV1Enabled && routineAnalysisV2Result)
+        ) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
           extraCards.push({
             card_id: `conf_${ctx.request_id}`,
@@ -54644,8 +54704,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         const analysisChips = buildAnalysisSuggestedChips({
           language: ctx.lang,
           lowConfidence: lowConfidenceSummary,
-          hasIngredientPlan: Boolean(ingredientPlan),
-          hasRoutineFit: Boolean(routineFitCard || routineAnalysisV2Result),
+          hasIngredientPlan: Boolean(ingredientPlan) && !(routineAuditV1Enabled && routineAnalysisV2Result),
+          hasRoutineFit: Boolean(routineFitCard || (routineAnalysisV2Result && !routineAuditV1Enabled)),
         });
         const analysisAssistantText = routineAnalysisV2Result && typeof routineAnalysisV2Result.assistant_text === 'string'
           ? routineAnalysisV2Result.assistant_text
@@ -54667,7 +54727,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? [
                 ...((Array.isArray(routineAnalysisV2Result.cards) ? routineAnalysisV2Result.cards : [])),
                 ...(routineProductsPreviewCard ? [routineProductsPreviewCard] : []),
-                ...(photoModulesCard ? [photoModulesCard] : []),
+                ...((photoModulesCard && !routineAuditV1Enabled) ? [photoModulesCard] : []),
                 ...extraCards,
               ]
             : [

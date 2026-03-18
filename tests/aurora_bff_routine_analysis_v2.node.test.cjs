@@ -135,6 +135,7 @@ test('/v1/analysis/skin: routine analysis v2 emits product-first cards with comp
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_SKIN_VISION_ENABLED: 'false',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
       AURORA_CHAT_V2_STUB_RESPONSES: 'true',
     },
     async () => {
@@ -204,6 +205,7 @@ test('/v1/analysis/skin: routine analysis v2 stays enabled when env flag is abse
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_SKIN_VISION_ENABLED: 'false',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: undefined,
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
       AURORA_CHAT_V2_STUB_RESPONSES: 'true',
     },
     async () => {
@@ -239,6 +241,85 @@ test('/v1/analysis/skin: routine analysis v2 stays enabled when env flag is abse
           : {};
         assert.equal(analysisMeta.routine_analysis_version, 'v2');
         assert.equal(analysisMeta.analysis_mode, 'routine_v2');
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresses preview/story cards', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_surface');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            skinType: 'combination',
+            sensitivity: 'high',
+            barrierStatus: 'impaired',
+            goals: ['acne', 'dark_spots'],
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                sunscreen: 'Daily SPF 50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum and glycolic acid toner',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.deepEqual(
+          cards.map((card) => card && card.type),
+          ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
+        );
+        assert.equal(Boolean(findCard(cards, 'analysis_summary')), false);
+        assert.equal(Boolean(findCard(cards, 'analysis_story_v2')), false);
+        assert.equal(Boolean(findCard(cards, 'routine_products_preview')), false);
+        assert.equal(Boolean(findCard(cards, 'routine_fit_summary')), false);
+
+        const verdictCard = findCard(cards, 'routine_verdict_v1');
+        const auditCard = findCard(cards, 'routine_product_audit_v1');
+        const userFitCard = findCard(cards, 'routine_user_fit_v1');
+        const adjustmentCard = findCard(cards, 'routine_adjustment_plan_v1');
+        assert.ok(verdictCard?.payload?.overall_verdict);
+        assert.ok(Array.isArray(verdictCard?.payload?.top_3_actions) && verdictCard.payload.top_3_actions.length > 0);
+        assert.ok(Array.isArray(auditCard?.payload?.products) && auditCard.payload.products.every((row) => row.evidence_mode && typeof row.confidence === 'number'));
+        assert.ok(typeof userFitCard?.payload?.overall_user_fit_score === 'number');
+        assert.ok(adjustmentCard?.payload?.minimal_viable_routine?.am_minimal);
+        assert.ok(adjustmentCard?.payload?.minimal_viable_routine?.pm_minimal);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
+
+        const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
+          ? resp.body.session_patch
+          : {};
+        assert.equal(sessionPatch.next_state, 'ROUTINE_REVIEW');
+        assert.equal(sessionPatch?.meta?.analysis_contract?.analysis_mode, 'routine_audit_v1');
+        assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
       } finally {
         harness.restore();
       }
@@ -487,6 +568,185 @@ test('runRoutineAnalysisV2: debug meta records quality-gate replacements without
   ]);
   assert.equal(result.cards[0].type, 'routine_product_audit_v1');
   assert.ok(Array.isArray(result.recommendation_groups), 'recommendation groups should still be emitted consistently');
+});
+
+test('runRoutineAnalysisV2: routine audit v1 builds anchored conflict, user-fit, and adjustment payloads', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async call({ templateId }) {
+      if (templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: buildStageAResult([
+            buildAuditProduct('prod_spf', {
+              slot: 'am',
+              original_step_label: 'sunscreen',
+              input_label: 'Daily SPF 50',
+              inferred_product_type: 'sunscreen',
+              likely_role: 'UV protection',
+              likely_key_ingredients_or_signals: ['UV filter signal'],
+              fit_for_goals: [
+                { goal: 'dark_spots', verdict: 'good', reason: 'Daily UV protection supports spot-fading work.' },
+              ],
+            }),
+            buildAuditProduct('prod_retinol', {
+              slot: 'pm',
+              original_step_label: 'treatment',
+              input_label: 'Retinol serum',
+              inferred_product_type: 'retinoid serum',
+              likely_role: 'anti-aging treatment',
+              likely_key_ingredients_or_signals: ['retinoid signal'],
+              fit_for_goals: [
+                { goal: 'acne', verdict: 'mixed', reason: 'Retinoid can support acne, but cadence matters.' },
+                { goal: 'dark_spots', verdict: 'mixed', reason: 'Retinoid can help tone over time if tolerated.' },
+              ],
+              potential_concerns: ['Can push irritation if paired with another strong active in the same PM routine.'],
+            }),
+            buildAuditProduct('prod_acid', {
+              slot: 'pm',
+              original_step_label: 'treatment',
+              input_label: 'Glycolic acid toner',
+              inferred_product_type: 'exfoliant treatment',
+              likely_role: 'exfoliation',
+              likely_key_ingredients_or_signals: ['exfoliant signal'],
+              fit_for_goals: [
+                { goal: 'acne', verdict: 'mixed', reason: 'Exfoliation can help congestion, but it is not barrier-neutral.' },
+                { goal: 'dark_spots', verdict: 'mixed', reason: 'Acid exfoliation can help texture and tone if not overused.' },
+              ],
+              potential_concerns: ['Adds another strong active into the same PM window.'],
+            }),
+            buildAuditProduct('prod_barrier', {
+              slot: 'pm',
+              original_step_label: 'moisturizer',
+              input_label: 'Barrier cream',
+              inferred_product_type: 'moisturizer',
+              likely_role: 'barrier support',
+              likely_key_ingredients_or_signals: ['ceramide signal', 'hydration signal'],
+              fit_for_goals: [
+                { goal: 'acne', verdict: 'mixed', reason: 'Barrier support helps tolerance, but it is not the main acne mechanism.' },
+                { goal: 'dark_spots', verdict: 'mixed', reason: 'Barrier support keeps the routine tolerable, but it does not replace targeted brightening.' },
+              ],
+            }),
+          ]),
+        };
+      }
+      if (templateId === 'routine_synthesis_v1') {
+        return {
+          parsed: buildStageBResult({
+            current_routine_assessment: {
+              summary: 'The routine has real treatment coverage but the PM active stack is too aggressive for the current barrier state.',
+              main_strengths: ['Daily sunscreen protects the brightening / anti-aging work.', 'Barrier cream gives the routine a repair anchor.'],
+              main_issues: ['Retinol and glycolic acid are stacked in the same PM window.'],
+            },
+            overlap_or_gaps: [
+              {
+                issue_type: 'conflict',
+                title: 'Retinol serum and glycolic acid toner are stacked in the same PM window.',
+                evidence: ['Both are strong leave-on actives.', 'User context includes high sensitivity and impaired barrier.'],
+                affected_products: ['Retinol serum', 'Glycolic acid toner'],
+              },
+              {
+                issue_type: 'goal_mismatch',
+                title: 'The routine tries to push treatment speed faster than the current barrier can support.',
+                evidence: ['Barrier is already impaired.', 'Tolerance is the limiting factor right now.'],
+                affected_products: ['Retinol serum', 'Glycolic acid toner', 'Barrier cream'],
+              },
+            ],
+            top_3_adjustments: [
+              {
+                adjustment_id: 'adj_split_pm_actives',
+                priority_rank: 1,
+                title: 'Stop same-night retinol + glycolic stacking',
+                action_type: 'remove',
+                affected_products: ['Retinol serum', 'Glycolic acid toner'],
+                why_this_first: 'This is the highest-risk mismatch for the current barrier and sensitivity context.',
+                expected_outcome: 'Lower irritation risk and a routine that is easier to tolerate consistently.',
+              },
+              {
+                adjustment_id: 'adj_keep_barrier_anchor',
+                priority_rank: 2,
+                title: 'Keep the barrier cream as the PM anchor',
+                action_type: 'keep',
+                affected_products: ['Barrier cream'],
+                why_this_first: 'The repair step is what makes any future active work sustainable.',
+                expected_outcome: 'Better tolerance and less rebound irritation.',
+              },
+              {
+                adjustment_id: 'adj_reduce_retinol_frequency',
+                priority_rank: 3,
+                title: 'Reduce retinol to alternate PM use first',
+                action_type: 'reduce_frequency',
+                affected_products: ['Retinol serum'],
+                why_this_first: 'It keeps acne / texture work alive without forcing the barrier to absorb everything at once.',
+                expected_outcome: 'Keeps progress while lowering flare risk.',
+              },
+            ],
+            rationale_for_each_adjustment: [
+              {
+                adjustment_id: 'adj_split_pm_actives',
+                reasoning: 'Strong actives should not be stacked in the same PM window while the barrier is impaired.',
+                evidence: ['Retinoid + acid overlap', 'Sensitivity is high'],
+                tradeoff_or_caution: 'Progress may feel slower for 1-2 weeks, but tolerance should improve.',
+              },
+            ],
+            recommendation_needs: [],
+            recommendation_queries: [],
+          }),
+        };
+      }
+      return { parsed: null };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['acne', 'dark_spots'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'prod_spf', slot: 'am', step: 'sunscreen', product_text: 'Daily SPF 50' },
+      { product_ref: 'prod_retinol', slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+      { product_ref: 'prod_acid', slot: 'pm', step: 'treatment', product_text: 'Glycolic acid toner' },
+      { product_ref: 'prod_barrier', slot: 'pm', step: 'moisturizer', product_text: 'Barrier cream' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    routineExpert: {
+      plan_7d: { am: ['Keep cleanser + SPF'], pm: ['Do not stack retinol and acids'], observe_metrics: [], stop_conditions: [] },
+      phase_plan: { phase_1_14d: ['Stabilize barrier'], phase_2_3_6w: ['Reintroduce one active at a time'] },
+      key_issues: [{ id: 'stacked_strong_actives' }],
+    },
+    routineLifecycleContext: { stage: 'optimization' },
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.surface_mode, 'routine_audit_v1');
+  assert.deepEqual(
+    result.cards.map((card) => card && card.type),
+    ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
+  );
+
+  const verdictCard = result.cards[0];
+  const auditCard = result.cards[1];
+  const userFitCard = result.cards[2];
+  const adjustmentCard = result.cards[3];
+
+  assert.equal(verdictCard.payload.overall_verdict, 'high_conflict_or_irritation_risk');
+  assert.ok(Array.isArray(auditCard.payload.conflicts) && auditCard.payload.conflicts.length > 0);
+  assert.deepEqual(auditCard.payload.conflicts[0].items_involved, ['Retinol serum', 'Glycolic acid toner']);
+  assert.ok(Array.isArray(userFitCard.payload.risk_mismatches) && userFitCard.payload.risk_mismatches.length > 0);
+  assert.equal(userFitCard.payload.barrier_fit.state, 'helps');
+  assert.equal(userFitCard.payload.sensitivity_fit.state, 'hurts');
+  assert.ok(Array.isArray(adjustmentCard.payload.pause_or_remove) && adjustmentCard.payload.pause_or_remove.length > 0);
+  assert.ok(adjustmentCard.payload.minimal_viable_routine.pm_minimal.length >= 2);
+  assert.ok(adjustmentCard.payload.execution_burden);
+  assert.ok(typeof adjustmentCard.payload.complexity_score === 'number');
 });
 
 test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {

@@ -16,6 +16,7 @@ test('/v1/analysis/skin: top-level request profile fields overlay routine analys
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_SKIN_VISION_ENABLED: 'false',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
       AURORA_CHAT_V2_STUB_RESPONSES: 'true',
     },
     async () => {
@@ -82,6 +83,7 @@ test('/v1/analysis/skin: top-level request profile overlay is ephemeral and not 
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_SKIN_VISION_ENABLED: 'false',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
       AURORA_CHAT_V2_STUB_RESPONSES: 'true',
     },
     async () => {

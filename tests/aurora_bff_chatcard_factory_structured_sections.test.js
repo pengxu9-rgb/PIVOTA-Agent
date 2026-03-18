@@ -1,5 +1,5 @@
 const { mapLegacyCardToSpecCards } = require('../src/auroraBff/chatCardFactory');
-const { ChatCardSchema } = require('../src/auroraBff/chatCardsSchema');
+const { ChatCardSchema, ChatCardsResponseSchema } = require('../src/auroraBff/chatCardsSchema');
 
 describe('aurora chatCardFactory structured sections for adapter inputs', () => {
   test('product_verdict card includes product_verdict_structured section', () => {
@@ -293,5 +293,76 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(cards[0].title).toBe('Aurora debug');
     expect(cards[0].payload.contract_status).toBe('empty_structured');
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
+  test('routine audit cards pass through with schema-compatible types', () => {
+    const verdictCards = mapLegacyCardToSpecCards(
+      {
+        type: 'routine_verdict_v1',
+        card_id: 'routine_verdict_card',
+        payload: {
+          overall_verdict: 'needs_simplification',
+          top_issues: [{ text: 'Retinol and acid are stacked in the same PM window.' }],
+          top_3_actions: [{ title: 'Split the actives across different nights' }],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+    const userFitCards = mapLegacyCardToSpecCards(
+      {
+        type: 'routine_user_fit_v1',
+        card_id: 'routine_user_fit_card',
+        payload: {
+          overall_user_fit_score: 61,
+          goal_coverage: [{ goal: 'acne', product: 'Retinol serum', state: 'neutral' }],
+          risk_mismatches: [{ issue: 'Barrier is impaired while two strong actives are stacked.', state: 'hurts' }],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 1 },
+    );
+
+    expect(() => ChatCardSchema.parse(verdictCards[0])).not.toThrow();
+    expect(() => ChatCardSchema.parse(userFitCards[0])).not.toThrow();
+    expect(verdictCards[0].type).toBe('routine_verdict_v1');
+    expect(userFitCards[0].type).toBe('routine_user_fit_v1');
+  });
+
+  test('chatcards schema accepts four-card routine audit responses', () => {
+    const response = {
+      version: '1.0',
+      request_id: 'req_routine_audit',
+      trace_id: 'trace_routine_audit',
+      assistant_text: 'Routine audit ready.',
+      cards: [
+        { id: 'c1', type: 'routine_verdict_v1', priority: 1, title: 'Routine verdict', sections: [], actions: [], tags: [] },
+        { id: 'c2', type: 'routine_product_audit_v1', priority: 1, title: 'Product audit', sections: [], actions: [], tags: [] },
+        { id: 'c3', type: 'routine_user_fit_v1', priority: 1, title: 'User fit', sections: [], actions: [], tags: [] },
+        { id: 'c4', type: 'routine_adjustment_plan_v1', priority: 1, title: 'Adjustment plan', sections: [], actions: [], tags: [] },
+      ],
+      follow_up_questions: [],
+      suggested_quick_replies: [],
+      ops: {
+        thread_ops: [],
+        profile_patch: [],
+        routine_patch: [],
+        experiment_events: [],
+      },
+      safety: {
+        risk_level: 'low',
+        red_flags: [],
+        disclaimer: 'none',
+      },
+      telemetry: {
+        intent: 'routine_review',
+        intent_confidence: 0.92,
+        entities: [],
+        ui_language: 'EN',
+        matching_language: 'EN',
+        language_mismatch: false,
+        language_resolution_source: 'body',
+      },
+    };
+
+    expect(() => ChatCardsResponseSchema.parse(response)).not.toThrow();
   });
 });

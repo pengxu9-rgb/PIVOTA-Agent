@@ -1191,6 +1191,8 @@ function buildProfileContext(profile, profileSummary) {
     skin_type: skinType,
     sensitivity,
     barrier_status: barrierStatus,
+    travel_context: pickFirstTrimmed(summary.travelContext, row.travel_context, row.travelContext, row.region, row.market) || null,
+    budget_tier: pickFirstTrimmed(summary.budgetTier, row.budget_tier, row.budgetTier) || null,
   };
 }
 
@@ -1715,6 +1717,872 @@ function buildAssistantText(synthesis, language) {
   return summary || 'I reviewed the current products first and then mapped the main routine-level adjustments.';
 }
 
+function getEvidenceModeFromProduct(product) {
+  const basis = uniqStrings(product && product.evidence_basis, 6).map((item) => asString(item).toLowerCase());
+  if (basis.some((item) => item.includes('catalog') || item.includes('sku') || item.includes('pdp'))) {
+    return 'catalog_exact';
+  }
+  if (pickFirstTrimmed(product && product.resolved_name_or_null, product && product.input_label) && basis.includes('resolved_name')) {
+    return 'name_inferred';
+  }
+  return 'step_inferred';
+}
+
+function inferActiveFamiliesFromAuditProduct(product) {
+  const families = [];
+  const type = asString(product && product.inferred_product_type).toLowerCase();
+  const signals = uniqStrings(product && product.likely_key_ingredients_or_signals, 8)
+    .map((item) => asString(item).toLowerCase());
+  const haystack = [type, ...signals].join(' ');
+  const push = (value) => {
+    const token = asString(value);
+    if (!token || families.includes(token)) return;
+    families.push(token);
+  };
+
+  if (/retinoid|retinol|retinal/.test(haystack)) push('retinoid');
+  if (/exfoliant|aha|bha|salicylic|glycolic|lactic|mandelic/.test(haystack)) push('acid_exfoliant');
+  if (/benzoyl/.test(haystack)) push('benzoyl_peroxide');
+  if (/vitamin c|ascorbic|brightening/.test(haystack)) push('vitamin_c');
+  if (/niacinamide/.test(haystack)) push('niacinamide');
+  if (/ceramide|barrier|repair/.test(haystack)) push('barrier_support');
+  if (/hydration|hyaluronic|hydrat/.test(haystack)) push('hydration_support');
+  if (/uv filter|sunscreen|spf/.test(haystack)) push('uv_filter');
+  if (/cleanser|cleansing/.test(haystack)) push('cleanser');
+  if (/moisturizer|moisturizing|cream/.test(haystack)) push('moisturizer');
+  if (!families.length && type) push(type);
+  return families.slice(0, 6);
+}
+
+function buildInferenceBasisText(product, language) {
+  const isCn = normalizeLanguage(language) === 'CN';
+  const basis = uniqStrings(product && product.evidence_basis, 6);
+  if (basis.includes('resolved_name')) {
+    return isCn ? '基于产品名/品牌线索做了产品级推断。' : 'Product-level inference is based on the provided product name and brand signals.';
+  }
+  return isCn ? '当前主要基于步骤和品类信号做推断。' : 'Current judgment is based mainly on step and category signals.';
+}
+
+function mapGoalVerdictToUserState(verdict) {
+  const token = asString(verdict).toLowerCase();
+  if (token === 'good') return 'helps';
+  if (token === 'poor') return 'hurts';
+  if (token === 'mixed') return 'neutral';
+  return 'unknown';
+}
+
+function rankUserState(state) {
+  if (state === 'helps') return 3;
+  if (state === 'neutral') return 2;
+  if (state === 'hurts') return 1;
+  return 0;
+}
+
+function buildProductAuditRows(products, language) {
+  return asArray(products).map((product) => {
+    const evidenceMode = getEvidenceModeFromProduct(product);
+    const activeFamilies = inferActiveFamiliesFromAuditProduct(product);
+    const helpsWith = asArray(product && product.fit_for_goals)
+      .filter((row) => mapGoalVerdictToUserState(row && row.verdict) === 'helps')
+      .map((row) => asString(row && row.goal))
+      .filter(Boolean);
+    const possibleRisks = uniqStrings([
+      ...asArray(product && product.potential_concerns),
+      ...(evidenceMode !== 'catalog_exact'
+        ? [normalizeLanguage(language) === 'CN' ? '当前不是精确 SKU 识别，需把成分判断视为推断。' : 'This is not an exact SKU match, so ingredient-level judgment remains inferential.']
+        : []),
+    ], 6);
+    const interactionNotes = uniqStrings([
+      product && product.suggested_action === 'move_to_pm'
+        ? (normalizeLanguage(language) === 'CN' ? '更适合放到 PM 或隔天晚间使用。' : 'This reads as a better PM or alternate-night step.')
+        : null,
+      product && product.suggested_action === 'move_to_am'
+        ? (normalizeLanguage(language) === 'CN' ? '更适合作为白天防护步骤。' : 'This reads as a better daytime protection step.')
+        : null,
+      product && product.suggested_action === 'reduce_frequency'
+        ? (normalizeLanguage(language) === 'CN' ? '需要降频以降低刺激叠加。' : 'This likely needs frequency reduction to reduce irritation stacking.')
+        : null,
+      buildInferenceBasisText(product, language),
+    ], 4);
+
+    return {
+      product_ref: asString(product && product.product_ref),
+      slot: asString(product && product.slot) || 'unknown',
+      step: asString(product && product.original_step_label) || 'other',
+      identified_as: pickFirstTrimmed(product && product.resolved_name_or_null, product && product.input_label) || 'Unknown product',
+      evidence_mode: evidenceMode,
+      confidence: clampNumber(product && product.confidence, 0, 1, 0.55),
+      inference_basis: buildInferenceBasisText(product, language),
+      active_families: activeFamilies,
+      likely_function: asString(product && product.likely_role) || 'general support',
+      role_in_routine: `${String(product && product.slot || 'unknown').toUpperCase()} ${asString(product && product.original_step_label) || 'step'}`.trim(),
+      helps_with: helpsWith,
+      possible_risks: possibleRisks,
+      interaction_notes: interactionNotes,
+      fit_for_skin_type: isPlainObject(product && product.fit_for_skin_type) ? product.fit_for_skin_type : null,
+      fit_for_goals: asArray(product && product.fit_for_goals),
+    };
+  });
+}
+
+function buildSameFunctionClusters(productRows) {
+  const buckets = new Map();
+  for (const row of asArray(productRows)) {
+    const key = asString(row && row.likely_function).toLowerCase() || asString(row && row.step).toLowerCase();
+    if (!key) continue;
+    const list = buckets.get(key) || [];
+    list.push(row);
+    buckets.set(key, list);
+  }
+  return Array.from(buckets.entries())
+    .filter(([, rows]) => rows.length > 1)
+    .map(([key, rows]) => ({
+      function_key: key,
+      items: rows.map((row) => row.identified_as),
+    }))
+    .slice(0, 4);
+}
+
+function inferRelationshipType(issueType) {
+  const token = asString(issueType).toLowerCase();
+  if (token === 'conflict' || token === 'too_irritating' || token === 'too_heavy' || token === 'order_problem') return 'conflict';
+  if (token === 'overlap') return 'redundancy';
+  if (token === 'gap' || token === 'goal_mismatch' || token === 'season_mismatch') return 'overload';
+  return 'neutral';
+}
+
+function inferSeverity(issueType) {
+  const token = asString(issueType).toLowerCase();
+  if (token === 'conflict' || token === 'too_irritating') return 'high';
+  if (token === 'gap' || token === 'goal_mismatch' || token === 'too_heavy') return 'medium';
+  return 'low';
+}
+
+function collectRelationshipEntries(synthesis, products, language) {
+  const productNames = asArray(products).map((row) => row.identified_as).filter(Boolean);
+  const list = [];
+  for (const issue of asArray(synthesis && synthesis.overlap_or_gaps)) {
+    const issueType = asString(issue && issue.issue_type).toLowerCase();
+    const relationshipType = inferRelationshipType(issueType);
+    const affected = uniqStrings([
+      ...asArray(issue && issue.affected_products),
+      ...productNames.filter((name) => asString(issue && issue.title).toLowerCase().includes(name.toLowerCase())),
+    ], 4);
+    list.push({
+      items_involved: affected,
+      relationship_type: relationshipType,
+      severity: inferSeverity(issueType),
+      why: asString(issue && issue.title),
+      user_impact: uniqStrings(issue && issue.evidence, 3).join(' ') || asString(issue && issue.title),
+      action_hint:
+        relationshipType === 'conflict'
+          ? (normalizeLanguage(language) === 'CN' ? '优先分开使用、降频或删掉其中一步。' : 'Separate timing, reduce frequency, or remove one side first.')
+          : relationshipType === 'redundancy'
+            ? (normalizeLanguage(language) === 'CN' ? '考虑精简到功能更明确的一步。' : 'Trim to the single step that does the job most clearly.')
+            : (normalizeLanguage(language) === 'CN' ? '把这类缺口优先补到最小可执行 routine 里。' : 'Fill this gap in the minimal viable routine first.'),
+    });
+  }
+  return list.slice(0, 8);
+}
+
+function buildSynergyEntries(products, language) {
+  const list = [];
+  const sunscreen = asArray(products).find((row) => asArray(row.active_families).includes('uv_filter'));
+  const retinoid = asArray(products).find((row) => asArray(row.active_families).includes('retinoid'));
+  const vitaminC = asArray(products).find((row) => asArray(row.active_families).includes('vitamin_c'));
+  const barrier = asArray(products).find((row) => asArray(row.active_families).includes('barrier_support'));
+  const moisturizer = asArray(products).find((row) => asArray(row.active_families).includes('moisturizer'));
+
+  if (sunscreen && (retinoid || vitaminC)) {
+    const partner = retinoid || vitaminC;
+    list.push({
+      items_involved: [partner.identified_as, sunscreen.identified_as],
+      relationship_type: 'synergy',
+      severity: 'medium',
+      why: normalizeLanguage(language) === 'CN'
+        ? '白天防护能保护夜间或日间功能活性的收益。'
+        : 'Daytime UV protection helps preserve the gains from leave-on actives.',
+      user_impact: normalizeLanguage(language) === 'CN'
+        ? '更有利于抗老、提亮或淡印目标的稳定推进。'
+        : 'This improves follow-through for anti-aging, brightening, or spot-fading goals.',
+      action_hint: normalizeLanguage(language) === 'CN'
+        ? '优先保证 AM 防晒的连续执行。'
+        : 'Protect this synergy by making AM sunscreen non-negotiable.',
+    });
+  }
+  if (barrier && moisturizer) {
+    list.push({
+      items_involved: uniqStrings([barrier.identified_as, moisturizer.identified_as], 2),
+      relationship_type: 'synergy',
+      severity: 'low',
+      why: normalizeLanguage(language) === 'CN'
+        ? '修护/保湿步骤能提高 routine 的耐受和持续性。'
+        : 'Barrier-support and moisturizer steps usually improve routine tolerance and consistency.',
+      user_impact: normalizeLanguage(language) === 'CN'
+        ? '对敏感、屏障波动、干燥紧绷更友好。'
+        : 'This generally helps with sensitivity, barrier swings, and tightness.',
+      action_hint: normalizeLanguage(language) === 'CN'
+        ? '保留 1 个最稳定的修护保湿支点。'
+        : 'Keep one stable repair-moisture anchor in the routine.',
+    });
+  }
+  return list.slice(0, 4);
+}
+
+function buildPairQualityMatrix(productRows) {
+  const rows = asArray(productRows).slice(0, 6);
+  const out = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    for (let j = i + 1; j < rows.length; j += 1) {
+      const left = rows[i];
+      const right = rows[j];
+      const leftFamilies = new Set(asArray(left && left.active_families));
+      const rightFamilies = new Set(asArray(right && right.active_families));
+      const shared = Array.from(leftFamilies).filter((item) => rightFamilies.has(item));
+      let relationship = 'neutral';
+      if ((leftFamilies.has('retinoid') && rightFamilies.has('acid_exfoliant')) || (leftFamilies.has('acid_exfoliant') && rightFamilies.has('retinoid'))) {
+        relationship = 'conflict';
+      } else if (shared.length > 0) {
+        relationship = 'redundancy';
+      } else if ((leftFamilies.has('barrier_support') && rightFamilies.has('retinoid')) || (rightFamilies.has('barrier_support') && leftFamilies.has('retinoid'))) {
+        relationship = 'synergy';
+      } else if ((leftFamilies.has('uv_filter') && (rightFamilies.has('vitamin_c') || rightFamilies.has('retinoid'))) || (rightFamilies.has('uv_filter') && (leftFamilies.has('vitamin_c') || leftFamilies.has('retinoid')))) {
+        relationship = 'synergy';
+      }
+      out.push({
+        items_involved: [left.identified_as, right.identified_as],
+        relationship_type: relationship,
+        shared_families: shared,
+      });
+    }
+  }
+  return out.slice(0, 10);
+}
+
+function buildCoverageGapEntries(synthesis, recommendationGroups, language) {
+  const visibleRecommendationGroups = getVisibleRecommendationGroups(recommendationGroups, synthesis, {});
+  return uniqStrings([
+    ...asArray(synthesis && synthesis.overlap_or_gaps)
+      .filter((row) => ['gap', 'goal_mismatch', 'season_mismatch'].includes(asString(row && row.issue_type).toLowerCase()))
+      .map((row) => asString(row && row.title)),
+    ...visibleRecommendationGroups.map((group) => asString(group && group.why)),
+  ], 6).map((reason) => ({
+    reason,
+    relationship_type: 'unknown',
+    action_hint: normalizeLanguage(language) === 'CN'
+      ? '把这个缺口补到最小可执行 routine 中。'
+      : 'Fill this gap in the minimal viable routine first.',
+  }));
+}
+
+function computeOverallComboScore({ products, relationships, synergies, sameFunctionClusters }) {
+  const conflicts = relationships.filter((row) => row.relationship_type === 'conflict').length;
+  const redundancies = sameFunctionClusters.length + relationships.filter((row) => row.relationship_type === 'redundancy').length;
+  const gaps = relationships.filter((row) => row.relationship_type === 'overload').length;
+  const synergyCount = synergies.length;
+  const countPenalty = Math.max(0, asArray(products).length - 4) * 4;
+  const raw = 78 + synergyCount * 6 - conflicts * 15 - redundancies * 7 - gaps * 8 - countPenalty;
+  return Math.max(18, Math.min(96, raw));
+}
+
+function buildProductAuditCardPayload({
+  audit,
+  synthesis,
+  recommendationGroups,
+  additionalCandidates,
+  language,
+}) {
+  const products = buildProductAuditRows(audit && audit.products, language);
+  const relationships = collectRelationshipEntries(synthesis, products, language);
+  const synergies = buildSynergyEntries(products, language);
+  const conflicts = relationships.filter((row) => row.relationship_type === 'conflict');
+  const redundancies = relationships.filter((row) => row.relationship_type === 'redundancy');
+  const coverageGaps = buildCoverageGapEntries(synthesis, recommendationGroups, language);
+  const sameFunctionClusters = buildSameFunctionClusters(products);
+  const strongActiveCount = products.filter((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide'].includes(family))).length;
+  const activeLoadScore = Math.max(18, Math.min(98, 32 + strongActiveCount * 18 + Math.max(0, products.length - 4) * 6));
+  const irritationStackRisk = strongActiveCount >= 2 || conflicts.some((row) => asString(row.severity) === 'high')
+    ? 'high'
+    : strongActiveCount === 1
+      ? 'medium'
+      : 'low';
+
+  return {
+    schema_version: 'aurora.routine_product_audit.card.v2',
+    products,
+    synergies,
+    conflicts,
+    redundancies,
+    coverage_gaps: coverageGaps,
+    active_load_score: activeLoadScore,
+    irritation_stack_risk: {
+      level: irritationStackRisk,
+      drivers: uniqStrings([
+        strongActiveCount >= 2 ? 'multiple_strong_actives' : '',
+        conflicts.length ? 'explicit_conflicts' : '',
+        products.length > 5 ? 'routine_size' : '',
+      ], 4),
+    },
+    same_function_clusters: sameFunctionClusters,
+    pair_quality_matrix: buildPairQualityMatrix(products),
+    overall_combo_score: computeOverallComboScore({
+      products,
+      relationships,
+      synergies,
+      sameFunctionClusters,
+    }),
+    additional_items_needing_verification: additionalCandidates.map((item) => ({
+      product_ref: asString(item.product_ref),
+      input_label: asString(item.product_text),
+      reason: 'Deferred because the routine exceeded the audited core-product limit.',
+    })),
+    missing_info: uniqStrings(audit && audit.missing_info, 8),
+    confidence: clampNumber(audit && audit.confidence, 0, 1, 0.6),
+  };
+}
+
+function inferFindingSupportState(finding, productRow) {
+  const findingText = asString(finding).toLowerCase();
+  const families = new Set(asArray(productRow && productRow.active_families));
+  const functionText = asString(productRow && productRow.likely_function).toLowerCase();
+  if (/red|敏感|sensitive|sting|burn|tight|barrier|dry|dehydrat/.test(findingText)) {
+    if (families.has('barrier_support') || families.has('hydration_support') || families.has('moisturizer')) return 'helps';
+    if (families.has('retinoid') || families.has('acid_exfoliant') || families.has('benzoyl_peroxide')) return 'hurts';
+  }
+  if (/acne|breakout|pores|congestion|oil/.test(findingText)) {
+    if (families.has('retinoid') || families.has('acid_exfoliant') || families.has('benzoyl_peroxide') || functionText.includes('cleansing')) return 'helps';
+    if (families.has('moisturizer') && !families.has('barrier_support')) return 'neutral';
+  }
+  if (/spot|pigment|dull|texture|wrinkle|aging/.test(findingText)) {
+    if (families.has('vitamin_c') || families.has('retinoid') || families.has('uv_filter')) return 'helps';
+  }
+  return 'unknown';
+}
+
+function buildGoalCoveragePayload(productRows, goals) {
+  const goalCoverage = [];
+  const goalGaps = [];
+  const goalToStepLinks = [];
+  for (const goal of uniqStrings(goals, 6)) {
+    const matches = asArray(productRows)
+      .map((row) => {
+        const goalRow = asArray(row && row.fit_for_goals)
+          .find((item) => asString(item && item.goal).toLowerCase() === asString(goal).toLowerCase());
+        if (!goalRow) return null;
+        return {
+          goal,
+          product: row.identified_as,
+          step: row.step,
+          slot: row.slot,
+          state: mapGoalVerdictToUserState(goalRow.verdict),
+          why: asString(goalRow.reason),
+          confidence_note: row.evidence_mode === 'catalog_exact'
+            ? undefined
+            : `Based on ${row.evidence_mode} evidence.`,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => rankUserState(right.state) - rankUserState(left.state));
+    if (matches.some((item) => item.state === 'helps' || item.state === 'neutral')) {
+      const row = matches[0];
+      goalCoverage.push(row);
+      goalToStepLinks.push(row);
+    } else {
+      goalGaps.push({
+        goal,
+        state: 'unknown',
+        why: `No current step clearly maps to the mechanism for ${goal}.`,
+      });
+    }
+  }
+  return { goalCoverage, goalGaps, goalToStepLinks };
+}
+
+function buildFindingCoveragePayload(productRows, priorityFindings) {
+  const findingCoverage = [];
+  const findingGaps = [];
+  const findingToStepLinks = [];
+  for (const finding of uniqStrings(priorityFindings, 5)) {
+    const matches = asArray(productRows)
+      .map((row) => ({
+        finding,
+        product: row.identified_as,
+        step: row.step,
+        slot: row.slot,
+        state: inferFindingSupportState(finding, row),
+      }))
+      .filter((row) => row.state !== 'unknown')
+      .sort((left, right) => rankUserState(right.state) - rankUserState(left.state));
+    if (matches.length) {
+      findingCoverage.push(matches[0]);
+      findingToStepLinks.push(matches[0]);
+    } else {
+      findingGaps.push({
+        finding,
+        state: 'unknown',
+        why: `No current step clearly addresses ${finding}.`,
+      });
+    }
+  }
+  return { findingCoverage, findingGaps, findingToStepLinks };
+}
+
+function buildRiskMismatchRows({ products, profileContext, synthesis, language }) {
+  const rows = [];
+  const hasHighSensitivity = hasElevatedSensitivity({ sensitivity: profileContext && profileContext.sensitivity });
+  const barrierImpaired = isBarrierImpaired({ barrierStatus: profileContext && profileContext.barrier_status });
+  const strongActiveProducts = asArray(products).filter((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide'].includes(family)));
+  if ((hasHighSensitivity || barrierImpaired) && strongActiveProducts.length) {
+    rows.push({
+      state: 'hurts',
+      issue: normalizeLanguage(language) === 'CN'
+        ? '敏感/屏障受压时仍在推进强活性。'
+        : 'Strong actives are still running while sensitivity/barrier risk is elevated.',
+      items_involved: strongActiveProducts.map((row) => row.identified_as).slice(0, 3),
+    });
+  }
+  if (asArray(synthesis && synthesis.overlap_or_gaps).some((row) => ['conflict', 'too_irritating'].includes(asString(row && row.issue_type).toLowerCase()))) {
+    rows.push({
+      state: 'hurts',
+      issue: normalizeLanguage(language) === 'CN' ? '当前 routine 里已经出现明确冲突/刺激叠加信号。' : 'The routine already shows explicit conflict or irritation-stacking signals.',
+      items_involved: uniqStrings(
+        asArray(synthesis && synthesis.overlap_or_gaps)
+          .filter((row) => ['conflict', 'too_irritating'].includes(asString(row && row.issue_type).toLowerCase()))
+          .flatMap((row) => asArray(row && row.affected_products)),
+        4,
+      ),
+    });
+  }
+  return rows.slice(0, 4);
+}
+
+function computeBarrierFit({ products, profileContext, language }) {
+  const barrierImpaired = isBarrierImpaired({ barrierStatus: profileContext && profileContext.barrier_status });
+  const hasSupport = asArray(products).some((row) => asArray(row.active_families).includes('barrier_support') || asArray(row.active_families).includes('moisturizer'));
+  const hasStrong = asArray(products).some((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide'].includes(family)));
+  const state = barrierImpaired && hasStrong && !hasSupport ? 'hurts' : hasSupport ? 'helps' : 'neutral';
+  const why = state === 'hurts'
+    ? (normalizeLanguage(language) === 'CN'
+        ? '屏障状态提示应先做减法，但当前 routine 仍有刺激负荷。'
+        : 'Barrier context suggests simplification first, but the current routine still carries irritation load.')
+    : state === 'helps'
+      ? (normalizeLanguage(language) === 'CN'
+          ? '当前 routine 至少保留了修护/保湿支点。'
+          : 'The current routine keeps at least one repair-moisture anchor in place.')
+      : (normalizeLanguage(language) === 'CN'
+          ? '当前对屏障的支持不足够明确。'
+          : 'Barrier support is not explicit enough in the current lineup.');
+  return { state, why };
+}
+
+function computeSensitivityFit({ products, profileContext, language }) {
+  const elevated = hasElevatedSensitivity({ sensitivity: profileContext && profileContext.sensitivity });
+  const hasStrong = asArray(products).some((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide'].includes(family)));
+  if (elevated && hasStrong) {
+    return {
+      state: 'hurts',
+      why: normalizeLanguage(language) === 'CN'
+        ? '高敏感背景下，这套活性组合的耐受风险偏高。'
+        : 'Given the sensitivity context, the current active mix still looks aggressive.',
+    };
+  }
+  if (elevated) {
+    return {
+      state: 'neutral',
+      why: normalizeLanguage(language) === 'CN'
+        ? '敏感背景下目前没有明显激进步骤，但仍要靠节奏控制。'
+        : 'The routine is not overtly aggressive, but sensitivity still makes cadence control important.',
+    };
+  }
+  return {
+    state: 'helps',
+    why: normalizeLanguage(language) === 'CN'
+      ? '当前敏感风险不算高，后续更关键的是避免无谓叠加。'
+      : 'Sensitivity pressure is not dominant here; the main job is avoiding unnecessary stacking.',
+  };
+}
+
+function buildMechanismMatch({ goals, products, ingredientPlan }) {
+  return uniqStrings(asArray(goals), 6).map((goal) => {
+    const coverage = asArray(products).filter((row) =>
+      asArray(row.fit_for_goals).some((item) => asString(item && item.goal).toLowerCase() === asString(goal).toLowerCase()
+        && ['good', 'mixed'].includes(asString(item && item.verdict).toLowerCase())));
+    const ingredientTarget = asArray(ingredientPlan && ingredientPlan.targets)
+      .find((item) => asString(item && item.role).toLowerCase().includes(asString(goal).toLowerCase()));
+    return {
+      goal,
+      state: coverage.length ? 'helps' : 'unknown',
+      supporting_steps: coverage.map((row) => row.identified_as).slice(0, 3),
+      target_hint: ingredientTarget ? asString(ingredientTarget.ingredient_name) : '',
+    };
+  });
+}
+
+function computeUserFitScore({ goalCoverage, goalGaps, riskMismatches, barrierFit, sensitivityFit }) {
+  let score = 68;
+  score += goalCoverage.length * 7;
+  score -= goalGaps.length * 8;
+  score -= riskMismatches.length * 10;
+  if (barrierFit.state === 'hurts') score -= 10;
+  if (barrierFit.state === 'helps') score += 5;
+  if (sensitivityFit.state === 'hurts') score -= 8;
+  return Math.max(16, Math.min(96, score));
+}
+
+function buildRoutineUserFitPayload({
+  products,
+  synthesis,
+  profileContext,
+  goalContext,
+  analysisContextSoft,
+  ingredientPlan,
+  language,
+}) {
+  const goals = uniqStrings(goalContext && goalContext.goals, 6);
+  const priorityFindings = uniqStrings(analysisContextSoft && analysisContextSoft.photo_findings, 5);
+  const { goalCoverage, goalGaps, goalToStepLinks } = buildGoalCoveragePayload(products, goals);
+  const { findingCoverage, findingGaps, findingToStepLinks } = buildFindingCoveragePayload(products, priorityFindings);
+  const riskMismatches = buildRiskMismatchRows({ products, profileContext, synthesis, language });
+  const barrierFit = computeBarrierFit({ products, profileContext, language });
+  const sensitivityFit = computeSensitivityFit({ products, profileContext, language });
+  const mechanismMatch = buildMechanismMatch({ goals, products, ingredientPlan });
+  const overallUserFitScore = computeUserFitScore({
+    goalCoverage,
+    goalGaps,
+    riskMismatches,
+    barrierFit,
+    sensitivityFit,
+  });
+  const problemSolutionLinks = uniqStrings([
+    ...goalCoverage.map((row) => `${row.goal}: ${row.product}`),
+    ...findingCoverage.map((row) => `${row.finding}: ${row.product}`),
+  ], 8).map((item) => ({ link: item }));
+
+  return {
+    schema_version: 'aurora.routine_user_fit.card.v1',
+    skin_type: asString(profileContext && profileContext.skin_type) || null,
+    sensitivity: asString(profileContext && profileContext.sensitivity) || null,
+    barrier_status: asString(profileContext && profileContext.barrier_status) || null,
+    goals,
+    priority_findings: priorityFindings,
+    travel_context: asString(profileContext && profileContext.travel_context) || null,
+    budget_or_preference: asString(profileContext && profileContext.budget_tier) || null,
+    goal_coverage: goalCoverage,
+    goal_gaps: goalGaps,
+    finding_coverage: findingCoverage,
+    finding_gaps: findingGaps,
+    risk_mismatches: riskMismatches,
+    barrier_fit: barrierFit,
+    sensitivity_fit: sensitivityFit,
+    mechanism_match: mechanismMatch,
+    goal_to_step_links: goalToStepLinks,
+    finding_to_step_links: findingToStepLinks,
+    problem_solution_links: problemSolutionLinks,
+    overall_user_fit_score: overallUserFitScore,
+  };
+}
+
+function mapAdjustmentActionType(actionType) {
+  const token = asString(actionType).toLowerCase();
+  if (token === 'remove') return 'pause_or_remove';
+  if (token === 'replace' || token === 'swap_step') return 'replace';
+  if (token === 'add_step') return 'add';
+  if (token === 'move') return 'reorder';
+  if (token === 'reduce_frequency') return 'frequency_change';
+  if (token === 'keep') return 'keep';
+  return 'replace';
+}
+
+function chooseMinimalStep(products, stepName) {
+  return asArray(products).find((row) => asString(row.step).toLowerCase() === stepName)
+    || asArray(products).find((row) => asString(row.likely_function).toLowerCase().includes(stepName));
+}
+
+function buildMinimalViableRoutine({ products, profileContext, auditPayload, language }) {
+  const cleanser = chooseMinimalStep(products, 'cleanser');
+  const moisturizer = chooseMinimalStep(products, 'moisturizer');
+  const sunscreen = asArray(products).find((row) => asArray(row.active_families).includes('uv_filter'));
+  const treatment = asArray(products).find((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide', 'vitamin_c'].includes(family)));
+  const barrierImpaired = isBarrierImpaired({ barrierStatus: profileContext && profileContext.barrier_status });
+  const sensitivityHigh = hasElevatedSensitivity({ sensitivity: profileContext && profileContext.sensitivity });
+  const highRisk = barrierImpaired || sensitivityHigh || (auditPayload && auditPayload.irritation_stack_risk && auditPayload.irritation_stack_risk.level === 'high');
+
+  return {
+    am_minimal: uniqStrings([
+      cleanser ? cleanser.identified_as : (normalizeLanguage(language) === 'CN' ? '温和洁面' : 'gentle cleanser'),
+      moisturizer ? moisturizer.identified_as : (normalizeLanguage(language) === 'CN' ? '保湿霜' : 'simple moisturizer'),
+      sunscreen ? sunscreen.identified_as : (normalizeLanguage(language) === 'CN' ? '广谱防晒' : 'broad-spectrum sunscreen'),
+    ], 4),
+    pm_minimal: uniqStrings([
+      cleanser ? cleanser.identified_as : (normalizeLanguage(language) === 'CN' ? '温和洁面' : 'gentle cleanser'),
+      ...(highRisk ? [] : treatment ? [treatment.identified_as] : []),
+      moisturizer ? moisturizer.identified_as : (normalizeLanguage(language) === 'CN' ? '修护保湿' : 'repair moisturizer'),
+    ], 4),
+    why_this_is_enough_for_now: highRisk
+      ? (normalizeLanguage(language) === 'CN'
+          ? '先把清洁-修护-防晒这条最低必要链路稳定下来，再决定是否重上活性。'
+          : 'Stabilize the cleanser-moisturizer-SPF backbone first, then decide if actives deserve to come back.')
+      : (normalizeLanguage(language) === 'CN'
+          ? '先保留最能覆盖目标且最容易坚持的 3-4 步，避免一次改太多。'
+          : 'Keep the 3-4 steps that cover goals most clearly and are easiest to execute consistently.'),
+  };
+}
+
+function buildExecutionSignals({ products, synthesis, routineExpert, lifecycleContext, language }) {
+  const stepCount = asArray(products).length;
+  const strongActiveCount = asArray(products).filter((row) => asArray(row.active_families).some((family) => ['retinoid', 'acid_exfoliant', 'benzoyl_peroxide'].includes(family))).length;
+  const complexityScore = Math.max(18, Math.min(96, 26 + stepCount * 10 + strongActiveCount * 8));
+  const executionBurden = complexityScore >= 72 ? 'high' : complexityScore >= 50 ? 'medium' : 'low';
+  const adherenceRisk = strongActiveCount >= 2 || stepCount >= 6 ? 'high' : stepCount >= 4 ? 'medium' : 'low';
+  const sameFunctionClusters = buildSameFunctionClusters(products);
+  const costRedundancies = sameFunctionClusters.map((group) => ({
+    items_involved: group.items,
+    why: 'Multiple steps appear to serve the same function.',
+  })).slice(0, 3);
+  const highCostLowIncrementSteps = costRedundancies.map((row) => ({
+    items_involved: row.items_involved,
+    why: normalizeLanguage(language) === 'CN'
+      ? '如果这些步骤里价格跨度大，优先保留最稳定有效的一步。'
+      : 'If pricing differs a lot across these steps, keep the one with the clearest payoff first.',
+  }));
+  return {
+    execution_burden: executionBurden,
+    complexity_score: complexityScore,
+    adherence_risk: adherenceRisk,
+    travel_fit: stepCount >= 5 ? 'low' : 'medium',
+    time_cost: stepCount >= 6 ? 'high' : stepCount >= 4 ? 'medium' : 'low',
+    cost_redundancies: costRedundancies,
+    high_cost_low_increment_steps: highCostLowIncrementSteps,
+    lifecycle_context: lifecycleContext ? { stage: lifecycleContext.stage || null } : null,
+    expert_plan_7d: routineExpert && routineExpert.plan_7d ? routineExpert.plan_7d : null,
+    expert_phase_plan: routineExpert && routineExpert.phase_plan ? routineExpert.phase_plan : null,
+  };
+}
+
+function buildAdjustmentPlanPayload({
+  synthesis,
+  products,
+  auditPayload,
+  profileContext,
+  routineExpert,
+  lifecycleContext,
+  language,
+}) {
+  const rationaleById = new Map(
+    asArray(synthesis && synthesis.rationale_for_each_adjustment)
+      .map((row) => isPlainObject(row) ? [asString(row.adjustment_id), row] : null)
+      .filter(Boolean),
+  );
+  const normalizedAdjustments = asArray(synthesis && synthesis.top_3_adjustments).map((item) => {
+    const rationale = rationaleById.get(asString(item && item.adjustment_id)) || {};
+    const row = {
+      adjustment_id: asString(item && item.adjustment_id),
+      title: asString(item && item.title),
+      change_type: mapAdjustmentActionType(item && item.action_type),
+      priority: Number.isFinite(Number(item && item.priority_rank)) ? Number(item.priority_rank) : null,
+      target_steps: uniqStrings(item && item.affected_products, 4),
+      why: asString(item && item.why_this_first) || asString(rationale && rationale.reasoning),
+      expected_benefit: asString(item && item.expected_outcome),
+      tradeoff: asString(rationale && rationale.tradeoff_or_caution) || 'Keep changes narrow enough to judge tolerance.',
+      confidence: 0.78,
+      when_to_reassess: normalizeLanguage(language) === 'CN' ? '7-14 天后复核一次。' : 'Reassess after 7-14 days.',
+    };
+    if (!row.target_steps.length) {
+      row.target_steps = uniqStrings(
+        asArray(synthesis && synthesis.recommendation_needs)
+          .filter((need) => asString(need && need.adjustment_id) === row.adjustment_id)
+          .map((need) => asString(need && need.target_step)),
+        3,
+      );
+    }
+    return row;
+  });
+  const grouped = {
+    keep: normalizedAdjustments.filter((row) => row.change_type === 'keep'),
+    pause_or_remove: normalizedAdjustments.filter((row) => row.change_type === 'pause_or_remove'),
+    replace: normalizedAdjustments.filter((row) => row.change_type === 'replace'),
+    add: normalizedAdjustments.filter((row) => row.change_type === 'add'),
+    reorder: normalizedAdjustments.filter((row) => row.change_type === 'reorder'),
+    frequency_changes: normalizedAdjustments.filter((row) => row.change_type === 'frequency_change'),
+  };
+  const executionSignals = buildExecutionSignals({
+    products,
+    synthesis,
+    routineExpert,
+    lifecycleContext,
+    language,
+  });
+
+  return {
+    schema_version: 'aurora.routine_adjustment_plan.card.v2',
+    current_routine_assessment: synthesis.current_routine_assessment,
+    keep: grouped.keep,
+    pause_or_remove: grouped.pause_or_remove,
+    replace: grouped.replace,
+    add: grouped.add,
+    reorder: grouped.reorder,
+    frequency_changes: grouped.frequency_changes,
+    minimal_viable_routine: buildMinimalViableRoutine({
+      products,
+      profileContext,
+      auditPayload,
+      language,
+    }),
+    top_3_adjustments: normalizedAdjustments,
+    per_step_order_am: synthesis.per_step_order_am,
+    per_step_order_pm: synthesis.per_step_order_pm,
+    improved_am_routine: synthesis.improved_am_routine,
+    improved_pm_routine: synthesis.improved_pm_routine,
+    rationale_for_each_adjustment: synthesis.rationale_for_each_adjustment,
+    recommendation_needs: synthesis.recommendation_needs,
+    unresolved_recommendation_notes: buildUnresolvedRecommendationNotes(synthesis, []),
+    ...executionSignals,
+    missing_info: synthesis.missing_info,
+  };
+}
+
+function buildVerdictPayload({ auditPayload, userFitPayload, adjustmentPayload, language }) {
+  const inferenceCounts = asArray(auditPayload && auditPayload.products).reduce((acc, row) => {
+    const token = asString(row && row.evidence_mode) || 'step_inferred';
+    acc[token] = (acc[token] || 0) + 1;
+    return acc;
+  }, {});
+  const confidenceScore = Math.max(
+    0.3,
+    Math.min(
+      0.95,
+      clampNumber(auditPayload && auditPayload.confidence, 0, 1, 0.6) * 0.5 +
+      clampNumber((userFitPayload && userFitPayload.overall_user_fit_score) / 100, 0, 1, 0.6) * 0.5,
+    ),
+  );
+  let overallVerdict = 'partially_fit';
+  if ((auditPayload && auditPayload.irritation_stack_risk && auditPayload.irritation_stack_risk.level) === 'high'
+    || asArray(userFitPayload && userFitPayload.risk_mismatches).length > 0) {
+    overallVerdict = 'high_conflict_or_irritation_risk';
+  } else if ((adjustmentPayload && adjustmentPayload.complexity_score) >= 72 || asArray(adjustmentPayload && adjustmentPayload.pause_or_remove).length > 0) {
+    overallVerdict = 'needs_simplification';
+  } else if ((auditPayload && auditPayload.overall_combo_score) >= 78 && (userFitPayload && userFitPayload.overall_user_fit_score) >= 76) {
+    overallVerdict = 'fit_well';
+  }
+  if (
+    overallVerdict !== 'high_conflict_or_irritation_risk' &&
+    (inferenceCounts.step_inferred || 0) >= 3 &&
+    confidenceScore < 0.45
+  ) {
+    overallVerdict = 'insufficient_confidence';
+  }
+  const topActions = asArray(adjustmentPayload && adjustmentPayload.top_3_adjustments).slice(0, 3).map((row) => ({
+    title: asString(row && row.title),
+    target_steps: asArray(row && row.target_steps),
+    why: asString(row && row.why),
+  })).filter((row) => row.title);
+  if (!topActions.length) {
+    topActions.push({
+      title: normalizeLanguage(language) === 'CN' ? '先删掉最高风险叠加' : 'Remove the highest-risk stacking first',
+      target_steps: [],
+      why: normalizeLanguage(language) === 'CN'
+        ? '当前最有价值的动作不是再加产品，而是先把高风险组合拆开。'
+        : 'The biggest win right now is separating the highest-risk combination before adding anything new.',
+    });
+  }
+
+  return {
+    schema_version: 'aurora.routine_verdict.card.v1',
+    overall_verdict: overallVerdict,
+    top_strengths: uniqStrings([
+      ...asArray(auditPayload && auditPayload.synergies).map((row) => asString(row && row.why)),
+      ...asArray(userFitPayload && userFitPayload.goal_coverage).map((row) => `${row.goal}: ${row.product}`),
+    ], 3).map((text) => ({ text })),
+    top_issues: uniqStrings([
+      ...asArray(auditPayload && auditPayload.conflicts).map((row) => asString(row && row.why)),
+      ...asArray(userFitPayload && userFitPayload.risk_mismatches).map((row) => asString(row && row.issue)),
+      ...asArray(adjustmentPayload && adjustmentPayload.cost_redundancies).map((row) => `Redundancy: ${asArray(row && row.items_involved).join(', ')}`),
+    ], 3).map((text) => ({ text })),
+    top_3_actions: topActions,
+    overall_confidence: {
+      score: Number(confidenceScore.toFixed(2)),
+      level: confidenceScore >= 0.75 ? 'high' : confidenceScore >= 0.55 ? 'medium' : 'low',
+    },
+    inference_disclosure: {
+      catalog_exact: inferenceCounts.catalog_exact || 0,
+      name_inferred: inferenceCounts.name_inferred || 0,
+      step_inferred: inferenceCounts.step_inferred || 0,
+      summary: normalizeLanguage(language) === 'CN'
+        ? '这次允许强推断，但所有非精确识别的判断都按产品名/步骤线索处理。'
+        : 'Strong inference is enabled, but any non-exact judgment is still labeled as name- or step-inferred.',
+    },
+  };
+}
+
+function buildRoutineAuditV1Cards({
+  audit,
+  synthesis,
+  recommendationGroups,
+  additionalCandidates,
+  language,
+  requestId,
+  profileContext,
+  goalContext,
+  analysisContextSoft,
+  ingredientPlan,
+  routineExpert,
+  lifecycleContext,
+}) {
+  const auditPayload = buildProductAuditCardPayload({
+    audit,
+    synthesis,
+    recommendationGroups,
+    additionalCandidates,
+    language,
+  });
+  const userFitPayload = buildRoutineUserFitPayload({
+    products: auditPayload.products,
+    synthesis,
+    profileContext,
+    goalContext,
+    analysisContextSoft,
+    ingredientPlan,
+    language,
+  });
+  const adjustmentPayload = buildAdjustmentPlanPayload({
+    synthesis,
+    products: auditPayload.products,
+    auditPayload,
+    profileContext,
+    routineExpert,
+    lifecycleContext,
+    language,
+  });
+  const verdictPayload = buildVerdictPayload({
+    auditPayload,
+    userFitPayload,
+    adjustmentPayload,
+    language,
+  });
+  return [
+    {
+      card_id: `routine_verdict_${requestId}`,
+      type: 'routine_verdict_v1',
+      payload: verdictPayload,
+    },
+    {
+      card_id: `routine_product_audit_${requestId}`,
+      type: 'routine_product_audit_v1',
+      payload: auditPayload,
+    },
+    {
+      card_id: `routine_user_fit_${requestId}`,
+      type: 'routine_user_fit_v1',
+      payload: userFitPayload,
+    },
+    {
+      card_id: `routine_adjustment_${requestId}`,
+      type: 'routine_adjustment_plan_v1',
+      payload: adjustmentPayload,
+    },
+  ];
+}
+
 function buildCards({ audit, synthesis, recommendationGroups, additionalCandidates, language, requestId, context = {} }) {
   const visibleRecommendationGroups = getVisibleRecommendationGroups(recommendationGroups, synthesis, context);
   const unresolvedRecommendationNotes = buildUnresolvedRecommendationNotes(synthesis, visibleRecommendationGroups);
@@ -1806,6 +2674,9 @@ async function runRoutineAnalysisV2({
   ingredientPlan = null,
   analysisContextSnapshot = null,
   requestProfileOverride = null,
+  surfaceMode = 'routine_v2',
+  routineExpert = null,
+  routineLifecycleContext = null,
   logger = null,
   llmGateway = null,
   recommendationResolverDeps = {},
@@ -2014,26 +2885,54 @@ async function runRoutineAnalysisV2({
     logger,
     deps: recommendationResolverDeps,
   });
-  const cards = buildCards({
-    audit,
-    synthesis,
-    recommendationGroups,
-    additionalCandidates: prioritized.additional,
-    language: normalizedLanguage,
-    requestId,
-    context: {
-      routine_inventory: routineInventory,
-    },
-  });
+  const cards = surfaceMode === 'routine_audit_v1'
+    ? buildRoutineAuditV1Cards({
+      audit,
+      synthesis,
+      recommendationGroups,
+      additionalCandidates: prioritized.additional,
+      language: normalizedLanguage,
+      requestId,
+      profileContext,
+      goalContext,
+      analysisContextSoft,
+      ingredientPlan,
+      routineExpert,
+      lifecycleContext: routineLifecycleContext,
+    })
+    : buildCards({
+      audit,
+      synthesis,
+      recommendationGroups,
+      additionalCandidates: prioritized.additional,
+      language: normalizedLanguage,
+      requestId,
+      context: {
+        routine_inventory: routineInventory,
+      },
+    });
+  const assistantText = surfaceMode === 'routine_audit_v1'
+    ? (() => {
+      const verdictCard = cards[0];
+      const topAction = asArray(verdictCard && verdictCard.payload && verdictCard.payload.top_3_actions)[0];
+      if (topAction && asString(topAction.title)) {
+        return normalizeLanguage(normalizedLanguage) === 'CN'
+          ? `我把你的 routine 拆成了组合、用户适配和执行层来审。现在最该先改的是「${asString(topAction.title)}」。`
+          : `I rebuilt your routine review around combo quality, user fit, and execution. The best first move is "${asString(topAction.title)}".`;
+      }
+      return buildAssistantText(synthesis, normalizedLanguage);
+    })()
+    : buildAssistantText(synthesis, normalizedLanguage);
   return {
     audit,
     synthesis,
     recommendation_groups: recommendationGroups,
     cards,
-    assistant_text: buildAssistantText(synthesis, normalizedLanguage),
+    assistant_text: assistantText,
     legacy_compat: buildLegacyCompatPayload(synthesis, recommendationGroups, {
       routine_inventory: routineInventory,
     }),
+    surface_mode: surfaceMode === 'routine_audit_v1' ? 'routine_audit_v1' : 'routine_v2',
     debug_meta: {
       schema_version: 'aurora.routine_analysis_v2.debug.v1',
       enabled: true,
@@ -2123,6 +3022,15 @@ async function runRoutineAnalysisV2({
         top_3_adjustments: synthesis.top_3_adjustments,
         recommendation_needs: synthesis.recommendation_needs,
       },
+      ...(surfaceMode === 'routine_audit_v1'
+        ? {
+          routine_audit_v1: {
+            verdict: cards[0] && cards[0].payload ? cards[0].payload : null,
+            user_fit: cards[2] && cards[2].payload ? cards[2].payload : null,
+            adjustment_plan: cards[3] && cards[3].payload ? cards[3].payload : null,
+          },
+        }
+        : {}),
     },
   };
 }
