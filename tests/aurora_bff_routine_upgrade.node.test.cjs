@@ -419,6 +419,64 @@ test('/v1/analysis/skin: nested legacy profile.current_routine also emits routin
   );
 });
 
+test('/v1/analysis/skin: summary-first hard-disables routine audit fast path even when audit env is enabled', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat();
+      try {
+        harness.routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => buildReportSuccessStub({ lang: 'en-US' }),
+          deepening: async () => ({
+            ok: false,
+            provider: 'gemini',
+            reason: 'OPTIONAL_STEP_FAILED',
+            layer: null,
+          }),
+        });
+        const uid = buildTestUid('routine_summary_first_guard');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'CeraVe Foaming Cleanser' },
+                { step: 'sunscreen', product: 'La Roche-Posay Anthelios' },
+              ],
+              pm: [
+                { step: 'treatment', product: 'Retinoid serum' },
+                { step: 'moisturizer', product: 'CeraVe PM Lotion' },
+              ],
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.ok(findCard(cards, 'analysis_summary') || findCard(cards, 'analysis_story_v2'));
+        assert.ok(findCard(cards, 'routine_products_preview'));
+        assert.equal(Boolean(findCard(cards, 'routine_verdict_v1')), false);
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.analysis_mode, 'analysis_summary');
+      } finally {
+        harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: report-stage timeout degrades quickly and preserves routine preview', async () => {
   await withEnv(
     {
