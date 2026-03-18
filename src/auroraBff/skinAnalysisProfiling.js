@@ -7,6 +7,8 @@ const DEFAULT_STAGES = Object.freeze([
   'postprocess',
   'report',
   'llm',
+  'photo_modules',
+  'persist',
   'artifact',
   'render',
 ]);

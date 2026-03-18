@@ -16736,6 +16736,89 @@ function buildAnalysisStageTimingMeta(report) {
   return meta;
 }
 
+function buildPersistableIngredientPlanSummary(ingredientPlan) {
+  const plan = isPlainObject(ingredientPlan) ? ingredientPlan : null;
+  if (!plan) return null;
+  const targets = Array.isArray(plan.targets)
+    ? plan.targets.slice(0, 8).map((t) => ({
+      ingredient_id: t.ingredient_id,
+      ingredient_name: t.ingredient_name,
+      role: t.role,
+      priority: t.priority,
+    }))
+    : [];
+  const avoid = Array.isArray(plan.avoid)
+    ? plan.avoid.slice(0, 4).map((a) => ({
+      ingredient_id: a.ingredient_id,
+      ingredient_name: a.ingredient_name,
+      severity: a.severity,
+      reason: a.reason,
+    }))
+    : [];
+  if (!targets.length && !avoid.length) return null;
+  return {
+    ...(targets.length ? { targets } : {}),
+    ...(avoid.length ? { avoid } : {}),
+  };
+}
+
+function buildPersistableLastAnalysisSnapshot({
+  analysis,
+  ingredientPlan = null,
+  routineFitCard = null,
+  routineAnalysisV2Result = null,
+} = {}) {
+  const base = isPlainObject(analysis) ? { ...analysis } : null;
+  if (!base) return null;
+  const ingredientPlanSummary = buildPersistableIngredientPlanSummary(ingredientPlan);
+  if (ingredientPlanSummary) {
+    base.ingredient_plan = ingredientPlanSummary;
+  }
+  const routineFitPayload = routineFitCard && isPlainObject(routineFitCard.payload) ? routineFitCard.payload : null;
+  if (routineFitPayload) {
+    base.routine_fit = routineFitPayload;
+  }
+  const routineAnalysisPayload =
+    routineAnalysisV2Result && isPlainObject(routineAnalysisV2Result.persist_payload)
+      ? routineAnalysisV2Result.persist_payload
+      : null;
+  if (routineAnalysisPayload) {
+    base.routine_analysis_v2 = routineAnalysisPayload;
+  }
+  if (routineAnalysisV2Result && routineAnalysisV2Result.legacy_compat !== undefined) {
+    base.routine_analysis_legacy_compat = routineAnalysisV2Result.legacy_compat;
+  }
+  return base;
+}
+
+function deferLastAnalysisPersistence({
+  identity,
+  analysisSnapshot,
+  lang,
+  logger,
+  requestId = null,
+  traceId = null,
+} = {}) {
+  const snapshot = isPlainObject(analysisSnapshot) ? { ...analysisSnapshot } : null;
+  if (!snapshot) return false;
+  setImmediate(() => {
+    saveLastAnalysisForIdentity(
+      { auroraUid: identity && identity.auroraUid ? identity.auroraUid : null, userId: identity && identity.userId ? identity.userId : null },
+      { analysis: snapshot, lang },
+    ).catch((err) => {
+      logger?.warn(
+        {
+          err: err && err.message ? err.message : String(err),
+          request_id: requestId,
+          trace_id: traceId,
+        },
+        'aurora bff: deferred last analysis persistence failed',
+      );
+    });
+  });
+  return true;
+}
+
 function normalizeIngredientPlanGuardrailMode(mode) {
   const token = String(mode || '').trim().toLowerCase();
   return token === 'lightweight' ? 'lightweight' : 'full';
@@ -54894,77 +54977,89 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
         let finalContract = null;
-        if (analysis) {
-          const factLayer = buildFactLayer({
-            deterministicAnalysis: analysis,
-            visionLayer,
-          });
-          finalContract = finalizeSkinAnalysisContract({
-            factLayer,
-            reportLayer,
-            quality: photoQuality,
-            lang: ctx.lang,
-            deterministicFallback: analysis,
-          });
-          if (finalContract && finalContract.__contract_fallback) {
-            deterministicFallbackReason = deterministicFallbackReason || 'contract_invalid';
-            recordAuroraSkinFallbackDeterministic({ reason: deterministicFallbackReason });
-          }
-          analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract });
-        }
+        let geometrySanitizer = null;
+        let photoNotice = null;
         const photoNotUsed = Boolean(userRequestedPhoto && photosProvided && !usedPhotos);
         const photoFailureCode =
           photoFailureCodes[0] || (photoNotUsed && hasPhotoPrimaryInput && !hasPrimaryInput ? 'MISSING_PRIMARY_INPUT' : null);
-        let geometrySanitizer = null;
-        let photoNotice = null;
-        if (photoNotUsed && photoFailureCode) {
-          photoNotice = {
-            failure_code: photoFailureCode,
-            message:
-              ctx.lang === 'CN'
-                ? `本次未能读取并分析照片（原因：${photoFailureCode}），以下结果仅基于你的问卷/历史信息。请重传后重试。`
-                : `We couldn't analyze your photo this time (reason: ${photoFailureCode}). Results below are based on your answers/history only. Please re-upload and retry.`,
-          };
-        }
-        if (analysis) {
-          analysis = buildExecutablePlanForAnalysis({
-            analysis,
-            language: ctx.lang,
-            usedPhotos,
-            photoQuality,
-            profileSummary,
-            photoNoticeOverride:
-              photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
-                ? photoNotice.message
-                : visionPhotoNoticeMessage,
-            photoFailureCode,
-            photosProvided,
-          });
-          analysis = attachRoutineExpertToAnalysis({
-            analysis,
-            routineCandidate: hasRoutine ? routineCandidate : null,
-            profileSummary,
-            recentLogs: recentLogsSummary,
-            language: ctx.lang,
-          });
-          geometrySanitizer =
-            analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
-              ? analysis.__geometry_sanitizer
-              : null;
-          if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
-            delete analysis.__geometry_sanitizer;
-          }
-          if (finalContract) {
-            const locked = finalizeSkinAnalysisContract({
-              factLayer: buildFactLayer({ deterministicAnalysis: analysis, visionLayer }),
+        profiler.start('postprocess', { kind: 'analysis_finalize' });
+        try {
+          if (analysis) {
+            const factLayer = buildFactLayer({
+              deterministicAnalysis: analysis,
+              visionLayer,
+            });
+            finalContract = finalizeSkinAnalysisContract({
+              factLayer,
               reportLayer,
               quality: photoQuality,
               lang: ctx.lang,
               deterministicFallback: analysis,
             });
-            analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
+            if (finalContract && finalContract.__contract_fallback) {
+              deterministicFallbackReason = deterministicFallbackReason || 'contract_invalid';
+              recordAuroraSkinFallbackDeterministic({ reason: deterministicFallbackReason });
+            }
+            analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract });
           }
+          if (photoNotUsed && photoFailureCode) {
+            photoNotice = {
+              failure_code: photoFailureCode,
+              message:
+                ctx.lang === 'CN'
+                  ? `本次未能读取并分析照片（原因：${photoFailureCode}），以下结果仅基于你的问卷/历史信息。请重传后重试。`
+                  : `We couldn't analyze your photo this time (reason: ${photoFailureCode}). Results below are based on your answers/history only. Please re-upload and retry.`,
+            };
+          }
+          if (analysis) {
+            analysis = buildExecutablePlanForAnalysis({
+              analysis,
+              language: ctx.lang,
+              usedPhotos,
+              photoQuality,
+              profileSummary,
+              photoNoticeOverride:
+                photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+                  ? photoNotice.message
+                  : visionPhotoNoticeMessage,
+              photoFailureCode,
+              photosProvided,
+            });
+            analysis = attachRoutineExpertToAnalysis({
+              analysis,
+              routineCandidate: hasRoutine ? routineCandidate : null,
+              profileSummary,
+              recentLogs: recentLogsSummary,
+              language: ctx.lang,
+            });
+            geometrySanitizer =
+              analysis && analysis.__geometry_sanitizer && typeof analysis.__geometry_sanitizer === 'object'
+                ? analysis.__geometry_sanitizer
+                : null;
+            if (analysis && Object.prototype.hasOwnProperty.call(analysis, '__geometry_sanitizer')) {
+              delete analysis.__geometry_sanitizer;
+            }
+            if (finalContract) {
+              const locked = finalizeSkinAnalysisContract({
+                factLayer: buildFactLayer({ deterministicAnalysis: analysis, visionLayer }),
+                reportLayer,
+                quality: photoQuality,
+                lang: ctx.lang,
+                deterministicFallback: analysis,
+              });
+              analysis = mergeFinalContractIntoAnalysis({ analysis, finalContract: locked });
+            }
+          }
+        } catch (err) {
+          profiler.fail('postprocess', err, { kind: 'analysis_finalize', has_analysis: Boolean(analysis) });
+          throw err;
         }
+        profiler.end('postprocess', {
+          kind: 'analysis_finalize',
+          has_analysis: Boolean(analysis),
+          analysis_source: analysisSource || 'none',
+          used_photos: Boolean(usedPhotos),
+        });
 
         let renderedAnalysisSource = analysisSource;
         if (photoNotUsed && analysisSource !== 'retake') {
@@ -55012,118 +55107,119 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
 
-        const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
-          imageBuffer: diagnosisPhotoBytes,
-          diagnosisInternal: diagnosisV1Internal,
-          logger,
-          requestId: ctx.request_id,
-        });
+        let photoModulesCard = null;
+        profiler.start('photo_modules', { kind: 'analysis_photo_modules' });
+        try {
+          const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
+            imageBuffer: diagnosisPhotoBytes,
+            diagnosisInternal: diagnosisV1Internal,
+            logger,
+            requestId: ctx.request_id,
+          });
 
-        const photoModulesSourceResolved = (() => {
-          const normalizeSourcePhoto = (candidate) => {
-            if (!candidate || typeof candidate !== 'object') return null;
-            const slotId = String(candidate.slot_id || '').trim();
-            const photoId = String(candidate.photo_id || '').trim();
-            if (!slotId || !photoId) return null;
-            return { slot_id: slotId, photo_id: photoId };
-          };
+          const photoModulesSourceResolved = (() => {
+            const normalizeSourcePhoto = (candidate) => {
+              if (!candidate || typeof candidate !== 'object') return null;
+              const slotId = String(candidate.slot_id || '').trim();
+              const photoId = String(candidate.photo_id || '').trim();
+              if (!slotId || !photoId) return null;
+              return { slot_id: slotId, photo_id: photoId };
+            };
 
-          const direct = normalizeSourcePhoto(photoModulesSourcePhoto);
-          if (direct) return direct;
+            const direct = normalizeSourcePhoto(photoModulesSourcePhoto);
+            if (direct) return direct;
 
-          const diagnosisFallback = normalizeSourcePhoto(diagnosisPhoto);
-          if (diagnosisFallback) return diagnosisFallback;
+            const diagnosisFallback = normalizeSourcePhoto(diagnosisPhoto);
+            if (diagnosisFallback) return diagnosisFallback;
 
-          const bestEffort = chooseVisionPhoto([
-            ...(Array.isArray(passedPhotos) ? passedPhotos : []),
-            ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
-            ...(Array.isArray(failedPhotos) ? failedPhotos : []),
-          ]);
-          return normalizeSourcePhoto(bestEffort);
-        })();
+            const bestEffort = chooseVisionPhoto([
+              ...(Array.isArray(passedPhotos) ? passedPhotos : []),
+              ...(Array.isArray(degradedPhotos) ? degradedPhotos : []),
+              ...(Array.isArray(failedPhotos) ? failedPhotos : []),
+            ]);
+            return normalizeSourcePhoto(bestEffort);
+          })();
 
-        let photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
-          requestId: ctx.request_id,
-          analysis,
-          usedPhotos,
-          photoQuality,
-          photoNotice:
-            photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
-              ? photoNotice.message
-              : visionPhotoNoticeMessage,
-          diagnosisInternal: diagnosisV1Internal,
-          sourcePhoto: photoModulesSourceResolved,
-          profileSummary,
-          language: ctx.lang,
-          skinMask: photoModulesSkinMask,
-        });
-        if (photoModulesCard && photoModulesSourceResolved) {
-          const payloadObj =
-            photoModulesCard.payload && typeof photoModulesCard.payload === 'object' && !Array.isArray(photoModulesCard.payload)
-              ? photoModulesCard.payload
-              : null;
-          const faceCropObj =
-            payloadObj && payloadObj.face_crop && typeof payloadObj.face_crop === 'object' && !Array.isArray(payloadObj.face_crop)
-              ? payloadObj.face_crop
-              : null;
+          photoModulesCard = maybeBuildPhotoModulesCardForAnalysis({
+            requestId: ctx.request_id,
+            analysis,
+            usedPhotos,
+            photoQuality,
+            photoNotice:
+              photoNotice && typeof photoNotice.message === 'string' && photoNotice.message.trim()
+                ? photoNotice.message
+                : visionPhotoNoticeMessage,
+            diagnosisInternal: diagnosisV1Internal,
+            sourcePhoto: photoModulesSourceResolved,
+            profileSummary,
+            language: ctx.lang,
+            skinMask: photoModulesSkinMask,
+          });
+          if (photoModulesCard && photoModulesSourceResolved) {
+            const payloadObj =
+              photoModulesCard.payload && typeof photoModulesCard.payload === 'object' && !Array.isArray(photoModulesCard.payload)
+                ? photoModulesCard.payload
+                : null;
+            const faceCropObj =
+              payloadObj && payloadObj.face_crop && typeof payloadObj.face_crop === 'object' && !Array.isArray(payloadObj.face_crop)
+                ? payloadObj.face_crop
+                : null;
 
-          const hasRenderablePhoto = Boolean(
-            faceCropObj &&
-              (
-                String(faceCropObj.crop_image_url || '').trim() ||
-                String(faceCropObj.original_image_url || '').trim() ||
-                String(faceCropObj.face_crop_url || '').trim() ||
-                String(faceCropObj.source_image_url || '').trim() ||
-                String(faceCropObj.image_url || '').trim() ||
-                String(faceCropObj.src || '').trim()
-              ),
-          );
+            const hasRenderablePhoto = Boolean(
+              faceCropObj &&
+                (
+                  String(faceCropObj.crop_image_url || '').trim() ||
+                  String(faceCropObj.original_image_url || '').trim() ||
+                  String(faceCropObj.face_crop_url || '').trim() ||
+                  String(faceCropObj.source_image_url || '').trim() ||
+                  String(faceCropObj.image_url || '').trim() ||
+                  String(faceCropObj.src || '').trim()
+                ),
+            );
 
-          if (!hasRenderablePhoto) {
-            const authHeaders = buildPivotaBackendAuthHeaders(req);
-            if (PIVOTA_BACKEND_BASE_URL && Object.keys(authHeaders).length) {
-              const generated = await requestPhotoDownloadUrlOnce({
-                photoId: photoModulesSourceResolved.photo_id,
-                authHeaders,
-              });
-              const fallbackImageUrl =
-                generated && generated.ok && typeof generated.downloadUrl === 'string' ? generated.downloadUrl.trim() : '';
-              if (fallbackImageUrl) {
-                const nextFaceCrop = {
-                  ...(faceCropObj && typeof faceCropObj === 'object' ? faceCropObj : {}),
-                  original_image_url:
-                    (faceCropObj && typeof faceCropObj.original_image_url === 'string' && faceCropObj.original_image_url.trim()) ||
-                    fallbackImageUrl,
-                };
-                if (!String(nextFaceCrop.source_image_url || '').trim()) nextFaceCrop.source_image_url = fallbackImageUrl;
-                if (!String(nextFaceCrop.image_url || '').trim()) nextFaceCrop.image_url = fallbackImageUrl;
-                photoModulesCard.payload = {
-                  ...(payloadObj || {}),
-                  face_crop: nextFaceCrop,
-                };
+            if (!hasRenderablePhoto) {
+              const authHeaders = buildPivotaBackendAuthHeaders(req);
+              if (PIVOTA_BACKEND_BASE_URL && Object.keys(authHeaders).length) {
+                const generated = await requestPhotoDownloadUrlOnce({
+                  photoId: photoModulesSourceResolved.photo_id,
+                  authHeaders,
+                });
+                const fallbackImageUrl =
+                  generated && generated.ok && typeof generated.downloadUrl === 'string' ? generated.downloadUrl.trim() : '';
+                if (fallbackImageUrl) {
+                  const nextFaceCrop = {
+                    ...(faceCropObj && typeof faceCropObj === 'object' ? faceCropObj : {}),
+                    original_image_url:
+                      (faceCropObj && typeof faceCropObj.original_image_url === 'string' && faceCropObj.original_image_url.trim()) ||
+                      fallbackImageUrl,
+                  };
+                  if (!String(nextFaceCrop.source_image_url || '').trim()) nextFaceCrop.source_image_url = fallbackImageUrl;
+                  if (!String(nextFaceCrop.image_url || '').trim()) nextFaceCrop.image_url = fallbackImageUrl;
+                  photoModulesCard.payload = {
+                    ...(payloadObj || {}),
+                    face_crop: nextFaceCrop,
+                  };
+                }
               }
             }
           }
-        }
-        if (photoModulesCard) {
-          photoModulesCard = await enrichPhotoModulesCardWithIngredientProductsBounded({
-            photoModulesCard,
-            profileSummary,
-            language: ctx.lang,
-            logger,
-          });
-        }
-
-        if (analysis && persistLastAnalysis) {
-          try {
-            await saveLastAnalysisForIdentity(
-              { auroraUid: identity.auroraUid, userId: identity.userId },
-              { analysis, lang: ctx.lang },
-            );
-          } catch (err) {
-            logger?.warn({ err: err && err.message ? err.message : String(err) }, 'aurora bff: failed to persist last analysis');
+          if (photoModulesCard) {
+            photoModulesCard = await enrichPhotoModulesCardWithIngredientProductsBounded({
+              photoModulesCard,
+              profileSummary,
+              language: ctx.lang,
+              logger,
+            });
           }
+        } catch (err) {
+          profiler.fail('photo_modules', err, { kind: 'analysis_photo_modules', has_analysis: Boolean(analysis) });
+          throw err;
         }
+        profiler.end('photo_modules', {
+          kind: 'analysis_photo_modules',
+          emitted: Boolean(photoModulesCard),
+          used_photos: Boolean(usedPhotos),
+        });
 
         let diagnosisArtifact = null;
         let ingredientPlan = null;
@@ -55192,27 +55288,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             artifactGate = hasUsableArtifactForRecommendations(diagnosisArtifact);
             recommendationReady = Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low');
 
-            if (ingredientPlan && persistLastAnalysis && analysis) {
-              try {
-                const analysisWithPlan = {
-                  ...analysis,
-                  ingredient_plan: {
-                    targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                      ingredient_id: t.ingredient_id, ingredient_name: t.ingredient_name, role: t.role, priority: t.priority,
-                    })) : [],
-                    avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
-                      ingredient_id: a.ingredient_id, ingredient_name: a.ingredient_name, severity: a.severity, reason: a.reason,
-                    })) : [],
-                  },
-                };
-                await saveLastAnalysisForIdentity(
-                  { auroraUid: identity.auroraUid, userId: identity.userId },
-                  { analysis: analysisWithPlan, lang: ctx.lang },
-                );
-              } catch {
-                // non-critical: ingredient plan context will still work from ingredient plan card
-              }
-            }
             analysisContextSnapshot = buildAnalysisContextSnapshotForRoute({
               latestArtifact: diagnosisArtifact,
               profile: snapshotProfileBase,
@@ -55729,67 +55804,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysisSummaryPayload.routine_analysis_legacy_compat = routineAnalysisV2Result.legacy_compat;
         }
 
-        if (routineFitCard && persistLastAnalysis && analysis) {
-          try {
-            const analysisWithFollowups = {
-              ...analysis,
-              ...(ingredientPlan ? {
-                ingredient_plan: {
-                  targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                    ingredient_id: t.ingredient_id,
-                    ingredient_name: t.ingredient_name,
-                    role: t.role,
-                    priority: t.priority,
-                  })) : [],
-                  avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
-                    ingredient_id: a.ingredient_id,
-                    ingredient_name: a.ingredient_name,
-                    severity: a.severity,
-                    reason: a.reason,
-                  })) : [],
-                },
-              } : {}),
-              routine_fit: routineFitCard.payload,
-            };
-            await saveLastAnalysisForIdentity(
-              { auroraUid: identity.auroraUid, userId: identity.userId },
-              { analysis: analysisWithFollowups, lang: ctx.lang },
-            );
-          } catch {
-            // non-critical: follow-up chat can still use the current response card
-          }
-        }
-        if (routineAnalysisV2Result && persistLastAnalysis && analysis) {
-          try {
-            const analysisWithRoutineV2 = {
-              ...analysis,
-              ...(ingredientPlan ? {
-                ingredient_plan: {
-                  targets: Array.isArray(ingredientPlan.targets) ? ingredientPlan.targets.slice(0, 8).map((t) => ({
-                    ingredient_id: t.ingredient_id,
-                    ingredient_name: t.ingredient_name,
-                    role: t.role,
-                    priority: t.priority,
-                  })) : [],
-                  avoid: Array.isArray(ingredientPlan.avoid) ? ingredientPlan.avoid.slice(0, 4).map((a) => ({
-                    ingredient_id: a.ingredient_id,
-                    ingredient_name: a.ingredient_name,
-                    severity: a.severity,
-                    reason: a.reason,
-                  })) : [],
-                },
-              } : {}),
-              routine_analysis_v2: routineAnalysisV2Result.persist_payload,
-              routine_analysis_legacy_compat: routineAnalysisV2Result.legacy_compat,
-            };
-            await saveLastAnalysisForIdentity(
-              { auroraUid: identity.auroraUid, userId: identity.userId },
-              { analysis: analysisWithRoutineV2, lang: ctx.lang },
-            );
-          } catch {
-            // non-critical: follow-up chat can still use the current response card
-          }
-        }
+        const persistableLastAnalysis = buildPersistableLastAnalysisSnapshot({
+          analysis,
+          ingredientPlan,
+          routineFitCard,
+          routineAnalysisV2Result,
+        });
 
         if (routineFitPlan.shouldQueueKbBackfill) {
           setImmediate(async () => {
@@ -55897,6 +55917,25 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysis_meta: analysisMeta,
         });
         profiler.end('render', { kind: 'envelope' });
+        if (persistLastAnalysis && persistableLastAnalysis) {
+          profiler.skip('persist', 'deferred_async', {
+            has_ingredient_plan: Boolean(ingredientPlan),
+            has_routine_fit: Boolean(routineFitCard),
+            has_routine_analysis_v2: Boolean(routineAnalysisV2Result),
+          });
+          deferLastAnalysisPersistence({
+            identity,
+            analysisSnapshot: persistableLastAnalysis,
+            lang: ctx.lang,
+            logger,
+            requestId: ctx.request_id,
+            traceId: ctx.trace_id,
+          });
+        } else {
+          profiler.skip('persist', persistLastAnalysis ? 'persist_payload_missing' : 'persist_not_requested', {
+            has_analysis: Boolean(analysis),
+          });
+        }
 
         const report = profiler.report();
         const stageTimingMeta = buildAnalysisStageTimingMeta(report);
@@ -65589,6 +65628,7 @@ const __internal = {
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,
+  buildPersistableLastAnalysisSnapshot,
   applyRecommendationOutputGuardrailsForRoute,
   sanitizeDupeSuggestPayload,
   applyDupeSuggestSanitizeToEnvelope,

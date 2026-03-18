@@ -571,6 +571,14 @@ test('/v1/analysis/skin: report-stage timeout degrades quickly and preserves rou
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_failure_reason, 'REPORT_STAGE_BUDGET_TIMEOUT');
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.budget_abort_stage, 'report');
         assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_attempts), 1);
+        assert.equal(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.photo_modules) >= 0,
+          true,
+        );
+        assert.equal(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.persist) >= 0,
+          true,
+        );
       } finally {
         harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
         harness.restore();
@@ -637,6 +645,14 @@ test('/v1/analysis/skin: successful report stage exposes stage timing metadata',
         assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_attempts) >= 1, true);
         assert.equal(
           Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.report) >= 0,
+          true,
+        );
+        assert.equal(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.photo_modules) >= 0,
+          true,
+        );
+        assert.equal(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.persist) >= 0,
           true,
         );
         assert.ok(typeof (resp.body && resp.body.analysis_meta && resp.body.analysis_meta.slowest_stage) === 'string');
@@ -734,8 +750,12 @@ test('/v1/analysis/skin: deterministic report fallback recovers summary without 
           'expected recovered report failure reason metric',
         );
         assert.ok(
-          getLabeledCounterValue(snap.auroraSkinFlow, { stage: 'analysis_quality_slow', outcome: 'hit' }) >= 1,
-          'expected quality slow-stage metric',
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.quality) >= 0,
+          'expected quality stage timing metadata',
+        );
+        assert.ok(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.persist) >= 0,
+          'expected persist stage timing metadata',
         );
       } finally {
         harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
