@@ -243,3 +243,106 @@ test('/v1/analysis/skin: legacy routine string also emits routine_products_previ
     },
   );
 });
+
+test('/v1/analysis/skin: legacy current_routine alias also emits routine_products_preview', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_legacy_alias');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            current_routine: 'AM\nCleanser: CeraVe Foaming Cleanser\nMoisturizer: CeraVe PM\nPM\nTreatment: Retinol serum',
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const preview = findCard(cards, 'routine_products_preview');
+        assert.ok(preview, 'legacy current_routine should still produce routine_products_preview');
+        assert.equal(preview.payload && preview.payload.payload_shape, 'legacy_string');
+        assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total >= 2, true);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: nested legacy profile.currentRoutine also emits routine_products_preview', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_legacy_nested_profile');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            profile: {
+              currentRoutine: 'AM\nCleanser: CeraVe Foaming Cleanser\nMoisturizer: CeraVe PM\nPM\nTreatment: Retinol serum',
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const preview = findCard(cards, 'routine_products_preview');
+        assert.ok(preview, 'nested legacy profile.currentRoutine should produce routine_products_preview');
+        assert.equal(preview.payload && preview.payload.payload_shape, 'legacy_string');
+        assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total >= 2, true);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: nested legacy profile.current_routine also emits routine_products_preview', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_legacy_nested_profile_alias');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            profile: {
+              current_routine: 'AM\nCleanser: CeraVe Foaming Cleanser\nMoisturizer: CeraVe PM\nPM\nTreatment: Retinol serum',
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const preview = findCard(cards, 'routine_products_preview');
+        assert.ok(preview, 'nested legacy profile.current_routine should produce routine_products_preview');
+        assert.equal(preview.payload && preview.payload.payload_shape, 'legacy_string');
+        assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total >= 2, true);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});

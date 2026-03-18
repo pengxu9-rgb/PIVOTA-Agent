@@ -606,10 +606,21 @@ const PhotosConfirmRequestSchema = z
   })
   .strict();
 
+const RoutineInputSchema = z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]);
+
+const SkinAnalysisLegacyProfileSchema = z
+  .object({
+    currentRoutine: RoutineInputSchema.optional(),
+    current_routine: RoutineInputSchema.optional(),
+  })
+  .strict();
+
 const SkinAnalysisRequestSchema = z
   .object({
     use_photo: z.boolean().optional(),
-    currentRoutine: z.union([z.string(), z.record(z.string(), z.any()), z.array(z.any())]).optional(),
+    currentRoutine: RoutineInputSchema.optional(),
+    current_routine: RoutineInputSchema.optional(),
+    profile: SkinAnalysisLegacyProfileSchema.optional(),
     photos: z
       .array(
         z
