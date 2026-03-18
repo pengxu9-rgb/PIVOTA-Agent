@@ -493,7 +493,7 @@ test('/v1/analysis/skin: summary-first blocks routine audit surfaces even when a
         assert.equal(cards.some((card) => card.type === 'routine_verdict_v1'), false);
         assert.equal(cards.some((card) => card.type === 'routine_product_audit_v1'), false);
         assert.ok(findCard(cards, 'routine_products_preview'));
-        assert.ok(findCard(cards, 'analysis_story_v2'));
+        assert.ok(findCard(cards, 'analysis_story_v2') || findCard(cards, 'analysis_summary'));
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.analysis_mode, 'analysis_summary');
         assert.notEqual(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.execution_path, 'routine_audit_fast_path');
         assert.equal(
@@ -513,6 +513,71 @@ test('/v1/analysis/skin: summary-first blocks routine audit surfaces even when a
   );
 });
 
+test('/v1/analysis/skin: routine-only summary-first skips report model before timeout path', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
+      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '2000',
+      AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
+      AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS: '0',
+      AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS: '100',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat();
+      let reportCalls = 0;
+      try {
+        harness.routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => {
+            reportCalls += 1;
+            await sleep(4000);
+            return buildReportSuccessStub({ lang: 'en-US' });
+          },
+        });
+        const uid = buildTestUid('routine_report_stage_fast_skip');
+        const startedAt = Date.now();
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'CeraVe Foaming Cleanser' },
+                { step: 'sunscreen', product: 'La Roche-Posay Anthelios' },
+              ],
+              pm: [
+                { step: 'treatment', product: 'Retinoid serum' },
+                { step: 'moisturizer', product: 'CeraVe PM Lotion' },
+              ],
+            },
+          })
+          .expect(200);
+        const elapsedMs = Date.now() - startedAt;
+
+        const cards = parseCards(resp.body);
+        assert.ok(findCard(cards, 'analysis_story_v2') || findCard(cards, 'analysis_summary'));
+        assert.ok(findCard(cards, 'routine_products_preview'));
+        assert.equal(reportCalls, 0, 'report model should be skipped on routine-only fast path');
+        assert.equal(elapsedMs < 2500, true, `request should avoid report timeout path, got ${elapsedMs}ms`);
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_outcome, 'skipped_policy');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_budget_profile, 'routine_only');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_failure_reason == null, true);
+      } finally {
+        harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: report-stage timeout degrades quickly and preserves routine preview', async () => {
   await withEnv(
     {
@@ -523,6 +588,7 @@ test('/v1/analysis/skin: report-stage timeout degrades quickly and preserves rou
       GEMINI_API_KEY: 'test-key',
       GOOGLE_API_KEY: 'test-key',
       AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY: 'false',
       AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
       AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '350',
       AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
@@ -597,6 +663,7 @@ test('/v1/analysis/skin: successful report stage exposes stage timing metadata',
       GEMINI_API_KEY: 'test-key',
       GOOGLE_API_KEY: 'test-key',
       AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY: 'false',
       AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
       AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '2000',
       AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
@@ -674,6 +741,7 @@ test('/v1/analysis/skin: deterministic report fallback recovers summary without 
       GEMINI_API_KEY: 'test-key',
       GOOGLE_API_KEY: 'test-key',
       AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY: 'false',
       AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
       AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '2000',
       AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',

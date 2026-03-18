@@ -2144,6 +2144,15 @@ const AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
   return Math.max(300, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
 })();
+const AURORA_ANALYSIS_REPORT_STAGE_ROUTINE_ONLY_BUDGET_MS = (() => {
+  const fallback = Math.min(2500, AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS);
+  const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_ROUTINE_ONLY_BUDGET_MS || fallback);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(300, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY = String(
+  process.env.AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY || 'true',
+).trim().toLowerCase() !== 'false';
 const AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS = (() => {
   const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS || 1800);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
@@ -16669,13 +16678,37 @@ function getRemainingBudgetMs({ startedAtMs, budgetMs } = {}) {
   return Math.max(0, Math.trunc(budget - Math.max(0, Date.now() - started)));
 }
 
-function resolveAnalysisReportStageBudget({ startedAtMs, analysisBudgetMs } = {}) {
+function deriveAnalysisReportBudgetProfile({
+  summaryFirst = false,
+  hasRoutine = false,
+  hasPhotoPrimaryInput = false,
+} = {}) {
+  return summaryFirst && hasRoutine && !hasPhotoPrimaryInput ? 'routine_only' : 'default';
+}
+
+function resolveAnalysisReportStageBudget({
+  startedAtMs,
+  analysisBudgetMs,
+  summaryFirst = false,
+  hasRoutine = false,
+  hasPhotoPrimaryInput = false,
+} = {}) {
   const remainingMs = getRemainingBudgetMs({ startedAtMs, budgetMs: analysisBudgetMs });
+  const budgetProfile = deriveAnalysisReportBudgetProfile({
+    summaryFirst,
+    hasRoutine,
+    hasPhotoPrimaryInput,
+  });
+  const stageBudgetCapMs =
+    budgetProfile === 'routine_only'
+      ? AURORA_ANALYSIS_REPORT_STAGE_ROUTINE_ONLY_BUDGET_MS
+      : AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS;
   if (!Number.isFinite(remainingMs)) {
     return {
       ok: true,
       remaining_ms: null,
-      budget_ms: AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS,
+      budget_ms: stageBudgetCapMs,
+      budget_profile: budgetProfile,
     };
   }
   if (remainingMs < AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS) {
@@ -16684,12 +16717,13 @@ function resolveAnalysisReportStageBudget({ startedAtMs, analysisBudgetMs } = {}
       reason: 'REPORT_STAGE_BUDGET_LOW',
       remaining_ms: remainingMs,
       budget_ms: 0,
+      budget_profile: budgetProfile,
     };
   }
   const budgetMs = Math.max(
     0,
     Math.min(
-      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS,
+      stageBudgetCapMs,
       remainingMs - AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS,
     ),
   );
@@ -16699,12 +16733,14 @@ function resolveAnalysisReportStageBudget({ startedAtMs, analysisBudgetMs } = {}
       reason: 'REPORT_STAGE_BUDGET_LOW',
       remaining_ms: remainingMs,
       budget_ms: budgetMs,
+      budget_profile: budgetProfile,
     };
   }
   return {
     ok: true,
     remaining_ms: remainingMs,
     budget_ms: budgetMs,
+    budget_profile: budgetProfile,
   };
 }
 
@@ -16734,6 +16770,34 @@ function buildAnalysisStageTimingMeta(report) {
     meta.slowest_stage_status = slowest.status;
   }
   return meta;
+}
+
+function buildAnalysisLlmMeta(report) {
+  const llmCalls = Array.isArray(report && report.llm_calls) ? report.llm_calls : [];
+  if (!llmCalls.length) return {};
+  let slowest = null;
+  for (const call of llmCalls) {
+    const ms = Number(call && call.ms);
+    if (!Number.isFinite(ms) || ms < 0) continue;
+    if (!slowest || ms >= slowest.ms) {
+      slowest = {
+        ms: Math.round(ms * 1000) / 1000,
+        kind: String(call && call.kind ? call.kind : '').trim() || null,
+        provider: String(call && call.provider ? call.provider : '').trim() || null,
+        model: String(call && call.model ? call.model : '').trim() || null,
+        ok: call && call.ok === true,
+      };
+    }
+  }
+  if (!slowest) return {};
+  return {
+    llm_call_count: llmCalls.length,
+    slowest_llm_kind: slowest.kind,
+    slowest_llm_ms: slowest.ms,
+    slowest_llm_provider: slowest.provider,
+    slowest_llm_model: slowest.model,
+    slowest_llm_ok: slowest.ok,
+  };
 }
 
 function buildPersistableIngredientPlanSummary(ingredientPlan) {
@@ -54060,6 +54124,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let reportModelErrored = false;
         let reportModelErrorReason = null;
         let reportStageBudgetMs = 0;
+        let reportStageBudgetProfile = 'default';
         let reportStageElapsedMs = 0;
         let reportStageOutcome = 'not_requested';
         let reportStageAttempts = 0;
@@ -54215,6 +54280,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               reportAvailable,
               degradedMode: SKIN_DEGRADED_MODE,
             });
+        reportStageBudgetProfile = deriveAnalysisReportBudgetProfile({
+          summaryFirst: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+          hasRoutine,
+          hasPhotoPrimaryInput,
+        });
         const forceReportOnPhotoFetchFailure = Boolean(
             !rollout.llmKillSwitch &&
             userRequestedPhoto &&
@@ -54235,6 +54305,30 @@ function mountAuroraBffRoutes(app, { logger }) {
           } else {
             qualityReportReasons.push(
               'Photo upload passed but image bytes could not be read: forcing report model for conservative guidance.',
+            );
+          }
+        }
+        if (
+          AURORA_ANALYSIS_REPORT_SKIP_ROUTINE_ONLY &&
+          reportDecision &&
+          reportDecision.decision === 'call' &&
+          reportStageBudgetProfile === 'routine_only'
+        ) {
+          reportDecision = {
+            ...reportDecision,
+            decision: 'skip',
+            reasons: Array.from(
+              new Set([
+                ...(Array.isArray(reportDecision.reasons) ? reportDecision.reasons : []),
+                'routine_summary_first_fast_path',
+              ]),
+            ),
+          };
+          if (ctx.lang === 'CN') {
+            qualityReportReasons.push('当前是 routine summary-first 快速路径：跳过报告模型，直接返回确定性总结以保证主链稳定。');
+          } else {
+            qualityReportReasons.push(
+              'Routine summary-first fast path active: skipping report model and returning deterministic summary to keep the main path stable.',
             );
           }
         }
@@ -54474,8 +54568,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           const reportBudget = resolveAnalysisReportStageBudget({
             startedAtMs: analysisBudgetStartedAtMs,
             analysisBudgetMs: effectiveBudgetMs,
+            summaryFirst: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
+            hasRoutine,
+            hasPhotoPrimaryInput,
           });
           reportStageBudgetMs = Number.isFinite(Number(reportBudget.budget_ms)) ? Math.trunc(Number(reportBudget.budget_ms)) : 0;
+          reportStageBudgetProfile = String(reportBudget.budget_profile || 'default').trim() || 'default';
           if (!reportBudget.ok) {
             reportStageOutcome = 'skipped_low_budget';
             reportModelErrored = true;
@@ -54489,6 +54587,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profiler.skip('report', 'report_stage_budget_low', {
               remaining_budget_ms: reportBudget.remaining_ms,
               stage_budget_ms: reportStageBudgetMs,
+              budget_profile: reportStageBudgetProfile,
             });
             logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.report_stage_budget_skip_rate', value: 1 }, 'metric');
             recordAuroraSkinFlowMetric({ stage: 'analysis_report_budget_skip', hit: true });
@@ -54500,6 +54599,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             profiler.start('report', {
               remaining_budget_ms: reportBudget.remaining_ms,
               stage_budget_ms: reportStageBudgetMs,
+              budget_profile: reportStageBudgetProfile,
             });
           const deterministicSeedForReportDto =
             userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
@@ -54764,6 +54864,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               attempts: reportStageAttempts,
               elapsed_ms: reportStageElapsedMs,
               stage_budget_ms: reportStageBudgetMs,
+              budget_profile: reportStageBudgetProfile,
             });
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
@@ -54814,6 +54915,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               attempts: reportStageAttempts,
               elapsed_ms: reportStageElapsedMs,
               stage_budget_ms: reportStageBudgetMs,
+              budget_profile: reportStageBudgetProfile,
             });
             if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
             else qualityReportReasons.push(`Report model output was unstable (${reportFailureReason}); falling back to deterministic baseline.`);
@@ -54825,6 +54927,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportStageOutcome = 'skipped_policy';
             profiler.skip('report', 'policy_skip', {
               reasons: Array.isArray(reportDecision.reasons) ? reportDecision.reasons.slice(0, 4).join('|') : '',
+              budget_profile: reportStageBudgetProfile,
             });
           }
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
@@ -55375,6 +55478,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(reportModelCalled || reportStageOutcome !== 'not_requested' || reportStageAttempts > 0
             ? {
                 report_stage_budget_ms: Math.max(0, Math.trunc(Number(reportStageBudgetMs) || 0)),
+                report_stage_budget_profile: reportStageBudgetProfile,
                 report_stage_elapsed_ms: Math.max(0, Number(reportStageElapsedMs) || 0),
                 report_stage_outcome: reportStageOutcome,
                 report_stage_attempts: Math.max(0, Math.trunc(Number(reportStageAttempts) || 0)),
@@ -55939,6 +56043,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const report = profiler.report();
         const stageTimingMeta = buildAnalysisStageTimingMeta(report);
+        const llmTimingMeta = buildAnalysisLlmMeta(report);
         const stageTimings = stageTimingMeta && stageTimingMeta.stage_timings_ms && typeof stageTimingMeta.stage_timings_ms === 'object'
           ? stageTimingMeta.stage_timings_ms
           : {};
@@ -55948,6 +56053,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           envelope.analysis_meta = {
             ...envelope.analysis_meta,
             ...stageTimingMeta,
+            ...llmTimingMeta,
           };
         }
         if (!shadowRun) {
@@ -55988,6 +56094,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             routine_product_enrichment_deferred: Boolean(routineProductsPreviewCard),
             report_failure_reason: reportModelErrorReason || null,
             report_stage_budget_ms: reportStageBudgetMs,
+            report_stage_budget_profile: reportStageBudgetProfile,
             report_stage_elapsed_ms: reportStageElapsedMs,
             report_stage_outcome: reportStageOutcome,
             report_stage_attempts: reportStageAttempts,
@@ -56002,6 +56109,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_summary: report.llm_summary,
             stages: report.stages,
             ...stageTimingMeta,
+            ...llmTimingMeta,
           },
           'aurora bff: skin analysis profile',
         );
