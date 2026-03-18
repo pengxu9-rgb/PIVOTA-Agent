@@ -5,7 +5,9 @@ const DEFAULT_STAGES = Object.freeze([
   'quality',
   'detector',
   'postprocess',
+  'report',
   'llm',
+  'artifact',
   'render',
 ]);
 

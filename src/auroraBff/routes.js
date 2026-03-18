@@ -2132,6 +2132,27 @@ const AURORA_BFF_ANALYSIS_BUDGET_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 12000;
   return Math.max(1000, Math.min(60000, v));
 })();
+const AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS = (() => {
+  const fallback = Math.min(3500, AURORA_BFF_ANALYSIS_BUDGET_MS);
+  const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS || fallback);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(300, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS || 1800);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
+  return Math.max(600, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS || 900);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 900;
+  return Math.max(400, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
+const AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS || 300);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 300;
+  return Math.max(200, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
+})();
 const AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS = (() => {
   const n = Number(process.env.AURORA_LLM_QA_MIN_REMAINING_BUDGET_MS || 2500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
@@ -16595,6 +16616,80 @@ function withTimeout(promise, timeoutMs, timeoutCode) {
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+function getRemainingBudgetMs({ startedAtMs, budgetMs } = {}) {
+  const started = Number(startedAtMs);
+  const budget = Number(budgetMs);
+  if (!Number.isFinite(started) || !Number.isFinite(budget) || started <= 0 || budget <= 0) return null;
+  return Math.max(0, Math.trunc(budget - Math.max(0, Date.now() - started)));
+}
+
+function resolveAnalysisReportStageBudget({ startedAtMs, analysisBudgetMs } = {}) {
+  const remainingMs = getRemainingBudgetMs({ startedAtMs, budgetMs: analysisBudgetMs });
+  if (!Number.isFinite(remainingMs)) {
+    return {
+      ok: true,
+      remaining_ms: null,
+      budget_ms: AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS,
+    };
+  }
+  if (remainingMs < AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS) {
+    return {
+      ok: false,
+      reason: 'REPORT_STAGE_BUDGET_LOW',
+      remaining_ms: remainingMs,
+      budget_ms: 0,
+    };
+  }
+  const budgetMs = Math.max(
+    0,
+    Math.min(
+      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS,
+      remainingMs - AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS,
+    ),
+  );
+  if (budgetMs < AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS) {
+    return {
+      ok: false,
+      reason: 'REPORT_STAGE_BUDGET_LOW',
+      remaining_ms: remainingMs,
+      budget_ms: budgetMs,
+    };
+  }
+  return {
+    ok: true,
+    remaining_ms: remainingMs,
+    budget_ms: budgetMs,
+  };
+}
+
+function buildAnalysisStageTimingMeta(report) {
+  const stages = Array.isArray(report && report.stages) ? report.stages : [];
+  const timings = {};
+  let slowest = null;
+  for (const stage of stages) {
+    const name = String(stage && stage.name ? stage.name : '').trim();
+    const ms = Number(stage && stage.ms);
+    if (!name || !Number.isFinite(ms) || ms < 0) continue;
+    const rounded = Math.round(ms * 1000) / 1000;
+    timings[name] = rounded;
+    if (!slowest || rounded > slowest.ms) {
+      slowest = {
+        name,
+        ms: rounded,
+        status: String(stage && stage.status ? stage.status : '').trim() || 'unknown',
+      };
+    }
+  }
+  const meta = {};
+  if (Object.keys(timings).length) meta.stage_timings_ms = timings;
+  if (slowest) {
+    meta.slowest_stage = slowest.name;
+    meta.slowest_stage_ms = slowest.ms;
+    meta.slowest_stage_status = slowest.status;
+  }
+  return meta;
 }
 
 function normalizeSkinmaskFallbackReason(rawReason, detail) {
@@ -52997,6 +53092,11 @@ function mountAuroraBffRoutes(app, { logger }) {
         let reportModelCalled = false;
         let reportModelErrored = false;
         let reportModelErrorReason = null;
+        let reportStageBudgetMs = 0;
+        let reportStageElapsedMs = 0;
+        let reportStageOutcome = 'not_requested';
+        let reportStageAttempts = 0;
+        let budgetAbortStage = null;
 
         let diagnosisPhoto = null;
         let diagnosisPhotoBytes = null;
@@ -53400,7 +53500,36 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         if (!analysis && reportDecision.decision === 'call' && hasPrimaryInput && reportAvailable) {
-          reportModelCalled = true;
+          const reportBudget = resolveAnalysisReportStageBudget({
+            startedAtMs: analysisBudgetStartedAtMs,
+            analysisBudgetMs: effectiveBudgetMs,
+          });
+          reportStageBudgetMs = Number.isFinite(Number(reportBudget.budget_ms)) ? Math.trunc(Number(reportBudget.budget_ms)) : 0;
+          if (!reportBudget.ok) {
+            reportStageOutcome = 'skipped_low_budget';
+            reportModelErrored = true;
+            reportModelErrorReason = String(reportBudget.reason || 'REPORT_STAGE_BUDGET_LOW');
+            budgetAbortStage = 'report';
+            reportDecision = {
+              ...reportDecision,
+              decision: 'skip',
+              reasons: Array.from(new Set([...(Array.isArray(reportDecision.reasons) ? reportDecision.reasons : []), 'analysis_budget_low_skip_report'])),
+            };
+            profiler.skip('report', 'report_stage_budget_low', {
+              remaining_budget_ms: reportBudget.remaining_ms,
+              stage_budget_ms: reportStageBudgetMs,
+            });
+            logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.report_stage_budget_skip_rate', value: 1 }, 'metric');
+            recordAuroraSkinFlowMetric({ stage: 'analysis_report_budget_skip', hit: true });
+            if (ctx.lang === 'CN') qualityReportReasons.push('报告模型阶段因剩余预算不足被跳过；已直接回退到保守基线。');
+            else qualityReportReasons.push('Report stage skipped because remaining analysis budget was too low; falling back immediately.');
+          } else {
+            reportModelCalled = true;
+            const reportStageStartedAtMs = Date.now();
+            profiler.start('report', {
+              remaining_budget_ms: reportBudget.remaining_ms,
+              stage_budget_ms: reportStageBudgetMs,
+            });
           const deterministicSeedForReportDto =
             userRequestedPhoto && photosProvided && diagnosisV1 && diagnosisV1.quality
               ? buildSkinAnalysisFromDiagnosisV1(diagnosisV1, { language: ctx.lang, profileSummary })
@@ -53423,79 +53552,120 @@ function mountAuroraBffRoutes(app, { logger }) {
           llmInputHash = reportDto.input_hash || llmInputHash;
           llmInputHashPrefix = buildInputHashPrefix(llmInputHash);
           recordAuroraSkinMainlineProvider({ provider: 'gemini' });
-          const reportStep = await executeAuroraOptionalStep({
-            logger,
-            route: '/v1/analysis/skin',
-            stepId: 'analysis_skin.report_mainline',
-            criticality: 'optional',
-            metricStage: 'analysis_optional_step',
-            fn: async () => {
-              const previousRoutine = null;
-              let lifecycleInstructions = '';
-              try {
-                const lifecycleStage = detectRoutineLifecycleStage({
-                  routineCandidate: hasRoutine ? routineCandidate : null,
-                  previousRoutine,
-                  intent: parsed.data.intent || null,
-                });
-                if (lifecycleStage) {
-                  const lifecycleCtx = buildRoutineLifecycleContext({
-                    stage: lifecycleStage,
+          let reportStep;
+          try {
+            const remainingAnalysisBudgetMs = getRemainingBudgetMs({
+              startedAtMs: analysisBudgetStartedAtMs,
+              budgetMs: effectiveBudgetMs,
+            });
+            const remainingStageBudgetMs = Math.max(0, reportStageBudgetMs - Math.max(0, Date.now() - reportStageStartedAtMs));
+            const callTimeoutMs = Math.max(
+              0,
+              Math.min(
+                remainingStageBudgetMs,
+                Number.isFinite(remainingAnalysisBudgetMs) ? remainingAnalysisBudgetMs : remainingStageBudgetMs,
+              ),
+            );
+            if (callTimeoutMs < AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS) {
+              throw Object.assign(new Error('AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT'), { code: 'AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT' });
+            }
+            reportStageAttempts += 1;
+            reportStep = await withTimeout(
+              executeAuroraOptionalStep({
+                logger,
+                route: '/v1/analysis/skin',
+                stepId: 'analysis_skin.report_mainline',
+                criticality: 'optional',
+                metricStage: 'analysis_optional_step',
+                fn: async () => {
+                  const previousRoutine = null;
+                  let lifecycleInstructions = '';
+                  try {
+                    const lifecycleStage = detectRoutineLifecycleStage({
+                      routineCandidate: hasRoutine ? routineCandidate : null,
+                      previousRoutine,
+                      intent: parsed.data.intent || null,
+                    });
+                    if (lifecycleStage) {
+                      const lifecycleCtx = buildRoutineLifecycleContext({
+                        stage: lifecycleStage,
+                        routineCandidate: hasRoutine ? routineCandidate : null,
+                        previousRoutine,
+                        profileSummary,
+                        language: ctx.lang,
+                      });
+                      lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
+                    }
+                  } catch (err) {
+                    recordAnalysisSubstageFailure('routine_lifecycle_context', err, {
+                      llm_stage: 'report',
+                    });
+                    lifecycleInstructions = '';
+                  }
+                  const supplementaryInstructions = buildSupplementaryPromptInstructions({
                     routineCandidate: hasRoutine ? routineCandidate : null,
-                    previousRoutine,
                     profileSummary,
                     language: ctx.lang,
                   });
-                  lifecycleInstructions = buildLifecyclePromptInstructions(lifecycleCtx, ctx.lang);
-                }
-              } catch (err) {
-                recordAnalysisSubstageFailure('routine_lifecycle_context', err, {
-                  llm_stage: 'report',
-                });
-                lifecycleInstructions = '';
-              }
-              const supplementaryInstructions = buildSupplementaryPromptInstructions({
-                routineCandidate: hasRoutine ? routineCandidate : null,
-                profileSummary,
-                language: ctx.lang,
-              });
-              let kbGrounding = '';
-              if (hasRoutine && routineCandidate) {
-                const { actives } = parseRoutineForSupplementary(routineCandidate);
-                const activeConcepts = actives.map((a) => a.toUpperCase());
-                if (profileSummary && profileSummary.barrierStatus === 'impaired') activeConcepts.push('BARRIER_COMPROMISED');
-                if (profileSummary && profileSummary.sensitivity === 'high') activeConcepts.push('SENSITIVE_SKIN');
-                kbGrounding = buildKbGroundingForPrompt({
-                  activeConcepts,
-                  profileSummary,
-                  language: ctx.lang,
-                });
-              }
-              lifecycleInstructions += supplementaryInstructions + kbGrounding;
-              return runGeminiReportStrategyImpl({
-                reportDto,
-                language: ctx.lang,
-                promptVersion,
-                profiler,
-                lifecycleInstructions,
-              });
-            },
-          });
-          const reportResult = reportStep.ok
+                  let kbGrounding = '';
+                  if (hasRoutine && routineCandidate) {
+                    const { actives } = parseRoutineForSupplementary(routineCandidate);
+                    const activeConcepts = actives.map((a) => a.toUpperCase());
+                    if (profileSummary && profileSummary.barrierStatus === 'impaired') activeConcepts.push('BARRIER_COMPROMISED');
+                    if (profileSummary && profileSummary.sensitivity === 'high') activeConcepts.push('SENSITIVE_SKIN');
+                    kbGrounding = buildKbGroundingForPrompt({
+                      activeConcepts,
+                      profileSummary,
+                      language: ctx.lang,
+                    });
+                  }
+                  lifecycleInstructions += supplementaryInstructions + kbGrounding;
+                  return runGeminiReportStrategyImpl({
+                    reportDto,
+                    language: ctx.lang,
+                    promptVersion,
+                    profiler,
+                    lifecycleInstructions,
+                  });
+                },
+              }),
+              callTimeoutMs,
+              'AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT',
+            );
+          } catch (err) {
+            reportStep = {
+              ok: false,
+              error_class: err && err.code === 'AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT' ? 'timeout' : 'exception',
+              timed_out: Boolean(err && err.code === 'AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT'),
+            };
+          } finally {
+            reportStageElapsedMs = Math.max(0, Date.now() - reportStageStartedAtMs);
+          }
+          const reportResult = reportStep && reportStep.ok
             ? reportStep.value
             : {
                 ok: false,
                 provider: 'gemini',
-                reason: 'OPTIONAL_STEP_FAILED',
+                reason:
+                  reportStep && reportStep.timed_out
+                    ? 'REPORT_STAGE_BUDGET_TIMEOUT'
+                    : 'OPTIONAL_STEP_FAILED',
                 schema_violation: false,
                 semantic_violation: false,
                 layer: null,
-                retry: { attempted: 0, final: 'fail', last_reason: 'OPTIONAL_STEP_FAILED' },
+                retry: {
+                  attempted: reportStageAttempts,
+                  final: 'fail',
+                  last_reason:
+                    reportStep && reportStep.timed_out
+                      ? 'REPORT_STAGE_BUDGET_TIMEOUT'
+                      : 'OPTIONAL_STEP_FAILED',
+                },
                 upstream_status_code: null,
-                latency_ms: 0,
+                latency_ms: reportStageElapsedMs,
                 prompt_version: promptVersion,
                 input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
-                optional_step_error_class: reportStep.error_class,
+                optional_step_error_class: reportStep && reportStep.error_class ? reportStep.error_class : 'unknown',
               };
           if (reportResult.retry && Number(reportResult.retry.attempted || 0) > 0) {
             recordAuroraSkinLlmRetry({
@@ -53515,6 +53685,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             reportLayer = reportResult.layer;
             reportCanonical = reportResult.canonical || reportCanonical;
             analysisSource = visionLayer ? 'gemini_vision_report' : 'gemini_report';
+            reportStageOutcome = 'success';
             recordAuroraSkinSemanticGuard({
               stage: 'report',
               outcome: reportResult.semantic && reportResult.semantic.useful_output ? 'pass' : 'limited',
@@ -53595,12 +53766,27 @@ function mountAuroraBffRoutes(app, { logger }) {
                 };
               }
             }
+            profiler.end('report', {
+              outcome: reportStageOutcome,
+              attempts: reportStageAttempts,
+              elapsed_ms: reportStageElapsedMs,
+              stage_budget_ms: reportStageBudgetMs,
+            });
           } else {
             const reportFailureRaw = reportResult.reason || 'report_output_invalid';
             const reportFailureReason = normalizeReportFailureReason(reportFailureRaw) || 'UNKNOWN';
             deterministicFallbackReason = deterministicFallbackReason || reportFailureRaw;
             reportModelErrored = true;
             reportModelErrorReason = reportFailureReason;
+            if (reportFailureReason === 'REPORT_STAGE_BUDGET_TIMEOUT') {
+              reportStageOutcome = 'budget_timeout';
+              budgetAbortStage = 'report';
+              logger?.info({ kind: 'metric', name: 'aurora.skin.analysis.report_stage_timeout_rate', value: 1 }, 'metric');
+            } else if (reportFailureReason === 'SCHEMA_INVALID') {
+              reportStageOutcome = 'schema_invalid';
+            } else {
+              reportStageOutcome = 'upstream_error';
+            }
             if (reportResult.schema_violation) {
               recordAuroraSkinLlmSchemaViolation({
                 stage: 'report',
@@ -53625,11 +53811,25 @@ function mountAuroraBffRoutes(app, { logger }) {
                 locale: ctx.lang,
               });
             }
+            profiler.end('report', {
+              outcome: reportStageOutcome,
+              failure_reason: reportFailureReason,
+              attempts: reportStageAttempts,
+              elapsed_ms: reportStageElapsedMs,
+              stage_budget_ms: reportStageBudgetMs,
+            });
             if (ctx.lang === 'CN') qualityReportReasons.push(`报告模型未能稳定输出（${reportFailureReason}）；我会退回到确定性基线。`);
             else qualityReportReasons.push(`Report model output was unstable (${reportFailureReason}); falling back to deterministic baseline.`);
           }
+          }
         }
         if (!analysis && reportDecision.decision === 'skip' && hasPrimaryInput) {
+          if (reportStageOutcome === 'not_requested') {
+            reportStageOutcome = 'skipped_policy';
+            profiler.skip('report', 'policy_skip', {
+              reasons: Array.isArray(reportDecision.reasons) ? reportDecision.reasons.slice(0, 4).join('|') : '',
+            });
+          }
           const r = humanizeLlmReasons(reportDecision.reasons, { language: ctx.lang });
           if (ctx.lang === 'CN') qualityReportReasons.push(`已跳过报告模型：${r.join('；') || '原因未知'}`);
           else qualityReportReasons.push(`Skipped report model: ${r.join('; ') || 'unknown reason'}`);
@@ -54018,6 +54218,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         let latestArtifactId = null;
         let artifactGate = null;
         if (analysis && AURORA_DIAG_ARTIFACT_ENABLED && persistLastAnalysis) {
+          let artifactStageFailed = false;
+          profiler.start('artifact', { kind: 'diagnosis_artifact_plan' });
           try {
             const artifactCandidate = buildDiagnosisArtifactV1({
               ctx,
@@ -54112,11 +54314,31 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : analysis,
             });
           } catch (err) {
+            artifactStageFailed = true;
+            profiler.fail('artifact', err, {
+              kind: 'diagnosis_artifact_plan',
+              artifact_created: Boolean(diagnosisArtifact),
+              ingredient_plan_created: Boolean(ingredientPlan),
+            });
             logger?.warn(
               { err: err && err.message ? err.message : String(err), request_id: ctx.request_id },
               'aurora bff: diagnosis artifact/plan generation failed',
             );
           }
+          if (!artifactStageFailed) {
+            profiler.end('artifact', {
+              kind: 'diagnosis_artifact_plan',
+              artifact_created: Boolean(diagnosisArtifact),
+              ingredient_plan_created: Boolean(ingredientPlan),
+              recommendation_ready: Boolean(recommendationReady),
+            });
+          }
+        } else {
+          profiler.skip('artifact', 'artifact_not_requested', {
+            has_analysis: Boolean(analysis),
+            artifact_enabled: Boolean(AURORA_DIAG_ARTIFACT_ENABLED),
+            persist_last_analysis: Boolean(persistLastAnalysis),
+          });
         }
 
         const visionModelCalled = Boolean(visionRuntime);
@@ -54161,6 +54383,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
+          ...(reportModelCalled || reportStageOutcome !== 'not_requested' || reportStageAttempts > 0
+            ? {
+                report_stage_budget_ms: Math.max(0, Math.trunc(Number(reportStageBudgetMs) || 0)),
+                report_stage_elapsed_ms: Math.max(0, Number(reportStageElapsedMs) || 0),
+                report_stage_outcome: reportStageOutcome,
+                report_stage_attempts: Math.max(0, Math.trunc(Number(reportStageAttempts) || 0)),
+              }
+            : {}),
+          ...(budgetAbortStage ? { budget_abort_stage: budgetAbortStage } : {}),
           gate_relax_mode: AURORA_RULE_RELAX_MODE,
           low_quality_tolerated: Boolean(
             AURORA_RULE_RELAX_AGGRESSIVE &&
@@ -54754,6 +54985,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         profiler.end('render', { kind: 'envelope' });
 
         const report = profiler.report();
+        const stageTimingMeta = buildAnalysisStageTimingMeta(report);
+        if (envelope && envelope.analysis_meta && typeof envelope.analysis_meta === 'object') {
+          envelope.analysis_meta = {
+            ...envelope.analysis_meta,
+            ...stageTimingMeta,
+          };
+        }
         logger?.info(
           {
             kind: shadowRun ? 'skin_analysis_profile_shadow' : 'skin_analysis_profile',
@@ -54772,9 +55010,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             routine_payload_shape: routinePayloadShape,
             routine_preview_items_count: routineProductCandidates.length,
             routine_product_enrichment_deferred: Boolean(routineProductsPreviewCard),
+            report_failure_reason: reportModelErrorReason || null,
+            report_stage_budget_ms: reportStageBudgetMs,
+            report_stage_elapsed_ms: reportStageElapsedMs,
+            report_stage_outcome: reportStageOutcome,
+            report_stage_attempts: reportStageAttempts,
+            budget_abort_stage: budgetAbortStage || null,
             total_ms: report.total_ms,
             llm_summary: report.llm_summary,
             stages: report.stages,
+            ...stageTimingMeta,
           },
           'aurora bff: skin analysis profile',
         );
@@ -55067,6 +55312,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const timeoutReasonText = ctx.lang === 'CN'
           ? '分析超时，已降级为低置信度基础方案。'
           : 'Analysis timed out and was downgraded to a low-confidence baseline.';
+        const timeoutElapsedMs = Math.max(0, Date.now() - analysisBudgetStartedAtMs);
+        const timeoutStageTimingMeta = {
+          stage_timings_ms: {
+            analysis: timeoutElapsedMs,
+          },
+          slowest_stage: 'analysis',
+          slowest_stage_ms: timeoutElapsedMs,
+          slowest_stage_status: 'timeout',
+        };
         const timeoutRoutineInput = resolveSkinAnalysisRoutineInput({
           parsedBody: parsed.data,
           rawBody: req.body || {},
@@ -55117,6 +55371,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
+            report_failure_reason: 'ANALYSIS_BUDGET_TIMEOUT',
+            report_stage_budget_ms: 0,
+            report_stage_elapsed_ms: timeoutElapsedMs,
+            report_stage_outcome: 'analysis_budget_timeout',
+            report_stage_attempts: 0,
+            budget_abort_stage: 'analysis',
+            ...timeoutStageTimingMeta,
           },
         };
         scheduleSkinAnalysisKbBackfill({
@@ -55142,6 +55403,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
+            report_failure_reason: 'ANALYSIS_BUDGET_TIMEOUT',
+            report_stage_budget_ms: 0,
+            report_stage_elapsed_ms: timeoutElapsedMs,
+            report_stage_outcome: 'analysis_budget_timeout',
+            report_stage_attempts: 0,
+            budget_abort_stage: 'analysis',
+            ...timeoutStageTimingMeta,
           },
           logger,
         });
@@ -55203,6 +55471,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(AURORA_RULE_RELAX_AGGRESSIVE),
             degrade_reason: 'analysis_budget_timeout',
+            report_failure_reason: 'ANALYSIS_BUDGET_TIMEOUT',
+            report_stage_budget_ms: 0,
+            report_stage_elapsed_ms: timeoutElapsedMs,
+            report_stage_outcome: 'analysis_budget_timeout',
+            report_stage_attempts: 0,
+            budget_abort_stage: 'analysis',
+            ...timeoutStageTimingMeta,
           },
         });
         const degradedGuardrail = await applyProductIntelGuardrailsToEnvelope({

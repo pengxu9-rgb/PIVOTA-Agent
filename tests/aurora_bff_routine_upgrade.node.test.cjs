@@ -10,6 +10,70 @@ const {
   parseCards,
   findCard,
 } = require('./aurora_bff_test_harness.cjs');
+const {
+  adjudicateReportCanonicalLayer,
+  renderReportCanonicalLayer,
+} = require('../src/auroraBff/skinAnalysisContract');
+
+function buildReportSuccessStub({ lang = 'en-US', priority = 'barrier' } = {}) {
+  const canonical = adjudicateReportCanonicalLayer(
+    {
+      needs_risk_check: true,
+      summary_focus: { priority, primary_cues: priority === 'barrier' ? ['redness', 'texture'] : [priority] },
+      insights: [
+        {
+          cue: 'redness',
+          region: 'cheeks',
+          severity: 'moderate',
+          confidence: 'high',
+          evidence: 'cheek redness',
+        },
+      ],
+      routine_steps: [
+        {
+          time: 'am',
+          step_type: 'cleanse',
+          target: 'barrier',
+          cadence: 'daily',
+          intensity: 'gentle',
+          linked_cues: ['redness'],
+        },
+      ],
+      watchouts: ['pause_if_stinging'],
+      follow_up: { intent: 'reaction_check', conditional_followups: ['routine_share'] },
+      two_week_focus: ['stabilize_barrier'],
+      risk_flags: [],
+    },
+    {
+      reportContext: {
+        concern_rank: ['redness', 'texture'],
+        deterministic_signals: {
+          redness: 'mid',
+          oiliness: 'low',
+          acne_like: 'few',
+          dryness: 'some',
+          texture: 'rough',
+        },
+        routine_summary: { moisturizer: 'yes', sunscreen: 'unknown', actives: ['retinoid'] },
+        constraints: ['sensitive-skin self-report'],
+        vision_cues: [{ cue: 'redness', region: 'cheeks', severity: 'moderate', confidence: 'high' }],
+        quality: { grade: 'pass' },
+      },
+    },
+  );
+  return {
+    ok: true,
+    provider: 'gemini',
+    reason: null,
+    schema_violation: false,
+    semantic_violation: false,
+    layer: renderReportCanonicalLayer(canonical, { lang, quality: { grade: 'pass' } }),
+    canonical,
+    semantic: { ok: true, useful_output: true, issues: [] },
+    retry: { attempted: 0, final: 'success', last_reason: null },
+    prompt_version: 'skin_v3',
+  };
+}
 
 test('/v1/chat routine: timeout degrades to confidence_notice(timeout_degraded) with routine recovery chips', async () => {
   await withEnv(
@@ -349,6 +413,141 @@ test('/v1/analysis/skin: nested legacy profile.current_routine also emits routin
         assert.equal(preview.payload && preview.payload.payload_shape, 'legacy_string');
         assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total >= 2, true);
       } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: report-stage timeout degrades quickly and preserves routine preview', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
+      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '350',
+      AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
+      AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS: '0',
+      AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS: '100',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat();
+      try {
+        harness.routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => {
+            await sleep(4000);
+            return buildReportSuccessStub({ lang: 'en-US' });
+          },
+        });
+        const uid = buildTestUid('routine_report_stage_timeout');
+        const startedAt = Date.now();
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'CeraVe Foaming Cleanser' },
+                { step: 'sunscreen', product: 'La Roche-Posay Anthelios' },
+              ],
+              pm: [
+                { step: 'treatment', product: 'Retinoid serum' },
+                { step: 'moisturizer', product: 'CeraVe PM Lotion' },
+              ],
+            },
+          })
+          .expect(200);
+        const elapsedMs = Date.now() - startedAt;
+
+        const cards = parseCards(resp.body);
+        const analysisSummary = findCard(cards, 'analysis_summary') || findCard(cards, 'analysis_story_v2');
+        const preview = findCard(cards, 'routine_products_preview');
+
+        assert.ok(analysisSummary, 'analysis card should still exist');
+        assert.ok(preview, 'routine preview should still exist');
+        assert.equal(elapsedMs < 3000, true, `request should degrade quickly, got ${elapsedMs}ms`);
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_outcome, 'budget_timeout');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_failure_reason, 'REPORT_STAGE_BUDGET_TIMEOUT');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.budget_abort_stage, 'report');
+        assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_attempts), 1);
+      } finally {
+        harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: successful report stage exposes stage timing metadata', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_SKIN_GEMINI_API_KEY: 'test-key',
+      GEMINI_API_KEY: 'test-key',
+      GOOGLE_API_KEY: 'test-key',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_BFF_ANALYSIS_BUDGET_MS: '5000',
+      AURORA_ANALYSIS_REPORT_STAGE_BUDGET_MS: '2000',
+      AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS: '250',
+      AURORA_ANALYSIS_REPORT_STAGE_RESERVE_MS: '0',
+      AURORA_ANALYSIS_REPORT_STAGE_TIMEOUT_FLOOR_MS: '100',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat();
+      try {
+        harness.routesMod.__internal.__setSkinLlmStrategyRunnersForTest({
+          report: async () => buildReportSuccessStub({ lang: 'en-US' }),
+          deepening: async () => ({
+            ok: false,
+            provider: 'gemini',
+            reason: 'OPTIONAL_STEP_FAILED',
+            layer: null,
+          }),
+        });
+        const uid = buildTestUid('routine_report_stage_success');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product: 'CeraVe Foaming Cleanser' },
+                { step: 'sunscreen', product: 'La Roche-Posay Anthelios' },
+              ],
+              pm: [
+                { step: 'treatment', product: 'Retinoid serum' },
+                { step: 'moisturizer', product: 'CeraVe PM Lotion' },
+              ],
+            },
+            recentLogs: [{ reaction: 'stinging after serum' }],
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const analysisSummary = findCard(cards, 'analysis_summary') || findCard(cards, 'analysis_story_v2');
+        assert.ok(analysisSummary, 'analysis card should exist');
+        assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_outcome, 'success');
+        assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_budget_ms) > 0, true);
+        assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_elapsed_ms) >= 0, true);
+        assert.equal(Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.report_stage_attempts) >= 1, true);
+        assert.equal(
+          Number(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.stage_timings_ms && resp.body.analysis_meta.stage_timings_ms.report) >= 0,
+          true,
+        );
+        assert.ok(typeof (resp.body && resp.body.analysis_meta && resp.body.analysis_meta.slowest_stage) === 'string');
+      } finally {
+        harness.routesMod.__internal.__resetSkinLlmStrategyRunnersForTest();
         harness.restore();
       }
     },
