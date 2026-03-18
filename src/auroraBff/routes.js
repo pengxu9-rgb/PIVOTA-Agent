@@ -53068,7 +53068,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const explicitPhotoFirstRequested = parsed.data.use_photo === true;
         const routineAuditFastPathEligible =
           AURORA_ROUTINE_AUDIT_V1_ENABLED &&
-          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
           AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
           hasRoutine &&
           !explicitPhotoFirstRequested &&
