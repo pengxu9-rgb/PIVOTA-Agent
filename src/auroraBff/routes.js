@@ -15873,6 +15873,23 @@ function shouldSkipQaByBudget({ qaContext, stage } = {}) {
   return true;
 }
 
+function resolveAnalysisStoryForcedSkipReason(analysisMeta) {
+  const meta = isPlainObject(analysisMeta) ? analysisMeta : null;
+  if (!meta) return null;
+  if (meta.report_stage_recovered === true) {
+    return 'report_stage_recovered_skip_story_llm';
+  }
+  const reportStageOutcome = pickFirstString(meta.report_stage_outcome);
+  if (reportStageOutcome === 'budget_timeout' || reportStageOutcome === 'analysis_budget_timeout') {
+    return 'report_stage_timeout_skip_story_llm';
+  }
+  const budgetAbortStage = pickFirstString(meta.budget_abort_stage);
+  if (budgetAbortStage === 'report' || budgetAbortStage === 'analysis') {
+    return 'report_stage_timeout_skip_story_llm';
+  }
+  return null;
+}
+
 function pickDualQaProviders({ primary = 'gemini' } = {}) {
   const providers = [];
   const hasGemini = hasAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
@@ -32144,6 +32161,14 @@ async function generateAnalysisStoryV2JsonWithLlm({
   qaContext = null,
 } = {}) {
   const deterministic = generateAnalysisStoryV2Json({ evidence, fallbackStory });
+  const forcedSkipReason = pickFirstString(
+    qaContext && qaContext.story_force_deterministic_reason,
+    qaContext && qaContext.story_skip_reason,
+  );
+  if (forcedSkipReason) {
+    markQaContextSkip(qaContext, 'story', forcedSkipReason);
+    return deterministic;
+  }
   const mode = resolveQaMode(qaMode);
   if (mode === 'off') {
     markQaContextSkip(qaContext, 'story', 'qa_mode_off');
@@ -32186,6 +32211,14 @@ async function reviewAnalysisStoryV2JsonWithLlm({
   qaContext = null,
 } = {}) {
   const localReviewed = reviewAnalysisStoryV2Json({ story, evidence });
+  const forcedSkipReason = pickFirstString(
+    qaContext && qaContext.story_force_deterministic_reason,
+    qaContext && qaContext.story_skip_reason,
+  );
+  if (forcedSkipReason) {
+    markQaContextSkip(qaContext, 'story', forcedSkipReason);
+    return localReviewed;
+  }
   const mode = resolveQaMode(qaMode);
   if (mode !== 'dual') {
     markQaContextSkip(qaContext, 'story', mode === 'off' ? 'qa_mode_off' : 'single_mode_skip_secondary_review');
@@ -32427,6 +32460,8 @@ async function applyProductIntelGuardrailsToEnvelope({
   if (!isPlainObject(base)) {
     return { envelope: base, dropped: 0, externalized: 0, rejected: [] };
   }
+  const analysisMetaBase = isPlainObject(base.analysis_meta) ? { ...base.analysis_meta } : null;
+  const storyForceDeterministicReason = resolveAnalysisStoryForcedSkipReason(analysisMetaBase);
   const qaRuntimeObj = isPlainObject(qaRuntime) ? qaRuntime : {};
   const qaBudgetMsRaw = qaRuntimeObj.budget_ms;
   const qaStartedAtMsRaw = qaRuntimeObj.started_at_ms;
@@ -32446,6 +32481,7 @@ async function applyProductIntelGuardrailsToEnvelope({
       qaAllowOpenAiFallbackRaw !== undefined && qaAllowOpenAiFallbackRaw !== null
         ? Boolean(qaAllowOpenAiFallbackRaw)
         : AURORA_LLM_OPENAI_FALLBACK_ENABLED,
+    ...(storyForceDeterministicReason ? { story_force_deterministic_reason: storyForceDeterministicReason } : {}),
     story_meta: {},
     relevance_meta: {},
   };
@@ -32496,7 +32532,6 @@ async function applyProductIntelGuardrailsToEnvelope({
     allowOpenAiFallback: qaContext.qa_openai_fallback_enabled,
     qaContext,
   });
-  const analysisMetaBase = isPlainObject(base.analysis_meta) ? { ...base.analysis_meta } : null;
   const qaSkippedReason = pickFirstString(
     qaContext.story_meta && qaContext.story_meta.skipped_reason,
     qaContext.relevance_meta && qaContext.relevance_meta.skipped_reason,

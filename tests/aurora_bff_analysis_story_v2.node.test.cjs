@@ -146,6 +146,43 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
   assert.deepEqual(planCard.payload.targets[0].products.dupes, []);
 });
 
+test('analysis_story_v2: forced deterministic skip bypasses story llm when report already degraded', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const qaContext = {
+    story_force_deterministic_reason: 'report_stage_timeout_skip_story_llm',
+    story_meta: {},
+    relevance_meta: {},
+  };
+  const cards = [
+    {
+      card_id: 'analysis_1',
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: 'gemini_report',
+        analysis: { features: [{ observation: 'mild redness around cheek' }] },
+        low_confidence: false,
+      },
+    },
+  ];
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+    ctx: { request_id: 'req_story_skip_1' },
+    profile: { currentRoutine: { schema_version: 'aurora.routine_intake.v1', am: [], pm: [] } },
+    language: 'EN',
+    qaContext,
+  });
+
+  const storyCard = out.find((card) => card && card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'story card should still be present via deterministic fallback');
+  assert.equal(Boolean(out.find((card) => card && card.type === 'analysis_summary')), false);
+  assert.equal(qaContext.story_meta && qaContext.story_meta.skipped, true);
+  assert.equal(qaContext.story_meta && qaContext.story_meta.skipped_reason, 'report_stage_timeout_skip_story_llm');
+});
+
 test('analysis_story_v2: evidence -> generate -> review pipeline enforces routine bridge and disclaimer', () => {
   const internal = loadInternalWithFlags({});
   const fallback = {
