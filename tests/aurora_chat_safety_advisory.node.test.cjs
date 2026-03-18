@@ -389,3 +389,61 @@ test('/v1/chat auto-resets pregnant profile when pregnancy_due_date is in the pa
     },
   );
 });
+
+test('/v1/chat profile patch action with reply_text short-circuits after pregnancy auto-reset', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_DIAG_ARTIFACT_RETENTION_DAYS: '0',
+      AURORA_BFF_V1_CHAT_ROLLOUT_MODE: 'compatible_only',
+    },
+    async () => {
+      const express = require('express');
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      try {
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const headers = {
+          'X-Aurora-UID': 'pregnancy_auto_reset_action_uid',
+          'X-Trace-ID': 'test_trace_action',
+          'X-Brief-ID': 'test_brief_action',
+          'X-Lang': 'EN',
+        };
+
+        const chatResp = await invokeRoute(app, 'POST', '/v1/chat', {
+          headers,
+          body: {
+            action: {
+              action_id: 'chip.profile.seed.pregnancy',
+              kind: 'chip',
+              data: {
+                reply_text: 'seed pregnancy profile',
+                profile_patch: {
+                  pregnancy_status: 'pregnant',
+                  pregnancy_due_date: '2020-01-01',
+                },
+              },
+            },
+            session: { state: 'S7_PRODUCT_RECO' },
+          },
+        });
+
+        assert.equal(chatResp.status, 200);
+        const cards = Array.isArray(chatResp.body?.cards) ? chatResp.body.cards : [];
+        assert.equal(cards.length > 0, true);
+        assert.equal(cards.some((card) => card && card.type === 'error'), false);
+        const events = getExperimentEvents(chatResp.body);
+        assert.equal(events.some((evt) => evt && evt.event_name === 'pregnancy_status_auto_reset'), true);
+        assert.equal(chatResp.body?.session_patch?.meta?.pregnancy_status_auto_reset, true);
+      } finally {
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});

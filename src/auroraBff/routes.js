@@ -57286,6 +57286,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionReplyText ||
         actionLabelFromPayload ||
         '';
+      const hasExplicitUserTextInput = Boolean(String(parsed.data.message || parsed.data.query || '').trim());
       requestMessage = message;
       const pregnancyPolicy = derivePregnancyPolicyPatch({
         profile,
@@ -62607,7 +62608,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         looksLikeWeatherOrEnvironmentQuestion(message) ||
         looksLikeRecommendationRequest(message);
 
-      if (appliedProfilePatch && (!message || profileClarificationAction) && !hasExplicitUserIntentMessage) {
+      if (appliedProfilePatch && (!hasExplicitUserTextInput || profileClarificationAction) && !hasExplicitUserIntentMessage) {
         const inDiagnosisFlow =
           String(agentState || '').startsWith('DIAG_') ||
           String(ctx.state || '').startsWith('S2_') ||
