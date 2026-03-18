@@ -4,6 +4,8 @@ const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = requ
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
+const { computeAuroraChatRolloutContext } = require('../rollout');
+const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -14,10 +16,29 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
 
 let routerSingleton = null;
 
-function toBool(value) {
+function toBool(value, fallback = false) {
   const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'y' || raw === 'on';
 }
+
+const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
+const AURORA_PROFILE_V2_ENABLED = toBool(process.env.AURORA_PROFILE_V2_ENABLED, false);
+const AURORA_QA_PLANNER_V1_ENABLED = toBool(process.env.AURORA_QA_PLANNER_V1_ENABLED, false);
+const AURORA_SAFETY_ENGINE_V1_ENABLED = toBool(process.env.AURORA_SAFETY_ENGINE_V1_ENABLED, false);
+const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = toBool(process.env.AURORA_TRAVEL_WEATHER_LIVE_ENABLED, false);
+const AURORA_LOOP_BREAKER_V2_ENABLED = toBool(process.env.AURORA_LOOP_BREAKER_V2_ENABLED, false);
+const AURORA_CHAT_RESPONSE_META_ENABLED = toBool(process.env.AURORA_CHAT_RESPONSE_META_ENABLED, false);
+const AURORA_CHAT_SKILL_ROUTER_V2_ENABLED = toBool(process.env.AURORA_CHAT_SKILL_ROUTER_V2, true);
+const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
+  profile_v2: AURORA_PROFILE_V2_ENABLED,
+  qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
+  safety_engine_v1: AURORA_SAFETY_ENGINE_V1_ENABLED,
+  travel_weather_live_v1: AURORA_TRAVEL_WEATHER_LIVE_ENABLED,
+  loop_breaker_v2: AURORA_LOOP_BREAKER_V2_ENABLED,
+  skill_router_v2: AURORA_CHAT_SKILL_ROUTER_V2_ENABLED,
+  chat_response_meta: AURORA_CHAT_RESPONSE_META_ENABLED,
+});
 
 function createRouter() {
   const llmGateway = new LlmGateway({
@@ -35,6 +56,10 @@ function getRouter() {
 
 function __resetRouterForTests() {
   routerSingleton = null;
+}
+
+function __setRouterForTests(router) {
+  routerSingleton = router || null;
 }
 
 function hasAuthorizationHeader(req) {
@@ -62,6 +87,88 @@ function mergeResponseMeta(payload, authMeta) {
     ...base,
     meta,
   };
+}
+
+function setResponseHeader(res, name, value) {
+  if (!res || value == null) return;
+  const normalizedValue = String(value);
+  if (typeof res.setHeader === 'function') {
+    res.setHeader(name, normalizedValue);
+    return;
+  }
+  if (typeof res.set === 'function') {
+    res.set(name, normalizedValue);
+    return;
+  }
+  if (isPlainObject(res.headers)) {
+    res.headers[name.toLowerCase()] = normalizedValue;
+  }
+}
+
+function applyRolloutMeta(payload, { req, ctx, body, identity, res } = {}) {
+  const base = isPlainObject(payload) ? { ...payload } : {};
+  const rolloutContext = computeAuroraChatRolloutContext({
+    req,
+    ctx,
+    body,
+    identity,
+    globalFlags: AURORA_CHAT_GLOBAL_FLAGS,
+    policyVersion: AURORA_CHAT_POLICY_VERSION,
+  });
+  const effectiveFlags = isPlainObject(rolloutContext && rolloutContext.effective_flags)
+    ? rolloutContext.effective_flags
+    : AURORA_CHAT_GLOBAL_FLAGS;
+  const rolloutMeta = {
+    ...(isPlainObject(base.meta) ? base.meta : {}),
+    policy_version: rolloutContext.policy_version || AURORA_CHAT_POLICY_VERSION,
+    rollout_variant: rolloutContext.variant || 'legacy',
+    rollout_bucket: Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : null,
+    rollout_bucket_key_source: rolloutContext.bucket_key_source || null,
+    rollout_forced_variant: rolloutContext.forced_variant || null,
+    rollout_applied: Boolean(rolloutContext.applied),
+    build_sha: rolloutContext.build_sha || null,
+    flags_effective: {
+      profile_v2: Boolean(effectiveFlags.profile_v2),
+      qa_planner_v1: Boolean(effectiveFlags.qa_planner_v1),
+      safety_engine_v1: Boolean(effectiveFlags.safety_engine_v1),
+      travel_weather_live_v1: Boolean(effectiveFlags.travel_weather_live_v1),
+      loop_breaker_v2: Boolean(effectiveFlags.loop_breaker_v2),
+      skill_router_v2: Boolean(effectiveFlags.skill_router_v2),
+      chat_response_meta: Boolean(effectiveFlags.chat_response_meta),
+    },
+    gate_policy_version: AURORA_GATE_POLICY_META_VERSION,
+  };
+
+  setResponseHeader(
+    res,
+    'x-aurora-bucket',
+    String(Number.isFinite(Number(rolloutContext.bucket)) ? Number(rolloutContext.bucket) : 0),
+  );
+  setResponseHeader(res, 'x-aurora-variant', String(rolloutContext.variant || 'legacy'));
+  setResponseHeader(
+    res,
+    'x-aurora-policy-version',
+    String(rolloutContext.policy_version || rolloutMeta.policy_version || 'legacy'),
+  );
+
+  const out = {
+    ...base,
+    meta: rolloutMeta,
+  };
+
+  const sessionPatch = isPlainObject(base.session_patch)
+    ? { ...base.session_patch }
+    : isPlainObject(base.sessionPatch)
+      ? { ...base.sessionPatch }
+      : null;
+  if (sessionPatch) {
+    const sessionMeta = isPlainObject(sessionPatch.meta) ? { ...sessionPatch.meta } : {};
+    sessionPatch.meta = { ...sessionMeta, ...rolloutMeta };
+    if (isPlainObject(base.session_patch)) out.session_patch = sessionPatch;
+    else out.sessionPatch = sessionPatch;
+  }
+
+  return out;
 }
 
 async function resolveRequestIdentity(req, internal = null) {
@@ -856,7 +963,17 @@ async function handleChat(req, res) {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
     const skillResponse = await getRouter().route(skillRequest);
-    res.json(mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta));
+    const responsePayload = applyRolloutMeta(
+      mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta),
+      {
+        req,
+        ctx: auth.ctx,
+        body: req.body || {},
+        identity: req._identity || null,
+        res,
+      },
+    );
+    res.json(responsePayload);
   } catch (error) {
     console.error('[chat] skill execution error:', error);
     res.status(500).json({
@@ -1025,7 +1142,15 @@ async function handleChatStream(req, res) {
           threadOps: [],
         });
 
-        sendEvent('result', mergeResponseMeta(v1Response, auth.ctx.auth_meta));
+        sendEvent(
+          'result',
+          applyRolloutMeta(mergeResponseMeta(v1Response, auth.ctx.auth_meta), {
+            req,
+            ctx: auth.ctx,
+            body: req.body || {},
+            identity: req._identity || null,
+          }),
+        );
         sendEvent('done', {});
         return;
       }
@@ -1047,12 +1172,28 @@ async function handleChatStream(req, res) {
       }
       if (event.type === 'result') {
         resultSent = true;
-        sendEvent('result', mergeResponseMeta(mapSkillResponseToStreamEnvelope(event.data, thinkingSteps), auth.ctx.auth_meta));
+        sendEvent(
+          'result',
+          applyRolloutMeta(mergeResponseMeta(mapSkillResponseToStreamEnvelope(event.data, thinkingSteps), auth.ctx.auth_meta), {
+            req,
+            ctx: auth.ctx,
+            body: req.body || {},
+            identity: req._identity || null,
+          }),
+        );
       }
     });
 
     if (!resultSent) {
-      sendEvent('result', mergeResponseMeta(mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps), auth.ctx.auth_meta));
+      sendEvent(
+        'result',
+        applyRolloutMeta(mergeResponseMeta(mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps), auth.ctx.auth_meta), {
+          req,
+          ctx: auth.ctx,
+          body: req.body || {},
+          identity: req._identity || null,
+        }),
+      );
     }
     sendEvent('done', {});
   } catch (error) {
@@ -1157,5 +1298,6 @@ module.exports = {
   enrichSkillRequestForCompat,
   handleChat,
   handleChatStream,
+  __setRouterForTests,
   __resetRouterForTests,
 };
