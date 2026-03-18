@@ -53006,6 +53006,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         const routineDerivedProfilePatch = extractProfilePatchFromRoutinePayload(routineInputRaw);
 
         if (routineFromRequest !== undefined) {
+          const routinePersistencePatch = {
+            ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
+          };
           const normalizedRoutine =
             (requestedRoutineState && requestedRoutineState.current_routine_struct) ||
             (requestedRoutineState && requestedRoutineState.current_routine_text) ||
@@ -53013,21 +53016,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           // Best-effort persistence. Analysis should still proceed even if storage is unavailable.
           profile = {
             ...(profile || {}),
-            ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
+            ...routinePersistencePatch,
             currentRoutine: normalizedRoutine,
           };
           if (persistLastAnalysis) {
-            try {
-              profile = await upsertProfileForIdentity(
-                { auroraUid: identity.auroraUid, userId: identity.userId },
-                {
-                  ...(routineDerivedProfilePatch && typeof routineDerivedProfilePatch === 'object' ? routineDerivedProfilePatch : {}),
-                  currentRoutine: normalizedRoutine,
-                },
-              );
-            } catch (err) {
+            void upsertProfileForIdentity(
+              { auroraUid: identity.auroraUid, userId: identity.userId },
+              {
+                ...routinePersistencePatch,
+                currentRoutine: normalizedRoutine,
+              },
+            ).catch((err) => {
               logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist current routine for analysis');
-            }
+            });
           }
           profile = applyRequestProfileOverlay(profile, { fillOnly: true });
           profileSummary = summarizeProfileForContext(profile);
