@@ -217,10 +217,23 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
     storyCard.payload.priority_findings.some((row) => /retinoid|retinol/i.test(row.title)),
     'story should mention the PM retinoid cadence',
   );
+  assert.ok(
+    storyCard.payload.priority_findings.some((row) => /CeraVe PM|recovery step/i.test(row.title)),
+    'story should include a concrete recovery-step adjustment',
+  );
+  assert.doesNotMatch(
+    storyCard.payload.priority_findings.map((row) => row.title).join(' '),
+    /routine-structure read/i,
+  );
 
   const assistantText = internal.buildAssistantMessageFromStoryV2(storyCard.payload, { language: 'EN' });
   assert.doesNotMatch(assistantText, /pending|unconfirmed/i);
-  assert.match(assistantText, /routine read|sunscreen|retinoid/i);
+  assert.doesNotMatch(assistantText, /Analysis complete|Confidence for this read|What would you like to explore/i);
+  assert.doesNotMatch(assistantText, /\.\./);
+  assert.match(assistantText, /Fix first:/i);
+  assert.match(assistantText, /This week:/i);
+  assert.match(assistantText, /sunscreen|SPF/i);
+  assert.match(assistantText, /retinoid|Retinol Serum/i);
 });
 
 test('analysis_story_v2: forced deterministic skip bypasses story llm when report already degraded', async () => {

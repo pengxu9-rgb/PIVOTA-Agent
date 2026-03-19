@@ -22628,6 +22628,58 @@ async function loadLatestDiagnosisArtifactForRoute({ identity, session, ctx, log
   }
 }
 
+function stripStorySummaryTerminalPunctuation(value) {
+  const text = pickFirstTrimmed(value);
+  if (!text) return '';
+  return text.replace(/\s+/g, ' ').replace(/[.?!;:。？！；：]+$/u, '').trim();
+}
+
+function normalizeStoryActionStepName(value) {
+  const text = stripStorySummaryTerminalPunctuation(value);
+  if (!text) return '';
+  return text
+    .replace(/\s*\((?:low frequency first)\)\s*$/i, '')
+    .replace(/\s*（先低频）\s*$/u, '')
+    .trim();
+}
+
+function buildAnalysisStoryImmediateActions(storyPayload, { language } = {}) {
+  const isCn = language === 'CN';
+  const story = isPlainObject(storyPayload) ? storyPayload : {};
+  const amPlan = Array.isArray(story.am_plan) ? story.am_plan : [];
+  const pmPlan = Array.isArray(story.pm_plan) ? story.pm_plan : [];
+  const actions = [];
+  const sunscreenStep = amPlan.find((step) => /spf|sunscreen|防晒/i.test(pickFirstTrimmed(step && step.step)));
+  const treatmentStep = pmPlan.find((step) => /retinoid|retinol|retinal|tretinoin|adapalene|维a|a醇/i.test(pickFirstTrimmed(step && step.step)));
+  const recoveryStep = pmPlan.find((step, idx) => idx !== 1 && /moist|cream|barrier|修护|保湿/i.test(pickFirstTrimmed(step && step.step)))
+    || pmPlan[2]
+    || null;
+  const sunscreenName = normalizeStoryActionStepName(sunscreenStep && sunscreenStep.step);
+  const treatmentName = normalizeStoryActionStepName(treatmentStep && treatmentStep.step);
+  const recoveryName = normalizeStoryActionStepName(recoveryStep && recoveryStep.step);
+
+  if (isCn) {
+    if (sunscreenName) {
+      actions.push(/^(补上|加入|使用)/.test(sunscreenName) ? `${sunscreenName}，并固定每天早上用` : `早上补上 ${sunscreenName}，并固定每天用`);
+    }
+    if (treatmentName && recoveryName && treatmentName !== recoveryName) {
+      actions.push(`${treatmentName} 先维持每周 2-3 晚，后面固定接 ${recoveryName}`);
+    } else if (treatmentName) {
+      actions.push(`${treatmentName} 先维持每周 2-3 晚，不要急着加频率`);
+    }
+  } else {
+    if (sunscreenName) {
+      actions.push(/^add\b/i.test(sunscreenName) ? `${sunscreenName} every morning` : `add ${sunscreenName} every morning`);
+    }
+    if (treatmentName && recoveryName && treatmentName.toLowerCase() !== recoveryName.toLowerCase()) {
+      actions.push(`keep ${treatmentName} to 2-3 nights a week and follow with ${recoveryName}`);
+    } else if (treatmentName) {
+      actions.push(`keep ${treatmentName} to 2-3 nights a week instead of escalating it`);
+    }
+  }
+  return actions.filter(Boolean).slice(0, 2);
+}
+
 function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
   const isCn = language === 'CN';
   const story = isPlainObject(storyPayload) ? storyPayload : {};
@@ -22636,37 +22688,39 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
   const skinType = pickFirstTrimmed(sp.skin_type_tendency, sp.skin_type);
   const sensitivity = pickFirstTrimmed(sp.sensitivity_tendency, sp.sensitivity);
   const confLevel = pickFirstTrimmed(conf.level);
-  const headline = pickFirstTrimmed(story && story.ui_card_v1 && story.ui_card_v1.headline, Array.isArray(story.target_state) ? story.target_state[0] : '');
+  const headline = stripStorySummaryTerminalPunctuation(
+    pickFirstTrimmed(story && story.ui_card_v1 && story.ui_card_v1.headline, Array.isArray(story.target_state) ? story.target_state[0] : ''),
+  );
   const findings = Array.isArray(story.priority_findings)
-    ? story.priority_findings.map((f) => pickFirstTrimmed(f && f.title, f && f.detail)).filter(Boolean).slice(0, 3)
+    ? story.priority_findings.map((f) => stripStorySummaryTerminalPunctuation(pickFirstTrimmed(f && f.title, f && f.detail))).filter(Boolean).slice(0, 3)
     : [];
+  const actions = buildAnalysisStoryImmediateActions(story, { language });
   const lines = [];
   if (isCn) {
     const descriptors = [];
     const skinLabel = skinType ? ({ oily: '偏油', dry: '偏干', combination: '混合', normal: '中性' }[skinType] || skinType) : null;
     const sensLabel = sensitivity ? ({ low: '低', medium: '中等', high: '高' }[sensitivity] || sensitivity) : null;
-    lines.push('分析完成。');
     if (skinLabel) descriptors.push(`肤质倾向为 **${skinLabel}**`);
     if (sensLabel) descriptors.push(`敏感度 **${sensLabel}**`);
-    if (descriptors.length) lines.push(`你的${descriptors.join('，')}。`);
-    else if (headline) lines.push(`这次 routine 判断重点是：${headline}。`);
-    if (confLevel) lines.push(`本次判断置信度为 **${confLevel === 'high' ? '高' : confLevel === 'medium' ? '中' : confLevel === 'low' ? '低' : confLevel}**。`);
-    if (findings.length) lines.push(`主要发现：${findings.join('；')}。`);
+    if (headline) lines.push(`结论：${headline}。`);
+    else if (descriptors.length) lines.push(`结论：你的${descriptors.join('，')}。`);
+    if (findings.length) lines.push(`先处理：${findings.slice(0, 2).join('；')}。`);
+    if (actions.length) lines.push(`这周先这样调：${actions.join('；')}。`);
+    else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('当前把调整控制在低刺激、屏障优先。');
   } else {
-    lines.push('Analysis complete.');
-    if (skinType && sensitivity) {
-      lines.push(`Your skin trends **${skinType}** with **${sensitivity}** sensitivity.`);
+    if (headline) {
+      lines.push(`${headline}.`);
+    } else if (skinType && sensitivity) {
+      lines.push(`This read points to **${skinType}** skin with **${sensitivity}** sensitivity.`);
     } else if (skinType) {
-      lines.push(`Your skin trends **${skinType}** in this read.`);
+      lines.push(`This read points to **${skinType}** skin.`);
     } else if (sensitivity) {
-      lines.push(`This read suggests **${sensitivity}** sensitivity.`);
-    } else if (headline) {
-      lines.push(`This routine read is mainly about: ${headline}.`);
+      lines.push(`This read points to **${sensitivity}** sensitivity.`);
     }
-    if (confLevel) lines.push(`Confidence for this read is **${confLevel}**.`);
-    if (findings.length) lines.push(`Key findings: ${findings.join('; ')}.`);
+    if (findings.length) lines.push(`Fix first: ${findings.slice(0, 2).join('; ')}.`);
+    if (actions.length) lines.push(`This week: ${actions.join('; ')}.`);
+    else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('Keep changes conservative and barrier-first until the routine settles.');
   }
-  lines.push(isCn ? '有什么想深入了解的？' : 'What would you like to explore?');
   return lines.join(' ');
 }
 
@@ -32303,6 +32357,8 @@ function buildRoutineAwareStoryFallback({
   const pmCleanser = pmItems.find((item) => item.step === 'cleanser') || null;
   const pmMoisturizer = pmItems.find((item) => item.step === 'moisturizer') || items.find((item) => item.step === 'moisturizer') || null;
   const pmRetinoid = pmItems.find((item) => looksLikeRetinoidRoutineItem(item)) || items.find((item) => looksLikeRetinoidRoutineItem(item)) || null;
+  const pmMoisturizerName = pickFirstString(pmMoisturizer && pmMoisturizer.display_name, pmMoisturizer && pmMoisturizer.product_text);
+  const pmRetinoidName = pickFirstString(pmRetinoid && pmRetinoid.display_name, pmRetinoid && pmRetinoid.product_text);
   const strongActives = items.filter((item) => looksLikeRetinoidRoutineItem(item) || looksLikeAcidRoutineItem(item));
   const hasStrongActiveStack = strongActives.length >= 2;
   const ingredientPlan = isPlainObject(ingredientPlanPayload) ? ingredientPlanPayload : {};
@@ -32353,6 +32409,10 @@ function buildRoutineAwareStoryFallback({
     priorityFindings.push(isCn
       ? '当前流程里同时出现了不止一个强活性信号，说明“治疗压力”已经跑在修护能力前面。'
       : 'The routine already carries more than one strong-active signal, which means treatment pressure is running ahead of recovery support.');
+  } else if (pmRetinoidName && pmMoisturizerName) {
+    priorityFindings.push(isCn
+      ? `${pmMoisturizerName} 应该固定接在 ${pmRetinoidName} 后面，当作夜间修护收尾，不要再在同一晚叠加新的治疗步骤。`
+      : `${pmMoisturizerName} should sit right after ${pmRetinoidName} on treatment nights so the routine has a real recovery step instead of another active.`);
   } else if (!pmMoisturizer && barrierTarget) {
     priorityFindings.push(isCn
       ? `当前晚间没有明确修护收尾，下一步更应该补 ${barrierTarget} 这类屏障支撑，而不是继续加新活性。`
