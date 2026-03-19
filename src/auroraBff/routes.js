@@ -31247,6 +31247,26 @@ function dedupeExternalSearchCtas(ctas, maxItems = 12) {
   return out;
 }
 
+function isLowSignalSupplementarySearchCta(item) {
+  const row = isPlainObject(item) ? item : {};
+  const reason = String(pickFirstString(row.reason) || '').trim().toLowerCase();
+  if (reason === 'missing_openable_url_search_fallback' || reason === 'open_contract_only_no_direct_url') {
+    return true;
+  }
+  const title = String(pickFirstString(row.title, row.name, row.query) || '').trim().toLowerCase();
+  if (title === 'open search result') return true;
+  return false;
+}
+
+function buildRenderableExternalSearchCtas(ctas, {
+  maxItems = 12,
+  hasResolvedProducts = false,
+} = {}) {
+  const deduped = dedupeExternalSearchCtas(ctas, maxItems);
+  if (!hasResolvedProducts) return deduped;
+  return deduped.filter((item) => !isLowSignalSupplementarySearchCta(item));
+}
+
 function normalizeFallbackQueryText(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -32409,7 +32429,10 @@ async function sanitizeRecoCandidatesForUi(
         ...(llmFallbackEmptyForCard > 0 ? [{ field: 'payload.recommendations', reason: 'llm_lookup_empty' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
-        ? dedupeExternalSearchCtas(externalSearchCtas, 8)
+        ? buildRenderableExternalSearchCtas(externalSearchCtas, {
+          maxItems: 8,
+          hasResolvedProducts: kept.length > 0,
+        })
         : [];
       const derivedProductsEmptyReason = deriveProductsEmptyReason({
         keptCount: kept.length,
@@ -32790,7 +32813,10 @@ async function sanitizeRecoCandidatesForUi(
         ...(llmFallbackEmptyForCard > 0 ? [{ field: 'payload.targets[].products', reason: 'llm_lookup_empty' }] : []),
       ]);
       const finalExternalSearchCtas = AURORA_DISCOVERY_CARD_IN_LIST_ENABLED
-        ? dedupeExternalSearchCtas(externalSearchCtas, 12)
+        ? buildRenderableExternalSearchCtas(externalSearchCtas, {
+          maxItems: 12,
+          hasResolvedProducts: keptProductsCount > 0,
+        })
         : [];
       const productsEmptyReason = deriveProductsEmptyReason({
         keptCount: keptProductsCount,

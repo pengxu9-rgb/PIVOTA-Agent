@@ -282,6 +282,115 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
   }
 });
 
+test('sanitizeRecoCandidatesForUi drops low-signal CTA noise once ingredient plan has recovered products', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_cta_cleanup',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                products: {
+                  competitors: [],
+                  dupes: [],
+                },
+              },
+            ],
+            external_search_ctas: [
+              {
+                title: 'Open search result',
+                url: 'https://www.google.com/search?q=Open%20search%20result',
+                source: 'catalog_miss',
+                reason: 'missing_openable_url_search_fallback',
+              },
+              {
+                title: 'Barrier Relief Moisturizer',
+                url: 'https://www.google.com/search?q=Barrier%20Relief%20Moisturizer',
+                source: 'kb',
+                reason: 'missing_openable_url_search_fallback',
+              },
+              {
+                title: 'Amazon: Ceramide NP',
+                url: 'https://www.amazon.com/s?k=Ceramide%20NP%20skincare%20product%20best',
+                source: 'amazon',
+                reason: 'search_url_demoted',
+              },
+            ],
+            __missing_catalog_queries: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                query: 'ceramide barrier moisturizer',
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        fallbackCandidateBuilder: async ({ query }) => {
+          if (!/ceramide/i.test(String(query || ''))) {
+            return { ok: true, products: [], reason: 'empty', selected_source: 'none' };
+          }
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'ceramide_ext_2',
+                merchant_id: 'external_seed',
+                name: 'Barrier Repair Gel Cream',
+                brand: 'Shield Lab',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                pdp_url: 'https://agent.pivota.cc/products/ceramide_ext_2?merchant_id=external_seed',
+                product_url: 'https://agent.pivota.cc/products/ceramide_ext_2?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/ceramide_ext_2?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+            ],
+            external_search_ctas: [
+              {
+                title: 'Calm Recovery Serum',
+                url: 'https://www.google.com/search?q=Calm%20Recovery%20Serum',
+                source: 'kb',
+                reason: 'missing_openable_url_search_fallback',
+              },
+            ],
+            selected_source: 'external_seed',
+          };
+        },
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const targets = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets : [];
+    assert.equal(targets.length, 1);
+    assert.equal(Array.isArray(targets[0]?.products?.competitors), true);
+    assert.equal(targets[0].products.competitors.length, 1);
+    assert.equal(targets[0].products.competitors[0].name, 'Barrier Repair Gel Cream');
+
+    const externalSearchCtas = Array.isArray(planCard?.payload?.external_search_ctas)
+      ? planCard.payload.external_search_ctas
+      : [];
+    assert.deepEqual(
+      externalSearchCtas.map((row) => [row.title, row.reason]),
+      [['Amazon: Ceramide NP', 'search_url_demoted']],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory load for no-photo routine summary requests', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
