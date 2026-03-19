@@ -16936,6 +16936,34 @@ function deferLastAnalysisPersistence({
   return true;
 }
 
+function deferProfilePatchPersistence({
+  identity,
+  patch,
+  logger,
+  requestId = null,
+  traceId = null,
+  upsertProfileForIdentityFn = upsertProfileForIdentity,
+} = {}) {
+  const normalizedPatch = isPlainObject(patch) ? { ...patch } : null;
+  if (!normalizedPatch || !Object.keys(normalizedPatch).length) return false;
+  setImmediate(() => {
+    upsertProfileForIdentityFn(
+      { auroraUid: identity && identity.auroraUid ? identity.auroraUid : null, userId: identity && identity.userId ? identity.userId : null },
+      normalizedPatch,
+    ).catch((err) => {
+      logger?.warn(
+        {
+          err: err && err.message ? err.message : String(err),
+          request_id: requestId,
+          trace_id: traceId,
+        },
+        'aurora bff: deferred profile patch persistence failed',
+      );
+    });
+  });
+  return true;
+}
+
 function deferDiagnosisArtifactPersistence({
   identity,
   sessionId = null,
@@ -53681,6 +53709,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let profile = null;
         let recentLogs = [];
         let pregnancyPolicyEvents = [];
+        let qualityPolicyPatchDeferred = false;
         const photos = Array.isArray(parsed.data.photos) ? parsed.data.photos : [];
         const routineOnlyMemoryFastPath = shouldUseRoutineOnlyAnalysisMemoryFastPath({
           parsedBody: parsed.data,
@@ -53751,14 +53780,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (pregnancyPolicyForDiagnosis && pregnancyPolicyForDiagnosis.patch) {
           profile = { ...(profile || {}), ...pregnancyPolicyForDiagnosis.patch };
           if (persistLastAnalysis) {
-            try {
-              profile = await upsertProfileForIdentity(
-                { auroraUid: identity.auroraUid, userId: identity.userId },
-                pregnancyPolicyForDiagnosis.patch,
-              );
-            } catch (err) {
-              logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist diagnosis pregnancy policy patch');
-            }
+            qualityPolicyPatchDeferred = deferProfilePatchPersistence({
+              identity,
+              patch: pregnancyPolicyForDiagnosis.patch,
+              logger,
+              requestId: ctx.request_id,
+              traceId: ctx.trace_id,
+            });
           }
         }
         const snapshotProfileBase =
@@ -53928,6 +53956,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           memory_mode: qualityMemoryMode,
           logs_skipped: qualityLogsSkipped,
           profile_timed_out: qualityProfileTimedOut,
+          policy_patch_deferred: qualityPolicyPatchDeferred,
         });
         logger?.info(
           {
@@ -55654,6 +55683,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           quality_memory_mode: qualityMemoryMode,
           quality_logs_skipped: qualityLogsSkipped,
+          quality_policy_patch_deferred: qualityPolicyPatchDeferred,
           ...(qualityProfileTimedOut ? { quality_profile_timed_out: true } : {}),
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
@@ -65918,6 +65948,7 @@ const __internal = {
   resolveAnalysisStoryForcedSkipReason,
   shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
+  deferProfilePatchPersistence,
   deferDiagnosisArtifactPersistence,
   applyAnalysisStoryAndRoutineSoftGate,
   applyProductIntelGuardrailsToEnvelope,

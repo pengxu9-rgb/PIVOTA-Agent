@@ -296,3 +296,32 @@ test('deferDiagnosisArtifactPersistence saves artifact and plan asynchronously w
     delete require.cache[moduleId];
   }
 });
+
+test('deferProfilePatchPersistence saves profile patch asynchronously', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const calls = [];
+    assert.equal(
+      __internal.deferProfilePatchPersistence({
+        identity: { auroraUid: 'guest_patch_123', userId: 'user_patch_123' },
+        patch: { pregnancy_status: 'not_pregnant' },
+        upsertProfileForIdentityFn: async (identity, patch) => {
+          calls.push({ identity, patch });
+          return { ok: true };
+        },
+      }),
+      true,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
+      identity: { auroraUid: 'guest_patch_123', userId: 'user_patch_123' },
+      patch: { pregnancy_status: 'not_pregnant' },
+    });
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
