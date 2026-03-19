@@ -19956,7 +19956,18 @@ function detectRoutineRiskFlags(productLabel) {
 function normalizeRoutineStepRow(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const step = String(raw.step || raw.role || raw.category || '').trim();
-  const product = String(raw.product || raw.name || raw.value || '').trim();
+  const product = String(
+    pickFirstTrimmed(
+      raw.product,
+      raw.product_text,
+      raw.productText,
+      raw.display_name,
+      raw.displayName,
+      raw.name,
+      raw.title,
+      raw.value,
+    ) || '',
+  ).trim();
   if (!step && !product) return null;
   const role = normalizeRoutineRole(step, product);
   return {
