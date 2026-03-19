@@ -65,7 +65,7 @@ test('ingredient fallback: catalog miss returns external search candidates and m
   }
 });
 
-test('ingredient fallback: partial catalog keeps local hit and supplements remainder with external candidates', () => {
+test('ingredient fallback: partial catalog keeps clean local hit and exposes missing-catalog signal without forcing search noise', () => {
   const { dir, file } = createTempCatalog([
     {
       product_id: 'local_mid_1',
@@ -93,19 +93,16 @@ test('ingredient fallback: partial catalog keeps local hit and supplements remai
     });
 
     assert.ok(plan);
-    assert.equal(plan.external_fallback_used, true);
     const target = plan.targets.find((item) => item.ingredient_id === 'azelaic_acid');
     assert.ok(target);
 
     const merged = [...target.products.competitors, ...target.products.dupes];
-    assert.equal(merged.length, 3);
+    assert.equal(merged.length, 1);
     assert.equal(merged.some((item) => item.product_id === 'local_mid_1'), true);
     assert.equal(merged.some((item) => item.source === 'kb'), true);
-    assert.equal(merged.some((item) => item.source !== 'kb'), true);
-    assert.equal(merged.some((item) => item.fallback_type === 'search'), true);
-    assert.equal(merged.every((item) => item.open_target === 'external'), true);
+    assert.equal(merged.some((item) => item.source !== 'kb'), false);
     assert.equal(plan.__missing_catalog_queries.length >= 1, true);
-    assert.equal(plan.__missing_catalog_queries[0].status === 'external_fallback_returned' || plan.__missing_catalog_queries[0].status === 'catalog_partial', true);
+    assert.equal(plan.__missing_catalog_queries[0].status, 'catalog_partial');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
