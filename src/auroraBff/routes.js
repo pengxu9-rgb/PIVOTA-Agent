@@ -32486,6 +32486,37 @@ function normalizeExistingProductsOptimization(value) {
   return normalized;
 }
 
+function formatRoutineProductMatchLead(item, language) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const verdict = pickFirstString(item && item.fit_summary && item.fit_summary.verdict).toLowerCase();
+  if (isCn) {
+    return ({
+      good_match: '匹配度高',
+      partial_match: '基本匹配',
+      needs_adjustment: '需要调整',
+      unclear: '需要确认',
+    }[verdict] || '需要确认');
+  }
+  return ({
+    good_match: 'good match',
+    partial_match: 'partial match',
+    needs_adjustment: 'needs adjustment',
+    unclear: 'needs verification',
+  }[verdict] || 'needs verification');
+}
+
+function buildRoutineOptimizationSentence(name, matchLead, body, language) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const cleanName = pickFirstString(name);
+  const cleanLead = stripStorySummaryTerminalPunctuation(pickFirstString(matchLead));
+  const cleanBody = stripStorySummaryTerminalPunctuation(pickFirstString(body));
+  if (!cleanName || !cleanBody) return '';
+  if (isCn) {
+    return `${cleanName}：${cleanLead || '需要确认'}。${cleanBody}。`;
+  }
+  return `${cleanName}: ${cleanLead || 'needs verification'}. ${cleanBody}.`;
+}
+
 function buildRoutineExistingProductsOptimization({
   items,
   language,
@@ -32517,106 +32548,152 @@ function buildRoutineExistingProductsOptimization({
     if (!normalized || target.includes(normalized) || target.length >= max) return;
     target.push(normalized);
   };
-  const reasonFor = (item) => stripStorySummaryTerminalPunctuation(
-    pickFirstString(
-      item && item.fit_summary && item.fit_summary.reason,
-      item && item.suggested_usage && item.suggested_usage.reason,
-      item && item.potential_concern,
-    ),
-  );
   for (const item of orderedItems) {
     const name = pickFirstString(item && item.display_name, item && item.product_text);
     if (!name) continue;
     const actionCode = pickFirstString(item && item.suggested_usage && item.suggested_usage.action, 'keep').toLowerCase();
     const step = normalizeRoutineIntakeStep(item && item.step);
     const slot = normalizeRoutineIntakeSlot(item && item.slot);
-    const reason = reasonFor(item);
+    const matchLead = formatRoutineProductMatchLead(item, language);
     if (actionCode === 'move_to_am') {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留，但只放在早上。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it, but make it an AM-only step.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '保留，但只放在早上' : 'Keep it, but make it an AM-only step',
+          language,
+        ),
       );
       continue;
     }
     if (actionCode === 'move_to_pm') {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留，但更适合放到晚上。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it, but shift it to PM instead of daytime use.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '保留，但更适合放到晚上' : 'Keep it, but shift it to PM instead of daytime use',
+          language,
+        ),
       );
       continue;
     }
     if (actionCode === 'reduce_frequency') {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留，但先降到每周 2-3 次。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it, but cut it back to 2-3 uses a week first.${reason ? ` ${reason}` : ''}`,
+        looksLikeRetinoidRoutineItem(item)
+          ? buildRoutineOptimizationSentence(
+              name,
+              matchLead,
+              isCn ? '保留为夜间主力活性，但先维持每周 2-3 晚' : 'Keep it as the main PM active, but cap it at 2-3 nights a week',
+              language,
+            )
+          : buildRoutineOptimizationSentence(
+              name,
+              matchLead,
+              isCn ? '保留，但先降到每周 2-3 次' : 'Keep it, but cut it back to 2-3 uses a week first',
+              language,
+            ),
       );
       continue;
     }
     if (actionCode === 'replace') {
       pushUnique(
         replace,
-        isCn
-          ? `${name}：这一步更适合换成更稳妥的同类。${reason ? ` ${reason}` : ''}`
-          : `${name}: this slot likely needs a gentler or more suitable replacement.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '这一步更适合换成更稳妥的同类' : 'Replace this slot with a gentler or more suitable option',
+          language,
+        ),
       );
       continue;
     }
     if (actionCode === 'remove') {
       pushUnique(
         remove,
-        isCn
-          ? `${name}：当前不建议继续放在这套 routine 里。${reason ? ` ${reason}` : ''}`
-          : `${name}: this is the current routine step most likely to drop for now.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '当前不建议继续放在这套 routine 里' : 'Drop this step for now',
+          language,
+        ),
       );
       continue;
     }
     if (actionCode === 'unknown') {
       pushUnique(
         replace,
-        isCn
-          ? `${name}：先核对完整产品名或版本，再决定是否继续保留。`
-          : `${name}: verify the exact product/version before relying on this slot.`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '先核对完整产品名或版本，再决定是否继续保留' : 'Verify the exact product/version before relying on this slot',
+          language,
+        ),
       );
       continue;
     }
     if (looksLikeRetinoidRoutineItem(item)) {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留为夜间主力活性，但先维持每周 2-3 晚。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it as the main PM active, but cap it at 2-3 nights a week.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '保留为夜间主力活性，但先维持每周 2-3 晚' : 'Keep it as the main PM active, but cap it at 2-3 nights a week',
+          language,
+        ),
       );
       continue;
     }
     if (step === 'moisturizer' && pmRetinoidName) {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留，并固定接在 ${pmRetinoidName} 后面做修护收尾。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it as the recovery moisturizer, especially right after ${pmRetinoidName}.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn
+            ? `保留，并固定接在 ${pmRetinoidName} 后面做修护收尾`
+            : `Keep it as the recovery moisturizer right after ${pmRetinoidName}`,
+          language,
+        ),
       );
       continue;
     }
     if (looksLikeSpfRoutineItem(item)) {
       pushUnique(
         keep,
-        isCn
-          ? `${name}：保留，并固定成每天早上的防晒步骤。${reason ? ` ${reason}` : ''}`
-          : `${name}: keep it as the fixed AM protection step.${reason ? ` ${reason}` : ''}`,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '保留，并固定成每天早上的防晒步骤' : 'Keep it as the fixed AM protection step',
+          language,
+        ),
+      );
+      continue;
+    }
+    if (step === 'cleanser') {
+      pushUnique(
+        keep,
+        buildRoutineOptimizationSentence(
+          name,
+          matchLead,
+          isCn ? '先继续用，但前提是洗后不发紧' : 'Keep it only if it cleans without leaving the skin tight',
+          language,
+        ),
       );
       continue;
     }
     pushUnique(
       keep,
-      isCn
-        ? `${name}：暂时保留在${slot === 'pm' ? '晚上' : '早上'}这一步。${reason ? ` ${reason}` : ''}`
-        : `${name}: keep it in the current ${slot === 'pm' ? 'PM' : 'AM'} slot for now.${reason ? ` ${reason}` : ''}`,
+      buildRoutineOptimizationSentence(
+        name,
+        matchLead,
+        isCn
+          ? `暂时保留在${slot === 'pm' ? '晚上' : '早上'}这一步`
+          : `Keep it in the current ${slot === 'pm' ? 'PM' : 'AM'} slot for now`,
+        language,
+      ),
     );
   }
   if (!amSpf) {

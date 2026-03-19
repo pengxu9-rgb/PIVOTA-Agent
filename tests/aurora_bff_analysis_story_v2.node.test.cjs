@@ -172,15 +172,36 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
             slot: 'am',
             title: 'AM routine',
             items: [
-              { slot: 'am', step: 'cleanser', display_name: 'CeraVe Foaming Cleanser', product_text: 'CeraVe Foaming Cleanser' },
-              { slot: 'am', step: 'moisturizer', display_name: 'CeraVe PM', product_text: 'CeraVe PM' },
+              {
+                slot: 'am',
+                step: 'cleanser',
+                display_name: 'CeraVe Foaming Cleanser',
+                product_text: 'CeraVe Foaming Cleanser',
+                fit_summary: { verdict: 'good_match', label: 'Good fit', reason: 'Good cleanser fit.' },
+                suggested_usage: { action: 'keep', label: 'Keep as-is', reason: 'Keep in AM.' },
+              },
+              {
+                slot: 'am',
+                step: 'moisturizer',
+                display_name: 'CeraVe PM',
+                product_text: 'CeraVe PM',
+                fit_summary: { verdict: 'good_match', label: 'Good fit', reason: 'Good moisturizer fit.' },
+                suggested_usage: { action: 'keep', label: 'Keep as-is', reason: 'Keep after retinoid.' },
+              },
             ],
           },
           {
             slot: 'pm',
             title: 'PM routine',
             items: [
-              { slot: 'pm', step: 'treatment', display_name: 'Retinol Serum', product_text: 'Retinol Serum' },
+              {
+                slot: 'pm',
+                step: 'treatment',
+                display_name: 'Retinol Serum',
+                product_text: 'Retinol Serum',
+                fit_summary: { verdict: 'partial_match', label: 'Mostly fits', reason: 'Better with slower cadence.' },
+                suggested_usage: { action: 'reduce_frequency', label: 'Reduce frequency', reason: 'Use fewer nights.' },
+              },
             ],
           },
         ],
@@ -223,16 +244,24 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
   );
   assert.equal(typeof storyCard.payload.existing_products_optimization, 'object');
   assert.ok(
-    storyCard.payload.existing_products_optimization.keep.some((row) => /Retinol Serum/i.test(row)),
+    storyCard.payload.existing_products_optimization.keep.some((row) => /Retinol Serum: partial match\. Keep it as the main PM active, but cap it at 2-3 nights a week\./i.test(row)),
     'story should keep a concrete line for the current PM active',
   );
   assert.ok(
-    storyCard.payload.existing_products_optimization.keep.some((row) => /CeraVe PM/i.test(row)),
+    storyCard.payload.existing_products_optimization.keep.some((row) => /CeraVe PM: good match\. Keep it as the recovery moisturizer right after Retinol Serum\./i.test(row)),
     'story should keep a concrete line for the current recovery moisturizer',
+  );
+  assert.ok(
+    storyCard.payload.existing_products_optimization.keep.some((row) => /CeraVe Foaming Cleanser: (good match|partial match)\. Keep it only if it cleans without leaving the skin tight\./i.test(row)),
+    'story should keep a concrete fit line for the current cleanser',
   );
   assert.ok(
     storyCard.payload.existing_products_optimization.add.some((row) => /SPF|sunscreen/i.test(row)),
     'story should keep the missing AM sunscreen gap as an add action',
+  );
+  assert.doesNotMatch(
+    storyCard.payload.existing_products_optimization.keep.join(' '),
+    /This looks|This is a conservative|current slot and|skin and barr/i,
   );
   assert.doesNotMatch(
     storyCard.payload.priority_findings.map((row) => row.title).join(' '),
@@ -242,6 +271,7 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
   const assistantText = internal.buildAssistantMessageFromStoryV2(storyCard.payload, { language: 'EN' });
   assert.doesNotMatch(assistantText, /pending|unconfirmed/i);
   assert.doesNotMatch(assistantText, /Analysis complete|Confidence for this read|What would you like to explore/i);
+  assert.doesNotMatch(assistantText, /This looks|This is a conservative|current slot and|skin and barr/i);
   assert.doesNotMatch(assistantText, /\.\./);
   assert.match(assistantText, /Fix first:/i);
   assert.match(assistantText, /Current products:/i);
