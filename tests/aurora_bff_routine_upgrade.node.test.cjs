@@ -330,6 +330,62 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
   );
 });
 
+test('/v1/analysis/skin: structured product_text labels survive into preview and story fit copy', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_PRODUCT_AUTOSCAN_ENABLED: 'true',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_preview_structured_product_text');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              schema_version: 'aurora.routine_intake.v1',
+              am: [
+                { step: 'cleanser', product_text: 'CeraVe Foaming Cleanser' },
+                { step: 'moisturizer', product_text: 'CeraVe PM' },
+              ],
+              pm: [
+                { step: 'treatment', product_text: 'Retinol Serum' },
+              ],
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        const preview = findCard(cards, 'routine_products_preview');
+        const story = findCard(cards, 'analysis_story_v2');
+        const previewNames = (preview?.payload?.groups || []).flatMap((group) => (group.items || []).map((item) => item.display_name));
+        const keepRows = story?.payload?.existing_products_optimization?.keep || [];
+
+        assert.ok(preview, 'structured product_text routine should still produce routine_products_preview');
+        assert.ok(story, 'structured product_text routine should still produce analysis_story_v2');
+        assert.ok(previewNames.includes('CeraVe Foaming Cleanser'));
+        assert.ok(previewNames.includes('CeraVe PM'));
+        assert.ok(previewNames.includes('Retinol Serum'));
+        assert.equal(previewNames.includes('cleanser'), false);
+        assert.equal(previewNames.includes('moisturizer'), false);
+        assert.equal(previewNames.includes('treatment'), false);
+        assert.ok(keepRows.some((row) => /Retinol Serum/i.test(row)));
+        assert.ok(keepRows.some((row) => /CeraVe PM/i.test(row)));
+        assert.ok(keepRows.some((row) => /CeraVe Foaming Cleanser/i.test(row)));
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: legacy routine string also emits routine_products_preview', async () => {
   await withEnv(
     {
