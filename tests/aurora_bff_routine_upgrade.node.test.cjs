@@ -178,7 +178,11 @@ test('/v1/analysis/skin: returns routine_expert contract when routine intake is 
       AURORA_ROUTINE_EVIDENCE_REFS_ENABLED: 'true',
     },
     async () => {
-      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      const capturedCalls = [];
+      const harness = createAppWithPatchedAuroraChat(async (args = {}) => {
+        capturedCalls.push(args);
+        return { answer: '{}', intent: 'chat', cards: [] };
+      });
       try {
         const uid = buildTestUid('routine_expert_contract');
         const resp = await harness.request
@@ -255,7 +259,11 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
       AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
     },
     async () => {
-      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      const capturedCalls = [];
+      const harness = createAppWithPatchedAuroraChat(async (args = {}) => {
+        capturedCalls.push(args);
+        return { answer: '{}', intent: 'chat', cards: [] };
+      });
       try {
         const uid = buildTestUid('routine_preview_contract');
         const resp = await harness.request
@@ -290,16 +298,24 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
         assert.ok(analysisSummary, 'analysis summary card should exist');
         assert.ok(preview, 'routine_products_preview should exist');
         assert.equal(productAnalysis, null, 'product_analysis should not be emitted on /v1/analysis/skin');
-        assert.equal(routineFitSummary, null, 'routine_fit_summary should not be emitted in summary-first mode');
+        assert.ok(routineFitSummary, 'routine_fit_summary should be emitted in summary-first mode');
         assert.equal(preview.payload && preview.payload.contract, 'aurora.routine_products_preview.v1');
         assert.equal(preview.payload && preview.payload.deferred_product_enrichment, true);
         assert.ok(['structured_v1', 'structured_v2'].includes(preview.payload && preview.payload.payload_shape));
         assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total > 0, true);
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.routine_product_enrichment_deferred, true);
+        assert.equal(typeof routineFitSummary.payload?.summary, 'string');
+        assert.equal(Array.isArray(routineFitSummary.payload?.highlights), true);
+        assert.equal(Array.isArray(routineFitSummary.payload?.concerns), true);
         assert.equal(
           suggestedChipIds.includes('chip.aurora.next_action.routine_deep_dive'),
+          true,
+          'routine_deep_dive should be available once routine fit context is present',
+        );
+        assert.equal(
+          capturedCalls.some((row) => String(row?.intent_hint || '').trim() === 'routine_fit_summary'),
           false,
-          'routine_products_preview should not expose routine_deep_dive without routine_fit context',
+          'summary-first routine fit should stay deterministic and avoid upstream routine_fit_summary calls',
         );
       } finally {
         harness.restore();

@@ -56364,12 +56364,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
         }
 
-        const routineFitPlan = AURORA_ROUTINE_SUMMARY_FIRST_ENABLED
-          ? { shouldEvaluateRoutineFit: false, shouldQueueKbBackfill: false }
-          : resolveRoutineFitAnalysisPlan({
-              routineProductCandidates,
-              lowConfidenceRuleBased,
-            });
+        const routineFitPlan = resolveRoutineFitAnalysisPlan({
+          routineProductCandidates,
+          lowConfidenceRuleBased,
+        });
+        const routineFitEvaluationMode = AURORA_ROUTINE_SUMMARY_FIRST_ENABLED
+          ? (routineFitPlan.shouldQueueKbBackfill ? 'deterministic_summary_first' : 'off')
+          : (routineFitPlan.shouldEvaluateRoutineFit ? 'llm_with_fallback' : 'off');
         let routineFitCard = null;
         let routineFitFailureReason = null;
         let routineFitRetryCount = 0;
@@ -56377,175 +56378,200 @@ function mountAuroraBffRoutes(app, { logger }) {
         let routineFitPartialDimensions = [];
         let routineFitFallbackUsed = false;
         let routineFitFallbackReason = null;
-        if (!routineAnalysisV2Result && routineFitPlan.shouldEvaluateRoutineFit) {
+        if (!routineAnalysisV2Result && routineFitEvaluationMode !== 'off') {
           try {
-          routineProductEvents.push(
-            makeEvent(ctx, 'routine_fit_evaluation_started', {
-              total_candidates: routineProductCandidates.length,
-              routine_source_shape: routineStateMeta.source_shape,
-              missing_routine_fields: routineStateMeta.missing_routine_fields,
-            }),
-          );
+            routineProductEvents.push(
+              makeEvent(ctx, 'routine_fit_evaluation_started', {
+                total_candidates: routineProductCandidates.length,
+                routine_source_shape: routineStateMeta.source_shape,
+                missing_routine_fields: routineStateMeta.missing_routine_fields,
+                evaluation_mode: routineFitEvaluationMode,
+              }),
+            );
 
-          const routineSkinProfile = {
-            skin_type_tendency: profileSummary && profileSummary.skinType ? profileSummary.skinType : null,
-            sensitivity_tendency: profileSummary && profileSummary.sensitivity ? profileSummary.sensitivity : null,
-          };
-          const fitPrefix = buildContextPrefix({
-            profile: isPlainObject(profileSummary) ? profileSummary : {},
-            lang: ctx.lang,
-            state: 'S4_ANALYSIS_LOADING',
-            trigger_source: 'routine_fit_evaluation',
-            intent: 'routine_fit_summary',
-            action_id: 'routine.fit.evaluate',
-          });
-          const fitPrompt = buildRoutineFitSummaryPrompt({
-            prefix: fitPrefix,
-            skinProfile: routineSkinProfile,
-            ingredientPlan,
-            routineProducts: routineProductCandidates.slice(0, 8),
-            language: ctx.lang,
-          });
-          const fitPromptHash = crypto.createHash('sha1').update(fitPrompt).digest('hex').slice(0, 16);
+            const routineSkinProfile = {
+              skin_type_tendency: profileSummary && profileSummary.skinType ? profileSummary.skinType : null,
+              sensitivity_tendency: profileSummary && profileSummary.sensitivity ? profileSummary.sensitivity : null,
+            };
 
-          for (let attempt = 0; attempt < 2 && !routineFitCard; attempt += 1) {
-            const attemptPrompt = attempt === 0 ? fitPrompt : buildRoutineFitRetryPrompt(fitPrompt, ctx.lang);
-            try {
-              const fitUpstream = await auroraChat({
-                baseUrl: AURORA_DECISION_BASE_URL,
-                query: attemptPrompt,
-                timeoutMs: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-                llm_provider: 'gemini',
-                llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
-                intent_hint: 'routine_fit_summary',
-                disallow_clarify: true,
-                required_structured_keys: ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS,
-                prompt_hash: fitPromptHash,
-                prompt_template_id: 'routine_fit_summary_v1',
-                trace_id: ctx.trace_id,
-                request_id: ctx.request_id,
+            if (routineFitEvaluationMode === 'deterministic_summary_first') {
+              const localFit = buildDeterministicRoutineFitSummary({
+                routineProducts: routineProductCandidates,
+                ingredientPlan,
+                skinProfile: routineSkinProfile,
+                profileSummary,
+                language: ctx.lang,
               });
-
-              const parsedFit = parseRoutineFitUpstreamResult(fitUpstream);
-              if (parsedFit.ok && parsedFit.value) {
-                routineFitCard = buildRoutineFitSummaryCard(parsedFit.value, ctx.request_id);
-                routineFitFailureReason = null;
-                routineFitRetryCount = attempt;
-                routineFitPartialStructured = Boolean(parsedFit.partial_structured);
-                routineFitPartialDimensions = Array.isArray(parsedFit.partial_dimensions)
-                  ? parsedFit.partial_dimensions.slice(0, ROUTINE_FIT_DIMENSION_KEYS.length)
-                  : [];
-                break;
+              if (localFit) {
+                routineFitCard = buildRoutineFitSummaryCard(localFit, ctx.request_id);
+                recordAuroraSkinFlowMetric({ stage: 'routine_fit_deterministic_summary_first', hit: true });
+              } else {
+                routineFitFailureReason = 'deterministic_empty';
               }
+            } else {
+              const fitPrefix = buildContextPrefix({
+                profile: isPlainObject(profileSummary) ? profileSummary : {},
+                lang: ctx.lang,
+                state: 'S4_ANALYSIS_LOADING',
+                trigger_source: 'routine_fit_evaluation',
+                intent: 'routine_fit_summary',
+                action_id: 'routine.fit.evaluate',
+              });
+              const fitPrompt = buildRoutineFitSummaryPrompt({
+                prefix: fitPrefix,
+                skinProfile: routineSkinProfile,
+                ingredientPlan,
+                routineProducts: routineProductCandidates.slice(0, 8),
+                language: ctx.lang,
+              });
+              const fitPromptHash = crypto.createHash('sha1').update(fitPrompt).digest('hex').slice(0, 16);
 
-              routineFitFailureReason = parsedFit.failure_reason || 'json_parse_failed';
-              routineFitRetryCount = attempt;
-              if (attempt === 0) {
-                logger?.warn(
-                  {
+              for (let attempt = 0; attempt < 2 && !routineFitCard; attempt += 1) {
+                const attemptPrompt = attempt === 0 ? fitPrompt : buildRoutineFitRetryPrompt(fitPrompt, ctx.lang);
+                try {
+                  const fitUpstream = await auroraChat({
+                    baseUrl: AURORA_DECISION_BASE_URL,
+                    query: attemptPrompt,
+                    timeoutMs: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                    llm_provider: 'gemini',
+                    llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+                    intent_hint: 'routine_fit_summary',
+                    disallow_clarify: true,
+                    required_structured_keys: ROUTINE_FIT_REQUIRED_STRUCTURED_KEYS,
+                    prompt_hash: fitPromptHash,
+                    prompt_template_id: 'routine_fit_summary_v1',
+                    trace_id: ctx.trace_id,
                     request_id: ctx.request_id,
-                    failure_reason: routineFitFailureReason,
-                    missing_keys: parsedFit.missing_keys,
-                  },
-                  'aurora bff: routine fit evaluation retrying after invalid structured output',
-                );
+                  });
+
+                  const parsedFit = parseRoutineFitUpstreamResult(fitUpstream);
+                  if (parsedFit.ok && parsedFit.value) {
+                    routineFitCard = buildRoutineFitSummaryCard(parsedFit.value, ctx.request_id);
+                    routineFitFailureReason = null;
+                    routineFitRetryCount = attempt;
+                    routineFitPartialStructured = Boolean(parsedFit.partial_structured);
+                    routineFitPartialDimensions = Array.isArray(parsedFit.partial_dimensions)
+                      ? parsedFit.partial_dimensions.slice(0, ROUTINE_FIT_DIMENSION_KEYS.length)
+                      : [];
+                    break;
+                  }
+
+                  routineFitFailureReason = parsedFit.failure_reason || 'json_parse_failed';
+                  routineFitRetryCount = attempt;
+                  if (attempt === 0) {
+                    logger?.warn(
+                      {
+                        request_id: ctx.request_id,
+                        failure_reason: routineFitFailureReason,
+                        missing_keys: parsedFit.missing_keys,
+                      },
+                      'aurora bff: routine fit evaluation retrying after invalid structured output',
+                    );
+                  }
+                } catch (err) {
+                  const failureMeta = classifyRoutineFitUpstreamFailure(err);
+                  routineFitFailureReason = failureMeta.failure_class || 'upstream_error';
+                  routineFitRetryCount = attempt;
+                  logger?.warn(
+                    {
+                      err: err && err.message ? err.message : String(err),
+                      request_id: ctx.request_id,
+                      attempt: attempt + 1,
+                      failure_class: failureMeta.failure_class,
+                      upstream_status: failureMeta.upstream_status,
+                      upstream_error_code: failureMeta.upstream_error_code,
+                      timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                    },
+                    'aurora bff: routine fit evaluation failed',
+                  );
+                  routineProductEvents.push(
+                    makeEvent(ctx, 'routine_fit_upstream_failure', {
+                      attempt: attempt + 1,
+                      failure_class: failureMeta.failure_class,
+                      upstream_status: failureMeta.upstream_status,
+                      upstream_error_code: failureMeta.upstream_error_code,
+                      timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                      llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+                    }),
+                  );
+                }
               }
-            } catch (err) {
-              const failureMeta = classifyRoutineFitUpstreamFailure(err);
-              routineFitFailureReason = failureMeta.failure_class || 'upstream_error';
-              routineFitRetryCount = attempt;
-              logger?.warn(
-                {
-                  err: err && err.message ? err.message : String(err),
-                  request_id: ctx.request_id,
-                  attempt: attempt + 1,
-                  failure_class: failureMeta.failure_class,
-                  upstream_status: failureMeta.upstream_status,
-                  upstream_error_code: failureMeta.upstream_error_code,
-                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-                },
-                'aurora bff: routine fit evaluation failed',
-              );
-              routineProductEvents.push(
-                makeEvent(ctx, 'routine_fit_upstream_failure', {
-                  attempt: attempt + 1,
-                  failure_class: failureMeta.failure_class,
-                  upstream_status: failureMeta.upstream_status,
-                  upstream_error_code: failureMeta.upstream_error_code,
-                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-                  llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
-                }),
-              );
-            }
-          }
 
-          if (!routineFitCard) {
-            const fallbackFit = buildDeterministicRoutineFitSummary({
-              routineProducts: routineProductCandidates,
-              ingredientPlan,
-              skinProfile: routineSkinProfile,
-              profileSummary,
-              language: ctx.lang,
-            });
-            if (fallbackFit) {
-              routineFitCard = buildRoutineFitSummaryCard(fallbackFit, ctx.request_id);
-              routineFitFallbackUsed = true;
-              routineFitFallbackReason = routineFitFailureReason || 'unknown';
-              recordAuroraSkinFlowMetric({ stage: 'routine_fit_fallback', hit: true });
-              logger?.info(
-                {
-                  request_id: ctx.request_id,
-                  failure_reason: routineFitFallbackReason,
-                  fallback_source: 'deterministic_local',
-                  timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-                  llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
-                },
-                'aurora bff: routine fit fallback applied after upstream failure',
-              );
+              if (!routineFitCard) {
+                const fallbackFit = buildDeterministicRoutineFitSummary({
+                  routineProducts: routineProductCandidates,
+                  ingredientPlan,
+                  skinProfile: routineSkinProfile,
+                  profileSummary,
+                  language: ctx.lang,
+                });
+                if (fallbackFit) {
+                  routineFitCard = buildRoutineFitSummaryCard(fallbackFit, ctx.request_id);
+                  routineFitFallbackUsed = true;
+                  routineFitFallbackReason = routineFitFailureReason || 'unknown';
+                  recordAuroraSkinFlowMetric({ stage: 'routine_fit_fallback', hit: true });
+                  logger?.info(
+                    {
+                      request_id: ctx.request_id,
+                      failure_reason: routineFitFallbackReason,
+                      fallback_source: 'deterministic_local',
+                      timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                      llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+                    },
+                    'aurora bff: routine fit fallback applied after upstream failure',
+                  );
+                }
+              }
             }
-          }
 
-          if (!routineFitCard) {
-            recordAuroraSkinFlowMetric({
-              stage: `routine_fit_${String(routineFitFailureReason || 'failed').slice(0, 48)}`,
-              hit: true,
-            });
-          }
-          recordAuroraSkinFlowMetric({ stage: 'routine_fit_evaluated', hit: true });
-          recordAuroraSkinFlowMetric({ stage: 'routine_fit_emitted', hit: Boolean(routineFitCard) });
-          logger?.info(
-            { kind: 'metric', name: 'aurora.skin.routine_fit.emitted_rate', value: routineFitCard ? 1 : 0 },
-            'metric',
-          );
-          if (routineFitCard && routineFitPartialStructured) {
+            if (!routineFitCard) {
+              recordAuroraSkinFlowMetric({
+                stage: `routine_fit_${String(routineFitFailureReason || 'failed').slice(0, 48)}`,
+                hit: true,
+              });
+            }
+            recordAuroraSkinFlowMetric({ stage: 'routine_fit_evaluated', hit: true });
+            recordAuroraSkinFlowMetric({ stage: 'routine_fit_emitted', hit: Boolean(routineFitCard) });
             logger?.info(
-              { kind: 'metric', name: 'aurora.skin.routine_fit.partial_structured_rate', value: 1 },
+              { kind: 'metric', name: 'aurora.skin.routine_fit.emitted_rate', value: routineFitCard ? 1 : 0 },
               'metric',
             );
-          }
+            if (routineFitCard && routineFitPartialStructured) {
+              logger?.info(
+                { kind: 'metric', name: 'aurora.skin.routine_fit.partial_structured_rate', value: 1 },
+                'metric',
+              );
+            }
 
-          routineProductEvents.push(
-            makeEvent(ctx, 'routine_fit_evaluation_completed', {
-              candidate_count: routineProductCandidates.length,
-              fit_card_emitted: Boolean(routineFitCard),
-              overall_fit: routineFitCard && routineFitCard.payload ? routineFitCard.payload.overall_fit : null,
-              failure_reason: routineFitCard ? null : routineFitFailureReason || 'unknown',
-              retry_count: routineFitRetryCount,
-              partial_structured: routineFitPartialStructured,
-              partial_dimensions: routineFitPartialDimensions,
-              fallback_used: routineFitFallbackUsed,
-              fallback_reason: routineFitFallbackUsed ? routineFitFallbackReason : null,
-              fallback_source: routineFitFallbackUsed ? 'deterministic_local' : null,
-              timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-              llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
-            }),
-          );
+            routineProductEvents.push(
+              makeEvent(ctx, 'routine_fit_evaluation_completed', {
+                candidate_count: routineProductCandidates.length,
+                fit_card_emitted: Boolean(routineFitCard),
+                overall_fit: routineFitCard && routineFitCard.payload ? routineFitCard.payload.overall_fit : null,
+                failure_reason: routineFitCard ? null : routineFitFailureReason || 'unknown',
+                retry_count: routineFitRetryCount,
+                partial_structured: routineFitPartialStructured,
+                partial_dimensions: routineFitPartialDimensions,
+                fallback_used: routineFitFallbackUsed,
+                fallback_reason: routineFitFallbackUsed ? routineFitFallbackReason : null,
+                fallback_source: routineFitFallbackUsed ? 'deterministic_local' : null,
+                evaluation_mode: routineFitEvaluationMode,
+                local_only: routineFitEvaluationMode === 'deterministic_summary_first',
+                timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
+                llm_model: routineFitEvaluationMode === 'llm_with_fallback'
+                  ? (ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview')
+                  : null,
+              }),
+            );
           } catch (err) {
             routineFitFailureReason = routineFitFailureReason || 'substage_exception';
             recordAnalysisSubstageFailure('routine_fit_summary', err, {
               candidate_count: routineProductCandidates.length,
               timeout_ms: AURORA_ROUTINE_FIT_TIMEOUT_MS,
-              llm_model: ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview',
+              llm_model: routineFitEvaluationMode === 'llm_with_fallback'
+                ? (ROUTINE_FIT_MODEL_GEMINI || 'gemini-3-flash-preview')
+                : null,
+              evaluation_mode: routineFitEvaluationMode,
             });
           }
         }
