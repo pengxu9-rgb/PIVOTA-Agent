@@ -274,63 +274,6 @@ test('ingredient_plan_v2 product entries keep rich media/open fields for renderi
   }
 });
 
-test('ingredient_plan_v2 prefers focused single products over bundle-like catalog rows without backfilling search noise', () => {
-  const { dir, file } = createTempCatalog([
-    {
-      product_id: 'bundle_panthenol_1',
-      name: 'Ultimate Skincare Set',
-      brand: 'PIXI BEAUTY',
-      ingredient_ids: ['panthenol'],
-      price_tier: 'mid',
-      price: 50,
-      currency: 'USD',
-      pdp_url: 'https://example.com/pdp/bundle_panthenol_1',
-      source: 'kb',
-    },
-    {
-      product_id: 'single_panthenol_1',
-      name: '5% B5 Ceramide Barrier Relief Moisturizer',
-      brand: 'SKINTIFIC',
-      ingredient_ids: ['panthenol'],
-      price_tier: 'mid',
-      price: 32,
-      currency: 'USD',
-      pdp_url: 'https://example.com/pdp/single_panthenol_1',
-      source: 'kb',
-    },
-  ]);
-
-  try {
-    const plan = buildIngredientPlanV2({
-      plan: {
-        intensity: 'balanced',
-        targets: [{ ingredient_id: 'panthenol', priority: 86 }],
-        avoid: [],
-        conflicts: [],
-      },
-      profile: { budgetTier: 'mid' },
-      catalogPath: file,
-    });
-
-    assert.ok(plan);
-    assert.equal(plan.external_fallback_used, undefined);
-    const target = plan.targets.find((item) => item.ingredient_id === 'panthenol');
-    assert.ok(target);
-
-    const merged = [...target.products.competitors, ...target.products.dupes];
-    assert.deepEqual(
-      merged.map((item) => item.name),
-      ['5% B5 Ceramide Barrier Relief Moisturizer'],
-    );
-    assert.equal(
-      merged.some((item) => String(item.name || '').toLowerCase().includes('set')),
-      false,
-    );
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('ingredient plan low-confidence fallback keeps ingredient_name on targets and avoid', () => {
   const plan = buildIngredientPlan({
     artifact: {

@@ -1231,30 +1231,6 @@ function scoreCatalogCandidateForIngredient(candidate, ingredientId, budgetTier)
   return score;
 }
 
-const INGREDIENT_PLAN_BUNDLE_LIKE_RE = /\b(kit|set|sampler|sample|mini|travel|discovery|collector|bundle|routine)\b/i;
-
-function isBundleLikeIngredientCatalogProduct(product) {
-  const row = normalizeObject(product);
-  if (!row) return false;
-  const joined = [
-    row.name,
-    row.title,
-    row.display_name,
-    row.displayName,
-    row.brand,
-    row.category,
-    row.category_name,
-    row.category_path,
-    row.product_type,
-    row.type,
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
-  if (!joined) return false;
-  return INGREDIENT_PLAN_BUNDLE_LIKE_RE.test(joined);
-}
-
 function buildExternalSearchUrl(source, queryText) {
   const q = String(queryText || '').trim();
   if (!q) return null;
@@ -1449,11 +1425,6 @@ function selectIngredientProducts({
     seen.add(productId);
     unique.push(entry.product);
   }
-  const hasFocusedSingleUnique = unique.some((product) => !isBundleLikeIngredientCatalogProduct(product));
-  const preferredUnique = hasFocusedSingleUnique
-    ? unique.filter((product) => !isBundleLikeIngredientCatalogProduct(product))
-    : unique;
-  const suppressFallbackSupplement = hasFocusedSingleUnique && preferredUnique.length > 0;
 
   const toProductView = (product, sourceBlock, reasonText) => ({
     product_id: String(product.product_id || ''),
@@ -1513,8 +1484,8 @@ function selectIngredientProducts({
     normalizeUrl(fallbackCandidateRows[0]?.pdp_url) ||
     fallbackGoogleUrl ||
     null;
-  const localCatalogMissing = preferredUnique.length === 0;
-  const localCatalogInsufficient = preferredUnique.length < Math.max(1, maxCompetitors + maxDupes);
+  const localCatalogMissing = unique.length === 0;
+  const localCatalogInsufficient = unique.length < Math.max(1, maxCompetitors + maxDupes);
 
   if (!unique.length && !fallbackCandidates.length) {
     return {
@@ -1534,7 +1505,7 @@ function selectIngredientProducts({
     };
   }
 
-  const remaining = preferredUnique.slice();
+  const remaining = unique.slice();
   const takeByTier = (tier) => {
     const idx = remaining.findIndex((row) => normalizeBudgetTier(row.price_tier) === tier);
     if (idx < 0) return null;
@@ -1595,7 +1566,7 @@ function selectIngredientProducts({
   let fallbackUsed = false;
   let externalExecutorUsed = false;
 
-  while (!suppressFallbackSupplement && competitorRows.length < maxCompetitors && fallbackQueue.length) {
+  while (competitorRows.length < maxCompetitors && fallbackQueue.length) {
     const candidate = fallbackQueue.shift();
     if (!candidate) break;
     fallbackUsed = true;
@@ -1608,7 +1579,7 @@ function selectIngredientProducts({
       ),
     );
   }
-  while (!suppressFallbackSupplement && dupeRows.length < maxDupes && fallbackQueue.length) {
+  while (dupeRows.length < maxDupes && fallbackQueue.length) {
     const candidate = fallbackQueue.shift();
     if (!candidate) break;
     fallbackUsed = true;
