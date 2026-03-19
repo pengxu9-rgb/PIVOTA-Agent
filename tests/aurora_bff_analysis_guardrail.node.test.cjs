@@ -442,11 +442,60 @@ test('recoverPurchasableProductsFromQueries prefers focused single products over
   }
 });
 
-test('recoverPurchasableProductsFromQueries keeps bundle-like products when no better single-product candidate exists', async () => {
+test('buildPurchasableFallbackCandidates ranks external-seed supplement results before returning them', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.buildPurchasableFallbackCandidates({
+      query: 'UV filters skincare',
+      allowExternalSeed: true,
+      searchFn: async ({ allowExternalSeed }) => {
+        if (allowExternalSeed === true) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'kit_uv_1',
+                merchant_id: 'external_seed',
+                name: 'Skincare Sampler Kit',
+                brand: 'PIXI BEAUTY',
+                category: 'external',
+                pdp_url: 'https://agent.pivota.cc/products/kit_uv_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/kit_uv_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+              {
+                product_id: 'serum_uv_1',
+                merchant_id: 'external_seed',
+                name: 'UV Filters SPF 45 Serum',
+                brand: 'The Ordinary',
+                category: 'external',
+                pdp_url: 'https://agent.pivota.cc/products/serum_uv_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/serum_uv_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+            ],
+            reason: null,
+          };
+        }
+        return { ok: true, products: [], reason: 'empty' };
+      },
+    });
+
+    assert.equal(out.selected_source, 'external_seed');
+    assert.deepEqual(
+      out.products.map((row) => row.name),
+      ['UV Filters SPF 45 Serum'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('recoverPurchasableProductsFromQueries keeps one best bundle-like product when no better single-product candidate exists', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const out = await __internal.recoverPurchasableProductsFromQueries({
-      queries: ['Panthenol skincare'],
+      queries: ['barrier repair serum'],
       strictFilter: true,
       fallbackCandidateBuilder: async () => ({
         ok: true,
@@ -455,7 +504,7 @@ test('recoverPurchasableProductsFromQueries keeps bundle-like products when no b
           {
             product_id: 'bundle_panthenol_1',
             merchant_id: 'external_seed',
-            name: 'Ultimate Skincare Set',
+            name: 'Barrier Repair Travel Set',
             brand: 'PIXI BEAUTY',
             category: 'external',
             pdp_url: 'https://agent.pivota.cc/products/bundle_panthenol_1?merchant_id=external_seed',
@@ -477,10 +526,10 @@ test('recoverPurchasableProductsFromQueries keeps bundle-like products when no b
       maxProducts: 2,
     });
 
-    assert.equal(out.products.length, 2);
+    assert.equal(out.products.length, 1);
     assert.deepEqual(
       out.products.map((row) => row.name),
-      ['Ultimate Skincare Set', 'Skincare Sampler Kit'],
+      ['Barrier Repair Travel Set'],
     );
   } finally {
     delete require.cache[moduleId];

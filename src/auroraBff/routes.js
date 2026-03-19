@@ -14699,18 +14699,22 @@ async function buildPurchasableFallbackCandidates({
   };
   for (const product of primaryProducts) pushProduct(product, 'catalog');
   for (const product of supplementalProducts) pushProduct(product, 'external_seed');
+  const rankedMerged = rankPurchasableRecoveryCandidates(merged, q).slice(
+    0,
+    Math.max(1, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6),
+  );
 
   const selectedSource =
-    merged.length === 0
+    rankedMerged.length === 0
       ? 'none'
-      : merged.some((row) => String(row.source || '').toLowerCase().includes('external'))
-        ? merged.some((row) => String(row.source || '').toLowerCase() === 'catalog')
+      : rankedMerged.some((row) => String(row.source || '').toLowerCase().includes('external'))
+        ? rankedMerged.some((row) => String(row.source || '').toLowerCase() === 'catalog')
           ? 'catalog_plus_external_seed'
           : 'external_seed'
         : 'catalog';
 
   const reason =
-    merged.length > 0
+    rankedMerged.length > 0
       ? null
       : String(
           supplemental && supplemental.reason
@@ -14721,8 +14725,8 @@ async function buildPurchasableFallbackCandidates({
         );
 
   return {
-    ok: merged.length > 0 || primaryOk || supplementalOk,
-    products: merged,
+    ok: rankedMerged.length > 0 || primaryOk || supplementalOk,
+    products: rankedMerged,
     reason,
     selected_source: selectedSource,
     stages: {
@@ -31363,15 +31367,20 @@ function rankPurchasableRecoveryCandidates(products, query) {
   if (hasOverlappingNonBundle) filtered = filtered.filter((row) => row.overlap > 0);
   if (hasFocusedOverlapCandidate) filtered = filtered.filter((row) => row.focusedSingle === true);
 
-  return filtered
+  const ranked = filtered
     .slice()
     .sort((a, b) => {
       if (a.overlap !== b.overlap) return b.overlap - a.overlap;
       if (a.focusedSingle !== b.focusedSingle) return a.focusedSingle ? -1 : 1;
       if (a.bundleLike !== b.bundleLike) return a.bundleLike ? 1 : -1;
       return a.index - b.index;
-    })
-    .map((row) => row.row);
+    });
+
+  if (!hasNonBundle) {
+    return ranked.slice(0, 1).map((row) => row.row);
+  }
+
+  return ranked.map((row) => row.row);
 }
 
 function normalizeFallbackQueryText(value) {
