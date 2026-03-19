@@ -243,6 +243,57 @@ test('resolveAnalysisProfileFastTimeoutMs uses a tighter timeout for guest routi
   }
 });
 
+test('buildAnalysisResponseTimingMeta computes total, stage sum, and unattributed latency', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  const realNow = Date.now;
+  try {
+    Date.now = () => 2500;
+    assert.deepEqual(
+      __internal.buildAnalysisResponseTimingMeta({
+        analysisMeta: {
+          stage_timings_ms: {
+            quality: 200.4,
+            artifact: 10.2,
+            guardrail: 5.1,
+          },
+        },
+        startedAtMs: 2000,
+      }),
+      {
+        server_total_ms: 500,
+        server_stage_sum_ms: 215.7,
+        server_unattributed_ms: 284.3,
+      },
+    );
+  } finally {
+    Date.now = realNow;
+    delete require.cache[moduleId];
+  }
+});
+
+test('buildAnalysisServerTimingHeader formats server timing metrics for the response header', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const header = __internal.buildAnalysisServerTimingHeader({
+      server_total_ms: 500,
+      server_stage_sum_ms: 215.7,
+      server_unattributed_ms: 284.3,
+      stage_timings_ms: {
+        quality: 200.4,
+        artifact: 10.2,
+        guardrail: 5.1,
+        report: 0,
+      },
+    });
+    assert.equal(
+      header,
+      'total;dur=500.0, stages;dur=215.7, unattributed;dur=284.3, quality;dur=200.4, artifact;dur=10.2, guardrail;dur=5.1, report;dur=0.0',
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('shouldUseRoutineOnlyAnalysisArtifactFastPath mirrors routine-only no-photo fast-path gating', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

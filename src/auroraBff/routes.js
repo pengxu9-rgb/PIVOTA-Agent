@@ -16842,6 +16842,74 @@ function buildAnalysisStageTimingMeta(report) {
   return meta;
 }
 
+function buildAnalysisResponseTimingMeta({ analysisMeta, startedAtMs } = {}) {
+  const meta = isPlainObject(analysisMeta) ? analysisMeta : {};
+  const totalMsRaw = Number.isFinite(Number(startedAtMs)) && Number(startedAtMs) > 0
+    ? Math.max(0, Date.now() - Number(startedAtMs))
+    : null;
+  if (!Number.isFinite(totalMsRaw)) return {};
+  const stageTimings =
+    meta.stage_timings_ms && typeof meta.stage_timings_ms === 'object' && !Array.isArray(meta.stage_timings_ms)
+      ? meta.stage_timings_ms
+      : {};
+  let stageSumMs = 0;
+  for (const value of Object.values(stageTimings)) {
+    const ms = Number(value);
+    if (!Number.isFinite(ms) || ms < 0) continue;
+    stageSumMs += ms;
+  }
+  const roundedTotalMs = Math.round(totalMsRaw * 1000) / 1000;
+  const roundedStageSumMs = Math.round(stageSumMs * 1000) / 1000;
+  const roundedUnattributedMs = Math.round(Math.max(0, roundedTotalMs - roundedStageSumMs) * 1000) / 1000;
+  return {
+    server_total_ms: roundedTotalMs,
+    server_stage_sum_ms: roundedStageSumMs,
+    server_unattributed_ms: roundedUnattributedMs,
+  };
+}
+
+function attachAnalysisResponseTiming({ envelope, startedAtMs } = {}) {
+  const base = isPlainObject(envelope) ? envelope : null;
+  if (!base || !isPlainObject(base.analysis_meta)) return base;
+  const nextAnalysisMeta = {
+    ...base.analysis_meta,
+    ...buildAnalysisResponseTimingMeta({
+      analysisMeta: base.analysis_meta,
+      startedAtMs,
+    }),
+  };
+  return {
+    ...base,
+    analysis_meta: nextAnalysisMeta,
+  };
+}
+
+function buildAnalysisServerTimingHeader(analysisMeta) {
+  const meta = isPlainObject(analysisMeta) ? analysisMeta : null;
+  if (!meta) return null;
+  const metrics = [];
+  const pushMetric = (name, value) => {
+    const ms = Number(value);
+    if (!Number.isFinite(ms) || ms < 0) return;
+    metrics.push(`${name};dur=${(Math.round(ms * 10) / 10).toFixed(1)}`);
+  };
+  pushMetric('total', meta.server_total_ms);
+  pushMetric('stages', meta.server_stage_sum_ms);
+  pushMetric('unattributed', meta.server_unattributed_ms);
+  pushMetric('quality', meta.stage_timings_ms && meta.stage_timings_ms.quality);
+  pushMetric('artifact', meta.stage_timings_ms && meta.stage_timings_ms.artifact);
+  pushMetric('guardrail', meta.stage_timings_ms && meta.stage_timings_ms.guardrail);
+  pushMetric('report', meta.stage_timings_ms && meta.stage_timings_ms.report);
+  return metrics.length ? metrics.join(', ') : null;
+}
+
+function applyAnalysisResponseTimingHeaders(res, envelope) {
+  if (!res || typeof res.setHeader !== 'function') return;
+  const headerValue = buildAnalysisServerTimingHeader(envelope && envelope.analysis_meta);
+  if (!headerValue) return;
+  res.setHeader('Server-Timing', headerValue);
+}
+
 function buildAnalysisLlmMeta(report) {
   const llmCalls = Array.isArray(report && report.llm_calls) ? report.llm_calls : [];
   if (!llmCalls.length) return {};
@@ -56825,13 +56893,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (degradedGuardrail && Array.isArray(degradedGuardrail.rejected) && degradedGuardrail.rejected.length > 0) {
           persistRejectedCatalogCandidates(ctx, degradedGuardrail.rejected);
         }
-        emitAnalysisGuardrailObservability({
+        const degradedEnvelope = attachAnalysisResponseTiming({
           envelope: degradedGuardrail && degradedGuardrail.envelope ? degradedGuardrail.envelope : envelope,
+          startedAtMs: analysisBudgetStartedAtMs,
+        });
+        emitAnalysisGuardrailObservability({
+          envelope: degradedEnvelope,
           ctx,
           logger,
           shadowRun: false,
         });
-        return res.json(degradedGuardrail && degradedGuardrail.envelope ? degradedGuardrail.envelope : envelope);
+        applyAnalysisResponseTimingHeaders(res, degradedEnvelope);
+        return res.json(degradedEnvelope);
       }
 
       if (shadowRunV2) {
@@ -56843,7 +56916,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (output && output.skip_product_intel_guardrails) {
-        return res.json(output.envelope);
+        const skipGuardrailEnvelope = attachAnalysisResponseTiming({
+          envelope: output.envelope,
+          startedAtMs: analysisBudgetStartedAtMs,
+        });
+        applyAnalysisResponseTimingHeaders(res, skipGuardrailEnvelope);
+        return res.json(skipGuardrailEnvelope);
       }
 
       const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
@@ -56865,14 +56943,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         persistRejectedCatalogCandidates(ctx, guardrailResult.rejected);
       }
       const finalEnvelope = guardrailResult && guardrailResult.envelope ? guardrailResult.envelope : output.envelope;
-      emitAnalysisGuardrailObservability({
+      const timedFinalEnvelope = attachAnalysisResponseTiming({
         envelope: finalEnvelope,
+        startedAtMs: analysisBudgetStartedAtMs,
+      });
+      emitAnalysisGuardrailObservability({
+        envelope: timedFinalEnvelope,
         ctx,
         logger,
         shadowRun: false,
       });
-      if (isPlainObject(finalEnvelope) && Array.isArray(finalEnvelope.cards)) {
-        const storyCard = finalEnvelope.cards.find(
+      if (isPlainObject(timedFinalEnvelope) && Array.isArray(timedFinalEnvelope.cards)) {
+        const storyCard = timedFinalEnvelope.cards.find(
           (card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2',
         );
         if (storyCard && isPlainObject(storyCard.payload)) {
@@ -56882,9 +56964,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...storyCard.payload,
               summary: realignedText,
             };
-            finalEnvelope.assistant_message = makeAssistantMessage(realignedText);
+            timedFinalEnvelope.assistant_message = makeAssistantMessage(realignedText);
           }
-          const sessionPatch = isPlainObject(finalEnvelope.session_patch) ? finalEnvelope.session_patch : {};
+          const sessionPatch = isPlainObject(timedFinalEnvelope.session_patch) ? timedFinalEnvelope.session_patch : {};
           const meta = isPlainObject(sessionPatch.meta) ? { ...sessionPatch.meta } : {};
           const photoRefs = Array.isArray(output && output.photo_refs) ? output.photo_refs : [];
           meta.analysis_context = {
@@ -56894,7 +56976,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             analysis_story_snapshot: storyCard.payload,
           };
           sessionPatch.meta = meta;
-          finalEnvelope.session_patch = sessionPatch;
+          timedFinalEnvelope.session_patch = sessionPatch;
 
           setImmediate(() => {
             saveLastAnalysisForIdentity(
@@ -56904,7 +56986,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
       }
-      return res.json(finalEnvelope);
+      applyAnalysisResponseTimingHeaders(res, timedFinalEnvelope);
+      return res.json(timedFinalEnvelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error(
@@ -65971,6 +66054,10 @@ const __internal = {
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   resolveAnalysisStoryForcedSkipReason,
+  buildAnalysisResponseTimingMeta,
+  attachAnalysisResponseTiming,
+  buildAnalysisServerTimingHeader,
+  applyAnalysisResponseTimingHeaders,
   resolveAnalysisProfileFastTimeoutMs,
   shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
