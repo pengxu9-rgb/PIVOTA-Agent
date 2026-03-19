@@ -221,6 +221,19 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
     storyCard.payload.priority_findings.some((row) => /CeraVe PM|recovery step/i.test(row.title)),
     'story should include a concrete recovery-step adjustment',
   );
+  assert.equal(typeof storyCard.payload.existing_products_optimization, 'object');
+  assert.ok(
+    storyCard.payload.existing_products_optimization.keep.some((row) => /Retinol Serum/i.test(row)),
+    'story should keep a concrete line for the current PM active',
+  );
+  assert.ok(
+    storyCard.payload.existing_products_optimization.keep.some((row) => /CeraVe PM/i.test(row)),
+    'story should keep a concrete line for the current recovery moisturizer',
+  );
+  assert.ok(
+    storyCard.payload.existing_products_optimization.add.some((row) => /SPF|sunscreen/i.test(row)),
+    'story should keep the missing AM sunscreen gap as an add action',
+  );
   assert.doesNotMatch(
     storyCard.payload.priority_findings.map((row) => row.title).join(' '),
     /routine-structure read/i,
@@ -231,9 +244,11 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
   assert.doesNotMatch(assistantText, /Analysis complete|Confidence for this read|What would you like to explore/i);
   assert.doesNotMatch(assistantText, /\.\./);
   assert.match(assistantText, /Fix first:/i);
+  assert.match(assistantText, /Current products:/i);
   assert.match(assistantText, /This week:/i);
   assert.match(assistantText, /sunscreen|SPF/i);
   assert.match(assistantText, /retinoid|Retinol Serum/i);
+  assert.match(assistantText, /CeraVe PM/i);
 });
 
 test('analysis_story_v2: forced deterministic skip bypasses story llm when report already degraded', async () => {
@@ -317,7 +332,12 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   assert.equal(Array.isArray(evidence.finding_evidence), true);
   assert.equal(coerced.disclaimer_non_medical, true);
   assert.equal(Object.prototype.hasOwnProperty.call(coerced, 'routine_bridge'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(coerced, 'existing_products_optimization'), false);
+  assert.deepEqual(coerced.existing_products_optimization, {
+    keep: ['legacy'],
+    add: [],
+    replace: [],
+    remove: [],
+  });
   assert.equal(typeof coerced.ui_card_v1, 'object');
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });

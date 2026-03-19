@@ -196,7 +196,7 @@ const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
-const { runRoutineAnalysisV2 } = require('./routineAnalysisV2');
+const { runRoutineAnalysisV2, buildFallbackProductAudit } = require('./routineAnalysisV2');
 const {
   buildAnalysisContextSnapshotV1,
   resolveAnalysisContextForTask,
@@ -15274,6 +15274,15 @@ const ANALYSIS_STORY_V2_JSON_SCHEMA = Object.freeze({
         required: ['step', 'purpose'],
       },
     },
+    existing_products_optimization: {
+      type: 'object',
+      properties: {
+        keep: { type: 'array', items: { type: 'string' } },
+        add: { type: 'array', items: { type: 'string' } },
+        replace: { type: 'array', items: { type: 'string' } },
+        remove: { type: 'array', items: { type: 'string' } },
+      },
+    },
     timeline: {
       type: 'object',
       properties: {
@@ -22695,6 +22704,9 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     ? story.priority_findings.map((f) => stripStorySummaryTerminalPunctuation(pickFirstTrimmed(f && f.title, f && f.detail))).filter(Boolean).slice(0, 3)
     : [];
   const actions = buildAnalysisStoryImmediateActions(story, { language });
+  const optimization = normalizeExistingProductsOptimization(story.existing_products_optimization);
+  const keepLines = optimization ? optimization.keep.slice(0, 2).map((item) => stripStorySummaryTerminalPunctuation(item)).filter(Boolean) : [];
+  const addLines = optimization ? optimization.add.slice(0, 1).map((item) => stripStorySummaryTerminalPunctuation(item)).filter(Boolean) : [];
   const lines = [];
   if (isCn) {
     const descriptors = [];
@@ -22705,6 +22717,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     if (headline) lines.push(`结论：${headline}。`);
     else if (descriptors.length) lines.push(`结论：你的${descriptors.join('，')}。`);
     if (findings.length) lines.push(`先处理：${findings.slice(0, 2).join('；')}。`);
+    if (keepLines.length) lines.push(`现有产品：${keepLines.join('；')}。`);
+    else if (addLines.length) lines.push(`当前缺口：${addLines[0]}。`);
     if (actions.length) lines.push(`这周先这样调：${actions.join('；')}。`);
     else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('当前把调整控制在低刺激、屏障优先。');
   } else {
@@ -22718,6 +22732,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
       lines.push(`This read points to **${sensitivity}** sensitivity.`);
     }
     if (findings.length) lines.push(`Fix first: ${findings.slice(0, 2).join('; ')}.`);
+    if (keepLines.length) lines.push(`Current products: ${keepLines.join('; ')}.`);
+    else if (addLines.length) lines.push(`Current gap: ${addLines[0]}.`);
     if (actions.length) lines.push(`This week: ${actions.join('; ')}.`);
     else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('Keep changes conservative and barrier-first until the routine settles.');
   }
@@ -28882,6 +28898,15 @@ const AnalysisStoryV2Schema = z.object({
   core_principles: z.array(z.string().trim().min(1)).default([]),
   am_plan: z.array(z.object({ step: z.string().trim().min(1), purpose: z.string().trim().min(1).default('') }).passthrough()).default([]),
   pm_plan: z.array(z.object({ step: z.string().trim().min(1), purpose: z.string().trim().min(1).default('') }).passthrough()).default([]),
+  existing_products_optimization: z
+    .object({
+      keep: z.array(z.string().trim().min(1)).default([]),
+      add: z.array(z.string().trim().min(1)).default([]),
+      replace: z.array(z.string().trim().min(1)).default([]),
+      remove: z.array(z.string().trim().min(1)).default([]),
+    })
+    .passthrough()
+    .optional(),
   timeline: z
     .object({
       first_4_weeks: z.array(z.string().trim().min(1)).default([]),
@@ -29335,12 +29360,120 @@ function buildRoutineProductsPreviewCard({
   language = 'EN',
   candidates = [],
   payloadShape = 'none',
+  profileSummary = null,
+  ingredientPlan = null,
 } = {}) {
   const list = Array.isArray(candidates)
     ? candidates.filter((row) => isPlainObject(row) && String(row.product_text || '').trim())
     : [];
   if (!list.length) return null;
   const isCn = String(language || '').toUpperCase() === 'CN';
+  const auditContext = {
+    skinType: pickFirstString(profileSummary && profileSummary.skinType, profileSummary && profileSummary.skin_type_tendency),
+    sensitivity: pickFirstString(profileSummary && profileSummary.sensitivity, profileSummary && profileSummary.sensitivity_tendency),
+    barrierStatus: pickFirstString(profileSummary && profileSummary.barrierStatus, profileSummary && profileSummary.barrier_status),
+    season: pickFirstString(profileSummary && profileSummary.season),
+    climate: pickFirstString(profileSummary && profileSummary.climate),
+    goals: normalizeArrayOfStrings(
+      [
+        ...(Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals : []),
+        pickFirstString(profileSummary && profileSummary.goal_primary, profileSummary && profileSummary.goalPrimary),
+      ],
+      { max: 6, maxLen: 80 },
+    ),
+    concerns: normalizeArrayOfStrings(
+      [
+        ...(Array.isArray(profileSummary && profileSummary.concerns) ? profileSummary.concerns : []),
+        ...(Array.isArray(ingredientPlan && ingredientPlan.avoid)
+          ? ingredientPlan.avoid.map((item) => pickFirstString(item && item.ingredient_name, item && item.ingredient_id))
+          : []),
+      ],
+      { max: 6, maxLen: 80 },
+    ),
+  };
+  const buildPreviewFitSummary = (row, displayName) => {
+    const audit = buildFallbackProductAudit(
+      {
+        slot: row.slot,
+        step: row.step,
+        product_text: String(row.product_text || '').trim(),
+        product_url: String(row.product_url || '').trim(),
+        resolved_display_name: displayName,
+        parsed_product_hint: row.parsed_product_hint,
+      },
+      auditContext,
+    );
+    const actionCode = pickFirstString(audit && audit.suggested_action, 'keep').toLowerCase();
+    const conciseReason = stripStorySummaryTerminalPunctuation(
+      pickFirstString(
+        audit && audit.concise_reasoning_en,
+        audit && audit.fit_for_skin_type && audit.fit_for_skin_type.reason,
+      ),
+    );
+    const potentialConcern = pickFirstString(
+      Array.isArray(audit && audit.potential_concerns) ? audit.potential_concerns[0] : '',
+    );
+    const matchVerdict =
+      actionCode === 'unknown'
+        ? 'unclear'
+        : ['move_to_am', 'move_to_pm', 'reduce_frequency', 'replace', 'remove'].includes(actionCode)
+          ? 'needs_adjustment'
+          : String(audit && audit.fit_for_skin_type && audit.fit_for_skin_type.verdict).trim().toLowerCase() === 'good' && !potentialConcern
+            ? 'good_match'
+            : ['good', 'mixed'].includes(String(audit && audit.fit_for_skin_type && audit.fit_for_skin_type.verdict).trim().toLowerCase())
+              ? 'partial_match'
+              : 'unclear';
+    const matchLabel = isCn
+      ? ({
+          good_match: '匹配度高',
+          partial_match: '基本匹配',
+          needs_adjustment: '可用但要调整',
+          unclear: '需要确认',
+        }[matchVerdict] || '需要确认')
+      : ({
+          good_match: 'Good fit',
+          partial_match: 'Mostly fits',
+          needs_adjustment: 'Usable with changes',
+          unclear: 'Needs verification',
+        }[matchVerdict] || 'Needs verification');
+    const actionLabel = isCn
+      ? ({
+          keep: '暂时保留',
+          move_to_am: '调到早上',
+          move_to_pm: '调到晚上',
+          reduce_frequency: '降低频率',
+          replace: '考虑替换',
+          remove: '考虑停用',
+          unknown: '先核对产品',
+        }[actionCode] || '暂时保留')
+      : ({
+          keep: 'Keep as-is',
+          move_to_am: 'Move to AM',
+          move_to_pm: 'Move to PM',
+          reduce_frequency: 'Reduce frequency',
+          replace: 'Consider replacing',
+          remove: 'Consider removing',
+          unknown: 'Verify exact product',
+        }[actionCode] || 'Keep as-is');
+    return {
+      fit_summary: {
+        verdict: matchVerdict,
+        label: matchLabel,
+        reason: conciseReason || potentialConcern || (isCn ? '先按当前标签做保守匹配判断。' : 'This is a conservative category-level fit read.'),
+        confidence: Number.isFinite(Number(audit && audit.confidence)) ? Number(audit.confidence) : null,
+      },
+      suggested_usage: {
+        action: actionCode,
+        label: actionLabel,
+        reason: conciseReason || potentialConcern || '',
+      },
+      potential_concern: potentialConcern || null,
+      likely_role: pickFirstString(audit && audit.likely_role) || null,
+      likely_signals: Array.isArray(audit && audit.likely_key_ingredients_or_signals)
+        ? audit.likely_key_ingredients_or_signals.slice(0, 4)
+        : [],
+    };
+  };
   const slotTitle = (slot) => (slot === 'pm' ? (isCn ? '夜间 PM' : 'PM routine') : isCn ? '早间 AM' : 'AM routine');
   const stepLabel = (step) => {
     const token = normalizeRoutineIntakeStep(step);
@@ -29354,6 +29487,12 @@ function buildRoutineProductsPreviewCard({
     { slot: 'am', title: slotTitle('am'), items: [] },
     { slot: 'pm', title: slotTitle('pm'), items: [] },
   ];
+  const matchCounts = {
+    good_match: 0,
+    partial_match: 0,
+    needs_adjustment: 0,
+    unclear: 0,
+  };
   for (const row of list) {
     const slot = normalizeRoutineIntakeSlot(row.slot);
     const target = grouped.find((group) => group.slot === slot) || grouped[0];
@@ -29372,6 +29511,11 @@ function buildRoutineProductsPreviewCard({
       .update(`${slot}|${String(row.step || '')}|${String(row.product_text || '')}|${String(row.product_url || '')}`)
       .digest('hex')
       .slice(0, 12);
+    const previewFit = buildPreviewFitSummary(row, displayName);
+    const previewVerdict = pickFirstString(previewFit && previewFit.fit_summary && previewFit.fit_summary.verdict);
+    if (Object.prototype.hasOwnProperty.call(matchCounts, previewVerdict)) {
+      matchCounts[previewVerdict] += 1;
+    }
     target.items.push({
       item_id: `routine_preview_${stableId}`,
       slot,
@@ -29382,6 +29526,7 @@ function buildRoutineProductsPreviewCard({
       product_text: String(row.product_text || '').trim(),
       product_url: String(row.product_url || '').trim(),
       analysis_input: actionInput,
+      ...previewFit,
     });
   }
   for (const group of grouped) {
@@ -29396,16 +29541,18 @@ function buildRoutineProductsPreviewCard({
       contract: 'aurora.routine_products_preview.v1',
       source: 'routine_intake',
       deferred_product_enrichment: true,
+      fit_evaluation_mode: 'deterministic_summary_first',
       payload_shape: payloadShape,
       title: isCn ? '识别到这些当前使用产品' : 'Products found in your current routine',
       subtitle: isCn
-        ? '先给你肤况结论；单品 deep scan 改成按需点击，不再阻塞主分析。'
-        : 'Skin summary is ready first. Product deep scans are now on-demand instead of blocking analysis.',
+        ? '先给你肤况结论；这里先显示每件现有产品的匹配度和调整方向，单品 deep scan 仍按需点击。'
+        : 'Skin summary is ready first. This preview now includes a quick fit read for each current product, while deep scans stay on-demand.',
       groups: nonEmptyGroups,
       counts: {
         total: list.length,
         am: grouped.find((group) => group.slot === 'am')?.items.length || 0,
         pm: grouped.find((group) => group.slot === 'pm')?.items.length || 0,
+        by_fit: matchCounts,
       },
     },
   };
@@ -32316,11 +32463,181 @@ function collectRoutinePreviewItemsForStory(routinePreviewPayload) {
         step: normalizeRoutineIntakeStep(item.step),
         display_name: pickFirstString(item.display_name, item.product_text, item.analysis_input),
         product_text: pickFirstString(item.product_text, item.display_name, item.analysis_input),
+        fit_summary: isPlainObject(item.fit_summary) ? item.fit_summary : null,
+        suggested_usage: isPlainObject(item.suggested_usage) ? item.suggested_usage : null,
+        potential_concern: pickFirstString(item.potential_concern),
       });
       if (out.length >= 12) return out;
     }
   }
   return out;
+}
+
+function normalizeExistingProductsOptimization(value) {
+  const source = isPlainObject(value) ? value : null;
+  if (!source) return null;
+  const normalized = {
+    keep: normalizeArrayOfStrings(source.keep, { max: 6, maxLen: 220 }),
+    add: normalizeArrayOfStrings(source.add, { max: 6, maxLen: 220 }),
+    replace: normalizeArrayOfStrings(source.replace, { max: 6, maxLen: 220 }),
+    remove: normalizeArrayOfStrings(source.remove, { max: 6, maxLen: 220 }),
+  };
+  if (!normalized.keep.length && !normalized.add.length && !normalized.replace.length && !normalized.remove.length) return null;
+  return normalized;
+}
+
+function buildRoutineExistingProductsOptimization({
+  items,
+  language,
+  amSpf,
+  pmMoisturizer,
+  barrierTarget,
+  pmRetinoidName,
+} = {}) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const keep = [];
+  const add = [];
+  const replace = [];
+  const remove = [];
+  const orderedItems = Array.isArray(items)
+    ? items.slice().sort((left, right) => {
+      const rankFor = (item) => {
+        const step = normalizeRoutineIntakeStep(item && item.step);
+        if (looksLikeRetinoidRoutineItem(item) || step === 'treatment') return 10;
+        if (step === 'moisturizer') return 20;
+        if (looksLikeSpfRoutineItem(item)) return 30;
+        if (step === 'cleanser') return 40;
+        return 90;
+      };
+      return rankFor(left) - rankFor(right);
+    })
+    : [];
+  const pushUnique = (target, text, max = 6) => {
+    const normalized = pickFirstString(text);
+    if (!normalized || target.includes(normalized) || target.length >= max) return;
+    target.push(normalized);
+  };
+  const reasonFor = (item) => stripStorySummaryTerminalPunctuation(
+    pickFirstString(
+      item && item.fit_summary && item.fit_summary.reason,
+      item && item.suggested_usage && item.suggested_usage.reason,
+      item && item.potential_concern,
+    ),
+  );
+  for (const item of orderedItems) {
+    const name = pickFirstString(item && item.display_name, item && item.product_text);
+    if (!name) continue;
+    const actionCode = pickFirstString(item && item.suggested_usage && item.suggested_usage.action, 'keep').toLowerCase();
+    const step = normalizeRoutineIntakeStep(item && item.step);
+    const slot = normalizeRoutineIntakeSlot(item && item.slot);
+    const reason = reasonFor(item);
+    if (actionCode === 'move_to_am') {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留，但只放在早上。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it, but make it an AM-only step.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (actionCode === 'move_to_pm') {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留，但更适合放到晚上。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it, but shift it to PM instead of daytime use.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (actionCode === 'reduce_frequency') {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留，但先降到每周 2-3 次。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it, but cut it back to 2-3 uses a week first.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (actionCode === 'replace') {
+      pushUnique(
+        replace,
+        isCn
+          ? `${name}：这一步更适合换成更稳妥的同类。${reason ? ` ${reason}` : ''}`
+          : `${name}: this slot likely needs a gentler or more suitable replacement.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (actionCode === 'remove') {
+      pushUnique(
+        remove,
+        isCn
+          ? `${name}：当前不建议继续放在这套 routine 里。${reason ? ` ${reason}` : ''}`
+          : `${name}: this is the current routine step most likely to drop for now.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (actionCode === 'unknown') {
+      pushUnique(
+        replace,
+        isCn
+          ? `${name}：先核对完整产品名或版本，再决定是否继续保留。`
+          : `${name}: verify the exact product/version before relying on this slot.`,
+      );
+      continue;
+    }
+    if (looksLikeRetinoidRoutineItem(item)) {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留为夜间主力活性，但先维持每周 2-3 晚。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it as the main PM active, but cap it at 2-3 nights a week.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (step === 'moisturizer' && pmRetinoidName) {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留，并固定接在 ${pmRetinoidName} 后面做修护收尾。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it as the recovery moisturizer, especially right after ${pmRetinoidName}.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    if (looksLikeSpfRoutineItem(item)) {
+      pushUnique(
+        keep,
+        isCn
+          ? `${name}：保留，并固定成每天早上的防晒步骤。${reason ? ` ${reason}` : ''}`
+          : `${name}: keep it as the fixed AM protection step.${reason ? ` ${reason}` : ''}`,
+      );
+      continue;
+    }
+    pushUnique(
+      keep,
+      isCn
+        ? `${name}：暂时保留在${slot === 'pm' ? '晚上' : '早上'}这一步。${reason ? ` ${reason}` : ''}`
+        : `${name}: keep it in the current ${slot === 'pm' ? 'PM' : 'AM'} slot for now.${reason ? ` ${reason}` : ''}`,
+    );
+  }
+  if (!amSpf) {
+    pushUnique(
+      add,
+      isCn
+        ? '补一支广谱 SPF 30-50，固定成每天早上的最后一步。'
+        : 'Add a broad-spectrum SPF 30-50 and make it the non-negotiable last AM step.',
+      3,
+    );
+  }
+  if (!pmMoisturizer) {
+    pushUnique(
+      add,
+      isCn
+        ? `晚上补一支${barrierTarget || '屏障修护面霜'}，让活性后面有明确缓冲。`
+        : `Add a ${barrierTarget || 'barrier-support moisturizer'} at night so active nights still end with recovery support.`,
+      3,
+    );
+  }
+  return normalizeExistingProductsOptimization({ keep, add, replace, remove });
 }
 
 function looksLikeRetinoidRoutineItem(item) {
@@ -32516,6 +32833,14 @@ function buildRoutineAwareStoryFallback({
         : 'Do not put acids or benzoyl peroxide on the same nights as a retinoid.')
       : '',
   ], { max: 3, maxLen: 180 });
+  const existingProductsOptimization = buildRoutineExistingProductsOptimization({
+    items,
+    language,
+    amSpf,
+    pmMoisturizer,
+    barrierTarget,
+    pmRetinoidName,
+  });
 
   return {
     confidence_level: 'medium',
@@ -32525,6 +32850,7 @@ function buildRoutineAwareStoryFallback({
     core_principles: corePrinciples.slice(0, 3),
     am_plan: amPlan,
     pm_plan: pmPlan,
+    ...(existingProductsOptimization ? { existing_products_optimization: existingProductsOptimization } : {}),
     timeline,
     safety_notes: safetyNotes,
   };
@@ -32612,6 +32938,9 @@ function buildAnalysisStoryFallbackPayload({
         { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
         { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
       ],
+    ...(routineAware && routineAware.existing_products_optimization
+      ? { existing_products_optimization: routineAware.existing_products_optimization }
+      : {}),
     timeline: routineAware
       ? routineAware.timeline
       : {
@@ -32700,7 +33029,6 @@ function generateAnalysisStoryV2Json({ evidence, fallbackStory } = {}) {
     schema_version: 'aurora.analysis_story.v2',
   };
   delete output.routine_bridge;
-  delete output.existing_products_optimization;
   if (!Array.isArray(output.priority_findings) || !output.priority_findings.length) {
     const inferredFindings = Array.isArray(evidence && evidence.finding_evidence)
       ? evidence.finding_evidence.map((item) => ({
@@ -32731,10 +33059,9 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
     delete candidate.routine_bridge;
     issues.push('routine_bridge_removed');
   }
-  if (Object.prototype.hasOwnProperty.call(candidate, 'existing_products_optimization')) {
-    delete candidate.existing_products_optimization;
-    issues.push('existing_products_optimization_removed');
-  }
+  const existingProductsOptimization = normalizeExistingProductsOptimization(candidate.existing_products_optimization);
+  if (existingProductsOptimization) candidate.existing_products_optimization = existingProductsOptimization;
+  else delete candidate.existing_products_optimization;
 
   if (!Array.isArray(candidate.priority_findings)) {
     candidate.priority_findings = [];
@@ -32945,7 +33272,8 @@ function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
     'Hard rules:',
     '- patch_ops must stay within evidence boundaries.',
     '- Do NOT introduce new findings, causes, products, or brands.',
-    '- Remove any product recommendation CTA, routine-intake CTA, or product shortlist fields.',
+    '- Remove any unsupported product recommendation CTA or routine-intake CTA.',
+    '- Keep grounded existing_products_optimization entries when they refer to the user\'s current routine rather than a new shopping shortlist.',
     '- Keep ui_card_v1 with headline, key_points, actions_now, avoid_now, confidence_label, next_checkin.',
     '- Keep the story readable in conclusion -> evidence -> actions order.',
     '- Allowed patch ops only: replace|remove on these paths:',
@@ -33085,7 +33413,9 @@ function coerceAnalysisStoryV2(candidate, fallbackPayload) {
     const out = isPlainObject(value) ? { ...value } : value;
     if (isPlainObject(out)) {
       delete out.routine_bridge;
-      delete out.existing_products_optimization;
+      const existingProductsOptimization = normalizeExistingProductsOptimization(out.existing_products_optimization);
+      if (existingProductsOptimization) out.existing_products_optimization = existingProductsOptimization;
+      else delete out.existing_products_optimization;
     }
     return out;
   };
@@ -56263,6 +56593,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             language: ctx.lang,
             candidates: routineProductCandidates,
             payloadShape: routinePayloadShape,
+            profileSummary,
+            ingredientPlan,
           });
         if (routineProductsPreviewCard) {
           routineProductEvents.push(
@@ -57103,6 +57435,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
           candidates: timeoutRoutineCandidates,
           payloadShape: timeoutRoutinePayloadShape,
+          profileSummary,
         });
         const timeoutPayload = {
           analysis: degradedAnalysis,

@@ -301,8 +301,14 @@ test('/v1/analysis/skin: emits routine_products_preview and defers routine produ
         assert.ok(routineFitSummary, 'routine_fit_summary should be emitted in summary-first mode');
         assert.equal(preview.payload && preview.payload.contract, 'aurora.routine_products_preview.v1');
         assert.equal(preview.payload && preview.payload.deferred_product_enrichment, true);
+        assert.equal(preview.payload && preview.payload.fit_evaluation_mode, 'deterministic_summary_first');
         assert.ok(['structured_v1', 'structured_v2'].includes(preview.payload && preview.payload.payload_shape));
         assert.equal(preview.payload && preview.payload.counts && preview.payload.counts.total > 0, true);
+        const firstPreviewItem = preview.payload?.groups?.[0]?.items?.[0];
+        assert.equal(typeof firstPreviewItem?.fit_summary, 'object');
+        assert.equal(typeof firstPreviewItem?.fit_summary?.verdict, 'string');
+        assert.equal(typeof firstPreviewItem?.fit_summary?.reason, 'string');
+        assert.equal(typeof firstPreviewItem?.suggested_usage?.action, 'string');
         assert.equal(resp.body && resp.body.analysis_meta && resp.body.analysis_meta.routine_product_enrichment_deferred, true);
         assert.equal(typeof routineFitSummary.payload?.summary, 'string');
         assert.equal(Array.isArray(routineFitSummary.payload?.highlights), true);
