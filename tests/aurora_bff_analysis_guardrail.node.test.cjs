@@ -173,6 +173,7 @@ test('applyProductIntelGuardrailsToEnvelope uses lightweight guardrail on routin
 test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still recovers deterministic products per target', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
+    const fallbackCalls = [];
     const out = await __internal.sanitizeRecoCandidatesForUi(
       [
         {
@@ -212,7 +213,8 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       {
         strictFilter: true,
         ingredientPlanGuardrailMode: 'lightweight',
-        fallbackCandidateBuilder: async ({ query }) => {
+        fallbackCandidateBuilder: async ({ query, externalSeedStrategy }) => {
+          fallbackCalls.push({ query, externalSeedStrategy });
           if (!/ceramide/i.test(String(query || ''))) {
             return { ok: true, products: [], reason: 'empty', selected_source: 'none' };
           }
@@ -255,6 +257,22 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
     assert.equal(ceramideTarget.products.competitors[0].name, 'Barrier Relief Moisturizer');
     assert.equal(out.lookup_meta.ingredient_plan_recovery_used, true);
     assert.equal(out.lookup_meta.ingredient_plan_recovery_recovered >= 1, true);
+    assert.equal(
+      fallbackCalls.some((row) => /ceramide barrier moisturizer/i.test(String(row.query || ''))),
+      true,
+    );
+    assert.equal(
+      fallbackCalls.some((row) => /barrier repair ceramide moisturizer/i.test(String(row.query || ''))),
+      false,
+    );
+    assert.equal(
+      fallbackCalls.some((row) => /prefer moisturizer or barrier serum forms/i.test(String(row.query || ''))),
+      false,
+    );
+    assert.equal(
+      fallbackCalls.every((row) => row.externalSeedStrategy === 'on_empty_only'),
+      true,
+    );
   } finally {
     delete require.cache[moduleId];
   }

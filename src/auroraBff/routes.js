@@ -31333,6 +31333,7 @@ function collectIngredientPlanFallbackQueriesForTarget({
   payload,
   target,
   maxQueries = AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
+  mode = 'default',
 } = {}) {
   const queries = [];
   const seen = new Set();
@@ -31347,6 +31348,7 @@ function collectIngredientPlanFallbackQueriesForTarget({
 
   const payloadObj = isPlainObject(payload) ? payload : {};
   const targetObj = isPlainObject(target) ? target : {};
+  const normalizedMode = String(mode || 'default').trim().toLowerCase();
   const ingredientName = pickFirstString(
     targetObj.ingredient_name,
     targetObj.ingredientName,
@@ -31354,6 +31356,40 @@ function collectIngredientPlanFallbackQueriesForTarget({
     targetObj.name,
     targetObj.title,
   );
+  const missingCatalogQueries = Array.isArray(payloadObj.__missing_catalog_queries) ? payloadObj.__missing_catalog_queries : [];
+  const matchedMissingCatalogQueries = [];
+  for (const item of missingCatalogQueries) {
+    if (!ingredientTargetMatchesMissingCatalogEntry(targetObj, item)) continue;
+    if (!isPlainObject(item)) continue;
+    matchedMissingCatalogQueries.push(item);
+  }
+
+  if (normalizedMode === 'lightweight') {
+    const cappedMaxQueries = Math.max(1, Math.min(2, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES));
+    for (const item of matchedMissingCatalogQueries) {
+      pushQuery(pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName));
+      if (queries.length >= cappedMaxQueries) break;
+    }
+    if (queries.length < cappedMaxQueries) {
+      const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
+        ? targetObj.example_product_discovery_items
+        : [];
+      for (const item of exampleDiscoveryItems) {
+        if (!isPlainObject(item)) continue;
+        pushQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
+        if (queries.length >= cappedMaxQueries) break;
+      }
+    }
+    if (queries.length < cappedMaxQueries && ingredientName) {
+      const ingredientSearchQuery = /\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName)
+        ? ingredientName
+        : `${ingredientName} skincare`;
+      pushQuery(ingredientSearchQuery);
+      if (queries.length < cappedMaxQueries) pushQuery(ingredientName);
+    }
+    return queries.slice(0, cappedMaxQueries);
+  }
+
   if (ingredientName) {
     pushQuery(ingredientName);
     pushQuery(/\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName) ? ingredientName : `${ingredientName} skincare`);
@@ -31371,10 +31407,7 @@ function collectIngredientPlanFallbackQueriesForTarget({
     pushQuery(tryDecodeSearchQueryFromUrl(item.candidate_url));
   }
 
-  const missingCatalogQueries = Array.isArray(payloadObj.__missing_catalog_queries) ? payloadObj.__missing_catalog_queries : [];
-  for (const item of missingCatalogQueries) {
-    if (!ingredientTargetMatchesMissingCatalogEntry(targetObj, item)) continue;
-    if (!isPlainObject(item)) continue;
+  for (const item of matchedMissingCatalogQueries) {
     pushQuery(pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName));
     pushQuery(tryDecodeSearchQueryFromUrl(item.candidate_url));
     const ladderSteps = Array.isArray(item.query_ladder_steps)
@@ -32530,10 +32563,14 @@ async function sanitizeRecoCandidatesForUi(
             continue;
           }
           kept.push(normalizeCandidateWithDirectUrl(row, directUrl));
-        }
+      }
         return kept;
       };
 
+      const lightweightRecoveryMaxQueries = Math.max(
+        1,
+        Math.min(2, AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES),
+      );
       for (const target of targets) {
         const baseTarget = isPlainObject(target) ? { ...target } : {};
         if (Array.isArray(baseTarget.products)) {
@@ -32564,30 +32601,37 @@ async function sanitizeRecoCandidatesForUi(
         AURORA_PURCHASABLE_FALLBACK_ENABLED &&
         typeof fallbackCandidateBuilder === 'function'
       ) {
-        for (let targetIndex = 0; targetIndex < nextTargets.length; targetIndex += 1) {
-          const target = nextTargets[targetIndex];
-          if (!isPlainObject(target)) continue;
-          if (countPurchasableProductsForTarget(target) > 0) continue;
-          const targetQueries = collectIngredientPlanFallbackQueriesForTarget({
-            payload,
-            target,
-            maxQueries: AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
-          });
-          if (!targetQueries.length) continue;
-          const recovered = await recoverPurchasableProductsFromQueries({
-            queries: targetQueries,
-            strictFilter,
-            qaMode: effectiveQaMode,
-            singleProvider: effectiveSingleProvider,
-            allowOpenAiFallback: effectiveOpenAiFallback,
-            qaContext,
-            fallbackCandidateBuilder,
-            allowExternalSeedSupplement,
-            externalSeedStrategy,
-            logger,
-            guardrailRuleId,
-            maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
-          });
+        const lightweightRecoveryResults = await Promise.all(
+          nextTargets.map(async (target, targetIndex) => {
+            if (!isPlainObject(target)) return null;
+            if (countPurchasableProductsForTarget(target) > 0) return null;
+            const targetQueries = collectIngredientPlanFallbackQueriesForTarget({
+              payload,
+              target,
+              maxQueries: lightweightRecoveryMaxQueries,
+              mode: 'lightweight',
+            });
+            if (!targetQueries.length) return null;
+            const recovered = await recoverPurchasableProductsFromQueries({
+              queries: targetQueries,
+              strictFilter,
+              qaMode: effectiveQaMode,
+              singleProvider: effectiveSingleProvider,
+              allowOpenAiFallback: effectiveOpenAiFallback,
+              qaContext,
+              fallbackCandidateBuilder,
+              allowExternalSeedSupplement,
+              externalSeedStrategy: 'on_empty_only',
+              logger,
+              guardrailRuleId,
+              maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+            });
+            return { targetIndex, target, recovered };
+          }),
+        );
+        for (const result of lightweightRecoveryResults) {
+          if (!result) continue;
+          const { targetIndex, target, recovered } = result;
           recoveryAttemptedForCard += recovered.attempted_queries.length;
           recoveryRecoveredForCard += recovered.products.length;
           if (recovered.rejected.length) rejected.push(...recovered.rejected);
