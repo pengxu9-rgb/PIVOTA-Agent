@@ -366,7 +366,11 @@ test('/v1/analysis/skin: structured product_text labels survive into preview and
         const preview = findCard(cards, 'routine_products_preview');
         const story = findCard(cards, 'analysis_story_v2');
         const previewNames = (preview?.payload?.groups || []).flatMap((group) => (group.items || []).map((item) => item.display_name));
+        const previewItems = (preview?.payload?.groups || []).flatMap((group) => group.items || []);
         const keepRows = story?.payload?.existing_products_optimization?.keep || [];
+        const cleanserItem = previewItems.find((item) => item.display_name === 'CeraVe Foaming Cleanser');
+        const moisturizerItem = previewItems.find((item) => item.display_name === 'CeraVe PM');
+        const retinolItem = previewItems.find((item) => item.display_name === 'Retinol Serum');
 
         assert.ok(preview, 'structured product_text routine should still produce routine_products_preview');
         assert.ok(story, 'structured product_text routine should still produce analysis_story_v2');
@@ -379,6 +383,16 @@ test('/v1/analysis/skin: structured product_text labels survive into preview and
         assert.ok(keepRows.some((row) => /Retinol Serum/i.test(row)));
         assert.ok(keepRows.some((row) => /CeraVe PM/i.test(row)));
         assert.ok(keepRows.some((row) => /CeraVe Foaming Cleanser/i.test(row)));
+        assert.match(cleanserItem?.fit_summary?.reason || '', /does not leave the skin tight/i);
+        assert.match(cleanserItem?.suggested_usage?.reason || '', /does not feel tight after washing|keep it in place/i);
+        assert.match(moisturizerItem?.fit_summary?.reason || '', /recovery step|comfortable and non-stingy/i);
+        assert.match(moisturizerItem?.suggested_usage?.reason || '', /recovery moisturizer|active nights/i);
+        assert.match(retinolItem?.fit_summary?.reason || '', /frequency needs to stay low|strength and frequency/i);
+        assert.match(retinolItem?.suggested_usage?.reason || '', /2-3 nights a week|do not push strength or frequency/i);
+        assert.doesNotMatch(
+          previewItems.map((item) => `${item?.fit_summary?.reason || ''} ${item?.suggested_usage?.reason || ''}`).join(' '),
+          /This looks|This reads|biggest unknowns|practical question/i,
+        );
       } finally {
         harness.restore();
       }

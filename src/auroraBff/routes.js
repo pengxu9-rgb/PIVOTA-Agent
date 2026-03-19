@@ -29428,6 +29428,117 @@ function buildRoutineProductsPreviewCard({
       { max: 6, maxLen: 80 },
     ),
   };
+  const compressRoutinePreviewConcern = (text) => {
+    const raw = stripStorySummaryTerminalPunctuation(pickFirstString(text));
+    if (!raw) return '';
+    const lower = raw.toLowerCase();
+    if (isCn) {
+      if (/tight|stripp|干|紧绷/.test(lower)) return '留意洗后是否发紧。';
+      if (/sting|burn|irrit|刺痛|刺激|泛红/.test(lower)) return '留意刺痛或泛红。';
+      if (/dry|dehydrat|脱皮|干燥/.test(lower)) return '留意干燥或起皮。';
+      if (/fragrance|parfum|香精/.test(lower)) return '留意香精相关刺激。';
+      if (/breakout|acne|comed|爆痘|闷痘/.test(lower)) return '留意闷痘或爆痘。';
+      return `${raw.slice(0, 48)}。`;
+    }
+    if (/tight|stripp|dry.*after.*clean/i.test(lower)) return 'Watch for tightness after cleansing.';
+    if (/sting|burn|irrit|redness/i.test(lower)) return 'Watch for stinging or redness.';
+    if (/dry|dehydrat|flak/i.test(lower)) return 'Watch for dryness or flaking.';
+    if (/fragrance|parfum/i.test(lower)) return 'Watch for fragrance-related irritation.';
+    if (/breakout|acne|comed/i.test(lower)) return 'Watch for clogged pores or breakouts.';
+    return `${raw.slice(0, 72)}.`;
+  };
+  const buildRoutinePreviewReason = ({ row, actionCode, matchVerdict, potentialConcern }) => {
+    const step = normalizeRoutineIntakeStep(row && row.step);
+    const itemLike = {
+      step,
+      product_text: pickFirstString(row && row.product_text, row && row.display_name),
+      display_name: pickFirstString(row && row.display_name, row && row.product_text),
+    };
+    const concernTail = compressRoutinePreviewConcern(potentialConcern);
+    const base = (() => {
+      if (actionCode === 'unknown') {
+        return isCn ? '当前还不能稳定判断这支产品的真实类型。' : 'The exact product family is still unclear.';
+      }
+      if (actionCode === 'move_to_am') {
+        return isCn ? '更适合放在早上，而不是晚上。' : 'This makes more sense in the morning than at night.';
+      }
+      if (actionCode === 'move_to_pm') {
+        return isCn ? '更适合放在晚上，而不是白天。' : 'This fits better at night than in the daytime.';
+      }
+      if (actionCode === 'replace') {
+        return isCn ? '这一步的角色没错，但这支产品本身不是最稳的选择。' : 'The step makes sense, but this specific product is not the steadiest fit.';
+      }
+      if (actionCode === 'remove') {
+        return isCn ? '这是当前最容易先拿掉的一步。' : 'This is the easiest current step to drop first.';
+      }
+      if (actionCode === 'reduce_frequency') {
+        if (looksLikeRetinoidRoutineItem(itemLike)) {
+          return isCn ? '这支活性可以保留，但频率一定要低。' : 'This can stay, but frequency needs to stay low.';
+        }
+        if (looksLikeAcidRoutineItem(itemLike)) {
+          return isCn ? '这类酸可以用，但不要当成高频步骤。' : 'This can fit, but it should not be a high-frequency step.';
+        }
+        return isCn ? '可以留着，但先降频会更稳。' : 'This is usable, but it will read more safely at lower frequency.';
+      }
+      if (looksLikeSpfRoutineItem(itemLike)) {
+        return isCn ? '这是合理的早间防护步骤，关键是每天足量放在最后。' : 'This is a good protection step if it stays the last AM layer every day.';
+      }
+      if (step === 'cleanser') {
+        return isCn ? '这一步可以留，前提是洗后不发紧。' : 'This cleanser fits as long as it does not leave the skin tight.';
+      }
+      if (step === 'moisturizer') {
+        return isCn ? '这一步适合作为修护收尾，关键是上脸不刺痛。' : 'This works as a recovery step if it stays comfortable and non-stingy.';
+      }
+      if (looksLikeRetinoidRoutineItem(itemLike)) {
+        return matchVerdict === 'good_match'
+          ? (isCn ? '这支夜间活性可以继续用，但仍要守住耐受。' : 'This is a workable PM active, but tolerance still matters more than speed.')
+          : (isCn ? '方向没错，但强度和频率都要保守。' : 'The direction is right, but strength and frequency both need to stay conservative.');
+      }
+      if (looksLikeAcidRoutineItem(itemLike)) {
+        return isCn ? '可以放进 routine，但不要和其他强活性叠太狠。' : 'This can fit, but it should not be stacked too aggressively with other actives.';
+      }
+      if (matchVerdict === 'good_match') {
+        return isCn ? '这一步整体是合适的。' : 'This step is broadly well matched to the routine.';
+      }
+      if (matchVerdict === 'partial_match') {
+        return isCn ? '整体方向对，但用法还需要保守一点。' : 'The overall fit is directionally right, but the usage still needs restraint.';
+      }
+      if (matchVerdict === 'needs_adjustment') {
+        return isCn ? '这一步能用，但必须带着条件去调整。' : 'This can work, but only with a concrete adjustment.';
+      }
+      return isCn ? '先按保守匹配处理。' : 'Treat this as a cautious provisional fit for now.';
+    })();
+    return concernTail ? `${base} ${concernTail}` : base;
+  };
+  const buildRoutinePreviewUsageReason = ({ row, actionCode, potentialConcern }) => {
+    const step = normalizeRoutineIntakeStep(row && row.step);
+    const itemLike = {
+      step,
+      product_text: pickFirstString(row && row.product_text, row && row.display_name),
+      display_name: pickFirstString(row && row.display_name, row && row.product_text),
+    };
+    if (actionCode === 'move_to_am') return isCn ? '先固定到早上用。' : 'Move it to the AM slot.';
+    if (actionCode === 'move_to_pm') return isCn ? '先固定到晚上用。' : 'Move it to the PM slot.';
+    if (actionCode === 'replace') return isCn ? '优先换这一支，不是先动整条 routine。' : 'Replace this product before changing the whole routine.';
+    if (actionCode === 'remove') return isCn ? '先停这一步，观察稳定度。' : 'Pause this step first and watch stability.';
+    if (actionCode === 'unknown') return isCn ? '先核对准确产品名或版本。' : 'Verify the exact product name or version first.';
+    if (actionCode === 'reduce_frequency') {
+      if (looksLikeRetinoidRoutineItem(itemLike)) return isCn ? '先控制在每周 2-3 晚。' : 'Cap it at 2-3 nights a week first.';
+      if (looksLikeAcidRoutineItem(itemLike)) return isCn ? '先控制在低频，不和 retinoid 同晚叠加。' : 'Keep it low-frequency and do not stack it with retinoid nights.';
+      return isCn ? '先降频，再看耐受。' : 'Reduce frequency first, then reassess tolerance.';
+    }
+    if (looksLikeSpfRoutineItem(itemLike)) return isCn ? '把它固定成每天早上的最后一步。' : 'Keep it as the last step every morning.';
+    if (step === 'cleanser') {
+      return potentialConcern
+        ? (isCn ? '继续用，但洗后发紧就该换。' : 'Keep it only if the skin does not feel tight after washing.')
+        : (isCn ? '先继续用。' : 'Keep it in place for now.');
+    }
+    if (step === 'moisturizer') {
+      return isCn ? '继续当修护收尾，优先接在活性后面。' : 'Keep it as the recovery moisturizer, especially after active nights.';
+    }
+    if (looksLikeRetinoidRoutineItem(itemLike)) return isCn ? '继续用，但不要追求更快加量。' : 'Keep it, but do not push strength or frequency faster.';
+    return isCn ? '先继续用，再看皮肤反馈。' : 'Keep it for now and judge by skin response.';
+  };
   const buildPreviewFitSummary = (row, displayName) => {
     const audit = buildFallbackProductAudit(
       {
@@ -29441,12 +29552,6 @@ function buildRoutineProductsPreviewCard({
       auditContext,
     );
     const actionCode = pickFirstString(audit && audit.suggested_action, 'keep').toLowerCase();
-    const conciseReason = stripStorySummaryTerminalPunctuation(
-      pickFirstString(
-        audit && audit.concise_reasoning_en,
-        audit && audit.fit_for_skin_type && audit.fit_for_skin_type.reason,
-      ),
-    );
     const potentialConcern = pickFirstString(
       Array.isArray(audit && audit.potential_concerns) ? audit.potential_concerns[0] : '',
     );
@@ -29492,17 +29597,28 @@ function buildRoutineProductsPreviewCard({
           remove: 'Consider removing',
           unknown: 'Verify exact product',
         }[actionCode] || 'Keep as-is');
+    const fitReason = buildRoutinePreviewReason({
+      row: { ...row, display_name: displayName },
+      actionCode,
+      matchVerdict,
+      potentialConcern,
+    });
+    const usageReason = buildRoutinePreviewUsageReason({
+      row: { ...row, display_name: displayName },
+      actionCode,
+      potentialConcern,
+    });
     return {
       fit_summary: {
         verdict: matchVerdict,
         label: matchLabel,
-        reason: conciseReason || potentialConcern || (isCn ? '先按当前标签做保守匹配判断。' : 'This is a conservative category-level fit read.'),
+        reason: fitReason || (isCn ? '先按当前标签做保守匹配判断。' : 'This is a conservative category-level fit read.'),
         confidence: Number.isFinite(Number(audit && audit.confidence)) ? Number(audit.confidence) : null,
       },
       suggested_usage: {
         action: actionCode,
         label: actionLabel,
-        reason: conciseReason || potentialConcern || '',
+        reason: usageReason || fitReason || '',
       },
       potential_concern: potentialConcern || null,
       likely_role: pickFirstString(audit && audit.likely_role) || null,
