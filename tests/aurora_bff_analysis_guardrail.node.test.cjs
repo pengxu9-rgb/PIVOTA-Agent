@@ -270,7 +270,11 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       false,
     );
     assert.equal(
-      fallbackCalls.every((row) => row.externalSeedStrategy === 'on_empty_only'),
+      fallbackCalls.some((row) => row.externalSeedStrategy === 'on_empty_only'),
+      false,
+    );
+    assert.equal(
+      fallbackCalls.every((row) => row.externalSeedStrategy === 'supplement_internal_first'),
       true,
     );
   } finally {

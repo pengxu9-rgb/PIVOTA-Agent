@@ -32601,37 +32601,31 @@ async function sanitizeRecoCandidatesForUi(
         AURORA_PURCHASABLE_FALLBACK_ENABLED &&
         typeof fallbackCandidateBuilder === 'function'
       ) {
-        const lightweightRecoveryResults = await Promise.all(
-          nextTargets.map(async (target, targetIndex) => {
-            if (!isPlainObject(target)) return null;
-            if (countPurchasableProductsForTarget(target) > 0) return null;
-            const targetQueries = collectIngredientPlanFallbackQueriesForTarget({
-              payload,
-              target,
-              maxQueries: lightweightRecoveryMaxQueries,
-              mode: 'lightweight',
-            });
-            if (!targetQueries.length) return null;
-            const recovered = await recoverPurchasableProductsFromQueries({
-              queries: targetQueries,
-              strictFilter,
-              qaMode: effectiveQaMode,
-              singleProvider: effectiveSingleProvider,
-              allowOpenAiFallback: effectiveOpenAiFallback,
-              qaContext,
-              fallbackCandidateBuilder,
-              allowExternalSeedSupplement,
-              externalSeedStrategy: 'on_empty_only',
-              logger,
-              guardrailRuleId,
-              maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
-            });
-            return { targetIndex, target, recovered };
-          }),
-        );
-        for (const result of lightweightRecoveryResults) {
-          if (!result) continue;
-          const { targetIndex, target, recovered } = result;
+        for (let targetIndex = 0; targetIndex < nextTargets.length; targetIndex += 1) {
+          const target = nextTargets[targetIndex];
+          if (!isPlainObject(target)) continue;
+          if (countPurchasableProductsForTarget(target) > 0) continue;
+          const targetQueries = collectIngredientPlanFallbackQueriesForTarget({
+            payload,
+            target,
+            maxQueries: lightweightRecoveryMaxQueries,
+            mode: 'lightweight',
+          });
+          if (!targetQueries.length) continue;
+          const recovered = await recoverPurchasableProductsFromQueries({
+            queries: targetQueries,
+            strictFilter,
+            qaMode: effectiveQaMode,
+            singleProvider: effectiveSingleProvider,
+            allowOpenAiFallback: effectiveOpenAiFallback,
+            qaContext,
+            fallbackCandidateBuilder,
+            allowExternalSeedSupplement,
+            externalSeedStrategy,
+            logger,
+            guardrailRuleId,
+            maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+          });
           recoveryAttemptedForCard += recovered.attempted_queries.length;
           recoveryRecoveredForCard += recovered.products.length;
           if (recovered.rejected.length) rejected.push(...recovered.rejected);
