@@ -162,8 +162,99 @@ test('applyProductIntelGuardrailsToEnvelope uses lightweight guardrail on routin
     const envelope = out && out.envelope ? out.envelope : null;
     assert.ok(envelope && envelope.analysis_meta);
     assert.equal(envelope.analysis_meta.guardrail_stage_mode, 'lightweight');
+    assert.equal(envelope.analysis_meta.ingredient_plan_guardrail_mode, 'lightweight');
     assert.equal(envelope.analysis_meta.guardrail_stage_reduced, true);
     assert.equal(Number(envelope.analysis_meta.stage_timings_ms.guardrail) >= 0, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still recovers deterministic products per target', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_target_recovery',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'sunscreen_filters',
+                ingredient_name: 'UV filters',
+                products: {
+                  competitors: [],
+                  dupes: [],
+                },
+              },
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                products: {
+                  competitors: [],
+                  dupes: [],
+                },
+              },
+            ],
+            __missing_catalog_queries: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                query: 'ceramide barrier moisturizer',
+                query_ladder_steps: [{ query: 'barrier repair ceramide moisturizer' }],
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        fallbackCandidateBuilder: async ({ query }) => {
+          if (!/ceramide/i.test(String(query || ''))) {
+            return { ok: true, products: [], reason: 'empty', selected_source: 'none' };
+          }
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'ceramide_ext_1',
+                merchant_id: 'external_seed',
+                name: 'Barrier Relief Moisturizer',
+                brand: 'Shield Lab',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                pdp_url: 'https://agent.pivota.cc/products/ceramide_ext_1?merchant_id=external_seed',
+                product_url: 'https://agent.pivota.cc/products/ceramide_ext_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/ceramide_ext_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+            ],
+            selected_source: 'external_seed',
+          };
+        },
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const targets = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets : [];
+    const uvTarget = targets.find((row) => row && row.ingredient_id === 'sunscreen_filters');
+    const ceramideTarget = targets.find((row) => row && row.ingredient_id === 'ceramide_np');
+
+    assert.ok(uvTarget);
+    assert.ok(ceramideTarget);
+    assert.equal(Array.isArray(uvTarget?.products?.competitors), true);
+    assert.equal(Array.isArray(ceramideTarget?.products?.competitors), true);
+    assert.equal(uvTarget.products.competitors.length, 0);
+    assert.equal(ceramideTarget.products.competitors.length, 1);
+    assert.equal(ceramideTarget.products.competitors[0].name, 'Barrier Relief Moisturizer');
+    assert.equal(out.lookup_meta.ingredient_plan_recovery_used, true);
+    assert.equal(out.lookup_meta.ingredient_plan_recovery_recovered >= 1, true);
   } finally {
     delete require.cache[moduleId];
   }

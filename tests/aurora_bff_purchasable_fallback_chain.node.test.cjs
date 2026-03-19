@@ -192,3 +192,37 @@ test('purchasable fallback: llm fallback returns strict https skincare products 
     __internal.__resetCallGeminiJsonObjectForTest();
   }
 });
+
+test('purchasable fallback: query collection includes ingredient target names and missing-catalog ladder queries', () => {
+  const queries = __internal.collectPurchasableFallbackQueries({
+    payload: {
+      __missing_catalog_queries: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          query: 'ceramide barrier moisturizer',
+          query_ladder_steps: [
+            { query: 'barrier repair ceramide moisturizer' },
+          ],
+          candidate_url: 'https://www.amazon.com/s?k=ceramide+barrier+moisturizer',
+        },
+      ],
+    },
+    extraSeeds: [
+      {
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+      },
+      {
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+      },
+    ],
+    maxQueries: 8,
+  });
+
+  assert.equal(Array.isArray(queries), true);
+  assert.equal(queries.some((row) => /ceramide barrier moisturizer/i.test(String(row))), true);
+  assert.equal(queries.some((row) => /barrier repair ceramide moisturizer/i.test(String(row))), true);
+  assert.equal(queries.some((row) => /panthenol \(b5/i.test(String(row))), true);
+});
