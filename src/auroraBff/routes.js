@@ -22636,6 +22636,7 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
   const skinType = pickFirstTrimmed(sp.skin_type_tendency, sp.skin_type);
   const sensitivity = pickFirstTrimmed(sp.sensitivity_tendency, sp.sensitivity);
   const confLevel = pickFirstTrimmed(conf.level);
+  const headline = pickFirstTrimmed(story && story.ui_card_v1 && story.ui_card_v1.headline, Array.isArray(story.target_state) ? story.target_state[0] : '');
   const findings = Array.isArray(story.priority_findings)
     ? story.priority_findings.map((f) => pickFirstTrimmed(f && f.title, f && f.detail)).filter(Boolean).slice(0, 3)
     : [];
@@ -22648,6 +22649,7 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     if (skinLabel) descriptors.push(`肤质倾向为 **${skinLabel}**`);
     if (sensLabel) descriptors.push(`敏感度 **${sensLabel}**`);
     if (descriptors.length) lines.push(`你的${descriptors.join('，')}。`);
+    else if (headline) lines.push(`这次 routine 判断重点是：${headline}。`);
     if (confLevel) lines.push(`本次判断置信度为 **${confLevel === 'high' ? '高' : confLevel === 'medium' ? '中' : confLevel === 'low' ? '低' : confLevel}**。`);
     if (findings.length) lines.push(`主要发现：${findings.join('；')}。`);
   } else {
@@ -22658,6 +22660,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
       lines.push(`Your skin trends **${skinType}** in this read.`);
     } else if (sensitivity) {
       lines.push(`This read suggests **${sensitivity}** sensitivity.`);
+    } else if (headline) {
+      lines.push(`This routine read is mainly about: ${headline}.`);
     }
     if (confLevel) lines.push(`Confidence for this read is **${confLevel}**.`);
     if (findings.length) lines.push(`Key findings: ${findings.join('; ')}.`);
@@ -32244,10 +32248,243 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   };
 }
 
-function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, language } = {}) {
+function collectRoutinePreviewItemsForStory(routinePreviewPayload) {
+  const payload = isPlainObject(routinePreviewPayload) ? routinePreviewPayload : {};
+  const groups = Array.isArray(payload.groups) ? payload.groups : [];
+  const out = [];
+  for (const group of groups) {
+    const groupSlot = normalizeRoutineIntakeSlot(group && group.slot);
+    const items = Array.isArray(group && group.items) ? group.items : [];
+    for (const item of items) {
+      if (!isPlainObject(item)) continue;
+      out.push({
+        slot: normalizeRoutineIntakeSlot(item.slot || groupSlot),
+        step: normalizeRoutineIntakeStep(item.step),
+        display_name: pickFirstString(item.display_name, item.product_text, item.analysis_input),
+        product_text: pickFirstString(item.product_text, item.display_name, item.analysis_input),
+      });
+      if (out.length >= 12) return out;
+    }
+  }
+  return out;
+}
+
+function looksLikeRetinoidRoutineItem(item) {
+  const text = pickFirstString(item && item.product_text, item && item.display_name);
+  return /retinol|retinal|retinoid|adapalene|tretinoin|tazarotene/i.test(text);
+}
+
+function looksLikeAcidRoutineItem(item) {
+  const text = pickFirstString(item && item.product_text, item && item.display_name);
+  return /salicylic|glycolic|lactic|mandelic|aha|bha|pha|azelaic|benzoyl peroxide|exfol/i.test(text);
+}
+
+function looksLikeSpfRoutineItem(item) {
+  const step = normalizeRoutineIntakeStep(item && item.step);
+  if (step === 'spf') return true;
+  const text = pickFirstString(item && item.product_text, item && item.display_name);
+  return /spf|sunscreen|sun screen|uv/i.test(text);
+}
+
+function buildRoutineAwareStoryFallback({
+  routinePreviewPayload,
+  ingredientPlanPayload,
+  language,
+} = {}) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const items = collectRoutinePreviewItemsForStory(routinePreviewPayload);
+  if (!items.length) return null;
+
+  const amItems = items.filter((item) => item.slot === 'am');
+  const pmItems = items.filter((item) => item.slot === 'pm');
+  const amCleanser = amItems.find((item) => item.step === 'cleanser') || null;
+  const amMoisturizer = amItems.find((item) => item.step === 'moisturizer') || null;
+  const amSpf = amItems.find((item) => looksLikeSpfRoutineItem(item)) || null;
+  const pmCleanser = pmItems.find((item) => item.step === 'cleanser') || null;
+  const pmMoisturizer = pmItems.find((item) => item.step === 'moisturizer') || items.find((item) => item.step === 'moisturizer') || null;
+  const pmRetinoid = pmItems.find((item) => looksLikeRetinoidRoutineItem(item)) || items.find((item) => looksLikeRetinoidRoutineItem(item)) || null;
+  const strongActives = items.filter((item) => looksLikeRetinoidRoutineItem(item) || looksLikeAcidRoutineItem(item));
+  const hasStrongActiveStack = strongActives.length >= 2;
+  const ingredientPlan = isPlainObject(ingredientPlanPayload) ? ingredientPlanPayload : {};
+  const targetNames = Array.isArray(ingredientPlan.targets)
+    ? ingredientPlan.targets.map((item) => pickFirstString(item && item.ingredient_name, item && item.ingredient_id)).filter(Boolean)
+    : [];
+  const barrierTarget = targetNames.find((name) => /ceramide|panthenol|b5|glycerin|beta.?glucan/i.test(name)) || '';
+  const routineOnlyLine = isCn
+    ? '这次是 routine 结构判断，不是基于照片的肤况判读。'
+    : 'This is a routine-structure read rather than a photo-based skin diagnosis.';
+
+  const currentStrengths = [];
+  if (amCleanser || pmCleanser || amMoisturizer || pmMoisturizer) {
+    currentStrengths.push(
+      isCn
+        ? '你已经有了基础清洁+保湿骨架，不需要整套推倒重来。'
+        : 'You already have a cleanser + moisturizer backbone, so this can be improved without rebuilding the whole routine.',
+    );
+  }
+  if (pmRetinoid) {
+    currentStrengths.push(
+      isCn
+        ? `${pmRetinoid.display_name || pmRetinoid.product_text} 已经形成了一个明确的夜间主力活性通道。`
+        : `${pmRetinoid.display_name || pmRetinoid.product_text} already gives you one clear PM treatment lane.`,
+    );
+  }
+  if (amSpf) {
+    currentStrengths.push(
+      isCn
+        ? '白天防晒已经在流程里，后续主要是优化节奏和耐受。'
+        : 'You already have a daytime sunscreen step in place, so the job is mostly cadence and tolerability.',
+    );
+  }
+  if (!currentStrengths.length) currentStrengths.push(routineOnlyLine);
+
+  const priorityFindings = [];
+  if (!amSpf) {
+    priorityFindings.push(isCn
+      ? '你的早间 routine 里没有明确防晒，这是在继续上亮肤/抗老活性前最需要先补上的缺口。'
+      : 'Your AM routine has no clear sunscreen step, so UV protection is the biggest gap before adding more brightening or anti-aging actives.');
+  }
+  if (pmRetinoid) {
+    priorityFindings.push(isCn
+      ? `${pmRetinoid.display_name || pmRetinoid.product_text} 看起来是你的夜间 retinoid 主力，先维持低频，不要和酸类或过氧化苯甲酰同晚叠加。`
+      : `${pmRetinoid.display_name || pmRetinoid.product_text} appears to be your main PM retinoid step, so keep it low-frequency and do not stack acids or benzoyl peroxide on the same nights.`);
+  }
+  if (hasStrongActiveStack) {
+    priorityFindings.push(isCn
+      ? '当前流程里同时出现了不止一个强活性信号，说明“治疗压力”已经跑在修护能力前面。'
+      : 'The routine already carries more than one strong-active signal, which means treatment pressure is running ahead of recovery support.');
+  } else if (!pmMoisturizer && barrierTarget) {
+    priorityFindings.push(isCn
+      ? `当前晚间没有明确修护收尾，下一步更应该补 ${barrierTarget} 这类屏障支撑，而不是继续加新活性。`
+      : `There is no obvious PM recovery step, so the next upgrade should be ${barrierTarget}-style barrier support rather than another new active.`);
+  } else {
+    priorityFindings.push(routineOnlyLine);
+  }
+
+  const targetState = [
+    !amSpf && pmRetinoid
+      ? (isCn
+        ? '先补齐早间防晒，再把夜间 retinoid 节奏调到可持续耐受。'
+        : 'Lock in daily AM sunscreen and make the PM retinoid lane tolerable before adding anything stronger.')
+      : !amSpf
+        ? (isCn
+          ? '先补齐早间防晒，再考虑继续做提亮、刷酸或抗老叠加。'
+          : 'Close the AM sunscreen gap before layering in more brightening, exfoliation, or anti-aging steps.')
+        : pmRetinoid
+          ? (isCn
+            ? '保留夜间 retinoid 主线，但把它做成可持续耐受的节奏。'
+            : 'Keep the PM retinoid lane, but make it sustainable instead of irritating.')
+          : (isCn
+            ? '把当前 lineup 收敛成完整但低摩擦的 AM/PM routine。'
+            : 'Turn the current lineup into a complete but low-friction AM/PM routine.'),
+  ];
+
+  const corePrinciples = [
+    isCn ? '一次只保留一条强活性主线。' : 'Keep only one strong-active lane at a time.',
+    !amSpf
+      ? (isCn ? '白天防晒先于继续叠加亮肤/抗老活性。' : 'Daily sunscreen comes before adding more brightening or anti-aging actives.')
+      : (isCn ? '先把现有步骤做稳定，再谈加码。' : 'Stabilize the current steps before escalating.'),
+    pmRetinoid
+      ? (isCn ? 'retinoid 夜要配合保湿，并用低频起步。' : 'Retinoid nights should be paired with moisturizer and a slower cadence.')
+      : (isCn ? '修护支撑要跟得上治疗步骤。' : 'Recovery support should keep up with treatment pressure.'),
+  ];
+
+  const amPlan = [
+    {
+      step: pickFirstString(amCleanser && amCleanser.display_name, amCleanser && amCleanser.product_text, isCn ? '温和洁面' : 'Gentle cleanse'),
+      purpose: isCn ? '保留基础清洁，不额外增加刺激' : 'Keep the cleanse step simple and non-irritating',
+    },
+    {
+      step: pickFirstString(amMoisturizer && amMoisturizer.display_name, amMoisturizer && amMoisturizer.product_text, barrierTarget || (isCn ? '保湿/修护' : 'Barrier support')),
+      purpose: isCn ? '维持屏障支撑' : 'Keep barrier support in the morning',
+    },
+    {
+      step: pickFirstString(amSpf && amSpf.display_name, amSpf && amSpf.product_text, isCn ? '补上广谱 SPF 30-50 防晒' : 'Add a broad-spectrum SPF 30-50 sunscreen'),
+      purpose: !amSpf
+        ? (isCn ? '先补齐白天保护缺口' : 'Close the biggest daytime protection gap first')
+        : (isCn ? '把现有防晒变成每天固定步骤' : 'Make the existing sunscreen a fixed daily step'),
+    },
+  ];
+
+  const pmPlan = [
+    {
+      step: pickFirstString(pmCleanser && pmCleanser.display_name, pmCleanser && pmCleanser.product_text, amCleanser && amCleanser.display_name, amCleanser && amCleanser.product_text, isCn ? '温和洁面' : 'Gentle cleanse'),
+      purpose: isCn ? '先把晚间流程保持简单' : 'Keep the evening routine simple at the start',
+    },
+    {
+      step: pmRetinoid
+        ? `${pickFirstString(pmRetinoid.display_name, pmRetinoid.product_text)}${isCn ? '（先低频）' : ' (low frequency first)'}`
+        : isCn ? '每晚只保留一个主力活性' : 'Keep only one main active per night',
+      purpose: pmRetinoid
+        ? (isCn ? '先把 retinoid 做到稳定耐受，再决定是否加强' : 'Make the retinoid lane tolerable before deciding to intensify')
+        : (isCn ? '避免同晚叠加多个治疗步骤' : 'Avoid stacking multiple treatment steps on the same night'),
+    },
+    {
+      step: pickFirstString(pmMoisturizer && pmMoisturizer.display_name, pmMoisturizer && pmMoisturizer.product_text, barrierTarget || (isCn ? '修护保湿' : 'Barrier moisturizer')),
+      purpose: isCn ? '给活性后面留足修护缓冲' : 'Leave enough recovery support after the active step',
+    },
+  ];
+
+  const timeline = {
+    first_4_weeks: [
+      !amSpf
+        ? (isCn ? '第1周：先把早间防晒变成每天固定步骤。' : 'Week 1: make morning sunscreen non-negotiable every day.')
+        : (isCn ? '第1周：先把现有步骤固定下来，不再额外加码。' : 'Week 1: lock the current routine and stop escalating it.'),
+      pmRetinoid
+        ? (isCn ? '第2-3周：retinoid 先维持每周 2-3 次，观察刺痛、泛红、脱屑。' : 'Week 2-3: keep the retinoid to 2-3 nights per week and watch for stinging, redness, or peeling.')
+        : (isCn ? '第2-3周：只保留一条主力活性，不要同晚叠加强活性。' : 'Week 2-3: keep only one main active lane and avoid same-night stacking.'),
+      isCn
+        ? '第4周：只有在完全稳定后，才考虑再加一个新活性。'
+        : 'Week 4: only consider another new active if the routine stays fully calm.',
+    ],
+    week_8_12_expectation: [
+      isCn
+        ? '8-12 周的目标应该是耐受更稳、日间保护更完整，而不是短期猛加活性。'
+        : 'By weeks 8-12, the win should be better tolerance and more complete daytime protection, not aggressive escalation.',
+    ],
+  };
+
+  const safetyNotes = normalizeArrayOfStrings([
+    pmRetinoid
+      ? (isCn
+        ? '如果 retinoid 后持续刺痛、泛红或脱屑，请暂停它，先回到洁面+保湿。'
+        : 'If retinoid use causes persistent stinging, redness, or peeling, pause it and go back to cleanser + moisturizer only.')
+      : '',
+    hasStrongActiveStack
+      ? (isCn
+        ? '不要把 acid / benzoyl peroxide 和 retinoid 放在同一晚。'
+        : 'Do not put acids or benzoyl peroxide on the same nights as a retinoid.')
+      : '',
+  ], { max: 3, maxLen: 180 });
+
+  return {
+    confidence_level: 'medium',
+    current_strengths: currentStrengths.slice(0, 3),
+    priority_findings: priorityFindings.slice(0, 3),
+    target_state: targetState,
+    core_principles: corePrinciples.slice(0, 3),
+    am_plan: amPlan,
+    pm_plan: pmPlan,
+    timeline,
+    safety_notes: safetyNotes,
+  };
+}
+
+function buildAnalysisStoryFallbackPayload({
+  analysisSummaryPayload,
+  profile,
+  language,
+  routinePreviewPayload,
+  ingredientPlanPayload,
+} = {}) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const payload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
   const analysis = isPlainObject(payload.analysis) ? payload.analysis : {};
+  const ingredientPlan = isPlainObject(ingredientPlanPayload)
+    ? ingredientPlanPayload
+    : isPlainObject(payload.ingredient_plan)
+      ? payload.ingredient_plan
+      : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
   const findings = features
     .map((row, idx) => {
@@ -32262,63 +32499,103 @@ function buildAnalysisStoryFallbackPayload({ analysisSummaryPayload, profile, la
     })
     .filter(Boolean)
     .slice(0, 6);
+  const routineAware = buildRoutineAwareStoryFallback({
+    routinePreviewPayload,
+    ingredientPlanPayload: ingredientPlan,
+    language,
+  });
+  const skinType = pickFirstString(profile && profile.skinType);
+  const sensitivity = pickFirstString(profile && profile.sensitivity);
 
   return {
     schema_version: 'aurora.analysis_story.v2',
-    confidence_overall: isPlainObject(analysis.confidence) ? analysis.confidence : { level: payload.low_confidence ? 'low' : 'medium' },
+    confidence_overall: isPlainObject(analysis.confidence)
+      ? analysis.confidence
+      : { level: routineAware ? routineAware.confidence_level : payload.low_confidence ? 'low' : 'medium' },
     skin_profile: {
-      skin_type_tendency: pickFirstString(profile && profile.skinType, isCn ? '待补充' : 'pending'),
-      sensitivity_tendency: pickFirstString(profile && profile.sensitivity, isCn ? '待补充' : 'pending'),
-      current_strengths:
-        findings.length > 0
+      ...(skinType ? { skin_type_tendency: skinType } : {}),
+      ...(sensitivity ? { sensitivity_tendency: sensitivity } : {}),
+      current_strengths: routineAware
+        ? routineAware.current_strengths
+        : findings.length > 0
           ? findings.slice(0, 2).map((row) => row.title)
           : [isCn ? '当前可见信息有限，先按屏障友好策略执行。' : 'Visible signals are limited; start with a barrier-safe routine.'],
     },
-    priority_findings: findings,
-    target_state: [
-      isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.',
-    ],
-    core_principles: [
-      isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
-      isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
-    ],
-    am_plan: [
-      { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '减少刺激起点' : 'Minimize irritation load' },
-      { step: isCn ? '保湿/修护精华' : 'Hydration/repair serum', purpose: isCn ? '维持角质层稳定' : 'Support barrier stability' },
-      { step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen', purpose: isCn ? '控制紫外暴露' : 'Control UV exposure' },
-    ],
-    pm_plan: [
-      { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '清除日间残留' : 'Remove daytime residue' },
-      { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
-      { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
-    ],
-    timeline: {
-      first_4_weeks: [
-        isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
-        isCn ? '第2-3周：逐步引入一个活性，隔天使用。' : 'Week 2-3: add one active gradually, every other day.',
-        isCn ? '第4周：耐受稳定后再评估加强。' : 'Week 4: scale only if tolerance remains stable.',
+    priority_findings: routineAware
+      ? routineAware.priority_findings.map((line, idx) => ({
+        priority: idx + 1,
+        title: line,
+        detail: line,
+        evidence_region_or_module: [],
+      }))
+      : findings,
+    target_state: routineAware
+      ? routineAware.target_state
+      : [isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.'],
+    core_principles: routineAware
+      ? routineAware.core_principles
+      : [
+        isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
+        isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
       ],
-      week_8_12_expectation: [
-        isCn ? '8-12 周观察肤色均匀与稳定度改善。' : 'Expect visible stability and tone improvements in 8-12 weeks.',
+    am_plan: routineAware
+      ? routineAware.am_plan
+      : [
+        { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '减少刺激起点' : 'Minimize irritation load' },
+        { step: isCn ? '保湿/修护精华' : 'Hydration/repair serum', purpose: isCn ? '维持角质层稳定' : 'Support barrier stability' },
+        { step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen', purpose: isCn ? '控制紫外暴露' : 'Control UV exposure' },
       ],
-    },
+    pm_plan: routineAware
+      ? routineAware.pm_plan
+      : [
+        { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '清除日间残留' : 'Remove daytime residue' },
+        { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
+        { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
+      ],
+    timeline: routineAware
+      ? routineAware.timeline
+      : {
+        first_4_weeks: [
+          isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
+          isCn ? '第2-3周：逐步引入一个活性，隔天使用。' : 'Week 2-3: add one active gradually, every other day.',
+          isCn ? '第4周：耐受稳定后再评估加强。' : 'Week 4: scale only if tolerance remains stable.',
+        ],
+        week_8_12_expectation: [
+          isCn ? '8-12 周观察肤色均匀与稳定度改善。' : 'Expect visible stability and tone improvements in 8-12 weeks.',
+        ],
+      },
     ui_card_v1: {
-      headline: isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.',
-      key_points: findings.length
-        ? findings.slice(0, 3).map((row) => row.title)
-        : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'],
-      actions_now: isCn
-        ? ['早上：温和清洁', '早上：SPF50+ 防晒', '晚上：屏障修护保湿']
-        : ['AM: Gentle cleanse', 'AM: SPF50+ sunscreen', 'PM: Barrier moisturizer'],
-      avoid_now: isCn
-        ? ['避免同一晚叠加多个强活性']
-        : ['Avoid stacking multiple strong actives in the same night'],
+      headline: routineAware
+        ? routineAware.target_state[0]
+        : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.'),
+      key_points: routineAware
+        ? routineAware.priority_findings.slice(0, 3)
+        : findings.length
+          ? findings.slice(0, 3).map((row) => row.title)
+          : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'],
+      actions_now: routineAware
+        ? [
+          ...routineAware.am_plan.slice(0, 2).map((step) => (isCn ? `早上：${step.step}` : `AM: ${step.step}`)),
+          ...routineAware.pm_plan.slice(0, 2).map((step) => (isCn ? `晚上：${step.step}` : `PM: ${step.step}`)),
+        ].slice(0, 4)
+        : isCn
+          ? ['早上：温和清洁', '早上：SPF50+ 防晒', '晚上：屏障修护保湿']
+          : ['AM: Gentle cleanse', 'AM: SPF50+ sunscreen', 'PM: Barrier moisturizer'],
+      avoid_now: routineAware
+        ? routineAware.safety_notes.slice(0, 2)
+        : isCn
+          ? ['避免同一晚叠加多个强活性']
+          : ['Avoid stacking multiple strong actives in the same night'],
       confidence_label: payload.low_confidence ? (isCn ? '低' : 'low') : (isCn ? '中' : 'medium'),
-      next_checkin: isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
+      next_checkin: routineAware
+        ? routineAware.timeline.first_4_weeks[0]
+        : isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
     },
-    safety_notes: [
-      isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
-    ],
+    safety_notes: routineAware
+      ? routineAware.safety_notes
+      : [
+        isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
+      ],
     disclaimer_non_medical: true,
   };
 }
@@ -32814,7 +33091,15 @@ async function applyAnalysisStoryAndRoutineSoftGate(
   if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard) {
     const existingStory = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2');
     const summaryPayload = isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
-    const fallbackStory = buildAnalysisStoryFallbackPayload({ analysisSummaryPayload: summaryPayload, profile, language });
+    const routinePreviewCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'routine_products_preview');
+    const ingredientPlanCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'ingredient_plan_v2');
+    const fallbackStory = buildAnalysisStoryFallbackPayload({
+      analysisSummaryPayload: summaryPayload,
+      profile,
+      language,
+      routinePreviewPayload: isPlainObject(routinePreviewCard && routinePreviewCard.payload) ? routinePreviewCard.payload : null,
+      ingredientPlanPayload: isPlainObject(ingredientPlanCard && ingredientPlanCard.payload) ? ingredientPlanCard.payload : null,
+    });
     const evidence = buildAnalysisEvidence({
       analysisSummaryPayload: summaryPayload,
       profile,
@@ -66080,6 +66365,7 @@ const __internal = {
   envelopeRequiresConservativeRecoGuard,
   applyLowOrMediumRecoGuardToEnvelope,
   applyRecoContractToRecoRequestedEvents,
+  AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI,
   resolveSkinDeepeningPromptVersion,
   extractSkinDeepeningSymptoms,
   resolveSkinDeepeningPhase,

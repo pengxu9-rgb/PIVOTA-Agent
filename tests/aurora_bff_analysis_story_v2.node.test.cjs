@@ -146,6 +146,83 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
   assert.deepEqual(planCard.payload.targets[0].products.dupes, []);
 });
 
+test('analysis_story_v2: routine summary fast path stays concrete for routine-only analysis', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const cards = [
+    {
+      card_id: 'analysis_1',
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: 'rule_based',
+        analysis: { features: [] },
+        low_confidence: false,
+      },
+    },
+    {
+      card_id: 'preview_1',
+      type: 'routine_products_preview',
+      payload: {
+        contract: 'aurora.routine_products_preview.v1',
+        groups: [
+          {
+            slot: 'am',
+            title: 'AM routine',
+            items: [
+              { slot: 'am', step: 'cleanser', display_name: 'CeraVe Foaming Cleanser', product_text: 'CeraVe Foaming Cleanser' },
+              { slot: 'am', step: 'moisturizer', display_name: 'CeraVe PM', product_text: 'CeraVe PM' },
+            ],
+          },
+          {
+            slot: 'pm',
+            title: 'PM routine',
+            items: [
+              { slot: 'pm', step: 'treatment', display_name: 'Retinol Serum', product_text: 'Retinol Serum' },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      card_id: 'plan_1',
+      type: 'ingredient_plan_v2',
+      payload: {
+        targets: [
+          { ingredient_id: 'sunscreen_filters', ingredient_name: 'UV filters' },
+          { ingredient_id: 'ceramide_np', ingredient_name: 'Ceramide NP' },
+        ],
+      },
+    },
+  ];
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+    ctx: { request_id: 'req_story_routine_only_1' },
+    profile: {},
+    language: 'EN',
+  });
+
+  const storyCard = out.find((card) => card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'story card should be present');
+  assert.equal(storyCard.payload.skin_profile.skin_type_tendency, undefined);
+  assert.equal(storyCard.payload.skin_profile.sensitivity_tendency, undefined);
+  assert.match(storyCard.payload.ui_card_v1.headline, /sunscreen|retinoid|AM/i);
+  assert.ok(
+    storyCard.payload.priority_findings.some((row) => /sunscreen/i.test(row.title)),
+    'story should mention the AM sunscreen gap',
+  );
+  assert.ok(
+    storyCard.payload.priority_findings.some((row) => /retinoid|retinol/i.test(row.title)),
+    'story should mention the PM retinoid cadence',
+  );
+
+  const assistantText = internal.buildAssistantMessageFromStoryV2(storyCard.payload, { language: 'EN' });
+  assert.doesNotMatch(assistantText, /pending|unconfirmed/i);
+  assert.match(assistantText, /routine read|sunscreen|retinoid/i);
+});
+
 test('analysis_story_v2: forced deterministic skip bypasses story llm when report already degraded', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
