@@ -281,6 +281,112 @@ test('analysis_story_v2: routine summary fast path stays concrete for routine-on
   assert.match(assistantText, /CeraVe PM/i);
 });
 
+test('analysis_story_v2: merged AM + PM preview items still count as real morning coverage', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const cards = [
+    {
+      card_id: 'analysis_both_1',
+      type: 'analysis_summary',
+      payload: {
+        analysis_source: 'rule_based',
+        analysis: { features: [] },
+        low_confidence: false,
+      },
+    },
+    {
+      card_id: 'preview_both_1',
+      type: 'routine_products_preview',
+      payload: {
+        contract: 'aurora.routine_products_preview.v1',
+        groups: [
+          {
+            slot: 'both',
+            title: 'AM + PM',
+            items: [
+              {
+                slot: 'both',
+                used_in: ['am', 'pm'],
+                step: 'cleanser',
+                display_name: 'CeraVe Foaming Cleanser',
+                product_text: 'CeraVe Foaming Cleanser',
+                fit_summary: { verdict: 'good_match', label: 'Good fit', reason: 'Good cleanser fit.' },
+                suggested_usage: { action: 'keep', label: 'Keep as-is', reason: 'Keep it in both AM and PM.' },
+              },
+              {
+                slot: 'both',
+                used_in: ['am', 'pm'],
+                step: 'moisturizer',
+                display_name: 'CeraVe PM',
+                product_text: 'CeraVe PM',
+                fit_summary: { verdict: 'good_match', label: 'Good fit', reason: 'Good moisturizer fit.' },
+                suggested_usage: { action: 'keep', label: 'Keep as-is', reason: 'Keep it in both AM and PM.' },
+              },
+              {
+                slot: 'both',
+                used_in: ['am', 'pm'],
+                step: 'spf',
+                display_name: 'EltaMD UV Clear SPF 46',
+                product_text: 'EltaMD UV Clear SPF 46',
+                fit_summary: { verdict: 'good_match', label: 'Good fit', reason: 'Good sunscreen fit.' },
+                suggested_usage: { action: 'keep', label: 'Keep as-is', reason: 'Keep it as the last step every morning.' },
+              },
+            ],
+          },
+          {
+            slot: 'pm',
+            title: 'PM routine',
+            items: [
+              {
+                slot: 'pm',
+                step: 'treatment',
+                display_name: 'Retinol Serum',
+                product_text: 'Retinol Serum',
+                fit_summary: { verdict: 'partial_match', label: 'Mostly fits', reason: 'Better with slower cadence.' },
+                suggested_usage: { action: 'reduce_frequency', label: 'Reduce frequency', reason: 'Use fewer nights.' },
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      card_id: 'plan_both_1',
+      type: 'ingredient_plan_v2',
+      payload: {
+        targets: [
+          { ingredient_id: 'ceramide_np', ingredient_name: 'Ceramide NP' },
+        ],
+      },
+    },
+  ];
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+    ctx: { request_id: 'req_story_both_slot_1' },
+    profile: {},
+    language: 'EN',
+  });
+
+  const storyCard = out.find((card) => card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'story card should be present');
+  assert.ok(
+    storyCard.payload.skin_profile.current_strengths.some((row) => /daytime sunscreen step/i.test(row)),
+    'merged both-slot SPF should still count as a real AM sunscreen strength',
+  );
+  assert.equal(
+    storyCard.payload.existing_products_optimization.add.some((row) => /SPF|sunscreen/i.test(row)),
+    false,
+    'story should not ask to add sunscreen when a merged both-slot SPF already exists',
+  );
+  assert.ok(
+    storyCard.payload.existing_products_optimization.keep.some((row) => /CeraVe PM/i.test(row)),
+    'merged both-slot moisturizer should still remain in existing product optimization',
+  );
+});
+
 test('analysis_story_v2: forced deterministic skip bypasses story llm when report already degraded', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',

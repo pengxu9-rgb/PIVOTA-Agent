@@ -29627,7 +29627,14 @@ function buildRoutineProductsPreviewCard({
         : [],
     };
   };
-  const slotTitle = (slot) => (slot === 'pm' ? (isCn ? '夜间 PM' : 'PM routine') : isCn ? '早间 AM' : 'AM routine');
+  const slotTitle = (slot) => {
+    if (slot === 'both') return isCn ? '早晚 AM + PM' : 'AM + PM';
+    return slot === 'pm' ? (isCn ? '夜间 PM' : 'PM routine') : isCn ? '早间 AM' : 'AM routine';
+  };
+  const slotShortLabel = (slot) => {
+    if (slot === 'both') return 'AM + PM';
+    return slot === 'pm' ? 'PM' : 'AM';
+  };
   const stepLabel = (step) => {
     const token = normalizeRoutineIntakeStep(step);
     if (token === 'cleanser') return isCn ? '洁面' : 'Cleanser';
@@ -29636,8 +29643,42 @@ function buildRoutineProductsPreviewCard({
     if (token === 'spf') return isCn ? '防晒' : 'SPF';
     return token || (isCn ? '步骤' : 'Step');
   };
+  const buildPreviewIdentityKey = ({ displayName, productText, productUrl, step, previewFit }) => {
+    const normalizeToken = (value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/https?:\/\//g, '')
+        .replace(/[^a-z0-9]+/g, '');
+    const fitReason = pickFirstString(previewFit && previewFit.fit_summary && previewFit.fit_summary.reason);
+    const usageReason = pickFirstString(previewFit && previewFit.suggested_usage && previewFit.suggested_usage.reason);
+    const fitVerdict = pickFirstString(previewFit && previewFit.fit_summary && previewFit.fit_summary.verdict);
+    const usageAction = pickFirstString(previewFit && previewFit.suggested_usage && previewFit.suggested_usage.action);
+    return [
+      normalizeToken(productUrl) || normalizeToken(displayName) || normalizeToken(productText),
+      normalizeToken(step),
+      normalizeToken(fitVerdict),
+      normalizeToken(usageAction),
+      normalizeToken(fitReason),
+      normalizeToken(usageReason),
+    ].join('|');
+  };
+  const buildMergedUsageReason = ({ baseReason, usedIn, actionCode }) => {
+    const raw = stripStorySummaryTerminalPunctuation(pickFirstString(baseReason));
+    if (!raw) return '';
+    if (!Array.isArray(usedIn) || usedIn.length < 2) return raw.endsWith('.') ? raw : `${raw}.`;
+    if (isCn) {
+      if (actionCode === 'keep') return `早晚都可保留。${raw}。`;
+      if (actionCode === 'reduce_frequency') return `这支产品虽然早晚都出现，但频率仍要保守。${raw}。`;
+      return `这支产品在早晚都有出现。${raw}。`;
+    }
+    if (actionCode === 'keep') return `Keep it in both AM and PM. ${raw}.`;
+    if (actionCode === 'reduce_frequency') return `It shows up in both AM and PM, but the frequency still needs restraint. ${raw}.`;
+    return `This product appears in both AM and PM. ${raw}.`;
+  };
   const grouped = [
     { slot: 'am', title: slotTitle('am'), items: [] },
+    { slot: 'both', title: slotTitle('both'), items: [] },
     { slot: 'pm', title: slotTitle('pm'), items: [] },
   ];
   const matchCounts = {
@@ -29646,9 +29687,9 @@ function buildRoutineProductsPreviewCard({
     needs_adjustment: 0,
     unclear: 0,
   };
+  const builtItems = [];
   for (const row of list) {
     const slot = normalizeRoutineIntakeSlot(row.slot);
-    const target = grouped.find((group) => group.slot === slot) || grouped[0];
     const displayName = pickFirstString(
       row.display_name,
       row.displayName,
@@ -29665,11 +29706,7 @@ function buildRoutineProductsPreviewCard({
       .digest('hex')
       .slice(0, 12);
     const previewFit = buildPreviewFitSummary(row, displayName);
-    const previewVerdict = pickFirstString(previewFit && previewFit.fit_summary && previewFit.fit_summary.verdict);
-    if (Object.prototype.hasOwnProperty.call(matchCounts, previewVerdict)) {
-      matchCounts[previewVerdict] += 1;
-    }
-    target.items.push({
+    builtItems.push({
       item_id: `routine_preview_${stableId}`,
       slot,
       step: normalizeRoutineIntakeStep(row.step),
@@ -29679,8 +29716,81 @@ function buildRoutineProductsPreviewCard({
       product_text: String(row.product_text || '').trim(),
       product_url: String(row.product_url || '').trim(),
       analysis_input: actionInput,
+      slot_label: slotShortLabel(slot),
       ...previewFit,
+      _merge_key: buildPreviewIdentityKey({
+        displayName,
+        productText: row.product_text,
+        productUrl: row.product_url,
+        step: row.step,
+        previewFit,
+      }),
     });
+  }
+  const mergedBuckets = new Map();
+  for (const item of builtItems) {
+    const mergeKey = String(item && item._merge_key || '').trim();
+    if (!mergeKey) {
+      mergedBuckets.set(`standalone:${item.item_id}`, [item]);
+      continue;
+    }
+    const rows = mergedBuckets.get(mergeKey) || [];
+    rows.push(item);
+    mergedBuckets.set(mergeKey, rows);
+  }
+  const visibleItems = [];
+  for (const rows of mergedBuckets.values()) {
+    const items = Array.isArray(rows) ? rows.slice().sort((left, right) => Number(left.rank || 0) - Number(right.rank || 0)) : [];
+    if (!items.length) continue;
+    const usedIn = Array.from(new Set(items.map((item) => normalizeRoutineIntakeSlot(item.slot)).filter(Boolean)));
+    if (!(usedIn.includes('am') && usedIn.includes('pm'))) {
+      visibleItems.push(...items.map((item) => {
+        const out = { ...item };
+        delete out._merge_key;
+        return out;
+      }));
+      continue;
+    }
+    const base = items[0];
+    const mergedId = crypto
+      .createHash('sha1')
+      .update(items.map((item) => item.item_id).join('|'))
+      .digest('hex')
+      .slice(0, 12);
+    const baseFitSummary = isPlainObject(base.fit_summary) ? base.fit_summary : {};
+    const baseUsage = isPlainObject(base.suggested_usage) ? base.suggested_usage : {};
+    visibleItems.push({
+      ...base,
+      item_id: `routine_preview_${mergedId}`,
+      slot: 'both',
+      slot_label: slotShortLabel('both'),
+      used_in: usedIn,
+      used_in_labels: usedIn.map((token) => slotShortLabel(token)),
+      source_item_ids: items.map((item) => item.item_id),
+      source_count: items.length,
+      fit_summary: {
+        ...baseFitSummary,
+      },
+      suggested_usage: {
+        ...baseUsage,
+        reason: buildMergedUsageReason({
+          baseReason: baseUsage.reason,
+          usedIn,
+          actionCode: pickFirstString(baseUsage.action),
+        }) || pickFirstString(baseUsage.reason),
+      },
+    });
+  }
+  for (const item of visibleItems) {
+    delete item._merge_key;
+  }
+  for (const item of visibleItems) {
+    const previewVerdict = pickFirstString(item && item.fit_summary && item.fit_summary.verdict);
+    if (Object.prototype.hasOwnProperty.call(matchCounts, previewVerdict)) {
+      matchCounts[previewVerdict] += 1;
+    }
+    const target = grouped.find((group) => group.slot === item.slot) || grouped[0];
+    target.items.push(item);
   }
   for (const group of grouped) {
     group.items.sort((left, right) => Number(left.rank || 0) - Number(right.rank || 0));
@@ -29702,8 +29812,10 @@ function buildRoutineProductsPreviewCard({
         : 'Skin summary is ready first. This preview now includes a quick fit read for each current product, while deep scans stay on-demand.',
       groups: nonEmptyGroups,
       counts: {
-        total: list.length,
+        total: visibleItems.length,
+        input_total: list.length,
         am: grouped.find((group) => group.slot === 'am')?.items.length || 0,
+        both: grouped.find((group) => group.slot === 'both')?.items.length || 0,
         pm: grouped.find((group) => group.slot === 'pm')?.items.length || 0,
         by_fit: matchCounts,
       },
@@ -32611,8 +32723,13 @@ function collectRoutinePreviewItemsForStory(routinePreviewPayload) {
     const items = Array.isArray(group && group.items) ? group.items : [];
     for (const item of items) {
       if (!isPlainObject(item)) continue;
+      const slot = normalizeRoutineIntakeSlot(item.slot || groupSlot);
+      const usedIn = Array.isArray(item.used_in)
+        ? Array.from(new Set(item.used_in.map((value) => normalizeRoutineIntakeSlot(value)).filter(Boolean)))
+        : [];
       out.push({
-        slot: normalizeRoutineIntakeSlot(item.slot || groupSlot),
+        slot,
+        used_in: usedIn.length ? usedIn : (slot ? [slot] : []),
         step: normalizeRoutineIntakeStep(item.step),
         display_name: pickFirstString(item.display_name, item.product_text, item.analysis_input),
         product_text: pickFirstString(item.product_text, item.display_name, item.analysis_input),
@@ -32624,6 +32741,18 @@ function collectRoutinePreviewItemsForStory(routinePreviewPayload) {
     }
   }
   return out;
+}
+
+function routinePreviewItemUsesSlot(item, targetSlot) {
+  const normalizedTarget = normalizeRoutineIntakeSlot(targetSlot);
+  if (!normalizedTarget) return false;
+  const slot = normalizeRoutineIntakeSlot(item && item.slot);
+  if (slot === normalizedTarget) return true;
+  if (slot === 'both' && (normalizedTarget === 'am' || normalizedTarget === 'pm')) return true;
+  const usedIn = Array.isArray(item && item.used_in)
+    ? item.used_in.map((value) => normalizeRoutineIntakeSlot(value)).filter(Boolean)
+    : [];
+  return usedIn.includes(normalizedTarget);
 }
 
 function normalizeExistingProductsOptimization(value) {
@@ -32843,8 +32972,8 @@ function buildRoutineExistingProductsOptimization({
         name,
         matchLead,
         isCn
-          ? `暂时保留在${slot === 'pm' ? '晚上' : '早上'}这一步`
-          : `Keep it in the current ${slot === 'pm' ? 'PM' : 'AM'} slot for now`,
+          ? `暂时保留在${slot === 'both' ? '早晚' : slot === 'pm' ? '晚上' : '早上'}这一步`
+          : `Keep it in the current ${slot === 'both' ? 'AM + PM' : slot === 'pm' ? 'PM' : 'AM'} slot for now`,
         language,
       ),
     );
@@ -32896,8 +33025,8 @@ function buildRoutineAwareStoryFallback({
   const items = collectRoutinePreviewItemsForStory(routinePreviewPayload);
   if (!items.length) return null;
 
-  const amItems = items.filter((item) => item.slot === 'am');
-  const pmItems = items.filter((item) => item.slot === 'pm');
+  const amItems = items.filter((item) => routinePreviewItemUsesSlot(item, 'am'));
+  const pmItems = items.filter((item) => routinePreviewItemUsesSlot(item, 'pm'));
   const amCleanser = amItems.find((item) => item.step === 'cleanser') || null;
   const amMoisturizer = amItems.find((item) => item.step === 'moisturizer') || null;
   const amSpf = amItems.find((item) => looksLikeSpfRoutineItem(item)) || null;
