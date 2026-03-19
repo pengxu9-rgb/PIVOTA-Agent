@@ -31250,7 +31250,11 @@ function dedupeExternalSearchCtas(ctas, maxItems = 12) {
 function isLowSignalSupplementarySearchCta(item) {
   const row = isPlainObject(item) ? item : {};
   const reason = String(pickFirstString(row.reason) || '').trim().toLowerCase();
-  if (reason === 'missing_openable_url_search_fallback' || reason === 'open_contract_only_no_direct_url') {
+  if (
+    reason === 'search_url_demoted' ||
+    reason === 'missing_openable_url_search_fallback' ||
+    reason === 'open_contract_only_no_direct_url'
+  ) {
     return true;
   }
   const title = String(pickFirstString(row.title, row.name, row.query) || '').trim().toLowerCase();
@@ -32460,17 +32464,20 @@ async function sanitizeRecoCandidatesForUi(
             : ''
         );
 
+      const nextPayload = {
+        ...payload,
+        recommendations: kept,
+        ...(kept.length === 0 && recs.length > 0 && normalizeRecoProductsEmptyReason(productsEmptyReason) === 'strict_filter_fallback_only'
+          ? { plan_only_recommendations: recs }
+          : {}),
+        ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
+      };
+      if (finalExternalSearchCtas.length) nextPayload.external_search_ctas = finalExternalSearchCtas;
+      else if (Object.prototype.hasOwnProperty.call(nextPayload, 'external_search_ctas')) delete nextPayload.external_search_ctas;
+
       nextCards.push({
         ...card,
-        payload: {
-          ...payload,
-          recommendations: kept,
-          ...(kept.length === 0 && recs.length > 0 && normalizeRecoProductsEmptyReason(productsEmptyReason) === 'strict_filter_fallback_only'
-            ? { plan_only_recommendations: recs }
-            : {}),
-          ...(finalExternalSearchCtas.length ? { external_search_ctas: finalExternalSearchCtas } : {}),
-          ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
-        },
+        payload: nextPayload,
         ...(mergedFieldMissing.length ? { field_missing: mergedFieldMissing } : {}),
       });
       continue;
@@ -32838,18 +32845,21 @@ async function sanitizeRecoCandidatesForUi(
         lookupMeta.ingredient_plan_products_empty_reason = productsEmptyReason;
       }
 
+      const nextPayload = {
+        ...payload,
+        ...(Array.isArray(payload.targets)
+          ? { targets: nextTargets }
+          : planNode
+            ? { plan: { ...planNode, targets: nextTargets } }
+            : { targets: nextTargets }),
+        ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
+      };
+      if (finalExternalSearchCtas.length) nextPayload.external_search_ctas = finalExternalSearchCtas;
+      else if (Object.prototype.hasOwnProperty.call(nextPayload, 'external_search_ctas')) delete nextPayload.external_search_ctas;
+
       nextCards.push({
         ...card,
-        payload: {
-          ...payload,
-          ...(Array.isArray(payload.targets)
-            ? { targets: nextTargets }
-            : planNode
-              ? { plan: { ...planNode, targets: nextTargets } }
-              : { targets: nextTargets }),
-          ...(finalExternalSearchCtas.length ? { external_search_ctas: finalExternalSearchCtas } : {}),
-          ...(productsEmptyReason ? { products_empty_reason: productsEmptyReason } : {}),
-        },
+        payload: nextPayload,
         ...(mergedFieldMissing.length ? { field_missing: mergedFieldMissing } : {}),
       });
       continue;

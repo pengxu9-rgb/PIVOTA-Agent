@@ -382,10 +382,7 @@ test('sanitizeRecoCandidatesForUi drops low-signal CTA noise once ingredient pla
     const externalSearchCtas = Array.isArray(planCard?.payload?.external_search_ctas)
       ? planCard.payload.external_search_ctas
       : [];
-    assert.deepEqual(
-      externalSearchCtas.map((row) => [row.title, row.reason]),
-      [['Amazon: Ceramide NP', 'search_url_demoted']],
-    );
+    assert.deepEqual(externalSearchCtas, []);
   } finally {
     delete require.cache[moduleId];
   }
