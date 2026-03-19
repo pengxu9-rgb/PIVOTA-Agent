@@ -388,6 +388,105 @@ test('sanitizeRecoCandidatesForUi drops low-signal CTA noise once ingredient pla
   }
 });
 
+test('recoverPurchasableProductsFromQueries prefers focused single products over kits and samples', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['UV filters skincare'],
+      strictFilter: true,
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        selected_source: 'external_seed',
+        products: [
+          {
+            product_id: 'kit_uv_1',
+            merchant_id: 'external_seed',
+            name: 'Skincare Sampler Kit',
+            brand: 'PIXI BEAUTY',
+            category: 'external',
+            pdp_url: 'https://agent.pivota.cc/products/kit_uv_1?merchant_id=external_seed',
+            url: 'https://agent.pivota.cc/products/kit_uv_1?merchant_id=external_seed',
+            source: 'external_seed',
+          },
+          {
+            product_id: 'serum_uv_1',
+            merchant_id: 'external_seed',
+            name: 'UV Filters SPF 45 Serum',
+            brand: 'The Ordinary',
+            category: 'external',
+            pdp_url: 'https://agent.pivota.cc/products/serum_uv_1?merchant_id=external_seed',
+            url: 'https://agent.pivota.cc/products/serum_uv_1?merchant_id=external_seed',
+            source: 'external_seed',
+          },
+          {
+            product_id: 'mask_uv_1',
+            merchant_id: 'external_seed',
+            name: 'Masque Effet Peau Neuve (2ml)',
+            brand: 'PATYKA',
+            category: 'external',
+            pdp_url: 'https://agent.pivota.cc/products/mask_uv_1?merchant_id=external_seed',
+            url: 'https://agent.pivota.cc/products/mask_uv_1?merchant_id=external_seed',
+            source: 'external_seed',
+          },
+        ],
+      }),
+      maxProducts: 3,
+    });
+
+    assert.deepEqual(
+      out.products.map((row) => row.name),
+      ['UV Filters SPF 45 Serum'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('recoverPurchasableProductsFromQueries keeps bundle-like products when no better single-product candidate exists', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['Panthenol skincare'],
+      strictFilter: true,
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        selected_source: 'external_seed',
+        products: [
+          {
+            product_id: 'bundle_panthenol_1',
+            merchant_id: 'external_seed',
+            name: 'Ultimate Skincare Set',
+            brand: 'PIXI BEAUTY',
+            category: 'external',
+            pdp_url: 'https://agent.pivota.cc/products/bundle_panthenol_1?merchant_id=external_seed',
+            url: 'https://agent.pivota.cc/products/bundle_panthenol_1?merchant_id=external_seed',
+            source: 'external_seed',
+          },
+          {
+            product_id: 'bundle_panthenol_2',
+            merchant_id: 'external_seed',
+            name: 'Skincare Sampler Kit',
+            brand: 'PIXI BEAUTY',
+            category: 'external',
+            pdp_url: 'https://agent.pivota.cc/products/bundle_panthenol_2?merchant_id=external_seed',
+            url: 'https://agent.pivota.cc/products/bundle_panthenol_2?merchant_id=external_seed',
+            source: 'external_seed',
+          },
+        ],
+      }),
+      maxProducts: 2,
+    });
+
+    assert.equal(out.products.length, 2);
+    assert.deepEqual(
+      out.products.map((row) => row.name),
+      ['Ultimate Skincare Set', 'Skincare Sampler Kit'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory load for no-photo routine summary requests', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

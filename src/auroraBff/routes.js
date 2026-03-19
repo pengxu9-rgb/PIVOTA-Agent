@@ -31271,6 +31271,109 @@ function buildRenderableExternalSearchCtas(ctas, {
   return deduped.filter((item) => !isLowSignalSupplementarySearchCta(item));
 }
 
+const PURCHASE_RECOVERY_BUNDLE_LIKE_RE =
+  /\b(sample|sampler|mini|travel|kit|set|bundle|duo|trio|collection|collector|starter|discovery)\b/i;
+const PURCHASE_RECOVERY_QUERY_NOISE_RE = /\b(skincare|product|products|best|good|for|with|and|the)\b/gi;
+const PURCHASE_RECOVERY_WORD_RE = /[a-z0-9%+]+/gi;
+
+function buildPurchasableRecoveryCandidateText(candidate) {
+  const row = isPlainObject(candidate) ? candidate : {};
+  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : {};
+  return [
+    row.brand,
+    row.name,
+    row.title,
+    row.display_name,
+    row.displayName,
+    row.category,
+    row.product_type,
+    row.type,
+    row.ingredient_name,
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
+    sku.brand,
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    sku.category,
+    sku.product_type,
+    sku.type,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function tokenizePurchasableRecoveryQuery(query) {
+  const cleaned = String(query || '')
+    .trim()
+    .toLowerCase()
+    .replace(PURCHASE_RECOVERY_QUERY_NOISE_RE, ' ');
+  return uniqCaseInsensitiveStrings(cleaned.match(PURCHASE_RECOVERY_WORD_RE) || [], 12);
+}
+
+function isBundleLikePurchasableRecoveryCandidate(candidate) {
+  return PURCHASE_RECOVERY_BUNDLE_LIKE_RE.test(buildPurchasableRecoveryCandidateText(candidate));
+}
+
+function computePurchasableRecoveryQueryOverlap(candidate, queryTokens) {
+  const tokens = Array.isArray(queryTokens) ? queryTokens : [];
+  if (!tokens.length) return 0;
+  const haystack = buildPurchasableRecoveryCandidateText(candidate);
+  if (!haystack) return 0;
+  let hits = 0;
+  for (const token of tokens) {
+    if (!token) continue;
+    if (haystack.includes(String(token).toLowerCase())) hits += 1;
+  }
+  return hits;
+}
+
+function rankPurchasableRecoveryCandidates(products, query) {
+  const rows = Array.isArray(products) ? products : [];
+  if (rows.length <= 1) return rows.slice();
+  const queryTokens = tokenizePurchasableRecoveryQuery(query);
+  const scored = rows.map((row, index) => {
+    const text = buildPurchasableRecoveryCandidateText(row);
+    const bundleLike = isBundleLikePurchasableRecoveryCandidate(row);
+    const overlap = computePurchasableRecoveryQueryOverlap(row, queryTokens);
+    const focusedSingle =
+      !bundleLike &&
+      /\b(spf|uv|sunscreen|serum|moisturi[sz]er|cream|gel|lotion|cleanser|wash|balm|treatment|emulsion)\b/i.test(text);
+    return {
+      row,
+      index,
+      bundleLike,
+      overlap,
+      focusedSingle,
+    };
+  });
+
+  const hasNonBundle = scored.some((row) => row.bundleLike !== true);
+  const hasOverlappingNonBundle = scored.some((row) => row.bundleLike !== true && row.overlap > 0);
+  const hasFocusedOverlapCandidate = scored.some(
+    (row) => row.bundleLike !== true && row.focusedSingle === true && row.overlap > 0,
+  );
+  let filtered = scored;
+  if (hasNonBundle) filtered = filtered.filter((row) => row.bundleLike !== true);
+  if (hasOverlappingNonBundle) filtered = filtered.filter((row) => row.overlap > 0);
+  if (hasFocusedOverlapCandidate) filtered = filtered.filter((row) => row.focusedSingle === true);
+
+  return filtered
+    .slice()
+    .sort((a, b) => {
+      if (a.overlap !== b.overlap) return b.overlap - a.overlap;
+      if (a.focusedSingle !== b.focusedSingle) return a.focusedSingle ? -1 : 1;
+      if (a.bundleLike !== b.bundleLike) return a.bundleLike ? 1 : -1;
+      return a.index - b.index;
+    })
+    .map((row) => row.row);
+}
+
 function normalizeFallbackQueryText(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -31586,7 +31689,7 @@ async function recoverPurchasableProductsFromQueries({
     const sourceKey = String(fallbackOut?.selected_source || 'none').trim() || 'none';
     out.selected_source_counts[sourceKey] = Number(out.selected_source_counts[sourceKey] || 0) + 1;
 
-    const products = Array.isArray(fallbackOut?.products) ? fallbackOut.products : [];
+    const products = rankPurchasableRecoveryCandidates(Array.isArray(fallbackOut?.products) ? fallbackOut.products : [], q);
     for (const raw of products) {
       if (out.products.length >= targetMax) break;
       const normalized = normalizeRecoCatalogProduct(raw);
@@ -31905,9 +32008,10 @@ async function recoverProductsWithLlmFallbackFromQueries({
     out.selected_source_counts.llm_fallback = Number(out.selected_source_counts.llm_fallback || 0) + 1;
     let recoveredForQuery = false;
 
-    for (let i = 0; i < rowsRaw.length; i += 1) {
+    const rankedRowsRaw = rankPurchasableRecoveryCandidates(rowsRaw, q);
+    for (let i = 0; i < rankedRowsRaw.length; i += 1) {
       if (out.products.length >= targetMax) break;
-      const candidate = normalizeLlmFallbackCandidate(rowsRaw[i], { query: q, index: i });
+      const candidate = normalizeLlmFallbackCandidate(rankedRowsRaw[i], { query: q, index: i });
       const normalized = normalizeRecoCatalogProduct(candidate);
       if (!isPlainObject(normalized)) continue;
       if (candidateOnlyEnabled) {
