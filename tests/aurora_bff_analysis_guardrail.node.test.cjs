@@ -218,6 +218,31 @@ test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory loa
   }
 });
 
+test('resolveAnalysisProfileFastTimeoutMs uses a tighter timeout for guest routine-only fast path without request overlay', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const guestTimeout = __internal.resolveAnalysisProfileFastTimeoutMs({
+      identity: { auroraUid: 'guest_timeout_123', userId: null },
+      requestProfileOverlayApplied: false,
+    });
+    const loggedInTimeout = __internal.resolveAnalysisProfileFastTimeoutMs({
+      identity: { auroraUid: 'guest_timeout_123', userId: 'user_timeout_123' },
+      requestProfileOverlayApplied: false,
+    });
+    const overlayTimeout = __internal.resolveAnalysisProfileFastTimeoutMs({
+      identity: { auroraUid: 'guest_timeout_123', userId: null },
+      requestProfileOverlayApplied: true,
+    });
+
+    assert.equal(Number.isFinite(guestTimeout), true);
+    assert.equal(Number.isFinite(loggedInTimeout), true);
+    assert.equal(guestTimeout <= loggedInTimeout, true);
+    assert.equal(overlayTimeout, loggedInTimeout);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('shouldUseRoutineOnlyAnalysisArtifactFastPath mirrors routine-only no-photo fast-path gating', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

@@ -2166,6 +2166,12 @@ const AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
   return Math.max(100, Math.min(AURORA_BFF_ANALYSIS_BUDGET_MS, v));
 })();
+const AURORA_ANALYSIS_MEMORY_PROFILE_GUEST_FAST_TIMEOUT_MS = (() => {
+  const fallback = Math.min(250, AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS);
+  const n = Number(process.env.AURORA_ANALYSIS_MEMORY_PROFILE_GUEST_FAST_TIMEOUT_MS || fallback);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(50, Math.min(AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS, v));
+})();
 const AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS = (() => {
   const n = Number(process.env.AURORA_ANALYSIS_REPORT_STAGE_MIN_REMAINING_MS || 1800);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
@@ -16737,6 +16743,17 @@ function shouldUseRoutineOnlyAnalysisArtifactFastPath({
     rawBody,
     summaryFirstEnabled,
   });
+}
+
+function resolveAnalysisProfileFastTimeoutMs({
+  identity,
+  requestProfileOverlayApplied = false,
+} = {}) {
+  if (requestProfileOverlayApplied) return AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS;
+  const hasUserId = Boolean(identity && identity.userId && String(identity.userId).trim());
+  return hasUserId
+    ? AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS
+    : AURORA_ANALYSIS_MEMORY_PROFILE_GUEST_FAST_TIMEOUT_MS;
 }
 
 function resolveAnalysisReportStageBudget({
@@ -53721,6 +53738,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           rawBody: req.body || {},
           summaryFirstEnabled: AURORA_ROUTINE_SUMMARY_FIRST_ENABLED,
         });
+        const requestProfileOverlay = extractProfilePatchFromRequestContextPayload(parsed.data);
+        const requestProfileOverlayKeys = requestProfileOverlay && typeof requestProfileOverlay === 'object'
+          ? Object.keys(requestProfileOverlay).sort()
+          : [];
+        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
+        const qualityProfileTimeoutMs = routineOnlyMemoryFastPath
+          ? resolveAnalysisProfileFastTimeoutMs({
+              identity,
+              requestProfileOverlayApplied: requestProfileOverlayKeys.length > 0,
+            })
+          : null;
         let qualityMemoryMode = routineOnlyMemoryFastPath ? 'routine_only_profile_only' : 'default';
         let qualityProfileTimedOut = false;
         let qualityLogsSkipped = false;
@@ -53731,7 +53759,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             try {
               profile = await withTimeout(
                 getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }),
-                AURORA_ANALYSIS_MEMORY_PROFILE_FAST_TIMEOUT_MS,
+                qualityProfileTimeoutMs,
                 'AURORA_ANALYSIS_PROFILE_FAST_PATH_TIMEOUT',
               );
             } catch (err) {
@@ -53815,11 +53843,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const photosProvided = photosSubmittedCount > 0;
         let photoQuality = classifyPhotoQuality(photos);
 
-        const requestProfileOverlay = extractProfilePatchFromRequestContextPayload(parsed.data);
-        const requestProfileOverlayKeys = requestProfileOverlay && typeof requestProfileOverlay === 'object'
-          ? Object.keys(requestProfileOverlay).sort()
-          : [];
-        const requestProfileContextSource = requestProfileOverlayKeys.length ? 'request_overlay_applied' : 'db_only_profile';
         const applyRequestProfileOverlay = (profileValue, { fillOnly = false } = {}) => {
           if (!requestProfileOverlay || typeof requestProfileOverlay !== 'object') return profileValue;
           const base = profileValue && typeof profileValue === 'object' && !Array.isArray(profileValue)
@@ -53956,6 +53979,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           memory_mode: qualityMemoryMode,
           logs_skipped: qualityLogsSkipped,
           profile_timed_out: qualityProfileTimedOut,
+          profile_timeout_ms: qualityProfileTimeoutMs,
           policy_patch_deferred: qualityPolicyPatchDeferred,
         });
         logger?.info(
@@ -55683,6 +55707,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
           quality_memory_mode: qualityMemoryMode,
           quality_logs_skipped: qualityLogsSkipped,
+          ...(qualityProfileTimeoutMs != null ? { quality_profile_timeout_ms: qualityProfileTimeoutMs } : {}),
           quality_policy_patch_deferred: qualityPolicyPatchDeferred,
           ...(qualityProfileTimedOut ? { quality_profile_timed_out: true } : {}),
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
@@ -65946,6 +65971,7 @@ const __internal = {
   getQaRemainingBudgetMs,
   shouldSkipQaByBudget,
   resolveAnalysisStoryForcedSkipReason,
+  resolveAnalysisProfileFastTimeoutMs,
   shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
   deferProfilePatchPersistence,
