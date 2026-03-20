@@ -2717,6 +2717,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           },
         },
       })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+      })),
     }));
 
     const invokeScope = nock('http://pivota.test')
@@ -2728,7 +2732,10 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     const app = require('../../src/server');
-    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const {
+      recallIngredientProducts,
+      resolveIngredientRecallProfile,
+    } = require('../../src/services/ingredientProductRecall');
     const resp = await request(app)
       .get('/agent/v1/products/search')
       .query({
@@ -2738,6 +2745,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
     expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
     expect(invokeScope.isDone()).toBe(false);
     expect(resp.body.products).toHaveLength(1);
@@ -2760,6 +2768,79 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         ingredient_recall_source_breakdown: {
           kb_attached_seed: 1,
         },
+      }),
+    );
+  });
+
+  test('ingredient-alias sunscreen search also uses direct recall before invoke fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'spf_direct_1',
+            merchant_id: 'external_seed',
+            title: 'skinperfect primer spf30',
+            brand: 'Dermalogica',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/skinperfect-primer-spf30',
+            destination_url: 'https://shop.example.com/products/skinperfect-primer-spf30',
+            url: 'https://shop.example.com/products/skinperfect-primer-spf30',
+            image_url: 'https://cdn.example.com/skinperfect-primer-spf30.jpg',
+            source: 'external_seed',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 0,
+          unattached_seed_recall_attempted: true,
+          unattached_seed_recovered: 1,
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+          },
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'sunscreen_filters',
+        ingredient_name: 'UV filters',
+      })),
+    }));
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_run', merchant_id: 'm1', title: 'Should not run' }],
+      });
+
+    const app = require('../../src/server');
+    const {
+      recallIngredientProducts,
+      resolveIngredientRecallProfile,
+    } = require('../../src/services/ingredientProductRecall');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'broad spectrum sunscreen',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_intent_detected: true,
+        kb_recall_attempted: true,
       }),
     );
   });

@@ -76,7 +76,10 @@ const {
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
 const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
-const { recallIngredientProducts } = require('./services/ingredientProductRecall');
+const {
+  recallIngredientProducts,
+  resolveIngredientRecallProfile,
+} = require('./services/ingredientProductRecall');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const {
   buildSearchDebugBundle,
@@ -7685,7 +7688,10 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
         queryText,
     ) || '',
   ).trim();
-  if (!relevanceQueryText || !hasBeautyIngredientIntentSignal(relevanceQueryText)) return null;
+  const recallProfile = resolveIngredientRecallProfile({ query: relevanceQueryText });
+  const ingredientIntentDetected =
+    hasBeautyIngredientIntentSignal(relevanceQueryText) || Boolean(recallProfile);
+  if (!relevanceQueryText || !ingredientIntentDetected) return null;
 
   const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
   const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
@@ -7709,6 +7715,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
 
   const recalled = await recallIngredientProducts({
     query: relevanceQueryText,
+    ingredientId: recallProfile?.ingredient_id || '',
     targetStepFamily,
     limit: Math.max(safeLimit + safeOffset, safeLimit),
     inStockOnly,
@@ -7736,7 +7743,8 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     metadata: {
       query_source: 'agent_products_ingredient_recall_direct',
       fetched_at: new Date().toISOString(),
-      ingredient_intent_detected: diagnostics.ingredient_intent_detected === true,
+      ingredient_intent_detected:
+        diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
       kb_recall_attempted: diagnostics.kb_recall_attempted === true,
       kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),
       attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
@@ -7760,7 +7768,8 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       search_decision: {
         final_decision: 'products_returned',
         hit_quality: responseProducts.length > 0 ? 'valid_hit' : 'strict_empty',
-        ingredient_intent_detected: diagnostics.ingredient_intent_detected === true,
+        ingredient_intent_detected:
+          diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
         kb_recall_attempted: diagnostics.kb_recall_attempted === true,
         attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
         clarify_applied_after_kb_exhausted: false,
