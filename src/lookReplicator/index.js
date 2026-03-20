@@ -1401,6 +1401,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
             }
 
             let checkoutUrl = null;
+            let checkoutToken = null;
+            let checkoutSessionId = null;
+            let expiresAt = null;
 
             if (checkoutProvider === 'creator' || checkoutProvider === 'pivota') {
               const validatedByVariantId = new Map();
@@ -1470,8 +1473,22 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 if (intent?.status >= 200 && intent?.status < 300) {
                   const checkoutUrlRaw = String(intent.data?.checkout_url || intent.data?.checkoutUrl || '').trim() || null;
                   checkoutUrl = checkoutUrlRaw
-                    ? urlWithReturn(checkoutUrlRaw, returnUrl, { entry: 'creator_agent' })
+                    ? urlWithReturn(checkoutUrlRaw, returnUrl, {
+                        entry: 'creator_agent',
+                        source: 'creator_agent',
+                      })
                     : null;
+                  checkoutToken =
+                    String(intent.data?.checkout_token || intent.data?.checkoutToken || '').trim() || null;
+                  checkoutSessionId =
+                    String(
+                      intent.data?.checkout_session_id ||
+                        intent.data?.checkoutSessionId ||
+                        intent.data?.intent_id ||
+                        intent.data?.intentId ||
+                        '',
+                    ).trim() || null;
+                  expiresAt = Number(intent.data?.expires_at || intent.data?.expiresAt || 0) || null;
                 } else {
                   failures.push({
                     merchantId: mid,
@@ -1603,7 +1620,13 @@ function mountLookReplicatorRoutes(app, { logger }) {
               }
             }
 
-            checkouts.push({ merchantId: mid, checkoutUrl });
+            checkouts.push({
+              merchantId: mid,
+              checkoutUrl,
+              ...(checkoutToken ? { checkoutToken } : {}),
+              ...(checkoutSessionId ? { checkoutSessionId } : {}),
+              ...(expiresAt ? { expiresAt } : {}),
+            });
           } catch (err) {
             failures.push({
               merchantId: mid,
@@ -1629,6 +1652,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
         return res.status(200).json({
           checkoutUrl: checkouts[0].checkoutUrl,
           provider: checkoutProvider,
+          ...(checkouts[0].checkoutToken ? { checkoutToken: checkouts[0].checkoutToken } : {}),
+          ...(checkouts[0].checkoutSessionId ? { checkoutSessionId: checkouts[0].checkoutSessionId } : {}),
+          ...(checkouts[0].expiresAt ? { expiresAt: checkouts[0].expiresAt } : {}),
           ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
         });
       }
