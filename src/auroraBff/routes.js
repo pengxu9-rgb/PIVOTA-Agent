@@ -30736,7 +30736,7 @@ function buildInternalPdpUrlFromTarget({ productId, merchantId } = {}) {
     const url = new URL(`${AURORA_PIVOTA_SHOP_BASE_URL}/products/${encodeURIComponent(normalizedProductId)}`);
     const normalizedMerchantId = String(merchantId || '').trim();
     if (normalizedMerchantId) url.searchParams.set('merchant_id', normalizedMerchantId);
-    url.searchParams.set('entry', 'aurora_chatbox');
+    url.searchParams.set('entry', 'creator_agent');
     return url.toString();
   } catch {
     return '';
