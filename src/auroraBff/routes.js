@@ -31417,8 +31417,27 @@ function normalizeHumanReadableFallbackQuery(value) {
   return normalized;
 }
 
+function isTransientPurchasableFallbackReason(reason) {
+  const token = String(reason || '').trim().toLowerCase();
+  return (
+    token === 'upstream_timeout' ||
+    token === 'upstream_error' ||
+    token === 'rate_limited' ||
+    token === 'budget_exhausted'
+  );
+}
+
 function countPurchasableProductsForTarget(target) {
   return countPurchasableProductsForTargets([target]);
+}
+
+function countEmptyPurchasableTargets(targets) {
+  let count = 0;
+  for (const target of Array.isArray(targets) ? targets : []) {
+    if (!isPlainObject(target)) continue;
+    if (countPurchasableProductsForTarget(target) === 0) count += 1;
+  }
+  return count;
 }
 
 function mergeRecoveredProductsIntoIngredientTarget(target, recoveredProducts, maxProducts = AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS) {
@@ -31669,21 +31688,17 @@ async function recoverPurchasableProductsFromQueries({
     selected_source_counts: {},
     no_result_reason: null,
     alternatives: [],
+    transient_retry_attempted: 0,
+    transient_retry_recovered: 0,
+    transient_failure_count: 0,
   };
   if (typeof fallbackCandidateBuilder !== 'function') return out;
 
   const seenProducts = new Set();
   const targetMax = Math.max(1, Number(maxProducts) || AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS);
-
-  for (const query of Array.isArray(queries) ? queries : []) {
-    const q = String(query || '').trim();
-    if (!q) continue;
-    if (out.products.length >= targetMax) break;
-    out.attempted_queries.push(q);
-
-    let fallbackOut = null;
+  const executeFallbackQuery = async (q) => {
     try {
-      fallbackOut = await fallbackCandidateBuilder({
+      return await fallbackCandidateBuilder({
         query: q,
         limit: Math.max(2, targetMax - out.products.length),
         allowExternalSeed: allowExternalSeedSupplement === true,
@@ -31692,7 +31707,45 @@ async function recoverPurchasableProductsFromQueries({
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), query: q }, 'aurora bff: purchasable fallback query failed');
-      continue;
+      return {
+        ok: false,
+        products: [],
+        reason: 'upstream_error',
+        selected_source: 'none',
+        error: err?.message || String(err),
+      };
+    }
+  };
+
+  for (const query of Array.isArray(queries) ? queries : []) {
+    const q = String(query || '').trim();
+    if (!q) continue;
+    if (out.products.length >= targetMax) break;
+    out.attempted_queries.push(q);
+
+    let fallbackOut = await executeFallbackQuery(q);
+    const initialProducts = Array.isArray(fallbackOut?.products) ? fallbackOut.products : [];
+    const initialReason = String(fallbackOut?.reason || '').trim().toLowerCase();
+    if (initialProducts.length === 0 && isTransientPurchasableFallbackReason(initialReason)) {
+      out.transient_retry_attempted += 1;
+      const retried = await executeFallbackQuery(q);
+      const retriedProducts = Array.isArray(retried?.products) ? retried.products : [];
+      if (retriedProducts.length > 0) {
+        fallbackOut = retried;
+        out.transient_retry_recovered += 1;
+      } else {
+        fallbackOut = {
+          ...fallbackOut,
+          ...(pickFirstString(retried?.reason) ? { reason: String(retried.reason).trim() } : {}),
+          ...(pickFirstString(retried?.selected_source) ? { selected_source: retried.selected_source } : {}),
+        };
+      }
+    }
+
+    const effectiveProducts = Array.isArray(fallbackOut?.products) ? fallbackOut.products : [];
+    const effectiveReason = String(fallbackOut?.reason || '').trim().toLowerCase();
+    if (effectiveProducts.length === 0 && isTransientPurchasableFallbackReason(effectiveReason)) {
+      out.transient_failure_count += 1;
     }
 
     const sourceKey = String(fallbackOut?.selected_source || 'none').trim() || 'none';
@@ -31777,7 +31830,9 @@ async function recoverPurchasableProductsFromQueries({
 
   out.external_search_ctas = dedupeExternalSearchCtas(out.external_search_ctas, 12);
   if (out.products.length === 0) {
-    out.no_result_reason = out.no_result_reason || 'no_candidate_match';
+    out.no_result_reason =
+      out.no_result_reason ||
+      (out.transient_failure_count > 0 ? 'transient_search_failure' : 'no_candidate_match');
     out.alternatives = out.alternatives.length ? out.alternatives : ['adjust_goal', 'adjust_sensitivity', 'broaden_filters'];
   }
   return out;
@@ -32266,7 +32321,11 @@ async function sanitizeRecoCandidatesForUi(
     ingredient_plan_recovery_attempted: 0,
     ingredient_plan_recovery_recovered: 0,
     ingredient_plan_recovery_used: false,
+    ingredient_plan_recovery_transient_retry_attempted: 0,
+    ingredient_plan_recovery_transient_retry_recovered: 0,
     ingredient_plan_products_empty_reason: null,
+    ingredient_plan_target_count: 0,
+    ingredient_plan_empty_target_count: 0,
   };
   const nextCards = [];
   for (const card of list) {
@@ -32771,6 +32830,14 @@ async function sanitizeRecoCandidatesForUi(
           });
           recoveryAttemptedForCard += recovered.attempted_queries.length;
           recoveryRecoveredForCard += recovered.products.length;
+          lookupMeta.ingredient_plan_recovery_transient_retry_attempted += Math.max(
+            0,
+            Math.trunc(Number(recovered.transient_retry_attempted || 0)),
+          );
+          lookupMeta.ingredient_plan_recovery_transient_retry_recovered += Math.max(
+            0,
+            Math.trunc(Number(recovered.transient_retry_recovered || 0)),
+          );
           if (recovered.rejected.length) rejected.push(...recovered.rejected);
           if (recovered.external_search_ctas.length) {
             externalSearchCtas.push(...recovered.external_search_ctas);
@@ -32782,6 +32849,19 @@ async function sanitizeRecoCandidatesForUi(
               recovered.products,
               Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
             );
+          } else if (pickFirstString(recovered.no_result_reason)) {
+            const nextTarget = isPlainObject(target) ? { ...target } : {};
+            const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
+              {
+                field: 'payload.targets[].products',
+                reason: String(recovered.no_result_reason).trim().toLowerCase(),
+              },
+            ]);
+            nextTargets[targetIndex] = {
+              ...nextTarget,
+              products_empty_reason: pickFirstString(nextTarget.products_empty_reason, recovered.no_result_reason),
+              ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
+            };
           }
         }
         keptProductsCount = countPurchasableProductsForTargets(nextTargets);
@@ -32814,6 +32894,14 @@ async function sanitizeRecoCandidatesForUi(
           });
           recoveryAttemptedForCard = recovered.attempted_queries.length;
           recoveryRecoveredForCard = recovered.products.length;
+          lookupMeta.ingredient_plan_recovery_transient_retry_attempted += Math.max(
+            0,
+            Math.trunc(Number(recovered.transient_retry_attempted || 0)),
+          );
+          lookupMeta.ingredient_plan_recovery_transient_retry_recovered += Math.max(
+            0,
+            Math.trunc(Number(recovered.transient_retry_recovered || 0)),
+          );
           if (recovered.rejected.length) rejected.push(...recovered.rejected);
           if (recovered.external_search_ctas.length) {
             externalSearchCtas.push(...recovered.external_search_ctas);
@@ -32900,6 +32988,9 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.ingredient_plan_recovery_attempted += recoveryAttemptedForCard;
       lookupMeta.ingredient_plan_recovery_recovered += recoveryRecoveredForCard;
       if (recoveryRecoveredForCard > 0) lookupMeta.ingredient_plan_recovery_used = true;
+      const emptyTargetCount = countEmptyPurchasableTargets(nextTargets);
+      lookupMeta.ingredient_plan_target_count += nextTargets.length;
+      lookupMeta.ingredient_plan_empty_target_count += emptyTargetCount;
       lookupMeta.llm_fallback_stage_counts = mergeLlmFallbackStageCounts(lookupMeta.llm_fallback_stage_counts, {
         timeout: llmFallbackTimeoutForCard,
         invalid_json: llmFallbackInvalidJsonForCard,
@@ -32956,6 +33047,13 @@ async function sanitizeRecoCandidatesForUi(
       });
       if (productsEmptyReason && !lookupMeta.ingredient_plan_products_empty_reason) {
         lookupMeta.ingredient_plan_products_empty_reason = productsEmptyReason;
+      }
+      if (
+        emptyTargetCount > 0 &&
+        !lookupMeta.ingredient_plan_products_empty_reason &&
+        !pickFirstString(productsEmptyReason)
+      ) {
+        lookupMeta.ingredient_plan_products_empty_reason = 'target_level_partial_empty';
       }
 
       const nextPayload = {
@@ -34438,6 +34536,31 @@ async function applyProductIntelGuardrailsToEnvelope({
           Math.trunc(Number(lookupMeta.ingredient_plan_recovery_recovered || 0)),
         ),
         ingredient_plan_products_recovery_used: lookupMeta.ingredient_plan_recovery_used === true,
+        ingredient_plan_recovery_transient_retry_attempted: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_attempted || 0)),
+        ),
+        ingredient_plan_recovery_transient_retry_recovered: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_recovered || 0)),
+        ),
+        ingredient_plan_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
+        ),
+        ingredient_plan_empty_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_empty_target_count || 0)),
+        ),
+        ingredient_plan_empty_target_rate:
+          Number(lookupMeta.ingredient_plan_target_count || 0) > 0
+            ? Number(
+              (
+                Number(lookupMeta.ingredient_plan_empty_target_count || 0) /
+                Number(lookupMeta.ingredient_plan_target_count || 1)
+              ).toFixed(4),
+            )
+            : 0,
         ...(pickFirstString(lookupMeta.ingredient_plan_products_empty_reason)
           ? { ingredient_plan_products_empty_reason: lookupMeta.ingredient_plan_products_empty_reason }
           : {}),
@@ -34497,7 +34620,18 @@ async function applyProductIntelGuardrailsToEnvelope({
     return type === 'recommendations' || type === 'ingredient_plan_v2' || type === 'ingredient_plan';
   });
   const recommendableCardsWithEmptyReason = recommendableCards.filter(
-    (card) => isPlainObject(card && card.payload) && String(card.payload.products_empty_reason || '').trim(),
+    (card) => {
+      if (!isPlainObject(card && card.payload)) return false;
+      if (String(card.payload.products_empty_reason || '').trim()) return true;
+      const type = String(card.type || '').trim().toLowerCase();
+      if (type !== 'ingredient_plan_v2' && type !== 'ingredient_plan') return false;
+      const targets = Array.isArray(card.payload.targets)
+        ? card.payload.targets
+        : isPlainObject(card.payload.plan) && Array.isArray(card.payload.plan.targets)
+          ? card.payload.plan.targets
+          : [];
+      return countEmptyPurchasableTargets(targets) > 0;
+    },
   ).length;
   const analysisSource = pickFirstString(summaryPayload.analysis_source, analysisMetaBase && analysisMetaBase.detector_source);
   const diagProvider = (() => {
@@ -34560,6 +34694,31 @@ async function applyProductIntelGuardrailsToEnvelope({
       Math.trunc(Number(lookupMeta.ingredient_plan_recovery_recovered || 0)),
     ),
     ingredient_plan_products_recovery_used: lookupMeta.ingredient_plan_recovery_used === true,
+    ingredient_plan_recovery_transient_retry_attempted: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_attempted || 0)),
+    ),
+    ingredient_plan_recovery_transient_retry_recovered: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_recovered || 0)),
+    ),
+    ingredient_plan_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
+    ),
+    ingredient_plan_empty_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_empty_target_count || 0)),
+    ),
+    ingredient_plan_empty_target_rate:
+      Number(lookupMeta.ingredient_plan_target_count || 0) > 0
+        ? Number(
+          (
+            Number(lookupMeta.ingredient_plan_empty_target_count || 0) /
+            Number(lookupMeta.ingredient_plan_target_count || 1)
+          ).toFixed(4),
+        )
+        : 0,
     invalid_url_drop_rate:
       Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0) > 0
         ? Number((Number(sanitized.externalized || 0) / (Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0))).toFixed(4))

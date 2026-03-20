@@ -536,6 +536,123 @@ test('recoverPurchasableProductsFromQueries keeps one best bundle-like product w
   }
 });
 
+test('recoverPurchasableProductsFromQueries retries once on transient upstream failure and can recover products', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let calls = 0;
+    const out = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['Ceramide NP'],
+      strictFilter: true,
+      fallbackCandidateBuilder: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            ok: false,
+            products: [],
+            reason: 'upstream_timeout',
+            selected_source: 'none',
+          };
+        }
+        return {
+          ok: true,
+          selected_source: 'external_seed',
+          products: [
+            {
+              product_id: 'ceramide_retry_1',
+              merchant_id: 'external_seed',
+              name: 'Barrier Relief Moisturizer',
+              brand: 'Shield Lab',
+              category: 'moisturizer',
+              product_type: 'moisturizer',
+              pdp_url: 'https://agent.pivota.cc/products/ceramide_retry_1?merchant_id=external_seed',
+              url: 'https://agent.pivota.cc/products/ceramide_retry_1?merchant_id=external_seed',
+              source: 'external_seed',
+            },
+          ],
+        };
+      },
+      maxProducts: 2,
+    });
+
+    assert.equal(calls, 2);
+    assert.equal(out.products.length, 1);
+    assert.equal(out.products[0].name, 'Barrier Relief Moisturizer');
+    assert.equal(out.transient_retry_attempted, 1);
+    assert.equal(out.transient_retry_recovered, 1);
+    assert.equal(out.no_result_reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyProductIntelGuardrailsToEnvelope surfaces target-level ingredient-plan empties in analysis_meta', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.applyProductIntelGuardrailsToEnvelope({
+      envelope: {
+        cards: [
+          {
+            card_id: 'plan_partial_empty_metrics',
+            type: 'ingredient_plan_v2',
+            payload: {
+              schema_version: 'aurora.ingredient_plan.v2',
+              targets: [
+                {
+                  ingredient_id: 'sunscreen_filters',
+                  ingredient_name: 'UV filters',
+                  products: {
+                    competitors: [
+                      {
+                        title: 'UV Filters SPF 45 Serum',
+                        brand: 'Shield Lab',
+                        category: 'sunscreen',
+                        product_type: 'sunscreen',
+                        product_url: 'https://example.com/products/uv-filters-spf-45-serum',
+                        open_url: 'https://example.com/products/uv-filters-spf-45-serum',
+                        url: 'https://example.com/products/uv-filters-spf-45-serum',
+                      },
+                    ],
+                    dupes: [],
+                  },
+                },
+                {
+                  ingredient_id: 'ceramide_np',
+                  ingredient_name: 'Ceramide NP',
+                  products: {
+                    competitors: [],
+                    dupes: [],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        analysis_meta: {
+          analysis_mode: 'analysis_summary',
+          report_stage_outcome: 'skipped_policy',
+          report_stage_budget_profile: 'routine_only',
+        },
+      },
+      ctx: {
+        request_id: 'req_partial_empty_metrics',
+        trace_id: 'trace_partial_empty_metrics',
+      },
+      profile: null,
+      language: 'EN',
+    });
+
+    const envelope = out && out.envelope ? out.envelope : null;
+    assert.ok(envelope && envelope.analysis_meta);
+    assert.equal(envelope.analysis_meta.ingredient_plan_target_count, 2);
+    assert.equal(envelope.analysis_meta.ingredient_plan_empty_target_count, 1);
+    assert.equal(envelope.analysis_meta.ingredient_plan_empty_target_rate, 0.5);
+    assert.equal(envelope.analysis_meta.empty_products_rate, 1);
+    assert.equal(envelope.analysis_meta.ingredient_plan_products_empty_reason, 'target_level_partial_empty');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('shouldUseRoutineOnlyAnalysisMemoryFastPath only enables shallow memory load for no-photo routine summary requests', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
