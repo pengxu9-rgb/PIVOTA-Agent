@@ -639,6 +639,42 @@ describe('ingredientProductRecall', () => {
     });
   });
 
+  test('scopes explicit seed pattern recall to targeted fields instead of full seed_data json', async () => {
+    const capturedSql = [];
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        capturedSql.push(text);
+        return { rows: [] };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    await recallIngredientProducts({
+      query: 'panthenol repair serum',
+      ingredientId: 'panthenol',
+      targetStepFamily: 'serum',
+      limit: 3,
+    });
+
+    const patternSql = capturedSql.find((text) => text.includes('LIKE ANY($3::text[])'));
+    expect(patternSql).toBeTruthy();
+    expect(patternSql).not.toMatch(/seed_data::text/);
+    expect(patternSql).toMatch(/seed_data->'snapshot'->>'title'/);
+    expect(patternSql).toMatch(/seed_data->'snapshot'->>'description'/);
+  });
+
   test('allows ingredient-intent family fallback when explicitly requested', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {

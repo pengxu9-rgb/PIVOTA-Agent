@@ -636,7 +636,15 @@ async function fetchSeedRowsByPatterns({
       OR lower(coalesce(domain, '')) LIKE ANY($3::text[])
       OR lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
       OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data::text, '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->>'category', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'description', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'category', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'canonical_url', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'snapshot'->>'destination_url', '')) LIKE ANY($3::text[])
     )`,
   ];
   if (attachedState === 'attached') filters.push(`coalesce(attached_product_key, '') <> ''`);
@@ -669,6 +677,25 @@ async function fetchSeedRowsByPatterns({
         AND (tool = '*' OR tool = $2)
         AND ${filters.join('\n        AND ')}
       ORDER BY
+        CASE
+          WHEN lower(coalesce(title, '')) LIKE ANY($3::text[]) THEN 0
+          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 1
+          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 2
+          WHEN (
+            lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
+            OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'canonical_url', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'destination_url', '')) LIKE ANY($3::text[])
+          ) THEN 3
+          WHEN (
+            lower(coalesce(seed_data->>'category', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'category', '')) LIKE ANY($3::text[])
+          ) THEN 4
+          WHEN lower(coalesce(seed_data->'snapshot'->>'description', '')) LIKE ANY($3::text[]) THEN 5
+          ELSE 6
+        END,
         CASE WHEN coalesce(attached_product_key, '') <> '' THEN 0 ELSE 1 END,
         updated_at DESC NULLS LAST,
         created_at DESC NULLS LAST
