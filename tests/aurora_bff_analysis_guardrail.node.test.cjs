@@ -449,6 +449,7 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const recallCalls = [];
+    const recallLimits = [];
     const out = await __internal.sanitizeRecoCandidatesForUi(
       [
         {
@@ -512,9 +513,10 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
       {
         strictFilter: true,
         ingredientPlanGuardrailMode: 'lightweight',
-        ingredientRecallBuilder: async ({ target }) => {
+        ingredientRecallBuilder: async ({ target, limit }) => {
           const ingredientId = String(target?.ingredient_id || '');
           recallCalls.push(ingredientId);
+          recallLimits.push(Number(limit || 0));
           if (ingredientId !== 'sunscreen_filters') {
             return {
               products: [],
@@ -587,6 +589,7 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
     const ceramideTarget = targets.find((row) => row && row.ingredient_id === 'ceramide_np');
     const sunscreenTarget = targets.find((row) => row && row.ingredient_id === 'sunscreen_filters');
     assert.deepEqual(recallCalls, ['sunscreen_filters']);
+    assert.equal(recallLimits[0] >= 6, true);
     assert.equal(ceramideTarget?.products?.competitors?.[0]?.name, 'Rose Ceramide Cream');
     assert.deepEqual(
       (sunscreenTarget?.products?.competitors || []).map((row) => row && row.name),

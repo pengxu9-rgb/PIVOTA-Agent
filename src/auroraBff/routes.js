@@ -33418,6 +33418,10 @@ async function sanitizeRecoCandidatesForUi(
         1,
         Math.min(2, AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES),
       );
+      const lightweightIngredientRecallCandidateLimit = Math.max(
+        6,
+        Math.min(12, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS * 4),
+      );
       for (const target of targets) {
         const baseTarget = isPlainObject(target) ? { ...target } : {};
         const targetQueryText = resolveIngredientPlanTargetQueryText(baseTarget);
@@ -33505,7 +33509,7 @@ async function sanitizeRecoCandidatesForUi(
                 nextTarget.step_family,
                 nextTarget.stepFamily,
               ) || '',
-              limit: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+              limit: lightweightIngredientRecallCandidateLimit,
             });
             const ingredientRecallDiagnostics = isPlainObject(ingredientRecall?.diagnostics)
               ? ingredientRecall.diagnostics
