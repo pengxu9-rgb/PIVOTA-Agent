@@ -173,7 +173,10 @@ describe('creator checkout_sessions compatibility', () => {
       status: 200,
       data: {
         checkout_url:
-          'https://agent.pivota.cc/order?checkout_token=tok_creator_123&entry=creator_agent',
+          'https://agent.pivota.cc/order?checkout_token=tok_creator_123',
+        checkout_token: 'tok_creator_123',
+        checkout_session_id: 'ci_creator_123',
+        expires_at: 1773989020,
       },
     });
 
@@ -185,8 +188,11 @@ describe('creator checkout_sessions compatibility', () => {
     expect(res.status).toBe(200);
     expect(res.body.provider).toBe('creator');
     expect(res.body.checkoutUrl).toBe(
-      'https://agent.pivota.cc/order?checkout_token=tok_creator_123&entry=creator_agent&return=https%3A%2F%2Flook-replicator.pivota.cc%2Fresult%2Fabc%3Fmarket%3DUS',
+      'https://agent.pivota.cc/order?checkout_token=tok_creator_123&entry=creator_agent&source=creator_agent&return=https%3A%2F%2Flook-replicator.pivota.cc%2Fresult%2Fabc%3Fmarket%3DUS',
     );
+    expect(res.body.checkoutToken).toBe('tok_creator_123');
+    expect(res.body.checkoutSessionId).toBe('ci_creator_123');
+    expect(res.body.expiresAt).toBe(1773989020);
 
     expect(axios.post).toHaveBeenCalledTimes(2);
     const [intentUrl, intentBody, intentConfig] = axios.post.mock.calls[1];
