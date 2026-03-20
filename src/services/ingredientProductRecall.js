@@ -401,9 +401,10 @@ function scoreRecallProduct(
   const surfaceExactHits = countPhraseMatches(text, profile?.exact_phrases);
   const surfaceAliasHits = countPhraseMatches(text, profile?.alias_phrases);
   const surfaceExplicitHits = surfaceExactHits + surfaceAliasHits;
+  const kbExplicitHits = kbExactHits + kbAliasHits;
   if (
     surfaceExplicitHits <= 0 &&
-    (kbExactHits + kbAliasHits) > 0 &&
+    kbExplicitHits > 0 &&
     hasConflictingIngredientSurfaceSignal(text, profile)
   ) {
     return null;
@@ -432,6 +433,8 @@ function scoreRecallProduct(
   const category = normalizeText(product?.category || product?.product_type || '');
   const title = normalizeText(product?.title || product?.name || '');
   let score = Number(sourceRank || 0);
+  score += surfaceExplicitHits * 120;
+  score += kbExplicitHits * 12;
   score += exactHits * 30;
   score += aliasHits * 18;
   score += strongFamilyHits * (explicitHits > 0 ? 6 : 12);
@@ -450,6 +453,8 @@ function scoreRecallProduct(
     family_hits: familyHits,
     strong_family_hits: strongFamilyHits,
     explicit_hits: explicitHits,
+    surface_explicit_hits: surfaceExplicitHits,
+    kb_explicit_hits: kbExplicitHits,
     family_only: explicitHits <= 0,
     candidate_step: candidateStep || null,
     family_relation: familyRelation || null,
@@ -863,6 +868,9 @@ async function recallIngredientProducts({
     candidates
     .slice()
     .sort((left, right) => {
+      if (right.evidence.surface_explicit_hits !== left.evidence.surface_explicit_hits) {
+        return right.evidence.surface_explicit_hits - left.evidence.surface_explicit_hits;
+      }
       if (right.evidence.score !== left.evidence.score) return right.evidence.score - left.evidence.score;
       if (right.evidence.explicit_hits !== left.evidence.explicit_hits) {
         return right.evidence.explicit_hits - left.evidence.explicit_hits;
