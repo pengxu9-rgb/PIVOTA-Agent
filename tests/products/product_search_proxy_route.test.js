@@ -2747,6 +2747,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.status).toBe(200);
     expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
     expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'ceramide_np',
+        allowFamilyFallback: true,
+      }),
+    );
     expect(invokeScope.isDone()).toBe(false);
     expect(resp.body.products).toHaveLength(1);
     expect(resp.body.products[0]).toEqual(
@@ -2834,6 +2840,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.status).toBe(200);
     expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
     expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'sunscreen_filters',
+        allowFamilyFallback: true,
+      }),
+    );
     expect(invokeScope.isDone()).toBe(false);
     expect(resp.body.products).toHaveLength(1);
     expect(resp.body.metadata).toEqual(

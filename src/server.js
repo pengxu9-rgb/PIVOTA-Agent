@@ -7719,6 +7719,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     targetStepFamily,
     limit: Math.max(safeLimit + safeOffset, safeLimit),
     inStockOnly,
+    allowFamilyFallback: true,
   });
   const diagnostics =
     recalled?.diagnostics && typeof recalled.diagnostics === 'object' && !Array.isArray(recalled.diagnostics)
@@ -7751,6 +7752,9 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       attached_seed_recall_recovered: Math.max(0, Number(diagnostics.attached_seed_recall_recovered || 0) || 0),
       unattached_seed_recall_attempted: diagnostics.unattached_seed_recall_attempted === true,
       unattached_seed_recall_recovered: Math.max(0, Number(diagnostics.unattached_seed_recovered || 0) || 0),
+      family_fallback_attempted: diagnostics.family_fallback_attempted === true,
+      family_fallback_recovered: Math.max(0, Number(diagnostics.family_fallback_recovered || 0) || 0),
+      family_fallback_used: diagnostics.family_fallback_used === true,
       clarify_applied_after_kb_exhausted: false,
       strict_empty_reason: null,
       source_breakdown: {
@@ -7772,6 +7776,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
           diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
         kb_recall_attempted: diagnostics.kb_recall_attempted === true,
         attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
+        family_fallback_used: diagnostics.family_fallback_used === true,
         clarify_applied_after_kb_exhausted: false,
         query_target_step_family: targetStepFamily || null,
       },

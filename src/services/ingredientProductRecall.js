@@ -7,7 +7,19 @@ const DEFAULT_MARKET = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKE
   .toUpperCase() || 'US';
 const DEFAULT_TOOL = 'creator_agents';
 const BUNDLE_LIKE_RE =
-  /\b(sample|sampler|mini|travel|kit|set|bundle|duo|trio|collection|collector|starter|discovery)\b/i;
+  /\b(sample|sampler|mini|travel|kit|set|bundle|duo|trio|quartet|collection|collector|starter|discovery|routine|regimen)\b/i;
+const WEAK_FAMILY_ONLY_PHRASES = new Set([
+  'serum',
+  'moisturizer',
+  'moisturiser',
+  'cream',
+  'gel',
+  'lotion',
+  'daily',
+  'treatment',
+  'emulsion',
+  'face',
+]);
 
 const INGREDIENT_RECALL_PROFILES = Object.freeze({
   ceramide_np: Object.freeze({
@@ -192,6 +204,18 @@ function countPhraseMatches(text, phrases) {
   return hits;
 }
 
+function countStrongFamilyMatches(text, phrases) {
+  const haystack = ` ${normalizeText(text)} `;
+  if (!haystack.trim()) return 0;
+  let hits = 0;
+  for (const phrase of Array.isArray(phrases) ? phrases : []) {
+    const normalized = normalizeText(phrase);
+    if (!normalized || WEAK_FAMILY_ONLY_PHRASES.has(normalized)) continue;
+    if (haystack.includes(` ${normalized} `)) hits += 1;
+  }
+  return hits;
+}
+
 function extractSeedIdFromSkuKey(skuKey) {
   const normalized = String(skuKey || '').trim();
   return normalized.match(/^extseed:([^:]+):/)?.[1] || '';
@@ -222,13 +246,22 @@ function buildRecallCandidateText(product) {
     .toLowerCase();
 }
 
-function scoreRecallProduct(product, { profile, targetStepFamily = '', sourceRank = 0 } = {}) {
+function isBundleLikeRecallProduct(product) {
+  const title = normalizeText(product?.title || product?.name || product?.display_name || '');
+  return Boolean(title) && BUNDLE_LIKE_RE.test(title);
+}
+
+function scoreRecallProduct(
+  product,
+  { profile, targetStepFamily = '', sourceRank = 0, allowFamilyOnly = false } = {},
+) {
   const text = buildRecallCandidateText(product);
   const exactHits = countPhraseMatches(text, profile?.exact_phrases);
   const aliasHits = countPhraseMatches(text, profile?.alias_phrases);
   const familyHits = countPhraseMatches(text, profile?.family_phrases);
+  const strongFamilyHits = countStrongFamilyMatches(text, profile?.family_phrases);
   const explicitHits = exactHits + aliasHits;
-  if (explicitHits <= 0) return null;
+  if (explicitHits <= 0 && (!allowFamilyOnly || strongFamilyHits <= 0)) return null;
 
   const family = normalizeText(targetStepFamily);
   const category = normalizeText(product?.category || product?.product_type || '');
@@ -236,7 +269,8 @@ function scoreRecallProduct(product, { profile, targetStepFamily = '', sourceRan
   let score = Number(sourceRank || 0);
   score += exactHits * 30;
   score += aliasHits * 18;
-  score += familyHits * 3;
+  score += strongFamilyHits * (explicitHits > 0 ? 6 : 12);
+  score += familyHits * (explicitHits > 0 ? 3 : 2);
   if (family && (category.includes(family) || title.includes(family))) score += 8;
   if (normalizeUrl(product?.url) || normalizeUrl(product?.canonical_url) || normalizeUrl(product?.destination_url)) {
     score += 3;
@@ -247,8 +281,18 @@ function scoreRecallProduct(product, { profile, targetStepFamily = '', sourceRan
     exact_hits: exactHits,
     alias_hits: aliasHits,
     family_hits: familyHits,
+    strong_family_hits: strongFamilyHits,
     explicit_hits: explicitHits,
+    family_only: explicitHits <= 0,
   };
+}
+
+function filterBundleLikeRecallCandidates(rows) {
+  const ranked = Array.isArray(rows) ? rows : [];
+  if (!ranked.length) return [];
+  const nonBundleRows = ranked.filter((row) => !isBundleLikeRecallProduct(row?.product));
+  if (nonBundleRows.length) return nonBundleRows;
+  return ranked.length > 1 ? [ranked[0]] : ranked;
 }
 
 async function runKbQuery(text, params) {
@@ -494,6 +538,7 @@ async function recallIngredientProducts({
   tool = DEFAULT_TOOL,
   limit = 6,
   inStockOnly = false,
+  allowFamilyFallback = false,
 } = {}) {
   const profile = resolveIngredientRecallProfile({ target, query, ingredientId });
   const diagnostics = {
@@ -505,6 +550,9 @@ async function recallIngredientProducts({
     attached_seed_recall_recovered: 0,
     unattached_seed_recall_attempted: false,
     unattached_seed_recall_recovered: 0,
+    family_fallback_attempted: false,
+    family_fallback_recovered: 0,
+    family_fallback_used: false,
     recall_source_breakdown: {},
   };
   if (!profile) {
@@ -522,10 +570,17 @@ async function recallIngredientProducts({
 
   const seen = new Set();
   const candidates = [];
-  const sourceRowsByTag = new Map();
-  const addRows = (rows, sourceTag) => {
+  const resolveSourceRank = (sourceTag) => {
+    if (sourceTag === 'kb_attached_seed') return 400;
+    if (sourceTag === 'attached_seed') return 300;
+    if (sourceTag === 'kb_unattached_seed') return 220;
+    if (sourceTag === 'unattached_seed') return 180;
+    if (sourceTag === 'family_attached_seed') return 140;
+    if (sourceTag === 'family_unattached_seed') return 90;
+    return 60;
+  };
+  const addRows = (rows, sourceTag, { allowFamilyOnly = false } = {}) => {
     const list = Array.isArray(rows) ? rows : [];
-    sourceRowsByTag.set(sourceTag, list);
     for (const row of list) {
       const product = mapSeedRowToRecallProduct(row, sourceTag);
       if (!product) continue;
@@ -534,14 +589,8 @@ async function recallIngredientProducts({
       const evidence = scoreRecallProduct(product, {
         profile,
         targetStepFamily,
-        sourceRank:
-          sourceTag === 'kb_attached_seed'
-            ? 400
-            : sourceTag === 'attached_seed'
-              ? 300
-              : sourceTag === 'kb_unattached_seed'
-                ? 220
-                : 180,
+        sourceRank: resolveSourceRank(sourceTag),
+        allowFamilyOnly,
       });
       if (!evidence) continue;
       seen.add(key);
@@ -612,18 +661,53 @@ async function recallIngredientProducts({
   addRows(kbUnattachedRows, 'kb_unattached_seed');
   addRows(unattachedSeedRows, 'unattached_seed');
 
-  const ranked = candidates
+  if (!candidates.length && allowFamilyFallback) {
+    diagnostics.family_fallback_attempted = true;
+    const familyPatterns = buildPhrasePatterns(profile.family_phrases);
+    if (familyPatterns.length) {
+      const familyAttachedRows = await fetchSeedRowsByPatterns({
+        patterns: familyPatterns,
+        market,
+        tool,
+        attachedState: 'attached',
+        limit: Math.max(6, Number(limit) * 4 || 24),
+        inStockOnly,
+      });
+      const familyUnattachedRows = await fetchSeedRowsByPatterns({
+        patterns: familyPatterns,
+        market,
+        tool,
+        attachedState: 'unattached',
+        limit: Math.max(6, Number(limit) * 4 || 24),
+        inStockOnly,
+      });
+      addRows(familyAttachedRows, 'family_attached_seed', { allowFamilyOnly: true });
+      addRows(familyUnattachedRows, 'family_unattached_seed', { allowFamilyOnly: true });
+      diagnostics.family_fallback_recovered = candidates.length > 0 ? 1 : 0;
+    }
+  }
+
+  const ranked = filterBundleLikeRecallCandidates(
+    candidates
     .slice()
     .sort((left, right) => {
       if (right.evidence.score !== left.evidence.score) return right.evidence.score - left.evidence.score;
       if (right.evidence.explicit_hits !== left.evidence.explicit_hits) {
         return right.evidence.explicit_hits - left.evidence.explicit_hits;
       }
+      if (right.evidence.strong_family_hits !== left.evidence.strong_family_hits) {
+        return right.evidence.strong_family_hits - left.evidence.strong_family_hits;
+      }
       const leftTitle = normalizeText(left.product?.title || left.product?.name || '');
       const rightTitle = normalizeText(right.product?.title || right.product?.name || '');
       return leftTitle.localeCompare(rightTitle);
     })
-    .slice(0, Math.max(1, Number(limit) || 6));
+    .slice(0, Math.max(1, Number(limit) || 6)),
+  );
+
+  diagnostics.family_fallback_used = ranked.some((row) =>
+    String(row?.source_tag || '').startsWith('family_'),
+  );
 
   for (const row of ranked) {
     mergeRecallSourceBreakdown(diagnostics.recall_source_breakdown, row.source_tag, 1);
