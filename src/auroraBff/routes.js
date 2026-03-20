@@ -509,7 +509,11 @@ const {
 } = require('./ingredientResearchKbStore');
 const { getBestIngredientReferenceMatch } = require('../services/ingredientReferenceStore');
 const { getBestIngredientSignalMatch } = require('../services/ingredientSignalStore');
-const { recallIngredientProducts } = require('../services/ingredientProductRecall');
+const {
+  recallIngredientProducts,
+  resolveIngredientRecallProfile,
+  stabilizeIngredientRecallProducts,
+} = require('../services/ingredientProductRecall');
 const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
 const {
   createArtifactId,
@@ -31991,6 +31995,88 @@ function mergeRecoveredProductsIntoIngredientTarget(target, recoveredProducts, m
   return baseTarget;
 }
 
+function resolveIngredientPlanTargetStepFamily(target) {
+  const targetObj = isPlainObject(target) ? target : {};
+  return pickFirstString(
+    targetObj.target_step_family,
+    targetObj.targetStepFamily,
+    targetObj.step_family,
+    targetObj.stepFamily,
+  ) || '';
+}
+
+function resolveIngredientPlanTargetQueryText(target, queryText = '') {
+  const targetObj = isPlainObject(target) ? target : {};
+  return pickFirstString(
+    queryText,
+    targetObj.query,
+    targetObj.search_query,
+    targetObj.ingredient_name,
+    targetObj.ingredientName,
+    targetObj.ingredient,
+    targetObj.name,
+    targetObj.title,
+  ) || '';
+}
+
+function stabilizeIngredientPlanTargetProducts(sourceRows, {
+  target = null,
+  queryText = '',
+  maxProducts = AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS,
+} = {}) {
+  const list = Array.isArray(sourceRows) ? sourceRows : [];
+  if (!list.length) return [];
+  const targetObj = isPlainObject(target) ? target : {};
+  const resolvedQueryText = resolveIngredientPlanTargetQueryText(targetObj, queryText);
+  const recallProfile = resolveIngredientRecallProfile({
+    target: targetObj,
+    query: resolvedQueryText,
+    ingredientId: pickFirstString(targetObj.ingredient_id, targetObj.ingredientId) || '',
+  });
+  return stabilizeIngredientRecallProducts(list, {
+    recallProfile,
+    targetStepFamily: resolveIngredientPlanTargetStepFamily(targetObj),
+    queryText: resolvedQueryText,
+    maxProducts,
+  });
+}
+
+function clearIngredientPlanTargetProducts(target) {
+  const targetObj = isPlainObject(target) ? target : {};
+  const nextTarget = { ...targetObj };
+  if (Array.isArray(nextTarget.products)) {
+    nextTarget.products = [];
+  } else if (isPlainObject(nextTarget.products)) {
+    const nextProducts = { ...nextTarget.products };
+    for (const [key, value] of Object.entries(nextProducts)) {
+      if (Array.isArray(value)) nextProducts[key] = [];
+    }
+    nextTarget.products = nextProducts;
+  }
+  if (Array.isArray(nextTarget.candidates)) nextTarget.candidates = [];
+  if (Array.isArray(nextTarget.items)) nextTarget.items = [];
+  return nextTarget;
+}
+
+function shouldForceIngredientPlanTargetRecovery(target, { queryText = '' } = {}) {
+  const targetObj = isPlainObject(target) ? target : {};
+  if (normalizeRecoTargetStep(resolveIngredientPlanTargetStepFamily(targetObj)) !== 'sunscreen') return false;
+  const normalizedQuery = normalizeIngredientRecoveryPhrase(resolveIngredientPlanTargetQueryText(targetObj, queryText));
+  if (/\btinted\b/.test(normalizedQuery) || /\brefill\b/.test(normalizedQuery)) return false;
+  const productsNode = isPlainObject(targetObj.products) ? targetObj.products : {};
+  const rows = [
+    ...(Array.isArray(productsNode.competitors) ? productsNode.competitors : []),
+    ...(Array.isArray(productsNode.dupes) ? productsNode.dupes : []),
+  ].filter((row) => isPlainObject(row));
+  if (!rows.length) return false;
+  return rows.every((row) => {
+    const title = normalizeIngredientRecoveryPhrase(
+      pickFirstString(row.title, row.name, row.display_name, row.displayName),
+    );
+    return Boolean(title) && (/\btinted\b/.test(title) || /\brefill\b/.test(title));
+  });
+}
+
 function ingredientTargetMatchesMissingCatalogEntry(target, entry) {
   const targetObj = isPlainObject(target) ? target : {};
   const entryObj = isPlainObject(entry) ? entry : {};
@@ -33213,9 +33299,14 @@ async function sanitizeRecoCandidatesForUi(
       let llmFallbackEmptyForCard = 0;
       const guardrailRuleId = type === 'ingredient_plan_v2' ? 'ingredient_plan_v2_guardrail' : 'ingredient_plan_guardrail';
 
-      const sanitizeRows = async (sourceRows) => {
+      const sanitizeRows = async (sourceRows, { target = null, queryText = '' } = {}) => {
+        const stabilizedRows = stabilizeIngredientPlanTargetProducts(sourceRows, {
+          target,
+          queryText,
+          maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+        });
         const kept = [];
-        for (const product of sourceRows) {
+        for (const product of stabilizedRows) {
           const row = coerceRecoCandidateForGuardrail(product);
           if (!row) continue;
           const blacklistHit = isBlacklistedCategoryOrTitle(row);
@@ -33308,23 +33399,36 @@ async function sanitizeRecoCandidatesForUi(
       );
       for (const target of targets) {
         const baseTarget = isPlainObject(target) ? { ...target } : {};
+        const targetQueryText = resolveIngredientPlanTargetQueryText(baseTarget);
         if (Array.isArray(baseTarget.products)) {
-          baseTarget.products = await sanitizeRows(baseTarget.products);
+          baseTarget.products = await sanitizeRows(baseTarget.products, {
+            target: baseTarget,
+            queryText: targetQueryText,
+          });
         } else if (isPlainObject(baseTarget.products)) {
           const products = { ...baseTarget.products };
           const bucketNames = Object.keys(products);
           for (const bucketName of bucketNames) {
             const sourceRows = Array.isArray(products[bucketName]) ? products[bucketName] : [];
-            products[bucketName] = await sanitizeRows(sourceRows);
+            products[bucketName] = await sanitizeRows(sourceRows, {
+              target: baseTarget,
+              queryText: targetQueryText,
+            });
           }
           baseTarget.products = products;
         }
 
         if (Array.isArray(baseTarget.candidates)) {
-          baseTarget.candidates = await sanitizeRows(baseTarget.candidates);
+          baseTarget.candidates = await sanitizeRows(baseTarget.candidates, {
+            target: baseTarget,
+            queryText: targetQueryText,
+          });
         }
         if (Array.isArray(baseTarget.items)) {
-          baseTarget.items = await sanitizeRows(baseTarget.items);
+          baseTarget.items = await sanitizeRows(baseTarget.items, {
+            target: baseTarget,
+            queryText: targetQueryText,
+          });
         }
         nextTargets.push(baseTarget);
       }
@@ -33332,14 +33436,12 @@ async function sanitizeRecoCandidatesForUi(
       let keptProductsCount = countPurchasableProductsForTargets(nextTargets);
       if (
         lightweightIngredientPlanGuardrail &&
-        keptProductsCount === 0 &&
         AURORA_PURCHASABLE_FALLBACK_ENABLED &&
         (typeof fallbackCandidateBuilder === 'function' || typeof effectiveIngredientRecallBuilder === 'function')
       ) {
         for (let targetIndex = 0; targetIndex < nextTargets.length; targetIndex += 1) {
           const target = nextTargets[targetIndex];
           if (!isPlainObject(target)) continue;
-          if (countPurchasableProductsForTarget(target) > 0) continue;
           const queryStages = collectIngredientPlanRecoveryQueryStagesForTarget({
             payload,
             target,
@@ -33352,7 +33454,19 @@ async function sanitizeRecoCandidatesForUi(
           const familyFallbackQueries = Array.isArray(queryStages.familyFallbackQueries)
             ? queryStages.familyFallbackQueries
             : [];
+          const recoveryQueryText = pickFirstString(
+            ingredientSpecificQueries[0],
+            familyFallbackQueries[0],
+            resolveIngredientPlanTargetQueryText(target),
+          ) || '';
           let nextTarget = isPlainObject(target) ? { ...target } : {};
+          if (shouldForceIngredientPlanTargetRecovery(nextTarget, { queryText: recoveryQueryText })) {
+            nextTarget = clearIngredientPlanTargetProducts(nextTarget);
+          }
+          if (countPurchasableProductsForTarget(nextTarget) > 0) {
+            nextTargets[targetIndex] = nextTarget;
+            continue;
+          }
           let recoveredForTarget = false;
           if (typeof effectiveIngredientRecallBuilder === 'function') {
             const ingredientRecall = await effectiveIngredientRecallBuilder({
@@ -33397,7 +33511,10 @@ async function sanitizeRecoCandidatesForUi(
                 ? [{ field: 'payload.targets[].products', reason: 'attached_seed_recall_empty' }]
                 : []),
             ]);
-            const recalledProducts = await sanitizeRows(Array.isArray(ingredientRecall?.products) ? ingredientRecall.products : []);
+            const recalledProducts = await sanitizeRows(Array.isArray(ingredientRecall?.products) ? ingredientRecall.products : [], {
+              target: nextTarget,
+              queryText: ingredientSpecificQueries[0] || recoveryQueryText,
+            });
             if (recalledProducts.length) {
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
@@ -33416,10 +33533,12 @@ async function sanitizeRecoCandidatesForUi(
               };
             }
           }
-          const accumulateRecovered = (recovered) => {
+          const accumulateRecovered = (recovered, { finalProductCount = null } = {}) => {
             if (!isPlainObject(recovered)) return;
             recoveryAttemptedForCard += Math.max(0, Math.trunc(Number(recovered.attempted_queries?.length || 0)));
-            recoveryRecoveredForCard += Math.max(0, Math.trunc(Number(recovered.products?.length || 0)));
+            recoveryRecoveredForCard += finalProductCount === null || finalProductCount === undefined
+              ? Math.max(0, Math.trunc(Number(recovered.products?.length || 0)))
+              : Math.max(0, Math.trunc(Number(finalProductCount || 0)));
             lookupMeta.ingredient_plan_recovery_transient_retry_attempted += Math.max(
               0,
               Math.trunc(Number(recovered.transient_retry_attempted || 0)),
@@ -33452,7 +33571,11 @@ async function sanitizeRecoCandidatesForUi(
               target: nextTarget,
               precisionMode: 'ingredient_specific',
             });
-            accumulateRecovered(recovered);
+            const specificRecoveredProducts = await sanitizeRows(recovered.products, {
+              target: nextTarget,
+              queryText: ingredientSpecificQueries[0] || recoveryQueryText,
+            });
+            accumulateRecovered(recovered, { finalProductCount: specificRecoveredProducts.length });
             const specificRecoverySummary = summarizeIngredientRecoveryQueryDiagnostics(
               recovered.query_diagnostics,
               nextTarget,
@@ -33474,13 +33597,13 @@ async function sanitizeRecoCandidatesForUi(
             if (specificRecoverySummary.exact_query_zero) exactQueryZeroTargetCountForCard += 1;
             if (specificRecoverySummary.alias_query_zero) aliasQueryZeroTargetCountForCard += 1;
               if (specificRecoverySummary.external_seed_recovery_used) externalSeedRecoveryTargetCountForCard += 1;
-            if (recovered.products.length) {
+            if (specificRecoveredProducts.length) {
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
                   ...nextTarget,
                   ...(specificFieldMissing.length ? { field_missing: specificFieldMissing } : {}),
                 },
-                recovered.products,
+                specificRecoveredProducts,
                 Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
               );
               exactMatchTargetCountForCard += 1;
@@ -33519,8 +33642,12 @@ async function sanitizeRecoCandidatesForUi(
               target: nextTarget,
               precisionMode: 'family_fallback',
             });
-            accumulateRecovered(recovered);
-            if (recovered.products.length) {
+            const familyRecoveredProducts = await sanitizeRows(recovered.products, {
+              target: nextTarget,
+              queryText: familyFallbackQueries[0] || recoveryQueryText,
+            });
+            accumulateRecovered(recovered, { finalProductCount: familyRecoveredProducts.length });
+            if (familyRecoveredProducts.length) {
               const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
                 { field: 'payload.targets[].products', reason: 'family_fallback_used' },
               ]);
@@ -33529,7 +33656,7 @@ async function sanitizeRecoCandidatesForUi(
                   ...nextTarget,
                   ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
                 },
-                recovered.products,
+                familyRecoveredProducts,
                 Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
               );
               familyFallbackTargetCountForCard += 1;

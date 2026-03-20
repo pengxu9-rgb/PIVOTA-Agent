@@ -445,6 +445,163 @@ test('sanitizeRecoCandidatesForUi prefers KB and attached-seed ingredient recall
   }
 });
 
+test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when other ingredient targets are already non-empty', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const recallCalls = [];
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_partial_target_refresh',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                target_step_family: 'moisturizer',
+                products: {
+                  competitors: [
+                    {
+                      name: 'Rose Ceramide Cream',
+                      title: 'Rose Ceramide Cream',
+                      brand: 'Pixi Beauty',
+                      category: 'moisturizer',
+                      product_type: 'moisturizer',
+                      pdp_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                      product_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                      url: 'https://shop.example.com/products/rose-ceramide-cream',
+                    },
+                  ],
+                  dupes: [],
+                },
+              },
+              {
+                ingredient_id: 'sunscreen_filters',
+                ingredient_name: 'UV filters',
+                target_step_family: 'sunscreen',
+                products: {
+                  competitors: [
+                    {
+                      name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
+                      title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
+                      brand: 'Fenty Skin',
+                      category: 'sunscreen',
+                      product_type: 'sunscreen',
+                      pdp_url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+                      product_url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+                      url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+                    },
+                    {
+                      name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 3',
+                      title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 3',
+                      brand: 'Fenty Skin',
+                      category: 'sunscreen',
+                      product_type: 'sunscreen',
+                      pdp_url: 'https://shop.example.com/products/hydra-vizor-huez-3',
+                      product_url: 'https://shop.example.com/products/hydra-vizor-huez-3',
+                      url: 'https://shop.example.com/products/hydra-vizor-huez-3',
+                    },
+                  ],
+                  dupes: [],
+                },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        ingredientRecallBuilder: async ({ target }) => {
+          const ingredientId = String(target?.ingredient_id || '');
+          recallCalls.push(ingredientId);
+          if (ingredientId !== 'sunscreen_filters') {
+            return {
+              products: [],
+              diagnostics: {
+                ingredient_intent_detected: true,
+                kb_recall_attempted: true,
+                kb_recall_recovered: 0,
+                attached_seed_recall_attempted: true,
+                attached_seed_recall_recovered: 0,
+                recall_source_breakdown: {},
+              },
+            };
+          }
+          return {
+            products: [
+              {
+                product_id: 'spf_shield',
+                merchant_id: 'external_seed',
+                name: 'On-the-Glow SHIELD SPF 50',
+                title: 'On-the-Glow SHIELD SPF 50',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                pdp_url: 'https://shop.example.com/products/spf-shield',
+                product_url: 'https://shop.example.com/products/spf-shield',
+                url: 'https://shop.example.com/products/spf-shield',
+              },
+              {
+                product_id: 'spf_hydra_base',
+                merchant_id: 'external_seed',
+                name: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+                title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                pdp_url: 'https://shop.example.com/products/hydra-vizor',
+                product_url: 'https://shop.example.com/products/hydra-vizor',
+                url: 'https://shop.example.com/products/hydra-vizor',
+              },
+              {
+                product_id: 'spf_hydra_tint_1',
+                merchant_id: 'external_seed',
+                name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+                title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                pdp_url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+                product_url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+                url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+              },
+            ],
+            diagnostics: {
+              ingredient_intent_detected: true,
+              kb_recall_attempted: true,
+              kb_recall_recovered: 1,
+              attached_seed_recall_attempted: true,
+              attached_seed_recall_recovered: 1,
+              recall_source_breakdown: {
+                kb_attached_seed: 3,
+              },
+            },
+          };
+        },
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const targets = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets : [];
+    const ceramideTarget = targets.find((row) => row && row.ingredient_id === 'ceramide_np');
+    const sunscreenTarget = targets.find((row) => row && row.ingredient_id === 'sunscreen_filters');
+    assert.deepEqual(recallCalls, ['sunscreen_filters']);
+    assert.equal(ceramideTarget?.products?.competitors?.[0]?.name, 'Rose Ceramide Cream');
+    assert.deepEqual(
+      (sunscreenTarget?.products?.competitors || []).map((row) => row && row.name),
+      [
+        'On-the-Glow SHIELD SPF 50',
+        'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      ],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('collectIngredientPlanFallbackQueriesForTarget deprioritizes low-signal ingredient queries in lightweight mode', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -479,6 +636,78 @@ test('collectIngredientPlanFallbackQueriesForTarget deprioritizes low-signal ing
       'broad spectrum sunscreen',
       'spf 50 sunscreen',
     ]);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('sanitizeRecoCandidatesForUi strips obvious panthenol cross-family noise from existing target products', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_panthenol_existing_noise',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'panthenol',
+                ingredient_name: 'Panthenol (B5)',
+                target_step_family: 'serum',
+                products: {
+                  competitors: [
+                    {
+                      name: '5% B5 Ceramide Barrier Relief Moisturizer',
+                      title: '5% B5 Ceramide Barrier Relief Moisturizer',
+                      category: 'moisturizer',
+                      product_type: 'moisturizer',
+                      pdp_url: 'https://shop.example.com/products/b5-ceramide-moisturizer',
+                      product_url: 'https://shop.example.com/products/b5-ceramide-moisturizer',
+                      url: 'https://shop.example.com/products/b5-ceramide-moisturizer',
+                    },
+                    {
+                      name: 'Lower Lash Mascara',
+                      title: 'Lower Lash Mascara',
+                      category: 'makeup',
+                      product_type: 'mascara',
+                      pdp_url: 'https://shop.example.com/products/lower-lash-mascara',
+                      product_url: 'https://shop.example.com/products/lower-lash-mascara',
+                      url: 'https://shop.example.com/products/lower-lash-mascara',
+                    },
+                    {
+                      name: 'Amino Acids + B5',
+                      title: 'Amino Acids + B5',
+                      category: 'serum',
+                      product_type: 'serum',
+                      pdp_url: 'https://shop.example.com/products/amino-acids-b5',
+                      product_url: 'https://shop.example.com/products/amino-acids-b5',
+                      url: 'https://shop.example.com/products/amino-acids-b5',
+                    },
+                  ],
+                  dupes: [],
+                },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const target = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets[0] : null;
+    assert.deepEqual(
+      (target?.products?.competitors || []).map((row) => row && row.name),
+      ['Amino Acids + B5'],
+    );
   } finally {
     delete require.cache[moduleId];
   }

@@ -25,6 +25,8 @@ const WEAK_FAMILY_ONLY_PHRASES = new Set([
   'emulsion',
   'face',
 ]);
+const INGREDIENT_RECALL_OBVIOUS_NOISE_RE =
+  /\b(concealer|foundation|brush|powder|spa|coupon|mascara|lash|eyeliner|brow)\b/i;
 
 const INGREDIENT_RECALL_PROFILES = Object.freeze({
   ceramide_np: Object.freeze({
@@ -219,6 +221,215 @@ function countStrongFamilyMatches(text, phrases) {
     if (haystack.includes(` ${normalized} `)) hits += 1;
   }
   return hits;
+}
+
+function normalizeIngredientRecallTitleForDedupe(product) {
+  if (!product || typeof product !== 'object') return '';
+  const title = String(
+    product.title ||
+      product.name ||
+      product.display_name ||
+      product.product_name ||
+      '',
+  ).trim();
+  return title ? normalizeText(title) : '';
+}
+
+function buildIngredientRecallProductText(product) {
+  const row = product && typeof product === 'object' ? product : {};
+  const seedData = row.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  return [
+    row.title,
+    row.name,
+    row.display_name,
+    row.product_name,
+    row.brand,
+    row.vendor,
+    row.category,
+    row.product_type,
+    row.description,
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
+    snapshot.title,
+    snapshot.description,
+    snapshot.category,
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function resolveIngredientRecallCandidateStep(product) {
+  const row = product && typeof product === 'object' ? product : {};
+  const direct =
+    normalizeRecoTargetStep(row.category) ||
+    normalizeRecoTargetStep(row.product_type) ||
+    normalizeRecoTargetStep(row.title) ||
+    normalizeRecoTargetStep(row.name);
+  if (direct) return direct;
+  const resolved = resolveRecoTargetStepIntent({
+    text: [
+      row.title,
+      row.name,
+      row.display_name,
+      row.category,
+      row.product_type,
+      row.description,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  });
+  return normalizeRecoTargetStep(resolved?.resolved_target_step || '');
+}
+
+function buildIngredientRecallDisplayDedupeKey(product, { targetStepFamily = '' } = {}) {
+  let titleKey = normalizeIngredientRecallTitleForDedupe(product);
+  if (!titleKey) return '';
+  if (normalizeRecoTargetStep(targetStepFamily) !== 'sunscreen') return titleKey;
+  titleKey = titleKey
+    .replace(/\brefill\b/g, ' ')
+    .replace(/\beu\b/g, ' ')
+    .replace(/\s+\d+\s*$/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return titleKey;
+}
+
+function collapseIngredientRecallProducts(products, options = {}) {
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return [];
+  const perTitleLimitRaw = Number(options.perTitleLimit);
+  const perTitleLimit =
+    Number.isFinite(perTitleLimitRaw) && perTitleLimitRaw >= 1
+      ? Math.floor(perTitleLimitRaw)
+      : 1;
+  const counts = new Map();
+  const seenDedupeKeys = new Set();
+  const dedupeKey =
+    typeof options.dedupeKey === 'function'
+      ? options.dedupeKey
+      : null;
+  const out = [];
+  for (const product of list) {
+    const productDedupeKey = dedupeKey ? String(dedupeKey(product) || '').trim() : '';
+    if (productDedupeKey) {
+      if (seenDedupeKeys.has(productDedupeKey)) continue;
+      seenDedupeKeys.add(productDedupeKey);
+    }
+    const titleKey = normalizeIngredientRecallTitleForDedupe(product);
+    if (!titleKey) {
+      out.push(product);
+      continue;
+    }
+    const count = Number(counts.get(titleKey) || 0);
+    if (count >= perTitleLimit) continue;
+    counts.set(titleKey, count + 1);
+    out.push(product);
+  }
+  return out;
+}
+
+function stabilizeIngredientRecallProducts(
+  products,
+  { recallProfile = null, targetStepFamily = '', queryText = '', maxProducts = 0 } = {},
+) {
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return [];
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const normalizedQuery = normalizeText(queryText);
+  const queryRequestsTinted = /\btinted\b/.test(normalizedQuery);
+  const queryRequestsRefill = /\brefill\b/.test(normalizedQuery);
+
+  let rows = list
+    .map((product, index) => {
+      const text = buildIngredientRecallProductText(product);
+      const exactHits = countPhraseMatches(text, recallProfile?.exact_phrases);
+      const aliasHits = countPhraseMatches(text, recallProfile?.alias_phrases);
+      const explicitHits = exactHits + aliasHits;
+      const candidateStep = resolveIngredientRecallCandidateStep(product);
+      const familyRelation = normalizedTargetStepFamily
+        ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
+        : null;
+      if (normalizedTargetStepFamily && candidateStep && familyRelation === 'incompatible_family') {
+        return null;
+      }
+
+      const titleText = normalizeIngredientRecallTitleForDedupe(product);
+      const tinted = /\btinted\b/.test(titleText);
+      const refill = /\brefill\b/.test(titleText);
+      const obviousNoise = INGREDIENT_RECALL_OBVIOUS_NOISE_RE.test(titleText);
+      let score = 0;
+      if (familyRelation === 'same_family') score += 80;
+      else if (familyRelation === 'adjacent_family') score -= 20;
+      else if (normalizedTargetStepFamily && !candidateStep) score -= 8;
+      score += exactHits * 40;
+      score += aliasHits * 24;
+      if (normalizedTargetStepFamily === 'sunscreen' && tinted && !queryRequestsTinted) score -= 18;
+      if (normalizedTargetStepFamily === 'sunscreen' && refill && !queryRequestsRefill) score -= 12;
+      if (obviousNoise) score -= 60;
+
+      return {
+        product,
+        index,
+        score,
+        exactHits,
+        aliasHits,
+        explicitHits,
+        familyRelation,
+        tinted,
+        refill,
+        obviousNoise,
+      };
+    })
+    .filter(Boolean);
+
+  if (!rows.length) return [];
+
+  const sameFamilyRows = rows.filter((row) => row.familyRelation === 'same_family');
+  if (sameFamilyRows.length) rows = sameFamilyRows;
+
+  const explicitRows = rows.filter((row) => row.explicitHits > 0);
+  if (explicitRows.length) rows = explicitRows;
+
+  const nonNoiseRows = rows.filter((row) => row.obviousNoise !== true);
+  if (nonNoiseRows.length) rows = nonNoiseRows;
+
+  if (normalizedTargetStepFamily === 'sunscreen' && !queryRequestsTinted) {
+    const nonTintedRows = rows.filter((row) => row.tinted !== true);
+    if (nonTintedRows.length) rows = nonTintedRows;
+  }
+  if (normalizedTargetStepFamily === 'sunscreen' && !queryRequestsRefill) {
+    const nonRefillRows = rows.filter((row) => row.refill !== true);
+    if (nonRefillRows.length) rows = nonRefillRows;
+  }
+
+  rows.sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    if (right.exactHits !== left.exactHits) return right.exactHits - left.exactHits;
+    if (right.aliasHits !== left.aliasHits) return right.aliasHits - left.aliasHits;
+    return left.index - right.index;
+  });
+
+  const collapsed = collapseIngredientRecallProducts(
+    rows.map((row) => row.product),
+    {
+      perTitleLimit: 1,
+      dedupeKey: (product) =>
+        buildIngredientRecallDisplayDedupeKey(product, {
+          targetStepFamily: normalizedTargetStepFamily,
+        }),
+    },
+  );
+
+  const cappedMaxProducts = Number.isFinite(Number(maxProducts)) && Number(maxProducts) > 0
+    ? Math.max(1, Math.floor(Number(maxProducts)))
+    : 0;
+  return cappedMaxProducts > 0 ? collapsed.slice(0, cappedMaxProducts) : collapsed;
 }
 
 function buildKbEvidence(profile, row) {
@@ -932,4 +1143,5 @@ module.exports = {
   INGREDIENT_RECALL_PROFILES,
   resolveIngredientRecallProfile,
   recallIngredientProducts,
+  stabilizeIngredientRecallProducts,
 };
