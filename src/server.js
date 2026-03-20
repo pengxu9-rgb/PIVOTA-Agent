@@ -15635,6 +15635,41 @@ function hasStrongOffersResolveLookupInput(normalizedInput) {
   return false;
 }
 
+function shouldSkipOffersResolveSubjectResolve(normalizedInput) {
+  const input = offersResolveIsRecord(normalizedInput) ? normalizedInput : {};
+  if (offersResolvePickFirstTrimmed(input.raw_merchant_id)) return false;
+
+  const hasDescriptorText = Boolean(
+    offersResolvePickFirstTrimmed(input.brand, input.name, input.display_name),
+  );
+  if (hasDescriptorText) return false;
+
+  const normalizedQuery = normalizeResolverText(
+    offersResolvePickFirstTrimmed(input.query_text),
+  );
+  if (!normalizedQuery) return false;
+
+  const rawProductId = offersResolvePickFirstTrimmed(input.raw_product_id);
+  if (
+    rawProductId &&
+    !offersResolveIsUuidLike(rawProductId) &&
+    normalizedQuery === normalizeResolverText(rawProductId)
+  ) {
+    return true;
+  }
+
+  const rawSkuId = offersResolvePickFirstTrimmed(input.raw_sku_id);
+  if (
+    rawSkuId &&
+    !offersResolveIsUuidLike(rawSkuId) &&
+    normalizedQuery === normalizeResolverText(rawSkuId)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function shouldSkipOffersResolveCacheSearch(subjectResult, normalizedInput) {
   if (!subjectResult || subjectResult.ok) return false;
 
@@ -15899,61 +15934,72 @@ async function handleOffersResolveOperation({
     };
   }
 
-  const subjectResolvePayload = {
-    product: {
-      ...(normalizedInput.raw_product_id ? { product_id: normalizedInput.raw_product_id } : {}),
-      ...(normalizedInput.raw_sku_id ? { sku_id: normalizedInput.raw_sku_id } : {}),
-      ...(normalizedInput.raw_merchant_id ? { merchant_id: normalizedInput.raw_merchant_id } : {}),
-      ...(normalizedInput.brand ? { brand: normalizedInput.brand } : {}),
-      ...(normalizedInput.name ? { name: normalizedInput.name } : {}),
-      ...(normalizedInput.display_name ? { display_name: normalizedInput.display_name } : {}),
-      ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
-    },
-    ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
-    ...(normalizedInput.market ? { market: normalizedInput.market } : {}),
-    ...(normalizedInput.tool ? { tool: normalizedInput.tool } : {}),
-    source: 'offers.resolve',
-    metadata: offersResolveIsRecord(metadata) ? metadata : {},
-  };
-
-  const subjectResult = await callOffersResolveSourceWithRetry({
-    sourceKey: 'subject_resolve',
-    url: `${PIVOTA_API_BASE}/v1/subject/resolve`,
-    body: subjectResolvePayload,
-    checkoutToken,
-    timeoutMs: OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
-    maxRetries: OFFERS_RESOLVE_SUBJECT_RETRY_MAX,
-    retryBackoffMs: OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS,
-  });
-  sourceTrace.push(subjectResult.source_trace);
-
-  if (subjectResult.ok) {
-    const subjectTarget = extractOffersResolvePdpTargetFromResponse(subjectResult.response_body, {
-      fallbackQuery: normalizedInput.query_text,
+  let subjectResult = null;
+  if (shouldSkipOffersResolveSubjectResolve(normalizedInput)) {
+    sourceTrace.push({
+      source: 'subject_resolve',
+      ok: false,
+      attempts: 0,
+      latency_ms: 0,
+      reason: 'skipped_direct_lookup',
     });
-    if (subjectTarget && subjectTarget.path !== 'external') {
-      const reasonCode = subjectTarget.path === 'group' ? 'subject_direct' : 'subject_direct';
-      return {
-        statusCode: 200,
-        response: buildOffersResolveResponse({
-          upstreamBody: {
-            ...(offersResolveIsRecord(subjectResult.response_body)
-              ? subjectResult.response_body
-              : { status: 'success' }),
-            offers: [],
-            offers_count: 0,
-            input: {
-              product_id: normalizedInput.raw_product_id,
-              sku_id: normalizedInput.raw_sku_id,
+  } else {
+    const subjectResolvePayload = {
+      product: {
+        ...(normalizedInput.raw_product_id ? { product_id: normalizedInput.raw_product_id } : {}),
+        ...(normalizedInput.raw_sku_id ? { sku_id: normalizedInput.raw_sku_id } : {}),
+        ...(normalizedInput.raw_merchant_id ? { merchant_id: normalizedInput.raw_merchant_id } : {}),
+        ...(normalizedInput.brand ? { brand: normalizedInput.brand } : {}),
+        ...(normalizedInput.name ? { name: normalizedInput.name } : {}),
+        ...(normalizedInput.display_name ? { display_name: normalizedInput.display_name } : {}),
+        ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
+      },
+      ...(normalizedInput.query_text ? { query: normalizedInput.query_text } : {}),
+      ...(normalizedInput.market ? { market: normalizedInput.market } : {}),
+      ...(normalizedInput.tool ? { tool: normalizedInput.tool } : {}),
+      source: 'offers.resolve',
+      metadata: offersResolveIsRecord(metadata) ? metadata : {},
+    };
+
+    subjectResult = await callOffersResolveSourceWithRetry({
+      sourceKey: 'subject_resolve',
+      url: `${PIVOTA_API_BASE}/v1/subject/resolve`,
+      body: subjectResolvePayload,
+      checkoutToken,
+      timeoutMs: OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
+      maxRetries: OFFERS_RESOLVE_SUBJECT_RETRY_MAX,
+      retryBackoffMs: OFFERS_RESOLVE_SUBJECT_RETRY_BACKOFF_MS,
+    });
+    sourceTrace.push(subjectResult.source_trace);
+
+    if (subjectResult.ok) {
+      const subjectTarget = extractOffersResolvePdpTargetFromResponse(subjectResult.response_body, {
+        fallbackQuery: normalizedInput.query_text,
+      });
+      if (subjectTarget && subjectTarget.path !== 'external') {
+        const reasonCode = subjectTarget.path === 'group' ? 'subject_direct' : 'subject_direct';
+        return {
+          statusCode: 200,
+          response: buildOffersResolveResponse({
+            upstreamBody: {
+              ...(offersResolveIsRecord(subjectResult.response_body)
+                ? subjectResult.response_body
+                : { status: 'success' }),
+              offers: [],
+              offers_count: 0,
+              input: {
+                product_id: normalizedInput.raw_product_id,
+                sku_id: normalizedInput.raw_sku_id,
+              },
             },
-          },
-          reasonCode,
-          pdpTargetV1: subjectTarget,
-          sourceTrace,
-          queryText: normalizedInput.query_text,
-          startedAtMs: startedAt,
-        }),
-      };
+            reasonCode,
+            pdpTargetV1: subjectTarget,
+            sourceTrace,
+            queryText: normalizedInput.query_text,
+            startedAtMs: startedAt,
+          }),
+        };
+      }
     }
   }
 

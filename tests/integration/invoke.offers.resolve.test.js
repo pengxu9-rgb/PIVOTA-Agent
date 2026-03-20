@@ -376,7 +376,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       })
       .expect(200);
 
-    expect(subjectScope.isDone()).toBe(true);
+    expect(subjectScope.isDone()).toBe(false);
     expect(cacheScope.isDone()).toBe(true);
     expect(res.body.status).toBe('success');
     expect(res.body.reason_code).toBe('mapped_hit');
@@ -387,5 +387,73 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     });
     expect(res.body.metadata?.pdp_open_path).toBe('ref');
     expect(res.body.metadata?.resolve_reason_code).toBeUndefined();
+  });
+
+  it('direct product id without descriptor text skips subject resolve and uses cache search only', async () => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve')
+      .reply(200, {
+        status: 'success',
+      });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, {
+        status: 'success',
+        offers: [
+          {
+            offer_id: 'of:internal_checkout:merch_efbc46b4619cfbdf:9886500749640:52327430029640',
+            purchase_route: 'internal_checkout',
+          },
+          {
+            offer_id: 'of:external_seed:eps_7050c7d0c2d844c199b1e45a:52327430029640',
+            purchase_route: 'affiliate_outbound',
+          },
+        ],
+        offers_count: 2,
+        mapping: {
+          canonical_ref: 'pc:merch_efbc46b4619cfbdf:shopify:9886500749640',
+          canonical_product: {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            platform: 'shopify',
+            product_id: '9886500749640',
+          },
+        },
+        metadata: {
+          has_external: true,
+          has_internal: true,
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              product_id: '9886500749640',
+            },
+            market: 'EU-DE',
+            tool: '*',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(subjectScope.isDone()).toBe(false);
+    expect(cacheScope.isDone()).toBe(true);
+    expect(res.body.status).toBe('success');
+    expect(res.body.offers_count).toBe(2);
+    expect(res.body.metadata?.has_external).toBe(true);
+    expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
+    expect(res.body.metadata.sources[0]).toMatchObject({
+      source: 'subject_resolve',
+      ok: false,
+      reason: 'skipped_direct_lookup',
+    });
+    expect(res.body.metadata.sources[1]).toMatchObject({
+      source: 'cache_search',
+      ok: true,
+    });
   });
 });
