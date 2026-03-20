@@ -350,6 +350,23 @@ function buildRecallCandidateText(product) {
     .toLowerCase();
 }
 
+function hasConflictingIngredientSurfaceSignal(text, profile) {
+  const normalizedText = String(text || '').trim().toLowerCase();
+  if (!normalizedText) return false;
+  const currentExplicitHits =
+    countPhraseMatches(normalizedText, profile?.exact_phrases) +
+    countPhraseMatches(normalizedText, profile?.alias_phrases);
+  if (currentExplicitHits > 0) return false;
+  for (const otherProfile of Object.values(INGREDIENT_RECALL_PROFILES)) {
+    if (!otherProfile || otherProfile.ingredient_id === profile?.ingredient_id) continue;
+    const otherHits =
+      countPhraseMatches(normalizedText, otherProfile.exact_phrases) +
+      countPhraseMatches(normalizedText, otherProfile.alias_phrases);
+    if (otherHits > 0) return true;
+  }
+  return false;
+}
+
 function resolveRecallCandidateStep(product) {
   const row = product && typeof product === 'object' ? product : {};
   const direct =
@@ -381,8 +398,18 @@ function scoreRecallProduct(
   const kbAliasHits = Math.max(0, Number(kbEvidence?.alias_hits || 0) || 0);
   const kbFamilyHits = Math.max(0, Number(kbEvidence?.family_hits || 0) || 0);
   const kbStrongFamilyHits = Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
-  const exactHits = countPhraseMatches(text, profile?.exact_phrases) + kbExactHits;
-  const aliasHits = countPhraseMatches(text, profile?.alias_phrases) + kbAliasHits;
+  const surfaceExactHits = countPhraseMatches(text, profile?.exact_phrases);
+  const surfaceAliasHits = countPhraseMatches(text, profile?.alias_phrases);
+  const surfaceExplicitHits = surfaceExactHits + surfaceAliasHits;
+  if (
+    surfaceExplicitHits <= 0 &&
+    (kbExactHits + kbAliasHits) > 0 &&
+    hasConflictingIngredientSurfaceSignal(text, profile)
+  ) {
+    return null;
+  }
+  const exactHits = surfaceExactHits + kbExactHits;
+  const aliasHits = surfaceAliasHits + kbAliasHits;
   const familyHits = countPhraseMatches(text, profile?.family_phrases) + kbFamilyHits;
   const strongFamilyHits = countStrongFamilyMatches(text, profile?.family_phrases) + kbStrongFamilyHits;
   const explicitHits = exactHits + aliasHits;
