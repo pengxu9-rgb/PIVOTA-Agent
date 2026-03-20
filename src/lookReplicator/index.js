@@ -23,10 +23,10 @@ const { renderSkeletonFromKB } = require('../layer2/personalization/renderSkelet
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
 
-function urlWithReturn(checkoutUrl, returnUrl) {
+function urlWithReturn(checkoutUrl, returnUrl, extraParams = {}) {
   const url = String(checkoutUrl || '').trim();
   const ret = String(returnUrl || '').trim();
-  if (!url || !ret) return url;
+  if (!url) return url;
   try {
     const u = new URL(url);
     // Only append return URLs for Pivota-owned pages; third-party checkout URLs
@@ -40,9 +40,16 @@ function urlWithReturn(checkoutUrl, returnUrl) {
       host.endsWith('.up.railway.app') ||
       host.endsWith('.railway.app');
     if (!allowReturn) return u.toString();
-    if (!u.searchParams.get('return')) u.searchParams.set('return', ret);
+    for (const [k, v] of Object.entries(extraParams || {})) {
+      const key = String(k || '').trim();
+      const value = String(v || '').trim();
+      if (!key || !value || u.searchParams.get(key)) continue;
+      u.searchParams.set(key, value);
+    }
+    if (ret && !u.searchParams.get('return')) u.searchParams.set('return', ret);
     return u.toString();
   } catch {
+    if (!ret) return url;
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}return=${encodeURIComponent(ret)}`;
   }
@@ -62,6 +69,7 @@ function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extra
       if (!s) continue;
       u.searchParams.set(k, s);
     }
+    if (!u.searchParams.get('entry')) u.searchParams.set('entry', 'creator_agent');
     if (returnUrl) u.searchParams.set('return', String(returnUrl));
     return u.toString();
   } catch {
@@ -1296,6 +1304,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
     )
       .trim()
       .replace(/\/+$/, '');
+    const allowLegacyCreatorCheckoutFallback = /^(1|true|yes|on)$/i.test(
+      String(process.env.LOOK_REPLICATOR_ALLOW_LEGACY_CHECKOUT_FALLBACK || '').trim(),
+    );
 
     if (!agentApiKey) {
       return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing agent API key (PIVOTA_API_KEY / SHOP_GATEWAY_AGENT_API_KEY)' });
@@ -1443,7 +1454,9 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
                 if (intent?.status >= 200 && intent?.status < 300) {
                   const checkoutUrlRaw = String(intent.data?.checkout_url || intent.data?.checkoutUrl || '').trim() || null;
-                  checkoutUrl = checkoutUrlRaw ? urlWithReturn(checkoutUrlRaw, returnUrl) : null;
+                  checkoutUrl = checkoutUrlRaw
+                    ? urlWithReturn(checkoutUrlRaw, returnUrl, { entry: 'creator_agent' })
+                    : null;
                 } else {
                   failures.push({
                     merchantId: mid,
@@ -1463,11 +1476,14 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 });
               }
 
-              // Fallback: legacy direct checkout URL (may create orders under the default gateway key).
-              if (!checkoutUrl) {
+              // Emergency-only legacy fallback. Default behavior is strict: if checkout intent
+              // could not mint a tokenized checkout URL, surface the failure instead of silently
+              // redirecting creator traffic back onto the old /order?items=... path.
+              if (!checkoutUrl && allowLegacyCreatorCheckoutFallback) {
                 checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
                   market,
                   provider: checkoutProvider,
+                  entry: 'creator_agent',
                   source: 'look_replicator',
                   ...(buyerRef ? { buyer_ref: buyerRef } : {}),
                   ...(jobId ? { job_id: jobId } : {}),
@@ -1475,7 +1491,15 @@ function mountLookReplicatorRoutes(app, { logger }) {
               }
 
               if (!checkoutUrl) {
-                failures.push({ merchantId: mid, stage: 'creator_checkout', status: 500, body: null, message: 'Checkout UI URL is not configured' });
+                failures.push({
+                  merchantId: mid,
+                  stage: 'creator_checkout_intent',
+                  status: 502,
+                  body: null,
+                  message: allowLegacyCreatorCheckoutFallback
+                    ? 'Checkout UI URL is not configured'
+                    : 'Creator checkout intent did not return checkout_url',
+                });
                 return;
               }
             } else if (checkoutProvider === 'acp') {

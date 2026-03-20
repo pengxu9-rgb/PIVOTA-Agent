@@ -157,7 +157,7 @@ describe('look replicator checkout_sessions compatibility', () => {
     );
   });
 
-  test('supports creator checkout provider and returns Pivota checkout UI URL', async () => {
+  test('supports creator checkout provider and returns checkout intent URL', async () => {
     process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'creator';
     process.env.LOOK_REPLICATOR_CHECKOUT_UI_BASE_URL = 'https://agent.pivota.cc';
     axios.post.mockResolvedValueOnce({
@@ -169,6 +169,13 @@ describe('look replicator checkout_sessions compatibility', () => {
         pricing: { currency: 'USD' },
       },
     });
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        checkout_url:
+          'https://agent.pivota.cc/order?checkout_token=tok_creator_123&entry=creator_agent',
+      },
+    });
 
     const res = await request(server)
       .post('/checkout-sessions')
@@ -177,24 +184,70 @@ describe('look replicator checkout_sessions compatibility', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.provider).toBe('creator');
-    expect(typeof res.body.checkoutUrl).toBe('string');
-    expect(res.body.checkoutUrl).toContain('https://agent.pivota.cc/order?');
+    expect(res.body.checkoutUrl).toBe(
+      'https://agent.pivota.cc/order?checkout_token=tok_creator_123&entry=creator_agent&return=https%3A%2F%2Flook-replicator.pivota.cc%2Fresult%2Fabc%3Fmarket%3DUS',
+    );
 
-    const u = new URL(res.body.checkoutUrl);
-    expect(u.searchParams.get('return')).toBe('https://look-replicator.pivota.cc/result/abc?market=US');
-    const items = u.searchParams.get('items');
-    expect(items).toBeTruthy();
-    const parsed = JSON.parse(decodeURIComponent(items));
-    expect(parsed[0]).toMatchObject({
-      product_id: 'sku1',
-      variant_id: 'v1',
-      sku: 'S1',
-      merchant_id: 'm1',
-      title: 'My Product',
-      unit_price: 0,
-      quantity: 1,
-      currency: 'USD',
+    expect(axios.post).toHaveBeenCalledTimes(2);
+    const [intentUrl, intentBody, intentConfig] = axios.post.mock.calls[1];
+    expect(intentUrl).toBe('https://backend.example.com/agent/v1/checkout/intents');
+    expect(intentBody).toMatchObject({
+      items: [
+        {
+          product_id: 'sku1',
+          variant_id: 'v1',
+          sku: 'S1',
+          merchant_id: 'm1',
+          title: 'My Product',
+          unit_price: 0,
+          quantity: 1,
+          currency: 'USD',
+        },
+      ],
+      return_url: 'https://look-replicator.pivota.cc/result/abc?market=US',
+      market: 'US',
+      source: 'look_replicator',
     });
+    expect(intentConfig.headers['X-API-Key']).toBe('test-api-key');
+  });
+
+  test('creator checkout provider does not silently fall back to legacy order items URL', async () => {
+    process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'creator';
+    process.env.LOOK_REPLICATOR_CHECKOUT_UI_BASE_URL = 'https://agent.pivota.cc';
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        status: 'success',
+        valid: true,
+        items: [{ product_id: 'sku1', variant_id: 'v1', sku: 'S1', product_title: 'My Product', quantity: 1 }],
+        pricing: { currency: 'USD' },
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      status: 502,
+      data: {
+        error: 'UPSTREAM_TIMEOUT',
+      },
+    });
+
+    const res = await request(server)
+      .post('/checkout-sessions')
+      .set(authHeaders())
+      .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US' });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe('UPSTREAM_ERROR');
+    expect(Array.isArray(res.body.failures)).toBe(true);
+    expect(res.body.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          merchantId: 'm1',
+          stage: 'checkout_intent',
+          status: 502,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(res.body)).not.toContain('/order?items=');
   });
 
   test('forwards X-Agent-User-JWT to ACP checkout session creation', async () => {
