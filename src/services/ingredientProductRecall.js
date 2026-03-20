@@ -2,6 +2,13 @@ const { query } = require('../db');
 const { kbQuery } = require('./pciKbClient');
 const { buildExternalSeedProduct } = require('./externalSeedProducts');
 const {
+  BASE_INGREDIENT_RECALL_PROFILES: INGREDIENT_RECALL_PROFILES,
+  normalizeIngredientRecallText: normalizeText,
+  resolveIngredientRecallProfile,
+  resolveIngredientRecallProfileKnowledge,
+  resolveIngredientRecallProfileId,
+} = require('./ingredientRecallProfiles');
+const {
   getRecoTargetFamilyRelation,
   normalizeRecoTargetStep,
   resolveRecoTargetStepIntent,
@@ -28,102 +35,6 @@ const WEAK_FAMILY_ONLY_PHRASES = new Set([
 const INGREDIENT_RECALL_OBVIOUS_NOISE_RE =
   /\b(concealer|foundation|brush|powder|spa|coupon|mascara|lash|eyeliner|brow)\b/i;
 
-const INGREDIENT_RECALL_PROFILES = Object.freeze({
-  ceramide_np: Object.freeze({
-    ingredient_id: 'ceramide_np',
-    ingredient_name: 'Ceramide NP',
-    exact_phrases: ['ceramide np'],
-    alias_phrases: ['ceramide', 'ceramides'],
-    family_phrases: ['barrier', 'repair', 'moisturizer', 'moisturiser', 'cream', 'sensitive'],
-  }),
-  panthenol: Object.freeze({
-    ingredient_id: 'panthenol',
-    ingredient_name: 'Panthenol (B5)',
-    exact_phrases: ['panthenol'],
-    alias_phrases: ['vitamin b5', 'provitamin b5', 'dexpanthenol', 'b5'],
-    family_phrases: ['barrier', 'repair', 'soothing', 'hydrating', 'sensitive', 'serum'],
-  }),
-  niacinamide: Object.freeze({
-    ingredient_id: 'niacinamide',
-    ingredient_name: 'Niacinamide',
-    exact_phrases: ['niacinamide'],
-    alias_phrases: ['nicotinamide', 'vitamin b3'],
-    family_phrases: ['balancing', 'oil control', 'clarifying', 'serum', 'gel'],
-  }),
-  zinc_pca: Object.freeze({
-    ingredient_id: 'zinc_pca',
-    ingredient_name: 'Zinc PCA',
-    exact_phrases: ['zinc pca'],
-    alias_phrases: ['zinc serum', 'zinc'],
-    family_phrases: ['balancing', 'oil control', 'clarifying', 'serum', 'gel'],
-  }),
-  salicylic_acid: Object.freeze({
-    ingredient_id: 'salicylic_acid',
-    ingredient_name: 'Salicylic acid',
-    exact_phrases: ['salicylic acid'],
-    alias_phrases: ['bha'],
-    family_phrases: ['blemish', 'acne', 'clarifying', 'lotion', 'treatment', 'serum'],
-  }),
-  azelaic_acid: Object.freeze({
-    ingredient_id: 'azelaic_acid',
-    ingredient_name: 'Azelaic acid',
-    exact_phrases: ['azelaic acid'],
-    alias_phrases: ['azelaic'],
-    family_phrases: ['soothing', 'tone', 'cream', 'serum', 'treatment'],
-  }),
-  ascorbic_acid: Object.freeze({
-    ingredient_id: 'ascorbic_acid',
-    ingredient_name: 'Vitamin C (Ascorbic acid)',
-    exact_phrases: ['ascorbic acid'],
-    alias_phrases: ['vitamin c'],
-    family_phrases: ['brightening', 'antioxidant', 'serum', 'daily'],
-  }),
-  retinol: Object.freeze({
-    ingredient_id: 'retinol',
-    ingredient_name: 'Retinol',
-    exact_phrases: ['retinol'],
-    alias_phrases: ['retinoid'],
-    family_phrases: ['night', 'emulsion', 'renewal', 'treatment', 'serum'],
-  }),
-  benzoyl_peroxide: Object.freeze({
-    ingredient_id: 'benzoyl_peroxide',
-    ingredient_name: 'Benzoyl peroxide',
-    exact_phrases: ['benzoyl peroxide'],
-    alias_phrases: ['bpo'],
-    family_phrases: ['blemish', 'acne', 'spot', 'gel', 'treatment'],
-  }),
-  sunscreen_filters: Object.freeze({
-    ingredient_id: 'sunscreen_filters',
-    ingredient_name: 'UV filters',
-    exact_phrases: ['uv filters', 'uv filter'],
-    alias_phrases: ['broad spectrum', 'sunscreen', 'spf', 'spf 50'],
-    family_phrases: ['daily face', 'sun protection'],
-  }),
-  glycerin: Object.freeze({
-    ingredient_id: 'glycerin',
-    ingredient_name: 'Glycerin',
-    exact_phrases: ['glycerin'],
-    alias_phrases: ['glycerine'],
-    family_phrases: ['hydrating', 'moisturizer', 'moisturiser', 'cream', 'barrier'],
-  }),
-  hyaluronic_acid: Object.freeze({
-    ingredient_id: 'hyaluronic_acid',
-    ingredient_name: 'Hyaluronic acid',
-    exact_phrases: ['hyaluronic acid'],
-    alias_phrases: ['sodium hyaluronate', 'hyaluron'],
-    family_phrases: ['hydrating', 'serum', 'moisture', 'plumping'],
-  }),
-});
-
-function normalizeText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9%+]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function uniqStrings(values, maxItems = 24) {
   const out = [];
   const seen = new Set();
@@ -137,56 +48,6 @@ function uniqStrings(values, maxItems = 24) {
     if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
   }
   return out;
-}
-
-function resolveIngredientIdFromText(value) {
-  const normalized = normalizeText(value);
-  if (!normalized) return '';
-  if (normalized === 'ceramide np' || normalized === 'ceramide') return 'ceramide_np';
-  if (normalized === 'panthenol b5' || normalized === 'panthenol' || normalized === 'vitamin b5') return 'panthenol';
-  if (normalized === 'niacinamide' || normalized === 'nicotinamide' || normalized === 'vitamin b3') return 'niacinamide';
-  if (normalized === 'zinc pca' || normalized === 'zinc') return 'zinc_pca';
-  if (normalized === 'salicylic acid bha' || normalized === 'salicylic acid' || normalized === 'bha') return 'salicylic_acid';
-  if (normalized === 'azelaic acid' || normalized === 'azelaic') return 'azelaic_acid';
-  if (normalized === 'vitamin c ascorbic acid' || normalized === 'vitamin c' || normalized === 'ascorbic acid') return 'ascorbic_acid';
-  if (normalized === 'retinol' || normalized === 'retinoid') return 'retinol';
-  if (normalized === 'benzoyl peroxide' || normalized === 'bpo') return 'benzoyl_peroxide';
-  if (normalized === 'uv filters' || normalized === 'uv filter' || normalized === 'sunscreen filters') return 'sunscreen_filters';
-  if (normalized === 'glycerin' || normalized === 'glycerine') return 'glycerin';
-  if (
-    normalized === 'hyaluronic acid' ||
-    normalized === 'sodium hyaluronate' ||
-    normalized === 'hyaluron'
-  ) return 'hyaluronic_acid';
-  for (const profile of Object.values(INGREDIENT_RECALL_PROFILES)) {
-    const phrases = [
-      ...profile.exact_phrases,
-      ...profile.alias_phrases,
-    ];
-    if (phrases.some((phrase) => normalizeText(phrase) && normalized.includes(normalizeText(phrase)))) {
-      return profile.ingredient_id;
-    }
-  }
-  return '';
-}
-
-function resolveIngredientRecallProfile({ target = null, query = '', ingredientId = '' } = {}) {
-  const explicitId = normalizeText(ingredientId).replace(/\s+/g, '_');
-  if (explicitId && INGREDIENT_RECALL_PROFILES[explicitId]) return INGREDIENT_RECALL_PROFILES[explicitId];
-  const targetObj = target && typeof target === 'object' && !Array.isArray(target) ? target : {};
-  const targetId = resolveIngredientIdFromText(
-    targetObj.ingredient_id ||
-      targetObj.ingredientId ||
-      targetObj.ingredient_name ||
-      targetObj.ingredientName ||
-      targetObj.ingredient ||
-      targetObj.name ||
-      targetObj.title ||
-      '',
-  );
-  if (targetId && INGREDIENT_RECALL_PROFILES[targetId]) return INGREDIENT_RECALL_PROFILES[targetId];
-  const queryId = resolveIngredientIdFromText(query);
-  return queryId ? INGREDIENT_RECALL_PROFILES[queryId] || null : null;
 }
 
 function buildPhrasePatterns(phrases) {
@@ -248,13 +109,15 @@ function buildIngredientRecallProductText(product) {
     row.vendor,
     row.category,
     row.product_type,
-    row.description,
-    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    row.ingredient_name,
     ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
-    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
+    normalizeUrl(row.url),
+    normalizeUrl(row.canonical_url),
+    normalizeUrl(row.destination_url),
     snapshot.title,
-    snapshot.description,
     snapshot.category,
+    normalizeUrl(snapshot.canonical_url),
+    normalizeUrl(snapshot.destination_url),
   ]
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .map((value) => String(value || '').trim())
@@ -539,26 +402,48 @@ function normalizeUrl(value) {
   return /^https?:\/\//i.test(text) ? text : '';
 }
 
-function buildRecallCandidateText(product) {
+function buildRecallCandidateFieldTexts(product) {
   const row = product && typeof product === 'object' ? product : {};
   const seedData = row.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
   const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
-  return [
+  const strong = [
     row.title,
     row.name,
     row.display_name,
+    row.product_name,
     row.brand,
+    row.ingredient_name,
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+    snapshot.title,
+    normalizeUrl(row.url),
+    normalizeUrl(row.canonical_url),
+    normalizeUrl(row.destination_url),
+    normalizeUrl(snapshot.canonical_url),
+    normalizeUrl(snapshot.destination_url),
+  ];
+  const support = [
     row.category,
     row.product_type,
-    row.description,
-    snapshot.title,
-    snapshot.description,
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
     snapshot.category,
-  ]
+  ];
+  const family = [
+    ...strong,
+    ...support,
+    row.description,
+    snapshot.description,
+  ];
+  const join = (values) => values
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  return {
+    explicit: join(strong),
+    support: join(support),
+    family: join(family),
+  };
 }
 
 function hasConflictingIngredientSurfaceSignal(text, profile) {
@@ -604,26 +489,33 @@ function scoreRecallProduct(
   product,
   { profile, targetStepFamily = '', sourceRank = 0, allowFamilyOnly = false, kbEvidence = null } = {},
 ) {
-  const text = buildRecallCandidateText(product);
+  const fieldTexts = buildRecallCandidateFieldTexts(product);
+  const explicitText = fieldTexts.explicit;
+  const supportText = fieldTexts.support;
+  const familyText = fieldTexts.family;
   const kbExactHits = Math.max(0, Number(kbEvidence?.exact_hits || 0) || 0);
   const kbAliasHits = Math.max(0, Number(kbEvidence?.alias_hits || 0) || 0);
   const kbFamilyHits = Math.max(0, Number(kbEvidence?.family_hits || 0) || 0);
   const kbStrongFamilyHits = Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
-  const surfaceExactHits = countPhraseMatches(text, profile?.exact_phrases);
-  const surfaceAliasHits = countPhraseMatches(text, profile?.alias_phrases);
-  const surfaceExplicitHits = surfaceExactHits + surfaceAliasHits;
+  const surfaceExactHitsStrong = countPhraseMatches(explicitText, profile?.exact_phrases);
+  const surfaceAliasHitsStrong = countPhraseMatches(explicitText, profile?.alias_phrases);
+  const surfaceExactHitsSupport = countPhraseMatches(supportText, profile?.exact_phrases);
+  const surfaceAliasHitsSupport = countPhraseMatches(supportText, profile?.alias_phrases);
+  const surfaceExactHits = surfaceExactHitsStrong + Math.min(1, surfaceExactHitsSupport);
+  const surfaceAliasHits = surfaceAliasHitsStrong + Math.min(1, surfaceAliasHitsSupport);
+  const surfaceExplicitHits = surfaceExactHitsStrong + surfaceAliasHitsStrong;
   const kbExplicitHits = kbExactHits + kbAliasHits;
   if (
     surfaceExplicitHits <= 0 &&
     kbExplicitHits > 0 &&
-    hasConflictingIngredientSurfaceSignal(text, profile)
+    hasConflictingIngredientSurfaceSignal(explicitText, profile)
   ) {
     return null;
   }
   const exactHits = surfaceExactHits + kbExactHits;
   const aliasHits = surfaceAliasHits + kbAliasHits;
-  const familyHits = countPhraseMatches(text, profile?.family_phrases) + kbFamilyHits;
-  const strongFamilyHits = countStrongFamilyMatches(text, profile?.family_phrases) + kbStrongFamilyHits;
+  const familyHits = countPhraseMatches(familyText, profile?.family_phrases) + kbFamilyHits;
+  const strongFamilyHits = countStrongFamilyMatches(familyText, profile?.family_phrases) + kbStrongFamilyHits;
   const explicitHits = exactHits + aliasHits;
   if (explicitHits <= 0 && (!allowFamilyOnly || strongFamilyHits <= 0)) return null;
 
@@ -954,10 +846,18 @@ async function recallIngredientProducts({
   inStockOnly = false,
   allowFamilyFallback = false,
 } = {}) {
-  const profile = resolveIngredientRecallProfile({ target, query, ingredientId });
+  const recallKnowledge = await resolveIngredientRecallProfileKnowledge({ target, query, ingredientId });
+  const profile = recallKnowledge?.profile || null;
+  const profileDiagnostics =
+    recallKnowledge?.diagnostics && typeof recallKnowledge.diagnostics === 'object'
+      ? recallKnowledge.diagnostics
+      : {};
   const diagnostics = {
     ingredient_intent_detected: Boolean(profile),
     ingredient_id: profile?.ingredient_id || null,
+    ingredient_profile_source: profileDiagnostics.profile_source || (profile ? 'base_only' : 'none'),
+    ingredient_reference_match_found: profileDiagnostics.reference_match_found === true,
+    ingredient_signal_match_found: profileDiagnostics.signal_match_found === true,
     kb_recall_attempted: false,
     kb_recall_recovered: 0,
     attached_seed_recall_attempted: false,
@@ -1141,7 +1041,9 @@ async function recallIngredientProducts({
 
 module.exports = {
   INGREDIENT_RECALL_PROFILES,
+  resolveIngredientRecallProfileId,
   resolveIngredientRecallProfile,
+  resolveIngredientRecallProfileKnowledge,
   recallIngredientProducts,
   stabilizeIngredientRecallProducts,
 };

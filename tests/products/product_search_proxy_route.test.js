@@ -2857,6 +2857,91 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent search can use KB-only profile knowledge for non-base ingredients', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'alpha_arbutin_1',
+            merchant_id: 'external_seed',
+            title: 'Alpha Arbutin 2% + HA',
+            brand: 'The Ordinary',
+            category: 'serum',
+            product_type: 'serum',
+            canonical_url: 'https://shop.example.com/products/alpha-arbutin-2-ha',
+            destination_url: 'https://shop.example.com/products/alpha-arbutin-2-ha',
+            url: 'https://shop.example.com/products/alpha-arbutin-2-ha',
+            image_url: 'https://cdn.example.com/alpha-arbutin.jpg',
+            source: 'external_seed',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_profile_source: 'kb_only',
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 1,
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+          },
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'alpha_arbutin',
+          ingredient_name: 'Alpha Arbutin',
+        },
+        diagnostics: {
+          profile_source: 'kb_only',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => null),
+    }));
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_run', merchant_id: 'm1', title: 'Should not run' }],
+      });
+
+    const app = require('../../src/server');
+    const {
+      recallIngredientProducts,
+      resolveIngredientRecallProfileKnowledge,
+      resolveIngredientRecallProfile,
+    } = require('../../src/services/ingredientProductRecall');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'alpha arbutin serum',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveIngredientRecallProfileKnowledge).toHaveBeenCalledTimes(1);
+    expect(resolveIngredientRecallProfile).not.toHaveBeenCalled();
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'alpha_arbutin',
+        allowFamilyFallback: true,
+      }),
+    );
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_profile_source: 'kb_only',
+        ingredient_intent_detected: true,
+      }),
+    );
+  });
+
   test('ingredient-intent direct recall keeps same-family ceramide products and drops adjacent-family noise', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-direct-display-rerank-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({

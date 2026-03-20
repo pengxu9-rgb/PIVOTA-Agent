@@ -511,6 +511,7 @@ const { getBestIngredientReferenceMatch } = require('../services/ingredientRefer
 const { getBestIngredientSignalMatch } = require('../services/ingredientSignalStore');
 const {
   recallIngredientProducts,
+  resolveIngredientRecallProfileId,
   resolveIngredientRecallProfile,
   stabilizeIngredientRecallProducts,
 } = require('../services/ingredientProductRecall');
@@ -31287,68 +31288,6 @@ const PURCHASE_RECOVERY_QUERY_NOISE_RE = /\b(skincare|product|products|best|good
 const PURCHASE_RECOVERY_WORD_RE = /[a-z0-9%+]+/gi;
 const INGREDIENT_PLAN_RECOVERY_PRECISION_MODE = 'ingredient_first_then_family_fallback';
 const INGREDIENT_RECOVERY_QUERY_POLICY_VERSION = 'exact_alias_family_v1';
-const INGREDIENT_RECOVERY_EVIDENCE_PROFILES = Object.freeze({
-  ceramide_np: Object.freeze({
-    exact_phrases: ['ceramide np'],
-    alias_phrases: ['ceramide', 'ceramides'],
-    family_phrases: ['barrier', 'repair', 'moisturizer', 'moisturiser', 'cream', 'sensitive'],
-  }),
-  panthenol: Object.freeze({
-    exact_phrases: ['panthenol'],
-    alias_phrases: ['vitamin b5', 'provitamin b5', 'dexpanthenol', 'b5'],
-    family_phrases: ['barrier', 'repair', 'soothing', 'hydrating', 'sensitive', 'serum'],
-  }),
-  niacinamide: Object.freeze({
-    exact_phrases: ['niacinamide'],
-    alias_phrases: ['nicotinamide', 'vitamin b3'],
-    family_phrases: ['balancing', 'oil control', 'clarifying', 'serum', 'gel'],
-  }),
-  zinc_pca: Object.freeze({
-    exact_phrases: ['zinc pca'],
-    alias_phrases: ['zinc serum', 'zinc'],
-    family_phrases: ['balancing', 'oil control', 'clarifying', 'serum', 'gel'],
-  }),
-  salicylic_acid: Object.freeze({
-    exact_phrases: ['salicylic acid'],
-    alias_phrases: ['bha'],
-    family_phrases: ['blemish', 'acne', 'clarifying', 'lotion', 'treatment', 'serum'],
-  }),
-  azelaic_acid: Object.freeze({
-    exact_phrases: ['azelaic acid'],
-    alias_phrases: ['azelaic'],
-    family_phrases: ['soothing', 'tone', 'cream', 'serum', 'treatment'],
-  }),
-  ascorbic_acid: Object.freeze({
-    exact_phrases: ['ascorbic acid'],
-    alias_phrases: ['vitamin c'],
-    family_phrases: ['brightening', 'antioxidant', 'serum', 'daily'],
-  }),
-  retinol: Object.freeze({
-    exact_phrases: ['retinol'],
-    alias_phrases: ['retinoid'],
-    family_phrases: ['night', 'emulsion', 'renewal', 'treatment', 'serum'],
-  }),
-  benzoyl_peroxide: Object.freeze({
-    exact_phrases: ['benzoyl peroxide'],
-    alias_phrases: ['bpo'],
-    family_phrases: ['blemish', 'acne', 'spot', 'gel', 'treatment'],
-  }),
-  sunscreen_filters: Object.freeze({
-    exact_phrases: ['uv filters', 'uv filter'],
-    alias_phrases: ['broad spectrum', 'sunscreen', 'spf', 'spf 50'],
-    family_phrases: ['daily face', 'sun protection'],
-  }),
-  glycerin: Object.freeze({
-    exact_phrases: ['glycerin'],
-    alias_phrases: ['glycerine'],
-    family_phrases: ['hydrating', 'moisturizer', 'moisturiser', 'cream', 'barrier'],
-  }),
-  hyaluronic_acid: Object.freeze({
-    exact_phrases: ['hyaluronic acid'],
-    alias_phrases: ['sodium hyaluronate', 'hyaluron'],
-    family_phrases: ['hydrating', 'serum', 'moisture', 'plumping'],
-  }),
-});
 
 function normalizeIngredientRecoveryPhrase(value) {
   return String(value || '')
@@ -31359,40 +31298,12 @@ function normalizeIngredientRecoveryPhrase(value) {
     .trim();
 }
 
-function resolveIngredientRecoveryTargetId(target) {
-  const row = isPlainObject(target) ? target : {};
-  const rawId = String(
-    pickFirstString(row.ingredient_id, row.ingredientId) ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  if (rawId) return rawId;
-  const rawName = normalizeIngredientRecoveryPhrase(
-    pickFirstString(row.ingredient_name, row.ingredientName, row.ingredient, row.name, row.title),
-  );
-  if (rawName === 'ceramide np' || rawName === 'ceramide') return 'ceramide_np';
-  if (rawName === 'panthenol b5' || rawName === 'panthenol' || rawName === 'vitamin b5') return 'panthenol';
-  if (rawName === 'niacinamide' || rawName === 'nicotinamide' || rawName === 'vitamin b3') return 'niacinamide';
-  if (rawName === 'zinc pca' || rawName === 'zinc') return 'zinc_pca';
-  if (rawName === 'salicylic acid bha' || rawName === 'salicylic acid' || rawName === 'bha') return 'salicylic_acid';
-  if (rawName === 'azelaic acid' || rawName === 'azelaic') return 'azelaic_acid';
-  if (rawName === 'vitamin c ascorbic acid' || rawName === 'vitamin c' || rawName === 'ascorbic acid') return 'ascorbic_acid';
-  if (rawName === 'retinol' || rawName === 'retinoid') return 'retinol';
-  if (rawName === 'benzoyl peroxide' || rawName === 'bpo') return 'benzoyl_peroxide';
-  if (rawName === 'uv filters' || rawName === 'uv filter' || rawName === 'sunscreen filters') return 'sunscreen_filters';
-  if (rawName === 'glycerin' || rawName === 'glycerine') return 'glycerin';
-  if (
-    rawName === 'hyaluronic acid' ||
-    rawName === 'hyaluron' ||
-    rawName === 'sodium hyaluronate'
-  ) return 'hyaluronic_acid';
-  return '';
+function getIngredientRecoveryEvidenceProfile(target) {
+  return resolveIngredientRecallProfile({ target });
 }
 
-function getIngredientRecoveryEvidenceProfile(target) {
-  const targetId = resolveIngredientRecoveryTargetId(target);
-  return targetId ? INGREDIENT_RECOVERY_EVIDENCE_PROFILES[targetId] || null : null;
+function resolveIngredientRecoveryTargetId(target) {
+  return resolveIngredientRecallProfileId({ target });
 }
 
 function buildPurchasableRecoveryCandidateText(candidate) {

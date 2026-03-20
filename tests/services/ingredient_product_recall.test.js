@@ -769,4 +769,175 @@ describe('ingredientProductRecall', () => {
       family_attached_seed: 1,
     });
   });
+
+  test('uses KB/reference-derived profile terms for non-base ingredients', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async (input) => {
+        if (!/alpha arbutin/i.test(String(input || ''))) return null;
+        return {
+          canonical_inci_name: 'Alpha-Arbutin',
+          canonical_display_name: 'Alpha Arbutin',
+          aliases_common_list: ['alpha arbutin', 'alpha-arbutin'],
+          parser_variants_list: ['arbutin alpha'],
+          lookup_terms: ['alpha arbutin serum'],
+          function_tags_list: ['brightening'],
+          benefit_tags_list: ['tone evening'],
+          flags: {},
+        };
+      }),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_alpha_arbutin',
+              external_product_id: 'ext_alpha_arbutin',
+              destination_url: 'https://ordinary.example.com/products/alpha-arbutin-2-ha',
+              canonical_url: 'https://ordinary.example.com/products/alpha-arbutin-2-ha',
+              domain: 'ordinary.example.com',
+              title: 'Alpha Arbutin 2% + HA',
+              image_url: 'https://ordinary.example.com/alpha-arbutin.jpg',
+              price_amount: 12,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:alpha-arbutin',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Alpha Arbutin 2% + HA',
+                  description: 'brightening serum with alpha arbutin',
+                  category: 'Serum',
+                  canonical_url: 'https://ordinary.example.com/products/alpha-arbutin-2-ha',
+                  destination_url: 'https://ordinary.example.com/products/alpha-arbutin-2-ha',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'alpha arbutin serum',
+      targetStepFamily: 'serum',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Alpha Arbutin 2% + HA']);
+    expect(out.diagnostics.ingredient_profile_source).toBe('kb_only');
+    expect(out.diagnostics.ingredient_reference_match_found).toBe(true);
+  });
+
+  test('treats description-only adjacent ingredient text as weak evidence', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_azelaic',
+              external_product_id: 'ext_azelaic',
+              destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              domain: 'ordinary.example.com',
+              title: 'Azelaic Acid Suspension 10%',
+              image_url: 'https://ordinary.example.com/azelaic.jpg',
+              price_amount: 14,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:azelaic',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Treatment',
+                snapshot: {
+                  title: 'Azelaic Acid Suspension 10%',
+                  description: 'azelaic acid cream for visible redness',
+                  category: 'Treatment',
+                  canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                  destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_vitc',
+              external_product_id: 'ext_vitc',
+              destination_url: 'https://ordinary.example.com/products/vitamin-c-serum',
+              canonical_url: 'https://ordinary.example.com/products/vitamin-c-serum',
+              domain: 'ordinary.example.com',
+              title: 'Vitamin-C Serum',
+              image_url: 'https://ordinary.example.com/vitc.jpg',
+              price_amount: 16,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:vitc',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Vitamin-C Serum',
+                  description: 'tone-evening serum that mentions azelaic acid only in marketing copy',
+                  category: 'Serum',
+                  canonical_url: 'https://ordinary.example.com/products/vitamin-c-serum',
+                  destination_url: 'https://ordinary.example.com/products/vitamin-c-serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'azelaic acid cream',
+      ingredientId: 'azelaic_acid',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Azelaic Acid Suspension 10%']);
+  });
 });

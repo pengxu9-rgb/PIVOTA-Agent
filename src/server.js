@@ -79,6 +79,7 @@ const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const {
   recallIngredientProducts,
   resolveIngredientRecallProfile,
+  resolveIngredientRecallProfileKnowledge,
 } = require('./services/ingredientProductRecall');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const {
@@ -7840,7 +7841,23 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
         queryText,
     ) || '',
   ).trim();
-  const recallProfile = resolveIngredientRecallProfile({ query: relevanceQueryText });
+  const recallKnowledge =
+    typeof resolveIngredientRecallProfileKnowledge === 'function'
+      ? await resolveIngredientRecallProfileKnowledge({ query: relevanceQueryText })
+      : (() => {
+          const fallbackProfile = resolveIngredientRecallProfile({ query: relevanceQueryText });
+          return {
+            profile: fallbackProfile,
+            diagnostics: {
+              profile_source: fallbackProfile ? 'base_only' : 'none',
+            },
+          };
+        })();
+  const recallProfile = recallKnowledge?.profile || null;
+  const recallProfileDiagnostics =
+    recallKnowledge?.diagnostics && typeof recallKnowledge.diagnostics === 'object'
+      ? recallKnowledge.diagnostics
+      : {};
   const ingredientIntentDetected =
     hasBeautyIngredientIntentSignal(relevanceQueryText) || Boolean(recallProfile);
   if (!relevanceQueryText || !ingredientIntentDetected) return null;
@@ -7939,6 +7956,10 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
             query_source: 'agent_products_ingredient_external_seed_direct_fallback',
             ingredient_intent_detected:
               diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
+            ingredient_profile_source:
+              diagnostics.ingredient_profile_source ||
+              recallProfileDiagnostics.profile_source ||
+              (recallProfile ? 'base_only' : 'none'),
             kb_recall_attempted: diagnostics.kb_recall_attempted === true,
             kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),
             attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
@@ -7986,6 +8007,10 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       fetched_at: new Date().toISOString(),
       ingredient_intent_detected:
         diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
+      ingredient_profile_source:
+        diagnostics.ingredient_profile_source ||
+        recallProfileDiagnostics.profile_source ||
+        (recallProfile ? 'base_only' : 'none'),
       kb_recall_attempted: diagnostics.kb_recall_attempted === true,
       kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),
       attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
