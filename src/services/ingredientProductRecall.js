@@ -423,6 +423,9 @@ function scoreRecallProduct(
   if (normalizedTargetStepFamily) {
     if (!candidateStep) return null;
     if (familyRelation === 'incompatible_family') return null;
+    if (surfaceExplicitHits <= 0 && (kbExactHits + kbAliasHits) > 0 && familyRelation !== 'same_family') {
+      return null;
+    }
   }
 
   const family = normalizeText(normalizedTargetStepFamily || targetStepFamily);
