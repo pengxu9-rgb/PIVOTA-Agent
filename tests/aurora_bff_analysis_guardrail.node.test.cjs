@@ -339,8 +339,8 @@ test('collectIngredientPlanFallbackQueriesForTarget uses discovery hints when ta
     });
 
     assert.deepEqual(queries, [
-      'vitamin b5 repair serum',
-      'vitamin b5 soothing serum',
+      'panthenol repair serum',
+      'provitamin b5 repair serum',
     ]);
   } finally {
     delete require.cache[moduleId];
@@ -408,8 +408,8 @@ test('collectIngredientPlanRecoveryQueryStagesForTarget keeps panthenol exact qu
     });
 
     assert.deepEqual(queryStages.ingredientSpecificQueries, [
-      'vitamin b5 repair serum',
-      'vitamin b5 soothing serum',
+      'panthenol repair serum',
+      'provitamin b5 repair serum',
     ]);
     assert.deepEqual(queryStages.familyFallbackQueries, [
       'barrier repair serum',
@@ -637,10 +637,10 @@ test('recoverPurchasableProductsFromQueries allows panthenol query-guided exact 
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const out = await __internal.recoverPurchasableProductsFromQueries({
-      queries: ['vitamin b5 repair serum'],
+      queries: ['panthenol repair serum'],
       strictFilter: true,
       fallbackCandidateBuilder: async ({ query }) => {
-        assert.equal(query, 'vitamin b5 repair serum');
+        assert.equal(query, 'panthenol repair serum');
         return {
           ok: true,
           selected_source: 'catalog',
@@ -998,8 +998,8 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
     assert.equal(out.lookup_meta.ingredient_plan_recovery_precision_mode, 'ingredient_first_then_family_fallback');
     assert.equal(out.lookup_meta.ingredient_plan_exact_match_target_count, 1);
     assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 1);
-    assert.equal(fallbackCalls.includes('vitamin b5 repair serum'), true);
-    assert.equal(fallbackCalls.includes('vitamin b5 soothing serum'), true);
+    assert.equal(fallbackCalls.includes('panthenol repair serum'), true);
+    assert.equal(fallbackCalls.includes('provitamin b5 repair serum'), true);
     assert.equal(fallbackCalls.includes('soothing serum') || fallbackCalls.includes('hydrating serum'), true);
   } finally {
     delete require.cache[moduleId];
