@@ -2683,6 +2683,157 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent search uses direct KB and attached-seed recall before invoke fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'rose_ceramide_attached',
+            merchant_id: 'external_seed',
+            title: 'Rose Ceramide Cream',
+            brand: 'Pixi Beauty',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+            canonical_url: 'https://shop.example.com/products/rose-ceramide-cream',
+            destination_url: 'https://shop.example.com/products/rose-ceramide-cream',
+            url: 'https://shop.example.com/products/rose-ceramide-cream',
+            image_url: 'https://cdn.example.com/rose-ceramide.jpg',
+            price: 42,
+            currency: 'USD',
+            source: 'external_seed',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 1,
+          unattached_seed_recall_attempted: true,
+          unattached_seed_recovered: 0,
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+          },
+        },
+      })),
+    }));
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_run', merchant_id: 'm1', title: 'Should not run' }],
+      });
+
+    const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'ceramide moisturizer',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'rose_ceramide_attached',
+        title: 'Rose Ceramide Cream',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_intent_detected: true,
+        kb_recall_attempted: true,
+        kb_recall_recovered: 1,
+        attached_seed_recall_attempted: true,
+        attached_seed_recall_recovered: 1,
+        clarify_applied_after_kb_exhausted: false,
+        strict_empty_reason: null,
+        ingredient_recall_source_breakdown: {
+          kb_attached_seed: 1,
+        },
+      }),
+    );
+  });
+
+  test('non-ingredient shopping search keeps invoke path and skips ingredient direct recall', async () => {
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'should_not_be_used',
+            merchant_id: 'external_seed',
+            title: 'Should Not Be Used',
+            url: 'https://shop.example.com/products/should-not-be-used',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+        },
+      })),
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'proxy_primary_empty_for_invoke_test',
+        },
+      });
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_result_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Barrier Repair Moisturizer for Dry Skin',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'moisturizer for dry skin',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(invokeScope.isDone()).toBe(true);
+    expect(recallIngredientProducts).not.toHaveBeenCalled();
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'invoke_result_1',
+          title: 'Barrier Repair Moisturizer for Dry Skin',
+        }),
+      ]),
+    );
+  });
+
   test('guidance external_seed_only search enters direct path without explicit external_seed merchant_id', async () => {
     process.env.DATABASE_URL = 'postgres://seed-direct-guidance-no-merchant-test';
     jest.doMock('../../src/db', () => ({

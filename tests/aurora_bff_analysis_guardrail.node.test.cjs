@@ -306,6 +306,145 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
   }
 });
 
+test('sanitizeRecoCandidatesForUi prefers KB and attached-seed ingredient recall before generic search recovery', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const fallbackCalls = [];
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_kb_attached_recall',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                products: { competitors: [], dupes: [] },
+              },
+              {
+                ingredient_id: 'panthenol',
+                ingredient_name: 'Panthenol (B5)',
+                products: { competitors: [], dupes: [] },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        ingredientRecallBuilder: async ({ target }) => {
+          if (String(target?.ingredient_id || '') === 'ceramide_np') {
+            return {
+              products: [
+                {
+                  product_id: 'rose_ceramide_attached',
+                  merchant_id: 'external_seed',
+                  name: 'Rose Ceramide Cream',
+                  title: 'Rose Ceramide Cream',
+                  brand: 'Pixi Beauty',
+                  category: 'moisturizer',
+                  product_type: 'moisturizer',
+                  pdp_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                  product_url: 'https://shop.example.com/products/rose-ceramide-cream',
+                  url: 'https://shop.example.com/products/rose-ceramide-cream',
+                  source: 'external_seed',
+                },
+              ],
+              diagnostics: {
+                ingredient_intent_detected: true,
+                kb_recall_attempted: true,
+                kb_recall_recovered: 1,
+                attached_seed_recall_attempted: true,
+                attached_seed_recall_recovered: 1,
+                recall_source_breakdown: {
+                  kb_attached_seed: 1,
+                },
+              },
+            };
+          }
+          return {
+            products: [],
+            diagnostics: {
+              ingredient_intent_detected: true,
+              kb_recall_attempted: true,
+              kb_recall_recovered: 0,
+              attached_seed_recall_attempted: true,
+              attached_seed_recall_recovered: 0,
+              recall_source_breakdown: {},
+            },
+          };
+        },
+        fallbackCandidateBuilder: async ({ query }) => {
+          fallbackCalls.push(String(query || ''));
+          if (/panthenol|b5/i.test(String(query || ''))) {
+            return {
+              ok: true,
+              selected_source: 'catalog',
+              products: [
+                {
+                  product_id: 'winona_panthenol_1',
+                  merchant_id: 'catalog',
+                  name: 'Winona Soothing Repair Serum',
+                  brand: 'Winona',
+                  category: 'serum',
+                  product_type: 'serum',
+                  tag_tokens: ['panthenol', 'repair'],
+                  pdp_url: 'https://agent.pivota.cc/products/winona_panthenol_1?merchant_id=catalog',
+                  url: 'https://agent.pivota.cc/products/winona_panthenol_1?merchant_id=catalog',
+                  source: 'catalog',
+                },
+              ],
+            };
+          }
+          return { ok: true, selected_source: 'none', products: [], reason: 'empty' };
+        },
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const targets = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets : [];
+    const ceramideTarget = targets.find((row) => row && row.ingredient_id === 'ceramide_np');
+    const panthenolTarget = targets.find((row) => row && row.ingredient_id === 'panthenol');
+
+    assert.equal(ceramideTarget?.products?.competitors?.[0]?.name, 'Rose Ceramide Cream');
+    assert.equal(panthenolTarget?.products?.competitors?.[0]?.name, 'Winona Soothing Repair Serum');
+    assert.equal(
+      fallbackCalls.some((query) => /ceramide/i.test(query)),
+      false,
+    );
+    assert.equal(
+      fallbackCalls.some((query) => /panthenol|b5/i.test(query)),
+      true,
+    );
+    assert.equal(out.lookup_meta.ingredient_plan_kb_recall_attempted, 2);
+    assert.equal(out.lookup_meta.ingredient_plan_kb_recall_recovered, 1);
+    assert.equal(out.lookup_meta.ingredient_plan_attached_seed_recall_attempted, 2);
+    assert.equal(out.lookup_meta.ingredient_plan_attached_seed_recall_recovered, 1);
+    assert.equal(out.lookup_meta.ingredient_plan_generic_search_recovered, 1);
+    assert.deepEqual(out.lookup_meta.ingredient_plan_recall_source_breakdown, {
+      kb_attached_seed: 1,
+    });
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'kb_recall_empty'),
+      true,
+    );
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'attached_seed_recall_empty'),
+      true,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('collectIngredientPlanFallbackQueriesForTarget deprioritizes low-signal ingredient queries in lightweight mode', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

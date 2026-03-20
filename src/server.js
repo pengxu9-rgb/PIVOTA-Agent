@@ -76,6 +76,7 @@ const {
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
 const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
+const { recallIngredientProducts } = require('./services/ingredientProductRecall');
 const { buildClarification } = require('./findProductsMulti/clarification');
 const {
   buildSearchDebugBundle,
@@ -7671,6 +7672,104 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   }
 }
 
+async function searchIngredientIntentProductsDirect({ search = {}, metadata = {} } = {}) {
+  if (!process.env.DATABASE_URL) return null;
+
+  const queryText = extractSearchQueryText(search);
+  const relevanceQueryText = String(
+    firstQueryParamValue(
+      metadata?.relevance_query_text ??
+        metadata?.relevanceQueryText ??
+        search?.relevance_query_text ??
+        search?.relevanceQueryText ??
+        queryText,
+    ) || '',
+  ).trim();
+  if (!relevanceQueryText || !hasBeautyIngredientIntentSignal(relevanceQueryText)) return null;
+
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
+  const decisionMode = normalizeRecommendationDecisionMode(
+    metadata?.decision_mode || search?.decision_mode || search?.decisionMode,
+    { guidanceOnlyDiscovery: uiSurface === 'ingredient_plan_guidance_only' },
+  );
+  const guidanceOnlyDiscovery =
+    uiSurface === 'ingredient_plan_guidance_only' || decisionMode === 'guidance_only';
+  const targetStepFamily = normalizeRecoTargetStep(
+    metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
+  );
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+
+  const recalled = await recallIngredientProducts({
+    query: relevanceQueryText,
+    targetStepFamily,
+    limit: Math.max(safeLimit + safeOffset, safeLimit),
+    inStockOnly,
+  });
+  const diagnostics =
+    recalled?.diagnostics && typeof recalled.diagnostics === 'object' && !Array.isArray(recalled.diagnostics)
+      ? recalled.diagnostics
+      : {};
+  const recalledProducts = Array.isArray(recalled?.products) ? recalled.products : [];
+  if (!recalledProducts.length) return null;
+
+  const pagedProducts = recalledProducts.slice(safeOffset, safeOffset + safeLimit);
+  const responseProducts = guidanceOnlyDiscovery
+    ? pagedProducts.map((product) => normalizeGuidanceDiscoveryProductPdpContract(product))
+    : pagedProducts;
+
+  return {
+    status: 'success',
+    success: true,
+    products: responseProducts,
+    total: recalledProducts.length,
+    page: safePage,
+    page_size: responseProducts.length,
+    reply: null,
+    metadata: {
+      query_source: 'agent_products_ingredient_recall_direct',
+      fetched_at: new Date().toISOString(),
+      ingredient_intent_detected: diagnostics.ingredient_intent_detected === true,
+      kb_recall_attempted: diagnostics.kb_recall_attempted === true,
+      kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),
+      attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
+      attached_seed_recall_recovered: Math.max(0, Number(diagnostics.attached_seed_recall_recovered || 0) || 0),
+      unattached_seed_recall_attempted: diagnostics.unattached_seed_recall_attempted === true,
+      unattached_seed_recall_recovered: Math.max(0, Number(diagnostics.unattached_seed_recovered || 0) || 0),
+      clarify_applied_after_kb_exhausted: false,
+      strict_empty_reason: null,
+      source_breakdown: {
+        internal_count: 0,
+        external_seed_count: responseProducts.length,
+        stale_cache_used: false,
+        strategy_applied: 'ingredient_kb_attached_seed_first',
+      },
+      ingredient_recall_source_breakdown:
+        diagnostics.recall_source_breakdown && typeof diagnostics.recall_source_breakdown === 'object'
+          ? { ...diagnostics.recall_source_breakdown }
+          : {},
+      products_returned_count: responseProducts.length,
+      external_seed_returned_count: responseProducts.length,
+      search_decision: {
+        final_decision: 'products_returned',
+        hit_quality: responseProducts.length > 0 ? 'valid_hit' : 'strict_empty',
+        ingredient_intent_detected: diagnostics.ingredient_intent_detected === true,
+        kb_recall_attempted: diagnostics.kb_recall_attempted === true,
+        attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
+        clarify_applied_after_kb_exhausted: false,
+        query_target_step_family: targetStepFamily || null,
+      },
+    },
+  };
+}
+
 async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutToken, neededCount, source }) {
   const query = queryParams && typeof queryParams === 'object' ? queryParams : {};
   const queryText = extractSearchQueryText(query);
@@ -14688,6 +14787,18 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
       );
       return res.json(directResponse);
     }
+  }
+
+  const ingredientIntentDirectResponse = await searchIngredientIntentProductsDirect({
+    search: directExternalSeedSearch,
+    metadata: directExternalSeedMetadata,
+  });
+  if (ingredientIntentDirectResponse) {
+    await persistGuidanceSearchSeenProducts(
+      resolveGuidanceSearchSessionId({ req, query: req.query, metadata: payload?.metadata }),
+      Array.isArray(ingredientIntentDirectResponse?.products) ? ingredientIntentDirectResponse.products : [],
+    );
+    return res.json(ingredientIntentDirectResponse);
   }
 
   req.body = {
