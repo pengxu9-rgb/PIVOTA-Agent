@@ -31280,6 +31280,56 @@ const PURCHASE_RECOVERY_BUNDLE_LIKE_RE =
   /\b(sample|sampler|mini|travel|kit|set|bundle|duo|trio|collection|collector|starter|discovery)\b/i;
 const PURCHASE_RECOVERY_QUERY_NOISE_RE = /\b(skincare|product|products|best|good|for|with|and|the)\b/gi;
 const PURCHASE_RECOVERY_WORD_RE = /[a-z0-9%+]+/gi;
+const INGREDIENT_PLAN_RECOVERY_PRECISION_MODE = 'ingredient_first_then_family_fallback';
+const INGREDIENT_RECOVERY_EVIDENCE_PROFILES = Object.freeze({
+  ceramide_np: Object.freeze({
+    exact_phrases: ['ceramide np'],
+    alias_phrases: ['ceramide', 'ceramides'],
+    family_phrases: ['barrier', 'repair', 'moisturizer', 'moisturiser', 'cream', 'sensitive'],
+  }),
+  panthenol: Object.freeze({
+    exact_phrases: ['panthenol'],
+    alias_phrases: ['vitamin b5', 'provitamin b5', 'dexpanthenol', 'b5'],
+    family_phrases: ['barrier', 'repair', 'soothing', 'hydrating', 'sensitive', 'serum'],
+  }),
+  sunscreen_filters: Object.freeze({
+    exact_phrases: ['uv filters', 'uv filter'],
+    alias_phrases: ['broad spectrum', 'sunscreen', 'spf', 'spf 50'],
+    family_phrases: ['daily face', 'sun protection'],
+  }),
+});
+
+function normalizeIngredientRecoveryPhrase(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9%+]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveIngredientRecoveryTargetId(target) {
+  const row = isPlainObject(target) ? target : {};
+  const rawId = String(
+    pickFirstString(row.ingredient_id, row.ingredientId) ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (rawId) return rawId;
+  const rawName = normalizeIngredientRecoveryPhrase(
+    pickFirstString(row.ingredient_name, row.ingredientName, row.ingredient, row.name, row.title),
+  );
+  if (rawName === 'ceramide np' || rawName === 'ceramide') return 'ceramide_np';
+  if (rawName === 'panthenol b5' || rawName === 'panthenol' || rawName === 'vitamin b5') return 'panthenol';
+  if (rawName === 'uv filters' || rawName === 'uv filter' || rawName === 'sunscreen filters') return 'sunscreen_filters';
+  return '';
+}
+
+function getIngredientRecoveryEvidenceProfile(target) {
+  const targetId = resolveIngredientRecoveryTargetId(target);
+  return targetId ? INGREDIENT_RECOVERY_EVIDENCE_PROFILES[targetId] || null : null;
+}
 
 function buildPurchasableRecoveryCandidateText(candidate) {
   const row = isPlainObject(candidate) ? candidate : {};
@@ -31321,6 +31371,34 @@ function tokenizePurchasableRecoveryQuery(query) {
   return uniqCaseInsensitiveStrings(cleaned.match(PURCHASE_RECOVERY_WORD_RE) || [], 12);
 }
 
+function countIngredientRecoveryPhraseMatches(text, phrases) {
+  const haystack = ` ${normalizeIngredientRecoveryPhrase(text)} `;
+  if (!haystack.trim()) return 0;
+  let hits = 0;
+  for (const phrase of Array.isArray(phrases) ? phrases : []) {
+    const normalizedPhrase = normalizeIngredientRecoveryPhrase(phrase);
+    if (!normalizedPhrase) continue;
+    if (haystack.includes(` ${normalizedPhrase} `)) hits += 1;
+  }
+  return hits;
+}
+
+function buildIngredientRecoveryEvidence(candidate, target) {
+  const profile = getIngredientRecoveryEvidenceProfile(target);
+  if (!profile) return null;
+  const text = buildPurchasableRecoveryCandidateText(candidate);
+  const exactCount = countIngredientRecoveryPhraseMatches(text, profile.exact_phrases);
+  const aliasCount = countIngredientRecoveryPhraseMatches(text, profile.alias_phrases);
+  const familyCount = countIngredientRecoveryPhraseMatches(text, profile.family_phrases);
+  return {
+    exact_count: exactCount,
+    alias_count: aliasCount,
+    family_count: familyCount,
+    explicit_count: exactCount + aliasCount,
+    total_count: exactCount + aliasCount + familyCount,
+  };
+}
+
 function isBundleLikePurchasableRecoveryCandidate(candidate) {
   return PURCHASE_RECOVERY_BUNDLE_LIKE_RE.test(buildPurchasableRecoveryCandidateText(candidate));
 }
@@ -31338,10 +31416,11 @@ function computePurchasableRecoveryQueryOverlap(candidate, queryTokens) {
   return hits;
 }
 
-function rankPurchasableRecoveryCandidates(products, query) {
+function rankPurchasableRecoveryCandidates(products, query, { target = null, precisionMode = 'query_overlap' } = {}) {
   const rows = Array.isArray(products) ? products : [];
   if (rows.length <= 1) return rows.slice();
   const queryTokens = tokenizePurchasableRecoveryQuery(query);
+  const normalizedPrecisionMode = String(precisionMode || 'query_overlap').trim().toLowerCase();
   const scored = rows.map((row, index) => {
     const text = buildPurchasableRecoveryCandidateText(row);
     const bundleLike = isBundleLikePurchasableRecoveryCandidate(row);
@@ -31355,6 +31434,7 @@ function rankPurchasableRecoveryCandidates(products, query) {
       bundleLike,
       overlap,
       focusedSingle,
+      evidence: buildIngredientRecoveryEvidence(row, target),
     };
   });
 
@@ -31368,9 +31448,36 @@ function rankPurchasableRecoveryCandidates(products, query) {
   if (hasOverlappingNonBundle) filtered = filtered.filter((row) => row.overlap > 0);
   if (hasFocusedOverlapCandidate) filtered = filtered.filter((row) => row.focusedSingle === true);
 
+  const precisionAware =
+    filtered.some((row) => isPlainObject(row.evidence)) &&
+    (normalizedPrecisionMode === 'ingredient_specific' || normalizedPrecisionMode === 'family_fallback');
+
+  if (precisionAware && normalizedPrecisionMode === 'ingredient_specific') {
+    const explicitRows = filtered.filter((row) => Number(row.evidence?.explicit_count || 0) > 0);
+    if (!explicitRows.length) return [];
+    filtered = explicitRows;
+  } else if (precisionAware && normalizedPrecisionMode === 'family_fallback') {
+    const supportedRows = filtered.filter((row) => Number(row.evidence?.total_count || 0) > 0);
+    if (supportedRows.length) filtered = supportedRows;
+  }
+
   const ranked = filtered
     .slice()
     .sort((a, b) => {
+      if (precisionAware) {
+        const aExplicit = Number(a.evidence?.explicit_count || 0);
+        const bExplicit = Number(b.evidence?.explicit_count || 0);
+        if (aExplicit !== bExplicit) return bExplicit - aExplicit;
+        const aExact = Number(a.evidence?.exact_count || 0);
+        const bExact = Number(b.evidence?.exact_count || 0);
+        if (aExact !== bExact) return bExact - aExact;
+        const aAlias = Number(a.evidence?.alias_count || 0);
+        const bAlias = Number(b.evidence?.alias_count || 0);
+        if (aAlias !== bAlias) return bAlias - aAlias;
+        const aFamily = Number(a.evidence?.family_count || 0);
+        const bFamily = Number(b.evidence?.family_count || 0);
+        if (aFamily !== bFamily) return bFamily - aFamily;
+      }
       if (a.overlap !== b.overlap) return b.overlap - a.overlap;
       if (a.focusedSingle !== b.focusedSingle) return a.focusedSingle ? -1 : 1;
       if (a.bundleLike !== b.bundleLike) return a.bundleLike ? 1 : -1;
@@ -31435,6 +31542,193 @@ function isLowSignalIngredientFallbackQuery(query, ingredientName = '') {
     normalizedQuery.startsWith(`${normalizedIngredient} `)
     && /\b(skincare|product|products|best)\b/i.test(normalizedQuery)
   );
+}
+
+function classifyIngredientRecoveryQuery(query, target) {
+  const normalizedQuery = normalizeHumanReadableFallbackQuery(query);
+  if (!normalizedQuery) return 'invalid';
+  const evidence = buildIngredientRecoveryEvidence({ name: normalizedQuery }, target);
+  if (evidence && Number(evidence.explicit_count || 0) > 0) return 'specific';
+  if (evidence && Number(evidence.family_count || 0) > 0) return 'family';
+  return 'generic';
+}
+
+function collectIngredientPlanRecoveryQueryStagesForTarget({
+  payload,
+  target,
+  maxQueries = AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
+  mode = 'lightweight',
+} = {}) {
+  const ingredientSpecificQueries = [];
+  const familyFallbackQueries = [];
+  const deferredSpecificQueries = [];
+  const specificSeen = new Set();
+  const familySeen = new Set();
+  const pushSpecific = (value, { deferred = false } = {}) => {
+    const normalized = normalizeHumanReadableFallbackQuery(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (specificSeen.has(key)) return;
+    specificSeen.add(key);
+    if (deferred) deferredSpecificQueries.push(normalized);
+    else ingredientSpecificQueries.push(normalized);
+  };
+  const pushFamily = (value) => {
+    const normalized = normalizeHumanReadableFallbackQuery(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (familySeen.has(key) || specificSeen.has(key)) return;
+    familySeen.add(key);
+    familyFallbackQueries.push(normalized);
+  };
+  const routeQuery = (value, { lowSignal = false, forceFamily = false } = {}) => {
+    const normalized = normalizeHumanReadableFallbackQuery(value);
+    if (!normalized) return;
+    if (forceFamily) {
+      pushFamily(normalized);
+      return;
+    }
+    const classification = classifyIngredientRecoveryQuery(normalized, target);
+    if (classification === 'specific') {
+      pushSpecific(normalized, { deferred: lowSignal });
+      return;
+    }
+    pushFamily(normalized);
+  };
+
+  const payloadObj = isPlainObject(payload) ? payload : {};
+  const targetObj = isPlainObject(target) ? target : {};
+  const normalizedMode = String(mode || 'lightweight').trim().toLowerCase();
+  const cappedMaxQueries = normalizedMode === 'lightweight'
+    ? Math.max(1, Math.min(2, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES))
+    : Math.max(1, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES);
+  const ingredientName = pickFirstString(
+    targetObj.ingredient_name,
+    targetObj.ingredientName,
+    targetObj.ingredient,
+    targetObj.name,
+    targetObj.title,
+  );
+  const missingCatalogQueries = Array.isArray(payloadObj.__missing_catalog_queries) ? payloadObj.__missing_catalog_queries : [];
+  const matchedMissingCatalogQueries = [];
+  for (const item of missingCatalogQueries) {
+    if (!ingredientTargetMatchesMissingCatalogEntry(targetObj, item)) continue;
+    if (!isPlainObject(item)) continue;
+    matchedMissingCatalogQueries.push(item);
+  }
+
+  if (normalizedMode !== 'lightweight') {
+    if (ingredientName) {
+      routeQuery(ingredientName, { lowSignal: true });
+      routeQuery(/\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName) ? ingredientName : `${ingredientName} skincare`, {
+        lowSignal: true,
+      });
+    }
+    const guidance = Array.isArray(targetObj.usage_guidance) ? targetObj.usage_guidance : [];
+    for (const row of guidance.slice(0, 2)) pushFamily(row);
+    const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
+      ? targetObj.example_product_discovery_items
+      : [];
+    for (const item of exampleDiscoveryItems) {
+      if (!isPlainObject(item)) continue;
+      routeQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
+      pushFamily(tryDecodeSearchQueryFromUrl(item.candidate_url));
+    }
+    for (const item of matchedMissingCatalogQueries) {
+      routeQuery(pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName));
+      pushFamily(tryDecodeSearchQueryFromUrl(item.candidate_url));
+      const ladderSteps = Array.isArray(item.query_ladder_steps)
+        ? item.query_ladder_steps
+        : Array.isArray(item.query_ladder)
+          ? item.query_ladder
+          : [];
+      for (const step of ladderSteps) {
+        if (!isPlainObject(step)) continue;
+        routeQuery(pickFirstString(step.query, step.search_title));
+      }
+    }
+    return {
+      ingredientSpecificQueries: [...ingredientSpecificQueries, ...deferredSpecificQueries].slice(0, cappedMaxQueries),
+      familyFallbackQueries: familyFallbackQueries.slice(0, cappedMaxQueries),
+    };
+  }
+
+  const deferredLowSignalQueries = [];
+  const weightedStepQueries = [];
+  const stepSeen = new Set();
+  const ingredientDiscoveryHint = buildIngredientDiscoveryHint(
+    pickFirstString(targetObj.ingredient_id, targetObj.ingredientId),
+    {
+      ingredientName,
+      fallbackQuery: ingredientName ? `${ingredientName} skincare product` : '',
+    },
+  );
+  const pushWeightedStepQuery = (value) => {
+    const normalized = normalizeHumanReadableFallbackQuery(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (stepSeen.has(key)) return;
+    stepSeen.add(key);
+    weightedStepQueries.push(normalized);
+  };
+
+  for (const item of matchedMissingCatalogQueries) {
+    const rawQuery = pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName);
+    if (rawQuery) {
+      if (isLowSignalIngredientFallbackQuery(rawQuery, ingredientName)) deferredLowSignalQueries.push(rawQuery);
+      else routeQuery(rawQuery);
+    }
+    const ladderSteps = Array.isArray(item.query_ladder_steps)
+      ? item.query_ladder_steps
+      : Array.isArray(item.query_ladder)
+        ? item.query_ladder
+        : [];
+    for (const step of ladderSteps) {
+      if (!isPlainObject(step)) continue;
+      pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
+    }
+  }
+
+  const discoveryHintSteps = Array.isArray(ingredientDiscoveryHint?.query_ladder_steps)
+    ? ingredientDiscoveryHint.query_ladder_steps
+    : [];
+  for (const step of discoveryHintSteps) {
+    if (!isPlainObject(step)) continue;
+    pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
+  }
+
+  const derivedStepFamily = pickFirstString(
+    matchedMissingCatalogQueries[0]?.target_step_family,
+    ingredientDiscoveryHint?.target_step_family,
+  );
+  const rescueQueries = collectLightweightIngredientRescueQueries({
+    target: targetObj,
+    targetStepFamily: derivedStepFamily,
+  });
+
+  for (const stepQuery of weightedStepQueries) routeQuery(stepQuery);
+  for (const rescueQuery of rescueQueries) pushFamily(rescueQuery);
+
+  const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
+    ? targetObj.example_product_discovery_items
+    : [];
+  for (const item of exampleDiscoveryItems) {
+    if (!isPlainObject(item)) continue;
+    routeQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
+  }
+  for (const rawQuery of deferredLowSignalQueries) routeQuery(rawQuery, { lowSignal: true });
+  if (ingredientName) {
+    const ingredientSearchQuery = /\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName)
+      ? ingredientName
+      : `${ingredientName} skincare`;
+    routeQuery(ingredientSearchQuery, { lowSignal: true });
+    routeQuery(ingredientName, { lowSignal: true });
+  }
+
+  return {
+    ingredientSpecificQueries: [...ingredientSpecificQueries, ...deferredSpecificQueries].slice(0, cappedMaxQueries),
+    familyFallbackQueries: familyFallbackQueries.slice(0, cappedMaxQueries),
+  };
 }
 
 function collectLightweightIngredientRescueQueries({
@@ -31546,160 +31840,19 @@ function collectIngredientPlanFallbackQueriesForTarget({
   maxQueries = AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES,
   mode = 'default',
 } = {}) {
-  const queries = [];
-  const seen = new Set();
-  const pushQuery = (value) => {
-    const normalized = normalizeHumanReadableFallbackQuery(value);
-    if (!normalized) return;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    queries.push(normalized);
-  };
-
-  const payloadObj = isPlainObject(payload) ? payload : {};
-  const targetObj = isPlainObject(target) ? target : {};
-  const normalizedMode = String(mode || 'default').trim().toLowerCase();
-  const ingredientName = pickFirstString(
-    targetObj.ingredient_name,
-    targetObj.ingredientName,
-    targetObj.ingredient,
-    targetObj.name,
-    targetObj.title,
-  );
-  const missingCatalogQueries = Array.isArray(payloadObj.__missing_catalog_queries) ? payloadObj.__missing_catalog_queries : [];
-  const matchedMissingCatalogQueries = [];
-  for (const item of missingCatalogQueries) {
-    if (!ingredientTargetMatchesMissingCatalogEntry(targetObj, item)) continue;
-    if (!isPlainObject(item)) continue;
-    matchedMissingCatalogQueries.push(item);
-  }
-
-  if (normalizedMode === 'lightweight') {
-    const cappedMaxQueries = Math.max(1, Math.min(2, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES));
-    const deferredLowSignalQueries = [];
-    const weightedStepQueries = [];
-    const stepSeen = new Set();
-    const ingredientDiscoveryHint = buildIngredientDiscoveryHint(
-      pickFirstString(targetObj.ingredient_id, targetObj.ingredientId),
-      {
-        ingredientName,
-        fallbackQuery: ingredientName ? `${ingredientName} skincare product` : '',
-      },
-    );
-    const pushWeightedStepQuery = (value) => {
-      const normalized = normalizeHumanReadableFallbackQuery(value);
-      if (!normalized) return;
-      const key = normalized.toLowerCase();
-      if (stepSeen.has(key)) return;
-      stepSeen.add(key);
-      weightedStepQueries.push(normalized);
-    };
-
-    for (const item of matchedMissingCatalogQueries) {
-      const rawQuery = pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName);
-      if (rawQuery) {
-        if (isLowSignalIngredientFallbackQuery(rawQuery, ingredientName)) deferredLowSignalQueries.push(rawQuery);
-        else pushQuery(rawQuery);
-      }
-      const ladderSteps = Array.isArray(item.query_ladder_steps)
-        ? item.query_ladder_steps
-        : Array.isArray(item.query_ladder)
-          ? item.query_ladder
-          : [];
-      for (const step of ladderSteps) {
-        if (!isPlainObject(step)) continue;
-        pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
-      }
-    }
-
-    const discoveryHintSteps = Array.isArray(ingredientDiscoveryHint?.query_ladder_steps)
-      ? ingredientDiscoveryHint.query_ladder_steps
-      : [];
-    for (const step of discoveryHintSteps) {
-      if (!isPlainObject(step)) continue;
-      pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
-    }
-
-    const derivedStepFamily = pickFirstString(
-      matchedMissingCatalogQueries[0]?.target_step_family,
-      ingredientDiscoveryHint?.target_step_family,
-    );
-    const rescueQueries = collectLightweightIngredientRescueQueries({
-      target: targetObj,
-      targetStepFamily: derivedStepFamily,
-    });
-
-    if (weightedStepQueries.length) {
-      pushQuery(weightedStepQueries[0]);
-      for (const rescueQuery of rescueQueries) {
-        if (queries.length >= cappedMaxQueries) break;
-        pushQuery(rescueQuery);
-      }
-      for (const stepQuery of weightedStepQueries.slice(1)) {
-        if (queries.length >= cappedMaxQueries) break;
-        pushQuery(stepQuery);
-      }
-    }
-
-    if (queries.length < cappedMaxQueries) {
-      const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
-        ? targetObj.example_product_discovery_items
-        : [];
-      for (const item of exampleDiscoveryItems) {
-        if (!isPlainObject(item)) continue;
-        pushQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
-        if (queries.length >= cappedMaxQueries) break;
-      }
-    }
-    if (queries.length < cappedMaxQueries) {
-      for (const rawQuery of deferredLowSignalQueries) {
-        pushQuery(rawQuery);
-        if (queries.length >= cappedMaxQueries) break;
-      }
-    }
-    if (queries.length < cappedMaxQueries && ingredientName) {
-      const ingredientSearchQuery = /\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName)
-        ? ingredientName
-        : `${ingredientName} skincare`;
-      pushQuery(ingredientSearchQuery);
-      if (queries.length < cappedMaxQueries) pushQuery(ingredientName);
-    }
-    return queries.slice(0, cappedMaxQueries);
-  }
-
-  if (ingredientName) {
-    pushQuery(ingredientName);
-    pushQuery(/\bskincare\b|\bserum\b|\bcream\b|\bsunscreen\b/i.test(ingredientName) ? ingredientName : `${ingredientName} skincare`);
-  }
-
-  const guidance = Array.isArray(targetObj.usage_guidance) ? targetObj.usage_guidance : [];
-  for (const row of guidance.slice(0, 2)) pushQuery(row);
-
-  const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
-    ? targetObj.example_product_discovery_items
+  const queryStages = collectIngredientPlanRecoveryQueryStagesForTarget({
+    payload,
+    target,
+    maxQueries,
+    mode,
+  });
+  const specific = Array.isArray(queryStages.ingredientSpecificQueries)
+    ? queryStages.ingredientSpecificQueries
     : [];
-  for (const item of exampleDiscoveryItems) {
-    if (!isPlainObject(item)) continue;
-    pushQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
-    pushQuery(tryDecodeSearchQueryFromUrl(item.candidate_url));
-  }
-
-  for (const item of matchedMissingCatalogQueries) {
-    pushQuery(pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName));
-    pushQuery(tryDecodeSearchQueryFromUrl(item.candidate_url));
-    const ladderSteps = Array.isArray(item.query_ladder_steps)
-      ? item.query_ladder_steps
-      : Array.isArray(item.query_ladder)
-        ? item.query_ladder
-        : [];
-    for (const step of ladderSteps) {
-      if (!isPlainObject(step)) continue;
-      pushQuery(pickFirstString(step.query, step.search_title));
-    }
-  }
-
-  return queries.slice(0, Math.max(1, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES));
+  if (specific.length) return specific;
+  return Array.isArray(queryStages.familyFallbackQueries)
+    ? queryStages.familyFallbackQueries
+    : [];
 }
 
 function collectPurchasableFallbackQueries({
@@ -31802,6 +31955,8 @@ async function recoverPurchasableProductsFromQueries({
   logger,
   guardrailRuleId = 'reco_guardrail',
   maxProducts = AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS,
+  target = null,
+  precisionMode = 'query_overlap',
 } = {}) {
   const out = {
     products: [],
@@ -31874,7 +32029,11 @@ async function recoverPurchasableProductsFromQueries({
     const sourceKey = String(fallbackOut?.selected_source || 'none').trim() || 'none';
     out.selected_source_counts[sourceKey] = Number(out.selected_source_counts[sourceKey] || 0) + 1;
 
-    const products = rankPurchasableRecoveryCandidates(Array.isArray(fallbackOut?.products) ? fallbackOut.products : [], q);
+    const products = rankPurchasableRecoveryCandidates(
+      Array.isArray(fallbackOut?.products) ? fallbackOut.products : [],
+      q,
+      { target, precisionMode },
+    );
     for (const raw of products) {
       if (out.products.length >= targetMax) break;
       const normalized = normalizeRecoCatalogProduct(raw);
@@ -32441,11 +32600,14 @@ async function sanitizeRecoCandidatesForUi(
     llm_fallback_used: false,
     llm_fallback_stage_counts: initLlmFallbackStageCounts(),
     llm_fallback_last_reason: null,
+    ingredient_plan_recovery_precision_mode: INGREDIENT_PLAN_RECOVERY_PRECISION_MODE,
     ingredient_plan_recovery_attempted: 0,
     ingredient_plan_recovery_recovered: 0,
     ingredient_plan_recovery_used: false,
     ingredient_plan_recovery_transient_retry_attempted: 0,
     ingredient_plan_recovery_transient_retry_recovered: 0,
+    ingredient_plan_exact_match_target_count: 0,
+    ingredient_plan_family_fallback_target_count: 0,
     ingredient_plan_products_empty_reason: null,
     ingredient_plan_target_count: 0,
     ingredient_plan_empty_target_count: 0,
@@ -32478,6 +32640,8 @@ async function sanitizeRecoCandidatesForUi(
       let pdpContractDroppedForCard = 0;
       let recoveryRecoveredForCard = 0;
       let recoveryAttemptedForCard = 0;
+      let exactMatchTargetCountForCard = 0;
+      let familyFallbackTargetCountForCard = 0;
       let llmFallbackRecoveredForCard = 0;
       let llmFallbackAttemptedForCard = 0;
       let llmFallbackTimeoutForCard = 0;
@@ -32795,6 +32959,8 @@ async function sanitizeRecoCandidatesForUi(
       let nonHttpsDemotedForCard = 0;
       let recoveryRecoveredForCard = 0;
       let recoveryAttemptedForCard = 0;
+      let exactMatchTargetCountForCard = 0;
+      let familyFallbackTargetCountForCard = 0;
       let llmFallbackRecoveredForCard = 0;
       let llmFallbackAttemptedForCard = 0;
       let llmFallbackTimeoutForCard = 0;
@@ -32930,62 +33096,132 @@ async function sanitizeRecoCandidatesForUi(
           const target = nextTargets[targetIndex];
           if (!isPlainObject(target)) continue;
           if (countPurchasableProductsForTarget(target) > 0) continue;
-          const targetQueries = collectIngredientPlanFallbackQueriesForTarget({
+          const queryStages = collectIngredientPlanRecoveryQueryStagesForTarget({
             payload,
             target,
             maxQueries: lightweightRecoveryMaxQueries,
             mode: 'lightweight',
           });
-          if (!targetQueries.length) continue;
-          const recovered = await recoverPurchasableProductsFromQueries({
-            queries: targetQueries,
-            strictFilter,
-            qaMode: effectiveQaMode,
-            singleProvider: effectiveSingleProvider,
-            allowOpenAiFallback: effectiveOpenAiFallback,
-            qaContext,
-            fallbackCandidateBuilder,
-            allowExternalSeedSupplement,
-            externalSeedStrategy,
-            logger,
-            guardrailRuleId,
-            maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
-          });
-          recoveryAttemptedForCard += recovered.attempted_queries.length;
-          recoveryRecoveredForCard += recovered.products.length;
-          lookupMeta.ingredient_plan_recovery_transient_retry_attempted += Math.max(
-            0,
-            Math.trunc(Number(recovered.transient_retry_attempted || 0)),
-          );
-          lookupMeta.ingredient_plan_recovery_transient_retry_recovered += Math.max(
-            0,
-            Math.trunc(Number(recovered.transient_retry_recovered || 0)),
-          );
-          if (recovered.rejected.length) rejected.push(...recovered.rejected);
-          if (recovered.external_search_ctas.length) {
-            externalSearchCtas.push(...recovered.external_search_ctas);
-            externalized += recovered.external_search_ctas.length;
-          }
-          if (recovered.products.length) {
-            nextTargets[targetIndex] = mergeRecoveredProductsIntoIngredientTarget(
-              target,
-              recovered.products,
-              Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+          const ingredientSpecificQueries = Array.isArray(queryStages.ingredientSpecificQueries)
+            ? queryStages.ingredientSpecificQueries
+            : [];
+          const familyFallbackQueries = Array.isArray(queryStages.familyFallbackQueries)
+            ? queryStages.familyFallbackQueries
+            : [];
+          let nextTarget = isPlainObject(target) ? { ...target } : {};
+          let recoveredForTarget = false;
+          const accumulateRecovered = (recovered) => {
+            if (!isPlainObject(recovered)) return;
+            recoveryAttemptedForCard += Math.max(0, Math.trunc(Number(recovered.attempted_queries?.length || 0)));
+            recoveryRecoveredForCard += Math.max(0, Math.trunc(Number(recovered.products?.length || 0)));
+            lookupMeta.ingredient_plan_recovery_transient_retry_attempted += Math.max(
+              0,
+              Math.trunc(Number(recovered.transient_retry_attempted || 0)),
             );
-          } else if (pickFirstString(recovered.no_result_reason)) {
-            const nextTarget = isPlainObject(target) ? { ...target } : {};
+            lookupMeta.ingredient_plan_recovery_transient_retry_recovered += Math.max(
+              0,
+              Math.trunc(Number(recovered.transient_retry_recovered || 0)),
+            );
+            if (Array.isArray(recovered.rejected) && recovered.rejected.length) rejected.push(...recovered.rejected);
+            if (Array.isArray(recovered.external_search_ctas) && recovered.external_search_ctas.length) {
+              externalSearchCtas.push(...recovered.external_search_ctas);
+              externalized += recovered.external_search_ctas.length;
+            }
+          };
+
+          if (ingredientSpecificQueries.length) {
+            const recovered = await recoverPurchasableProductsFromQueries({
+              queries: ingredientSpecificQueries,
+              strictFilter,
+              qaMode: effectiveQaMode,
+              singleProvider: effectiveSingleProvider,
+              allowOpenAiFallback: effectiveOpenAiFallback,
+              qaContext,
+              fallbackCandidateBuilder,
+              allowExternalSeedSupplement,
+              externalSeedStrategy,
+              logger,
+              guardrailRuleId,
+              maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+              target: nextTarget,
+              precisionMode: 'ingredient_specific',
+            });
+            accumulateRecovered(recovered);
+            if (recovered.products.length) {
+              nextTarget = mergeRecoveredProductsIntoIngredientTarget(
+                nextTarget,
+                recovered.products,
+                Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+              );
+              exactMatchTargetCountForCard += 1;
+              recoveredForTarget = true;
+            } else {
+              const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
+                { field: 'payload.targets[].products', reason: 'ingredient_specific_recovery_empty' },
+              ]);
+              nextTarget = {
+                ...nextTarget,
+                ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
+              };
+            }
+          } else {
             const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
-              {
-                field: 'payload.targets[].products',
-                reason: String(recovered.no_result_reason).trim().toLowerCase(),
-              },
+              { field: 'payload.targets[].products', reason: 'ingredient_specific_recovery_empty' },
             ]);
-            nextTargets[targetIndex] = {
+            nextTarget = {
               ...nextTarget,
-              products_empty_reason: pickFirstString(nextTarget.products_empty_reason, recovered.no_result_reason),
               ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
             };
           }
+
+          if (!recoveredForTarget && familyFallbackQueries.length) {
+            const recovered = await recoverPurchasableProductsFromQueries({
+              queries: familyFallbackQueries,
+              strictFilter,
+              qaMode: effectiveQaMode,
+              singleProvider: effectiveSingleProvider,
+              allowOpenAiFallback: effectiveOpenAiFallback,
+              qaContext,
+              fallbackCandidateBuilder,
+              allowExternalSeedSupplement,
+              externalSeedStrategy,
+              logger,
+              guardrailRuleId,
+              maxProducts: Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+              target: nextTarget,
+              precisionMode: 'family_fallback',
+            });
+            accumulateRecovered(recovered);
+            if (recovered.products.length) {
+              const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
+                { field: 'payload.targets[].products', reason: 'family_fallback_used' },
+              ]);
+              nextTarget = mergeRecoveredProductsIntoIngredientTarget(
+                {
+                  ...nextTarget,
+                  ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
+                },
+                recovered.products,
+                Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
+              );
+              familyFallbackTargetCountForCard += 1;
+              recoveredForTarget = true;
+            } else if (pickFirstString(recovered.no_result_reason)) {
+              const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
+                {
+                  field: 'payload.targets[].products',
+                  reason: String(recovered.no_result_reason).trim().toLowerCase(),
+                },
+              ]);
+              nextTarget = {
+                ...nextTarget,
+                products_empty_reason: pickFirstString(nextTarget.products_empty_reason, recovered.no_result_reason),
+                ...(nextFieldMissing.length ? { field_missing: nextFieldMissing } : {}),
+              };
+            }
+          }
+
+          nextTargets[targetIndex] = nextTarget;
         }
         keptProductsCount = countPurchasableProductsForTargets(nextTargets);
       }
@@ -33110,6 +33346,8 @@ async function sanitizeRecoCandidatesForUi(
       if (llmFallbackRecoveredForCard > 0) lookupMeta.llm_fallback_used = true;
       lookupMeta.ingredient_plan_recovery_attempted += recoveryAttemptedForCard;
       lookupMeta.ingredient_plan_recovery_recovered += recoveryRecoveredForCard;
+      lookupMeta.ingredient_plan_exact_match_target_count += exactMatchTargetCountForCard;
+      lookupMeta.ingredient_plan_family_fallback_target_count += familyFallbackTargetCountForCard;
       if (recoveryRecoveredForCard > 0) lookupMeta.ingredient_plan_recovery_used = true;
       const emptyTargetCount = countEmptyPurchasableTargets(nextTargets);
       lookupMeta.ingredient_plan_target_count += nextTargets.length;
@@ -34667,6 +34905,18 @@ async function applyProductIntelGuardrailsToEnvelope({
           0,
           Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_recovered || 0)),
         ),
+        ingredient_plan_recovery_precision_mode: pickFirstString(
+          lookupMeta.ingredient_plan_recovery_precision_mode,
+          INGREDIENT_PLAN_RECOVERY_PRECISION_MODE,
+        ),
+        ingredient_plan_exact_match_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_exact_match_target_count || 0)),
+        ),
+        ingredient_plan_family_fallback_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
+        ),
         ingredient_plan_target_count: Math.max(
           0,
           Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
@@ -34824,6 +35074,18 @@ async function applyProductIntelGuardrailsToEnvelope({
     ingredient_plan_recovery_transient_retry_recovered: Math.max(
       0,
       Math.trunc(Number(lookupMeta.ingredient_plan_recovery_transient_retry_recovered || 0)),
+    ),
+    ingredient_plan_recovery_precision_mode: pickFirstString(
+      lookupMeta.ingredient_plan_recovery_precision_mode,
+      INGREDIENT_PLAN_RECOVERY_PRECISION_MODE,
+    ),
+    ingredient_plan_exact_match_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_exact_match_target_count || 0)),
+    ),
+    ingredient_plan_family_fallback_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
     ),
     ingredient_plan_target_count: Math.max(
       0,
@@ -35084,6 +35346,18 @@ async function applyRecommendationOutputGuardrailsForRoute({
     product_lookup_fallback_invalid_json: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.invalid_json || 0))),
     product_lookup_fallback_error: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.error || 0))),
     product_lookup_fallback_empty: Math.max(0, Math.trunc(Number(llmFallbackStageCounts.empty || 0))),
+    ingredient_plan_recovery_precision_mode: pickFirstString(
+      lookupMeta.ingredient_plan_recovery_precision_mode,
+      INGREDIENT_PLAN_RECOVERY_PRECISION_MODE,
+    ),
+    ingredient_plan_exact_match_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_exact_match_target_count || 0)),
+    ),
+    ingredient_plan_family_fallback_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
+    ),
     ...(pickFirstString(lookupMeta.llm_fallback_last_reason)
       ? { product_lookup_fallback_last_reason: lookupMeta.llm_fallback_last_reason }
       : {}),
@@ -67729,6 +68003,7 @@ const __internal = {
   coerceRecoItemForUi,
   sanitizeRecoCandidatesForUi,
   collectPurchasableFallbackQueries,
+  collectIngredientPlanRecoveryQueryStagesForTarget,
   collectIngredientPlanFallbackQueriesForTarget,
   buildPurchasableFallbackCandidates,
   buildProductLookupLlmFallbackPrompt,

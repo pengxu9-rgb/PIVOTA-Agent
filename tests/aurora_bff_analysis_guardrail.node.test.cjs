@@ -340,17 +340,17 @@ test('collectIngredientPlanFallbackQueriesForTarget uses discovery hints when ta
 
     assert.deepEqual(queries, [
       'panthenol serum',
-      'soothing serum',
+      'vitamin b5 serum',
     ]);
   } finally {
     delete require.cache[moduleId];
   }
 });
 
-test('collectIngredientPlanFallbackQueriesForTarget adds barrier-serum rescue query for ceramide barrier support targets', async () => {
+test('collectIngredientPlanRecoveryQueryStagesForTarget keeps ceramide exact queries ahead of family fallback', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
-    const queries = __internal.collectIngredientPlanFallbackQueriesForTarget({
+    const queryStages = __internal.collectIngredientPlanRecoveryQueryStagesForTarget({
       payload: {
         __missing_catalog_queries: [
           {
@@ -377,9 +377,43 @@ test('collectIngredientPlanFallbackQueriesForTarget adds barrier-serum rescue qu
       mode: 'lightweight',
     });
 
-    assert.deepEqual(queries, [
+    assert.deepEqual(queryStages.ingredientSpecificQueries, [
       'ceramide barrier moisturizer',
+      'barrier repair ceramide moisturizer',
+    ]);
+    assert.deepEqual(queryStages.familyFallbackQueries, [
+      'barrier repair moisturizer',
+      'sensitive skin moisturizer',
+    ]);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectIngredientPlanRecoveryQueryStagesForTarget keeps panthenol exact queries ahead of family fallback', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const queryStages = __internal.collectIngredientPlanRecoveryQueryStagesForTarget({
+      payload: {},
+      target: {
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+        usage_guidance: [
+          'AM/PM soothing support',
+          'Use after cleansing on damp skin',
+        ],
+      },
+      maxQueries: 2,
+      mode: 'lightweight',
+    });
+
+    assert.deepEqual(queryStages.ingredientSpecificQueries, [
+      'panthenol serum',
+      'vitamin b5 serum',
+    ]);
+    assert.deepEqual(queryStages.familyFallbackQueries, [
       'barrier repair serum',
+      'soothing serum',
     ]);
   } finally {
     delete require.cache[moduleId];
@@ -540,6 +574,59 @@ test('recoverPurchasableProductsFromQueries prefers focused single products over
     assert.deepEqual(
       out.products.map((row) => row.name),
       ['UV Filters SPF 45 Serum'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('recoverPurchasableProductsFromQueries prefers ingredient-explicit products in ingredient_specific mode', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['ceramide barrier moisturizer'],
+      strictFilter: true,
+      target: {
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+      },
+      precisionMode: 'ingredient_specific',
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        selected_source: 'catalog',
+        products: [
+          {
+            product_id: 'barrier_generic_1',
+            merchant_id: 'catalog',
+            name: 'Barrier Relief Moisturizer',
+            brand: 'Shield Lab',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+            tag_tokens: ['barrier', 'repair', 'sensitive'],
+            pdp_url: 'https://agent.pivota.cc/products/barrier_generic_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/barrier_generic_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+          {
+            product_id: 'ceramide_explicit_1',
+            merchant_id: 'catalog',
+            name: 'Ceramide Barrier Cream',
+            brand: 'Barrier Lab',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+            tag_tokens: ['ceramide', 'barrier', 'repair'],
+            pdp_url: 'https://agent.pivota.cc/products/ceramide_explicit_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/ceramide_explicit_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+        ],
+      }),
+      maxProducts: 2,
+    });
+
+    assert.deepEqual(
+      out.products.map((row) => row.name),
+      ['Ceramide Barrier Cream'],
     );
   } finally {
     delete require.cache[moduleId];
@@ -752,6 +839,112 @@ test('applyProductIntelGuardrailsToEnvelope surfaces target-level ingredient-pla
     assert.equal(envelope.analysis_meta.ingredient_plan_empty_target_rate, 0.5);
     assert.equal(envelope.analysis_meta.empty_products_rate, 1);
     assert.equal(envelope.analysis_meta.ingredient_plan_products_empty_reason, 'target_level_partial_empty');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('sanitizeRecoCandidatesForUi records ingredient-first precision and family fallback diagnostics', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const fallbackCalls = [];
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_precision_metrics',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                products: { competitors: [], dupes: [] },
+              },
+              {
+                ingredient_id: 'panthenol',
+                ingredient_name: 'Panthenol (B5)',
+                products: { competitors: [], dupes: [] },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        fallbackCandidateBuilder: async ({ query }) => {
+          fallbackCalls.push(String(query || ''));
+          if (/ceramide/i.test(String(query || ''))) {
+            return {
+              ok: true,
+              selected_source: 'catalog',
+              products: [
+                {
+                  product_id: 'ceramide_precise_1',
+                  merchant_id: 'catalog',
+                  name: 'Ceramide Barrier Cream',
+                  brand: 'Barrier Lab',
+                  category: 'moisturizer',
+                  product_type: 'moisturizer',
+                  tag_tokens: ['ceramide', 'barrier', 'repair'],
+                  pdp_url: 'https://agent.pivota.cc/products/ceramide_precise_1?merchant_id=catalog',
+                  url: 'https://agent.pivota.cc/products/ceramide_precise_1?merchant_id=catalog',
+                  source: 'catalog',
+                },
+              ],
+            };
+          }
+          if (/soothing serum|hydrating serum|barrier repair serum/i.test(String(query || ''))) {
+            return {
+              ok: true,
+              selected_source: 'catalog',
+              products: [
+                {
+                  product_id: 'panthenol_family_1',
+                  merchant_id: 'catalog',
+                  name: 'Soothing Recovery Serum',
+                  brand: 'Calm Lab',
+                  category: 'serum',
+                  product_type: 'serum',
+                  tag_tokens: ['soothing', 'barrier', 'repair'],
+                  pdp_url: 'https://agent.pivota.cc/products/panthenol_family_1?merchant_id=catalog',
+                  url: 'https://agent.pivota.cc/products/panthenol_family_1?merchant_id=catalog',
+                  source: 'catalog',
+                },
+              ],
+            };
+          }
+          return { ok: true, selected_source: 'none', products: [], reason: 'empty' };
+        },
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const targets = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets : [];
+    const ceramideTarget = targets.find((row) => row && row.ingredient_id === 'ceramide_np');
+    const panthenolTarget = targets.find((row) => row && row.ingredient_id === 'panthenol');
+    assert.equal(ceramideTarget?.products?.competitors?.[0]?.name, 'Ceramide Barrier Cream');
+    assert.equal(panthenolTarget?.products?.competitors?.[0]?.name, 'Soothing Recovery Serum');
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'ingredient_specific_recovery_empty'),
+      true,
+    );
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'family_fallback_used'),
+      true,
+    );
+    assert.equal(out.lookup_meta.ingredient_plan_recovery_precision_mode, 'ingredient_first_then_family_fallback');
+    assert.equal(out.lookup_meta.ingredient_plan_exact_match_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 1);
+    assert.equal(fallbackCalls.includes('panthenol serum'), true);
+    assert.equal(fallbackCalls.includes('vitamin b5 serum'), true);
+    assert.equal(fallbackCalls.includes('soothing serum') || fallbackCalls.includes('hydrating serum'), true);
   } finally {
     delete require.cache[moduleId];
   }
