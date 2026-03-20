@@ -13,7 +13,7 @@ function authHeaders() {
   return { Authorization: 'Bearer test_key' };
 }
 
-describe('look replicator checkout_sessions compatibility', () => {
+describe('creator checkout_sessions compatibility', () => {
   const originalEnv = process.env;
   let server;
 
@@ -157,7 +157,7 @@ describe('look replicator checkout_sessions compatibility', () => {
     );
   });
 
-  test('supports creator checkout provider and returns checkout intent URL', async () => {
+  test('supports creator checkout provider through creator alias and forwards creator source into checkout intent', async () => {
     process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'creator';
     process.env.LOOK_REPLICATOR_CHECKOUT_UI_BASE_URL = 'https://agent.pivota.cc';
     axios.post.mockResolvedValueOnce({
@@ -178,7 +178,7 @@ describe('look replicator checkout_sessions compatibility', () => {
     });
 
     const res = await request(server)
-      .post('/checkout-sessions')
+      .post('/creator-agent/checkout-sessions')
       .set(authHeaders())
       .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US' });
 
@@ -206,7 +206,7 @@ describe('look replicator checkout_sessions compatibility', () => {
       ],
       return_url: 'https://look-replicator.pivota.cc/result/abc?market=US',
       market: 'US',
-      source: 'look_replicator',
+      source: 'creator_agent',
     });
     expect(intentConfig.headers['X-API-Key']).toBe('test-api-key');
   });
@@ -242,7 +242,7 @@ describe('look replicator checkout_sessions compatibility', () => {
       expect.arrayContaining([
         expect.objectContaining({
           merchantId: 'm1',
-          stage: 'checkout_intent',
+          stage: 'creator_checkout_intent',
           status: 502,
         }),
       ]),

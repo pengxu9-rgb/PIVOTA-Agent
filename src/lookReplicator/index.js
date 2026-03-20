@@ -77,6 +77,17 @@ function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extra
   }
 }
 
+const CREATOR_CHECKOUT_SESSION_PATHS = [
+  '/checkout-sessions',
+  '/api/checkout-sessions',
+  '/checkout_sessions',
+  '/api/checkout_sessions',
+  '/creator-agent/checkout-sessions',
+  '/api/creator-agent/checkout-sessions',
+  '/creator_agent/checkout_sessions',
+  '/api/creator_agent/checkout_sessions',
+];
+
 function truncateText(value, maxLen) {
   const s = String(value || '');
   if (!maxLen || maxLen <= 0) return s;
@@ -1225,13 +1236,16 @@ function mountLookReplicatorRoutes(app, { logger }) {
     }
   });
 
-  // Checkout sessions (US-only): compatibility endpoint for look-replicate-share.
+  // Creator checkout sessions (US-only): server-to-server compatibility endpoint for
+  // creator cart -> checkout. Historically this lived only under the lookReplicator
+  // module, but the actual flow is creator checkout, not "look replicate" specific.
+  //
   // Supports both:
   // - "legacy" body: { market, locale, items:[{skuId, qty}], returnUrl }
   // - ACP body: { items:[{id, quantity}], buyer?, fulfillment_address? }
   //
   // We return { checkoutUrl } suitable for redirecting the user to checkout.
-  app.post(['/checkout-sessions', '/api/checkout-sessions', '/checkout_sessions', '/api/checkout_sessions'], async (req, res) => {
+  app.post(CREATOR_CHECKOUT_SESSION_PATHS, async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set('Cache-Control', 'no-store');
 
@@ -1424,9 +1438,10 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 })
                 .filter(Boolean);
 
-              // Scheme v2 (recommended): let pivota-backend mint a short-lived checkout token.
-              // This avoids exposing agent API keys to clients and supports external agents
-              // that only have an agent API key (server-to-server).
+              // Creator cart checkout is still token-first, not order-first. The backend
+              // /agent/v2/payments/checkout-sessions route is order-scoped and internally
+              // adapts back into checkout intents, so creator cart traffic should mint the
+              // checkout intent directly here until the product flow becomes order-based.
               try {
                 const intent = await axiosPostWithRetry(
                   `${backendBaseUrl}/agent/v1/checkout/intents`,
@@ -1436,7 +1451,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                     ...(buyerRef ? { buyer_ref: buyerRef } : {}),
                     ...(jobId ? { job_id: jobId } : {}),
                     market,
-                    source: 'look_replicator',
+                    source: 'creator_agent',
                   },
                   {
                     timeout: 30_000,
@@ -1460,7 +1475,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 } else {
                   failures.push({
                     merchantId: mid,
-                    stage: 'checkout_intent',
+                    stage: 'creator_checkout_intent',
                     status: intent?.status || 502,
                     body: compactUpstreamBody(intent?.data),
                     message: 'Failed to mint checkout token',
@@ -1469,7 +1484,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
               } catch (err) {
                 failures.push({
                   merchantId: mid,
-                  stage: 'checkout_intent',
+                  stage: 'creator_checkout_intent',
                   status: 502,
                   body: null,
                   message: truncateText(err?.message || String(err), 400),
@@ -1484,7 +1499,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                   market,
                   provider: checkoutProvider,
                   entry: 'creator_agent',
-                  source: 'look_replicator',
+                  source: 'creator_agent',
                   ...(buyerRef ? { buyer_ref: buyerRef } : {}),
                   ...(jobId ? { job_id: jobId } : {}),
                 });
@@ -1623,7 +1638,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
         ...(failures.length ? { failures: failures.slice(0, 10) } : {}),
       });
     } catch (err) {
-      logger?.warn?.({ err: err?.message || String(err) }, 'checkout_sessions proxy failed');
+      logger?.warn?.({ err: err?.message || String(err) }, 'creator checkout_sessions proxy failed');
       return res.status(502).json({
         error: 'UPSTREAM_UNREACHABLE',
         message: 'Failed to create checkout session',
