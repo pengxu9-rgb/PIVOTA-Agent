@@ -7155,9 +7155,13 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       ? Math.floor(Number(search.offset))
       : (safePage - 1) * safeLimit,
   );
-  const targetStepFamily = normalizeRecoTargetStep(
+  const explicitTargetStepFamily = normalizeRecoTargetStep(
     metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
   );
+  const inferredTargetStepFamily = normalizeRecoTargetStep(
+    resolveRecoTargetStepIntent({ text: relevanceQueryText })?.resolved_target_step || '',
+  );
+  const targetStepFamily = explicitTargetStepFamily || inferredTargetStepFamily;
   const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
   const decisionMode = normalizeRecommendationDecisionMode(
     metadata?.decision_mode || search?.decision_mode || search?.decisionMode,
@@ -7708,9 +7712,13 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
   );
   const guidanceOnlyDiscovery =
     uiSurface === 'ingredient_plan_guidance_only' || decisionMode === 'guidance_only';
-  const targetStepFamily = normalizeRecoTargetStep(
+  const explicitTargetStepFamily = normalizeRecoTargetStep(
     metadata?.query_target_step_family || search?.target_step_family || search?.targetStepFamily,
   );
+  const inferredTargetStepFamily = normalizeRecoTargetStep(
+    resolveRecoTargetStepIntent({ text: relevanceQueryText })?.resolved_target_step || '',
+  );
+  const targetStepFamily = explicitTargetStepFamily || inferredTargetStepFamily;
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
 
   const recalled = await recallIngredientProducts({

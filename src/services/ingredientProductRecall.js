@@ -1,6 +1,11 @@
 const { query } = require('../db');
 const { kbQuery } = require('./pciKbClient');
 const { buildExternalSeedProduct } = require('./externalSeedProducts');
+const {
+  getRecoTargetFamilyRelation,
+  normalizeRecoTargetStep,
+  resolveRecoTargetStepIntent,
+} = require('../auroraBff/recoTargetStep');
 
 const DEFAULT_MARKET = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
   .trim()
@@ -228,6 +233,8 @@ function normalizeUrl(value) {
 
 function buildRecallCandidateText(product) {
   const row = product && typeof product === 'object' ? product : {};
+  const seedData = row.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
   return [
     row.title,
     row.name,
@@ -235,15 +242,32 @@ function buildRecallCandidateText(product) {
     row.brand,
     row.category,
     row.product_type,
-    row.url,
-    row.canonical_url,
-    row.destination_url,
-    row.seed_data && typeof row.seed_data === 'object' ? JSON.stringify(row.seed_data) : '',
+    row.description,
+    snapshot.title,
+    snapshot.description,
+    snapshot.category,
   ]
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+}
+
+function resolveRecallCandidateStep(product) {
+  const row = product && typeof product === 'object' ? product : {};
+  const direct =
+    normalizeRecoTargetStep(row.category) ||
+    normalizeRecoTargetStep(row.product_type) ||
+    normalizeRecoTargetStep(row.title) ||
+    normalizeRecoTargetStep(row.name);
+  if (direct) return direct;
+  const resolved = resolveRecoTargetStepIntent({
+    text: [row.title, row.name, row.category, row.product_type, row.description]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  });
+  return normalizeRecoTargetStep(resolved?.resolved_target_step || '');
 }
 
 function isBundleLikeRecallProduct(product) {
@@ -263,7 +287,17 @@ function scoreRecallProduct(
   const explicitHits = exactHits + aliasHits;
   if (explicitHits <= 0 && (!allowFamilyOnly || strongFamilyHits <= 0)) return null;
 
-  const family = normalizeText(targetStepFamily);
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const candidateStep = resolveRecallCandidateStep(product);
+  const familyRelation = normalizedTargetStepFamily
+    ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
+    : null;
+  if (normalizedTargetStepFamily) {
+    if (!candidateStep) return null;
+    if (familyRelation === 'incompatible_family') return null;
+  }
+
+  const family = normalizeText(normalizedTargetStepFamily || targetStepFamily);
   const category = normalizeText(product?.category || product?.product_type || '');
   const title = normalizeText(product?.title || product?.name || '');
   let score = Number(sourceRank || 0);
@@ -272,6 +306,8 @@ function scoreRecallProduct(
   score += strongFamilyHits * (explicitHits > 0 ? 6 : 12);
   score += familyHits * (explicitHits > 0 ? 3 : 2);
   if (family && (category.includes(family) || title.includes(family))) score += 8;
+  if (familyRelation === 'same_family') score += 12;
+  if (familyRelation === 'adjacent_family') score += 4;
   if (normalizeUrl(product?.url) || normalizeUrl(product?.canonical_url) || normalizeUrl(product?.destination_url)) {
     score += 3;
   }
@@ -284,6 +320,8 @@ function scoreRecallProduct(
     strong_family_hits: strongFamilyHits,
     explicit_hits: explicitHits,
     family_only: explicitHits <= 0,
+    candidate_step: candidateStep || null,
+    family_relation: familyRelation || null,
   };
 }
 
