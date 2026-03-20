@@ -422,7 +422,9 @@ function scoreRecallProduct(
     ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
     : null;
   if (normalizedTargetStepFamily) {
-    if (!candidateStep) return null;
+    if (!candidateStep) {
+      if (surfaceExplicitHits <= 0) return null;
+    }
     if (familyRelation === 'incompatible_family') return null;
     if (surfaceExplicitHits <= 0 && (kbExactHits + kbAliasHits) > 0 && familyRelation !== 'same_family') {
       return null;
