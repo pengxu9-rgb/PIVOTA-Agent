@@ -2857,6 +2857,104 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent search uses external-seed direct fallback before generic clarify when KB recall is empty', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 0,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 0,
+          family_fallback_attempted: true,
+          family_fallback_recovered: 0,
+          family_fallback_used: false,
+          recall_source_breakdown: {},
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+      })),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: 'seed_winona_panthenol',
+              external_product_id: 'ext_panthenol_1',
+              destination_url: 'https://winona.example.com/products/panthenol-serum',
+              canonical_url: 'https://winona.example.com/products/panthenol-serum',
+              domain: 'winona.example.com',
+              title: 'Winona Soothing Repair Serum with Panthenol',
+              image_url: 'https://winona.example.com/image.jpg',
+              price_amount: 29,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'Winona',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Winona Soothing Repair Serum with Panthenol',
+                  description: 'panthenol serum for soothing barrier repair support',
+                  brand: 'Winona',
+                  category: 'Serum',
+                  canonical_url: 'https://winona.example.com/products/panthenol-serum',
+                  destination_url: 'https://winona.example.com/products/panthenol-serum',
+                },
+              },
+            },
+          ],
+        };
+      }),
+    }));
+
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_run', merchant_id: 'm1', title: 'Should not run' }],
+      });
+
+    const app = require('../../src/server');
+    const {
+      recallIngredientProducts,
+      resolveIngredientRecallProfile,
+    } = require('../../src/services/ingredientProductRecall');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'panthenol repair serum',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
+    expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        title: 'Winona Soothing Repair Serum with Panthenol',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
+        ingredient_intent_detected: true,
+        ingredient_direct_fallback_used: true,
+        kb_recall_attempted: true,
+      }),
+    );
+  });
+
   test('non-ingredient shopping search keeps invoke path and skips ingredient direct recall', async () => {
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({

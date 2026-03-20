@@ -7734,7 +7734,69 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       ? recalled.diagnostics
       : {};
   const recalledProducts = Array.isArray(recalled?.products) ? recalled.products : [];
-  if (!recalledProducts.length) return null;
+  if (!recalledProducts.length) {
+    if (targetStepFamily) {
+      const externalSeedFallback = await searchExternalSeedOnlyProductsDirect({
+        search: {
+          ...search,
+          external_seed_only: true,
+          product_only: true,
+          allow_external_seed: true,
+          search_all_merchants: true,
+          target_step_family: targetStepFamily,
+          ui_surface: search?.ui_surface || search?.uiSurface || 'ingredient_plan_guidance_only',
+          decision_mode: search?.decision_mode || search?.decisionMode || 'guidance_only',
+          source_policy:
+            search?.source_policy || search?.sourcePolicy || 'internal_first_then_external_supplement',
+        },
+        metadata: {
+          ...(metadata && typeof metadata === 'object' ? metadata : {}),
+          query_target_step_family: targetStepFamily,
+          ui_surface:
+            metadata?.ui_surface || metadata?.uiSurface || 'ingredient_plan_guidance_only',
+          decision_mode:
+            metadata?.decision_mode || metadata?.decisionMode || 'guidance_only',
+        },
+      });
+      const fallbackProducts = Array.isArray(externalSeedFallback?.products)
+        ? externalSeedFallback.products
+        : [];
+      if (fallbackProducts.length) {
+        return {
+          ...externalSeedFallback,
+          metadata: {
+            ...(externalSeedFallback.metadata && typeof externalSeedFallback.metadata === 'object'
+              ? externalSeedFallback.metadata
+              : {}),
+            query_source: 'agent_products_ingredient_external_seed_direct_fallback',
+            ingredient_intent_detected:
+              diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
+            kb_recall_attempted: diagnostics.kb_recall_attempted === true,
+            kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),
+            attached_seed_recall_attempted: diagnostics.attached_seed_recall_attempted === true,
+            attached_seed_recall_recovered: Math.max(
+              0,
+              Number(diagnostics.attached_seed_recall_recovered || 0) || 0,
+            ),
+            family_fallback_attempted: diagnostics.family_fallback_attempted === true,
+            family_fallback_recovered: Math.max(
+              0,
+              Number(diagnostics.family_fallback_recovered || 0) || 0,
+            ),
+            family_fallback_used: diagnostics.family_fallback_used === true,
+            clarify_applied_after_kb_exhausted: false,
+            strict_empty_reason: null,
+            ingredient_recall_source_breakdown:
+              diagnostics.recall_source_breakdown && typeof diagnostics.recall_source_breakdown === 'object'
+                ? { ...diagnostics.recall_source_breakdown }
+                : {},
+            ingredient_direct_fallback_used: true,
+          },
+        };
+      }
+    }
+    return null;
+  }
 
   const pagedProducts = recalledProducts.slice(safeOffset, safeOffset + safeLimit);
   const responseProducts = guidanceOnlyDiscovery
