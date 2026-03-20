@@ -4870,6 +4870,154 @@ function normalizeSearchProductTitleForDedupe(product) {
   return normalizeSearchTextForMatch(title);
 }
 
+function buildIngredientIntentProductText(product) {
+  const row = product && typeof product === 'object' ? product : {};
+  const seedData = row.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
+  return [
+    row.title,
+    row.name,
+    row.display_name,
+    row.brand,
+    row.vendor,
+    row.category,
+    row.product_type,
+    row.description,
+    snapshot.title,
+    snapshot.description,
+    snapshot.category,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function countIngredientIntentPhraseMatches(text, phrases) {
+  const haystack = ` ${String(text || '').trim().toLowerCase()} `;
+  if (!haystack.trim()) return 0;
+  let hits = 0;
+  for (const phrase of Array.isArray(phrases) ? phrases : []) {
+    const normalized = normalizeSearchTextForMatch(String(phrase || '').trim());
+    if (!normalized) continue;
+    if (haystack.includes(` ${normalized} `)) hits += 1;
+  }
+  return hits;
+}
+
+function resolveIngredientIntentDisplayCandidateStep(product) {
+  const row = product && typeof product === 'object' ? product : {};
+  const direct =
+    normalizeRecoTargetStep(row.category) ||
+    normalizeRecoTargetStep(row.product_type) ||
+    normalizeRecoTargetStep(row.title) ||
+    normalizeRecoTargetStep(row.name);
+  if (direct) return direct;
+  const resolved = resolveRecoTargetStepIntent({
+    text: [row.title, row.name, row.category, row.product_type, row.description]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  });
+  return normalizeRecoTargetStep(resolved?.resolved_target_step || '');
+}
+
+function buildIngredientIntentDisplayDedupeKey(product, { targetStepFamily = '' } = {}) {
+  let titleKey = normalizeSearchProductTitleForDedupe(product);
+  if (!titleKey) return '';
+  if (normalizeRecoTargetStep(targetStepFamily) !== 'sunscreen') return titleKey;
+  titleKey = titleKey
+    .replace(/\brefill\b/g, ' ')
+    .replace(/\beu\b/g, ' ')
+    .replace(/\s+\d+\s*$/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return titleKey;
+}
+
+function stabilizeIngredientIntentDirectProducts(
+  products,
+  { recallProfile = null, targetStepFamily = '', queryText = '' } = {},
+) {
+  const list = Array.isArray(products) ? products : [];
+  if (!list.length) return [];
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const queryRequestsTinted = /\btinted\b/.test(normalizedQuery);
+  const queryRequestsRefill = /\brefill\b/.test(normalizedQuery);
+
+  let rows = list
+    .map((product, index) => {
+      const text = buildIngredientIntentProductText(product);
+      const exactHits = countIngredientIntentPhraseMatches(text, recallProfile?.exact_phrases);
+      const aliasHits = countIngredientIntentPhraseMatches(text, recallProfile?.alias_phrases);
+      const explicitHits = exactHits + aliasHits;
+      const candidateStep = resolveIngredientIntentDisplayCandidateStep(product);
+      const familyRelation = normalizedTargetStepFamily
+        ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
+        : null;
+      if (normalizedTargetStepFamily && candidateStep && familyRelation === 'incompatible_family') {
+        return null;
+      }
+
+      const titleText = normalizeSearchProductTitleForDedupe(product);
+      let score = 0;
+      if (familyRelation === 'same_family') score += 80;
+      else if (familyRelation === 'adjacent_family') score -= 20;
+      else if (normalizedTargetStepFamily && !candidateStep) score -= 8;
+      score += exactHits * 40;
+      score += aliasHits * 24;
+      if (
+        normalizedTargetStepFamily === 'sunscreen' &&
+        /\btinted\b/.test(titleText) &&
+        !queryRequestsTinted
+      ) score -= 18;
+      if (
+        normalizedTargetStepFamily === 'sunscreen' &&
+        /\brefill\b/.test(titleText) &&
+        !queryRequestsRefill
+      ) score -= 12;
+      if (/\b(concealer|foundation|brush|powder|spa|coupon)\b/.test(titleText)) score -= 40;
+
+      return {
+        product,
+        index,
+        score,
+        explicitHits,
+        exactHits,
+        aliasHits,
+        familyRelation,
+      };
+    })
+    .filter(Boolean);
+
+  if (!rows.length) return [];
+
+  const sameFamilyRows = rows.filter((row) => row.familyRelation === 'same_family');
+  if (sameFamilyRows.length) rows = sameFamilyRows;
+
+  const explicitRows = rows.filter((row) => row.explicitHits > 0);
+  if (explicitRows.length) rows = explicitRows;
+
+  rows.sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    if (right.exactHits !== left.exactHits) return right.exactHits - left.exactHits;
+    if (right.aliasHits !== left.aliasHits) return right.aliasHits - left.aliasHits;
+    return left.index - right.index;
+  });
+
+  return collapseNearDuplicateSearchProducts(
+    rows.map((row) => row.product),
+    {
+      perTitleLimit: 1,
+      dedupeKey: (product) =>
+        buildIngredientIntentDisplayDedupeKey(product, {
+          targetStepFamily: normalizedTargetStepFamily,
+        }),
+    },
+  );
+}
+
 function collapseNearDuplicateSearchProducts(products, options = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!list.length) return [];
@@ -7733,7 +7881,14 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     recalled?.diagnostics && typeof recalled.diagnostics === 'object' && !Array.isArray(recalled.diagnostics)
       ? recalled.diagnostics
       : {};
-  const recalledProducts = Array.isArray(recalled?.products) ? recalled.products : [];
+  const recalledProducts = stabilizeIngredientIntentDirectProducts(
+    Array.isArray(recalled?.products) ? recalled.products : [],
+    {
+      recallProfile,
+      targetStepFamily,
+      queryText: relevanceQueryText,
+    },
+  );
   if (!recalledProducts.length) {
     if (targetStepFamily) {
       const externalSeedFallback = await searchExternalSeedOnlyProductsDirect({
@@ -7758,9 +7913,14 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
             metadata?.decision_mode || metadata?.decisionMode || 'guidance_only',
         },
       });
-      const fallbackProducts = Array.isArray(externalSeedFallback?.products)
-        ? externalSeedFallback.products
-        : [];
+      const fallbackProducts = stabilizeIngredientIntentDirectProducts(
+        Array.isArray(externalSeedFallback?.products) ? externalSeedFallback.products : [],
+        {
+          recallProfile,
+          targetStepFamily,
+          queryText: relevanceQueryText,
+        },
+      );
       if (fallbackProducts.length) {
         return {
           ...externalSeedFallback,

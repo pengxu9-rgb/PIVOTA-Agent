@@ -2857,6 +2857,189 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent direct recall keeps same-family ceramide products and drops adjacent-family noise', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-direct-display-rerank-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'ceramide_moist_1',
+            merchant_id: 'external_seed',
+            title: 'Rose Ceramide Cream',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+            canonical_url: 'https://shop.example.com/products/rose-ceramide-cream',
+            destination_url: 'https://shop.example.com/products/rose-ceramide-cream',
+            url: 'https://shop.example.com/products/rose-ceramide-cream',
+          },
+          {
+            product_id: 'ceramide_moist_2',
+            merchant_id: 'external_seed',
+            title: 'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+            canonical_url: 'https://shop.example.com/products/apres-ceramides',
+            destination_url: 'https://shop.example.com/products/apres-ceramides',
+            url: 'https://shop.example.com/products/apres-ceramides',
+          },
+          {
+            product_id: 'ceramide_adjacent_1',
+            merchant_id: 'external_seed',
+            title: 'Overnight Retinol Oil',
+            description: 'retinol oil with ceramides',
+            category: 'oil',
+            product_type: 'oil',
+            canonical_url: 'https://shop.example.com/products/overnight-retinol-oil',
+            destination_url: 'https://shop.example.com/products/overnight-retinol-oil',
+            url: 'https://shop.example.com/products/overnight-retinol-oil',
+          },
+          {
+            product_id: 'ceramide_adjacent_2',
+            merchant_id: 'external_seed',
+            title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+            description: 'hydrating serum with ceramides',
+            category: 'serum',
+            product_type: 'serum',
+            canonical_url: 'https://shop.example.com/products/ha-b5-ceramides',
+            destination_url: 'https://shop.example.com/products/ha-b5-ceramides',
+            url: 'https://shop.example.com/products/ha-b5-ceramides',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 0,
+          unattached_seed_recall_attempted: true,
+          unattached_seed_recovered: 1,
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+            unattached_seed: 3,
+          },
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+        exact_phrases: ['ceramide np'],
+        alias_phrases: ['ceramide', 'ceramides'],
+        family_phrases: ['barrier', 'repair', 'moisturizer', 'cream'],
+      })),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'ceramide moisturizer',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'Rose Ceramide Cream',
+      'Après Skin Rich Rescue Barrier Moisturizer with Ceramides',
+    ]);
+  });
+
+  test('ingredient-intent direct recall collapses sunscreen refill and shade variants', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-direct-sunscreen-collapse-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'spf_shield',
+            merchant_id: 'external_seed',
+            title: 'On-the-Glow SHIELD SPF 50',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/spf-shield',
+            destination_url: 'https://shop.example.com/products/spf-shield',
+            url: 'https://shop.example.com/products/spf-shield',
+          },
+          {
+            product_id: 'spf_hydra_base',
+            merchant_id: 'external_seed',
+            title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/hydra-vizor',
+            destination_url: 'https://shop.example.com/products/hydra-vizor',
+            url: 'https://shop.example.com/products/hydra-vizor',
+          },
+          {
+            product_id: 'spf_hydra_refill',
+            merchant_id: 'external_seed',
+            title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/hydra-vizor-refill',
+            destination_url: 'https://shop.example.com/products/hydra-vizor-refill',
+            url: 'https://shop.example.com/products/hydra-vizor-refill',
+          },
+          {
+            product_id: 'spf_hydra_tint_1',
+            merchant_id: 'external_seed',
+            title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+            destination_url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+            url: 'https://shop.example.com/products/hydra-vizor-huez-1',
+          },
+          {
+            product_id: 'spf_hydra_tint_2',
+            merchant_id: 'external_seed',
+            title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            canonical_url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+            destination_url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+            url: 'https://shop.example.com/products/hydra-vizor-huez-2',
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 1,
+          unattached_seed_recall_attempted: true,
+          unattached_seed_recovered: 1,
+          recall_source_breakdown: {
+            kb_attached_seed: 1,
+            unattached_seed: 4,
+          },
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'sunscreen_filters',
+        ingredient_name: 'UV filters',
+        exact_phrases: ['uv filters', 'uv filter'],
+        alias_phrases: ['broad spectrum', 'sunscreen', 'spf', 'spf 50'],
+        family_phrases: ['daily face', 'sun protection'],
+      })),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'broad spectrum sunscreen',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'On-the-Glow SHIELD SPF 50',
+      'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+    ]);
+  });
+
   test('ingredient-intent search uses external-seed direct fallback before generic clarify when KB recall is empty', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
@@ -2951,6 +3134,136 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         ingredient_intent_detected: true,
         ingredient_direct_fallback_used: true,
         kb_recall_attempted: true,
+      }),
+    );
+  });
+
+  test('ingredient-intent external-seed fallback reranks panthenol alias evidence ahead of generic serum noise', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-rerank-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 0,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 0,
+          family_fallback_attempted: true,
+          family_fallback_recovered: 0,
+          family_fallback_used: false,
+          recall_source_breakdown: {},
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+        exact_phrases: ['panthenol'],
+        alias_phrases: ['vitamin b5', 'provitamin b5', 'dexpanthenol', 'b5'],
+        family_phrases: ['barrier', 'repair', 'soothing', 'hydrating', 'sensitive', 'serum'],
+      })),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: 'seed_generic_serum',
+              external_product_id: 'ext_generic_serum',
+              destination_url: 'https://patyka.example.com/products/fundamental-serum',
+              canonical_url: 'https://patyka.example.com/products/fundamental-serum',
+              domain: 'patyka.example.com',
+              title: 'Soothing & Barrier Support Serum',
+              image_url: 'https://patyka.example.com/image.jpg',
+              price_amount: 34,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'PATYKA',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Soothing & Barrier Support Serum',
+                  description: 'hydrating face serum',
+                  brand: 'PATYKA',
+                  category: 'Serum',
+                  canonical_url: 'https://patyka.example.com/products/fundamental-serum',
+                  destination_url: 'https://patyka.example.com/products/fundamental-serum',
+                },
+              },
+            },
+            {
+              id: 'seed_b5_1',
+              external_product_id: 'ext_b5_1',
+              destination_url: 'https://ordinary.example.com/products/ha-b5',
+              canonical_url: 'https://ordinary.example.com/products/ha-b5',
+              domain: 'ordinary.example.com',
+              title: 'Hyaluronic Acid 2% + B5 (Original Formulation)',
+              image_url: 'https://ordinary.example.com/image.jpg',
+              price_amount: 15,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Hyaluronic Acid 2% + B5 (Original Formulation)',
+                  description: 'hydrating serum with vitamin b5',
+                  brand: 'The Ordinary',
+                  category: 'Serum',
+                  canonical_url: 'https://ordinary.example.com/products/ha-b5',
+                  destination_url: 'https://ordinary.example.com/products/ha-b5',
+                },
+              },
+            },
+            {
+              id: 'seed_b5_2',
+              external_product_id: 'ext_b5_2',
+              destination_url: 'https://ordinary.example.com/products/amino-acids-b5',
+              canonical_url: 'https://ordinary.example.com/products/amino-acids-b5',
+              domain: 'ordinary.example.com',
+              title: 'Amino Acids + B5',
+              image_url: 'https://ordinary.example.com/image.jpg',
+              price_amount: 14,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Amino Acids + B5',
+                  description: 'lightweight serum with vitamin b5',
+                  brand: 'The Ordinary',
+                  category: 'Serum',
+                  canonical_url: 'https://ordinary.example.com/products/amino-acids-b5',
+                  destination_url: 'https://ordinary.example.com/products/amino-acids-b5',
+                },
+              },
+            },
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'panthenol repair serum',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.map((row) => row.title)).toEqual([
+      'Hyaluronic Acid 2% + B5 (Original Formulation)',
+      'Amino Acids + B5',
+    ]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
+        ingredient_direct_fallback_used: true,
       }),
     );
   });
