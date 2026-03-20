@@ -339,8 +339,8 @@ test('collectIngredientPlanFallbackQueriesForTarget uses discovery hints when ta
     });
 
     assert.deepEqual(queries, [
-      'panthenol serum',
-      'vitamin b5 serum',
+      'vitamin b5 repair serum',
+      'vitamin b5 soothing serum',
     ]);
   } finally {
     delete require.cache[moduleId];
@@ -408,8 +408,8 @@ test('collectIngredientPlanRecoveryQueryStagesForTarget keeps panthenol exact qu
     });
 
     assert.deepEqual(queryStages.ingredientSpecificQueries, [
-      'panthenol serum',
-      'vitamin b5 serum',
+      'vitamin b5 repair serum',
+      'vitamin b5 soothing serum',
     ]);
     assert.deepEqual(queryStages.familyFallbackQueries, [
       'barrier repair serum',
@@ -627,6 +627,62 @@ test('recoverPurchasableProductsFromQueries prefers ingredient-explicit products
     assert.deepEqual(
       out.products.map((row) => row.name),
       ['Ceramide Barrier Cream'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('recoverPurchasableProductsFromQueries allows panthenol query-guided exact recovery when product text lacks alias tokens', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['vitamin b5 repair serum'],
+      strictFilter: true,
+      fallbackCandidateBuilder: async ({ query }) => {
+        assert.equal(query, 'vitamin b5 repair serum');
+        return {
+          ok: true,
+          selected_source: 'catalog',
+          products: [
+            {
+              product_id: 'panthenol_query_guided_1',
+              merchant_id: 'catalog',
+              name: 'Winona Soothing Repair Serum',
+              brand: 'Winona',
+              category: 'serum',
+              product_type: 'serum',
+              tag_tokens: ['repair', 'soothing'],
+              pdp_url: 'https://agent.pivota.cc/products/panthenol_query_guided_1?merchant_id=catalog',
+              url: 'https://agent.pivota.cc/products/panthenol_query_guided_1?merchant_id=catalog',
+              source: 'catalog',
+            },
+            {
+              product_id: 'panthenol_query_guided_2',
+              merchant_id: 'catalog',
+              name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'serum',
+              product_type: 'serum',
+              tag_tokens: ['serum'],
+              pdp_url: 'https://agent.pivota.cc/products/panthenol_query_guided_2?merchant_id=catalog',
+              url: 'https://agent.pivota.cc/products/panthenol_query_guided_2?merchant_id=catalog',
+              source: 'catalog',
+            },
+          ],
+        };
+      },
+      target: {
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+      },
+      precisionMode: 'ingredient_specific',
+      maxProducts: 3,
+    });
+
+    assert.deepEqual(
+      (out.products || []).map((row) => row && row.name),
+      ['Winona Soothing Repair Serum'],
     );
   } finally {
     delete require.cache[moduleId];
@@ -895,7 +951,7 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
               ],
             };
           }
-          if (/soothing serum|hydrating serum|barrier repair serum/i.test(String(query || ''))) {
+          if (/^(soothing serum|hydrating serum|barrier repair serum)$/i.test(String(query || ''))) {
             return {
               ok: true,
               selected_source: 'catalog',
@@ -942,8 +998,8 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
     assert.equal(out.lookup_meta.ingredient_plan_recovery_precision_mode, 'ingredient_first_then_family_fallback');
     assert.equal(out.lookup_meta.ingredient_plan_exact_match_target_count, 1);
     assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 1);
-    assert.equal(fallbackCalls.includes('panthenol serum'), true);
-    assert.equal(fallbackCalls.includes('vitamin b5 serum'), true);
+    assert.equal(fallbackCalls.includes('vitamin b5 repair serum'), true);
+    assert.equal(fallbackCalls.includes('vitamin b5 soothing serum'), true);
     assert.equal(fallbackCalls.includes('soothing serum') || fallbackCalls.includes('hydrating serum'), true);
   } finally {
     delete require.cache[moduleId];

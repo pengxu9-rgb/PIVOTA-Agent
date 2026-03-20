@@ -116,8 +116,8 @@ const INGREDIENT_DISCOVERY_HINTS = Object.freeze({
     target_step_family: 'serum',
     semantic_family: 'serum',
     steps: [
-      ['panthenol serum', 'strong_goal_family'],
-      ['vitamin b5 serum', 'strong_goal_family'],
+      ['vitamin b5 repair serum', 'strong_goal_family'],
+      ['vitamin b5 soothing serum', 'strong_goal_family'],
       ['barrier repair serum', 'supportive_family'],
       ['soothing serum', 'supportive_family'],
       ['hydrating serum', 'generic_family'],

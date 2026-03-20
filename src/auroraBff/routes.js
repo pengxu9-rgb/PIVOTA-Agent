@@ -31399,6 +31399,12 @@ function buildIngredientRecoveryEvidence(candidate, target) {
   };
 }
 
+function buildIngredientRecoveryQueryEvidence(query, target) {
+  const normalizedQuery = normalizeHumanReadableFallbackQuery(query);
+  if (!normalizedQuery) return null;
+  return buildIngredientRecoveryEvidence({ name: normalizedQuery }, target);
+}
+
 function isBundleLikePurchasableRecoveryCandidate(candidate) {
   return PURCHASE_RECOVERY_BUNDLE_LIKE_RE.test(buildPurchasableRecoveryCandidateText(candidate));
 }
@@ -31421,6 +31427,8 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
   if (rows.length <= 1) return rows.slice();
   const queryTokens = tokenizePurchasableRecoveryQuery(query);
   const normalizedPrecisionMode = String(precisionMode || 'query_overlap').trim().toLowerCase();
+  const targetId = resolveIngredientRecoveryTargetId(target);
+  const queryEvidence = buildIngredientRecoveryQueryEvidence(query, target);
   const scored = rows.map((row, index) => {
     const text = buildPurchasableRecoveryCandidateText(row);
     const bundleLike = isBundleLikePurchasableRecoveryCandidate(row);
@@ -31454,8 +31462,20 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
 
   if (precisionAware && normalizedPrecisionMode === 'ingredient_specific') {
     const explicitRows = filtered.filter((row) => Number(row.evidence?.explicit_count || 0) > 0);
-    if (!explicitRows.length) return [];
-    filtered = explicitRows;
+    if (explicitRows.length) {
+      filtered = explicitRows;
+    } else {
+      const allowQueryGuidedSpecific =
+        targetId === 'panthenol' &&
+        Number(queryEvidence?.explicit_count || 0) > 0;
+      if (!allowQueryGuidedSpecific) return [];
+      const queryGuidedRows = filtered.filter((row) => {
+        const familyCount = Number(row.evidence?.family_count || 0);
+        return row.focusedSingle === true && row.overlap >= 2 && familyCount >= 1;
+      });
+      if (!queryGuidedRows.length) return [];
+      filtered = queryGuidedRows;
+    }
   } else if (precisionAware && normalizedPrecisionMode === 'family_fallback') {
     const supportedRows = filtered.filter((row) => Number(row.evidence?.total_count || 0) > 0);
     if (supportedRows.length) filtered = supportedRows;
