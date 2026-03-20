@@ -12,6 +12,21 @@ function loadRouteInternals() {
   return { moduleId, __internal };
 }
 
+const CANONICAL_INGREDIENT_QUERY_STAGE_EXPECTATIONS = Object.freeze([
+  ['ceramide_np', 'Ceramide NP', ['ceramide barrier moisturizer', 'ceramide moisturizer'], ['barrier repair moisturizer', 'sensitive skin moisturizer']],
+  ['panthenol', 'Panthenol (B5)', ['panthenol repair serum', 'provitamin b5 repair serum'], ['barrier repair serum', 'soothing serum']],
+  ['niacinamide', 'Niacinamide', ['niacinamide serum', 'vitamin b3 serum'], ['balancing serum', 'daily treatment serum']],
+  ['zinc_pca', 'Zinc PCA', ['zinc pca serum', 'zinc serum'], ['balancing serum', 'daily treatment serum']],
+  ['salicylic_acid', 'Salicylic acid (BHA)', ['salicylic acid serum', 'bha lotion'], ['blemish treatment serum', 'daily treatment serum']],
+  ['azelaic_acid', 'Azelaic acid', ['azelaic acid cream', 'azelaic cream'], ['soothing treatment cream', 'daily treatment cream']],
+  ['ascorbic_acid', 'Vitamin C (Ascorbic acid)', ['ascorbic acid serum', 'vitamin c serum'], ['brightening serum', 'daily antioxidant serum']],
+  ['retinol', 'Retinol', ['retinol emulsion', 'night retinol emulsion'], ['retinoid night treatment', 'night treatment emulsion']],
+  ['benzoyl_peroxide', 'Benzoyl peroxide', ['benzoyl peroxide gel', 'bpo spot gel'], ['blemish spot treatment', 'acne spot treatment']],
+  ['sunscreen_filters', 'UV filters', ['broad spectrum sunscreen', 'spf 50 sunscreen'], ['daily face sunscreen']],
+  ['glycerin', 'Glycerin', ['glycerin moisturizer', 'glycerine cream'], ['hydrating moisturizer', 'sensitive skin moisturizer']],
+  ['hyaluronic_acid', 'Hyaluronic acid', ['hyaluronic acid serum', 'sodium hyaluronate serum'], ['hydrating serum', 'soothing serum']],
+]);
+
 test('applyProductIntelGuardrailsToEnvelope uses lightweight ingredient-plan guardrail after degraded report stage', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -213,6 +228,7 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       {
         strictFilter: true,
         ingredientPlanGuardrailMode: 'lightweight',
+        allowExternalSeedSupplement: true,
         fallbackCandidateBuilder: async ({ query, externalSeedStrategy }) => {
           fallbackCalls.push({ query, externalSeedStrategy });
           if (!/ceramide/i.test(String(query || ''))) {
@@ -262,7 +278,7 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       true,
     );
     assert.equal(
-      fallbackCalls.some((row) => /barrier repair ceramide moisturizer/i.test(String(row.query || ''))),
+      fallbackCalls.some((row) => /ceramide moisturizer/i.test(String(row.query || ''))),
       true,
     );
     assert.equal(
@@ -270,11 +286,19 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       false,
     );
     assert.equal(
-      fallbackCalls.some((row) => row.externalSeedStrategy === 'on_empty_only'),
-      false,
+      fallbackCalls.some(
+        (row) =>
+          /ceramide barrier moisturizer|ceramide moisturizer/i.test(String(row.query || ''))
+          && row.externalSeedStrategy === 'on_empty_only',
+      ),
+      true,
     );
     assert.equal(
-      fallbackCalls.every((row) => row.externalSeedStrategy === 'supplement_internal_first'),
+      fallbackCalls.some(
+        (row) =>
+          /broad spectrum sunscreen|spf 50 sunscreen|daily face sunscreen/i.test(String(row.query || ''))
+          && row.externalSeedStrategy === 'supplement_internal_first',
+      ),
       true,
     );
   } finally {
@@ -379,7 +403,7 @@ test('collectIngredientPlanRecoveryQueryStagesForTarget keeps ceramide exact que
 
     assert.deepEqual(queryStages.ingredientSpecificQueries, [
       'ceramide barrier moisturizer',
-      'barrier repair ceramide moisturizer',
+      'ceramide moisturizer',
     ]);
     assert.deepEqual(queryStages.familyFallbackQueries, [
       'barrier repair moisturizer',
@@ -415,6 +439,37 @@ test('collectIngredientPlanRecoveryQueryStagesForTarget keeps panthenol exact qu
       'barrier repair serum',
       'soothing serum',
     ]);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectIngredientPlanRecoveryQueryStagesForTarget keeps exact -> alias -> family ordering across canonical ingredient set', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    for (const [ingredientId, ingredientName, expectedSpecificQueries, expectedFamilyQueries] of CANONICAL_INGREDIENT_QUERY_STAGE_EXPECTATIONS) {
+      const queryStages = __internal.collectIngredientPlanRecoveryQueryStagesForTarget({
+        payload: {},
+        target: {
+          ingredient_id: ingredientId,
+          ingredient_name: ingredientName,
+          products: { competitors: [], dupes: [] },
+        },
+        maxQueries: 2,
+        mode: 'lightweight',
+      });
+
+      assert.deepEqual(
+        queryStages.ingredientSpecificQueries,
+        expectedSpecificQueries,
+        `${ingredientId} specific query stage order changed`,
+      );
+      assert.deepEqual(
+        queryStages.familyFallbackQueries,
+        expectedFamilyQueries,
+        `${ingredientId} family fallback query stage order changed`,
+      );
+    }
   } finally {
     delete require.cache[moduleId];
   }
@@ -689,6 +744,97 @@ test('recoverPurchasableProductsFromQueries allows panthenol query-guided exact 
   }
 });
 
+test('recoverPurchasableProductsFromQueries keeps niacinamide and zinc targets ingredient-specific instead of generic balancing serum matches', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const niacinamideOut = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['niacinamide serum'],
+      strictFilter: true,
+      target: {
+        ingredient_id: 'niacinamide',
+        ingredient_name: 'Niacinamide',
+      },
+      precisionMode: 'ingredient_specific',
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        selected_source: 'catalog',
+        products: [
+          {
+            product_id: 'niacinamide_explicit_1',
+            merchant_id: 'catalog',
+            name: 'Balance Niacinamide Gel',
+            brand: 'Aurora Lab',
+            category: 'serum',
+            product_type: 'serum',
+            tag_tokens: ['niacinamide', 'balancing'],
+            pdp_url: 'https://agent.pivota.cc/products/niacinamide_explicit_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/niacinamide_explicit_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+          {
+            product_id: 'niacinamide_generic_1',
+            merchant_id: 'catalog',
+            name: 'Balancing Daily Serum',
+            brand: 'Calm Lab',
+            category: 'serum',
+            product_type: 'serum',
+            tag_tokens: ['balancing', 'serum'],
+            pdp_url: 'https://agent.pivota.cc/products/niacinamide_generic_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/niacinamide_generic_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+        ],
+      }),
+      maxProducts: 2,
+    });
+    assert.deepEqual(niacinamideOut.products.map((row) => row.name), ['Balance Niacinamide Gel']);
+
+    const zincOut = await __internal.recoverPurchasableProductsFromQueries({
+      queries: ['zinc pca serum'],
+      strictFilter: true,
+      target: {
+        ingredient_id: 'zinc_pca',
+        ingredient_name: 'Zinc PCA',
+      },
+      precisionMode: 'ingredient_specific',
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        selected_source: 'catalog',
+        products: [
+          {
+            product_id: 'zinc_explicit_1',
+            merchant_id: 'catalog',
+            name: 'Oil Control Zinc Serum',
+            brand: 'Aurora Lab',
+            category: 'serum',
+            product_type: 'serum',
+            tag_tokens: ['zinc', 'oil control'],
+            pdp_url: 'https://agent.pivota.cc/products/zinc_explicit_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/zinc_explicit_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+          {
+            product_id: 'zinc_generic_1',
+            merchant_id: 'catalog',
+            name: 'Balancing Daily Serum',
+            brand: 'Calm Lab',
+            category: 'serum',
+            product_type: 'serum',
+            tag_tokens: ['balancing', 'serum'],
+            pdp_url: 'https://agent.pivota.cc/products/zinc_generic_1?merchant_id=catalog',
+            url: 'https://agent.pivota.cc/products/zinc_generic_1?merchant_id=catalog',
+            source: 'catalog',
+          },
+        ],
+      }),
+      maxProducts: 2,
+    });
+    assert.deepEqual(zincOut.products.map((row) => row.name), ['Oil Control Zinc Serum']);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('buildPurchasableFallbackCandidates ranks external-seed supplement results before returning them', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -733,6 +879,49 @@ test('buildPurchasableFallbackCandidates ranks external-seed supplement results 
       out.products.map((row) => row.name),
       ['UV Filters SPF 45 Serum'],
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('buildPurchasableFallbackCandidates retries external seed only after internal empty when strategy is on_empty_only', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const calls = [];
+    const out = await __internal.buildPurchasableFallbackCandidates({
+      query: 'hyaluronic acid serum',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'on_empty_only',
+      searchFn: async ({ allowExternalSeed }) => {
+        calls.push(allowExternalSeed === true ? 'external_seed' : 'catalog');
+        if (allowExternalSeed === true) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'ha_ext_1',
+                merchant_id: 'external_seed',
+                name: 'Hydra Bounce HA Serum',
+                brand: 'Aurora Lab',
+                category: 'serum',
+                product_type: 'serum',
+                pdp_url: 'https://agent.pivota.cc/products/ha_ext_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/ha_ext_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+            ],
+            reason: null,
+          };
+        }
+        return { ok: true, products: [], reason: 'empty' };
+      },
+    });
+
+    assert.deepEqual(calls, ['catalog', 'external_seed']);
+    assert.equal(out.selected_source, 'external_seed');
+    assert.equal(out.stages.catalog.products.length, 0);
+    assert.equal(out.stages.external_seed.products.length, 1);
+    assert.deepEqual(out.products.map((row) => row.name), ['Hydra Bounce HA Serum']);
   } finally {
     delete require.cache[moduleId];
   }
@@ -987,8 +1176,23 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
     assert.equal(panthenolTarget?.products?.competitors?.[0]?.name, 'Soothing Recovery Serum');
     assert.equal(
       Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'ingredient_exact_query_empty'),
+      true,
+    );
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'ingredient_alias_query_empty'),
+      true,
+    );
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
         panthenolTarget.field_missing.some((row) => row && row.reason === 'ingredient_specific_recovery_empty'),
       true,
+    );
+    assert.equal(
+      Array.isArray(panthenolTarget?.field_missing) &&
+        panthenolTarget.field_missing.some((row) => row && row.reason === 'ingredient_exact_query_empty_external_seed_retry_used'),
+      false,
     );
     assert.equal(
       Array.isArray(panthenolTarget?.field_missing) &&
@@ -996,11 +1200,99 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
       true,
     );
     assert.equal(out.lookup_meta.ingredient_plan_recovery_precision_mode, 'ingredient_first_then_family_fallback');
+    assert.equal(out.lookup_meta.ingredient_recovery_query_policy_version, 'exact_alias_family_v1');
     assert.equal(out.lookup_meta.ingredient_plan_exact_match_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_exact_query_zero_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_alias_query_zero_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_external_seed_recovery_target_count, 0);
     assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 1);
     assert.equal(fallbackCalls.includes('panthenol repair serum'), true);
     assert.equal(fallbackCalls.includes('provitamin b5 repair serum'), true);
     assert.equal(fallbackCalls.includes('soothing serum') || fallbackCalls.includes('hydrating serum'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('sanitizeRecoCandidatesForUi records exact-query external seed recovery before family fallback', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.sanitizeRecoCandidatesForUi(
+      [
+        {
+          card_id: 'plan_exact_external_seed_recovery',
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                ingredient_id: 'hyaluronic_acid',
+                ingredient_name: 'Hyaluronic acid',
+                products: { competitors: [], dupes: [] },
+              },
+            ],
+          },
+        },
+      ],
+      {
+        strictFilter: true,
+        ingredientPlanGuardrailMode: 'lightweight',
+        allowExternalSeedSupplement: true,
+        fallbackCandidateBuilder: ({ query, allowExternalSeed, externalSeedStrategy }) =>
+          __internal.buildPurchasableFallbackCandidates({
+            query,
+            allowExternalSeed,
+            externalSeedStrategy,
+            searchFn: async ({ allowExternalSeed: stageAllowExternalSeed }) => {
+              if (stageAllowExternalSeed === true) {
+                return {
+                  ok: true,
+                  products: [
+                    {
+                      product_id: 'ha_ext_1',
+                      merchant_id: 'external_seed',
+                      name: 'Hydra Bounce HA Serum',
+                      brand: 'Aurora Lab',
+                      category: 'serum',
+                      product_type: 'serum',
+                      tag_tokens: ['sodium hyaluronate', 'hydrating'],
+                      pdp_url: 'https://agent.pivota.cc/products/ha_ext_1?merchant_id=external_seed',
+                      url: 'https://agent.pivota.cc/products/ha_ext_1?merchant_id=external_seed',
+                      source: 'external_seed',
+                    },
+                  ],
+                  reason: null,
+                };
+              }
+              return {
+                ok: true,
+                products: [],
+                reason: 'empty',
+              };
+            },
+          }),
+      },
+    );
+
+    const planCard = Array.isArray(out.cards)
+      ? out.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const target = Array.isArray(planCard?.payload?.targets) ? planCard.payload.targets[0] : null;
+    assert.equal(target?.products?.competitors?.[0]?.name, 'Hydra Bounce HA Serum');
+    assert.equal(
+      Array.isArray(target?.field_missing) &&
+        target.field_missing.some((row) => row && row.reason === 'ingredient_exact_query_empty_external_seed_retry_used'),
+      true,
+    );
+    assert.equal(
+      Array.isArray(target?.field_missing) &&
+        target.field_missing.some((row) => row && row.reason === 'family_fallback_used'),
+      false,
+    );
+    assert.equal(out.lookup_meta.ingredient_plan_exact_match_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 0);
+    assert.equal(out.lookup_meta.ingredient_external_seed_recovery_target_count, 1);
   } finally {
     delete require.cache[moduleId];
   }
