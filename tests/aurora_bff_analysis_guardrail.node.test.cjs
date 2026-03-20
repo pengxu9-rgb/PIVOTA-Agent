@@ -263,7 +263,7 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
     );
     assert.equal(
       fallbackCalls.some((row) => /barrier repair ceramide moisturizer/i.test(String(row.query || ''))),
-      false,
+      true,
     );
     assert.equal(
       fallbackCalls.some((row) => /prefer moisturizer or barrier serum forms/i.test(String(row.query || ''))),
@@ -277,6 +277,110 @@ test('sanitizeRecoCandidatesForUi keeps lightweight ingredient plan but still re
       fallbackCalls.every((row) => row.externalSeedStrategy === 'supplement_internal_first'),
       true,
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectIngredientPlanFallbackQueriesForTarget deprioritizes low-signal ingredient queries in lightweight mode', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const queries = __internal.collectIngredientPlanFallbackQueriesForTarget({
+      payload: {
+        __missing_catalog_queries: [
+          {
+            ingredient_id: 'sunscreen_filters',
+            ingredient_name: 'UV filters',
+            query: 'UV filters skincare product best',
+            target_step_family: 'sunscreen',
+            query_ladder_steps: [
+              { query: 'broad spectrum sunscreen' },
+              { query: 'spf 50 sunscreen' },
+            ],
+          },
+        ],
+      },
+      target: {
+        ingredient_id: 'sunscreen_filters',
+        ingredient_name: 'UV filters',
+        usage_guidance: [
+          'Daily AM final step',
+          'Reapply when sun exposure is extended',
+        ],
+      },
+      maxQueries: 2,
+      mode: 'lightweight',
+    });
+
+    assert.deepEqual(queries, [
+      'broad spectrum sunscreen',
+      'spf 50 sunscreen',
+    ]);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectIngredientPlanFallbackQueriesForTarget uses discovery hints when target has no missing-catalog query', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const queries = __internal.collectIngredientPlanFallbackQueriesForTarget({
+      payload: {},
+      target: {
+        ingredient_id: 'panthenol',
+        ingredient_name: 'Panthenol (B5)',
+        usage_guidance: [
+          'AM/PM soothing support',
+          'Use after cleansing on damp skin',
+        ],
+      },
+      maxQueries: 2,
+      mode: 'lightweight',
+    });
+
+    assert.deepEqual(queries, [
+      'panthenol serum',
+      'soothing serum',
+    ]);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectIngredientPlanFallbackQueriesForTarget adds barrier-serum rescue query for ceramide barrier support targets', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const queries = __internal.collectIngredientPlanFallbackQueriesForTarget({
+      payload: {
+        __missing_catalog_queries: [
+          {
+            ingredient_id: 'ceramide_np',
+            ingredient_name: 'Ceramide NP',
+            query: 'Ceramide NP skincare product best',
+            target_step_family: 'moisturizer',
+            query_ladder_steps: [
+              { query: 'ceramide barrier moisturizer' },
+              { query: 'barrier repair ceramide moisturizer' },
+            ],
+          },
+        ],
+      },
+      target: {
+        ingredient_id: 'ceramide_np',
+        ingredient_name: 'Ceramide NP',
+        usage_guidance: [
+          'AM/PM as barrier support',
+          'Prefer moisturizer or barrier serum forms',
+        ],
+      },
+      maxQueries: 2,
+      mode: 'lightweight',
+    });
+
+    assert.deepEqual(queries, [
+      'ceramide barrier moisturizer',
+      'barrier repair serum',
+    ]);
   } finally {
     delete require.cache[moduleId];
   }

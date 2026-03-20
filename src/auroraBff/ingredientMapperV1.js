@@ -1805,6 +1805,7 @@ module.exports = {
   MEDIUM_CONFIDENCE_THRESHOLD,
   INGREDIENT_RULES,
   computeArtifactOverallConfidence,
+  buildIngredientDiscoveryHint,
   buildIngredientPlan,
   buildIngredientPlanV2,
   upgradeIngredientPlanToV2,

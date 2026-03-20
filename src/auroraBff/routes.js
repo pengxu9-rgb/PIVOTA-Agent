@@ -522,6 +522,7 @@ const {
 const {
   LOW_CONFIDENCE_THRESHOLD,
   buildIngredientPlan,
+  buildIngredientDiscoveryHint,
   upgradeIngredientPlanToV2,
 } = require('./ingredientMapperV1');
 const {
@@ -31417,6 +31418,61 @@ function normalizeHumanReadableFallbackQuery(value) {
   return normalized;
 }
 
+function isLowSignalIngredientFallbackQuery(query, ingredientName = '') {
+  const normalizedQuery = normalizeHumanReadableFallbackQuery(query).toLowerCase();
+  if (!normalizedQuery) return false;
+  const normalizedIngredient = normalizeHumanReadableFallbackQuery(ingredientName).toLowerCase();
+  if (!normalizedIngredient) return false;
+  if (normalizedQuery === normalizedIngredient) return true;
+  if (
+    normalizedQuery === `${normalizedIngredient} skincare`
+    || normalizedQuery === `${normalizedIngredient} skincare product`
+    || normalizedQuery === `${normalizedIngredient} skincare product best`
+  ) {
+    return true;
+  }
+  return (
+    normalizedQuery.startsWith(`${normalizedIngredient} `)
+    && /\b(skincare|product|products|best)\b/i.test(normalizedQuery)
+  );
+}
+
+function collectLightweightIngredientRescueQueries({
+  target = null,
+  targetStepFamily = '',
+} = {}) {
+  const out = [];
+  const seen = new Set();
+  const pushQuery = (value) => {
+    const normalized = normalizeHumanReadableFallbackQuery(value);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(normalized);
+  };
+
+  const targetObj = isPlainObject(target) ? target : {};
+  const guidanceText = (Array.isArray(targetObj.usage_guidance) ? targetObj.usage_guidance : [])
+    .map((row) => String(row || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const normalizedStepFamily = String(targetStepFamily || '').trim().toLowerCase();
+
+  if (normalizedStepFamily === 'sunscreen') {
+    pushQuery('spf 50 sunscreen');
+  }
+  if (guidanceText.includes('barrier serum')) {
+    pushQuery('barrier repair serum');
+  }
+  if (guidanceText.includes('soothing support')) {
+    pushQuery('soothing serum');
+  }
+
+  return out;
+}
+
 function isTransientPurchasableFallbackReason(reason) {
   const token = String(reason || '').trim().toLowerCase();
   return (
@@ -31521,10 +31577,71 @@ function collectIngredientPlanFallbackQueriesForTarget({
 
   if (normalizedMode === 'lightweight') {
     const cappedMaxQueries = Math.max(1, Math.min(2, Number(maxQueries) || AURORA_PURCHASABLE_FALLBACK_MAX_RECOVERY_QUERIES));
+    const deferredLowSignalQueries = [];
+    const weightedStepQueries = [];
+    const stepSeen = new Set();
+    const ingredientDiscoveryHint = buildIngredientDiscoveryHint(
+      pickFirstString(targetObj.ingredient_id, targetObj.ingredientId),
+      {
+        ingredientName,
+        fallbackQuery: ingredientName ? `${ingredientName} skincare product` : '',
+      },
+    );
+    const pushWeightedStepQuery = (value) => {
+      const normalized = normalizeHumanReadableFallbackQuery(value);
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (stepSeen.has(key)) return;
+      stepSeen.add(key);
+      weightedStepQueries.push(normalized);
+    };
+
     for (const item of matchedMissingCatalogQueries) {
-      pushQuery(pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName));
-      if (queries.length >= cappedMaxQueries) break;
+      const rawQuery = pickFirstString(item.query, item.search_title, item.ingredient_name, item.ingredientName);
+      if (rawQuery) {
+        if (isLowSignalIngredientFallbackQuery(rawQuery, ingredientName)) deferredLowSignalQueries.push(rawQuery);
+        else pushQuery(rawQuery);
+      }
+      const ladderSteps = Array.isArray(item.query_ladder_steps)
+        ? item.query_ladder_steps
+        : Array.isArray(item.query_ladder)
+          ? item.query_ladder
+          : [];
+      for (const step of ladderSteps) {
+        if (!isPlainObject(step)) continue;
+        pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
+      }
     }
+
+    const discoveryHintSteps = Array.isArray(ingredientDiscoveryHint?.query_ladder_steps)
+      ? ingredientDiscoveryHint.query_ladder_steps
+      : [];
+    for (const step of discoveryHintSteps) {
+      if (!isPlainObject(step)) continue;
+      pushWeightedStepQuery(pickFirstString(step.query, step.search_title));
+    }
+
+    const derivedStepFamily = pickFirstString(
+      matchedMissingCatalogQueries[0]?.target_step_family,
+      ingredientDiscoveryHint?.target_step_family,
+    );
+    const rescueQueries = collectLightweightIngredientRescueQueries({
+      target: targetObj,
+      targetStepFamily: derivedStepFamily,
+    });
+
+    if (weightedStepQueries.length) {
+      pushQuery(weightedStepQueries[0]);
+      for (const rescueQuery of rescueQueries) {
+        if (queries.length >= cappedMaxQueries) break;
+        pushQuery(rescueQuery);
+      }
+      for (const stepQuery of weightedStepQueries.slice(1)) {
+        if (queries.length >= cappedMaxQueries) break;
+        pushQuery(stepQuery);
+      }
+    }
+
     if (queries.length < cappedMaxQueries) {
       const exampleDiscoveryItems = Array.isArray(targetObj.example_product_discovery_items)
         ? targetObj.example_product_discovery_items
@@ -31532,6 +31649,12 @@ function collectIngredientPlanFallbackQueriesForTarget({
       for (const item of exampleDiscoveryItems) {
         if (!isPlainObject(item)) continue;
         pushQuery(pickFirstString(item.query, item.title, item.search_title, item.ingredient_name, item.ingredientName));
+        if (queries.length >= cappedMaxQueries) break;
+      }
+    }
+    if (queries.length < cappedMaxQueries) {
+      for (const rawQuery of deferredLowSignalQueries) {
+        pushQuery(rawQuery);
         if (queries.length >= cappedMaxQueries) break;
       }
     }
@@ -67606,6 +67729,7 @@ const __internal = {
   coerceRecoItemForUi,
   sanitizeRecoCandidatesForUi,
   collectPurchasableFallbackQueries,
+  collectIngredientPlanFallbackQueriesForTarget,
   buildPurchasableFallbackCandidates,
   buildProductLookupLlmFallbackPrompt,
   recoverPurchasableProductsFromQueries,
