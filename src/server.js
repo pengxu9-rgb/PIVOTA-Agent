@@ -7922,8 +7922,16 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
         },
       );
       if (fallbackProducts.length) {
+        const pagedFallbackProducts = fallbackProducts.slice(safeOffset, safeOffset + safeLimit);
+        const responseFallbackProducts = guidanceOnlyDiscovery
+          ? pagedFallbackProducts.map((product) => normalizeGuidanceDiscoveryProductPdpContract(product))
+          : pagedFallbackProducts;
         return {
           ...externalSeedFallback,
+          products: responseFallbackProducts,
+          total: fallbackProducts.length,
+          page: safePage,
+          page_size: responseFallbackProducts.length,
           metadata: {
             ...(externalSeedFallback.metadata && typeof externalSeedFallback.metadata === 'object'
               ? externalSeedFallback.metadata
@@ -7951,6 +7959,8 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
                 ? { ...diagnostics.recall_source_breakdown }
                 : {},
             ingredient_direct_fallback_used: true,
+            products_returned_count: responseFallbackProducts.length,
+            external_seed_returned_count: responseFallbackProducts.length,
           },
         };
       }

@@ -3268,6 +3268,145 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent external-seed fallback returns stabilized sunscreen products instead of raw variant rows', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-sunscreen-stabilize-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          kb_recall_attempted: true,
+          kb_recall_recovered: 0,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 0,
+          family_fallback_attempted: true,
+          family_fallback_recovered: 0,
+          family_fallback_used: false,
+          recall_source_breakdown: {},
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'sunscreen_filters',
+        ingredient_name: 'UV filters',
+        exact_phrases: ['uv filters', 'uv filter'],
+        alias_phrases: ['broad spectrum', 'sunscreen', 'spf', 'spf 50'],
+        family_phrases: ['daily face', 'sun protection'],
+      })),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        return {
+          rows: [
+            {
+              id: 'seed_spf_1',
+              external_product_id: 'ext_spf_1',
+              destination_url: 'https://fenty.example.com/products/hydra-vizor',
+              canonical_url: 'https://fenty.example.com/products/hydra-vizor',
+              domain: 'fenty.example.com',
+              title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+              image_url: 'https://fenty.example.com/image1.jpg',
+              price_amount: 36,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'Fenty Skin',
+                category: 'Sunscreen',
+                snapshot: {
+                  title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
+                  description: 'tinted refill sunscreen',
+                  brand: 'Fenty Skin',
+                  category: 'Sunscreen',
+                  canonical_url: 'https://fenty.example.com/products/hydra-vizor',
+                  destination_url: 'https://fenty.example.com/products/hydra-vizor',
+                },
+              },
+            },
+            {
+              id: 'seed_spf_2',
+              external_product_id: 'ext_spf_2',
+              destination_url: 'https://fenty.example.com/products/hydra-vizor',
+              canonical_url: 'https://fenty.example.com/products/hydra-vizor',
+              domain: 'fenty.example.com',
+              title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
+              image_url: 'https://fenty.example.com/image2.jpg',
+              price_amount: 36,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'Fenty Skin',
+                category: 'Sunscreen',
+                snapshot: {
+                  title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
+                  description: 'tinted refill sunscreen',
+                  brand: 'Fenty Skin',
+                  category: 'Sunscreen',
+                  canonical_url: 'https://fenty.example.com/products/hydra-vizor',
+                  destination_url: 'https://fenty.example.com/products/hydra-vizor',
+                },
+              },
+            },
+            {
+              id: 'seed_spf_3',
+              external_product_id: 'ext_spf_3',
+              destination_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
+              canonical_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
+              domain: 'fenty.example.com',
+              title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+              image_url: 'https://fenty.example.com/image3.jpg',
+              price_amount: 38,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                brand: 'Fenty Skin',
+                category: 'Sunscreen',
+                snapshot: {
+                  title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+                  description: 'broad spectrum mineral sunscreen moisturizer',
+                  brand: 'Fenty Skin',
+                  category: 'Sunscreen',
+                  canonical_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
+                  destination_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
+                },
+              },
+            },
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'broad spectrum sunscreen',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toHaveLength(2);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      }),
+    );
+    expect(String(resp.body.products[1]?.title || '')).toMatch(
+      /^Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — [12]$/,
+    );
+    expect(resp.body.total).toBe(2);
+    expect(resp.body.page_size).toBe(2);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
+        ingredient_direct_fallback_used: true,
+        products_returned_count: 2,
+        external_seed_returned_count: 2,
+      }),
+    );
+  });
+
   test('non-ingredient shopping search keeps invoke path and skips ingredient direct recall', async () => {
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
