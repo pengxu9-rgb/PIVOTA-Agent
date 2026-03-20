@@ -460,7 +460,6 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
               {
                 ingredient_id: 'ceramide_np',
                 ingredient_name: 'Ceramide NP',
-                target_step_family: 'moisturizer',
                 products: {
                   competitors: [
                     {
@@ -480,7 +479,6 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
               {
                 ingredient_id: 'sunscreen_filters',
                 ingredient_name: 'UV filters',
-                target_step_family: 'sunscreen',
                 products: {
                   competitors: [
                     {
@@ -655,7 +653,6 @@ test('sanitizeRecoCandidatesForUi strips obvious panthenol cross-family noise fr
               {
                 ingredient_id: 'panthenol',
                 ingredient_name: 'Panthenol (B5)',
-                target_step_family: 'serum',
                 products: {
                   competitors: [
                     {

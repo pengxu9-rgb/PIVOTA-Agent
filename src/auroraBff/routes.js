@@ -31997,12 +31997,33 @@ function mergeRecoveredProductsIntoIngredientTarget(target, recoveredProducts, m
 
 function resolveIngredientPlanTargetStepFamily(target) {
   const targetObj = isPlainObject(target) ? target : {};
-  return pickFirstString(
+  const explicit = pickFirstString(
     targetObj.target_step_family,
     targetObj.targetStepFamily,
     targetObj.step_family,
     targetObj.stepFamily,
+  );
+  const normalizedExplicit = normalizeRecoTargetStep(explicit);
+  if (normalizedExplicit) return normalizedExplicit;
+  const ingredientId = resolveIngredientRecoveryTargetId(targetObj);
+  const ingredientName = pickFirstString(
+    targetObj.ingredient_name,
+    targetObj.ingredientName,
+    targetObj.ingredient,
+    targetObj.name,
+    targetObj.title,
   ) || '';
+  if (ingredientId) {
+    const discoveryHint = buildIngredientDiscoveryHint(ingredientId, {
+      ingredientName,
+      fallbackQuery: ingredientName ? `${ingredientName} skincare product` : '',
+    });
+    const hintedStepFamily = normalizeRecoTargetStep(
+      pickFirstString(discoveryHint?.target_step_family, discoveryHint?.targetStepFamily) || '',
+    );
+    if (hintedStepFamily) return hintedStepFamily;
+  }
+  return '';
 }
 
 function resolveIngredientPlanTargetQueryText(target, queryText = '') {
