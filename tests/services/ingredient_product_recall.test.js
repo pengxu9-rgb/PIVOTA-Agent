@@ -219,6 +219,90 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.family_fallback_used).toBe(false);
   });
 
+  test('uses KB ingredient evidence to keep direct recall products even when surface text is generic', async () => {
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'extseed:seed_support_serum:theordinary',
+                brand: 'The Ordinary',
+                product_name: 'Soothing & Barrier Support Serum',
+                source_ref: 'https://ordinary.example.com/products/support-serum',
+                raw_ingredient_text_clean: 'panthenol, dexpanthenol, glycerin',
+                inci_list: 'panthenol, dexpanthenol',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_support_serum',
+              external_product_id: 'ext_support_serum',
+              destination_url: 'https://ordinary.example.com/products/support-serum',
+              canonical_url: 'https://ordinary.example.com/products/support-serum',
+              domain: 'ordinary.example.com',
+              title: 'Soothing & Barrier Support Serum',
+              image_url: 'https://ordinary.example.com/support-serum.jpg',
+              price_amount: 22,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:support-serum',
+              seed_data: {
+                brand: 'The Ordinary',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Soothing & Barrier Support Serum',
+                  description: 'multi-active barrier support serum',
+                  brand: 'The Ordinary',
+                  category: 'Serum',
+                  canonical_url: 'https://ordinary.example.com/products/support-serum',
+                  destination_url: 'https://ordinary.example.com/products/support-serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'panthenol repair serum',
+      ingredientId: 'panthenol',
+      targetStepFamily: 'serum',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual([
+      'Soothing & Barrier Support Serum',
+    ]);
+    expect(out.diagnostics.family_fallback_attempted).toBe(false);
+    expect(out.diagnostics.family_fallback_used).toBe(false);
+    expect(out.diagnostics.recall_source_breakdown).toEqual({
+      kb_attached_seed: 1,
+    });
+  });
+
   test('allows ingredient-intent family fallback when explicitly requested', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
