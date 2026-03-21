@@ -629,7 +629,18 @@ function buildCandidateEvidence(
   const fieldTexts = buildRecallCandidateFieldTexts(product);
   const candidateStep =
     resolveRecallCandidateStep(product) ||
-    normalizeRecoTargetStep(Array.isArray(kbEvidence?.candidate_step_hints) ? kbEvidence.candidate_step_hints[0] : '');
+    normalizeRecoTargetStep(Array.isArray(kbEvidence?.candidate_step_hints) ? kbEvidence.candidate_step_hints[0] : '') ||
+    inferIngredientAwareKbStepHint(profile, [
+      product?.title,
+      product?.name,
+      product?.display_name,
+      product?.category,
+      product?.product_type,
+      product?.description,
+      product?.canonical_url,
+      product?.destination_url,
+      product?.url,
+    ]);
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const familyRelation = normalizedTargetStepFamily
     ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)

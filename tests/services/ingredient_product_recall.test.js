@@ -1085,6 +1085,71 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
+  test('azelaic acid cream can infer treatment step from explicit title when category is missing', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') = ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_azelaic_unattached',
+              external_product_id: 'ext_azelaic_unattached',
+              destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              domain: 'ordinary.example.com',
+              title: 'Azelaic Acid Suspension 10%',
+              image_url: 'https://ordinary.example.com/azelaic.jpg',
+              price_amount: 14,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: '',
+              seed_data: {
+                brand: 'The Ordinary',
+                snapshot: {
+                  title: 'Azelaic Acid Suspension 10%',
+                  description: 'visible redness support cream',
+                  canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                  destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'azelaic acid cream',
+      ingredientId: 'azelaic_acid',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Azelaic Acid Suspension 10%']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
   test('benzoyl peroxide gel keeps explicit treatment products ahead of generic blemish sticker noise', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),
@@ -1255,6 +1320,71 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Clear Skin 5%']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
+  test('benzoyl peroxide gel can infer treatment step from explicit title when category is missing', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') = ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_bpo_unattached',
+              external_product_id: 'ext_bpo_unattached',
+              destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              domain: 'acme.example.com',
+              title: 'Benzoyl Peroxide 5% Gel',
+              image_url: 'https://acme.example.com/bpo.jpg',
+              price_amount: 18,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: '',
+              seed_data: {
+                brand: 'Acme',
+                snapshot: {
+                  title: 'Benzoyl Peroxide 5% Gel',
+                  description: 'daily acne gel',
+                  canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                  destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'benzoyl peroxide gel',
+      ingredientId: 'benzoyl_peroxide',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Benzoyl Peroxide 5% Gel']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
