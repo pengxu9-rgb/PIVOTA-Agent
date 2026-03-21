@@ -1194,6 +1194,154 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
+  test('glycerin moisturizer rejects explicit peel and primer rows before ranking', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'extseed:seed_peel:pixi',
+                brand: 'Pixi',
+                product_name: 'Hydrating Milky Peel',
+                source_ref: 'https://pixibeauty.com/products/hydrating-milky-peel',
+                raw_ingredient_text_clean: 'glycerin',
+                inci_list: 'glycerin',
+                created_at: new Date().toISOString(),
+              },
+              {
+                sku_key: 'extseed:seed_primer:pixi',
+                brand: 'Pixi',
+                product_name: 'Flawless Beauty Primer',
+                source_ref: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                raw_ingredient_text_clean: 'glycerin',
+                inci_list: 'glycerin',
+                created_at: new Date().toISOString(),
+              },
+              {
+                sku_key: 'extseed:seed_moisturizer:acme',
+                brand: 'Acme',
+                product_name: 'Glycerin Barrier Moisturizer',
+                source_ref: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+                raw_ingredient_text_clean: 'glycerin',
+                inci_list: 'glycerin',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_peel',
+              external_product_id: 'ext_peel',
+              destination_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+              canonical_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+              domain: 'pixibeauty.com',
+              title: 'Hydrating Milky Peel',
+              image_url: 'https://pixibeauty.com/peel.jpg',
+              price_amount: 24,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:peel',
+              seed_data: {
+                brand: 'Pixi',
+                snapshot: {
+                  title: 'Hydrating Milky Peel',
+                  description: 'micro-exfoliating cream with glycerin',
+                  canonical_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+                  destination_url: 'https://pixibeauty.com/products/hydrating-milky-peel',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_primer',
+              external_product_id: 'ext_primer',
+              destination_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+              canonical_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+              domain: 'pixibeauty.com',
+              title: 'Flawless Beauty Primer',
+              image_url: 'https://pixibeauty.com/primer.jpg',
+              price_amount: 22,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:primer',
+              seed_data: {
+                brand: 'Pixi',
+                snapshot: {
+                  title: 'Flawless Beauty Primer',
+                  description: 'makeup primer with glycerin',
+                  canonical_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                  destination_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_moisturizer',
+              external_product_id: 'ext_moisturizer',
+              destination_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+              canonical_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+              domain: 'acme.example.com',
+              title: 'Glycerin Barrier Moisturizer',
+              image_url: 'https://acme.example.com/glycerin.jpg',
+              price_amount: 20,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:glycerin-moisturizer',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Moisturizer',
+                snapshot: {
+                  title: 'Glycerin Barrier Moisturizer',
+                  description: 'glycerin moisturizer for dry skin',
+                  category: 'Moisturizer',
+                  canonical_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+                  destination_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Glycerin Barrier Moisturizer']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
   test('glycerin moisturizer rejects off-surface explicit-only hand mask rows', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),

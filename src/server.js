@@ -5034,6 +5034,78 @@ function hasIngredientIntentExplicitEvidenceBreakdown(breakdown) {
   );
 }
 
+function normalizeIngredientIntentExpectedStepFamilies(profile) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(profile?.expected_step_families) ? profile.expected_step_families : []) {
+    const normalized = normalizeRecoTargetStep(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function resolveIngredientIntentTargetStepFamily({
+  queryText = '',
+  explicitTargetStepFamily = '',
+  inferredTargetStepFamily = '',
+  recallProfile = null,
+} = {}) {
+  const explicit = normalizeRecoTargetStep(explicitTargetStepFamily);
+  if (explicit) return explicit;
+
+  const inferred = normalizeRecoTargetStep(inferredTargetStepFamily);
+  const expectedFamilies = normalizeIngredientIntentExpectedStepFamilies(recallProfile);
+  if (!expectedFamilies.length) return inferred || '';
+
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return inferred || expectedFamilies[0] || '';
+
+  const ingredientClass = String(recallProfile?.ingredient_class || '').trim().toLowerCase();
+  const prefersTreatmentOverMoisturizer = new Set([
+    'tone_evening_active',
+    'acne_active',
+    'retinoid',
+    'exfoliant',
+    'balancing_active',
+  ]).has(ingredientClass);
+
+  if (
+    inferred === 'moisturizer' &&
+    prefersTreatmentOverMoisturizer &&
+    expectedFamilies.includes('treatment') &&
+    /\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream)\b/.test(normalizedQuery)
+  ) {
+    return 'treatment';
+  }
+  if (inferred && expectedFamilies.includes(inferred)) return inferred;
+
+  if (/\b(cleanser|face wash|facial wash|cleansing gel|cleansing foam|cleansing milk|wash)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('cleanser')) return 'cleanser';
+  }
+  if (/\b(serum|essence|ampoule|concentrate)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('serum')) return 'serum';
+  }
+  if (/\b(toner|mist|pad)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('toner')) return 'toner';
+  }
+  if (/\b(spf|sunscreen|sunblock|sun lotion|sun fluid)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('sunscreen')) return 'sunscreen';
+  }
+  if (/\b(gel|spot treatment|acid|retinol|retinoid|blemish|acne treatment)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('treatment')) return 'treatment';
+  }
+  if (/\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream)\b/.test(normalizedQuery)) {
+    if (prefersTreatmentOverMoisturizer && expectedFamilies.includes('treatment')) return 'treatment';
+    if (expectedFamilies.includes('moisturizer')) return 'moisturizer';
+  }
+
+  if (inferred) return inferred;
+  if (prefersTreatmentOverMoisturizer && expectedFamilies.includes('treatment')) return 'treatment';
+  return expectedFamilies[0] || '';
+}
+
 function collapseNearDuplicateSearchProducts(products, options = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!list.length) return [];
@@ -5903,6 +5975,17 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     typeof options.normalizedQuery === 'string'
       ? options.normalizedQuery
       : normalizeSearchTextForMatch(queryText);
+  const recallProfile =
+    options.recallProfile && typeof options.recallProfile === 'object'
+      ? options.recallProfile
+      : null;
+  const ingredientIntent = options.ingredientIntent === true || hasBeautyIngredientIntentSignal(queryText);
+  if (ingredientIntent && recallProfile) {
+    const explicitPhraseHits =
+      countIngredientIntentPhraseMatches(candidateText, recallProfile.exact_phrases) +
+      countIngredientIntentPhraseMatches(candidateText, recallProfile.alias_phrases);
+    if (explicitPhraseHits > 0) return true;
+  }
   if (!normalizedQuery) return true;
 
   const anchorTokens = Array.isArray(options.anchorTokens)
@@ -5924,7 +6007,6 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     if (/^(de|of|the|for|and|to|a|an)$/i.test(token)) return false;
     return true;
   });
-  const ingredientIntent = hasBeautyIngredientIntentSignal(queryText);
   const meaningfulTokens = ingredientIntent
     ? usefulQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : usefulQueryTokens;
@@ -5969,6 +6051,37 @@ function buildGuidanceRecallSupplementQueries(queryText, guidanceContext) {
     push('barrier repair serum');
     push('soothing serum');
     push('hydrating serum');
+  }
+  return out;
+}
+
+function buildIngredientRecallQueryVariants(queryText, recallProfile, targetStepFamily = '') {
+  if (!recallProfile || typeof recallProfile !== 'object') return [];
+  const out = [];
+  const seen = new Set();
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (!query) return;
+    const key = normalizeSearchTextForMatch(query);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(query);
+  };
+  const phrases = [
+    ...(Array.isArray(recallProfile.exact_phrases) ? recallProfile.exact_phrases : []),
+    ...(Array.isArray(recallProfile.alias_phrases) ? recallProfile.alias_phrases : []),
+  ]
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+  for (const phrase of phrases) {
+    push(phrase);
+    if (
+      normalizedTargetStepFamily &&
+      !new RegExp(`\\b${normalizedTargetStepFamily}\\b`, 'i').test(phrase)
+    ) {
+      push(`${phrase} ${normalizedTargetStepFamily}`);
+    }
   }
   return out;
 }
@@ -7123,6 +7236,7 @@ function scoreDirectExternalSeedProduct({
   normalizedQuery,
   anchorTokens,
   queryTokens,
+  recallProfile = null,
   targetStepFamily,
   uiSurface = null,
   queryStepStrength = null,
@@ -7183,6 +7297,10 @@ function scoreDirectExternalSeedProduct({
   const auxiliaryAnchorHits = anchorTokens.filter((token) => auxiliaryText.includes(token)).length;
   const titleQueryHits = queryTokens.filter((token) => titleText.includes(token)).length;
   const auxiliaryQueryHits = queryTokens.filter((token) => auxiliaryText.includes(token)).length;
+  const titleExactHits = countIngredientIntentPhraseMatches(titleText, recallProfile?.exact_phrases);
+  const titleAliasHits = countIngredientIntentPhraseMatches(titleText, recallProfile?.alias_phrases);
+  const candidateExactHits = countIngredientIntentPhraseMatches(candidateText, recallProfile?.exact_phrases);
+  const candidateAliasHits = countIngredientIntentPhraseMatches(candidateText, recallProfile?.alias_phrases);
   let score = 0;
 
   if (normalizedQuery && titleText.includes(normalizedQuery)) score += 24;
@@ -7191,6 +7309,10 @@ function scoreDirectExternalSeedProduct({
   score += auxiliaryAnchorHits * 2;
   score += titleQueryHits * 4;
   score += auxiliaryQueryHits;
+  score += titleExactHits * 20;
+  score += titleAliasHits * 14;
+  score += Math.max(0, candidateExactHits - titleExactHits) * 8;
+  score += Math.max(0, candidateAliasHits - titleAliasHits) * 4;
 
   if (targetStepFamily) {
     if (relation === 'exact_step') score += 14;
@@ -7314,6 +7436,22 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     };
   }
 
+  const recallKnowledge =
+    typeof resolveIngredientRecallProfileKnowledge === 'function'
+      ? await resolveIngredientRecallProfileKnowledge({ query: relevanceQueryText })
+      : (() => {
+          const fallbackProfile = resolveIngredientRecallProfile({ query: relevanceQueryText });
+          return {
+            profile: fallbackProfile,
+            diagnostics: {
+              profile_source: fallbackProfile ? 'base_only' : 'none',
+            },
+          };
+        })();
+  const recallProfile = recallKnowledge?.profile || null;
+  const ingredientIntentDetected =
+    hasBeautyIngredientIntentSignal(relevanceQueryText) || Boolean(recallProfile);
+
   const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
   const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
   const safeOffset = Math.max(
@@ -7328,7 +7466,12 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   const inferredTargetStepFamily = normalizeRecoTargetStep(
     resolveRecoTargetStepIntent({ text: relevanceQueryText })?.resolved_target_step || '',
   );
-  const targetStepFamily = explicitTargetStepFamily || inferredTargetStepFamily;
+  const targetStepFamily = resolveIngredientIntentTargetStepFamily({
+    queryText: relevanceQueryText,
+    explicitTargetStepFamily,
+    inferredTargetStepFamily,
+    recallProfile,
+  });
   const uiSurface = normalizeSearchUiSurface(metadata?.ui_surface || search?.ui_surface || search?.uiSurface);
   const decisionMode = normalizeRecommendationDecisionMode(
     metadata?.decision_mode || search?.decision_mode || search?.decisionMode,
@@ -7375,6 +7518,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         target_step_family: targetStepFamily,
       })
     : [];
+  const ingredientRecallQueryVariants = ingredientIntentDetected
+    ? buildIngredientRecallQueryVariants(relevanceQueryText, recallProfile, targetStepFamily)
+    : [];
   const retrievalQueryVariantsOverride = parseQueryStringArray(
     metadata?.retrieval_query_variants ??
       metadata?.retrievalQueryVariants ??
@@ -7386,7 +7532,12 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       (
         retrievalQueryVariantsOverride.length > 0
           ? retrievalQueryVariantsOverride
-          : [queryText, ...serumCanaryQueryVariants, ...guidanceFamilyQueryVariants]
+          : [
+              queryText,
+              ...ingredientRecallQueryVariants,
+              ...serumCanaryQueryVariants,
+              ...guidanceFamilyQueryVariants,
+            ]
       )
         .map((item) => String(item || '').trim())
         .filter(Boolean),
@@ -7394,7 +7545,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
   );
   const anchorTokens = extractSearchAnchorTokens(relevanceQueryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const ingredientIntent = hasBeautyIngredientIntentSignal(relevanceQueryText);
+  const ingredientIntent = ingredientIntentDetected;
   const useLeanGuidanceSql =
     guidanceOnlyDiscovery &&
     targetStepFamily === 'moisturizer' &&
@@ -7557,6 +7708,7 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           normalizedQuery,
           anchorTokens,
           queryTokens,
+          recallProfile,
           targetStepFamily,
           uiSurface,
           queryStepStrength,
@@ -7567,6 +7719,8 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           normalizedQuery,
           anchorTokens,
           queryTokens,
+          recallProfile,
+          ingredientIntent,
           targetStepFamily,
           uiSurface,
           queryStepStrength,
@@ -7901,7 +8055,12 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
   const inferredTargetStepFamily = normalizeRecoTargetStep(
     resolveRecoTargetStepIntent({ text: relevanceQueryText })?.resolved_target_step || '',
   );
-  const targetStepFamily = explicitTargetStepFamily || inferredTargetStepFamily;
+  const targetStepFamily = resolveIngredientIntentTargetStepFamily({
+    queryText: relevanceQueryText,
+    explicitTargetStepFamily,
+    inferredTargetStepFamily,
+    recallProfile,
+  });
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
 
   const recalled = await recallIngredientProducts({

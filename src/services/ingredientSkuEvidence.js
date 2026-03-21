@@ -39,6 +39,12 @@ const OFF_SURFACE_PATTERNS = [
   ['foot', /\b(feet|foot|heel)\b/i],
   ['hair', /\b(hair|scalp)\b/i],
 ];
+const TARGET_STEP_NEGATIVE_PATTERNS = Object.freeze({
+  moisturizer: /\b(bundle|duo|set|kit|skin tint|tinted|foundation|primer|peel|exfoliant|spf|sunscreen|cleanser|mask|toner)\b/i,
+  serum: /\b(bundle|duo|set|kit|skin tint|tinted|foundation|primer|peel|exfoliant|spf|sunscreen|cleanser|mask|moisturizer|moisturiser|cream)\b/i,
+  treatment: /\b(bundle|duo|set|kit|skin tint|tinted|foundation|primer|sunscreen|spf|cleanser|body lotion|body cream|body wash)\b/i,
+  sunscreen: /\b(bundle|duo|set|kit|cleanser|toner|mask|primer|foundation|peel|exfoliant)\b/i,
+});
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -447,6 +453,25 @@ function hasDisallowedOffSurfaceSignal(fieldTexts = {}, queryText = '') {
   return false;
 }
 
+function hasTargetStepNegativeSignal(fieldTexts = {}, targetStepFamily = '', queryText = '') {
+  const family = normalizeRecoTargetStep(targetStepFamily);
+  if (!family) return false;
+  const pattern = TARGET_STEP_NEGATIVE_PATTERNS[family];
+  if (!pattern) return false;
+  const requestedSurfaces = collectRequestedSurfaces(queryText);
+  const titleAndSupport = [
+    fieldTexts.title,
+    fieldTexts.support,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (!titleAndSupport) return false;
+  if (requestedSurfaces.has('body') && /\bbody\b/i.test(titleAndSupport)) return false;
+  return pattern.test(titleAndSupport);
+}
+
 function mergeBreakdown(target, sourceTag, amount = 1) {
   const key = String(sourceTag || '').trim() || 'unknown';
   target[key] = Number(target[key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
@@ -488,6 +513,7 @@ function buildCandidateEvidence(
     countStrongFamilyMatches(fieldTexts.family, profile?.family_phrases) +
     Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
   const offSurfaceSignal = hasDisallowedOffSurfaceSignal(fieldTexts, queryText);
+  const targetStepNegativeSignal = hasTargetStepNegativeSignal(fieldTexts, targetStepFamily, queryText);
 
   if (
     titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits <= 0 &&
@@ -534,6 +560,12 @@ function buildCandidateEvidence(
   }
   if (offSurfaceSignal) {
     return { reject_reason: 'all_candidates_filtered_noise', evidence };
+  }
+  if (targetStepNegativeSignal && evidence.family_only === 1) {
+    return { reject_reason: 'step_family_mismatch', evidence };
+  }
+  if (targetStepNegativeSignal && evidence.explicit_hits > 0 && normalizedTargetStepFamily) {
+    return { reject_reason: 'step_family_mismatch', evidence };
   }
 
   if (evidence.explicit_hits <= 0 && !allowFamilyOnly) {
@@ -606,6 +638,9 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
         return null;
       }
       if (hasDisallowedOffSurfaceSignal(fieldTexts, queryText)) {
+        return null;
+      }
+      if (hasTargetStepNegativeSignal(fieldTexts, normalizedTargetStepFamily, queryText)) {
         return null;
       }
       const titleText = normalizeIngredientRecallTitleForDedupe(product);

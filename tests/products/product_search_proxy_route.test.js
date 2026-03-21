@@ -30,6 +30,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../../src/services/ingredientProductRecall');
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
@@ -2938,6 +2939,100 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         query_source: 'agent_products_ingredient_recall_direct',
         ingredient_profile_source: 'kb_only',
         ingredient_intent_detected: true,
+      }),
+    );
+  });
+
+  test('ingredient-intent search infers treatment step from profile for azelaic acid cream', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-intent-azelaic-target-step-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local_plus_reference',
+          ingredient_profile_source: 'local_plus_reference',
+          ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'azelaic_acid',
+          ingredient_name: 'Azelaic acid',
+          ingredient_class: 'tone_evening_active',
+          expected_step_families: ['treatment', 'cream', 'serum'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local_plus_reference',
+          profile_source: 'local_plus_reference',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => null),
+    }));
+
+    const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'azelaic acid cream',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'azelaic_acid',
+        targetStepFamily: 'treatment',
+      }),
+    );
+  });
+
+  test('ingredient-intent search infers treatment step from profile for benzoyl peroxide gel', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-intent-benzoyl-target-step-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local',
+          ingredient_profile_source: 'local',
+          ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'benzoyl_peroxide',
+          ingredient_name: 'Benzoyl peroxide',
+          ingredient_class: 'acne_active',
+          expected_step_families: ['treatment', 'gel', 'cleanser'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local',
+          profile_source: 'local',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => null),
+    }));
+
+    const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'benzoyl peroxide gel',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'benzoyl_peroxide',
+        targetStepFamily: 'treatment',
       }),
     );
   });
