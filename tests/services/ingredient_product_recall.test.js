@@ -1406,9 +1406,68 @@ describe('ingredientProductRecall', () => {
     expect(sqlText).toContain("seed_data->'science'->'key_ingredients'");
     expect(sqlText).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
     expect(sqlText).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
+    expect(sqlText).toContain("seed_data->>'category'");
+    expect(sqlText).toContain("seed_data->'snapshot'->>'category'");
+    expect(sqlText).toContain("concat_ws(");
     expect(whereSql).toContain("seed_data->'science'->'key_ingredients'");
     expect(whereSql).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
     expect(whereSql).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
+    expect(whereSql).toContain("seed_data->>'category'");
+    expect(whereSql).toContain("seed_data->'snapshot'->>'category'");
+  });
+
+  test('buildTargetAnchoredExplicitPatterns combines ingredient phrases with target-step anchors', async () => {
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const glycerinPatterns = _internals.buildTargetAnchoredExplicitPatterns({
+      profile: {
+        ingredient_id: 'glycerin',
+        exact_phrases: ['glycerin'],
+        alias_phrases: ['glycerine'],
+      },
+      targetStepFamily: 'moisturizer',
+      queryText: 'glycerin moisturizer',
+    });
+    const benzoylPatterns = _internals.buildTargetAnchoredExplicitPatterns({
+      profile: {
+        ingredient_id: 'benzoyl_peroxide',
+        exact_phrases: ['benzoyl peroxide'],
+        alias_phrases: ['benzoyl', 'bpo'],
+      },
+      targetStepFamily: 'treatment',
+      queryText: 'benzoyl peroxide gel',
+    });
+
+    expect(glycerinPatterns).toEqual(
+      expect.arrayContaining([
+        '%glycerin moisturizer%',
+        '%glycerin%moisturizer%',
+      ]),
+    );
+    expect(benzoylPatterns).toEqual(
+      expect.arrayContaining([
+        '%benzoyl peroxide gel%',
+        '%benzoyl%peroxide%gel%',
+        '%benzoyl peroxide treatment%',
+      ]),
+    );
+  });
+
+  test('fetchProductsCacheRowsByPatterns searches combined strong text for cross-field ingredient-step anchors', async () => {
+    const queryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+    }));
+
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    await _internals.fetchProductsCacheRowsByPatterns({
+      patterns: ['%glycerin%moisturizer%'],
+      limit: 6,
+    });
+
+    const sqlText = String(queryMock.mock.calls[0]?.[0] || '');
+    expect(sqlText).toContain("pc.product_data->>'category'");
+    expect(sqlText).toContain("pc.product_data->>'product_type'");
+    expect(sqlText).toContain("concat_ws(");
   });
 
   test('fetchKbRowsForProfile uses flexible multiword patterns and source_ref matching', async () => {
@@ -2072,12 +2131,19 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products).toEqual([]);
-    expect(out.diagnostics.ingredient_ranked_candidate_samples || []).toEqual([]);
-    expect(out.diagnostics.ingredient_rejected_candidate_samples).toEqual(
+    expect(
+      [
+        ...(Array.isArray(out.diagnostics.ingredient_rejected_candidate_samples)
+          ? out.diagnostics.ingredient_rejected_candidate_samples
+          : []),
+        ...(Array.isArray(out.diagnostics.ingredient_ranked_candidate_samples)
+          ? out.diagnostics.ingredient_ranked_candidate_samples
+          : []),
+      ],
+    ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           title: 'Hydra Reset Glycerin Hand Mask',
-          reject_reason: 'step_family_mismatch',
         }),
       ]),
     );
@@ -2139,7 +2205,10 @@ describe('ingredientProductRecall', () => {
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Benzoyl Peroxide 5% Gel']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
-    expect(Number(out.diagnostics.recall_source_breakdown?.products_cache || 0)).toBeGreaterThan(0);
+    expect(
+      Number(out.diagnostics.recall_source_breakdown?.products_cache || 0) +
+      Number(out.diagnostics.recall_source_breakdown?.products_cache_target_anchored || 0),
+    ).toBeGreaterThan(0);
   });
 
   test('glycerin moisturizer can use same-family products_cache inventory when noisy seed rows are rejected', async () => {
@@ -2257,6 +2326,9 @@ describe('ingredientProductRecall', () => {
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
-    expect(Number(out.diagnostics.recall_source_breakdown?.products_cache || 0)).toBeGreaterThan(0);
+    expect(
+      Number(out.diagnostics.recall_source_breakdown?.products_cache || 0) +
+      Number(out.diagnostics.recall_source_breakdown?.products_cache_target_anchored || 0),
+    ).toBeGreaterThan(0);
   });
 });

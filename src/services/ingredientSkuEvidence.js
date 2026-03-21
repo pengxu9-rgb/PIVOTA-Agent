@@ -32,6 +32,15 @@ const WEAK_FAMILY_ONLY_PHRASES = new Set([
   'face',
 ]);
 const EVIDENCE_MODE = 'canonical_ingredient_id_evidence_v1';
+const TARGET_STEP_ANCHOR_PHRASES = Object.freeze({
+  moisturizer: ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion', 'gel cream', 'gel-cream'],
+  serum: ['serum', 'ampoule', 'essence', 'booster'],
+  treatment: ['treatment', 'gel', 'solution', 'suspension', 'spot treatment', 'acne treatment'],
+  sunscreen: ['sunscreen', 'spf', 'sunblock', 'sun fluid', 'sun lotion'],
+  cleanser: ['cleanser', 'face wash', 'facial wash', 'wash', 'foam', 'cleansing'],
+  toner: ['toner', 'mist', 'pad'],
+  oil: ['oil', 'face oil', 'facial oil'],
+});
 const OFF_SURFACE_PATTERNS = [
   ['hand', /\bhands?\b/i],
   ['body', /\bbody\b/i],
@@ -61,6 +70,83 @@ let kbAvailabilityCache = {
   checked_at: 0,
   available: false,
 };
+
+const PRODUCTS_CACHE_STRONG_TEXT_SQL = `
+  lower(
+    concat_ws(
+      ' ',
+      coalesce(pc.product_data->>'title', ''),
+      coalesce(pc.product_data->>'name', ''),
+      coalesce(pc.product_data->>'product_type', ''),
+      coalesce(pc.product_data->>'productType', ''),
+      coalesce(pc.product_data->>'category', ''),
+      coalesce(pc.product_data->>'vendor', ''),
+      coalesce(pc.product_data->>'brand', ''),
+      coalesce(pc.product_data->>'url', ''),
+      coalesce(pc.product_data->>'canonical_url', ''),
+      coalesce(pc.product_data->>'destination_url', ''),
+      coalesce((pc.product_data->'ingredient_tokens')::text, ''),
+      coalesce((pc.product_data->'key_actives')::text, ''),
+      coalesce((pc.product_data->'keyActives')::text, ''),
+      coalesce((pc.product_data->'active_ingredients')::text, ''),
+      coalesce((pc.product_data->'activeIngredients')::text, ''),
+      coalesce((pc.product_data->'key_ingredients')::text, ''),
+      coalesce((pc.product_data->'keyIngredients')::text, ''),
+      coalesce((pc.product_data->'ingredients')::text, '')
+    )
+  )
+`;
+
+const EXTERNAL_SEED_STRONG_TEXT_SQL = `
+  lower(
+    concat_ws(
+      ' ',
+      coalesce(title, ''),
+      coalesce(canonical_url, ''),
+      coalesce(destination_url, ''),
+      coalesce(seed_data->>'title', ''),
+      coalesce(seed_data->>'canonical_url', ''),
+      coalesce(seed_data->>'destination_url', ''),
+      coalesce(seed_data->>'category', ''),
+      coalesce(seed_data->>'product_type', ''),
+      coalesce(seed_data->'snapshot'->>'title', ''),
+      coalesce(seed_data->'snapshot'->>'canonical_url', ''),
+      coalesce(seed_data->'snapshot'->>'destination_url', ''),
+      coalesce(seed_data->'snapshot'->>'category', ''),
+      coalesce(seed_data->'snapshot'->>'product_type', ''),
+      coalesce(seed_data->>'raw_ingredient_text_clean', ''),
+      coalesce(seed_data->>'inci_list', ''),
+      coalesce((seed_data->'ingredient_tokens')::text, ''),
+      coalesce((seed_data->'key_ingredients')::text, ''),
+      coalesce((seed_data->'keyIngredients')::text, ''),
+      coalesce((seed_data->'hero_ingredients')::text, ''),
+      coalesce((seed_data->'active_ingredients')::text, ''),
+      coalesce((seed_data->'ingredients')::text, ''),
+      coalesce((seed_data->'science'->'key_ingredients')::text, ''),
+      coalesce((seed_data->'science'->'keyIngredients')::text, ''),
+      coalesce((seed_data->'ingredient_intel'->'inci_normalized')::text, ''),
+      coalesce((seed_data->'ingredient_intel'->'inciNormalized')::text, ''),
+      coalesce(seed_data->'ingredient_intel'->>'inci_raw', ''),
+      coalesce(seed_data->'ingredient_intel'->>'raw_ingredient_text_clean', ''),
+      coalesce(seed_data->'ingredient_intel'->>'inci_list', ''),
+      coalesce(seed_data->'snapshot'->>'raw_ingredient_text_clean', ''),
+      coalesce(seed_data->'snapshot'->>'inci_list', ''),
+      coalesce((seed_data->'snapshot'->'ingredient_tokens')::text, ''),
+      coalesce((seed_data->'snapshot'->'key_ingredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'keyIngredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'hero_ingredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'active_ingredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'ingredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'science'->'key_ingredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'science'->'keyIngredients')::text, ''),
+      coalesce((seed_data->'snapshot'->'ingredient_intel'->'inci_normalized')::text, ''),
+      coalesce((seed_data->'snapshot'->'ingredient_intel'->'inciNormalized')::text, ''),
+      coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', ''),
+      coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', ''),
+      coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')
+    )
+  )
+`;
 
 function uniqStrings(values, maxItems = 32) {
   const out = [];
@@ -110,6 +196,37 @@ function buildPhrasePatterns(phrases) {
     }
   }
   return out;
+}
+
+function resolveTargetAnchorPhrases(targetStepFamily, queryText = '') {
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const base = Array.isArray(TARGET_STEP_ANCHOR_PHRASES[normalizedTargetStepFamily])
+    ? TARGET_STEP_ANCHOR_PHRASES[normalizedTargetStepFamily]
+    : [];
+  if (!base.length) return [];
+  const normalizedQuery = normalizeIngredientRecallText(queryText);
+  const requested = normalizedQuery
+    ? base.filter((phrase) => normalizedQuery.includes(normalizeIngredientRecallText(phrase)))
+    : [];
+  return uniqNormalizedStrings([...requested, ...base], 8);
+}
+
+function buildTargetAnchoredExplicitPatterns({ profile, targetStepFamily = '', queryText = '' } = {}) {
+  const phrases = uniqNormalizedStrings([
+    ...(Array.isArray(profile?.exact_phrases) ? profile.exact_phrases : []),
+    ...(Array.isArray(profile?.alias_phrases) ? profile.alias_phrases : []),
+  ], 20);
+  const anchors = resolveTargetAnchorPhrases(targetStepFamily, queryText);
+  if (!phrases.length || !anchors.length) return [];
+  const combined = [];
+  for (const phrase of phrases) {
+    for (const anchor of anchors) {
+      if (!phrase || !anchor) continue;
+      combined.push(`${phrase} ${anchor}`);
+      combined.push(`${anchor} ${phrase}`);
+    }
+  }
+  return buildPhrasePatterns(combined);
 }
 
 function countPhraseMatches(text, phrases) {
@@ -1200,10 +1317,12 @@ async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = 
           OR lower(coalesce((pc.product_data->'key_ingredients')::text, '')) LIKE ANY($1::text[])
           OR lower(coalesce((pc.product_data->'keyIngredients')::text, '')) LIKE ANY($1::text[])
           OR lower(coalesce((pc.product_data->'ingredients')::text, '')) LIKE ANY($1::text[])
+          OR ${PRODUCTS_CACHE_STRONG_TEXT_SQL} LIKE ANY($1::text[])
         )
       ORDER BY
         CASE
           WHEN lower(coalesce(pc.product_data->>'title', '')) LIKE ANY($1::text[]) THEN 0
+          WHEN ${PRODUCTS_CACHE_STRONG_TEXT_SQL} LIKE ANY($1::text[]) THEN 1
           WHEN (
             lower(coalesce((pc.product_data->'ingredient_tokens')::text, '')) LIKE ANY($1::text[])
             OR lower(coalesce((pc.product_data->'key_actives')::text, '')) LIKE ANY($1::text[])
@@ -1213,10 +1332,10 @@ async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = 
             OR lower(coalesce((pc.product_data->'key_ingredients')::text, '')) LIKE ANY($1::text[])
             OR lower(coalesce((pc.product_data->'keyIngredients')::text, '')) LIKE ANY($1::text[])
             OR lower(coalesce((pc.product_data->'ingredients')::text, '')) LIKE ANY($1::text[])
-          ) THEN 1
-          WHEN lower(coalesce(pc.product_data->>'product_type', '')) LIKE ANY($1::text[]) THEN 2
-          WHEN lower(coalesce(pc.product_data->>'description', '')) LIKE ANY($1::text[]) THEN 3
-          ELSE 4
+          ) THEN 2
+          WHEN lower(coalesce(pc.product_data->>'product_type', '')) LIKE ANY($1::text[]) THEN 3
+          WHEN lower(coalesce(pc.product_data->>'description', '')) LIKE ANY($1::text[]) THEN 4
+          ELSE 5
         END,
         pc.cached_at DESC NULLS LAST,
         pc.id DESC
@@ -1321,6 +1440,7 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
       OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
       OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
       OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
+      OR ${EXTERNAL_SEED_STRONG_TEXT_SQL} LIKE ANY($3::text[])
     )`,
   ];
   if (attachedState === 'attached') filters.push(`coalesce(attached_product_key, '') <> ''`);
@@ -1355,6 +1475,7 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
       ORDER BY
         CASE
           WHEN lower(coalesce(title, '')) LIKE ANY($3::text[]) THEN 0
+          WHEN ${EXTERNAL_SEED_STRONG_TEXT_SQL} LIKE ANY($3::text[]) THEN 1
           WHEN (
             lower(coalesce(seed_data->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->>'inci_list', '')) LIKE ANY($3::text[])
@@ -1386,16 +1507,16 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
             OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
-          ) THEN 1
-          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 2
-          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 3
+          ) THEN 2
+          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 3
+          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 4
           WHEN (
             lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
             OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
-          ) THEN 4
-          ELSE 5
+          ) THEN 5
+          ELSE 6
         END,
         CASE WHEN coalesce(attached_product_key, '') <> '' THEN 0 ELSE 1 END,
         updated_at DESC NULLS LAST,
@@ -1408,13 +1529,21 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
 }
 
 function resolveSourceRank(sourceTag) {
+  if (sourceTag === 'kb_attached_seed_target_anchored') return 500;
   if (sourceTag === 'kb_attached_seed') return 480;
+  if (sourceTag === 'kb_named_attached_seed_target_anchored') return 450;
   if (sourceTag === 'kb_named_attached_seed') return 430;
+  if (sourceTag === 'attached_seed_target_anchored') return 390;
   if (sourceTag === 'attached_seed') return 360;
+  if (sourceTag === 'kb_named_products_cache_target_anchored') return 350;
   if (sourceTag === 'kb_named_products_cache') return 340;
+  if (sourceTag === 'products_cache_target_anchored') return 330;
   if (sourceTag === 'products_cache') return 320;
+  if (sourceTag === 'kb_unattached_seed_target_anchored') return 280;
   if (sourceTag === 'kb_unattached_seed') return 260;
+  if (sourceTag === 'kb_named_unattached_seed_target_anchored') return 250;
   if (sourceTag === 'kb_named_unattached_seed') return 240;
+  if (sourceTag === 'unattached_seed_target_anchored') return 220;
   if (sourceTag === 'unattached_seed') return 210;
   if (sourceTag === 'family_attached_seed') return 140;
   if (sourceTag === 'family_unattached_seed') return 100;
@@ -1600,10 +1729,25 @@ async function recallIngredientProductsFromProfile({
   addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
 
   diagnostics.attached_seed_recall_attempted = true;
+  const targetAnchoredExplicitPatterns = buildTargetAnchoredExplicitPatterns({
+    profile,
+    targetStepFamily,
+    queryText: query,
+  });
   const explicitPatterns = buildPhrasePatterns([
     ...(Array.isArray(profile.exact_phrases) ? profile.exact_phrases : []),
     ...(Array.isArray(profile.alias_phrases) ? profile.alias_phrases : []),
   ]);
+  const attachedAnchoredRows = await fetchSeedRowsByPatterns({
+    patterns: targetAnchoredExplicitPatterns,
+    market,
+    tool,
+    attachedState: 'attached',
+    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+    inStockOnly,
+  });
+  if (attachedAnchoredRows.length > 0) diagnostics.attached_seed_recall_recovered = 1;
+  addRows(attachedAnchoredRows, 'attached_seed_target_anchored');
   const attachedSeedRows = await fetchSeedRowsByPatterns({
     patterns: explicitPatterns,
     market,
@@ -1612,15 +1756,27 @@ async function recallIngredientProductsFromProfile({
     limit: resolveRecallFetchLimit(profile, limit, 6, 30),
     inStockOnly,
   });
-  diagnostics.attached_seed_recall_recovered = attachedSeedRows.length > 0 ? 1 : 0;
+  diagnostics.attached_seed_recall_recovered =
+    diagnostics.attached_seed_recall_recovered || (attachedSeedRows.length > 0 ? 1 : 0);
   addRows(attachedSeedRows, 'attached_seed');
 
   diagnostics.products_cache_recall_attempted = true;
+  const cacheAnchoredRows = await fetchProductsCacheRowsByPatterns({
+    patterns: targetAnchoredExplicitPatterns,
+    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
+  });
+  if (cacheAnchoredRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
+  addRows(cacheAnchoredRows, 'products_cache_target_anchored', {
+    mapper: mapProductsCacheRowToRecallProduct,
+    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+    useKbEvidence: true,
+  });
   const cacheExplicitRows = await fetchProductsCacheRowsByPatterns({
     patterns: explicitPatterns,
     limit: resolveRecallFetchLimit(profile, limit, 6, 30),
   });
-  diagnostics.products_cache_recall_recovered = cacheExplicitRows.length > 0 ? 1 : 0;
+  diagnostics.products_cache_recall_recovered =
+    diagnostics.products_cache_recall_recovered || (cacheExplicitRows.length > 0 ? 1 : 0);
   addRows(cacheExplicitRows, 'products_cache', {
     mapper: mapProductsCacheRowToRecallProduct,
     kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
@@ -1646,6 +1802,16 @@ async function recallIngredientProductsFromProfile({
     attachedState: 'unattached',
     limit: resolveRecallFetchLimit(profile, limit, 4, 18),
   });
+  const unattachedAnchoredRows = await fetchSeedRowsByPatterns({
+    patterns: targetAnchoredExplicitPatterns,
+    market,
+    tool,
+    attachedState: 'unattached',
+    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
+    inStockOnly,
+  });
+  if (unattachedAnchoredRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
+  addRows(unattachedAnchoredRows, 'unattached_seed_target_anchored');
   const unattachedSeedRows = await fetchSeedRowsByPatterns({
     patterns: explicitPatterns,
     market,
@@ -1654,8 +1820,9 @@ async function recallIngredientProductsFromProfile({
     limit: resolveRecallFetchLimit(profile, limit, 8, 36),
     inStockOnly,
   });
-  diagnostics.unattached_seed_recovered =
-    kbUnattachedRows.length > 0 || unattachedSeedRows.length > 0 ? 1 : 0;
+  diagnostics.unattached_seed_recall_recovered =
+    diagnostics.unattached_seed_recall_recovered ||
+    (kbUnattachedRows.length > 0 || unattachedSeedRows.length > 0 ? 1 : 0);
   addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
   const kbNamedUnattachedRows = await fetchSeedRowsByPatterns({
     patterns: kbProductNamePatterns,
@@ -1665,7 +1832,7 @@ async function recallIngredientProductsFromProfile({
     limit: resolveRecallFetchLimit(profile, limit, 4, 18),
     inStockOnly,
   });
-  if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recovered = 1;
+  if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recall_recovered = 1;
   addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
   addRows(unattachedSeedRows, 'unattached_seed');
 
@@ -1801,8 +1968,10 @@ module.exports = {
     buildKbEvidenceLookup,
     resolveKbEvidenceForSeedRow,
     fetchKbRowsForProfile,
+    fetchProductsCacheRowsByPatterns,
     fetchSeedRowsByIdentity,
     fetchSeedRowsByPatterns,
+    buildTargetAnchoredExplicitPatterns,
     collapseIngredientRecallProducts,
     normalizeUrl,
   },
