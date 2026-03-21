@@ -219,6 +219,75 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.family_fallback_used).toBe(false);
   });
 
+  test('family-only fallback is diagnostic-only and does not count as direct recall success', async () => {
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql, params = []) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const patterns = Array.isArray(params?.[2]) ? params[2] : [];
+        const familyQuery = patterns.some((pattern) => /soothing|repair|hydrating/i.test(String(pattern || '')));
+        if (!familyQuery) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_winona',
+              external_product_id: 'ext_winona',
+              destination_url: 'https://winona.example.com/products/soothing-repair-serum',
+              canonical_url: 'https://winona.example.com/products/soothing-repair-serum',
+              domain: 'winona.example.com',
+              title: 'Winona Soothing Repair Serum',
+              image_url: 'https://winona.example.com/serum.jpg',
+              price_amount: 29,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:winona',
+              seed_data: {
+                brand: 'Winona',
+                category: 'Serum',
+                snapshot: {
+                  title: 'Winona Soothing Repair Serum',
+                  description: 'soothing barrier repair serum for sensitive skin',
+                  brand: 'Winona',
+                  category: 'Serum',
+                  canonical_url: 'https://winona.example.com/products/soothing-repair-serum',
+                  destination_url: 'https://winona.example.com/products/soothing-repair-serum',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'panthenol repair serum',
+      ingredientId: 'panthenol',
+      targetStepFamily: 'serum',
+      limit: 3,
+      allowFamilyFallback: true,
+    });
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics.family_fallback_attempted).toBe(true);
+    expect(out.diagnostics.family_fallback_recovered).toBe(1);
+    expect(out.diagnostics.family_fallback_used).toBe(true);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
+  });
+
   test('uses KB ingredient evidence to keep direct recall products even when surface text is generic', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
@@ -675,7 +744,7 @@ describe('ingredientProductRecall', () => {
     expect(patternSql).not.toMatch(/seed_data->'snapshot'->>'description'/);
   });
 
-  test('allows ingredient-intent family fallback when explicitly requested', async () => {
+  test('records ingredient-intent family fallback diagnostics without returning it as direct success', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
         const text = String(sql || '');
@@ -761,13 +830,11 @@ describe('ingredientProductRecall', () => {
       allowFamilyFallback: true,
     });
 
-    expect(out.products.map((row) => row.title || row.name)).toEqual(['Winona Soothing Repair Serum']);
+    expect(out.products).toEqual([]);
     expect(out.diagnostics.family_fallback_attempted).toBe(true);
     expect(out.diagnostics.family_fallback_recovered).toBe(1);
     expect(out.diagnostics.family_fallback_used).toBe(true);
-    expect(out.diagnostics.recall_source_breakdown).toEqual({
-      family_attached_seed: 1,
-    });
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('step_family_mismatch');
   });
 
   test('uses KB/reference-derived profile terms for non-base ingredients', async () => {
@@ -1125,5 +1192,72 @@ describe('ingredientProductRecall', () => {
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Glycerin Barrier Moisturizer']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
+  test('glycerin moisturizer rejects off-surface explicit-only hand mask rows', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_hand_mask',
+              external_product_id: 'ext_hand_mask',
+              destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              domain: 'acme.example.com',
+              title: 'Glycerin Hand Mask',
+              image_url: 'https://acme.example.com/hand-mask.jpg',
+              price_amount: 8,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:glycerin-hand-mask',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Mask',
+                snapshot: {
+                  title: 'Glycerin Hand Mask',
+                  description: 'glycerin mask for hands',
+                  category: 'Mask',
+                  canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                  destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
 });

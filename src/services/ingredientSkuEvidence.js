@@ -32,6 +32,13 @@ const WEAK_FAMILY_ONLY_PHRASES = new Set([
   'face',
 ]);
 const EVIDENCE_MODE = 'canonical_ingredient_id_evidence_v1';
+const OFF_SURFACE_PATTERNS = [
+  ['hand', /\bhands?\b/i],
+  ['body', /\bbody\b/i],
+  ['lip', /\blips?\b/i],
+  ['foot', /\b(feet|foot|heel)\b/i],
+  ['hair', /\b(hair|scalp)\b/i],
+];
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -412,12 +419,49 @@ function buildConflictingIngredientSurfaceText(fieldTexts = {}) {
     .toLowerCase();
 }
 
+function collectRequestedSurfaces(text) {
+  const normalized = normalizeIngredientRecallText(text);
+  const out = new Set();
+  if (!normalized) return out;
+  for (const [surface, pattern] of OFF_SURFACE_PATTERNS) {
+    if (pattern.test(normalized)) out.add(surface);
+  }
+  return out;
+}
+
+function hasDisallowedOffSurfaceSignal(fieldTexts = {}, queryText = '') {
+  const requestedSurfaces = collectRequestedSurfaces(queryText);
+  const candidateText = [
+    fieldTexts.title,
+    fieldTexts.support,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (!candidateText) return false;
+  for (const [surface, pattern] of OFF_SURFACE_PATTERNS) {
+    if (requestedSurfaces.has(surface)) continue;
+    if (pattern.test(candidateText)) return true;
+  }
+  return false;
+}
+
 function mergeBreakdown(target, sourceTag, amount = 1) {
   const key = String(sourceTag || '').trim() || 'unknown';
   target[key] = Number(target[key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
 }
 
-function buildCandidateEvidence(product, { profile, targetStepFamily = '', allowFamilyOnly = false, kbEvidence = null } = {}) {
+function buildCandidateEvidence(
+  product,
+  {
+    profile,
+    targetStepFamily = '',
+    allowFamilyOnly = false,
+    kbEvidence = null,
+    queryText = '',
+  } = {},
+) {
   const fieldTexts = buildRecallCandidateFieldTexts(product);
   const candidateStep = resolveRecallCandidateStep(product);
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
@@ -443,6 +487,7 @@ function buildCandidateEvidence(product, { profile, targetStepFamily = '', allow
   const strongFamilyHits =
     countStrongFamilyMatches(fieldTexts.family, profile?.family_phrases) +
     Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
+  const offSurfaceSignal = hasDisallowedOffSurfaceSignal(fieldTexts, queryText);
 
   if (
     titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits <= 0 &&
@@ -485,6 +530,9 @@ function buildCandidateEvidence(product, { profile, targetStepFamily = '', allow
       profile,
     )
   ) {
+    return { reject_reason: 'all_candidates_filtered_noise', evidence };
+  }
+  if (offSurfaceSignal) {
     return { reject_reason: 'all_candidates_filtered_noise', evidence };
   }
 
@@ -546,6 +594,7 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
   let rows = list
     .map((product, index) => {
       const text = buildIngredientRecallProductText(product);
+      const fieldTexts = buildRecallCandidateFieldTexts(product);
       const exactHits = countPhraseMatches(text, recallProfile?.exact_phrases);
       const aliasHits = countPhraseMatches(text, recallProfile?.alias_phrases);
       const explicitHits = exactHits + aliasHits;
@@ -554,6 +603,9 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
         ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
         : null;
       if (normalizedTargetStepFamily && candidateStep && familyRelation === 'incompatible_family') {
+        return null;
+      }
+      if (hasDisallowedOffSurfaceSignal(fieldTexts, queryText)) {
         return null;
       }
       const titleText = normalizeIngredientRecallTitleForDedupe(product);
@@ -932,6 +984,7 @@ async function recallIngredientProductsFromProfile({
         targetStepFamily,
         allowFamilyOnly,
         kbEvidence,
+        queryText: query,
       });
       if (!scored || !scored.evidence) {
         if (scored?.reject_reason === 'step_family_mismatch') stepMismatchCount += 1;
@@ -1004,7 +1057,7 @@ async function recallIngredientProductsFromProfile({
   addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
   addRows(unattachedSeedRows, 'unattached_seed');
 
-  let candidates = explicitCandidates;
+  let candidates = explicitCandidates.slice();
   const explicitRows = candidates.filter((row) => Number(row?.evidence?.explicit_hits || 0) > 0);
   if (explicitRows.length) candidates = explicitRows;
   const sameFamilyRows = candidates.filter((row) => row?.evidence?.family_relation === 'same_family');
@@ -1036,9 +1089,9 @@ async function recallIngredientProductsFromProfile({
       });
       addRows(familyAttachedRows, 'family_attached_seed', { allowFamilyOnly: true });
       addRows(familyUnattachedRows, 'family_unattached_seed', { allowFamilyOnly: true });
-      candidates = explicitCandidates.filter((row) => row.evidence.family_only === 1);
-      diagnostics.family_fallback_recovered = candidates.length > 0 ? 1 : 0;
-      diagnostics.family_fallback_used = candidates.length > 0;
+      const familyCandidates = explicitCandidates.filter((row) => row.evidence.family_only === 1);
+      diagnostics.family_fallback_recovered = familyCandidates.length > 0 ? 1 : 0;
+      diagnostics.family_fallback_used = familyCandidates.length > 0;
     }
   }
 

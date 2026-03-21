@@ -5021,6 +5021,19 @@ function stabilizeIngredientIntentDirectProducts(
   );
 }
 
+function hasIngredientIntentExplicitEvidenceBreakdown(breakdown) {
+  const row = breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown) ? breakdown : null;
+  if (!row) return false;
+  return (
+    Number(row.kb_explicit || 0) > 0 ||
+    Number(row.title_exact || 0) > 0 ||
+    Number(row.title_alias || 0) > 0 ||
+    Number(row.ingredient_token_exact || 0) > 0 ||
+    Number(row.ingredient_token_alias || 0) > 0 ||
+    Number(row.url_alias || 0) > 0
+  );
+}
+
 function collapseNearDuplicateSearchProducts(products, options = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!list.length) return [];
@@ -7962,7 +7975,19 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     products_returned_count: recalledProducts.length,
     external_seed_returned_count: recalledProducts.length,
   };
-  if (!recalledProducts.length) {
+  const directBreakdownProvided =
+    hasIngredientIntentExplicitEvidenceBreakdown(baseMetadata.ingredient_candidate_evidence_breakdown) ||
+    Number(baseMetadata.ingredient_candidate_evidence_breakdown.family_only || 0) > 0;
+  const directRecallHasExplicitEvidence = hasIngredientIntentExplicitEvidenceBreakdown(
+    baseMetadata.ingredient_candidate_evidence_breakdown,
+  );
+  const shouldTreatAsDirectMiss =
+    !recalledProducts.length ||
+    (diagnostics.family_fallback_used === true && !directRecallHasExplicitEvidence) ||
+    (directBreakdownProvided &&
+      !directRecallHasExplicitEvidence &&
+      Number(baseMetadata.ingredient_candidate_evidence_breakdown.family_only || 0) > 0);
+  if (shouldTreatAsDirectMiss) {
     return {
       status: 'success',
       success: true,
