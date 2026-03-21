@@ -4951,14 +4951,35 @@ function stabilizeIngredientIntentDirectProducts(
 
   let rows = list
     .map((product, index) => {
+      const recallMeta =
+        product && typeof product === 'object' && product.__ingredient_recall_meta && typeof product.__ingredient_recall_meta === 'object'
+          ? product.__ingredient_recall_meta
+          : null;
       const text = buildIngredientIntentProductText(product);
-      const exactHits = countIngredientIntentPhraseMatches(text, recallProfile?.exact_phrases);
-      const aliasHits = countIngredientIntentPhraseMatches(text, recallProfile?.alias_phrases);
-      const explicitHits = exactHits + aliasHits;
-      const candidateStep = resolveIngredientIntentDisplayCandidateStep(product);
+      const exactHits = recallMeta
+        ? Math.max(
+            0,
+            Number(recallMeta.evidence?.title_exact || 0) +
+              Number(recallMeta.evidence?.ingredient_token_exact || 0),
+          )
+        : countIngredientIntentPhraseMatches(text, recallProfile?.exact_phrases);
+      const aliasHits = recallMeta
+        ? Math.max(
+            0,
+            Number(recallMeta.evidence?.title_alias || 0) +
+              Number(recallMeta.evidence?.ingredient_token_alias || 0) +
+              Number(recallMeta.evidence?.url_alias || 0),
+          )
+        : countIngredientIntentPhraseMatches(text, recallProfile?.alias_phrases);
+      const explicitHits =
+        (recallMeta ? Math.max(0, Number(recallMeta.evidence?.kb_explicit || 0)) : 0) +
+        exactHits +
+        aliasHits;
+      const surfaceExplicitHits = exactHits + aliasHits;
+      const candidateStep = recallMeta?.candidate_step || resolveIngredientIntentDisplayCandidateStep(product);
       const familyRelation = normalizedTargetStepFamily
-        ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
-        : null;
+        ? recallMeta?.family_relation || getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
+        : recallMeta?.family_relation || null;
       if (normalizedTargetStepFamily && candidateStep && familyRelation === 'incompatible_family') {
         return null;
       }
@@ -4987,6 +5008,7 @@ function stabilizeIngredientIntentDirectProducts(
         index,
         score,
         explicitHits,
+        surfaceExplicitHits,
         exactHits,
         aliasHits,
         familyRelation,
@@ -4998,6 +5020,9 @@ function stabilizeIngredientIntentDirectProducts(
 
   const sameFamilyRows = rows.filter((row) => row.familyRelation === 'same_family');
   if (sameFamilyRows.length) rows = sameFamilyRows;
+
+  const surfaceExplicitRows = rows.filter((row) => row.surfaceExplicitHits > 0);
+  if (surfaceExplicitRows.length) rows = surfaceExplicitRows;
 
   const explicitRows = rows.filter((row) => row.explicitHits > 0);
   if (explicitRows.length) rows = explicitRows;
@@ -5070,12 +5095,14 @@ function resolveIngredientIntentTargetStepFamily({
     'exfoliant',
     'balancing_active',
   ]).has(ingredientClass);
+  const explicitCreamLikeQuery = /\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream)\b/.test(normalizedQuery);
 
   if (
     inferred === 'moisturizer' &&
     prefersTreatmentOverMoisturizer &&
     expectedFamilies.includes('treatment') &&
-    /\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream)\b/.test(normalizedQuery)
+    explicitCreamLikeQuery &&
+    !expectedFamilies.includes('moisturizer')
   ) {
     return 'treatment';
   }
@@ -5096,7 +5123,7 @@ function resolveIngredientIntentTargetStepFamily({
   if (/\b(gel|spot treatment|acid|retinol|retinoid|blemish|acne treatment)\b/.test(normalizedQuery)) {
     if (expectedFamilies.includes('treatment')) return 'treatment';
   }
-  if (/\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream)\b/.test(normalizedQuery)) {
+  if (explicitCreamLikeQuery) {
     if (prefersTreatmentOverMoisturizer && expectedFamilies.includes('treatment')) return 'treatment';
     if (expectedFamilies.includes('moisturizer')) return 'moisturizer';
   }

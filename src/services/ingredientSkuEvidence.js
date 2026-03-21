@@ -424,6 +424,27 @@ function mapSeedRowToRecallProduct(row, sourceTag) {
   };
 }
 
+function attachIngredientRecallMeta(product, meta) {
+  if (!product || typeof product !== 'object' || !meta || typeof meta !== 'object') return product;
+  const nextMeta = {
+    evidence: meta.evidence && typeof meta.evidence === 'object' ? { ...meta.evidence } : {},
+    candidate_step: String(meta.candidate_step || '').trim() || null,
+    family_relation: String(meta.family_relation || '').trim() || null,
+    source_tag: String(meta.source_tag || '').trim() || null,
+  };
+  try {
+    Object.defineProperty(product, '__ingredient_recall_meta', {
+      value: nextMeta,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  } catch (_err) {
+    product.__ingredient_recall_meta = nextMeta;
+  }
+  return product;
+}
+
 function buildCandidateKey(product) {
   const url = normalizeUrl(product?.canonical_url || product?.destination_url || product?.url || '');
   return [
@@ -667,15 +688,36 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
 
   let rows = list
     .map((product, index) => {
+      const recallMeta =
+        product && typeof product === 'object' && product.__ingredient_recall_meta && typeof product.__ingredient_recall_meta === 'object'
+          ? product.__ingredient_recall_meta
+          : null;
       const text = buildIngredientRecallProductText(product);
       const fieldTexts = buildRecallCandidateFieldTexts(product);
-      const exactHits = countPhraseMatches(text, recallProfile?.exact_phrases);
-      const aliasHits = countPhraseMatches(text, recallProfile?.alias_phrases);
-      const explicitHits = exactHits + aliasHits;
-      const candidateStep = resolveRecallCandidateStep(product);
+      const exactHits = recallMeta
+        ? Math.max(
+            0,
+            Number(recallMeta.evidence?.title_exact || 0) +
+              Number(recallMeta.evidence?.ingredient_token_exact || 0),
+          )
+        : countPhraseMatches(text, recallProfile?.exact_phrases);
+      const aliasHits = recallMeta
+        ? Math.max(
+            0,
+            Number(recallMeta.evidence?.title_alias || 0) +
+              Number(recallMeta.evidence?.ingredient_token_alias || 0) +
+              Number(recallMeta.evidence?.url_alias || 0),
+          )
+        : countPhraseMatches(text, recallProfile?.alias_phrases);
+      const explicitHits =
+        (recallMeta ? Math.max(0, Number(recallMeta.evidence?.kb_explicit || 0)) : 0) +
+        exactHits +
+        aliasHits;
+      const surfaceExplicitHits = exactHits + aliasHits;
+      const candidateStep = recallMeta?.candidate_step || resolveRecallCandidateStep(product);
       const familyRelation = normalizedTargetStepFamily
-        ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
-        : null;
+        ? recallMeta?.family_relation || getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
+        : recallMeta?.family_relation || null;
       if (normalizedTargetStepFamily && candidateStep && familyRelation === 'incompatible_family') {
         return null;
       }
@@ -705,6 +747,7 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
         exactHits,
         aliasHits,
         explicitHits,
+        surfaceExplicitHits,
         familyRelation,
         tinted,
         refill,
@@ -716,6 +759,8 @@ function stabilizeIngredientRecallProducts(products, { recallProfile = null, tar
   if (!rows.length) return [];
   const sameFamilyRows = rows.filter((row) => row.familyRelation === 'same_family');
   if (sameFamilyRows.length) rows = sameFamilyRows;
+  const surfaceExplicitRows = rows.filter((row) => row.surfaceExplicitHits > 0);
+  if (surfaceExplicitRows.length) rows = surfaceExplicitRows;
   const explicitRows = rows.filter((row) => row.explicitHits > 0);
   if (explicitRows.length) rows = explicitRows;
   const nonNoiseRows = rows.filter((row) => row.obviousNoise !== true);
@@ -1104,6 +1149,12 @@ async function recallIngredientProductsFromProfile({
         continue;
       }
       seen.add(key);
+      attachIngredientRecallMeta(product, {
+        evidence: scored.evidence,
+        candidate_step: scored.evidence?.candidate_step,
+        family_relation: scored.evidence?.family_relation,
+        source_tag: sourceTag,
+      });
       explicitCandidates.push({
         product,
         evidence: scored.evidence,

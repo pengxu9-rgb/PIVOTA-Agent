@@ -2943,7 +2943,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('ingredient-intent search infers treatment step from profile for azelaic acid cream', async () => {
+  test('ingredient-intent search respects cream intent for azelaic acid cream when moisturizer family is allowed', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-intent-azelaic-target-step-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
@@ -2985,12 +2985,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(recallIngredientProducts).toHaveBeenCalledWith(
       expect.objectContaining({
         ingredientId: 'azelaic_acid',
-        targetStepFamily: 'treatment',
+        targetStepFamily: 'moisturizer',
       }),
     );
   });
 
-  test('ingredient-intent search infers treatment step from profile for benzoyl peroxide gel', async () => {
+  test('ingredient-intent search keeps treatment intent for benzoyl peroxide gel', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-intent-benzoyl-target-step-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
@@ -3386,6 +3386,91 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         query_source: 'agent_products_ingredient_recall_direct_empty',
         ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
         family_fallback_used: true,
+      }),
+    );
+  });
+
+  test('ingredient-intent search keeps direct success for generic titles when recall carries KB explicit evidence', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-kb-explicit-display-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [
+          {
+            product_id: 'glycerin_barrier_1',
+            merchant_id: 'external_seed',
+            title: 'Barrier Support Moisturizer',
+            category: 'Moisturizer',
+            product_type: 'Moisturizer',
+            canonical_url: 'https://shop.example.com/products/barrier-support-moisturizer',
+            destination_url: 'https://shop.example.com/products/barrier-support-moisturizer',
+            url: 'https://shop.example.com/products/barrier-support-moisturizer',
+            __ingredient_recall_meta: {
+              evidence: {
+                kb_explicit: 1,
+                title_exact: 0,
+                title_alias: 0,
+                ingredient_token_exact: 0,
+                ingredient_token_alias: 0,
+                url_alias: 0,
+                family_only: 0,
+              },
+              candidate_step: 'moisturizer',
+              family_relation: 'same_family',
+              source_tag: 'kb_named_attached_seed',
+            },
+          },
+        ],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local_plus_reference_plus_signal',
+          ingredient_profile_source: 'local_plus_reference_plus_signal',
+          ingredient_direct_miss_reason: null,
+          ingredient_candidate_evidence_breakdown: {
+            kb_explicit: 1,
+            title_exact: 0,
+            title_alias: 0,
+            ingredient_token_exact: 0,
+            ingredient_token_alias: 0,
+            url_alias: 0,
+            family_only: 0,
+          },
+          kb_recall_attempted: true,
+          kb_recall_recovered: 1,
+          attached_seed_recall_attempted: true,
+          attached_seed_recall_recovered: 1,
+          recall_source_breakdown: {
+            kb_named_attached_seed: 1,
+          },
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => ({
+        ingredient_id: 'glycerin',
+        ingredient_name: 'Glycerin',
+        ingredient_class: 'humectant',
+        exact_phrases: ['glycerin'],
+        alias_phrases: ['glycerine'],
+        family_phrases: ['hydrating', 'moisturizer', 'barrier'],
+        expected_step_families: ['moisturizer', 'serum'],
+      })),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'glycerin moisturizer',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0].title).toBe('Barrier Support Moisturizer');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_direct_miss_reason: null,
       }),
     );
   });
