@@ -32857,6 +32857,10 @@ async function sanitizeRecoCandidatesForUi(
     ingredient_plan_attached_seed_recall_recovered: 0,
     ingredient_plan_generic_search_recovered: 0,
     ingredient_plan_recall_source_breakdown: {},
+    ingredient_registry_resolved_target_count: 0,
+    ingredient_direct_hit_target_count: 0,
+    ingredient_direct_miss_target_count: 0,
+    ingredient_registry_source_breakdown: {},
     ingredient_exact_query_zero_target_count: 0,
     ingredient_alias_query_zero_target_count: 0,
     ingredient_external_seed_recovery_target_count: 0,
@@ -33219,6 +33223,10 @@ async function sanitizeRecoCandidatesForUi(
       let attachedSeedRecallRecoveredForCard = 0;
       let genericSearchRecoveredForCard = 0;
       const recallSourceBreakdownForCard = {};
+      let registryResolvedTargetCountForCard = 0;
+      let directHitTargetCountForCard = 0;
+      let directMissTargetCountForCard = 0;
+      const registrySourceBreakdownForCard = {};
       let exactQueryZeroTargetCountForCard = 0;
       let aliasQueryZeroTargetCountForCard = 0;
       let externalSeedRecoveryTargetCountForCard = 0;
@@ -33425,6 +33433,9 @@ async function sanitizeRecoCandidatesForUi(
             const ingredientRecallDiagnostics = isPlainObject(ingredientRecall?.diagnostics)
               ? ingredientRecall.diagnostics
               : {};
+            if (ingredientRecallDiagnostics.ingredient_registry_match === true) registryResolvedTargetCountForCard += 1;
+            if (ingredientRecallDiagnostics.ingredient_direct_miss_reason) directMissTargetCountForCard += 1;
+            if (ingredientRecallDiagnostics.family_fallback_used === true) familyFallbackTargetCountForCard += 1;
             if (ingredientRecallDiagnostics.kb_recall_attempted === true) kbRecallAttemptedForCard += 1;
             if (Number(ingredientRecallDiagnostics.kb_recall_recovered || 0) > 0) kbRecallRecoveredForCard += 1;
             if (ingredientRecallDiagnostics.attached_seed_recall_attempted === true) attachedSeedRecallAttemptedForCard += 1;
@@ -33438,7 +33449,19 @@ async function sanitizeRecoCandidatesForUi(
                   Number(recallSourceBreakdownForCard[normalizedKey] || 0) + numeric;
               }
             }
+            if (isPlainObject(ingredientRecallDiagnostics.ingredient_registry_source_breakdown)) {
+              for (const [key, rawValue] of Object.entries(ingredientRecallDiagnostics.ingredient_registry_source_breakdown)) {
+                const normalizedKey = String(key || '').trim();
+                const numeric = Math.max(0, Math.trunc(Number(rawValue || 0)));
+                if (!normalizedKey || numeric <= 0) continue;
+                registrySourceBreakdownForCard[normalizedKey] =
+                  Number(registrySourceBreakdownForCard[normalizedKey] || 0) + numeric;
+              }
+            }
             const ingredientRecallFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
+              ...(ingredientRecallDiagnostics.ingredient_direct_miss_reason
+                ? [{ field: 'payload.targets[].products', reason: String(ingredientRecallDiagnostics.ingredient_direct_miss_reason) }]
+                : []),
               ...(ingredientRecallDiagnostics.kb_recall_attempted === true && Number(ingredientRecallDiagnostics.kb_recall_recovered || 0) === 0
                 ? [{ field: 'payload.targets[].products', reason: 'kb_recall_empty' }]
                 : []),
@@ -33452,6 +33475,7 @@ async function sanitizeRecoCandidatesForUi(
               queryText: ingredientSpecificQueries[0] || recoveryQueryText,
             });
             if (recalledProducts.length) {
+              directHitTargetCountForCard += 1;
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
                   ...nextTarget,
@@ -33749,6 +33773,9 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.ingredient_plan_recovery_attempted += recoveryAttemptedForCard;
       lookupMeta.ingredient_plan_recovery_recovered += recoveryRecoveredForCard;
       lookupMeta.ingredient_plan_exact_match_target_count += exactMatchTargetCountForCard;
+      lookupMeta.ingredient_registry_resolved_target_count += registryResolvedTargetCountForCard;
+      lookupMeta.ingredient_direct_hit_target_count += directHitTargetCountForCard;
+      lookupMeta.ingredient_direct_miss_target_count += directMissTargetCountForCard;
       lookupMeta.ingredient_plan_kb_recall_attempted += kbRecallAttemptedForCard;
       lookupMeta.ingredient_plan_kb_recall_recovered += kbRecallRecoveredForCard;
       lookupMeta.ingredient_plan_attached_seed_recall_attempted += attachedSeedRecallAttemptedForCard;
@@ -33760,6 +33787,13 @@ async function sanitizeRecoCandidatesForUi(
         if (!normalizedKey || numeric <= 0) continue;
         lookupMeta.ingredient_plan_recall_source_breakdown[normalizedKey] =
           Number(lookupMeta.ingredient_plan_recall_source_breakdown[normalizedKey] || 0) + numeric;
+      }
+      for (const [key, rawValue] of Object.entries(registrySourceBreakdownForCard)) {
+        const normalizedKey = String(key || '').trim();
+        const numeric = Math.max(0, Math.trunc(Number(rawValue || 0)));
+        if (!normalizedKey || numeric <= 0) continue;
+        lookupMeta.ingredient_registry_source_breakdown[normalizedKey] =
+          Number(lookupMeta.ingredient_registry_source_breakdown[normalizedKey] || 0) + numeric;
       }
       lookupMeta.ingredient_exact_query_zero_target_count += exactQueryZeroTargetCountForCard;
       lookupMeta.ingredient_alias_query_zero_target_count += aliasQueryZeroTargetCountForCard;
@@ -35370,6 +35404,18 @@ async function applyProductIntelGuardrailsToEnvelope({
           0,
           Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
         ),
+        ingredient_registry_resolved_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_registry_resolved_target_count || 0)),
+        ),
+        ingredient_direct_hit_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_direct_hit_target_count || 0)),
+        ),
+        ingredient_direct_miss_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
+        ),
         ingredient_plan_target_count: Math.max(
           0,
           Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
@@ -35390,6 +35436,10 @@ async function applyProductIntelGuardrailsToEnvelope({
         ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
         Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
           ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+          : {}),
+        ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
+        Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
+          ? { ingredient_registry_source_breakdown: { ...lookupMeta.ingredient_registry_source_breakdown } }
           : {}),
         ...(pickFirstString(lookupMeta.ingredient_plan_products_empty_reason)
           ? { ingredient_plan_products_empty_reason: lookupMeta.ingredient_plan_products_empty_reason }
@@ -35580,6 +35630,18 @@ async function applyProductIntelGuardrailsToEnvelope({
       0,
       Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
     ),
+    ingredient_registry_resolved_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_registry_resolved_target_count || 0)),
+    ),
+    ingredient_direct_hit_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_hit_target_count || 0)),
+    ),
+    ingredient_direct_miss_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
+    ),
     ingredient_plan_target_count: Math.max(
       0,
       Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
@@ -35600,6 +35662,10 @@ async function applyProductIntelGuardrailsToEnvelope({
     ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
       ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+      : {}),
+    ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
+    Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
+      ? { ingredient_registry_source_breakdown: { ...lookupMeta.ingredient_registry_source_breakdown } }
       : {}),
     invalid_url_drop_rate:
       Number(sanitized.dropped || 0) + Number(sanitized.externalized || 0) > 0
@@ -35891,9 +35957,25 @@ async function applyRecommendationOutputGuardrailsForRoute({
       0,
       Math.trunc(Number(lookupMeta.ingredient_plan_family_fallback_target_count || 0)),
     ),
+    ingredient_registry_resolved_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_registry_resolved_target_count || 0)),
+    ),
+    ingredient_direct_hit_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_hit_target_count || 0)),
+    ),
+    ingredient_direct_miss_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
+    ),
     ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
       ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+      : {}),
+    ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
+    Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
+      ? { ingredient_registry_source_breakdown: { ...lookupMeta.ingredient_registry_source_breakdown } }
       : {}),
     ...(pickFirstString(lookupMeta.llm_fallback_last_reason)
       ? { product_lookup_fallback_last_reason: lookupMeta.llm_fallback_last_reason }

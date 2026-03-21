@@ -672,7 +672,7 @@ describe('ingredientProductRecall', () => {
     expect(patternSql).toBeTruthy();
     expect(patternSql).not.toMatch(/seed_data::text/);
     expect(patternSql).toMatch(/seed_data->'snapshot'->>'title'/);
-    expect(patternSql).toMatch(/seed_data->'snapshot'->>'description'/);
+    expect(patternSql).not.toMatch(/seed_data->'snapshot'->>'description'/);
   });
 
   test('allows ingredient-intent family fallback when explicitly requested', async () => {
@@ -845,7 +845,7 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Alpha Arbutin 2% + HA']);
-    expect(out.diagnostics.ingredient_profile_source).toBe('kb_only');
+    expect(String(out.diagnostics.ingredient_profile_source || '')).toMatch(/reference/);
     expect(out.diagnostics.ingredient_reference_match_found).toBe(true);
   });
 
@@ -939,5 +939,191 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Azelaic Acid Suspension 10%']);
+  });
+
+  test('benzoyl peroxide gel keeps explicit treatment products ahead of generic blemish sticker noise', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_bpo',
+              external_product_id: 'ext_bpo',
+              destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              domain: 'acme.example.com',
+              title: 'Benzoyl Peroxide 5% Gel',
+              image_url: 'https://acme.example.com/bpo.jpg',
+              price_amount: 18,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:bpo',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Treatment',
+                snapshot: {
+                  title: 'Benzoyl Peroxide 5% Gel',
+                  description: 'benzoyl peroxide acne treatment gel',
+                  category: 'Treatment',
+                  canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                  destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_patch',
+              external_product_id: 'ext_patch',
+              destination_url: 'https://acme.example.com/products/blemish-patch-stickers',
+              canonical_url: 'https://acme.example.com/products/blemish-patch-stickers',
+              domain: 'acme.example.com',
+              title: 'Blemish Patch Stickers',
+              image_url: 'https://acme.example.com/patch.jpg',
+              price_amount: 9,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:patch',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Patch',
+                snapshot: {
+                  title: 'Blemish Patch Stickers',
+                  description: 'blemish sticker for acne spots',
+                  category: 'Patch',
+                  canonical_url: 'https://acme.example.com/products/blemish-patch-stickers',
+                  destination_url: 'https://acme.example.com/products/blemish-patch-stickers',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'benzoyl peroxide gel',
+      ingredientId: 'benzoyl_peroxide',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Benzoyl Peroxide 5% Gel']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
+  test('glycerin moisturizer rejects off-family hand-mask noise before ranking', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_glycerin_moisturizer',
+              external_product_id: 'ext_glycerin_moisturizer',
+              destination_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+              canonical_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+              domain: 'acme.example.com',
+              title: 'Glycerin Barrier Moisturizer',
+              image_url: 'https://acme.example.com/glycerin.jpg',
+              price_amount: 20,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:glycerin-moisturizer',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Moisturizer',
+                snapshot: {
+                  title: 'Glycerin Barrier Moisturizer',
+                  description: 'glycerin moisturizer for dry skin',
+                  category: 'Moisturizer',
+                  canonical_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+                  destination_url: 'https://acme.example.com/products/glycerin-barrier-moisturizer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+            {
+              id: 'seed_hand_mask',
+              external_product_id: 'ext_hand_mask',
+              destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              domain: 'acme.example.com',
+              title: 'Glycerin Hand Mask',
+              image_url: 'https://acme.example.com/hand-mask.jpg',
+              price_amount: 8,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:glycerin-hand-mask',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Mask',
+                snapshot: {
+                  title: 'Glycerin Hand Mask',
+                  description: 'glycerin mask for hands',
+                  category: 'Mask',
+                  canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                  destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Glycerin Barrier Moisturizer']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 });

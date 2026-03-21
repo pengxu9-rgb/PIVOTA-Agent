@@ -263,12 +263,52 @@ async function getBestIngredientReferenceMatch(input) {
   return candidates[0] || null;
 }
 
+async function getIngredientReferenceStoreHealth() {
+  const databaseUrl = getIngredientReferenceDatabaseUrl();
+  if (!databaseUrl) {
+    return {
+      source: 'reference',
+      configured: false,
+      reachable: false,
+      view_reachable: false,
+      available: false,
+      reason: 'database_url_missing',
+      view_name: VIEW_NAME,
+    };
+  }
+  try {
+    const res = await queryIngredientReference(`SELECT 1 AS ok FROM ${VIEW_NAME} LIMIT 1`);
+    return {
+      source: 'reference',
+      configured: true,
+      reachable: true,
+      view_reachable: true,
+      available: true,
+      reason: null,
+      view_name: VIEW_NAME,
+      sample_row_count: Array.isArray(res?.rows) ? res.rows.length : 0,
+    };
+  } catch (err) {
+    return {
+      source: 'reference',
+      configured: true,
+      reachable: err?.code !== 'NO_DATABASE',
+      view_reachable: false,
+      available: false,
+      reason: isMissingViewError(err) ? 'view_unavailable' : 'query_failed',
+      error_code: String(err?.code || '').trim() || null,
+      view_name: VIEW_NAME,
+    };
+  }
+}
+
 module.exports = {
   normalizeIngredientReferenceKey,
   normalizeIngredientReferenceText,
   getIngredientReferenceByNormalizedKey,
   lookupIngredientReferenceCandidates,
   getBestIngredientReferenceMatch,
+  getIngredientReferenceStoreHealth,
   _internals: {
     mapIngredientReferenceRow,
     normalizeLimit,

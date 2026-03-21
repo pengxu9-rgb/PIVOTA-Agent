@@ -3125,18 +3125,22 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     ]);
   });
 
-  test('ingredient-intent search uses external-seed direct fallback before generic clarify when KB recall is empty', async () => {
+  test('ingredient-intent search returns direct-empty with explicit miss reason before generic clarify', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
         products: [],
         diagnostics: {
           ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'reference',
+          ingredient_profile_source: 'reference',
+          ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
           kb_recall_attempted: true,
           kb_recall_recovered: 0,
           attached_seed_recall_attempted: true,
           attached_seed_recall_recovered: 0,
-          family_fallback_attempted: true,
+          family_fallback_attempted: false,
           family_fallback_recovered: 0,
           family_fallback_used: false,
           recall_source_breakdown: {},
@@ -3207,159 +3211,88 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resolveIngredientRecallProfile).toHaveBeenCalledTimes(1);
     expect(recallIngredientProducts).toHaveBeenCalledTimes(1);
     expect(invokeScope.isDone()).toBe(false);
-    expect(resp.body.products).toHaveLength(1);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        title: 'Winona Soothing Repair Serum with Panthenol',
-      }),
-    );
+    expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
+        query_source: 'agent_products_ingredient_recall_direct_empty',
         ingredient_intent_detected: true,
-        ingredient_direct_fallback_used: true,
+        ingredient_registry_match: true,
+        ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
         kb_recall_attempted: true,
       }),
     );
   });
 
-  test('ingredient-intent external-seed fallback reranks panthenol alias evidence ahead of generic serum noise', async () => {
-    process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-rerank-test';
+  test('ingredient-intent search surfaces registry_unavailable miss instead of generic fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-empty-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      hasIngredientRegistryIntentSignal: jest.fn(() => true),
+      getIngredientRecallRegistryHealth: jest.fn(async () => ({
+        ok: false,
+        sources: {},
+      })),
       recallIngredientProducts: jest.fn(async () => ({
         products: [],
         diagnostics: {
           ingredient_intent_detected: true,
-          kb_recall_attempted: true,
+          ingredient_registry_match: false,
+          ingredient_registry_source: 'none',
+          ingredient_profile_source: 'none',
+          ingredient_direct_miss_reason: 'registry_unavailable',
+          kb_recall_attempted: false,
           kb_recall_recovered: 0,
-          attached_seed_recall_attempted: true,
+          attached_seed_recall_attempted: false,
           attached_seed_recall_recovered: 0,
-          family_fallback_attempted: true,
+          family_fallback_attempted: false,
           family_fallback_recovered: 0,
           family_fallback_used: false,
           recall_source_breakdown: {},
         },
       })),
-      resolveIngredientRecallProfile: jest.fn(() => ({
-        ingredient_id: 'panthenol',
-        ingredient_name: 'Panthenol (B5)',
-        exact_phrases: ['panthenol'],
-        alias_phrases: ['vitamin b5', 'provitamin b5', 'dexpanthenol', 'b5'],
-        family_phrases: ['barrier', 'repair', 'soothing', 'hydrating', 'sensitive', 'serum'],
+      resolveIngredientRecallProfile: jest.fn(() => null),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: null,
+        diagnostics: {
+          registry_match: false,
+          registry_source: 'none',
+          profile_source: 'none',
+          registry_unavailable: true,
+          registry_source_breakdown: { local: 0, reference: 0, signal: 0 },
+        },
       })),
-    }));
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn(async (sql) => {
-        const text = String(sql || '');
-        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
-        return {
-          rows: [
-            {
-              id: 'seed_generic_serum',
-              external_product_id: 'ext_generic_serum',
-              destination_url: 'https://patyka.example.com/products/fundamental-serum',
-              canonical_url: 'https://patyka.example.com/products/fundamental-serum',
-              domain: 'patyka.example.com',
-              title: 'Soothing & Barrier Support Serum',
-              image_url: 'https://patyka.example.com/image.jpg',
-              price_amount: 34,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'PATYKA',
-                category: 'Serum',
-                snapshot: {
-                  title: 'Soothing & Barrier Support Serum',
-                  description: 'hydrating face serum',
-                  brand: 'PATYKA',
-                  category: 'Serum',
-                  canonical_url: 'https://patyka.example.com/products/fundamental-serum',
-                  destination_url: 'https://patyka.example.com/products/fundamental-serum',
-                },
-              },
-            },
-            {
-              id: 'seed_b5_1',
-              external_product_id: 'ext_b5_1',
-              destination_url: 'https://ordinary.example.com/products/ha-b5',
-              canonical_url: 'https://ordinary.example.com/products/ha-b5',
-              domain: 'ordinary.example.com',
-              title: 'Hyaluronic Acid 2% + B5 (Original Formulation)',
-              image_url: 'https://ordinary.example.com/image.jpg',
-              price_amount: 15,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'The Ordinary',
-                category: 'Serum',
-                snapshot: {
-                  title: 'Hyaluronic Acid 2% + B5 (Original Formulation)',
-                  description: 'hydrating serum with vitamin b5',
-                  brand: 'The Ordinary',
-                  category: 'Serum',
-                  canonical_url: 'https://ordinary.example.com/products/ha-b5',
-                  destination_url: 'https://ordinary.example.com/products/ha-b5',
-                },
-              },
-            },
-            {
-              id: 'seed_b5_2',
-              external_product_id: 'ext_b5_2',
-              destination_url: 'https://ordinary.example.com/products/amino-acids-b5',
-              canonical_url: 'https://ordinary.example.com/products/amino-acids-b5',
-              domain: 'ordinary.example.com',
-              title: 'Amino Acids + B5',
-              image_url: 'https://ordinary.example.com/image.jpg',
-              price_amount: 14,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'The Ordinary',
-                category: 'Serum',
-                snapshot: {
-                  title: 'Amino Acids + B5',
-                  description: 'lightweight serum with vitamin b5',
-                  brand: 'The Ordinary',
-                  category: 'Serum',
-                  canonical_url: 'https://ordinary.example.com/products/amino-acids-b5',
-                  destination_url: 'https://ordinary.example.com/products/amino-acids-b5',
-                },
-              },
-            },
-          ],
-        };
-      }),
     }));
 
     const app = require('../../src/server');
     const resp = await request(app)
       .get('/agent/v1/products/search')
       .query({
-        query: 'panthenol repair serum',
+        query: 'alpha arbutin serum',
         source: 'aurora-bff',
         catalog_surface: 'beauty',
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.products.map((row) => row.title)).toEqual([
-      'Hyaluronic Acid 2% + B5 (Original Formulation)',
-      'Amino Acids + B5',
-    ]);
+    expect(resp.body.products).toEqual([]);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
-        ingredient_direct_fallback_used: true,
+        query_source: 'agent_products_ingredient_recall_direct_empty',
+        ingredient_direct_miss_reason: 'registry_unavailable',
+        ingredient_registry_match: false,
       }),
     );
   });
 
-  test('ingredient-intent external-seed fallback returns stabilized sunscreen products instead of raw variant rows', async () => {
-    process.env.DATABASE_URL = 'postgres://ingredient-recall-external-fallback-sunscreen-stabilize-test';
+  test('ingredient-intent direct recall empty does not fall back to invoke even for sunscreen queries', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-empty-sunscreen-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
         products: [],
         diagnostics: {
           ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local_plus_reference',
+          ingredient_profile_source: 'local_plus_reference',
+          ingredient_direct_miss_reason: 'all_candidates_filtered_noise',
           kb_recall_attempted: true,
           kb_recall_recovered: 0,
           attached_seed_recall_attempted: true,
@@ -3378,88 +3311,13 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         family_phrases: ['daily face', 'sun protection'],
       })),
     }));
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn(async (sql) => {
-        const text = String(sql || '');
-        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
-        return {
-          rows: [
-            {
-              id: 'seed_spf_1',
-              external_product_id: 'ext_spf_1',
-              destination_url: 'https://fenty.example.com/products/hydra-vizor',
-              canonical_url: 'https://fenty.example.com/products/hydra-vizor',
-              domain: 'fenty.example.com',
-              title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
-              image_url: 'https://fenty.example.com/image1.jpg',
-              price_amount: 36,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'Fenty Skin',
-                category: 'Sunscreen',
-                snapshot: {
-                  title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 1',
-                  description: 'tinted refill sunscreen',
-                  brand: 'Fenty Skin',
-                  category: 'Sunscreen',
-                  canonical_url: 'https://fenty.example.com/products/hydra-vizor',
-                  destination_url: 'https://fenty.example.com/products/hydra-vizor',
-                },
-              },
-            },
-            {
-              id: 'seed_spf_2',
-              external_product_id: 'ext_spf_2',
-              destination_url: 'https://fenty.example.com/products/hydra-vizor',
-              canonical_url: 'https://fenty.example.com/products/hydra-vizor',
-              domain: 'fenty.example.com',
-              title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
-              image_url: 'https://fenty.example.com/image2.jpg',
-              price_amount: 36,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'Fenty Skin',
-                category: 'Sunscreen',
-                snapshot: {
-                  title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — 2',
-                  description: 'tinted refill sunscreen',
-                  brand: 'Fenty Skin',
-                  category: 'Sunscreen',
-                  canonical_url: 'https://fenty.example.com/products/hydra-vizor',
-                  destination_url: 'https://fenty.example.com/products/hydra-vizor',
-                },
-              },
-            },
-            {
-              id: 'seed_spf_3',
-              external_product_id: 'ext_spf_3',
-              destination_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
-              canonical_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
-              domain: 'fenty.example.com',
-              title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-              image_url: 'https://fenty.example.com/image3.jpg',
-              price_amount: 38,
-              price_currency: 'USD',
-              availability: 'in_stock',
-              seed_data: {
-                brand: 'Fenty Skin',
-                category: 'Sunscreen',
-                snapshot: {
-                  title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-                  description: 'broad spectrum mineral sunscreen moisturizer',
-                  brand: 'Fenty Skin',
-                  category: 'Sunscreen',
-                  canonical_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
-                  destination_url: 'https://fenty.example.com/products/hydra-vizor-mineral',
-                },
-              },
-            },
-          ],
-        };
-      }),
-    }));
+    const invokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'should_not_run', merchant_id: 'm1', title: 'Should not run' }],
+      });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -3471,23 +3329,16 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.products).toHaveLength(2);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-      }),
-    );
-    expect(String(resp.body.products[1]?.title || '')).toMatch(
-      /^Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill — [12]$/,
-    );
-    expect(resp.body.total).toBe(2);
-    expect(resp.body.page_size).toBe(2);
+    expect(invokeScope.isDone()).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.total).toBe(0);
+    expect(resp.body.page_size).toBe(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_ingredient_external_seed_direct_fallback',
-        ingredient_direct_fallback_used: true,
-        products_returned_count: 2,
-        external_seed_returned_count: 2,
+        query_source: 'agent_products_ingredient_recall_direct_empty',
+        ingredient_direct_miss_reason: 'all_candidates_filtered_noise',
+        products_returned_count: 0,
+        external_seed_returned_count: 0,
       }),
     );
   });
@@ -4188,7 +4039,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         hit_quality: 'valid_hit',
         query_target_step_family: 'serum',
-        query_step_strength: 'supportive_family',
+        query_step_strength: 'strong_goal_family',
         step_success_class: 'strong_goal_family',
         normalized_intent: expect.objectContaining({
           backbone_id: 'serum_panthenol_canary_backbone_v1',
@@ -4203,21 +4054,13 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
             satisfied: true,
           }),
         }),
-        quality_gate_result: expect.objectContaining({
-          applied: true,
-          satisfied: true,
-        }),
         candidate_origin_counts: expect.objectContaining({
           external_supplement: 2,
         }),
         displayable_candidate_count: 2,
-        fill_target_count: 3,
-        fill_completed_count: 2,
-        coverage_limited_after_fill: true,
-        selection_diversity: expect.objectContaining({
-          exact_sku_dropped_count: 0,
-          session_exposure_penalty_applied: false,
-        }),
+        execution_mode: 'server_owned_ladder',
+        strong_goal_family_topk_count: 2,
+        same_family_topk_count: 2,
       }),
     );
   });

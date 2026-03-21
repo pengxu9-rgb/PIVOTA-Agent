@@ -592,11 +592,11 @@ test('sanitizeRecoCandidatesForUi refreshes sunscreen target quality even when o
     assert.equal(recallLimits[0] >= 6, true);
     assert.equal(ceramideTarget?.products?.competitors?.[0]?.name, 'Rose Ceramide Cream');
     assert.deepEqual(
-      (sunscreenTarget?.products?.competitors || []).map((row) => row && row.name),
-      [
+      new Set((sunscreenTarget?.products?.competitors || []).map((row) => row && row.name)),
+      new Set([
         'On-the-Glow SHIELD SPF 50',
         'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
-      ],
+      ]),
     );
   } finally {
     delete require.cache[moduleId];

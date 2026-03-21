@@ -248,11 +248,51 @@ async function getBestIngredientSignalMatch(input) {
   return candidates[0] || null;
 }
 
+async function getIngredientSignalStoreHealth() {
+  const databaseUrl = getIngredientSignalDatabaseUrl();
+  if (!databaseUrl) {
+    return {
+      source: 'signal',
+      configured: false,
+      reachable: false,
+      view_reachable: false,
+      available: false,
+      reason: 'database_url_missing',
+      view_name: VIEW_NAME,
+    };
+  }
+  try {
+    const res = await queryIngredientSignal(`SELECT 1 AS ok FROM ${VIEW_NAME} LIMIT 1`);
+    return {
+      source: 'signal',
+      configured: true,
+      reachable: true,
+      view_reachable: true,
+      available: true,
+      reason: null,
+      view_name: VIEW_NAME,
+      sample_row_count: Array.isArray(res?.rows) ? res.rows.length : 0,
+    };
+  } catch (err) {
+    return {
+      source: 'signal',
+      configured: true,
+      reachable: err?.code !== 'NO_DATABASE',
+      view_reachable: false,
+      available: false,
+      reason: isMissingViewError(err) ? 'view_unavailable' : 'query_failed',
+      error_code: String(err?.code || '').trim() || null,
+      view_name: VIEW_NAME,
+    };
+  }
+}
+
 module.exports = {
   normalizeIngredientSignalKey,
   normalizeIngredientSignalText,
   lookupIngredientSignalCandidates,
   getBestIngredientSignalMatch,
+  getIngredientSignalStoreHealth,
   _internals: {
     mapIngredientSignalRow,
     normalizeLimit,
