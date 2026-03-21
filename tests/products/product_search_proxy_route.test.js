@@ -3471,6 +3471,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
         ingredient_direct_miss_reason: null,
+        ingredient_direct_display_strategy: 'service_stabilized',
       }),
     );
   });

@@ -8103,14 +8103,24 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     recalled?.diagnostics && typeof recalled.diagnostics === 'object' && !Array.isArray(recalled.diagnostics)
       ? recalled.diagnostics
       : {};
-  const recalledProducts = stabilizeIngredientIntentDirectProducts(
-    Array.isArray(recalled?.products) ? recalled.products : [],
-    {
-      recallProfile,
-      targetStepFamily,
-      queryText: relevanceQueryText,
-    },
+  const directServiceProducts = Array.isArray(recalled?.products) ? recalled.products : [];
+  const hasServiceRecallMeta = directServiceProducts.some(
+    (product) =>
+      product &&
+      typeof product === 'object' &&
+      product.__ingredient_recall_meta &&
+      typeof product.__ingredient_recall_meta === 'object',
   );
+  const recalledProducts = hasServiceRecallMeta
+    ? directServiceProducts.slice()
+    : stabilizeIngredientIntentDirectProducts(
+        directServiceProducts,
+        {
+          recallProfile,
+          targetStepFamily,
+          queryText: relevanceQueryText,
+        },
+      );
   const baseMetadata = {
     fetched_at: new Date().toISOString(),
     ingredient_intent_detected:
@@ -8158,6 +8168,8 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       diagnostics.recall_source_breakdown && typeof diagnostics.recall_source_breakdown === 'object'
         ? { ...diagnostics.recall_source_breakdown }
         : {},
+    ingredient_direct_service_products_count: directServiceProducts.length,
+    ingredient_direct_display_strategy: hasServiceRecallMeta ? 'service_stabilized' : 'route_stabilized',
     products_returned_count: recalledProducts.length,
     external_seed_returned_count: recalledProducts.length,
   };
