@@ -610,6 +610,12 @@ function mergeBreakdown(target, sourceTag, amount = 1) {
   target[key] = Number(target[key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
 }
 
+function pushCandidateSample(target, sample, maxItems = 5) {
+  if (!Array.isArray(target) || !sample || typeof sample !== 'object') return;
+  if (target.length >= Math.max(1, Number(maxItems) || 5)) return;
+  target.push(sample);
+}
+
 function buildCandidateEvidence(
   product,
   {
@@ -1175,6 +1181,9 @@ async function recallIngredientProductsFromProfile({
     family_fallback_recovered: 0,
     family_fallback_used: false,
     recall_source_breakdown: {},
+    ingredient_candidate_reject_breakdown: {},
+    ingredient_rejected_candidate_samples: [],
+    ingredient_ranked_candidate_samples: [],
   };
 
   if (!profile) {
@@ -1216,8 +1225,19 @@ async function recallIngredientProductsFromProfile({
         queryText: query,
       });
       if (!scored || !scored.evidence) {
-        if (scored?.reject_reason === 'step_family_mismatch') stepMismatchCount += 1;
+        const rejectReason = String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
+        if (rejectReason === 'step_family_mismatch') stepMismatchCount += 1;
         else noiseFilteredCount += 1;
+        mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
+        pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
+          title:
+            String(product?.title || product?.name || product?.display_name || '').trim() || null,
+          source_tag: sourceTag,
+          reject_reason: rejectReason,
+          candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
+          family_relation: scored?.evidence?.family_relation || null,
+          kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
+        });
         continue;
       }
       seen.add(key);
@@ -1382,6 +1402,15 @@ async function recallIngredientProductsFromProfile({
     diagnostics.ingredient_candidate_evidence_breakdown.ingredient_token_alias += Number(row.evidence.ingredient_token_alias || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.url_alias += Number(row.evidence.url_alias || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.family_only += Number(row.evidence.family_only || 0) > 0 ? 1 : 0;
+    pushCandidateSample(diagnostics.ingredient_ranked_candidate_samples, {
+      title: String(row.product?.title || row.product?.name || row.product?.display_name || '').trim() || null,
+      source_tag: row.source_tag || null,
+      candidate_step: row.evidence?.candidate_step || null,
+      family_relation: row.evidence?.family_relation || null,
+      kb_explicit: Number(row.evidence?.kb_explicit || 0) > 0 ? 1 : 0,
+      explicit_hits: Number(row.evidence?.explicit_hits || 0) || 0,
+      family_only: Number(row.evidence?.family_only || 0) > 0 ? 1 : 0,
+    });
   }
 
   const stabilizedProducts = stabilizeIngredientRecallProducts(

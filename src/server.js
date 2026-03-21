@@ -5101,8 +5101,7 @@ function resolveIngredientIntentTargetStepFamily({
     inferred === 'moisturizer' &&
     prefersTreatmentOverMoisturizer &&
     expectedFamilies.includes('treatment') &&
-    explicitCreamLikeQuery &&
-    !expectedFamilies.includes('moisturizer')
+    explicitCreamLikeQuery
   ) {
     return 'treatment';
   }
@@ -8168,6 +8167,17 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       diagnostics.recall_source_breakdown && typeof diagnostics.recall_source_breakdown === 'object'
         ? { ...diagnostics.recall_source_breakdown }
         : {},
+    ingredient_candidate_reject_breakdown:
+      diagnostics.ingredient_candidate_reject_breakdown &&
+      typeof diagnostics.ingredient_candidate_reject_breakdown === 'object'
+        ? { ...diagnostics.ingredient_candidate_reject_breakdown }
+        : {},
+    ingredient_rejected_candidate_samples: Array.isArray(diagnostics.ingredient_rejected_candidate_samples)
+      ? diagnostics.ingredient_rejected_candidate_samples.slice(0, 5)
+      : [],
+    ingredient_ranked_candidate_samples: Array.isArray(diagnostics.ingredient_ranked_candidate_samples)
+      ? diagnostics.ingredient_ranked_candidate_samples.slice(0, 5)
+      : [],
     ingredient_direct_service_products_count: directServiceProducts.length,
     ingredient_direct_display_strategy: hasServiceRecallMeta ? 'service_stabilized' : 'route_stabilized',
     products_returned_count: recalledProducts.length,

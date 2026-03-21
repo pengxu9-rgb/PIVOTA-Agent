@@ -2943,7 +2943,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('ingredient-intent search respects cream intent for azelaic acid cream when moisturizer family is allowed', async () => {
+  test('ingredient-intent search keeps treatment intent for azelaic acid cream even when moisturizer family is also allowed', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-intent-azelaic-target-step-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
@@ -2985,7 +2985,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(recallIngredientProducts).toHaveBeenCalledWith(
       expect.objectContaining({
         ingredientId: 'azelaic_acid',
-        targetStepFamily: 'moisturizer',
+        targetStepFamily: 'treatment',
       }),
     );
   });
