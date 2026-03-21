@@ -469,6 +469,44 @@ function resolveKbEvidenceForSeedRow(row, kbEvidenceLookup) {
   return evidence;
 }
 
+function resolveKbEvidenceForProduct(product, kbEvidenceLookup) {
+  const lookup = kbEvidenceLookup && typeof kbEvidenceLookup === 'object' ? kbEvidenceLookup : null;
+  if (!lookup || !product || typeof product !== 'object') return null;
+  let evidence = null;
+  const urls = uniqStrings([
+    normalizeUrl(product?.canonical_url),
+    normalizeUrl(product?.destination_url),
+    normalizeUrl(product?.url),
+  ]);
+  for (const url of urls) {
+    if (lookup.byUrl instanceof Map && lookup.byUrl.has(url)) {
+      evidence = mergeKbEvidence(evidence, lookup.byUrl.get(url));
+    }
+  }
+  const titleKeys = uniqStrings([
+    normalizeIngredientRecallText(product?.title),
+    normalizeIngredientRecallText(product?.name),
+    normalizeIngredientRecallText(product?.display_name),
+    normalizeIngredientRecallText(product?.product_name),
+  ]).map(normalizeIngredientRecallText).filter(Boolean);
+  const brandKeys = uniqStrings([
+    normalizeIngredientRecallText(product?.brand),
+    normalizeIngredientRecallText(product?.vendor),
+  ]).map(normalizeIngredientRecallText).filter(Boolean);
+  for (const titleKey of titleKeys) {
+    if (lookup.byTitle instanceof Map && lookup.byTitle.has(titleKey)) {
+      evidence = mergeKbEvidence(evidence, lookup.byTitle.get(titleKey));
+    }
+    for (const brandKey of brandKeys) {
+      const compositeKey = `${brandKey}::${titleKey}`;
+      if (lookup.byTitleBrand instanceof Map && lookup.byTitleBrand.has(compositeKey)) {
+        evidence = mergeKbEvidence(evidence, lookup.byTitleBrand.get(compositeKey));
+      }
+    }
+  }
+  return evidence;
+}
+
 function buildKbProductNamePatterns(kbRows, maxItems = 16) {
   return buildPhrasePatterns(
     uniqStrings(
@@ -972,6 +1010,176 @@ function buildSeedIdentityWhere(seedIds, urls, sqlParams) {
   return clauses;
 }
 
+function appendProductsCacheIngredientTokens(out, value) {
+  if (value == null) return;
+  if (Array.isArray(value)) {
+    for (const item of value) appendProductsCacheIngredientTokens(out, item);
+    return;
+  }
+  if (typeof value === 'string') {
+    const normalized = String(value || '').trim();
+    if (normalized) out.push(normalized);
+    return;
+  }
+  if (typeof value !== 'object') return;
+  appendProductsCacheIngredientTokens(out, value.inci);
+  appendProductsCacheIngredientTokens(out, value.inci_name);
+  appendProductsCacheIngredientTokens(out, value.ingredient_name);
+  appendProductsCacheIngredientTokens(out, value.name);
+  appendProductsCacheIngredientTokens(out, value.display_name);
+  appendProductsCacheIngredientTokens(out, value.title);
+}
+
+function collectProductsCacheIngredientTokens(productData) {
+  const data = productData && typeof productData === 'object' && !Array.isArray(productData)
+    ? productData
+    : {};
+  const out = [];
+  const sources = [
+    data.ingredient_tokens,
+    data.key_actives,
+    data.keyActives,
+    data.active_ingredients,
+    data.activeIngredients,
+    data.key_ingredients,
+    data.keyIngredients,
+    data.hero_ingredients,
+    data.heroIngredients,
+    data.ingredients,
+    data.inci,
+    data.inci_list,
+    data.raw_ingredient_text_clean,
+  ];
+  for (const source of sources) appendProductsCacheIngredientTokens(out, source);
+  return uniqStrings(out, 64);
+}
+
+function mapProductsCacheRowToRecallProduct(row, sourceTag) {
+  const productData =
+    row?.product_data && typeof row.product_data === 'object' && !Array.isArray(row.product_data)
+      ? row.product_data
+      : null;
+  if (!productData) return null;
+  const ingredientTokens = collectProductsCacheIngredientTokens(productData);
+  const title =
+    String(
+      productData.title ||
+        productData.name ||
+        productData.display_name ||
+        productData.product_name ||
+        '',
+    ).trim() || undefined;
+  const description = String(productData.description || '').trim() || undefined;
+  const category =
+    String(productData.category || productData.product_category || '').trim() || undefined;
+  const productType =
+    String(productData.product_type || productData.productType || category || '').trim() || undefined;
+  const vendor = String(productData.vendor || productData.brand || '').trim() || undefined;
+  const brand = String(productData.brand || productData.vendor || '').trim() || undefined;
+  const tags = Array.isArray(productData.tags)
+    ? productData.tags.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const url = normalizeUrl(
+    productData.url ||
+      productData.canonical_url ||
+      productData.destination_url ||
+      productData.product_url,
+  );
+  const canonicalUrl = normalizeUrl(productData.canonical_url || productData.url || productData.product_url);
+  const destinationUrl = normalizeUrl(
+    productData.destination_url || productData.url || productData.product_url,
+  );
+  return {
+    ...productData,
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
+    ...(category ? { category } : {}),
+    ...(productType ? { product_type: productType } : {}),
+    ...(vendor ? { vendor } : {}),
+    ...(brand ? { brand } : {}),
+    ...(url ? { url } : {}),
+    ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
+    ...(destinationUrl ? { destination_url: destinationUrl } : {}),
+    ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(tags.length ? { tag_tokens: tags } : {}),
+    ...(String(row?.merchant_id || '').trim() ? { merchant_id: String(row.merchant_id).trim() } : {}),
+    ...(String(row?.merchant_name || '').trim()
+      ? { merchant_name: String(row.merchant_name).trim() }
+      : {}),
+    source: 'products_cache',
+    retrieval_source: String(sourceTag || '').trim() || 'products_cache',
+    retrieval_reason: String(sourceTag || '').trim() || 'products_cache',
+  };
+}
+
+async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = {}) {
+  const normalizedPatterns = uniqStrings(patterns, 16);
+  if (!normalizedPatterns.length) return [];
+  const sqlParams = [normalizedPatterns, Math.max(6, Number(limit) || 24)];
+  const limitBind = `$${sqlParams.length}`;
+  const res = await runAppQuery(
+    `
+      SELECT
+        pc.merchant_id,
+        mo.business_name AS merchant_name,
+        pc.product_data,
+        pc.cached_at,
+        pc.id
+      FROM products_cache pc
+      JOIN merchant_onboarding mo
+        ON mo.merchant_id = pc.merchant_id
+      WHERE (pc.expires_at IS NULL OR pc.expires_at > now())
+        AND COALESCE(lower(pc.product_data->>'status'), 'active') = 'active'
+        AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
+        AND mo.status NOT IN ('deleted', 'rejected')
+        AND mo.psp_connected = true
+        AND (
+          lower(coalesce(pc.product_data->>'title', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'name', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'description', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'product_type', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'productType', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'category', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'vendor', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'brand', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'url', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'canonical_url', '')) LIKE ANY($1::text[])
+          OR lower(coalesce(pc.product_data->>'destination_url', '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'ingredient_tokens')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'key_actives')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'keyActives')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'active_ingredients')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'activeIngredients')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'key_ingredients')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'keyIngredients')::text, '')) LIKE ANY($1::text[])
+          OR lower(coalesce((pc.product_data->'ingredients')::text, '')) LIKE ANY($1::text[])
+        )
+      ORDER BY
+        CASE
+          WHEN lower(coalesce(pc.product_data->>'title', '')) LIKE ANY($1::text[]) THEN 0
+          WHEN (
+            lower(coalesce((pc.product_data->'ingredient_tokens')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'key_actives')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'keyActives')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'active_ingredients')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'activeIngredients')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'key_ingredients')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'keyIngredients')::text, '')) LIKE ANY($1::text[])
+            OR lower(coalesce((pc.product_data->'ingredients')::text, '')) LIKE ANY($1::text[])
+          ) THEN 1
+          WHEN lower(coalesce(pc.product_data->>'product_type', '')) LIKE ANY($1::text[]) THEN 2
+          WHEN lower(coalesce(pc.product_data->>'description', '')) LIKE ANY($1::text[]) THEN 3
+          ELSE 4
+        END,
+        pc.cached_at DESC NULLS LAST,
+        pc.id DESC
+      LIMIT ${limitBind}
+    `,
+    sqlParams,
+  );
+  return Array.isArray(res?.rows) ? res.rows : [];
+}
+
 async function fetchSeedRowsByIdentity({ seedIds = [], urls = [], market = DEFAULT_MARKET, tool = DEFAULT_TOOL, attachedState = null, limit = 24 } = {}) {
   const ids = uniqStrings(seedIds, 80);
   const normalizedUrls = uniqStrings((Array.isArray(urls) ? urls : []).map(normalizeUrl).filter(Boolean), 80);
@@ -1156,6 +1364,8 @@ function resolveSourceRank(sourceTag) {
   if (sourceTag === 'kb_attached_seed') return 480;
   if (sourceTag === 'kb_named_attached_seed') return 430;
   if (sourceTag === 'attached_seed') return 360;
+  if (sourceTag === 'kb_named_products_cache') return 340;
+  if (sourceTag === 'products_cache') return 320;
   if (sourceTag === 'kb_unattached_seed') return 260;
   if (sourceTag === 'kb_named_unattached_seed') return 240;
   if (sourceTag === 'unattached_seed') return 210;
@@ -1216,6 +1426,8 @@ async function recallIngredientProductsFromProfile({
     kb_recall_recovered: 0,
     attached_seed_recall_attempted: false,
     attached_seed_recall_recovered: 0,
+    products_cache_recall_attempted: false,
+    products_cache_recall_recovered: 0,
     unattached_seed_recall_attempted: false,
     unattached_seed_recall_recovered: 0,
     family_fallback_attempted: false,
@@ -1251,55 +1463,70 @@ async function recallIngredientProductsFromProfile({
   const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 80);
   const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 80);
 
-  const addRows = (rows, sourceTag, { allowFamilyOnly = false, useKbEvidence = false } = {}) => {
-    for (const row of Array.isArray(rows) ? rows : []) {
-      const product = mapSeedRowToRecallProduct(row, sourceTag);
-      if (!product) continue;
-      const key = buildCandidateKey(product);
-      if (!key || seen.has(key)) continue;
-      const kbEvidence = useKbEvidence ? resolveKbEvidenceForSeedRow(row, kbEvidenceLookup) : null;
-      const scored = buildCandidateEvidence(product, {
-        profile,
-        targetStepFamily,
-        allowFamilyOnly,
-        kbEvidence,
-        queryText: query,
-      });
-      if (!scored || !scored.evidence) {
-        const rejectReason = String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
-        if (rejectReason === 'step_family_mismatch') stepMismatchCount += 1;
-        else noiseFilteredCount += 1;
-        mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
-        pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
-          title:
-            String(product?.title || product?.name || product?.display_name || '').trim() || null,
-          source_tag: sourceTag,
-          reject_reason: rejectReason,
-          candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
-          family_relation: scored?.evidence?.family_relation || null,
-          kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
-        });
-        continue;
-      }
-      seen.add(key);
-      attachIngredientRecallMeta(product, {
-        evidence: scored.evidence,
-        candidate_step: scored.evidence?.candidate_step,
-        family_relation: scored.evidence?.family_relation,
+  const addProduct = (product, sourceTag, { allowFamilyOnly = false, kbEvidence = null } = {}) => {
+    if (!product) return;
+    const key = buildCandidateKey(product);
+    if (!key || seen.has(key)) return;
+    const scored = buildCandidateEvidence(product, {
+      profile,
+      targetStepFamily,
+      allowFamilyOnly,
+      kbEvidence,
+      queryText: query,
+    });
+    if (!scored || !scored.evidence) {
+      const rejectReason = String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
+      if (rejectReason === 'step_family_mismatch') stepMismatchCount += 1;
+      else noiseFilteredCount += 1;
+      mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
+      pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
+        title:
+          String(product?.title || product?.name || product?.display_name || '').trim() || null,
         source_tag: sourceTag,
+        reject_reason: rejectReason,
+        candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
+        family_relation: scored?.evidence?.family_relation || null,
+        kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
       });
-      explicitCandidates.push({
+      return;
+    }
+    seen.add(key);
+    attachIngredientRecallMeta(product, {
+      evidence: scored.evidence,
+      candidate_step: scored.evidence?.candidate_step,
+      family_relation: scored.evidence?.family_relation,
+      source_tag: sourceTag,
+    });
+    explicitCandidates.push({
+      product,
+      evidence: scored.evidence,
+      source_tag: sourceTag,
+      ...scoreCandidateEvidence(
         product,
-        evidence: scored.evidence,
-        source_tag: sourceTag,
-        ...scoreCandidateEvidence(
-          {
-            product,
-            evidence: scored.evidence,
-          },
-          resolveSourceRank(sourceTag),
-        ),
-      });
+        {
+          evidence: scored.evidence,
+          product,
+        },
+        resolveSourceRank(sourceTag),
+      ),
+    });
+  };
+
+  const addRows = (
+    rows,
+    sourceTag,
+    {
+      allowFamilyOnly = false,
+      useKbEvidence = false,
+      mapper = mapSeedRowToRecallProduct,
+      kbResolver = (row, _product, lookup) => resolveKbEvidenceForSeedRow(row, lookup),
+    } = {},
+  ) => {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const product = mapper(row, sourceTag);
+      if (!product) continue;
+      const kbEvidence = useKbEvidence ? kbResolver(row, product, kbEvidenceLookup) : null;
+      addProduct(product, sourceTag, { allowFamilyOnly, kbEvidence });
     }
   };
 
@@ -1340,6 +1567,28 @@ async function recallIngredientProductsFromProfile({
   });
   diagnostics.attached_seed_recall_recovered = attachedSeedRows.length > 0 ? 1 : 0;
   addRows(attachedSeedRows, 'attached_seed');
+
+  diagnostics.products_cache_recall_attempted = true;
+  const cacheExplicitRows = await fetchProductsCacheRowsByPatterns({
+    patterns: explicitPatterns,
+    limit: Math.max(8, Number(limit) * 5 || 30),
+  });
+  diagnostics.products_cache_recall_recovered = cacheExplicitRows.length > 0 ? 1 : 0;
+  addRows(cacheExplicitRows, 'products_cache', {
+    mapper: mapProductsCacheRowToRecallProduct,
+    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+    useKbEvidence: true,
+  });
+  const kbNamedCacheRows = await fetchProductsCacheRowsByPatterns({
+    patterns: kbProductNamePatterns,
+    limit: Math.max(6, Number(limit) * 4 || 24),
+  });
+  if (kbNamedCacheRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
+  addRows(kbNamedCacheRows, 'kb_named_products_cache', {
+    mapper: mapProductsCacheRowToRecallProduct,
+    kbResolver: (_row, product, lookup) => resolveKbEvidenceForProduct(product, lookup),
+    useKbEvidence: true,
+  });
 
   diagnostics.unattached_seed_recall_attempted = true;
   const kbUnattachedRows = await fetchSeedRowsByIdentity({

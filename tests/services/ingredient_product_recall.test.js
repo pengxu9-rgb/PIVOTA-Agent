@@ -1970,4 +1970,181 @@ describe('ingredientProductRecall', () => {
     expect(out.products).toEqual([]);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
+
+  test('benzoyl peroxide gel can use products_cache explicit inventory when seed recall is empty', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (text.includes('FROM products_cache pc')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merchant_bpo',
+                merchant_name: 'Acme',
+                product_data: {
+                  id: 'pc_bpo',
+                  product_id: 'pc_bpo',
+                  title: 'Benzoyl Peroxide 5% Gel',
+                  description: 'daily acne treatment gel',
+                  product_type: 'Treatment',
+                  category: 'Treatment',
+                  vendor: 'Acme',
+                  brand: 'Acme',
+                  url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                  key_actives: ['benzoyl peroxide'],
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'benzoyl peroxide gel',
+      ingredientId: 'benzoyl_peroxide',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Benzoyl Peroxide 5% Gel']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+    expect(Number(out.diagnostics.recall_source_breakdown?.products_cache || 0)).toBeGreaterThan(0);
+  });
+
+  test('glycerin moisturizer can use same-family products_cache inventory when noisy seed rows are rejected', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        const now = new Date().toISOString();
+        if (text.includes('FROM external_product_seeds')) {
+          if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+          return {
+            rows: [
+              {
+                id: 'seed_glycerin_peel',
+                external_product_id: 'ext_glycerin_peel',
+                destination_url: 'https://pixi.example.com/products/glycerin-milky-peel',
+                canonical_url: 'https://pixi.example.com/products/glycerin-milky-peel',
+                domain: 'pixi.example.com',
+                title: 'Glycerin Milky Peel',
+                image_url: 'https://pixi.example.com/peel.jpg',
+                price_amount: 24,
+                price_currency: 'USD',
+                availability: 'in stock',
+                attached_product_key: 'shopify:glycerin-peel',
+                seed_data: {
+                  brand: 'Pixi',
+                  category: 'Peel',
+                  snapshot: {
+                    title: 'Glycerin Milky Peel',
+                    description: 'micro-exfoliating peel with glycerin',
+                    category: 'Peel',
+                    canonical_url: 'https://pixi.example.com/products/glycerin-milky-peel',
+                    destination_url: 'https://pixi.example.com/products/glycerin-milky-peel',
+                  },
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_glycerin_primer',
+                external_product_id: 'ext_glycerin_primer',
+                destination_url: 'https://pixi.example.com/products/glycerin-beauty-primer',
+                canonical_url: 'https://pixi.example.com/products/glycerin-beauty-primer',
+                domain: 'pixi.example.com',
+                title: 'Glycerin Beauty Primer',
+                image_url: 'https://pixi.example.com/primer.jpg',
+                price_amount: 22,
+                price_currency: 'USD',
+                availability: 'in stock',
+                attached_product_key: 'shopify:glycerin-primer',
+                seed_data: {
+                  brand: 'Pixi',
+                  category: 'Primer',
+                  snapshot: {
+                    title: 'Glycerin Beauty Primer',
+                    description: 'makeup primer with glycerin',
+                    category: 'Primer',
+                    canonical_url: 'https://pixi.example.com/products/glycerin-beauty-primer',
+                    destination_url: 'https://pixi.example.com/products/glycerin-beauty-primer',
+                  },
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache pc')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merchant_glycerin',
+                merchant_name: 'Acme',
+                product_data: {
+                  id: 'pc_glycerin_moisturizer',
+                  product_id: 'pc_glycerin_moisturizer',
+                  title: 'Barrier Support Moisturizer',
+                  description: 'daily moisturizer for dry skin',
+                  product_type: 'Moisturizer',
+                  category: 'Moisturizer',
+                  vendor: 'Acme',
+                  brand: 'Acme',
+                  url: 'https://acme.example.com/products/barrier-support-moisturizer',
+                  key_actives: ['glycerin', 'panthenol'],
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+    expect(Number(out.diagnostics.recall_source_breakdown?.products_cache || 0)).toBeGreaterThan(0);
+  });
 });
