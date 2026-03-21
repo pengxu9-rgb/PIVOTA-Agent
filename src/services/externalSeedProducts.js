@@ -63,6 +63,111 @@ function normalizeHttpUrl(value) {
   return url;
 }
 
+function normalizeIngredientSignalToken(value) {
+  const text = String(value || '')
+    .replace(/\[more\]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  if (/^key ingredients?$/i.test(text)) return '';
+  return text;
+}
+
+function appendIngredientSignalTokens(out, value) {
+  if (!value) return;
+
+  if (typeof value === 'string') {
+    const parts = value.split(/[,\n;|/]+/);
+    for (const part of parts) {
+      const token = normalizeIngredientSignalToken(part);
+      if (!token || out.includes(token)) continue;
+      out.push(token);
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) appendIngredientSignalTokens(out, item);
+    return;
+  }
+
+  if (typeof value !== 'object') return;
+
+  appendIngredientSignalTokens(out, value.inci);
+  appendIngredientSignalTokens(out, value.inci_name);
+  appendIngredientSignalTokens(out, value.ingredient_name);
+  appendIngredientSignalTokens(out, value.name);
+  appendIngredientSignalTokens(out, value.display_name);
+  appendIngredientSignalTokens(out, value.title);
+}
+
+function collectSeedIngredientSignalTokens(seedData, row) {
+  const parsedSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsedSeedData.snapshot);
+  const ingredientIntel = ensureJsonObject(parsedSeedData.ingredient_intel);
+  const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
+  const science = ensureJsonObject(parsedSeedData.science);
+  const snapshotScience = ensureJsonObject(snapshot.science);
+  const assessment = ensureJsonObject(parsedSeedData.assessment);
+  const snapshotAssessment = ensureJsonObject(snapshot.assessment);
+
+  const out = [];
+  const sources = [
+    row?.ingredient_tokens,
+    row?.key_ingredients,
+    row?.hero_ingredients,
+    row?.active_ingredients,
+    parsedSeedData.ingredient_tokens,
+    parsedSeedData.key_ingredients,
+    parsedSeedData.keyIngredients,
+    parsedSeedData.hero_ingredients,
+    parsedSeedData.heroIngredients,
+    parsedSeedData.active_ingredients,
+    parsedSeedData.activeIngredients,
+    parsedSeedData.ingredient_names,
+    parsedSeedData.ingredientNames,
+    parsedSeedData.ingredients,
+    parsedSeedData.likely_key_ingredients_or_signals,
+    parsedSeedData.likelyKeyIngredientsOrSignals,
+    science.key_ingredients,
+    science.keyIngredients,
+    assessment.hero_ingredient,
+    assessment.heroIngredient,
+    ingredientIntel.inci_normalized,
+    ingredientIntel.inciNormalized,
+    ingredientIntel.key_ingredients,
+    ingredientIntel.keyIngredients,
+    ingredientIntel.inci_raw,
+    ingredientIntel.raw_ingredient_text_clean,
+    ingredientIntel.inci_list,
+    snapshot.ingredient_tokens,
+    snapshot.key_ingredients,
+    snapshot.keyIngredients,
+    snapshot.hero_ingredients,
+    snapshot.heroIngredients,
+    snapshot.active_ingredients,
+    snapshot.activeIngredients,
+    snapshot.ingredient_names,
+    snapshot.ingredientNames,
+    snapshot.ingredients,
+    snapshot.likely_key_ingredients_or_signals,
+    snapshot.likelyKeyIngredientsOrSignals,
+    snapshotScience.key_ingredients,
+    snapshotScience.keyIngredients,
+    snapshotAssessment.hero_ingredient,
+    snapshotAssessment.heroIngredient,
+    snapshotIngredientIntel.inci_normalized,
+    snapshotIngredientIntel.inciNormalized,
+    snapshotIngredientIntel.key_ingredients,
+    snapshotIngredientIntel.keyIngredients,
+    snapshotIngredientIntel.inci_raw,
+    snapshotIngredientIntel.raw_ingredient_text_clean,
+    snapshotIngredientIntel.inci_list,
+  ];
+  for (const source of sources) appendIngredientSignalTokens(out, source);
+  return out;
+}
+
 function appendImageUrls(out, value) {
   if (!value) return;
 
@@ -289,6 +394,7 @@ function buildExternalSeedProduct(row) {
   const description = String(snapshot.description || row.description || seedData.description || '').trim();
   const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
   const category = String(seedData.category || seedData.product?.category || snapshot.category || '').trim() || undefined;
+  const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
 
   let variants = normalizeSeedVariants(seedData, row);
   let imageUrls = normalizeSeedImageUrls(seedData, row);
@@ -383,6 +489,7 @@ function buildExternalSeedProduct(row) {
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: seedData,
     variants,
+    ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(category ? { category } : {}),
   };

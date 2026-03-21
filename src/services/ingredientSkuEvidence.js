@@ -894,15 +894,47 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
       ORDER BY
         CASE
           WHEN lower(coalesce(title, '')) LIKE ANY($3::text[]) THEN 0
-          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 1
-          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 2
+          WHEN (
+            lower(coalesce(seed_data->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->>'inci_list', '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'key_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'keyIngredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'active_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->>'inci_list', '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'ingredient_tokens')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'hero_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'active_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'science'->'key_ingredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'science'->'keyIngredients')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inci_normalized')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce((seed_data->'snapshot'->'ingredient_intel'->'inciNormalized')::text, '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_raw', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'raw_ingredient_text_clean', '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data->'snapshot'->'ingredient_intel'->>'inci_list', '')) LIKE ANY($3::text[])
+          ) THEN 1
+          WHEN lower(coalesce(seed_data->>'title', '')) LIKE ANY($3::text[]) THEN 2
+          WHEN lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($3::text[]) THEN 3
           WHEN (
             lower(coalesce(canonical_url, '')) LIKE ANY($3::text[])
             OR lower(coalesce(destination_url, '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->>'canonical_url', '')) LIKE ANY($3::text[])
             OR lower(coalesce(seed_data->>'destination_url', '')) LIKE ANY($3::text[])
-          ) THEN 3
-          ELSE 4
+          ) THEN 4
+          ELSE 5
         END,
         CASE WHEN coalesce(attached_product_key, '') <> '' THEN 0 ELSE 1 END,
         updated_at DESC NULLS LAST,

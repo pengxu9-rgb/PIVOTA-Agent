@@ -1101,6 +1101,110 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
+  test('fetchSeedRowsByPatterns searches targeted ingredient metadata fields, not only titles and urls', async () => {
+    const queryMock = jest.fn(async () => ({ rows: [] }));
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+    }));
+
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    await _internals.fetchSeedRowsByPatterns({
+      patterns: ['%glycerin%'],
+      attachedState: 'attached',
+      limit: 6,
+    });
+
+    const sqlText = String(queryMock.mock.calls[0]?.[0] || '');
+    expect(sqlText).toContain("seed_data->'science'->'key_ingredients'");
+    expect(sqlText).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
+    expect(sqlText).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
+  });
+
+  test('glycerin moisturizer can use seed ingredient metadata when title is generic', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        if (
+          !text.includes("seed_data->'science'->'key_ingredients'") ||
+          !text.includes("seed_data->'ingredient_intel'->'inci_normalized'")
+        ) {
+          return { rows: [] };
+        }
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_generic_glycerin',
+              external_product_id: 'ext_generic_glycerin',
+              destination_url: 'https://acme.example.com/products/barrier-support-moisturizer',
+              canonical_url: 'https://acme.example.com/products/barrier-support-moisturizer',
+              domain: 'acme.example.com',
+              title: 'Barrier Support Moisturizer',
+              image_url: 'https://acme.example.com/barrier.jpg',
+              price_amount: 26,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:barrier-support-moisturizer',
+              seed_data: {
+                brand: 'Acme',
+                category: 'Moisturizer',
+                science: {
+                  key_ingredients: ['Glycerin', 'Panthenol'],
+                },
+                ingredient_intel: {
+                  inci_normalized: ['Glycerin', 'Panthenol'],
+                },
+                snapshot: {
+                  title: 'Barrier Support Moisturizer',
+                  description: 'daily barrier moisturizer for dry skin',
+                  category: 'Moisturizer',
+                  science: {
+                    key_ingredients: ['Glycerin', 'Panthenol'],
+                  },
+                  ingredient_intel: {
+                    inci_normalized: ['Glycerin', 'Panthenol'],
+                  },
+                  canonical_url: 'https://acme.example.com/products/barrier-support-moisturizer',
+                  destination_url: 'https://acme.example.com/products/barrier-support-moisturizer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
   test('glycerin moisturizer rejects off-family hand-mask noise before ranking', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),
