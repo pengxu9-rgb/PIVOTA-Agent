@@ -1411,6 +1411,45 @@ describe('ingredientProductRecall', () => {
     expect(whereSql).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
   });
 
+  test('fetchKbRowsForProfile uses flexible multiword patterns and source_ref matching', async () => {
+    const kbQueryMock = jest.fn(async (sql) => {
+      const text = String(sql || '');
+      if (text.includes('to_regclass')) {
+        return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: kbQueryMock,
+    }));
+
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    await _internals.fetchKbRowsForProfile({
+      profile: {
+        ingredient_id: 'benzoyl_peroxide',
+        display_name: 'Benzoyl peroxide',
+        ingredient_class: 'acne_active',
+        exact_phrases: ['benzoyl peroxide'],
+        alias_phrases: ['bpo', 'benzoyl'],
+        family_phrases: ['acne', 'gel'],
+        expected_step_families: ['treatment'],
+      },
+      limit: 6,
+    });
+
+    const recallCall = kbQueryMock.mock.calls.find((call) =>
+      String(call?.[0] || '').includes('FROM pci_kb.sku_ingredients'),
+    );
+    expect(String(recallCall?.[0] || '')).toContain('source_ref');
+    expect(recallCall?.[1]?.[0]).toEqual(
+      expect.arrayContaining([
+        '%benzoyl peroxide%',
+        '%benzoyl%peroxide%',
+        '%benzoyl%',
+      ]),
+    );
+  });
+
   test('glycerin moisturizer can use seed ingredient metadata when title is generic', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),
@@ -1969,6 +2008,79 @@ describe('ingredientProductRecall', () => {
 
     expect(out.products).toEqual([]);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
+  });
+
+  test('glycerin moisturizer rejects humectant hand-mask rows before ranked samples are emitted', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') = ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_hand_mask',
+              external_product_id: 'ext_hand_mask',
+              destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+              domain: 'acme.example.com',
+              title: 'Hydra Reset Glycerin Hand Mask',
+              image_url: 'https://acme.example.com/hand-mask.jpg',
+              price_amount: 8,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: '',
+              seed_data: {
+                brand: 'Acme',
+                snapshot: {
+                  title: 'Hydra Reset Glycerin Hand Mask',
+                  description: 'intensive hand mask with glycerin',
+                  canonical_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                  destination_url: 'https://acme.example.com/products/glycerin-hand-mask',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics.ingredient_ranked_candidate_samples || []).toEqual([]);
+    expect(out.diagnostics.ingredient_rejected_candidate_samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Hydra Reset Glycerin Hand Mask',
+          reject_reason: 'step_family_mismatch',
+        }),
+      ]),
+    );
   });
 
   test('benzoyl peroxide gel can use products_cache explicit inventory when seed recall is empty', async () => {

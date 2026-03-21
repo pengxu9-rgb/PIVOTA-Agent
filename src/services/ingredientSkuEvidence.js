@@ -52,6 +52,10 @@ const TREATMENT_LEANING_INGREDIENT_CLASSES = new Set([
   'exfoliant',
   'balancing_active',
 ]);
+const SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES = new Set([
+  'humectant',
+  'soothing_humectant',
+]);
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -87,7 +91,25 @@ function uniqNormalizedStrings(values, maxItems = 32) {
 }
 
 function buildPhrasePatterns(phrases) {
-  return uniqNormalizedStrings(phrases, 16).map((phrase) => `%${phrase}%`);
+  const out = [];
+  const seen = new Set();
+  for (const phrase of uniqNormalizedStrings(phrases, 16)) {
+    const normalized = normalizeIngredientRecallText(phrase);
+    if (!normalized) continue;
+    const tokens = normalized.split(' ').filter(Boolean);
+    const candidates = [`%${normalized}%`];
+    if (tokens.length > 1) {
+      candidates.push(`%${tokens.join('%')}%`);
+      candidates.push(`%${tokens.join('-')}%`);
+      candidates.push(`%${tokens.join('_')}%`);
+    }
+    for (const candidate of candidates) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      out.push(candidate);
+    }
+  }
+  return out;
 }
 
 function countPhraseMatches(text, phrases) {
@@ -643,6 +665,21 @@ function hasTargetStepNegativeSignal(fieldTexts = {}, targetStepFamily = '', que
   return pattern.test(titleAndSupport);
 }
 
+function requiresSameFamilyExplicitGate(profile = null, targetStepFamily = '') {
+  if (!normalizeRecoTargetStep(targetStepFamily)) return false;
+  const ingredientClass = normalizeIngredientRecallText(profile?.ingredient_class || '');
+  return SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES.has(ingredientClass);
+}
+
+function resolveRecallFetchLimit(profile, limit, multiplier = 1, fallbackLimit = 24) {
+  const baseLimit = Math.max(6, Number(limit) || fallbackLimit);
+  const ingredientClass = normalizeIngredientRecallText(profile?.ingredient_class || '');
+  const boostedMultiplier = SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES.has(ingredientClass)
+    ? Math.max(multiplier, 10)
+    : multiplier;
+  return Math.max(8, Math.min(120, Math.floor(baseLimit * boostedMultiplier)));
+}
+
 function mergeBreakdown(target, sourceTag, amount = 1) {
   const key = String(sourceTag || '').trim() || 'unknown';
   target[key] = Number(target[key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
@@ -755,6 +792,15 @@ function buildCandidateEvidence(
     return { reject_reason: 'step_family_mismatch', evidence };
   }
   if (targetStepNegativeSignal && evidence.explicit_hits > 0 && normalizedTargetStepFamily) {
+    return { reject_reason: 'step_family_mismatch', evidence };
+  }
+  if (
+    evidence.explicit_hits > 0 &&
+    normalizedTargetStepFamily &&
+    requiresSameFamilyExplicitGate(profile, normalizedTargetStepFamily) &&
+    candidateStep &&
+    familyRelation !== 'same_family'
+  ) {
     return { reject_reason: 'step_family_mismatch', evidence };
   }
 
@@ -978,6 +1024,7 @@ async function fetchKbRowsForProfile({ profile, limit = 24 } = {}) {
         lower(coalesce(raw_ingredient_text_clean, '')) LIKE ANY($1::text[])
         OR lower(coalesce(inci_list, '')) LIKE ANY($1::text[])
         OR lower(coalesce(product_name, '')) LIKE ANY($1::text[])
+        OR lower(coalesce(source_ref, '')) LIKE ANY($1::text[])
       ORDER BY created_at DESC NULLS LAST, sku_key ASC
       LIMIT $2
     `,
@@ -1456,7 +1503,7 @@ async function recallIngredientProductsFromProfile({
 
   const kbRows = await fetchKbRowsForProfile({
     profile,
-    limit: Math.max(8, Number(limit) * 6 || 24),
+    limit: resolveRecallFetchLimit(profile, limit, 6, 24),
   });
   const kbEvidenceLookup = buildKbEvidenceLookup(profile, kbRows);
   const kbProductNamePatterns = buildKbProductNamePatterns(kbRows, 20);
@@ -1537,7 +1584,7 @@ async function recallIngredientProductsFromProfile({
     market,
     tool,
     attachedState: 'attached',
-    limit: Math.max(8, Number(limit) * 4 || 24),
+    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
   });
   diagnostics.kb_recall_recovered = kbAttachedRows.length > 0 ? 1 : 0;
   addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
@@ -1546,7 +1593,7 @@ async function recallIngredientProductsFromProfile({
     market,
     tool,
     attachedState: 'attached',
-    limit: Math.max(8, Number(limit) * 4 || 24),
+    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
     inStockOnly,
   });
   if (kbNamedAttachedRows.length > 0) diagnostics.kb_recall_recovered = 1;
@@ -1562,7 +1609,7 @@ async function recallIngredientProductsFromProfile({
     market,
     tool,
     attachedState: 'attached',
-    limit: Math.max(8, Number(limit) * 5 || 30),
+    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
     inStockOnly,
   });
   diagnostics.attached_seed_recall_recovered = attachedSeedRows.length > 0 ? 1 : 0;
@@ -1571,7 +1618,7 @@ async function recallIngredientProductsFromProfile({
   diagnostics.products_cache_recall_attempted = true;
   const cacheExplicitRows = await fetchProductsCacheRowsByPatterns({
     patterns: explicitPatterns,
-    limit: Math.max(8, Number(limit) * 5 || 30),
+    limit: resolveRecallFetchLimit(profile, limit, 6, 30),
   });
   diagnostics.products_cache_recall_recovered = cacheExplicitRows.length > 0 ? 1 : 0;
   addRows(cacheExplicitRows, 'products_cache', {
@@ -1581,7 +1628,7 @@ async function recallIngredientProductsFromProfile({
   });
   const kbNamedCacheRows = await fetchProductsCacheRowsByPatterns({
     patterns: kbProductNamePatterns,
-    limit: Math.max(6, Number(limit) * 4 || 24),
+    limit: resolveRecallFetchLimit(profile, limit, 4, 24),
   });
   if (kbNamedCacheRows.length > 0) diagnostics.products_cache_recall_recovered = 1;
   addRows(kbNamedCacheRows, 'kb_named_products_cache', {
@@ -1597,14 +1644,14 @@ async function recallIngredientProductsFromProfile({
     market,
     tool,
     attachedState: 'unattached',
-    limit: Math.max(6, Number(limit) * 3 || 18),
+    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
   });
   const unattachedSeedRows = await fetchSeedRowsByPatterns({
     patterns: explicitPatterns,
     market,
     tool,
     attachedState: 'unattached',
-    limit: Math.max(8, Number(limit) * 6 || 36),
+    limit: resolveRecallFetchLimit(profile, limit, 8, 36),
     inStockOnly,
   });
   diagnostics.unattached_seed_recovered =
@@ -1615,7 +1662,7 @@ async function recallIngredientProductsFromProfile({
     market,
     tool,
     attachedState: 'unattached',
-    limit: Math.max(6, Number(limit) * 3 || 18),
+    limit: resolveRecallFetchLimit(profile, limit, 4, 18),
     inStockOnly,
   });
   if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recovered = 1;

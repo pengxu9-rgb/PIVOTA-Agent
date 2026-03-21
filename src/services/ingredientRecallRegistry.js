@@ -85,7 +85,7 @@ const LOCAL_INGREDIENT_RECALL_REGISTRY = Object.freeze({
     display_name: 'Benzoyl peroxide',
     ingredient_class: 'acne_active',
     exact_phrases: ['benzoyl peroxide'],
-    alias_phrases: ['bpo'],
+    alias_phrases: ['bpo', 'benzoyl'],
     family_phrases: ['blemish', 'acne', 'spot', 'gel', 'treatment'],
     expected_step_families: ['treatment', 'gel', 'cleanser'],
   }),
