@@ -2002,6 +2002,88 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
+  test('glycerin moisturizer rejects kb-only humectant primer rows without target anchor or kb step hint', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'extseed:seed_primer_only:pixi',
+                brand: 'Pixi',
+                product_name: 'Flawless Beauty Primer',
+                source_ref: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                raw_ingredient_text_clean: 'glycerin',
+                inci_list: 'glycerin',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_primer_only',
+              external_product_id: 'ext_primer_only',
+              destination_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+              canonical_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+              domain: 'pixibeauty.com',
+              title: 'Flawless Beauty Primer',
+              image_url: 'https://pixibeauty.com/primer.jpg',
+              price_amount: 22,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:primer-only',
+              seed_data: {
+                brand: 'Pixi',
+                category: 'Moisturizer',
+                snapshot: {
+                  title: 'Flawless Beauty Primer',
+                  description: 'skin smoothing finish with glycerin',
+                  category: 'Moisturizer',
+                  canonical_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                  destination_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products).toEqual([]);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
+  });
+
   test('glycerin moisturizer rejects off-surface explicit-only hand mask rows', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),

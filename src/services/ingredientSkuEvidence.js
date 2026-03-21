@@ -819,6 +819,12 @@ function buildCandidateEvidence(
   } = {},
 ) {
   const fieldTexts = buildRecallCandidateFieldTexts(product);
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  const targetAnchorPhrases = resolveTargetAnchorPhrases(normalizedTargetStepFamily, queryText);
+  const targetAnchorHits = countPhraseMatches(
+    [fieldTexts.title, fieldTexts.support].join(' '),
+    targetAnchorPhrases,
+  );
   const candidateStep =
     resolveRecallCandidateStep(product) ||
     normalizeRecoTargetStep(Array.isArray(kbEvidence?.candidate_step_hints) ? kbEvidence.candidate_step_hints[0] : '') ||
@@ -833,7 +839,6 @@ function buildCandidateEvidence(
       product?.destination_url,
       product?.url,
     ]);
-  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const familyRelation = normalizedTargetStepFamily
     ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
     : null;
@@ -852,6 +857,8 @@ function buildCandidateEvidence(
   const tokenAliasHits = countPhraseMatches(fieldTexts.ingredient_tokens, profile?.alias_phrases);
   const urlExactHits = countPhraseMatches(fieldTexts.urls, profile?.exact_phrases);
   const urlAliasHits = countPhraseMatches(fieldTexts.urls, profile?.alias_phrases);
+  const surfaceExplicitHits =
+    titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits;
   const familyHits = countPhraseMatches(fieldTexts.family, profile?.family_phrases) + Math.max(0, Number(kbEvidence?.family_hits || 0) || 0);
   const strongFamilyHits =
     countStrongFamilyMatches(fieldTexts.family, profile?.family_phrases) +
@@ -930,6 +937,24 @@ function buildCandidateEvidence(
     familyRelation !== 'same_family'
   ) {
     return { reject_reason: 'step_family_mismatch', evidence };
+  }
+  if (
+    evidence.explicit_hits > 0 &&
+    surfaceExplicitHits <= 0 &&
+    kbExplicitHits > 0 &&
+    normalizedTargetStepFamily &&
+    requiresSameFamilyExplicitGate(profile, normalizedTargetStepFamily) &&
+    familyRelation === 'same_family'
+  ) {
+    const kbStepHints = Array.isArray(kbEvidence?.candidate_step_hints)
+      ? kbEvidence.candidate_step_hints
+      : [];
+    const hasSameFamilyKbHint = kbStepHints.some(
+      (value) => normalizeRecoTargetStep(value) === normalizedTargetStepFamily,
+    );
+    if (targetAnchorHits <= 0 && !hasSameFamilyKbHint) {
+      return { reject_reason: 'no_explicit_sku_evidence', evidence };
+    }
   }
   if (normalizedTargetStepFamily && !candidateStep && evidence.explicit_hits <= 0) {
     return { reject_reason: 'step_family_mismatch', evidence };
