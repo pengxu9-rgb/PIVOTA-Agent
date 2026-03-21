@@ -1682,9 +1682,8 @@ async function recallIngredientProductsFromProfile({
     );
   });
 
-  const rankedRows = candidates.slice(0, Math.max(1, Number(limit) || 6));
-  for (const row of rankedRows) {
-    mergeBreakdown(diagnostics.recall_source_breakdown, row.source_tag, 1);
+  const sampleRows = candidates.slice(0, Math.max(1, Number(limit) || 6));
+  for (const row of sampleRows) {
     diagnostics.ingredient_candidate_evidence_breakdown.kb_explicit += Number(row.evidence.kb_explicit || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.title_exact += Number(row.evidence.title_exact || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.title_alias += Number(row.evidence.title_alias || 0) > 0 ? 1 : 0;
@@ -1703,8 +1702,16 @@ async function recallIngredientProductsFromProfile({
     });
   }
 
+  const stabilizationRows = candidates.slice(
+    0,
+    Math.max(
+      Math.max(1, Number(limit) || 6),
+      Math.min(48, Math.max(12, Math.floor((Number(limit) || 6) * 4))),
+    ),
+  );
+
   const stabilizedProducts = stabilizeIngredientRecallProducts(
-    rankedRows.map((row) => row.product),
+    stabilizationRows.map((row) => row.product),
     {
       recallProfile: profile,
       targetStepFamily,
@@ -1712,6 +1719,11 @@ async function recallIngredientProductsFromProfile({
       maxProducts: Math.max(1, Number(limit) || 6),
     },
   );
+  diagnostics.recall_source_breakdown = {};
+  for (const product of stabilizedProducts) {
+    const sourceTag = String(product?.__ingredient_recall_meta?.source_tag || '').trim() || 'unknown';
+    mergeBreakdown(diagnostics.recall_source_breakdown, sourceTag, 1);
+  }
 
   diagnostics.ingredient_direct_miss_reason = buildDirectMissReason({
     registryDiagnostics,

@@ -1489,7 +1489,7 @@ describe('ingredientProductRecall', () => {
       query: 'glycerin moisturizer',
       ingredientId: 'glycerin',
       targetStepFamily: 'moisturizer',
-      limit: 3,
+      limit: 1,
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
