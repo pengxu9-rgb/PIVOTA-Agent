@@ -1272,9 +1272,13 @@ describe('ingredientProductRecall', () => {
     });
 
     const sqlText = String(queryMock.mock.calls[0]?.[0] || '');
+    const whereSql = sqlText.split('ORDER BY')[0] || sqlText;
     expect(sqlText).toContain("seed_data->'science'->'key_ingredients'");
     expect(sqlText).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
     expect(sqlText).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
+    expect(whereSql).toContain("seed_data->'science'->'key_ingredients'");
+    expect(whereSql).toContain("seed_data->'ingredient_intel'->'inci_normalized'");
+    expect(whereSql).toContain("seed_data->'snapshot'->'ingredient_intel'->'inci_normalized'");
   });
 
   test('glycerin moisturizer can use seed ingredient metadata when title is generic', async () => {
