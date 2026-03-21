@@ -265,7 +265,7 @@ function cloneProfile(profile) {
   };
 }
 
-function buildLocalLookupTexts({ target = null, query = '', ingredientId = '' } = {}) {
+function buildLocalLookupTexts({ target = null, query = '', ingredientId = '', localProfile = null } = {}) {
   const targetObj = target && typeof target === 'object' && !Array.isArray(target) ? target : {};
   return uniqNormalizedStrings([
     ingredientId,
@@ -277,6 +277,9 @@ function buildLocalLookupTexts({ target = null, query = '', ingredientId = '' } 
     targetObj.name,
     targetObj.title,
     query,
+    localProfile?.display_name,
+    ...(Array.isArray(localProfile?.exact_phrases) ? localProfile.exact_phrases : []),
+    ...(Array.isArray(localProfile?.alias_phrases) ? localProfile.alias_phrases : []),
   ], 10);
 }
 
@@ -563,8 +566,8 @@ async function getIngredientRecallRegistryHealth({ force = false } = {}) {
 }
 
 async function resolveIngredientRecallProfileKnowledge({ target = null, query = '', ingredientId = '' } = {}) {
-  const lookupTexts = buildLocalLookupTexts({ target, query, ingredientId });
   const localProfile = resolveLocalRegistryProfile({ target, query, ingredientId });
+  const lookupTexts = buildLocalLookupTexts({ target, query, ingredientId, localProfile });
 
   let referenceMatch = null;
   for (const text of lookupTexts) {

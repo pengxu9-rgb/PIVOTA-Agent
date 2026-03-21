@@ -400,6 +400,18 @@ function hasConflictingIngredientSurfaceSignal(text, profile) {
   return false;
 }
 
+function buildConflictingIngredientSurfaceText(fieldTexts = {}) {
+  return [
+    fieldTexts.title,
+    fieldTexts.ingredient_tokens,
+    fieldTexts.urls,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
 function mergeBreakdown(target, sourceTag, amount = 1) {
   const key = String(sourceTag || '').trim() || 'unknown';
   target[key] = Number(target[key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
@@ -435,7 +447,10 @@ function buildCandidateEvidence(product, { profile, targetStepFamily = '', allow
   if (
     titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits <= 0 &&
     kbExplicitHits > 0 &&
-    hasConflictingIngredientSurfaceSignal(fieldTexts.title, profile)
+    hasConflictingIngredientSurfaceSignal(
+      buildConflictingIngredientSurfaceText(fieldTexts),
+      profile,
+    )
   ) {
     return { reject_reason: 'all_candidates_filtered_noise' };
   }
@@ -463,8 +478,25 @@ function buildCandidateEvidence(product, { profile, targetStepFamily = '', allow
   };
   evidence.family_only = evidence.explicit_hits <= 0 && strongFamilyHits > 0 ? 1 : 0;
 
+  if (
+    evidence.explicit_hits <= 0 &&
+    hasConflictingIngredientSurfaceSignal(
+      buildConflictingIngredientSurfaceText(fieldTexts),
+      profile,
+    )
+  ) {
+    return { reject_reason: 'all_candidates_filtered_noise', evidence };
+  }
+
   if (evidence.explicit_hits <= 0 && !allowFamilyOnly) {
     return { reject_reason: 'no_explicit_sku_evidence', evidence };
+  }
+  if (
+    evidence.family_only === 1 &&
+    normalizedTargetStepFamily &&
+    familyRelation !== 'same_family'
+  ) {
+    return { reject_reason: 'step_family_mismatch', evidence };
   }
   if (normalizedTargetStepFamily && !candidateStep && evidence.explicit_hits <= 0) {
     return { reject_reason: 'step_family_mismatch', evidence };
