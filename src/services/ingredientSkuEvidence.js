@@ -329,6 +329,8 @@ function extractSeedIdFromSkuKey(skuKey) {
 function buildKbEvidenceLookup(profile, kbRows) {
   const bySeedId = new Map();
   const byUrl = new Map();
+  const byTitle = new Map();
+  const byTitleBrand = new Map();
   for (const row of Array.isArray(kbRows) ? kbRows : []) {
     const evidence = buildKbEvidence(profile, row);
     if ((Number(evidence.explicit_hits || 0) <= 0) && (Number(evidence.strong_family_hits || 0) <= 0)) continue;
@@ -340,8 +342,16 @@ function buildKbEvidenceLookup(profile, kbRows) {
     if (sourceUrl) {
       byUrl.set(sourceUrl, mergeKbEvidence(byUrl.get(sourceUrl), evidence));
     }
+    const titleKey = normalizeIngredientRecallText(row?.product_name);
+    if (titleKey) {
+      byTitle.set(titleKey, mergeKbEvidence(byTitle.get(titleKey), evidence));
+      const brandKey = normalizeIngredientRecallText(row?.brand);
+      if (brandKey) {
+        byTitleBrand.set(`${brandKey}::${titleKey}`, mergeKbEvidence(byTitleBrand.get(`${brandKey}::${titleKey}`), evidence));
+      }
+    }
   }
-  return { bySeedId, byUrl };
+  return { bySeedId, byUrl, byTitle, byTitleBrand };
 }
 
 function resolveKbEvidenceForSeedRow(row, kbEvidenceLookup) {
@@ -365,7 +375,39 @@ function resolveKbEvidenceForSeedRow(row, kbEvidenceLookup) {
       evidence = mergeKbEvidence(evidence, lookup.byUrl.get(url));
     }
   }
+  const titleKeys = uniqStrings([
+    normalizeIngredientRecallText(row?.title),
+    normalizeIngredientRecallText(row?.seed_data?.title),
+    normalizeIngredientRecallText(row?.seed_data?.snapshot?.title),
+  ]).map(normalizeIngredientRecallText).filter(Boolean);
+  const brandKeys = uniqStrings([
+    normalizeIngredientRecallText(row?.brand),
+    normalizeIngredientRecallText(row?.seed_data?.brand),
+    normalizeIngredientRecallText(row?.seed_data?.snapshot?.brand),
+  ]).map(normalizeIngredientRecallText).filter(Boolean);
+  for (const titleKey of titleKeys) {
+    if (lookup.byTitle instanceof Map && lookup.byTitle.has(titleKey)) {
+      evidence = mergeKbEvidence(evidence, lookup.byTitle.get(titleKey));
+    }
+    for (const brandKey of brandKeys) {
+      const compositeKey = `${brandKey}::${titleKey}`;
+      if (lookup.byTitleBrand instanceof Map && lookup.byTitleBrand.has(compositeKey)) {
+        evidence = mergeKbEvidence(evidence, lookup.byTitleBrand.get(compositeKey));
+      }
+    }
+  }
   return evidence;
+}
+
+function buildKbProductNamePatterns(kbRows, maxItems = 16) {
+  return buildPhrasePatterns(
+    uniqStrings(
+      (Array.isArray(kbRows) ? kbRows : [])
+        .map((row) => String(row?.product_name || '').trim())
+        .filter(Boolean),
+      maxItems,
+    ),
+  );
 }
 
 function mapSeedRowToRecallProduct(row, sourceTag) {
@@ -948,8 +990,10 @@ async function fetchSeedRowsByPatterns({ patterns = [], market = DEFAULT_MARKET,
 
 function resolveSourceRank(sourceTag) {
   if (sourceTag === 'kb_attached_seed') return 480;
+  if (sourceTag === 'kb_named_attached_seed') return 430;
   if (sourceTag === 'attached_seed') return 360;
   if (sourceTag === 'kb_unattached_seed') return 260;
+  if (sourceTag === 'kb_named_unattached_seed') return 240;
   if (sourceTag === 'unattached_seed') return 210;
   if (sourceTag === 'family_attached_seed') return 140;
   if (sourceTag === 'family_unattached_seed') return 100;
@@ -1036,6 +1080,7 @@ async function recallIngredientProductsFromProfile({
     limit: Math.max(8, Number(limit) * 6 || 24),
   });
   const kbEvidenceLookup = buildKbEvidenceLookup(profile, kbRows);
+  const kbProductNamePatterns = buildKbProductNamePatterns(kbRows, 20);
   const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 80);
   const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 80);
 
@@ -1085,6 +1130,16 @@ async function recallIngredientProductsFromProfile({
   });
   diagnostics.kb_recall_recovered = kbAttachedRows.length > 0 ? 1 : 0;
   addRows(kbAttachedRows, 'kb_attached_seed', { useKbEvidence: true });
+  const kbNamedAttachedRows = await fetchSeedRowsByPatterns({
+    patterns: kbProductNamePatterns,
+    market,
+    tool,
+    attachedState: 'attached',
+    limit: Math.max(8, Number(limit) * 4 || 24),
+    inStockOnly,
+  });
+  if (kbNamedAttachedRows.length > 0) diagnostics.kb_recall_recovered = 1;
+  addRows(kbNamedAttachedRows, 'kb_named_attached_seed', { useKbEvidence: true });
 
   diagnostics.attached_seed_recall_attempted = true;
   const explicitPatterns = buildPhrasePatterns([
@@ -1122,6 +1177,16 @@ async function recallIngredientProductsFromProfile({
   diagnostics.unattached_seed_recovered =
     kbUnattachedRows.length > 0 || unattachedSeedRows.length > 0 ? 1 : 0;
   addRows(kbUnattachedRows, 'kb_unattached_seed', { useKbEvidence: true });
+  const kbNamedUnattachedRows = await fetchSeedRowsByPatterns({
+    patterns: kbProductNamePatterns,
+    market,
+    tool,
+    attachedState: 'unattached',
+    limit: Math.max(6, Number(limit) * 3 || 18),
+    inStockOnly,
+  });
+  if (kbNamedUnattachedRows.length > 0) diagnostics.unattached_seed_recovered = 1;
+  addRows(kbNamedUnattachedRows, 'kb_named_unattached_seed', { useKbEvidence: true });
   addRows(unattachedSeedRows, 'unattached_seed');
 
   let candidates = explicitCandidates.slice();
