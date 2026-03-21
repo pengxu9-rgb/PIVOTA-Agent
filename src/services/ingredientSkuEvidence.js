@@ -45,6 +45,13 @@ const TARGET_STEP_NEGATIVE_PATTERNS = Object.freeze({
   treatment: /\b(bundle|duo|set|kit|skin tint|tinted|foundation|primer|sunscreen|spf|cleanser|body lotion|body cream|body wash)\b/i,
   sunscreen: /\b(bundle|duo|set|kit|cleanser|toner|mask|primer|foundation|peel|exfoliant)\b/i,
 });
+const TREATMENT_LEANING_INGREDIENT_CLASSES = new Set([
+  'tone_evening_active',
+  'acne_active',
+  'retinoid',
+  'exfoliant',
+  'balancing_active',
+]);
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -283,31 +290,40 @@ function buildKbEvidence(profile, row) {
       family_hits: 0,
       strong_family_hits: 0,
       explicit_hits: 0,
+      candidate_step_hints: [],
     };
   }
   const exactHits = countPhraseMatches(text, profile?.exact_phrases);
   const aliasHits = countPhraseMatches(text, profile?.alias_phrases);
   const familyHits = countPhraseMatches(text, profile?.family_phrases);
   const strongFamilyHits = countStrongFamilyMatches(text, profile?.family_phrases);
+  const candidateStepHints = [];
+  const kbStepHint = inferIngredientAwareKbStepHint(profile, [
+    row?.product_name,
+    row?.source_ref,
+  ]);
+  if (kbStepHint) candidateStepHints.push(kbStepHint);
   return {
     exact_hits: exactHits,
     alias_hits: aliasHits,
     family_hits: familyHits,
     strong_family_hits: strongFamilyHits,
     explicit_hits: exactHits + aliasHits,
+    candidate_step_hints: uniqNormalizedStrings(candidateStepHints, 4),
   };
 }
 
 function mergeKbEvidence(target, evidence) {
   if (!evidence || typeof evidence !== 'object') return target;
   const next = target && typeof target === 'object'
-    ? { ...target }
-    : {
+      ? { ...target }
+      : {
         exact_hits: 0,
         alias_hits: 0,
         family_hits: 0,
         strong_family_hits: 0,
         explicit_hits: 0,
+        candidate_step_hints: [],
       };
   next.exact_hits = Math.max(0, Number(next.exact_hits || 0), Number(evidence.exact_hits || 0));
   next.alias_hits = Math.max(0, Number(next.alias_hits || 0), Number(evidence.alias_hits || 0));
@@ -318,7 +334,61 @@ function mergeKbEvidence(target, evidence) {
     Number(evidence.strong_family_hits || 0),
   );
   next.explicit_hits = Math.max(0, Number(next.exact_hits || 0) + Number(next.alias_hits || 0));
+  next.candidate_step_hints = uniqNormalizedStrings([
+    ...(Array.isArray(next.candidate_step_hints) ? next.candidate_step_hints : []),
+    ...(Array.isArray(evidence.candidate_step_hints) ? evidence.candidate_step_hints : []),
+  ], 4);
   return next;
+}
+
+function normalizeExpectedStepFamilies(profile) {
+  return uniqNormalizedStrings(profile?.expected_step_families, 8)
+    .map((value) => normalizeRecoTargetStep(value))
+    .filter(Boolean);
+}
+
+function inferIngredientAwareKbStepHint(profile, values) {
+  const text = (Array.isArray(values) ? values : [values])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return null;
+  const direct = normalizeRecoTargetStep(text);
+  if (direct) return direct;
+
+  const normalizedText = normalizeIngredientRecallText(text);
+  if (!normalizedText) return null;
+  const expectedFamilies = new Set(normalizeExpectedStepFamilies(profile));
+  const ingredientClass = String(profile?.ingredient_class || '').trim().toLowerCase();
+  const treatmentLeaning = TREATMENT_LEANING_INGREDIENT_CLASSES.has(ingredientClass);
+
+  if (/\b(cleanser|face wash|facial wash|wash|foam|cleansing)\b/.test(normalizedText) && expectedFamilies.has('cleanser')) {
+    return 'cleanser';
+  }
+  if (/\b(serum|ampoule|essence|booster)\b/.test(normalizedText) && expectedFamilies.has('serum')) {
+    return 'serum';
+  }
+  if (/\b(toner|mist|pad)\b/.test(normalizedText) && expectedFamilies.has('toner')) {
+    return 'toner';
+  }
+  if (/\b(spf|sunscreen|sunblock|sun fluid|sun lotion)\b/.test(normalizedText) && expectedFamilies.has('sunscreen')) {
+    return 'sunscreen';
+  }
+  if (/\b(face oil|facial oil|oil)\b/.test(normalizedText) && expectedFamilies.has('oil')) {
+    return 'oil';
+  }
+  if (
+    /\b(gel|spot treatment|spot|suspension|solution|acid|retinol|retinoid|blemish|acne)\b/.test(normalizedText) &&
+    (expectedFamilies.has('treatment') || treatmentLeaning)
+  ) {
+    return 'treatment';
+  }
+  if (/\b(cream|lotion|moisturi[sz]er|emulsion|gel cream|gel-cream|day cream|night cream)\b/.test(normalizedText)) {
+    if (treatmentLeaning && expectedFamilies.has('treatment')) return 'treatment';
+    if (expectedFamilies.has('moisturizer')) return 'moisturizer';
+    if (expectedFamilies.has('treatment')) return 'treatment';
+  }
+  return null;
 }
 
 function extractSeedIdFromSkuKey(skuKey) {
@@ -551,7 +621,9 @@ function buildCandidateEvidence(
   } = {},
 ) {
   const fieldTexts = buildRecallCandidateFieldTexts(product);
-  const candidateStep = resolveRecallCandidateStep(product);
+  const candidateStep =
+    resolveRecallCandidateStep(product) ||
+    normalizeRecoTargetStep(Array.isArray(kbEvidence?.candidate_step_hints) ? kbEvidence.candidate_step_hints[0] : '');
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const familyRelation = normalizedTargetStepFamily
     ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)

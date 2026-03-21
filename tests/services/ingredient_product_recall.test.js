@@ -1005,6 +1005,86 @@ describe('ingredientProductRecall', () => {
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Azelaic Acid Suspension 10%']);
   });
 
+  test('azelaic acid cream can use KB step hints when the attached seed title is generic', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'kb:ordinary:azelaic-suspension',
+                brand: 'The Ordinary',
+                product_name: 'Azelaic Acid Suspension 10%',
+                source_ref: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                raw_ingredient_text_clean: 'azelaic acid',
+                inci_list: 'azelaic acid',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_azelaic_generic',
+              external_product_id: 'ext_azelaic_generic',
+              destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+              domain: 'ordinary.example.com',
+              title: 'Calm + Clear 10%',
+              image_url: 'https://ordinary.example.com/azelaic.jpg',
+              price_amount: 14,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:azelaic-generic',
+              seed_data: {
+                brand: 'The Ordinary',
+                snapshot: {
+                  title: 'Calm + Clear 10%',
+                  description: 'visible redness support',
+                  canonical_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                  destination_url: 'https://ordinary.example.com/products/azelaic-acid-suspension',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'azelaic acid cream',
+      ingredientId: 'azelaic_acid',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Calm + Clear 10%']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
   test('benzoyl peroxide gel keeps explicit treatment products ahead of generic blemish sticker noise', async () => {
     jest.doMock('../../src/services/ingredientReferenceStore', () => ({
       getBestIngredientReferenceMatch: jest.fn(async () => null),
@@ -1095,6 +1175,86 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Benzoyl Peroxide 5% Gel']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+  });
+
+  test('benzoyl peroxide gel can use KB step hints when the attached seed title is generic', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'kb:acme:bpo-gel',
+                brand: 'Acme',
+                product_name: 'Benzoyl Peroxide 5% Gel',
+                source_ref: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                raw_ingredient_text_clean: 'benzoyl peroxide',
+                inci_list: 'benzoyl peroxide',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_bpo_generic',
+              external_product_id: 'ext_bpo_generic',
+              destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+              domain: 'acme.example.com',
+              title: 'Clear Skin 5%',
+              image_url: 'https://acme.example.com/bpo.jpg',
+              price_amount: 18,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:bpo-generic',
+              seed_data: {
+                brand: 'Acme',
+                snapshot: {
+                  title: 'Clear Skin 5%',
+                  description: 'daily blemish care',
+                  canonical_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                  destination_url: 'https://acme.example.com/products/benzoyl-peroxide-gel',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'benzoyl peroxide gel',
+      ingredientId: 'benzoyl_peroxide',
+      targetStepFamily: 'treatment',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Clear Skin 5%']);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
@@ -1287,6 +1447,86 @@ describe('ingredientProductRecall', () => {
       Number(out.diagnostics.recall_source_breakdown?.kb_named_attached_seed || 0) +
       Number(out.diagnostics.recall_source_breakdown?.kb_attached_seed || 0),
     ).toBeGreaterThan(0);
+  });
+
+  test('glycerin moisturizer can use KB step hints when the attached seed title is generic and category is missing', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        if (text.includes('FROM pci_kb.sku_ingredients')) {
+          return {
+            rows: [
+              {
+                sku_key: 'kb:acme:barrier-support-moisturizer',
+                brand: 'Acme',
+                product_name: 'Barrier Support Moisturizer',
+                source_ref: 'https://shop.acme.example.com/products/barrier-support-moisturizer',
+                raw_ingredient_text_clean: 'glycerin, panthenol',
+                inci_list: 'glycerin, panthenol',
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        if (!text.includes("coalesce(attached_product_key, '') <> ''")) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_barrier_support_generic',
+              external_product_id: 'ext_barrier_support_generic',
+              destination_url: 'https://shop.acme.example.com/products/barrier-support-moisturizer',
+              canonical_url: 'https://shop.acme.example.com/products/barrier-support-moisturizer',
+              domain: 'shop.acme.example.com',
+              title: 'Barrier Support',
+              image_url: 'https://shop.acme.example.com/barrier.jpg',
+              price_amount: 24,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: 'shopify:barrier-support-moisturizer',
+              seed_data: {
+                brand: 'Acme',
+                snapshot: {
+                  title: 'Barrier Support',
+                  description: 'daily skin support',
+                  canonical_url: 'https://shop.acme.example.com/products/barrier-support-moisturizer',
+                  destination_url: 'https://shop.acme.example.com/products/barrier-support-moisturizer',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
   });
 
   test('glycerin moisturizer rejects off-family hand-mask noise before ranking', async () => {
