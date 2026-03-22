@@ -924,6 +924,10 @@ function resolveRecallCandidateResolution(
     [fieldTexts.title, fieldTexts.support].join(' '),
     targetAnchorPhrases,
   );
+  const strongTargetAnchorHits = countPhraseMatches(
+    [fieldTexts.title, fieldTexts.urls].join(' '),
+    targetAnchorPhrases,
+  );
   const candidateStep =
     resolveRecallCandidateStep(product) ||
     normalizeRecoTargetStep(Array.isArray(kbEvidence?.candidate_step_hints) ? kbEvidence.candidate_step_hints[0] : '') ||
@@ -945,6 +949,7 @@ function resolveRecallCandidateResolution(
     fieldTexts,
     normalizedTargetStepFamily,
     targetAnchorHits,
+    strongTargetAnchorHits,
     candidateStep,
     familyRelation,
   };
@@ -964,6 +969,7 @@ function buildCandidateEvidence(
     fieldTexts,
     normalizedTargetStepFamily,
     targetAnchorHits,
+    strongTargetAnchorHits,
     candidateStep,
     familyRelation,
   } = resolveRecallCandidateResolution(product, {
@@ -995,6 +1001,15 @@ function buildCandidateEvidence(
     Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
   const offSurfaceSignal = hasDisallowedOffSurfaceSignal(fieldTexts, queryText);
   const targetStepNegativeSignal = hasTargetStepNegativeSignal(fieldTexts, targetStepFamily, queryText);
+  const kbStepHints = Array.isArray(kbEvidence?.candidate_step_hints)
+    ? kbEvidence.candidate_step_hints
+    : [];
+  const hasSameFamilyKbHint = kbStepHints.some(
+    (value) => normalizeRecoTargetStep(value) === normalizedTargetStepFamily,
+  );
+  const sameFamilyGateRequired =
+    normalizedTargetStepFamily &&
+    requiresSameFamilyExplicitGate(profile, normalizedTargetStepFamily);
 
   if (
     titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits <= 0 &&
@@ -1027,6 +1042,13 @@ function buildCandidateEvidence(
     strong_family_hits: strongFamilyHits,
     candidate_step: candidateStep || null,
     family_relation: familyRelation || null,
+    target_anchor_hits: targetAnchorHits,
+    strong_target_anchor_hits: strongTargetAnchorHits,
+    surface_explicit_hits: surfaceExplicitHits,
+    kb_step_hint_match: hasSameFamilyKbHint ? 1 : 0,
+    same_family_gate_required: sameFamilyGateRequired ? 1 : 0,
+    target_step_negative_signal: targetStepNegativeSignal ? 1 : 0,
+    off_surface_signal: offSurfaceSignal ? 1 : 0,
   };
   evidence.family_only = evidence.explicit_hits <= 0 && strongFamilyHits > 0 ? 1 : 0;
 
@@ -1051,7 +1073,7 @@ function buildCandidateEvidence(
   if (
     evidence.explicit_hits > 0 &&
     normalizedTargetStepFamily &&
-    requiresSameFamilyExplicitGate(profile, normalizedTargetStepFamily) &&
+    sameFamilyGateRequired &&
     candidateStep &&
     familyRelation !== 'same_family'
   ) {
@@ -1073,18 +1095,22 @@ function buildCandidateEvidence(
     surfaceExplicitHits <= 0 &&
     kbExplicitHits > 0 &&
     normalizedTargetStepFamily &&
-    requiresSameFamilyExplicitGate(profile, normalizedTargetStepFamily) &&
+    sameFamilyGateRequired &&
     familyRelation === 'same_family'
   ) {
-    const kbStepHints = Array.isArray(kbEvidence?.candidate_step_hints)
-      ? kbEvidence.candidate_step_hints
-      : [];
-    const hasSameFamilyKbHint = kbStepHints.some(
-      (value) => normalizeRecoTargetStep(value) === normalizedTargetStepFamily,
-    );
     if (targetAnchorHits <= 0 && !hasSameFamilyKbHint) {
       return { reject_reason: 'no_explicit_sku_evidence', evidence };
     }
+  }
+  if (
+    evidence.explicit_hits > 0 &&
+    normalizedTargetStepFamily === 'moisturizer' &&
+    sameFamilyGateRequired &&
+    familyRelation === 'same_family' &&
+    strongTargetAnchorHits <= 0 &&
+    !hasSameFamilyKbHint
+  ) {
+    return { reject_reason: 'no_explicit_sku_evidence', evidence };
   }
   if (normalizedTargetStepFamily && !candidateStep && evidence.explicit_hits <= 0) {
     return { reject_reason: 'step_family_mismatch', evidence };
@@ -1820,17 +1846,23 @@ async function recallIngredientProductsFromProfile({
         1,
       );
       mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
-      pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
-        title:
+    pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
+      title:
           String(product?.title || product?.name || product?.display_name || '').trim() || null,
-        source_tag: sourceTag,
-        reject_reason: rejectReason,
-        candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
-        family_relation: scored?.evidence?.family_relation || null,
-        kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
-      });
-      return;
-    }
+      source_tag: sourceTag,
+      reject_reason: rejectReason,
+      candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
+      family_relation: scored?.evidence?.family_relation || null,
+      kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
+      target_anchor_hits: Number(scored?.evidence?.target_anchor_hits || 0) || 0,
+      strong_target_anchor_hits: Number(scored?.evidence?.strong_target_anchor_hits || 0) || 0,
+      surface_explicit_hits: Number(scored?.evidence?.surface_explicit_hits || 0) || 0,
+      kb_step_hint_match: Number(scored?.evidence?.kb_step_hint_match || 0) || 0,
+      same_family_gate_required: Number(scored?.evidence?.same_family_gate_required || 0) || 0,
+      target_step_negative_signal: Number(scored?.evidence?.target_step_negative_signal || 0) || 0,
+    });
+    return;
+  }
     seen.add(key);
     bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'admitted', 1);
     attachIngredientRecallMeta(product, {
@@ -2085,6 +2117,12 @@ async function recallIngredientProductsFromProfile({
       kb_explicit: Number(row.evidence?.kb_explicit || 0) > 0 ? 1 : 0,
       explicit_hits: Number(row.evidence?.explicit_hits || 0) || 0,
       family_only: Number(row.evidence?.family_only || 0) > 0 ? 1 : 0,
+      target_anchor_hits: Number(row.evidence?.target_anchor_hits || 0) || 0,
+      strong_target_anchor_hits: Number(row.evidence?.strong_target_anchor_hits || 0) || 0,
+      surface_explicit_hits: Number(row.evidence?.surface_explicit_hits || 0) || 0,
+      kb_step_hint_match: Number(row.evidence?.kb_step_hint_match || 0) || 0,
+      same_family_gate_required: Number(row.evidence?.same_family_gate_required || 0) || 0,
+      target_step_negative_signal: Number(row.evidence?.target_step_negative_signal || 0) || 0,
     });
   }
 

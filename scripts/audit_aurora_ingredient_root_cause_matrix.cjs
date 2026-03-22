@@ -119,6 +119,17 @@ function classifyRootCause(metadata, products) {
   return 'no_explicit_supply_in_any_source';
 }
 
+function classifyRecommendedAction(bucket) {
+  const normalized = String(bucket || '').trim();
+  if (normalized === 'direct_hit') return 'none';
+  if (normalized === 'explicit_supply_present_but_filtered') return 'code_admission_or_step_surface_fix';
+  if (normalized === 'explicit_supply_present_but_misranked') return 'ranking_fix';
+  if (normalized === 'only_family_supply_present') return 'upstream_seed_or_kb_supply_remediation';
+  if (normalized === 'no_explicit_supply_in_any_source') return 'upstream_seed_or_kb_supply_remediation';
+  if (normalized === 'registry_not_resolved') return 'registry_resolution_fix';
+  return 'manual_triage';
+}
+
 async function fetchAuditRow(baseUrl, limit, [ingredientClass, ingredientId, ingredientName, query]) {
   const response = await fetch(buildUrl(baseUrl, query, limit), {
     method: 'GET',
@@ -140,6 +151,7 @@ async function fetchAuditRow(baseUrl, limit, [ingredientClass, ingredientId, ing
     profile_source: String(metadata.ingredient_profile_source || '').trim() || null,
     miss_reason: String(metadata.ingredient_direct_miss_reason || metadata.strict_empty_reason || '').trim() || null,
     root_cause_bucket: classifyRootCause(metadata, products),
+    recommended_action: null,
     candidate_evidence_breakdown:
       metadata.ingredient_candidate_evidence_breakdown &&
       typeof metadata.ingredient_candidate_evidence_breakdown === 'object'
@@ -172,6 +184,7 @@ async function main() {
   let serviceCommit = '';
   for (const entry of MATRIX) {
     const row = await fetchAuditRow(baseUrl, args.limit, entry);
+    row.recommended_action = classifyRecommendedAction(row.root_cause_bucket);
     if (!serviceCommit && row.x_service_commit) serviceCommit = row.x_service_commit;
     rows.push(row);
   }
@@ -196,6 +209,7 @@ async function main() {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, output, 'utf8');
   }
+  process.exit(0);
 }
 
 main().catch((error) => {

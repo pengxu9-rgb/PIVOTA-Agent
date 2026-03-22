@@ -1459,6 +1459,47 @@ describe('ingredientProductRecall', () => {
     );
   });
 
+  test('buildCandidateEvidence exposes strong-anchor diagnostics for humectant moisturizer gating', () => {
+    const { LOCAL_INGREDIENT_RECALL_REGISTRY } = require('../../src/services/ingredientRecallRegistry');
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const out = _internals.buildCandidateEvidence(
+      {
+        title: 'Flawless Beauty Primer',
+        category: 'Moisturizer',
+        ingredient_tokens: ['glycerin'],
+        canonical_url: 'https://pixibeauty.com/products/flawless-beauty-primer',
+      },
+      {
+        profile: LOCAL_INGREDIENT_RECALL_REGISTRY.glycerin,
+        targetStepFamily: 'moisturizer',
+        allowFamilyOnly: false,
+        kbEvidence: {
+          exact_hits: 1,
+          alias_hits: 0,
+          family_hits: 1,
+          strong_family_hits: 0,
+          explicit_hits: 1,
+          candidate_step_hints: [],
+        },
+        queryText: 'glycerin moisturizer',
+      },
+    );
+
+    expect(out).toEqual(
+      expect.objectContaining({
+        reject_reason: 'step_family_mismatch',
+        evidence: expect.objectContaining({
+          candidate_step: 'moisturizer',
+          family_relation: 'same_family',
+          kb_explicit: 1,
+          same_family_gate_required: 1,
+          strong_target_anchor_hits: 0,
+          target_step_negative_signal: 1,
+        }),
+      }),
+    );
+  });
+
   test('fetchProductsCacheRowsByPatterns searches combined strong text for cross-field ingredient-step anchors', async () => {
     const queryMock = jest.fn(async () => ({ rows: [] }));
     jest.doMock('../../src/db', () => ({
