@@ -65,6 +65,13 @@ const SAME_FAMILY_EXPLICIT_REQUIRED_INGREDIENT_CLASSES = new Set([
   'humectant',
   'soothing_humectant',
 ]);
+const DIRECT_RECALL_SOURCE_BUCKETS = Object.freeze([
+  'kb_attached_seed',
+  'attached_seed',
+  'products_cache',
+  'unattached_seed',
+  'family_fallback',
+]);
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -174,6 +181,75 @@ function uniqNormalizedStrings(values, maxItems = 32) {
     if (out.length >= Math.max(1, Number(maxItems) || 32)) break;
   }
   return out;
+}
+
+function initDirectRecallSourceStageCounts() {
+  return DIRECT_RECALL_SOURCE_BUCKETS.reduce((acc, key) => {
+    acc[key] = {
+      fetched: 0,
+      admitted: 0,
+      rejected: 0,
+      final: 0,
+    };
+    return acc;
+  }, {});
+}
+
+function initDirectRecallSourceRejectBreakdown() {
+  return DIRECT_RECALL_SOURCE_BUCKETS.reduce((acc, key) => {
+    acc[key] = {
+      no_explicit_sku_evidence: 0,
+      step_family_mismatch: 0,
+      all_candidates_filtered_noise: 0,
+      off_surface: 0,
+    };
+    return acc;
+  }, {});
+}
+
+function normalizeDirectRecallSourceBucket(sourceTag) {
+  const normalized = String(sourceTag || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized.includes('family_')) return 'family_fallback';
+  if (normalized.includes('products_cache')) return 'products_cache';
+  if (normalized.includes('kb_attached_seed') || normalized.includes('kb_named_attached_seed')) {
+    return 'kb_attached_seed';
+  }
+  if (normalized.includes('attached_seed')) return 'attached_seed';
+  if (normalized.includes('unattached_seed')) return 'unattached_seed';
+  return '';
+}
+
+function bumpDirectRecallSourceStageCount(target, sourceTag, stage, amount = 1) {
+  const bucket = normalizeDirectRecallSourceBucket(sourceTag);
+  if (!bucket || !target || typeof target !== 'object') return;
+  if (!target[bucket] || typeof target[bucket] !== 'object') {
+    target[bucket] = { fetched: 0, admitted: 0, rejected: 0, final: 0 };
+  }
+  const key = String(stage || '').trim();
+  if (!key) return;
+  target[bucket][key] = Number(target[bucket][key] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
+}
+
+function bumpDirectRecallSourceRejectReason(target, sourceTag, reason, amount = 1) {
+  const bucket = normalizeDirectRecallSourceBucket(sourceTag);
+  if (!bucket || !target || typeof target !== 'object') return;
+  if (!target[bucket] || typeof target[bucket] !== 'object') {
+    target[bucket] = {
+      no_explicit_sku_evidence: 0,
+      step_family_mismatch: 0,
+      all_candidates_filtered_noise: 0,
+      off_surface: 0,
+    };
+  }
+  const normalizedReason =
+    String(reason || '').trim() === 'all_candidates_filtered_noise' && String(sourceTag || '').includes('off_surface')
+      ? 'off_surface'
+      : String(reason || '').trim();
+  if (!normalizedReason) return;
+  if (!(normalizedReason in target[bucket])) target[bucket][normalizedReason] = 0;
+  target[bucket][normalizedReason] =
+    Number(target[bucket][normalizedReason] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
 }
 
 function buildPhrasePatterns(phrases) {
@@ -692,6 +768,30 @@ function attachIngredientRecallMeta(product, meta) {
   return product;
 }
 
+function hasExplicitRecallEvidence(evidence) {
+  const row = evidence && typeof evidence === 'object' ? evidence : null;
+  if (!row) return false;
+  return (
+    Number(row.kb_explicit || 0) > 0 ||
+    Number(row.title_exact || 0) > 0 ||
+    Number(row.title_alias || 0) > 0 ||
+    Number(row.ingredient_token_exact || 0) > 0 ||
+    Number(row.ingredient_token_alias || 0) > 0 ||
+    Number(row.url_alias || 0) > 0
+  );
+}
+
+function hasProductExplicitRecallEvidence(product) {
+  const evidence =
+    product &&
+    typeof product === 'object' &&
+    product.__ingredient_recall_meta &&
+    typeof product.__ingredient_recall_meta === 'object'
+      ? product.__ingredient_recall_meta.evidence
+      : null;
+  return hasExplicitRecallEvidence(evidence);
+}
+
 function buildCandidateKey(product) {
   const url = normalizeUrl(product?.canonical_url || product?.destination_url || product?.url || '');
   return [
@@ -808,12 +908,11 @@ function pushCandidateSample(target, sample, maxItems = 5) {
   target.push(sample);
 }
 
-function buildCandidateEvidence(
+function resolveRecallCandidateResolution(
   product,
   {
-    profile,
+    profile = null,
     targetStepFamily = '',
-    allowFamilyOnly = false,
     kbEvidence = null,
     queryText = '',
   } = {},
@@ -842,6 +941,37 @@ function buildCandidateEvidence(
   const familyRelation = normalizedTargetStepFamily
     ? getRecoTargetFamilyRelation(normalizedTargetStepFamily, candidateStep)
     : null;
+  return {
+    fieldTexts,
+    normalizedTargetStepFamily,
+    targetAnchorHits,
+    candidateStep,
+    familyRelation,
+  };
+}
+
+function buildCandidateEvidence(
+  product,
+  {
+    profile,
+    targetStepFamily = '',
+    allowFamilyOnly = false,
+    kbEvidence = null,
+    queryText = '',
+  } = {},
+) {
+  const {
+    fieldTexts,
+    normalizedTargetStepFamily,
+    targetAnchorHits,
+    candidateStep,
+    familyRelation,
+  } = resolveRecallCandidateResolution(product, {
+    profile,
+    targetStepFamily,
+    kbEvidence,
+    queryText,
+  });
 
   if (normalizedTargetStepFamily && familyRelation === 'incompatible_family') {
     return { reject_reason: 'step_family_mismatch' };
@@ -910,7 +1040,7 @@ function buildCandidateEvidence(
     return { reject_reason: 'all_candidates_filtered_noise', evidence };
   }
   if (offSurfaceSignal) {
-    return { reject_reason: 'all_candidates_filtered_noise', evidence };
+    return { reject_reason: 'off_surface', evidence };
   }
   if (targetStepNegativeSignal && evidence.family_only === 1) {
     return { reject_reason: 'step_family_mismatch', evidence };
@@ -1603,6 +1733,7 @@ async function recallIngredientProductsFromProfile({
   const diagnostics = {
     ingredient_intent_detected: Boolean(profile),
     ingredient_id: profile?.ingredient_id || null,
+    ingredient_direct_main_path_status: 'direct_empty',
     ingredient_registry_match: registryDiagnostics.registry_match === true,
     ingredient_registry_source: registryDiagnostics.registry_source || 'none',
     ingredient_profile_source: registryDiagnostics.profile_source || 'none',
@@ -1634,6 +1765,8 @@ async function recallIngredientProductsFromProfile({
     family_fallback_attempted: false,
     family_fallback_recovered: 0,
     family_fallback_used: false,
+    ingredient_direct_source_stage_counts: initDirectRecallSourceStageCounts(),
+    ingredient_direct_source_reject_breakdown: initDirectRecallSourceRejectBreakdown(),
     recall_source_breakdown: {},
     ingredient_candidate_reject_breakdown: {},
     ingredient_rejected_candidate_samples: [],
@@ -1679,6 +1812,13 @@ async function recallIngredientProductsFromProfile({
       const rejectReason = String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
       if (rejectReason === 'step_family_mismatch') stepMismatchCount += 1;
       else noiseFilteredCount += 1;
+      bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'rejected', 1);
+      bumpDirectRecallSourceRejectReason(
+        diagnostics.ingredient_direct_source_reject_breakdown,
+        sourceTag,
+        rejectReason,
+        1,
+      );
       mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
       pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
         title:
@@ -1692,6 +1832,7 @@ async function recallIngredientProductsFromProfile({
       return;
     }
     seen.add(key);
+    bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'admitted', 1);
     attachIngredientRecallMeta(product, {
       evidence: scored.evidence,
       candidate_step: scored.evidence?.candidate_step,
@@ -1723,6 +1864,12 @@ async function recallIngredientProductsFromProfile({
       kbResolver = (row, _product, lookup) => resolveKbEvidenceForSeedRow(row, lookup),
     } = {},
   ) => {
+    bumpDirectRecallSourceStageCount(
+      diagnostics.ingredient_direct_source_stage_counts,
+      sourceTag,
+      'fetched',
+      Array.isArray(rows) ? rows.length : 0,
+    );
     for (const row of Array.isArray(rows) ? rows : []) {
       const product = mapper(row, sourceTag);
       if (!product) continue;
@@ -1962,6 +2109,7 @@ async function recallIngredientProductsFromProfile({
   for (const product of stabilizedProducts) {
     const sourceTag = String(product?.__ingredient_recall_meta?.source_tag || '').trim() || 'unknown';
     mergeBreakdown(diagnostics.recall_source_breakdown, sourceTag, 1);
+    bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'final', 1);
   }
 
   diagnostics.ingredient_direct_miss_reason = buildDirectMissReason({
@@ -1973,7 +2121,9 @@ async function recallIngredientProductsFromProfile({
     noiseFilteredCount,
     finalProducts: stabilizedProducts,
   });
-  if (stabilizedProducts.length > 0) diagnostics.ingredient_direct_miss_reason = null;
+  const stabilizedHasExplicitEvidence = stabilizedProducts.some((product) => hasProductExplicitRecallEvidence(product));
+  diagnostics.ingredient_direct_main_path_status = stabilizedHasExplicitEvidence ? 'direct_hit' : 'direct_empty';
+  if (stabilizedProducts.length > 0 && stabilizedHasExplicitEvidence) diagnostics.ingredient_direct_miss_reason = null;
 
   return {
     products: stabilizedProducts,
@@ -1987,6 +2137,7 @@ module.exports = {
   stabilizeIngredientRecallProducts,
   _internals: {
     buildRecallCandidateFieldTexts,
+    resolveRecallCandidateResolution,
     buildCandidateEvidence,
     scoreCandidateEvidence,
     buildKbEvidence,

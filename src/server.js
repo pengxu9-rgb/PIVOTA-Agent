@@ -8122,6 +8122,10 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       );
   const baseMetadata = {
     fetched_at: new Date().toISOString(),
+    ingredient_direct_main_path_status:
+      diagnostics.ingredient_direct_main_path_status === 'direct_hit'
+        ? 'direct_hit'
+        : 'direct_empty_unrecovered',
     ingredient_intent_detected:
       diagnostics.ingredient_intent_detected === true || ingredientIntentDetected,
     ingredient_registry_match: recallProfileDiagnostics.registry_match === true || diagnostics.ingredient_registry_match === true,
@@ -8140,6 +8144,16 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
           ? { ...recallProfileDiagnostics.registry_source_breakdown }
           : {},
     ingredient_evidence_mode: diagnostics.ingredient_evidence_mode || null,
+    ingredient_direct_source_stage_counts:
+      diagnostics.ingredient_direct_source_stage_counts &&
+      typeof diagnostics.ingredient_direct_source_stage_counts === 'object'
+        ? { ...diagnostics.ingredient_direct_source_stage_counts }
+        : {},
+    ingredient_direct_source_reject_breakdown:
+      diagnostics.ingredient_direct_source_reject_breakdown &&
+      typeof diagnostics.ingredient_direct_source_reject_breakdown === 'object'
+        ? { ...diagnostics.ingredient_direct_source_reject_breakdown }
+        : {},
     ingredient_candidate_evidence_breakdown:
       diagnostics.ingredient_candidate_evidence_breakdown &&
       typeof diagnostics.ingredient_candidate_evidence_breakdown === 'object'
@@ -8208,6 +8222,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       reply: null,
       metadata: {
         ...baseMetadata,
+        ingredient_direct_main_path_status: 'direct_empty_unrecovered',
         query_source: 'agent_products_ingredient_recall_direct_empty',
         search_decision: {
           final_decision: 'direct_empty',
@@ -8247,6 +8262,7 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
     reply: null,
     metadata: {
       ...baseMetadata,
+      ingredient_direct_main_path_status: 'direct_hit',
       query_source: 'agent_products_ingredient_recall_direct',
       strict_empty_reason: null,
       products_returned_count: responseProducts.length,

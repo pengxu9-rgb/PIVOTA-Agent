@@ -1486,6 +1486,51 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
       {
         strictFilter: true,
         ingredientPlanGuardrailMode: 'lightweight',
+        ingredientRecallBuilder: async ({ target }) => {
+          const ingredientId = String(target?.ingredient_id || '').trim();
+          if (ingredientId === 'ceramide_np') {
+            return {
+              products: [
+                {
+                  product_id: 'ceramide_direct_1',
+                  merchant_id: 'catalog',
+                  name: 'Ceramide Barrier Cream',
+                  brand: 'Barrier Lab',
+                  category: 'moisturizer',
+                  product_type: 'moisturizer',
+                  tag_tokens: ['ceramide', 'barrier', 'repair'],
+                  pdp_url: 'https://agent.pivota.cc/products/ceramide_direct_1?merchant_id=catalog',
+                  url: 'https://agent.pivota.cc/products/ceramide_direct_1?merchant_id=catalog',
+                  source: 'catalog',
+                },
+              ],
+              diagnostics: {
+                ingredient_registry_match: true,
+                ingredient_direct_main_path_status: 'direct_hit',
+                ingredient_registry_source_breakdown: { local: 1 },
+                recall_source_breakdown: { attached_seed_target_anchored: 1 },
+                kb_recall_attempted: true,
+                kb_recall_recovered: 1,
+                attached_seed_recall_attempted: true,
+                attached_seed_recall_recovered: 1,
+              },
+            };
+          }
+          return {
+            products: [],
+            diagnostics: {
+              ingredient_registry_match: true,
+              ingredient_direct_main_path_status: 'direct_empty',
+              ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
+              ingredient_registry_source_breakdown: { local: 1, reference: 1 },
+              recall_source_breakdown: {},
+              kb_recall_attempted: true,
+              kb_recall_recovered: 0,
+              attached_seed_recall_attempted: true,
+              attached_seed_recall_recovered: 0,
+            },
+          };
+        },
         fallbackCandidateBuilder: async ({ query }) => {
           fallbackCalls.push(String(query || ''));
           if (/ceramide/i.test(String(query || ''))) {
@@ -1574,6 +1619,13 @@ test('sanitizeRecoCandidatesForUi records ingredient-first precision and family 
     assert.equal(out.lookup_meta.ingredient_alias_query_zero_target_count, 1);
     assert.equal(out.lookup_meta.ingredient_external_seed_recovery_target_count, 0);
     assert.equal(out.lookup_meta.ingredient_plan_family_fallback_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_direct_hit_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_direct_empty_masked_target_count, 1);
+    assert.equal(out.lookup_meta.ingredient_direct_empty_unrecovered_target_count, 0);
+    assert.equal(
+      Number(out.lookup_meta.ingredient_target_source_breakdown.catalog || 0),
+      2,
+    );
     assert.equal(fallbackCalls.includes('panthenol repair serum'), true);
     assert.equal(fallbackCalls.includes('provitamin b5 repair serum'), true);
     assert.equal(fallbackCalls.includes('soothing serum') || fallbackCalls.includes('hydrating serum'), true);

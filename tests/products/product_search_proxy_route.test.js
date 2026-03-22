@@ -3310,6 +3310,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct_empty',
+        ingredient_direct_main_path_status: 'direct_empty_unrecovered',
         ingredient_intent_detected: true,
         ingredient_registry_match: true,
         ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
@@ -3384,6 +3385,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct_empty',
+        ingredient_direct_main_path_status: 'direct_empty_unrecovered',
         ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
         family_fallback_used: true,
       }),
@@ -3470,6 +3472,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_ingredient_recall_direct',
+        ingredient_direct_main_path_status: 'direct_hit',
         ingredient_direct_miss_reason: null,
         ingredient_direct_display_strategy: 'service_stabilized',
       }),

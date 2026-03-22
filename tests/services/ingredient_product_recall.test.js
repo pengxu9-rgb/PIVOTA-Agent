@@ -126,6 +126,11 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products.map((row) => row.title || row.name)).toEqual(['Rose Ceramide Cream']);
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_hit');
+    expect(
+      Number(out.diagnostics.ingredient_direct_source_stage_counts.kb_attached_seed.final || 0) +
+        Number(out.diagnostics.ingredient_direct_source_stage_counts.attached_seed.final || 0),
+    ).toBe(1);
     expect(out.diagnostics.family_fallback_used).toBe(false);
   });
 
@@ -285,6 +290,8 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.family_fallback_attempted).toBe(true);
     expect(out.diagnostics.family_fallback_recovered).toBe(1);
     expect(out.diagnostics.family_fallback_used).toBe(true);
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_empty');
+    expect(out.diagnostics.ingredient_direct_source_stage_counts.family_fallback.fetched).toBeGreaterThan(0);
     expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
 

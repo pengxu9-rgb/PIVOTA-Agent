@@ -31892,6 +31892,35 @@ function countEmptyPurchasableTargets(targets) {
   return count;
 }
 
+function collectIngredientTargetSourceBreakdown(targets) {
+  const out = {};
+  for (const target of Array.isArray(targets) ? targets : []) {
+    if (!isPlainObject(target)) continue;
+    const productsNode = isPlainObject(target.products) ? target.products : {};
+    const rows = [
+      ...(Array.isArray(productsNode.competitors) ? productsNode.competitors : []),
+      ...(Array.isArray(productsNode.dupes) ? productsNode.dupes : []),
+    ];
+    for (const row of rows) {
+      if (!isPlainObject(row)) continue;
+      const meta =
+        row.__ingredient_recall_meta && isPlainObject(row.__ingredient_recall_meta)
+          ? row.__ingredient_recall_meta
+          : null;
+      const sourceKey = pickFirstString(
+        meta?.source_tag,
+        row.retrieval_source,
+        row.retrievalSource,
+        row.source,
+        'unknown',
+      ).trim().toLowerCase();
+      if (!sourceKey) continue;
+      out[sourceKey] = Number(out[sourceKey] || 0) + 1;
+    }
+  }
+  return out;
+}
+
 function mergeRecoveredProductsIntoIngredientTarget(target, recoveredProducts, maxProducts = AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS) {
   const baseTarget = isPlainObject(target) ? { ...target } : {};
   const productsNode = isPlainObject(baseTarget.products) ? { ...baseTarget.products } : {};
@@ -32865,9 +32894,12 @@ async function sanitizeRecoCandidatesForUi(
     ingredient_alias_query_zero_target_count: 0,
     ingredient_external_seed_recovery_target_count: 0,
     ingredient_plan_family_fallback_target_count: 0,
+    ingredient_direct_empty_masked_target_count: 0,
+    ingredient_direct_empty_unrecovered_target_count: 0,
     ingredient_plan_products_empty_reason: null,
     ingredient_plan_target_count: 0,
     ingredient_plan_empty_target_count: 0,
+    ingredient_target_source_breakdown: {},
   };
   const nextCards = [];
   for (const card of list) {
@@ -33226,7 +33258,10 @@ async function sanitizeRecoCandidatesForUi(
       let registryResolvedTargetCountForCard = 0;
       let directHitTargetCountForCard = 0;
       let directMissTargetCountForCard = 0;
+      let directEmptyMaskedTargetCountForCard = 0;
+      let directEmptyUnrecoveredTargetCountForCard = 0;
       const registrySourceBreakdownForCard = {};
+      const targetSourceBreakdownForCard = {};
       let exactQueryZeroTargetCountForCard = 0;
       let aliasQueryZeroTargetCountForCard = 0;
       let externalSeedRecoveryTargetCountForCard = 0;
@@ -33412,6 +33447,8 @@ async function sanitizeRecoCandidatesForUi(
             continue;
           }
           let recoveredForTarget = false;
+          let directMainPathStatusForTarget = 'not_attempted';
+          let directMainPathAttemptedForTarget = false;
           if (typeof effectiveIngredientRecallBuilder === 'function') {
             const ingredientRecall = await effectiveIngredientRecallBuilder({
               target: nextTarget,
@@ -33433,6 +33470,20 @@ async function sanitizeRecoCandidatesForUi(
             const ingredientRecallDiagnostics = isPlainObject(ingredientRecall?.diagnostics)
               ? ingredientRecall.diagnostics
               : {};
+            directMainPathAttemptedForTarget = true;
+            const diagnosticDirectStatus = String(
+              ingredientRecallDiagnostics.ingredient_direct_main_path_status || '',
+            ).trim();
+            directMainPathStatusForTarget =
+              diagnosticDirectStatus === 'direct_hit'
+                ? 'direct_hit'
+                : !diagnosticDirectStatus &&
+                    Array.isArray(ingredientRecall?.products) &&
+                    ingredientRecall.products.length > 0 &&
+                    !pickFirstString(ingredientRecallDiagnostics.ingredient_direct_miss_reason) &&
+                    ingredientRecallDiagnostics.family_fallback_used !== true
+                  ? 'direct_hit'
+                  : 'direct_empty';
             if (ingredientRecallDiagnostics.ingredient_registry_match === true) registryResolvedTargetCountForCard += 1;
             if (ingredientRecallDiagnostics.ingredient_direct_miss_reason) directMissTargetCountForCard += 1;
             if (ingredientRecallDiagnostics.family_fallback_used === true) familyFallbackTargetCountForCard += 1;
@@ -33474,7 +33525,7 @@ async function sanitizeRecoCandidatesForUi(
               target: nextTarget,
               queryText: ingredientSpecificQueries[0] || recoveryQueryText,
             });
-            if (recalledProducts.length) {
+            if (directMainPathStatusForTarget === 'direct_hit' && recalledProducts.length) {
               directHitTargetCountForCard += 1;
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
@@ -33558,10 +33609,25 @@ async function sanitizeRecoCandidatesForUi(
             if (specificRecoverySummary.alias_query_zero) aliasQueryZeroTargetCountForCard += 1;
               if (specificRecoverySummary.external_seed_recovery_used) externalSeedRecoveryTargetCountForCard += 1;
             if (specificRecoveredProducts.length) {
+              if (directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit') {
+                directEmptyMaskedTargetCountForCard += 1;
+              }
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
                   ...nextTarget,
-                  ...(specificFieldMissing.length ? { field_missing: specificFieldMissing } : {}),
+                  ...(mergeFieldMissing(specificFieldMissing, [
+                    ...(directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit'
+                      ? [{ field: 'payload.targets[].products', reason: 'direct_empty_masked_by_generic_recovery' }]
+                      : []),
+                  ]).length
+                    ? {
+                        field_missing: mergeFieldMissing(specificFieldMissing, [
+                          ...(directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit'
+                            ? [{ field: 'payload.targets[].products', reason: 'direct_empty_masked_by_generic_recovery' }]
+                            : []),
+                        ]),
+                      }
+                    : {}),
                 },
                 specificRecoveredProducts,
                 Math.max(1, Math.min(3, AURORA_PURCHASABLE_FALLBACK_RECOVERY_MAX_PRODUCTS)),
@@ -33608,8 +33674,14 @@ async function sanitizeRecoCandidatesForUi(
             });
             accumulateRecovered(recovered, { finalProductCount: familyRecoveredProducts.length });
             if (familyRecoveredProducts.length) {
+              if (directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit') {
+                directEmptyMaskedTargetCountForCard += 1;
+              }
               const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
                 { field: 'payload.targets[].products', reason: 'family_fallback_used' },
+                ...(directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit'
+                  ? [{ field: 'payload.targets[].products', reason: 'direct_empty_masked_by_generic_recovery' }]
+                  : []),
               ]);
               nextTarget = mergeRecoveredProductsIntoIngredientTarget(
                 {
@@ -33638,8 +33710,14 @@ async function sanitizeRecoCandidatesForUi(
           }
 
           if (!recoveredForTarget && countPurchasableProductsForTarget(nextTarget) === 0) {
+            if (directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit') {
+              directEmptyUnrecoveredTargetCountForCard += 1;
+            }
             const nextFieldMissing = mergeFieldMissing(nextTarget.field_missing, [
               { field: 'payload.targets[].products', reason: 'generic_search_strict_empty' },
+              ...(directMainPathAttemptedForTarget && directMainPathStatusForTarget !== 'direct_hit'
+                ? [{ field: 'payload.targets[].products', reason: 'direct_empty_unrecovered' }]
+                : []),
             ]);
             nextTarget = {
               ...nextTarget,
@@ -33776,6 +33854,8 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.ingredient_registry_resolved_target_count += registryResolvedTargetCountForCard;
       lookupMeta.ingredient_direct_hit_target_count += directHitTargetCountForCard;
       lookupMeta.ingredient_direct_miss_target_count += directMissTargetCountForCard;
+      lookupMeta.ingredient_direct_empty_masked_target_count += directEmptyMaskedTargetCountForCard;
+      lookupMeta.ingredient_direct_empty_unrecovered_target_count += directEmptyUnrecoveredTargetCountForCard;
       lookupMeta.ingredient_plan_kb_recall_attempted += kbRecallAttemptedForCard;
       lookupMeta.ingredient_plan_kb_recall_recovered += kbRecallRecoveredForCard;
       lookupMeta.ingredient_plan_attached_seed_recall_attempted += attachedSeedRecallAttemptedForCard;
@@ -33800,6 +33880,21 @@ async function sanitizeRecoCandidatesForUi(
       lookupMeta.ingredient_external_seed_recovery_target_count += externalSeedRecoveryTargetCountForCard;
       lookupMeta.ingredient_plan_family_fallback_target_count += familyFallbackTargetCountForCard;
       if (recoveryRecoveredForCard > 0) lookupMeta.ingredient_plan_recovery_used = true;
+      const finalTargetSourceBreakdownForCard = collectIngredientTargetSourceBreakdown(nextTargets);
+      for (const [key, rawValue] of Object.entries(finalTargetSourceBreakdownForCard)) {
+        const normalizedKey = String(key || '').trim();
+        const numeric = Math.max(0, Math.trunc(Number(rawValue || 0)));
+        if (!normalizedKey || numeric <= 0) continue;
+        targetSourceBreakdownForCard[normalizedKey] =
+          Number(targetSourceBreakdownForCard[normalizedKey] || 0) + numeric;
+      }
+      for (const [key, rawValue] of Object.entries(targetSourceBreakdownForCard)) {
+        const normalizedKey = String(key || '').trim();
+        const numeric = Math.max(0, Math.trunc(Number(rawValue || 0)));
+        if (!normalizedKey || numeric <= 0) continue;
+        lookupMeta.ingredient_target_source_breakdown[normalizedKey] =
+          Number(lookupMeta.ingredient_target_source_breakdown[normalizedKey] || 0) + numeric;
+      }
       const emptyTargetCount = countEmptyPurchasableTargets(nextTargets);
       lookupMeta.ingredient_plan_target_count += nextTargets.length;
       lookupMeta.ingredient_plan_empty_target_count += emptyTargetCount;
@@ -35416,6 +35511,14 @@ async function applyProductIntelGuardrailsToEnvelope({
           0,
           Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
         ),
+        ingredient_direct_empty_masked_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_direct_empty_masked_target_count || 0)),
+        ),
+        ingredient_direct_empty_unrecovered_target_count: Math.max(
+          0,
+          Math.trunc(Number(lookupMeta.ingredient_direct_empty_unrecovered_target_count || 0)),
+        ),
         ingredient_plan_target_count: Math.max(
           0,
           Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
@@ -35436,6 +35539,10 @@ async function applyProductIntelGuardrailsToEnvelope({
         ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
         Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
           ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+          : {}),
+        ...(isPlainObject(lookupMeta.ingredient_target_source_breakdown) &&
+        Object.keys(lookupMeta.ingredient_target_source_breakdown).length > 0
+          ? { ingredient_target_source_breakdown: { ...lookupMeta.ingredient_target_source_breakdown } }
           : {}),
         ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
         Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
@@ -35642,6 +35749,14 @@ async function applyProductIntelGuardrailsToEnvelope({
       0,
       Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
     ),
+    ingredient_direct_empty_masked_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_empty_masked_target_count || 0)),
+    ),
+    ingredient_direct_empty_unrecovered_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_empty_unrecovered_target_count || 0)),
+    ),
     ingredient_plan_target_count: Math.max(
       0,
       Math.trunc(Number(lookupMeta.ingredient_plan_target_count || 0)),
@@ -35662,6 +35777,10 @@ async function applyProductIntelGuardrailsToEnvelope({
     ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
       ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+      : {}),
+    ...(isPlainObject(lookupMeta.ingredient_target_source_breakdown) &&
+    Object.keys(lookupMeta.ingredient_target_source_breakdown).length > 0
+      ? { ingredient_target_source_breakdown: { ...lookupMeta.ingredient_target_source_breakdown } }
       : {}),
     ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
@@ -35969,9 +36088,21 @@ async function applyRecommendationOutputGuardrailsForRoute({
       0,
       Math.trunc(Number(lookupMeta.ingredient_direct_miss_target_count || 0)),
     ),
+    ingredient_direct_empty_masked_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_empty_masked_target_count || 0)),
+    ),
+    ingredient_direct_empty_unrecovered_target_count: Math.max(
+      0,
+      Math.trunc(Number(lookupMeta.ingredient_direct_empty_unrecovered_target_count || 0)),
+    ),
     ...(isPlainObject(lookupMeta.ingredient_plan_recall_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_plan_recall_source_breakdown).length > 0
       ? { ingredient_plan_recall_source_breakdown: { ...lookupMeta.ingredient_plan_recall_source_breakdown } }
+      : {}),
+    ...(isPlainObject(lookupMeta.ingredient_target_source_breakdown) &&
+    Object.keys(lookupMeta.ingredient_target_source_breakdown).length > 0
+      ? { ingredient_target_source_breakdown: { ...lookupMeta.ingredient_target_source_breakdown } }
       : {}),
     ...(isPlainObject(lookupMeta.ingredient_registry_source_breakdown) &&
     Object.keys(lookupMeta.ingredient_registry_source_breakdown).length > 0
