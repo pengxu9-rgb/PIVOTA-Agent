@@ -31,7 +31,17 @@ const MATRIX = Object.freeze([
 ]);
 
 function parseArgs(argv) {
-  const out = { baseUrl: DEFAULT_BASE_URL, limit: DEFAULT_LIMIT, outPath: '', timeoutMs: DEFAULT_TIMEOUT_MS };
+  const out = {
+    baseUrl: DEFAULT_BASE_URL,
+    limit: DEFAULT_LIMIT,
+    outPath: '',
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    startIndex: 0,
+    count: 0,
+    shardIndex: 0,
+    shardCount: 1,
+    resume: false,
+  };
   for (let idx = 0; idx < argv.length; idx += 1) {
     const token = String(argv[idx] || '').trim();
     if (token === '--base-url') {
@@ -46,8 +56,23 @@ function parseArgs(argv) {
     } else if (token === '--timeout-ms') {
       out.timeoutMs = Math.max(5_000, Number.parseInt(argv[idx + 1], 10) || DEFAULT_TIMEOUT_MS);
       idx += 1;
+    } else if (token === '--start-index') {
+      out.startIndex = Math.max(0, Number.parseInt(argv[idx + 1], 10) || 0);
+      idx += 1;
+    } else if (token === '--count') {
+      out.count = Math.max(0, Number.parseInt(argv[idx + 1], 10) || 0);
+      idx += 1;
+    } else if (token === '--shard-index') {
+      out.shardIndex = Math.max(0, Number.parseInt(argv[idx + 1], 10) || 0);
+      idx += 1;
+    } else if (token === '--shard-count') {
+      out.shardCount = Math.max(1, Number.parseInt(argv[idx + 1], 10) || 1);
+      idx += 1;
+    } else if (token === '--resume') {
+      out.resume = true;
     }
   }
+  if (out.shardIndex >= out.shardCount) out.shardIndex = 0;
   return out;
 }
 
@@ -160,6 +185,61 @@ function classifyRecommendedAction(bucket) {
   return 'manual_triage';
 }
 
+function resolveOutputPath(targetPath) {
+  if (!targetPath) return '';
+  return path.isAbsolute(targetPath)
+    ? targetPath
+    : path.join(DEFAULT_OUTPUT_ROOT, targetPath);
+}
+
+function selectMatrixRows(args) {
+  let entries = MATRIX.map((entry, index) => ({ index, entry }));
+  if (args.shardCount > 1) {
+    entries = entries.filter((row) => row.index % args.shardCount === args.shardIndex);
+  }
+  if (args.startIndex > 0) entries = entries.slice(args.startIndex);
+  if (args.count > 0) entries = entries.slice(0, args.count);
+  return entries;
+}
+
+function loadExistingRows(outPath) {
+  if (!outPath || !fs.existsSync(outPath)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+    return Array.isArray(parsed?.rows) ? parsed.rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function buildSummaryPayload({ args, baseUrl, rows, serviceCommit, completed, selectedEntries }) {
+  return {
+    generated_at: new Date().toISOString(),
+    completed,
+    base_url: baseUrl,
+    timeout_ms: args.timeoutMs,
+    x_service_commit: serviceCommit || null,
+    shard_index: args.shardIndex,
+    shard_count: args.shardCount,
+    start_index: args.startIndex,
+    count: args.count || null,
+    selected_ingredient_count: selectedEntries.length,
+    ingredient_count: rows.length,
+    bucket_counts: rows.reduce((acc, row) => {
+      const key = String(row.root_cause_bucket || 'unknown').trim() || 'unknown';
+      acc[key] = Number(acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+    rows,
+  };
+}
+
+function writeSummary(outPath, payload) {
+  if (!outPath) return;
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
 async function fetchAuditRow(baseUrl, limit, timeoutMs, [ingredientClass, ingredientId, ingredientName, query]) {
   let response = null;
   let body = {};
@@ -246,36 +326,48 @@ async function fetchAuditRow(baseUrl, limit, timeoutMs, [ingredientClass, ingred
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const baseUrl = normalizeBaseUrl(args.baseUrl);
+  const outPath = resolveOutputPath(args.outPath);
+  const selectedEntries = selectMatrixRows(args);
+  const existingRows = args.resume ? loadExistingRows(outPath) : [];
+  const existingByIngredientId = new Map(
+    existingRows
+      .filter((row) => row && typeof row === 'object' && String(row.ingredient_id || '').trim())
+      .map((row) => [String(row.ingredient_id || '').trim(), row]),
+  );
   const rows = [];
   let serviceCommit = '';
-  for (const entry of MATRIX) {
-    const row = await fetchAuditRow(baseUrl, args.limit, args.timeoutMs, entry);
-    row.recommended_action = row.recommended_action || classifyRecommendedAction(row.root_cause_bucket);
+  for (const { entry } of selectedEntries) {
+    const ingredientId = String(entry?.[1] || '').trim();
+    let row = existingByIngredientId.get(ingredientId);
+    if (!row) {
+      row = await fetchAuditRow(baseUrl, args.limit, args.timeoutMs, entry);
+      row.recommended_action = row.recommended_action || classifyRecommendedAction(row.root_cause_bucket);
+    }
     if (!serviceCommit && row.x_service_commit) serviceCommit = row.x_service_commit;
     rows.push(row);
+    writeSummary(
+      outPath,
+      buildSummaryPayload({
+        args,
+        baseUrl,
+        rows,
+        serviceCommit,
+        completed: rows.length === selectedEntries.length,
+        selectedEntries,
+      }),
+    );
   }
-  const summary = {
-    generated_at: new Date().toISOString(),
-    base_url: baseUrl,
-    timeout_ms: args.timeoutMs,
-    x_service_commit: serviceCommit || null,
-    ingredient_count: rows.length,
-    bucket_counts: rows.reduce((acc, row) => {
-      const key = String(row.root_cause_bucket || 'unknown').trim() || 'unknown';
-      acc[key] = Number(acc[key] || 0) + 1;
-      return acc;
-    }, {}),
+  const summary = buildSummaryPayload({
+    args,
+    baseUrl,
     rows,
-  };
+    serviceCommit,
+    completed: true,
+    selectedEntries,
+  });
   const output = `${JSON.stringify(summary, null, 2)}\n`;
   process.stdout.write(output);
-  if (args.outPath) {
-    const outPath = path.isAbsolute(args.outPath)
-      ? args.outPath
-      : path.join(DEFAULT_OUTPUT_ROOT, args.outPath);
-    fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, output, 'utf8');
-  }
+  writeSummary(outPath, summary);
   process.exit(0);
 }
 

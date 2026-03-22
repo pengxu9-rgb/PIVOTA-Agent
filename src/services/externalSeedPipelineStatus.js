@@ -9,6 +9,7 @@ const {
   fetchReviewedKbRowsForSeedRow,
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
+  readExternalSeedEnrichmentMetadata,
 } = require('./externalSeedIngredientEnrichment');
 
 function normalizeNonEmptyString(value) {
@@ -174,9 +175,9 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const ingredientWritebackSource =
-    normalizeNonEmptyString(seedData?.ingredient_intel?.external_seed_enrichment?.source) ||
-    normalizeNonEmptyString(snapshot?.ingredient_intel?.external_seed_enrichment?.source) ||
+    readExternalSeedEnrichmentMetadata(seedData).source ||
     ENRICHMENT_SOURCE.none;
+  const seedEnrichmentMetadata = readExternalSeedEnrichmentMetadata(seedData);
   const runtimeIngredientEvidenceSource = buildRuntimeIngredientEvidenceSource({
     seedStatus: seedStructuredIngredientStatus,
     reviewedKbRows,
@@ -235,6 +236,10 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       seed_kb_sync_status: seedKbSyncStatus,
       ingredient_writeback_source: ingredientWritebackSource,
       runtime_ingredient_evidence_source: runtimeIngredientEvidenceSource,
+      seed_anchor_source_kind: seedEnrichmentMetadata.seed_anchor_source_kind,
+      seed_anchor_conflict_status: seedEnrichmentMetadata.seed_anchor_conflict_status,
+      url_anchor_conflict: seedEnrichmentMetadata.url_anchor_conflict,
+      quarantine_reason: seedEnrichmentMetadata.quarantine_reason,
       matched_candidate_ids: candidateIds.filter((candidateId) => matchedKeys.has(candidateId)),
     },
     gating: {
@@ -243,6 +248,8 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       next_step:
         blockerCount > 0
           ? 'fix_blockers_before_harvest'
+          : seedEnrichmentMetadata.quarantine_reason
+            ? 'quarantine_seed_for_manual_review'
           : seedKbSyncStatus === 'kb_only_unsynced'
             ? 'sync_seed_ingredient_fields'
           : ingredientCoveredCount === candidateIds.length

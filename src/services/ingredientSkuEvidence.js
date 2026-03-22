@@ -2,6 +2,10 @@ const { query } = require('../db');
 const { kbQuery } = require('./pciKbClient');
 const { buildExternalSeedProduct } = require('./externalSeedProducts');
 const {
+  classifySeedStructuredIngredientStatus,
+  readExternalSeedEnrichmentMetadata,
+} = require('./externalSeedIngredientEnrichment');
+const {
   LOCAL_INGREDIENT_RECALL_REGISTRY,
   normalizeIngredientRecallText,
 } = require('./ingredientRecallRegistry');
@@ -405,8 +409,24 @@ function extractDiagnosticCandidateDomain(product) {
   }
 }
 
+function resolveRuntimeIngredientEvidenceMetadata(product, sampleEvidence = null) {
+  const structuredStatus = classifySeedStructuredIngredientStatus(product?.seed_data);
+  const enrichmentMetadata = readExternalSeedEnrichmentMetadata(product?.seed_data);
+  return {
+    runtime_ingredient_evidence_source:
+      structuredStatus === 'present' || structuredStatus === 'partial'
+        ? 'seed_structured_fields'
+        : Number(sampleEvidence?.kb_explicit || 0) > 0
+          ? 'kb_reviewed_read_through'
+          : 'none',
+    seed_anchor_source_kind: enrichmentMetadata.seed_anchor_source_kind || 'none',
+    seed_anchor_conflict_status: enrichmentMetadata.seed_anchor_conflict_status || 'none',
+  };
+}
+
 function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, extras = {}) {
   const sampleEvidence = evidence && typeof evidence === 'object' ? evidence : {};
+  const runtimeEvidenceMetadata = resolveRuntimeIngredientEvidenceMetadata(product, sampleEvidence);
   const sourceBucket = normalizeDirectRecallSourceBucket(sourceTag);
   const title =
     String(product?.title || product?.name || product?.display_name || product?.product_name || '').trim() || null;
@@ -432,6 +452,9 @@ function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, ext
     kb_step_hint_match: Number(sampleEvidence?.kb_step_hint_match || 0) || 0,
     same_family_gate_required: Number(sampleEvidence?.same_family_gate_required || 0) || 0,
     target_step_negative_signal: Number(sampleEvidence?.target_step_negative_signal || 0) || 0,
+    runtime_ingredient_evidence_source: runtimeEvidenceMetadata.runtime_ingredient_evidence_source,
+    seed_anchor_source_kind: runtimeEvidenceMetadata.seed_anchor_source_kind,
+    seed_anchor_conflict_status: runtimeEvidenceMetadata.seed_anchor_conflict_status,
     ...(extras && typeof extras === 'object' ? extras : {}),
   };
 }
@@ -1919,6 +1942,9 @@ async function recallIngredientProductsFromProfile({
     ingredient_candidate_reject_breakdown: {},
     ingredient_rejected_candidate_samples: [],
     ingredient_ranked_candidate_samples: [],
+    runtime_ingredient_evidence_source: 'none',
+    seed_anchor_source_kind: 'none',
+    seed_anchor_conflict_status: 'none',
   };
 
   if (!profile) {
@@ -2253,6 +2279,20 @@ async function recallIngredientProductsFromProfile({
       }),
     );
   }
+  const rankedSamples = Array.isArray(diagnostics.ingredient_ranked_candidate_samples)
+    ? diagnostics.ingredient_ranked_candidate_samples
+    : [];
+  diagnostics.runtime_ingredient_evidence_source =
+    rankedSamples.find((row) => String(row?.runtime_ingredient_evidence_source || '').trim() && row.runtime_ingredient_evidence_source !== 'none')
+      ?.runtime_ingredient_evidence_source || 'none';
+  diagnostics.seed_anchor_source_kind =
+    rankedSamples.find((row) => String(row?.seed_anchor_source_kind || '').trim() && row.seed_anchor_source_kind !== 'none')
+      ?.seed_anchor_source_kind || 'none';
+  diagnostics.seed_anchor_conflict_status =
+    rankedSamples.some((row) => row?.seed_anchor_conflict_status === 'url_anchor_conflict')
+      ? 'url_anchor_conflict'
+      : rankedSamples.find((row) => String(row?.seed_anchor_conflict_status || '').trim() && row.seed_anchor_conflict_status !== 'none')
+          ?.seed_anchor_conflict_status || 'none';
 
   const stabilizationRows = candidates.slice(
     0,

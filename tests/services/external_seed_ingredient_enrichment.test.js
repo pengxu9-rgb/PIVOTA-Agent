@@ -8,6 +8,8 @@ jest.mock('../../src/services/pciKbClient', () => ({
 
 const {
   ENRICHMENT_SOURCE,
+  SEED_ANCHOR_CONFLICT_STATUS,
+  SEED_ANCHOR_SOURCE_KIND,
   SEED_KB_SYNC_STATUS,
   _internals,
   enrichExternalSeedRowIngredients,
@@ -47,6 +49,7 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.kbReviewed);
     expect(out.seed_kb_sync_status).toBe(SEED_KB_SYNC_STATUS.synced);
     expect(out.runtime_ingredient_evidence_source).toBe('seed_structured_fields');
+    expect(out.seed_anchor_source_kind).toBe(SEED_ANCHOR_SOURCE_KIND.kbReviewed);
     expect(out.row.seed_data.ingredient_tokens).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
     expect(out.row.seed_data.active_ingredients).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
     expect(out.row.seed_data.snapshot.ingredient_tokens).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
@@ -81,6 +84,7 @@ describe('externalSeedIngredientEnrichment', () => {
 
     expect(out.changed).toBe(true);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.titleUrlAnchor);
+    expect(out.seed_anchor_source_kind).toBe(SEED_ANCHOR_SOURCE_KIND.explicitTitleUrlAnchor);
     expect(out.row.seed_data.ingredient_tokens).toEqual(expect.arrayContaining(['Alpha Arbutin']));
     expect(out.row.seed_data.key_ingredients).toEqual(expect.arrayContaining(['Alpha Arbutin']));
     expect(out.row.seed_data.active_ingredients || []).toEqual([]);
@@ -156,6 +160,7 @@ describe('externalSeedIngredientEnrichment', () => {
 
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.quarantine_reason).toBeNull();
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
   });
@@ -183,6 +188,7 @@ describe('externalSeedIngredientEnrichment', () => {
 
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.quarantine_reason).toBe('row_ingredient_name_only');
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
   });
@@ -209,7 +215,36 @@ describe('externalSeedIngredientEnrichment', () => {
 
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.quarantine_reason).toBe('url_only_anchor');
+    expect(out.seed_anchor_conflict_status).toBe(SEED_ANCHOR_CONFLICT_STATUS.none);
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
+  });
+
+  test('quarantines conflicting title and url ingredient anchors instead of writing back', async () => {
+    const row = {
+      id: 'eps_conflict',
+      title: 'Ceramide Face Cream',
+      canonical_url: 'https://brand.example.com/products/spf-50-face-sunscreen',
+      destination_url: 'https://brand.example.com/products/spf-50-face-sunscreen',
+      seed_data: {
+        snapshot: {
+          title: 'Ceramide Face Cream',
+          canonical_url: 'https://brand.example.com/products/spf-50-face-sunscreen',
+          destination_url: 'https://brand.example.com/products/spf-50-face-sunscreen',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.quarantine_reason).toBe('url_anchor_conflict');
+    expect(out.seed_anchor_conflict_status).toBe(SEED_ANCHOR_CONFLICT_STATUS.urlAnchorConflict);
+    expect(out.url_anchor_conflict).toBe(true);
   });
 });

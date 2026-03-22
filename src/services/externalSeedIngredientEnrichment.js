@@ -18,6 +18,18 @@ const ENRICHMENT_SOURCE = Object.freeze({
   titleUrlAnchor: 'title_url_anchor',
   none: 'none',
 });
+const SEED_ANCHOR_SOURCE_KIND = Object.freeze({
+  kbReviewed: 'kb_reviewed',
+  descriptionParse: 'description_parse',
+  explicitTitleAnchor: 'explicit_title_anchor',
+  explicitTitleUrlAnchor: 'explicit_title_url_anchor',
+  explicitUrlAssistedAnchor: 'explicit_url_assisted_anchor',
+  none: 'none',
+});
+const SEED_ANCHOR_CONFLICT_STATUS = Object.freeze({
+  none: 'none',
+  urlAnchorConflict: 'url_anchor_conflict',
+});
 const SEED_STRUCTURED_STATUS = Object.freeze({
   present: 'present',
   partial: 'partial',
@@ -284,19 +296,134 @@ function resolveStrongAnchorProfileFromTexts(texts, preferredProfiles = []) {
   return bestProfile;
 }
 
-function resolveAnchorProfile({ row, ingredientId = '', ingredientName = '' } = {}) {
+function readExternalSeedEnrichmentMetadata(seedDataValue) {
+  const seedData = ensureJsonObject(seedDataValue);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const rootMeta = ensureJsonObject(ensureJsonObject(seedData.ingredient_intel).external_seed_enrichment);
+  const snapshotMeta = ensureJsonObject(ensureJsonObject(snapshot.ingredient_intel).external_seed_enrichment);
+  const meta = Object.keys(rootMeta).length > 0 ? rootMeta : snapshotMeta;
+  return {
+    source: normalizeNonEmptyString(meta.source) || ENRICHMENT_SOURCE.none,
+    seed_anchor_source_kind:
+      normalizeNonEmptyString(meta.seed_anchor_source_kind) || SEED_ANCHOR_SOURCE_KIND.none,
+    seed_anchor_conflict_status:
+      normalizeNonEmptyString(meta.seed_anchor_conflict_status) || SEED_ANCHOR_CONFLICT_STATUS.none,
+    url_anchor_conflict: meta.url_anchor_conflict === true,
+    quarantine_reason: normalizeNonEmptyString(meta.quarantine_reason) || null,
+  };
+}
+
+function hasRowIngredientNameOnlySignal(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  return Boolean(
+    normalizeNonEmptyString(row.ingredient_name) ||
+      normalizeNonEmptyString(seedData.ingredient_name) ||
+      normalizeNonEmptyString(seedData.snapshot?.ingredient_name),
+  );
+}
+
+function resolveAnchorProfileDecision({ row, ingredientId = '', ingredientName = '' } = {}) {
   const hasExplicitIngredientAnchor =
     Boolean(normalizeNonEmptyString(ingredientId)) || Boolean(normalizeNonEmptyString(ingredientName));
-  const anchorTexts = [
-    ...profileAnchorTitleTexts(row, ingredientName),
-    ...(hasExplicitIngredientAnchor ? profileAnchorUrlTexts(row) : []),
-  ];
   const directProfile = resolveIngredientRecallProfile({
     ingredientId,
     query: ingredientName,
     target: row?.title || '',
   });
-  return resolveStrongAnchorProfileFromTexts(anchorTexts, directProfile ? [directProfile] : []);
+  const preferredProfiles = directProfile ? [directProfile] : [];
+  const titleProfile = resolveStrongAnchorProfileFromTexts(
+    profileAnchorTitleTexts(row, ingredientName),
+    preferredProfiles,
+  );
+  const urlProfile = resolveStrongAnchorProfileFromTexts(profileAnchorUrlTexts(row), preferredProfiles);
+  const titleIngredientId = normalizeNonEmptyString(titleProfile?.ingredient_id).toLowerCase();
+  const urlIngredientId = normalizeNonEmptyString(urlProfile?.ingredient_id).toLowerCase();
+  const hasConflict =
+    Boolean(titleIngredientId) &&
+    Boolean(urlIngredientId) &&
+    titleIngredientId !== urlIngredientId;
+  if (hasConflict) {
+    return {
+      anchorProfile: null,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.none,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.urlAnchorConflict,
+      url_anchor_conflict: true,
+      quarantine_reason: 'url_anchor_conflict',
+    };
+  }
+  if (titleProfile && urlProfile) {
+    return {
+      anchorProfile: titleProfile,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.explicitTitleUrlAnchor,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
+    };
+  }
+  if (titleProfile) {
+    return {
+      anchorProfile: titleProfile,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.explicitTitleAnchor,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
+    };
+  }
+  if (urlProfile && hasExplicitIngredientAnchor) {
+    return {
+      anchorProfile: urlProfile,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.explicitUrlAssistedAnchor,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
+    };
+  }
+  if (urlProfile && !hasExplicitIngredientAnchor) {
+    return {
+      anchorProfile: null,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.none,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: 'url_only_anchor',
+    };
+  }
+  if (hasRowIngredientNameOnlySignal(row) && !hasExplicitIngredientAnchor) {
+    return {
+      anchorProfile: null,
+      titleProfile,
+      urlProfile,
+      hasExplicitIngredientAnchor,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.none,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: 'row_ingredient_name_only',
+    };
+  }
+  return {
+    anchorProfile: null,
+    titleProfile,
+    urlProfile,
+    hasExplicitIngredientAnchor,
+    seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.none,
+    seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+    url_anchor_conflict: false,
+    quarantine_reason: null,
+  };
 }
 
 function extractRegistryTokensFromText(text, preferredProfiles = []) {
@@ -394,6 +521,10 @@ function buildBlockFromKbRows(kbRows, { anchorProfile = null } = {}) {
     metadata: {
       kb_candidate_ids: uniqStrings(rows.map((row) => row?.sku_key), 32),
       kb_row_count: rows.length,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.kbReviewed,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
     },
   });
 }
@@ -412,11 +543,16 @@ function buildBlockFromDescriptionParse(row, { anchorProfile = null } = {}) {
     source: ENRICHMENT_SOURCE.descriptionParse,
     metadata: {
       parsed_from_description: true,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.descriptionParse,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
     },
   });
 }
 
-function buildBlockFromAnchor(anchorProfile) {
+function buildBlockFromAnchor(anchorDecision = {}) {
+  const anchorProfile = anchorDecision?.anchorProfile || null;
   if (!anchorProfile) return null;
   const displayName = normalizeNonEmptyString(anchorProfile.display_name || anchorProfile.ingredient_name);
   if (!displayName) return null;
@@ -426,6 +562,12 @@ function buildBlockFromAnchor(anchorProfile) {
     source: ENRICHMENT_SOURCE.titleUrlAnchor,
     metadata: {
       anchored_ingredient_id: normalizeNonEmptyString(anchorProfile.ingredient_id) || null,
+      seed_anchor_source_kind:
+        normalizeNonEmptyString(anchorDecision?.seed_anchor_source_kind) || SEED_ANCHOR_SOURCE_KIND.none,
+      seed_anchor_conflict_status:
+        normalizeNonEmptyString(anchorDecision?.seed_anchor_conflict_status) || SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: anchorDecision?.url_anchor_conflict === true,
+      quarantine_reason: normalizeNonEmptyString(anchorDecision?.quarantine_reason) || null,
     },
   });
 }
@@ -519,6 +661,7 @@ async function enrichExternalSeedRowIngredients({
   const reviewedKbRows = Array.isArray(kbRows) ? kbRows.filter(isReviewedKbIngredientRow) : await fetchReviewedKbRowsForSeedRow(row);
   const seedData = ensureJsonObject(row.seed_data);
   const beforeStatus = classifySeedStructuredIngredientStatus(seedData);
+  const existingEnrichmentMetadata = readExternalSeedEnrichmentMetadata(seedData);
   const hasExplicitIngredientAnchor =
     normalizeNonEmptyString(ingredientId) || normalizeNonEmptyString(ingredientName);
   if (beforeStatus === SEED_STRUCTURED_STATUS.present && reviewedKbRows.length === 0 && !hasExplicitIngredientAnchor) {
@@ -534,13 +677,18 @@ async function enrichExternalSeedRowIngredients({
         reviewedKbRows,
       }),
       reviewed_kb_rows: reviewedKbRows,
+      seed_anchor_source_kind: existingEnrichmentMetadata.seed_anchor_source_kind,
+      seed_anchor_conflict_status: existingEnrichmentMetadata.seed_anchor_conflict_status,
+      url_anchor_conflict: existingEnrichmentMetadata.url_anchor_conflict,
+      quarantine_reason: existingEnrichmentMetadata.quarantine_reason,
     };
   }
-  const anchorProfile = resolveAnchorProfile({ row, ingredientId, ingredientName });
+  const anchorDecision = resolveAnchorProfileDecision({ row, ingredientId, ingredientName });
+  const anchorProfile = anchorDecision.anchorProfile;
   const enrichmentBlock =
     buildBlockFromKbRows(reviewedKbRows, { anchorProfile }) ||
     buildBlockFromDescriptionParse(row, { anchorProfile }) ||
-    buildBlockFromAnchor(anchorProfile);
+    buildBlockFromAnchor(anchorDecision);
 
   if (!enrichmentBlock) {
     return {
@@ -555,6 +703,10 @@ async function enrichExternalSeedRowIngredients({
         reviewedKbRows,
       }),
       reviewed_kb_rows: reviewedKbRows,
+      seed_anchor_source_kind: anchorDecision.seed_anchor_source_kind,
+      seed_anchor_conflict_status: anchorDecision.seed_anchor_conflict_status,
+      url_anchor_conflict: anchorDecision.url_anchor_conflict,
+      quarantine_reason: anchorDecision.quarantine_reason,
     };
   }
 
@@ -574,12 +726,23 @@ async function enrichExternalSeedRowIngredients({
       reviewedKbRows,
     }),
     reviewed_kb_rows: reviewedKbRows,
+    seed_anchor_source_kind:
+      normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.seed_anchor_source_kind) ||
+      SEED_ANCHOR_SOURCE_KIND.none,
+    seed_anchor_conflict_status:
+      normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.seed_anchor_conflict_status) ||
+      SEED_ANCHOR_CONFLICT_STATUS.none,
+    url_anchor_conflict: enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.url_anchor_conflict === true,
+    quarantine_reason:
+      normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.quarantine_reason) || null,
   };
 }
 
 module.exports = {
   SEED_INGREDIENT_WRITEBACK_VERSION,
   ENRICHMENT_SOURCE,
+  SEED_ANCHOR_SOURCE_KIND,
+  SEED_ANCHOR_CONFLICT_STATUS,
   SEED_STRUCTURED_STATUS,
   SEED_KB_SYNC_STATUS,
   classifySeedStructuredIngredientStatus,
@@ -587,6 +750,7 @@ module.exports = {
   fetchReviewedKbRowsForSeedRow,
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
+  readExternalSeedEnrichmentMetadata,
   enrichExternalSeedRowIngredients,
   _internals: {
     candidateIngredientTexts,
@@ -598,8 +762,9 @@ module.exports = {
     readStructuredIngredientView,
     profileAnchorTitleTexts,
     profileAnchorUrlTexts,
-    resolveAnchorProfile,
+    resolveAnchorProfileDecision,
     resolveStrongAnchorProfileFromTexts,
     isReviewedKbIngredientRow,
+    hasRowIngredientNameOnlySignal,
   },
 };

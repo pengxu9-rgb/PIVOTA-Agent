@@ -8164,6 +8164,12 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       typeof diagnostics.ingredient_candidate_evidence_breakdown === 'object'
         ? { ...diagnostics.ingredient_candidate_evidence_breakdown }
         : {},
+    runtime_ingredient_evidence_source:
+      String(diagnostics.runtime_ingredient_evidence_source || '').trim() || 'none',
+    seed_anchor_source_kind:
+      String(diagnostics.seed_anchor_source_kind || '').trim() || 'none',
+    seed_anchor_conflict_status:
+      String(diagnostics.seed_anchor_conflict_status || '').trim() || 'none',
     ingredient_direct_miss_reason: diagnostics.ingredient_direct_miss_reason || null,
     kb_recall_attempted: diagnostics.kb_recall_attempted === true,
     kb_recall_recovered: Math.max(0, Number(diagnostics.kb_recall_recovered || 0) || 0),

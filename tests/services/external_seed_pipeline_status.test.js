@@ -35,6 +35,13 @@ jest.mock('../../src/services/externalSeedIngredientEnrichment', () => ({
   ]),
   buildSeedKbSyncStatus: jest.fn(() => 'kb_only_unsynced'),
   buildRuntimeIngredientEvidenceSource: jest.fn(() => 'kb_reviewed_read_through'),
+  readExternalSeedEnrichmentMetadata: jest.fn(() => ({
+    source: 'none',
+    seed_anchor_source_kind: 'none',
+    seed_anchor_conflict_status: 'none',
+    url_anchor_conflict: false,
+    quarantine_reason: null,
+  })),
 }));
 
 const { query } = require('../../src/db');
@@ -101,8 +108,59 @@ describe('externalSeedPipelineStatus', () => {
         seed_kb_sync_status: 'kb_only_unsynced',
         runtime_ingredient_evidence_source: 'kb_reviewed_read_through',
         kb_reviewed_row_count: 1,
+        seed_anchor_source_kind: 'none',
+        seed_anchor_conflict_status: 'none',
+        url_anchor_conflict: false,
+        quarantine_reason: null,
       }),
     );
     expect(status.gating.next_step).toBe('sync_seed_ingredient_fields');
+  });
+
+  test('surfaces anchor quarantine instead of false-green ready_for_kb_use', async () => {
+    const enrichment = require('../../src/services/externalSeedIngredientEnrichment');
+    enrichment.readExternalSeedEnrichmentMetadata.mockReturnValue({
+      source: 'title_url_anchor',
+      seed_anchor_source_kind: 'none',
+      seed_anchor_conflict_status: 'url_anchor_conflict',
+      url_anchor_conflict: true,
+      quarantine_reason: 'url_anchor_conflict',
+    });
+
+    query.mockResolvedValue({
+      rows: [
+        {
+          id: 'eps_conflict',
+          external_product_id: 'ext_conflict',
+          market: 'US',
+          domain: 'brand.example.com',
+          canonical_url: 'https://brand.example.com/products/ceramide-spf-conflict',
+          destination_url: 'https://brand.example.com/products/ceramide-spf-conflict',
+          title: 'Ceramide Face Cream',
+          seed_data: {
+            snapshot: {
+              canonical_url: 'https://brand.example.com/products/ceramide-spf-conflict',
+              title: 'Ceramide Face Cream',
+            },
+          },
+          updated_at: '2026-03-22T00:00:00.000Z',
+          created_at: '2026-03-22T00:00:00.000Z',
+        },
+      ],
+    });
+    kbQuery.mockResolvedValue({ rows: [{ table_name: 'pci_kb.sku_ingredients' }] });
+
+    const status = await getExternalSeedPipelineStatus({
+      externalSeedId: 'eps_conflict',
+    });
+
+    expect(status.coverage).toEqual(
+      expect.objectContaining({
+        seed_anchor_conflict_status: 'url_anchor_conflict',
+        url_anchor_conflict: true,
+        quarantine_reason: 'url_anchor_conflict',
+      }),
+    );
+    expect(status.gating.next_step).toBe('quarantine_seed_for_manual_review');
   });
 });
