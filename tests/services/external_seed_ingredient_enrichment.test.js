@@ -186,4 +186,30 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
   });
+
+  test('does not infer a bulk anchor from a stale url-only sunscreen match when the title has no explicit anchor', async () => {
+    const row = {
+      id: 'eps_stale_url',
+      title: 'Sérum C³ Perfection',
+      canonical_url: 'https://patyka.example.com/en-us/products/spf50-face-sunscreen-sample',
+      destination_url: 'https://patyka.example.com/products/creme-solaire-visage-spf50-echantillon',
+      seed_data: {
+        snapshot: {
+          title: 'Sérum C³ Perfection',
+          canonical_url: 'https://patyka.example.com/en-us/products/spf50-face-sunscreen-sample',
+          destination_url: 'https://patyka.example.com/products/creme-solaire-visage-spf50-echantillon',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.seed_structured_ingredient_status_after).toBe('missing');
+    expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
+  });
 });

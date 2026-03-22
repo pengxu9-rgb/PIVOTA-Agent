@@ -217,7 +217,7 @@ async function fetchReviewedKbRowsForSeedRow(row) {
   return (Array.isArray(res?.rows) ? res.rows : []).filter(isReviewedKbIngredientRow);
 }
 
-function profileAnchorTexts(row = {}, ingredientName = '') {
+function profileAnchorTitleTexts(row = {}, ingredientName = '') {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   return uniqStrings([
@@ -225,13 +225,20 @@ function profileAnchorTexts(row = {}, ingredientName = '') {
     row.title,
     seedData.title,
     snapshot.title,
+  ], 12);
+}
+
+function profileAnchorUrlTexts(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return uniqStrings([
     row.canonical_url,
     row.destination_url,
     seedData.canonical_url,
     seedData.destination_url,
     snapshot.canonical_url,
     snapshot.destination_url,
-  ], 24);
+  ], 12);
 }
 
 function getProfileStrongAnchorScore(profile, texts) {
@@ -278,7 +285,12 @@ function resolveStrongAnchorProfileFromTexts(texts, preferredProfiles = []) {
 }
 
 function resolveAnchorProfile({ row, ingredientId = '', ingredientName = '' } = {}) {
-  const anchorTexts = profileAnchorTexts(row, ingredientName);
+  const hasExplicitIngredientAnchor =
+    Boolean(normalizeNonEmptyString(ingredientId)) || Boolean(normalizeNonEmptyString(ingredientName));
+  const anchorTexts = [
+    ...profileAnchorTitleTexts(row, ingredientName),
+    ...(hasExplicitIngredientAnchor ? profileAnchorUrlTexts(row) : []),
+  ];
   const directProfile = resolveIngredientRecallProfile({
     ingredientId,
     query: ingredientName,
@@ -584,6 +596,8 @@ module.exports = {
     buildBlockFromAnchor,
     mergeStructuredBlockIntoSeedData,
     readStructuredIngredientView,
+    profileAnchorTitleTexts,
+    profileAnchorUrlTexts,
     resolveAnchorProfile,
     resolveStrongAnchorProfileFromTexts,
     isReviewedKbIngredientRow,
