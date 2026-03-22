@@ -2797,4 +2797,143 @@ describe('ingredientProductRecall', () => {
       Number(out.diagnostics.recall_source_breakdown?.products_cache_target_anchored || 0),
     ).toBeGreaterThan(0);
   });
+
+  test('glycerin moisturizer rejects competing ingredient title anchors when glycerin only appears in seed tokens', async () => {
+    jest.doMock('../../src/services/ingredientReferenceStore', () => ({
+      getBestIngredientReferenceMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/ingredientSignalStore', () => ({
+      getBestIngredientSignalMatch: jest.fn(async () => null),
+    }));
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        const now = new Date().toISOString();
+        if (text.includes('FROM external_product_seeds')) {
+          if (!text.includes("coalesce(attached_product_key, '') = ''")) return { rows: [] };
+          return {
+            rows: [
+              {
+                id: 'seed_peptide_moisturizer',
+                external_product_id: 'ext_peptide_moisturizer',
+                destination_url: 'https://ole.example.com/products/strength-trainer-peptide-boost-moisturizer',
+                canonical_url: 'https://ole.example.com/products/strength-trainer-peptide-boost-moisturizer',
+                domain: 'ole.example.com',
+                title: 'Strength Trainer Peptide Boost Moisturizer',
+                image_url: 'https://ole.example.com/strength.jpg',
+                price_amount: 58,
+                price_currency: 'USD',
+                availability: 'in stock',
+                attached_product_key: '',
+                seed_data: {
+                  brand: 'Ole',
+                  category: 'Moisturizer',
+                  ingredient_tokens: ['glycerin', 'peptides'],
+                  snapshot: {
+                    title: 'Strength Trainer Peptide Boost Moisturizer',
+                    description: 'peptide moisturizer with glycerin support',
+                    category: 'Moisturizer',
+                    canonical_url: 'https://ole.example.com/products/strength-trainer-peptide-boost-moisturizer',
+                    destination_url: 'https://ole.example.com/products/strength-trainer-peptide-boost-moisturizer',
+                    ingredient_tokens: ['glycerin', 'peptides'],
+                  },
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_vitc_moisturizer',
+                external_product_id: 'ext_vitc_moisturizer',
+                destination_url: 'https://derm.example.com/products/biolumin-c-gel-moisturizer',
+                canonical_url: 'https://derm.example.com/products/biolumin-c-gel-moisturizer',
+                domain: 'derm.example.com',
+                title: 'biolumin-c vitamin c gel moisturizer',
+                image_url: 'https://derm.example.com/biolumin.jpg',
+                price_amount: 66,
+                price_currency: 'USD',
+                availability: 'in stock',
+                attached_product_key: '',
+                seed_data: {
+                  brand: 'Derm',
+                  category: 'Moisturizer',
+                  ingredient_tokens: ['glycerin', 'vitamin c'],
+                  snapshot: {
+                    title: 'biolumin-c vitamin c gel moisturizer',
+                    description: 'vitamin c gel moisturizer with glycerin',
+                    category: 'Moisturizer',
+                    canonical_url: 'https://derm.example.com/products/biolumin-c-gel-moisturizer',
+                    destination_url: 'https://derm.example.com/products/biolumin-c-gel-moisturizer',
+                    ingredient_tokens: ['glycerin', 'vitamin c'],
+                  },
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache pc')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merchant_glycerin',
+                merchant_name: 'Acme',
+                product_data: {
+                  id: 'pc_glycerin_moisturizer',
+                  product_id: 'pc_glycerin_moisturizer',
+                  title: 'Barrier Support Moisturizer',
+                  description: 'daily moisturizer for dry skin',
+                  product_type: 'Moisturizer',
+                  category: 'Moisturizer',
+                  vendor: 'Acme',
+                  brand: 'Acme',
+                  url: 'https://acme.example.com/products/barrier-support-moisturizer',
+                  key_actives: ['glycerin', 'panthenol'],
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'glycerin moisturizer',
+      ingredientId: 'glycerin',
+      targetStepFamily: 'moisturizer',
+      limit: 3,
+    });
+
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['Barrier Support Moisturizer']);
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBeNull();
+    expect(
+      [
+        ...(Array.isArray(out.diagnostics.ingredient_rejected_candidate_samples)
+          ? out.diagnostics.ingredient_rejected_candidate_samples
+          : []),
+        ...(Array.isArray(out.diagnostics.ingredient_ranked_candidate_samples)
+          ? out.diagnostics.ingredient_ranked_candidate_samples
+          : []),
+      ],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Strength Trainer Peptide Boost Moisturizer',
+          reject_reason: 'no_explicit_sku_evidence',
+          competing_title_url_hits: expect.any(Number),
+        }),
+      ]),
+    );
+  });
 });

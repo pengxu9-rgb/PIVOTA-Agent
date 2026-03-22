@@ -529,6 +529,16 @@ function requiresTargetSurfaceAnchorForDirectSuccess(evidence = {}) {
     Number(evidence?.ingredient_token_alias || 0) > 0;
 }
 
+function requiresCompetingTitleUrlAnchorGuardForDirectSuccess(evidence = {}) {
+  if (Number(evidence?.same_family_gate_required || 0) <= 0) return false;
+  if (String(evidence?.family_relation || '').trim() !== 'same_family') return false;
+  if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
+  if (Number(evidence?.competing_title_url_hits || 0) <= 0) return false;
+  return Number(evidence?.kb_explicit || 0) > 0 ||
+    Number(evidence?.ingredient_token_exact || 0) > 0 ||
+    Number(evidence?.ingredient_token_alias || 0) > 0;
+}
+
 function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, extras = {}) {
   const sampleEvidence = evidence && typeof evidence === 'object' ? evidence : {};
   const runtimeEvidenceMetadata = resolveRuntimeIngredientEvidenceMetadata(product, sampleEvidence);
@@ -554,6 +564,7 @@ function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, ext
     target_anchor_hits: Number(sampleEvidence?.target_anchor_hits || 0) || 0,
     strong_target_anchor_hits: Number(sampleEvidence?.strong_target_anchor_hits || 0) || 0,
     target_surface_anchor_hits: Number(sampleEvidence?.target_surface_anchor_hits || 0) || 0,
+    competing_title_url_hits: Number(sampleEvidence?.competing_title_url_hits || 0) || 0,
     surface_explicit_hits: Number(sampleEvidence?.surface_explicit_hits || 0) || 0,
     kb_step_hint_match: Number(sampleEvidence?.kb_step_hint_match || 0) || 0,
     same_family_gate_required: Number(sampleEvidence?.same_family_gate_required || 0) || 0,
@@ -1064,6 +1075,10 @@ function hasConflictingIngredientSurfaceSignal(text, profile) {
   return countCompetingIngredientSurfaceHits(text, profile) > 0;
 }
 
+function countCompetingIngredientTitleUrlHits(text, profile) {
+  return countCompetingIngredientSurfaceHits(text, profile);
+}
+
 function countCompetingIngredientSurfaceHits(text, profile) {
   const normalizedText = String(text || '').trim().toLowerCase();
   if (!normalizedText) return 0;
@@ -1082,6 +1097,17 @@ function buildConflictingIngredientSurfaceText(fieldTexts = {}) {
   return [
     fieldTexts.title,
     fieldTexts.ingredient_tokens,
+    fieldTexts.urls,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function buildConflictingIngredientTitleUrlText(fieldTexts = {}) {
+  return [
+    fieldTexts.title,
     fieldTexts.urls,
   ]
     .map((value) => String(value || '').trim())
@@ -1269,6 +1295,10 @@ function buildCandidateEvidence(
     buildConflictingIngredientSurfaceText(fieldTexts),
     profile,
   );
+  const competingTitleUrlHits = countCompetingIngredientTitleUrlHits(
+    buildConflictingIngredientTitleUrlText(fieldTexts),
+    profile,
+  );
   const kbStepHints = Array.isArray(kbEvidence?.candidate_step_hints)
     ? kbEvidence.candidate_step_hints
     : [];
@@ -1315,6 +1345,7 @@ function buildCandidateEvidence(
     target_surface_anchor_hits: targetSurfaceAnchorHits,
     surface_explicit_hits: surfaceExplicitHits,
     competing_surface_hits: competingSurfaceHits,
+    competing_title_url_hits: competingTitleUrlHits,
     kb_step_hint_match: hasSameFamilyKbHint ? 1 : 0,
     same_family_gate_required: sameFamilyGateRequired ? 1 : 0,
     target_step_negative_signal: targetStepNegativeSignal ? 1 : 0,
@@ -1342,6 +1373,9 @@ function buildCandidateEvidence(
     return { reject_reason: 'all_candidates_filtered_noise', evidence };
   }
   if (requiresTargetSurfaceAnchorForDirectSuccess(evidence)) {
+    return { reject_reason: 'no_explicit_sku_evidence', evidence };
+  }
+  if (requiresCompetingTitleUrlAnchorGuardForDirectSuccess(evidence)) {
     return { reject_reason: 'no_explicit_sku_evidence', evidence };
   }
   if (targetStepNegativeSignal && evidence.family_only === 1) {
@@ -1446,6 +1480,7 @@ function shouldLateRejectDirectCandidate(candidate) {
   if (!evidence) return null;
   if (Number(evidence.explicit_hits || 0) <= 0) return null;
   if (requiresTargetSurfaceAnchorForDirectSuccess(evidence)) return 'no_explicit_sku_evidence';
+  if (requiresCompetingTitleUrlAnchorGuardForDirectSuccess(evidence)) return 'no_explicit_sku_evidence';
   if (Number(evidence.same_family_gate_required || 0) <= 0) return null;
   if (String(evidence.family_relation || '').trim() !== 'same_family') return null;
 
