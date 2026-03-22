@@ -322,9 +322,9 @@ function buildIngredientBlock({
   return {
     raw_ingredient_text_clean: rawText || undefined,
     inci_list: normalizedInciList || undefined,
-    ingredient_tokens: normalizedIngredientTokens,
-    active_ingredients: normalizedActiveIngredients,
-    key_ingredients: normalizedKeyIngredients,
+    ingredient_tokens: normalizedIngredientTokens.length ? normalizedIngredientTokens : undefined,
+    active_ingredients: normalizedActiveIngredients.length ? normalizedActiveIngredients : undefined,
+    key_ingredients: normalizedKeyIngredients.length ? normalizedKeyIngredients : undefined,
     ingredient_intel: intel,
   };
 }
@@ -421,6 +421,8 @@ function mergeStructuredBlockIntoSeedData(seedDataValue, block) {
   for (const field of fields) {
     const nextValue = block[field];
     if (typeof nextValue === 'undefined') continue;
+    if (typeof nextValue === 'string' && !normalizeNonEmptyString(nextValue)) continue;
+    if (Array.isArray(nextValue) && nextValue.length === 0) continue;
     nextSeedData[field] = nextValue;
     nextSeedData.snapshot[field] = nextValue;
   }
