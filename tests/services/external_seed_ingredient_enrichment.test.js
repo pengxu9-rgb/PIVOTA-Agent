@@ -134,4 +134,56 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.row.seed_data.key_ingredients).toEqual(['benzoyl peroxide']);
     expect(out.row.seed_data.active_ingredients).toEqual(['benzoyl peroxide 10%']);
   });
+
+  test('does not bulk-anchor a blank row from family-only title text', async () => {
+    const row = {
+      id: 'eps_family_only',
+      title: 'Winona Soothing Repair Serum',
+      canonical_url: 'https://winona.example.com/products/soothing-repair-serum',
+      destination_url: 'https://winona.example.com/products/soothing-repair-serum',
+      seed_data: {
+        snapshot: {
+          title: 'Winona Soothing Repair Serum',
+          canonical_url: 'https://winona.example.com/products/soothing-repair-serum',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.seed_structured_ingredient_status_after).toBe('missing');
+    expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
+  });
+
+  test('does not use row-level ingredient_name as a bulk anchor when title and url have no explicit match', async () => {
+    const row = {
+      id: 'eps_bpo_blank',
+      title: 'Rapid Clear Stubborn Acne Spot Gel',
+      ingredient_name: 'Benzoyl peroxide',
+      canonical_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+      destination_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+      seed_data: {
+        ingredient_name: 'Benzoyl peroxide',
+        snapshot: {
+          title: 'Rapid Clear Stubborn Acne Spot Gel',
+          canonical_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.seed_structured_ingredient_status_after).toBe('missing');
+    expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
+  });
 });

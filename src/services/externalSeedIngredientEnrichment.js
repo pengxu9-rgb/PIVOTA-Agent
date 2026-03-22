@@ -222,8 +222,6 @@ function profileAnchorTexts(row = {}, ingredientName = '') {
   const snapshot = ensureJsonObject(seedData.snapshot);
   return uniqStrings([
     ingredientName,
-    row.ingredient_name,
-    seedData.ingredient_name,
     row.title,
     seedData.title,
     snapshot.title,
@@ -236,32 +234,57 @@ function profileAnchorTexts(row = {}, ingredientName = '') {
   ], 24);
 }
 
-function profileHasStrongAnchor(profile, texts) {
+function getProfileStrongAnchorScore(profile, texts) {
   const joined = uniqStrings(texts, 24).join(' ');
-  if (!joined || !profile) return false;
-  return (
-    countPhraseMatches(joined, profile?.exact_phrases) > 0 ||
-    countPhraseMatches(joined, profile?.alias_phrases) > 0
-  );
+  if (!joined || !profile) return { exactHits: 0, aliasHits: 0 };
+  return {
+    exactHits: countPhraseMatches(joined, profile?.exact_phrases),
+    aliasHits: countPhraseMatches(joined, profile?.alias_phrases),
+  };
+}
+
+function profileHasStrongAnchor(profile, texts) {
+  const score = getProfileStrongAnchorScore(profile, texts);
+  return score.exactHits > 0 || score.aliasHits > 0;
+}
+
+function resolveStrongAnchorProfileFromTexts(texts, preferredProfiles = []) {
+  const orderedProfiles = [
+    ...preferredProfiles.filter(Boolean),
+    ...Object.values(LOCAL_INGREDIENT_RECALL_REGISTRY).filter(Boolean),
+  ];
+  const seen = new Set();
+  let bestProfile = null;
+  let bestExactHits = 0;
+  let bestAliasHits = 0;
+  for (const profile of orderedProfiles) {
+    const profileId = normalizeNonEmptyString(profile?.ingredient_id || profile?.display_name || profile?.ingredient_name)
+      .toLowerCase();
+    if (!profileId || seen.has(profileId)) continue;
+    seen.add(profileId);
+    const score = getProfileStrongAnchorScore(profile, texts);
+    if (score.exactHits <= 0 && score.aliasHits <= 0) continue;
+    if (
+      !bestProfile ||
+      score.exactHits > bestExactHits ||
+      (score.exactHits === bestExactHits && score.aliasHits > bestAliasHits)
+    ) {
+      bestProfile = profile;
+      bestExactHits = score.exactHits;
+      bestAliasHits = score.aliasHits;
+    }
+  }
+  return bestProfile;
 }
 
 function resolveAnchorProfile({ row, ingredientId = '', ingredientName = '' } = {}) {
+  const anchorTexts = profileAnchorTexts(row, ingredientName);
   const directProfile = resolveIngredientRecallProfile({
     ingredientId,
     query: ingredientName,
     target: row?.title || '',
   });
-  if (directProfile && profileHasStrongAnchor(directProfile, profileAnchorTexts(row, ingredientName))) {
-    return directProfile;
-  }
-  const inferredProfile = resolveIngredientRecallProfile({
-    ingredientId,
-    query: profileAnchorTexts(row, ingredientName).join(' '),
-  });
-  if (inferredProfile && profileHasStrongAnchor(inferredProfile, profileAnchorTexts(row, ingredientName))) {
-    return inferredProfile;
-  }
-  return directProfile || inferredProfile || null;
+  return resolveStrongAnchorProfileFromTexts(anchorTexts, directProfile ? [directProfile] : []);
 }
 
 function extractRegistryTokensFromText(text, preferredProfiles = []) {
@@ -562,6 +585,7 @@ module.exports = {
     mergeStructuredBlockIntoSeedData,
     readStructuredIngredientView,
     resolveAnchorProfile,
+    resolveStrongAnchorProfileFromTexts,
     isReviewedKbIngredientRow,
   },
 };
