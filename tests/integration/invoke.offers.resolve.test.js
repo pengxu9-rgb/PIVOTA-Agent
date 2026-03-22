@@ -456,4 +456,57 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
       ok: true,
     });
   });
+
+  it('explicit commerce surface fails closed instead of returning external fallback', async () => {
+    const subjectScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/v1/subject/resolve')
+      .reply(404, {
+        reason_code: 'no_candidates',
+        reason: 'no_candidates',
+      });
+    const cacheScope = nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body?.operation === 'offers.resolve')
+      .reply(200, {
+        status: 'success',
+        offers: [],
+        offers_count: 0,
+        reason_code: 'not_servable',
+        reason: 'not_servable',
+        resolution_mode: 'not_servable',
+        resolved_target: null,
+        metadata: {
+          reason_code: 'NOT_SERVABLE',
+          reason: 'not_servable',
+          servable_reason_codes: ['out_of_stock'],
+          commerce_surface: 'agent_api',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'offers.resolve',
+        payload: {
+          offers: {
+            product: {
+              sku_id: 'unknown_sku_123',
+              name: 'Unknown Product',
+            },
+            market: 'US',
+            commerce_surface: 'agent_api',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(subjectScope.isDone()).toBe(true);
+    expect(cacheScope.isDone()).toBe(true);
+    expect(res.body.status).toBe('success');
+    expect(res.body.commerce_surface).toBe('agent_api');
+    expect(res.body.resolution_mode).toBe('not_servable');
+    expect(res.body.resolved_target).toBeNull();
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(res.body.metadata?.commerce_surface).toBe('agent_api');
+    expect(res.body.metadata?.servable_reason_codes).toContain('out_of_stock');
+  });
 });
