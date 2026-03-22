@@ -932,20 +932,25 @@ function isBundleLikeRecallProduct(product) {
 }
 
 function hasConflictingIngredientSurfaceSignal(text, profile) {
+  return countCompetingIngredientSurfaceHits(text, profile) > 0;
+}
+
+function countCompetingIngredientSurfaceHits(text, profile) {
   const normalizedText = String(text || '').trim().toLowerCase();
-  if (!normalizedText) return false;
+  if (!normalizedText) return 0;
   const currentExplicitHits =
     countPhraseMatches(normalizedText, profile?.exact_phrases) +
     countPhraseMatches(normalizedText, profile?.alias_phrases);
-  if (currentExplicitHits > 0) return false;
+  if (currentExplicitHits > 0) return 0;
+  let totalHits = 0;
   for (const otherProfile of Object.values(LOCAL_INGREDIENT_RECALL_REGISTRY)) {
     if (!otherProfile || otherProfile.ingredient_id === profile?.ingredient_id) continue;
     const otherHits =
       countPhraseMatches(normalizedText, otherProfile.exact_phrases) +
       countPhraseMatches(normalizedText, otherProfile.alias_phrases);
-    if (otherHits > 0) return true;
+    if (otherHits > 0) totalHits += otherHits;
   }
-  return false;
+  return totalHits;
 }
 
 function buildConflictingIngredientSurfaceText(fieldTexts = {}) {
@@ -1126,6 +1131,10 @@ function buildCandidateEvidence(
     Math.max(0, Number(kbEvidence?.strong_family_hits || 0) || 0);
   const offSurfaceSignal = hasDisallowedOffSurfaceSignal(fieldTexts, queryText);
   const targetStepNegativeSignal = hasTargetStepNegativeSignal(fieldTexts, targetStepFamily, queryText);
+  const competingSurfaceHits = countCompetingIngredientSurfaceHits(
+    buildConflictingIngredientSurfaceText(fieldTexts),
+    profile,
+  );
   const kbStepHints = Array.isArray(kbEvidence?.candidate_step_hints)
     ? kbEvidence.candidate_step_hints
     : [];
@@ -1170,6 +1179,7 @@ function buildCandidateEvidence(
     target_anchor_hits: targetAnchorHits,
     strong_target_anchor_hits: strongTargetAnchorHits,
     surface_explicit_hits: surfaceExplicitHits,
+    competing_surface_hits: competingSurfaceHits,
     kb_step_hint_match: hasSameFamilyKbHint ? 1 : 0,
     same_family_gate_required: sameFamilyGateRequired ? 1 : 0,
     target_step_negative_signal: targetStepNegativeSignal ? 1 : 0,
@@ -1260,6 +1270,14 @@ function scoreCandidateEvidence(candidate, sourceRank = 0) {
   score += Number(candidate?.evidence?.url_alias || 0) * 60;
   score += Number(candidate?.evidence?.strong_family_hits || 0) * (candidate?.evidence?.explicit_hits > 0 ? 10 : 16);
   score += Number(candidate?.evidence?.family_hits || 0) * (candidate?.evidence?.explicit_hits > 0 ? 4 : 2);
+  if (
+    Number(candidate?.evidence?.kb_explicit || 0) > 0 &&
+    Number(candidate?.evidence?.surface_explicit_hits || 0) <= 0
+  ) {
+    score -= 320;
+  }
+  score -= Number(candidate?.evidence?.competing_surface_hits || 0) *
+    (Number(candidate?.evidence?.surface_explicit_hits || 0) > 0 ? 20 : 60);
   if (candidate?.evidence?.family_relation === 'same_family') score += 40;
   if (candidate?.evidence?.family_relation === 'adjacent_family') score -= 10;
   if (obviousNoise) score -= 80;
@@ -2353,6 +2371,7 @@ module.exports = {
     buildKbEvidence,
     buildKbEvidenceLookup,
     resolveKbEvidenceForSeedRow,
+    countCompetingIngredientSurfaceHits,
     fetchKbRowsForProfile,
     fetchProductsCacheRowsByPatterns,
     fetchSeedRowsByIdentity,

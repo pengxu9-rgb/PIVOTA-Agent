@@ -119,6 +119,7 @@ function main() {
   const backlogPath = path.join(outDir, `${args.prefix}-backlog.json`);
   const censusPath = path.join(outDir, `${args.prefix}-seed-census.json`);
   const routinePath = path.join(outDir, `${args.prefix}-routine-smoke.json`);
+  const misrankPath = path.join(outDir, `${args.prefix}-misrank.json`);
   const bundlePath = path.join(outDir, `${args.prefix}-bundle.json`);
 
   const results = {
@@ -172,6 +173,16 @@ function main() {
       ],
       { outputPath: routinePath },
     ),
+    misrank_backlog: runNodeScript(
+      path.join(scriptsDir, 'build_aurora_ingredient_misrank_backlog.cjs'),
+      [
+        '--input', canonicalPath,
+        '--input', noncanonicalPath,
+        '--input', backlogPath,
+        '--out', misrankPath,
+      ],
+      { outputPath: misrankPath },
+    ),
   };
 
   const canonicalRows = rowsFromResult(results.canonical);
@@ -197,7 +208,9 @@ function main() {
       backlog_bucket_counts: results.backlog.data?.bucket_counts || {},
       code_lane_count: countRowsByBucket(allRows, codeLaneBuckets),
       data_lane_count: countRowsByBucket(allRows, dataLaneBuckets),
-      misrank_lane_count: countRowsByBucket(allRows, misrankLaneBuckets),
+      misrank_lane_count:
+        Number(results.misrank_backlog.data?.summary?.candidate_count || 0) ||
+        countRowsByBucket(allRows, misrankLaneBuckets),
       contaminated_attached_slice_count:
         Number(results.seed_census.data?.summary?.contaminated_attached_slice_count || 0),
       seed_census_summary: results.seed_census.data?.summary || {},

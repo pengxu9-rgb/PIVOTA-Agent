@@ -295,6 +295,100 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
 
+  test('scoreCandidateEvidence demotes kb-only leads that lack target surface anchors', () => {
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+
+    const kbOnly = _internals.scoreCandidateEvidence(
+      {
+        product: {
+          title: 'Overnight Glow Serum',
+          url: 'https://pixi.example.com/products/overnight-glow-serum',
+        },
+        evidence: {
+          kb_explicit: 1,
+          title_exact: 0,
+          title_alias: 0,
+          ingredient_token_exact: 0,
+          ingredient_token_alias: 0,
+          url_alias: 0,
+          surface_explicit_hits: 0,
+          family_hits: 0,
+          strong_family_hits: 0,
+          family_relation: 'same_family',
+          competing_surface_hits: 0,
+          explicit_hits: 1,
+        },
+      },
+      480,
+    );
+
+    const anchored = _internals.scoreCandidateEvidence(
+      {
+        product: {
+          title: 'Centella Calming Serum',
+          url: 'https://mixsoon.example.com/products/centella-calming-serum',
+        },
+        evidence: {
+          kb_explicit: 0,
+          title_exact: 1,
+          title_alias: 0,
+          ingredient_token_exact: 0,
+          ingredient_token_alias: 0,
+          url_alias: 0,
+          surface_explicit_hits: 1,
+          family_hits: 0,
+          strong_family_hits: 0,
+          family_relation: 'same_family',
+          competing_surface_hits: 0,
+          explicit_hits: 1,
+        },
+      },
+      220,
+    );
+
+    expect(anchored.score).toBeGreaterThan(kbOnly.score);
+  });
+
+  test('scoreCandidateEvidence penalizes competing ingredient title anchors when target anchor is absent', () => {
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const competingHits = _internals.countCompetingIngredientSurfaceHits(
+      'vitamin-c serum https://pixi.example.com/products/vitamin-c-serum',
+      {
+        ingredient_id: 'centella_asiatica',
+        exact_phrases: ['centella asiatica', 'centella'],
+        alias_phrases: [],
+      },
+    );
+
+    expect(competingHits).toBeGreaterThan(0);
+
+    const candidate = _internals.scoreCandidateEvidence(
+      {
+        product: {
+          title: 'Vitamin-C Serum',
+          url: 'https://pixi.example.com/products/vitamin-c-serum',
+        },
+        evidence: {
+          kb_explicit: 1,
+          title_exact: 0,
+          title_alias: 0,
+          ingredient_token_exact: 0,
+          ingredient_token_alias: 0,
+          url_alias: 0,
+          surface_explicit_hits: 0,
+          family_hits: 0,
+          strong_family_hits: 0,
+          family_relation: 'same_family',
+          competing_surface_hits: competingHits,
+          explicit_hits: 1,
+        },
+      },
+      260,
+    );
+
+    expect(candidate.score).toBeLessThan(260 + 220 + 40 - 100);
+  });
+
   test('uses KB ingredient evidence to keep direct recall products even when surface text is generic', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
