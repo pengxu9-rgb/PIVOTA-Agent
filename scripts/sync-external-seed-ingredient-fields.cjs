@@ -7,6 +7,8 @@ const { withClient, getPool } = require('../src/db');
 const {
   ENRICHMENT_SOURCE,
   SEED_ANCHOR_SOURCE_KIND,
+  SEED_KB_SYNC_STATUS,
+  classifyExternalSeedQuarantine,
   enrichExternalSeedRowIngredients,
 } = require('../src/services/externalSeedIngredientEnrichment');
 
@@ -158,24 +160,51 @@ function resolveWaveDisposition(row, enrichment, args) {
   const beforeStatus = normalizeNonEmptyString(enrichment?.seed_structured_ingredient_status_before || 'missing');
   const enrichmentSource = normalizeNonEmptyString(enrichment?.enrichment_source || 'none');
   const anchorSourceKind = normalizeNonEmptyString(enrichment?.seed_anchor_source_kind || 'none');
+  const quarantine = classifyExternalSeedQuarantine({
+    row,
+    reviewedKbRows: Array.isArray(enrichment?.reviewed_kb_rows) ? enrichment.reviewed_kb_rows : [],
+    seedStatus: beforeStatus,
+    seedKbSyncStatus: normalizeNonEmptyString(enrichment?.seed_kb_sync_status || SEED_KB_SYNC_STATUS.missingBoth),
+    enrichmentSource,
+    seedEnrichmentMetadata: {
+      quarantine_reason: enrichment?.quarantine_reason,
+      seed_anchor_source_kind: enrichment?.seed_anchor_source_kind,
+      seed_anchor_conflict_status: enrichment?.seed_anchor_conflict_status,
+      url_anchor_conflict: enrichment?.url_anchor_conflict === true,
+      seed_quarantine_bucket: enrichment?.seed_quarantine_bucket,
+      quarantined_from_wave1: enrichment?.quarantined_from_wave1 === true,
+      contamination_signal_source: enrichment?.contamination_signal_source,
+    },
+  });
   let quarantineReason = normalizeNonEmptyString(enrichment?.quarantine_reason) || '';
 
   if (args.missingOnly && beforeStatus === 'present') {
-    return { eligible: false, quarantineReason: 'already_present', attached };
+    return { eligible: false, quarantineReason: 'already_present', attached, quarantine };
   }
   if (args.attachedOnly && !attached) {
-    return { eligible: false, quarantineReason: 'attachedness_filtered', attached };
+    return { eligible: false, quarantineReason: 'attachedness_filtered', attached, quarantine };
   }
   if (args.unattachedOnly && attached) {
-    return { eligible: false, quarantineReason: 'attachedness_filtered', attached };
+    return { eligible: false, quarantineReason: 'attachedness_filtered', attached, quarantine };
+  }
+  if (quarantine.quarantined_from_wave1 === true) {
+    return {
+      eligible: false,
+      quarantineReason: quarantineReason || quarantine.seed_quarantine_bucket || 'quarantined_from_wave1',
+      attached,
+      quarantine,
+    };
   }
   if (args.wave === WAVE_MODE.kbReviewed) {
-    if (enrichmentSource !== ENRICHMENT_SOURCE.kbReviewed) {
-      return { eligible: false, quarantineReason: 'not_kb_reviewed', attached };
+    if (
+      enrichmentSource !== ENRICHMENT_SOURCE.kbReviewed ||
+      normalizeNonEmptyString(enrichment?.seed_kb_sync_status) !== SEED_KB_SYNC_STATUS.kbOnlyUnsynced
+    ) {
+      return { eligible: false, quarantineReason: 'not_kb_reviewed', attached, quarantine };
     }
   } else if (args.wave === WAVE_MODE.titleAnchor) {
     if (enrichmentSource !== ENRICHMENT_SOURCE.titleUrlAnchor) {
-      return { eligible: false, quarantineReason: 'not_title_anchor', attached };
+      return { eligible: false, quarantineReason: 'not_title_anchor', attached, quarantine };
     }
     if (!TITLE_ANCHOR_ALLOWED_SOURCE_KINDS.has(anchorSourceKind)) {
       quarantineReason = quarantineReason || 'url_only_anchor';
@@ -188,6 +217,7 @@ function resolveWaveDisposition(row, enrichment, args) {
     eligible: !quarantineReason,
     quarantineReason: quarantineReason || null,
     attached,
+    quarantine,
   };
 }
 
@@ -205,6 +235,9 @@ function summarize(items, mode, wave) {
     ingredient_writeback_source: {},
     seed_anchor_source_kind: {},
     quarantine_reason: {},
+    seed_quarantine_bucket: {},
+    contamination_signal_source: {},
+    quarantined_from_wave1: {},
     attached_state: {},
   };
   for (const item of Array.isArray(items) ? items : []) {
@@ -219,6 +252,9 @@ function summarize(items, mode, wave) {
     mergeCounter(summary.ingredient_writeback_source, sourceKey);
     mergeCounter(summary.seed_anchor_source_kind, item.seed_anchor_source_kind || 'none');
     mergeCounter(summary.quarantine_reason, item.quarantine_reason || 'none');
+    mergeCounter(summary.seed_quarantine_bucket, item.seed_quarantine_bucket || 'none');
+    mergeCounter(summary.contamination_signal_source, item.contamination_signal_source || 'none');
+    mergeCounter(summary.quarantined_from_wave1, item.quarantined_from_wave1 === true ? 'true' : 'false');
     mergeCounter(summary.attached_state, item.attached_state || 'unknown');
   }
   return summary;
@@ -260,6 +296,9 @@ async function runWithDb(args, mode) {
           seed_anchor_conflict_status: enrichment?.seed_anchor_conflict_status || 'none',
           url_anchor_conflict: enrichment?.url_anchor_conflict === true,
           quarantine_reason: disposition.quarantineReason || null,
+          seed_quarantine_bucket: disposition.quarantine?.seed_quarantine_bucket || null,
+          quarantined_from_wave1: disposition.quarantine?.quarantined_from_wave1 === true,
+          contamination_signal_source: disposition.quarantine?.contamination_signal_source || null,
           attached_state: disposition.attached ? 'attached' : 'unattached',
           domain: normalizeNonEmptyString(row.domain) || null,
         };

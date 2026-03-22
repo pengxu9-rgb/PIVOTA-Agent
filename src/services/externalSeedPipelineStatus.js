@@ -10,6 +10,7 @@ const {
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
   readExternalSeedEnrichmentMetadata,
+  classifyExternalSeedQuarantine,
 } = require('./externalSeedIngredientEnrichment');
 
 function normalizeNonEmptyString(value) {
@@ -178,6 +179,14 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
     readExternalSeedEnrichmentMetadata(seedData).source ||
     ENRICHMENT_SOURCE.none;
   const seedEnrichmentMetadata = readExternalSeedEnrichmentMetadata(seedData);
+  const seedQuarantine = classifyExternalSeedQuarantine({
+    row,
+    reviewedKbRows,
+    seedStatus: seedStructuredIngredientStatus,
+    seedKbSyncStatus,
+    enrichmentSource: ingredientWritebackSource,
+    seedEnrichmentMetadata,
+  });
   const runtimeIngredientEvidenceSource = buildRuntimeIngredientEvidenceSource({
     seedStatus: seedStructuredIngredientStatus,
     reviewedKbRows,
@@ -240,6 +249,9 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       seed_anchor_conflict_status: seedEnrichmentMetadata.seed_anchor_conflict_status,
       url_anchor_conflict: seedEnrichmentMetadata.url_anchor_conflict,
       quarantine_reason: seedEnrichmentMetadata.quarantine_reason,
+      seed_quarantine_bucket: seedQuarantine.seed_quarantine_bucket,
+      quarantined_from_wave1: seedQuarantine.quarantined_from_wave1,
+      contamination_signal_source: seedQuarantine.contamination_signal_source,
       matched_candidate_ids: candidateIds.filter((candidateId) => matchedKeys.has(candidateId)),
     },
     gating: {
@@ -248,7 +260,7 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       next_step:
         blockerCount > 0
           ? 'fix_blockers_before_harvest'
-          : seedEnrichmentMetadata.quarantine_reason
+          : seedQuarantine.seed_quarantine_bucket
             ? 'quarantine_seed_for_manual_review'
           : seedKbSyncStatus === 'kb_only_unsynced'
             ? 'sync_seed_ingredient_fields'

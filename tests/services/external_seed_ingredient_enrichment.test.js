@@ -11,6 +11,7 @@ const {
   SEED_ANCHOR_CONFLICT_STATUS,
   SEED_ANCHOR_SOURCE_KIND,
   SEED_KB_SYNC_STATUS,
+  SEED_QUARANTINE_BUCKET,
   _internals,
   enrichExternalSeedRowIngredients,
 } = require('../../src/services/externalSeedIngredientEnrichment');
@@ -50,6 +51,8 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.seed_kb_sync_status).toBe(SEED_KB_SYNC_STATUS.synced);
     expect(out.runtime_ingredient_evidence_source).toBe('seed_structured_fields');
     expect(out.seed_anchor_source_kind).toBe(SEED_ANCHOR_SOURCE_KIND.kbReviewed);
+    expect(out.seed_quarantine_bucket).toBeNull();
+    expect(out.quarantined_from_wave1).toBe(false);
     expect(out.row.seed_data.ingredient_tokens).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
     expect(out.row.seed_data.active_ingredients).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
     expect(out.row.seed_data.snapshot.ingredient_tokens).toEqual(expect.arrayContaining(['Benzoyl peroxide']));
@@ -161,6 +164,8 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
     expect(out.quarantine_reason).toBeNull();
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
   });
@@ -189,6 +194,8 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
     expect(out.quarantine_reason).toBe('row_ingredient_name_only');
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.rowIngredientNameOnly);
+    expect(out.quarantined_from_wave1).toBe(true);
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
   });
@@ -216,6 +223,8 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.changed).toBe(false);
     expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
     expect(out.quarantine_reason).toBe('url_only_anchor');
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
     expect(out.seed_anchor_conflict_status).toBe(SEED_ANCHOR_CONFLICT_STATUS.none);
     expect(out.seed_structured_ingredient_status_after).toBe('missing');
     expect(out.row.seed_data.ingredient_tokens).toBeUndefined();
@@ -246,5 +255,46 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.quarantine_reason).toBe('url_anchor_conflict');
     expect(out.seed_anchor_conflict_status).toBe(SEED_ANCHOR_CONFLICT_STATUS.urlAnchorConflict);
     expect(out.url_anchor_conflict).toBe(true);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.urlAnchorConflict);
+    expect(out.quarantined_from_wave1).toBe(true);
+  });
+
+  test('quarantines contaminated attached slice rows from auto-writeback', async () => {
+    const row = {
+      id: 'eps_dirty_attached',
+      attached_product_key: 'prod_dirty',
+      domain: 'jwx893-fz.myshopify.com',
+      title: 'Small Eyeshadow Brush',
+      canonical_url: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+      destination_url: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+      seed_data: {
+        snapshot: {
+          title: 'Small Eyeshadow Brush',
+          canonical_url: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      kbRows: [
+        {
+          sku_key: 'extseed:eps_dirty_attached:US',
+          parse_status: 'OK',
+          raw_ingredient_text_clean: 'Niacinamide',
+          inci_list: 'Niacinamide',
+          product_name: 'Small Eyeshadow Brush',
+          source_ref: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+        },
+      ],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.attachedContamination);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('attached_domain_blocklist');
   });
 });

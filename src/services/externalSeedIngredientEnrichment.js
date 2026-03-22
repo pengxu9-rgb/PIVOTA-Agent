@@ -41,7 +41,42 @@ const SEED_KB_SYNC_STATUS = Object.freeze({
   seedOnly: 'seed_only',
   missingBoth: 'missing_both',
 });
+const SEED_QUARANTINE_BUCKET = Object.freeze({
+  attachedContamination: 'attached_contamination',
+  urlAnchorConflict: 'url_anchor_conflict',
+  rowIngredientNameOnly: 'row_ingredient_name_only',
+  nonBeautyDomain: 'non_beauty_domain',
+  manualUpstreamRequired: 'manual_upstream_required',
+});
 const REVIEW_STATUS_BLOCKLIST = new Set(['blocked', 'rejected', 'fail', 'failed']);
+const ATTACHED_CONTAMINATION_DOMAIN_BLOCKLIST = new Set([
+  'jwx893-fz.myshopify.com',
+]);
+const NON_BEAUTY_TITLE_PATTERNS = [
+  /\beyeshadow\s+brush\b/i,
+  /\bmakeup\s+brush\b/i,
+  /\bbrush\b/i,
+  /\blingerie\b/i,
+  /\bbralette\b/i,
+  /\bunderwear\b/i,
+  /\bbra\b/i,
+  /\bpant(?:y|ies)\b/i,
+  /\bsleepwear\b/i,
+  /\bpajama\b/i,
+  /\bgift\s*card\b/i,
+  /\bcarte\s+cadeau\b/i,
+  /\bpet\b/i,
+  /\bdog\b/i,
+  /\bcat\b/i,
+  /\bharness\b/i,
+  /\btoy\b/i,
+];
+const HARD_WRITEBACK_QUARANTINE_BUCKETS = new Set([
+  SEED_QUARANTINE_BUCKET.attachedContamination,
+  SEED_QUARANTINE_BUCKET.urlAnchorConflict,
+  SEED_QUARANTINE_BUCKET.rowIngredientNameOnly,
+  SEED_QUARANTINE_BUCKET.nonBeautyDomain,
+]);
 
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
@@ -310,6 +345,9 @@ function readExternalSeedEnrichmentMetadata(seedDataValue) {
       normalizeNonEmptyString(meta.seed_anchor_conflict_status) || SEED_ANCHOR_CONFLICT_STATUS.none,
     url_anchor_conflict: meta.url_anchor_conflict === true,
     quarantine_reason: normalizeNonEmptyString(meta.quarantine_reason) || null,
+    seed_quarantine_bucket: normalizeNonEmptyString(meta.seed_quarantine_bucket) || null,
+    quarantined_from_wave1: meta.quarantined_from_wave1 === true,
+    contamination_signal_source: normalizeNonEmptyString(meta.contamination_signal_source) || null,
   };
 }
 
@@ -639,6 +677,136 @@ function buildRuntimeIngredientEvidenceSource({ seedStatus, reviewedKbRows }) {
   return 'none';
 }
 
+function externalSeedScopeText(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return [
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    row?.domain,
+    seedData?.title,
+    seedData?.canonical_url,
+    seedData?.destination_url,
+    snapshot?.title,
+    snapshot?.canonical_url,
+    snapshot?.destination_url,
+    seedData?.product_type,
+    snapshot?.product_type,
+    seedData?.category,
+    snapshot?.category,
+    ...(Array.isArray(seedData?.categories) ? seedData.categories : []),
+    ...(Array.isArray(snapshot?.categories) ? snapshot.categories : []),
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasObviousNonBeautySignals(row = {}) {
+  const haystack = externalSeedScopeText(row);
+  if (!haystack) return false;
+  return NON_BEAUTY_TITLE_PATTERNS.some((pattern) => pattern.test(haystack));
+}
+
+function classifyExternalSeedQuarantine({
+  row,
+  reviewedKbRows = [],
+  seedStatus = SEED_STRUCTURED_STATUS.missing,
+  seedKbSyncStatus = SEED_KB_SYNC_STATUS.missingBoth,
+  enrichmentSource = ENRICHMENT_SOURCE.none,
+  seedEnrichmentMetadata = null,
+  includeManualUpstreamRequired = true,
+} = {}) {
+  const meta = seedEnrichmentMetadata && typeof seedEnrichmentMetadata === 'object'
+    ? seedEnrichmentMetadata
+    : readExternalSeedEnrichmentMetadata(row?.seed_data);
+  const attached = Boolean(normalizeNonEmptyString(row?.attached_product_key));
+  const domain = normalizeNonEmptyString(row?.domain).toLowerCase();
+  const quarantineReason = normalizeNonEmptyString(meta.quarantine_reason);
+  const hasReviewedKbRows = Array.isArray(reviewedKbRows) && reviewedKbRows.length > 0;
+
+  if (attached && ATTACHED_CONTAMINATION_DOMAIN_BLOCKLIST.has(domain)) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.attachedContamination,
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'attached_domain_blocklist',
+    };
+  }
+  if (hasObviousNonBeautySignals(row)) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.nonBeautyDomain,
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'row_scope_non_beauty_signal',
+    };
+  }
+  if (
+    quarantineReason === 'url_anchor_conflict' ||
+    meta.url_anchor_conflict === true ||
+    meta.seed_anchor_conflict_status === SEED_ANCHOR_CONFLICT_STATUS.urlAnchorConflict
+  ) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.urlAnchorConflict,
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'anchor_conflict',
+    };
+  }
+  if (quarantineReason === 'row_ingredient_name_only') {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.rowIngredientNameOnly,
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'row_ingredient_name_only',
+    };
+  }
+  if (
+    includeManualUpstreamRequired &&
+    enrichmentSource === ENRICHMENT_SOURCE.none &&
+    seedStatus !== SEED_STRUCTURED_STATUS.present &&
+    !hasReviewedKbRows &&
+    (seedKbSyncStatus === SEED_KB_SYNC_STATUS.missingBoth ||
+      seedKbSyncStatus === SEED_KB_SYNC_STATUS.seedOnly ||
+      quarantineReason === 'url_only_anchor')
+  ) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.manualUpstreamRequired,
+      quarantined_from_wave1: true,
+      contamination_signal_source:
+        quarantineReason === 'url_only_anchor' ? 'url_only_anchor' : 'missing_reviewed_kb_source',
+    };
+  }
+  return {
+    seed_quarantine_bucket: null,
+    quarantined_from_wave1: false,
+    contamination_signal_source: null,
+  };
+}
+
+function applyExternalSeedEnrichmentMetadata(seedDataValue, metadata = {}) {
+  const seedData = ensureJsonObject(seedDataValue);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const rootIntel = ensureJsonObject(seedData.ingredient_intel);
+  const snapshotIntel = ensureJsonObject(snapshot.ingredient_intel);
+  const rootMeta = ensureJsonObject(rootIntel.external_seed_enrichment);
+  const nextMeta = {
+    ...rootMeta,
+    ...metadata,
+  };
+  return {
+    ...seedData,
+    ingredient_intel: {
+      ...rootIntel,
+      external_seed_enrichment: nextMeta,
+    },
+    snapshot: {
+      ...snapshot,
+      ingredient_intel: {
+        ...snapshotIntel,
+        external_seed_enrichment: nextMeta,
+      },
+    },
+  };
+}
+
 async function enrichExternalSeedRowIngredients({
   row,
   ingredientId = '',
@@ -655,6 +823,9 @@ async function enrichExternalSeedRowIngredients({
       seed_kb_sync_status: SEED_KB_SYNC_STATUS.missingBoth,
       runtime_ingredient_evidence_source: 'none',
       reviewed_kb_rows: [],
+      seed_quarantine_bucket: null,
+      quarantined_from_wave1: false,
+      contamination_signal_source: null,
     };
   }
 
@@ -662,16 +833,25 @@ async function enrichExternalSeedRowIngredients({
   const seedData = ensureJsonObject(row.seed_data);
   const beforeStatus = classifySeedStructuredIngredientStatus(seedData);
   const existingEnrichmentMetadata = readExternalSeedEnrichmentMetadata(seedData);
+  const beforeSeedKbSyncStatus = buildSeedKbSyncStatus({ seedStatus: beforeStatus, reviewedKbRows });
   const hasExplicitIngredientAnchor =
     normalizeNonEmptyString(ingredientId) || normalizeNonEmptyString(ingredientName);
   if (beforeStatus === SEED_STRUCTURED_STATUS.present && reviewedKbRows.length === 0 && !hasExplicitIngredientAnchor) {
+    const quarantine = classifyExternalSeedQuarantine({
+      row,
+      reviewedKbRows,
+      seedStatus: beforeStatus,
+      seedKbSyncStatus: beforeSeedKbSyncStatus,
+      enrichmentSource: ENRICHMENT_SOURCE.none,
+      seedEnrichmentMetadata: existingEnrichmentMetadata,
+    });
     return {
       changed: false,
       row,
       enrichment_source: ENRICHMENT_SOURCE.none,
       seed_structured_ingredient_status_before: beforeStatus,
       seed_structured_ingredient_status_after: beforeStatus,
-      seed_kb_sync_status: buildSeedKbSyncStatus({ seedStatus: beforeStatus, reviewedKbRows }),
+      seed_kb_sync_status: beforeSeedKbSyncStatus,
       runtime_ingredient_evidence_source: buildRuntimeIngredientEvidenceSource({
         seedStatus: beforeStatus,
         reviewedKbRows,
@@ -681,6 +861,9 @@ async function enrichExternalSeedRowIngredients({
       seed_anchor_conflict_status: existingEnrichmentMetadata.seed_anchor_conflict_status,
       url_anchor_conflict: existingEnrichmentMetadata.url_anchor_conflict,
       quarantine_reason: existingEnrichmentMetadata.quarantine_reason,
+      seed_quarantine_bucket: quarantine.seed_quarantine_bucket,
+      quarantined_from_wave1: quarantine.quarantined_from_wave1,
+      contamination_signal_source: quarantine.contamination_signal_source,
     };
   }
   const anchorDecision = resolveAnchorProfileDecision({ row, ingredientId, ingredientName });
@@ -689,6 +872,22 @@ async function enrichExternalSeedRowIngredients({
     buildBlockFromKbRows(reviewedKbRows, { anchorProfile }) ||
     buildBlockFromDescriptionParse(row, { anchorProfile }) ||
     buildBlockFromAnchor(anchorDecision);
+  const tentativeEnrichmentSource =
+    normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.source) || ENRICHMENT_SOURCE.none;
+  const noBlockQuarantine = classifyExternalSeedQuarantine({
+    row,
+    reviewedKbRows,
+    seedStatus: beforeStatus,
+    seedKbSyncStatus: beforeSeedKbSyncStatus,
+    enrichmentSource: tentativeEnrichmentSource,
+    seedEnrichmentMetadata: {
+      ...existingEnrichmentMetadata,
+      seed_anchor_source_kind: anchorDecision.seed_anchor_source_kind,
+      seed_anchor_conflict_status: anchorDecision.seed_anchor_conflict_status,
+      url_anchor_conflict: anchorDecision.url_anchor_conflict,
+      quarantine_reason: anchorDecision.quarantine_reason,
+    },
+  });
 
   if (!enrichmentBlock) {
     return {
@@ -707,11 +906,60 @@ async function enrichExternalSeedRowIngredients({
       seed_anchor_conflict_status: anchorDecision.seed_anchor_conflict_status,
       url_anchor_conflict: anchorDecision.url_anchor_conflict,
       quarantine_reason: anchorDecision.quarantine_reason,
+      seed_quarantine_bucket: noBlockQuarantine.seed_quarantine_bucket,
+      quarantined_from_wave1: noBlockQuarantine.quarantined_from_wave1,
+      contamination_signal_source: noBlockQuarantine.contamination_signal_source,
     };
   }
 
-  const nextSeedData = mergeStructuredBlockIntoSeedData(seedData, enrichmentBlock);
-  const afterStatus = classifySeedStructuredIngredientStatus(nextSeedData);
+  let nextSeedData = mergeStructuredBlockIntoSeedData(seedData, enrichmentBlock);
+  let afterStatus = classifySeedStructuredIngredientStatus(nextSeedData);
+  let afterSeedKbSyncStatus = buildSeedKbSyncStatus({ seedStatus: afterStatus, reviewedKbRows });
+  const writeQuarantine = classifyExternalSeedQuarantine({
+    row: { ...row, seed_data: nextSeedData },
+    reviewedKbRows,
+    seedStatus: afterStatus,
+    seedKbSyncStatus: afterSeedKbSyncStatus,
+    enrichmentSource: tentativeEnrichmentSource,
+    seedEnrichmentMetadata: {
+      ...existingEnrichmentMetadata,
+      ...readExternalSeedEnrichmentMetadata(nextSeedData),
+    },
+  });
+  if (HARD_WRITEBACK_QUARANTINE_BUCKETS.has(writeQuarantine.seed_quarantine_bucket)) {
+    return {
+      changed: false,
+      row,
+      enrichment_source: ENRICHMENT_SOURCE.none,
+      seed_structured_ingredient_status_before: beforeStatus,
+      seed_structured_ingredient_status_after: beforeStatus,
+      seed_kb_sync_status: beforeSeedKbSyncStatus,
+      runtime_ingredient_evidence_source: buildRuntimeIngredientEvidenceSource({
+        seedStatus: beforeStatus,
+        reviewedKbRows,
+      }),
+      reviewed_kb_rows: reviewedKbRows,
+      seed_anchor_source_kind:
+        normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.seed_anchor_source_kind) ||
+        SEED_ANCHOR_SOURCE_KIND.none,
+      seed_anchor_conflict_status:
+        normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.seed_anchor_conflict_status) ||
+        SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.url_anchor_conflict === true,
+      quarantine_reason:
+        normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.quarantine_reason) || null,
+      seed_quarantine_bucket: writeQuarantine.seed_quarantine_bucket,
+      quarantined_from_wave1: writeQuarantine.quarantined_from_wave1,
+      contamination_signal_source: writeQuarantine.contamination_signal_source,
+    };
+  }
+  nextSeedData = applyExternalSeedEnrichmentMetadata(nextSeedData, {
+    seed_quarantine_bucket: writeQuarantine.seed_quarantine_bucket,
+    quarantined_from_wave1: writeQuarantine.quarantined_from_wave1,
+    contamination_signal_source: writeQuarantine.contamination_signal_source,
+  });
+  afterStatus = classifySeedStructuredIngredientStatus(nextSeedData);
+  afterSeedKbSyncStatus = buildSeedKbSyncStatus({ seedStatus: afterStatus, reviewedKbRows });
   const changed = JSON.stringify(readStructuredIngredientView(seedData)) !== JSON.stringify(readStructuredIngredientView(nextSeedData));
   return {
     changed,
@@ -720,7 +968,7 @@ async function enrichExternalSeedRowIngredients({
       normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.source) || ENRICHMENT_SOURCE.none,
     seed_structured_ingredient_status_before: beforeStatus,
     seed_structured_ingredient_status_after: afterStatus,
-    seed_kb_sync_status: buildSeedKbSyncStatus({ seedStatus: afterStatus, reviewedKbRows }),
+    seed_kb_sync_status: afterSeedKbSyncStatus,
     runtime_ingredient_evidence_source: buildRuntimeIngredientEvidenceSource({
       seedStatus: afterStatus,
       reviewedKbRows,
@@ -735,6 +983,9 @@ async function enrichExternalSeedRowIngredients({
     url_anchor_conflict: enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.url_anchor_conflict === true,
     quarantine_reason:
       normalizeNonEmptyString(enrichmentBlock?.ingredient_intel?.external_seed_enrichment?.quarantine_reason) || null,
+    seed_quarantine_bucket: writeQuarantine.seed_quarantine_bucket,
+    quarantined_from_wave1: writeQuarantine.quarantined_from_wave1,
+    contamination_signal_source: writeQuarantine.contamination_signal_source,
   };
 }
 
@@ -745,12 +996,14 @@ module.exports = {
   SEED_ANCHOR_CONFLICT_STATUS,
   SEED_STRUCTURED_STATUS,
   SEED_KB_SYNC_STATUS,
+  SEED_QUARANTINE_BUCKET,
   classifySeedStructuredIngredientStatus,
   hasSeedStructuredIngredientEvidence,
   fetchReviewedKbRowsForSeedRow,
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
   readExternalSeedEnrichmentMetadata,
+  classifyExternalSeedQuarantine,
   enrichExternalSeedRowIngredients,
   _internals: {
     candidateIngredientTexts,
@@ -766,5 +1019,7 @@ module.exports = {
     resolveStrongAnchorProfileFromTexts,
     isReviewedKbIngredientRow,
     hasRowIngredientNameOnlySignal,
+    hasObviousNonBeautySignals,
+    applyExternalSeedEnrichmentMetadata,
   },
 };

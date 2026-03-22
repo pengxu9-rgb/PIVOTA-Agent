@@ -6,6 +6,7 @@ const path = require('node:path');
 const { withClient, getPool } = require('../src/db');
 const {
   classifySeedStructuredIngredientStatus,
+  classifyExternalSeedQuarantine,
 } = require('../src/services/externalSeedIngredientEnrichment');
 
 function normalizeNonEmptyString(value) {
@@ -64,6 +65,9 @@ function summarizeRows(rows, sampleLimit = 25) {
     market: normalizeNonEmptyString(row?.market) || null,
     title: normalizeNonEmptyString(row?.title) || null,
     attached_state: attachedStateForRow(row),
+    seed_quarantine_bucket: normalizeNonEmptyString(row?.seed_quarantine?.seed_quarantine_bucket) || null,
+    quarantined_from_wave1: row?.seed_quarantine?.quarantined_from_wave1 === true,
+    contamination_signal_source: normalizeNonEmptyString(row?.seed_quarantine?.contamination_signal_source) || null,
     canonical_url: normalizeNonEmptyString(row?.canonical_url) || null,
     destination_url: normalizeNonEmptyString(row?.destination_url) || null,
     updated_at: normalizeNonEmptyString(row?.updated_at) || null,
@@ -103,6 +107,11 @@ async function main() {
   const classifiedRows = rows.map((row) => ({
     ...row,
     seed_structured_ingredient_status: classifySeedStructuredIngredientStatus(row.seed_data),
+    seed_quarantine: classifyExternalSeedQuarantine({
+      row,
+      seedStatus: classifySeedStructuredIngredientStatus(row.seed_data),
+      includeManualUpstreamRequired: false,
+    }),
   }));
   const blankRows = classifiedRows.filter((row) => row.seed_structured_ingredient_status === 'missing');
   const partialRows = classifiedRows.filter((row) => row.seed_structured_ingredient_status === 'partial');
@@ -123,10 +132,18 @@ async function main() {
       attached_active_blank_total: attachedBlankRows.length,
       unattached_active_total: unattachedRows.length,
       unattached_active_blank_total: unattachedBlankRows.length,
+      contaminated_attached_slice_count: classifiedRows.filter(
+        (row) => row.seed_quarantine?.seed_quarantine_bucket === 'attached_contamination',
+      ).length,
     },
     distributions: {
       blank_by_domain: summarizeBuckets(blankRows, (row) => row.domain, args.sampleLimit),
       blank_by_tool: summarizeBuckets(blankRows, (row) => row.tool, args.sampleLimit),
+      blank_by_quarantine_bucket: summarizeBuckets(
+        blankRows,
+        (row) => row.seed_quarantine?.seed_quarantine_bucket || 'none',
+        args.sampleLimit,
+      ),
       blank_by_domain_attachedness: summarizeBuckets(
         blankRows,
         (row) => `${normalizeNonEmptyString(row.domain) || 'unknown'}::${attachedStateForRow(row)}`,

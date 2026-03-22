@@ -35,6 +35,11 @@ jest.mock('../../src/services/externalSeedIngredientEnrichment', () => ({
   ]),
   buildSeedKbSyncStatus: jest.fn(() => 'kb_only_unsynced'),
   buildRuntimeIngredientEvidenceSource: jest.fn(() => 'kb_reviewed_read_through'),
+  classifyExternalSeedQuarantine: jest.fn(() => ({
+    seed_quarantine_bucket: null,
+    quarantined_from_wave1: false,
+    contamination_signal_source: null,
+  })),
   readExternalSeedEnrichmentMetadata: jest.fn(() => ({
     source: 'none',
     seed_anchor_source_kind: 'none',
@@ -112,6 +117,9 @@ describe('externalSeedPipelineStatus', () => {
         seed_anchor_conflict_status: 'none',
         url_anchor_conflict: false,
         quarantine_reason: null,
+        seed_quarantine_bucket: null,
+        quarantined_from_wave1: false,
+        contamination_signal_source: null,
       }),
     );
     expect(status.gating.next_step).toBe('sync_seed_ingredient_fields');
@@ -125,6 +133,11 @@ describe('externalSeedPipelineStatus', () => {
       seed_anchor_conflict_status: 'url_anchor_conflict',
       url_anchor_conflict: true,
       quarantine_reason: 'url_anchor_conflict',
+    });
+    enrichment.classifyExternalSeedQuarantine.mockReturnValue({
+      seed_quarantine_bucket: 'url_anchor_conflict',
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'anchor_conflict',
     });
 
     query.mockResolvedValue({
@@ -159,6 +172,9 @@ describe('externalSeedPipelineStatus', () => {
         seed_anchor_conflict_status: 'url_anchor_conflict',
         url_anchor_conflict: true,
         quarantine_reason: 'url_anchor_conflict',
+        seed_quarantine_bucket: 'url_anchor_conflict',
+        quarantined_from_wave1: true,
+        contamination_signal_source: 'anchor_conflict',
       }),
     );
     expect(status.gating.next_step).toBe('quarantine_seed_for_manual_review');

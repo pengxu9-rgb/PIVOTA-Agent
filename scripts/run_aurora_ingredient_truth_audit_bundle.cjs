@@ -95,6 +95,19 @@ function runNodeScript(scriptPath, args, options = {}) {
   return result;
 }
 
+function rowsFromResult(result) {
+  return Array.isArray(result?.data?.rows) ? result.data.rows : [];
+}
+
+function countRowsByBucket(rows, bucketSet) {
+  let count = 0;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const bucket = normalizeNonEmptyString(row?.root_cause_bucket);
+    if (bucketSet.has(bucket)) count += 1;
+  }
+  return count;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = resolvePathMaybeRelative(args.outDir);
@@ -161,6 +174,14 @@ function main() {
     ),
   };
 
+  const canonicalRows = rowsFromResult(results.canonical);
+  const noncanonicalRows = rowsFromResult(results.noncanonical);
+  const backlogRows = rowsFromResult(results.backlog);
+  const allRows = [...canonicalRows, ...noncanonicalRows, ...backlogRows];
+  const codeLaneBuckets = new Set(['explicit_supply_present_but_filtered']);
+  const dataLaneBuckets = new Set(['only_family_supply_present', 'no_explicit_supply_in_any_source', 'registry_not_resolved']);
+  const misrankLaneBuckets = new Set(['explicit_supply_present_but_misranked']);
+
   const bundle = {
     generated_at: new Date().toISOString(),
     base_url: args.baseUrl,
@@ -174,6 +195,11 @@ function main() {
       canonical_bucket_counts: results.canonical.data?.bucket_counts || {},
       noncanonical_bucket_counts: results.noncanonical.data?.bucket_counts || {},
       backlog_bucket_counts: results.backlog.data?.bucket_counts || {},
+      code_lane_count: countRowsByBucket(allRows, codeLaneBuckets),
+      data_lane_count: countRowsByBucket(allRows, dataLaneBuckets),
+      misrank_lane_count: countRowsByBucket(allRows, misrankLaneBuckets),
+      contaminated_attached_slice_count:
+        Number(results.seed_census.data?.summary?.contaminated_attached_slice_count || 0),
       seed_census_summary: results.seed_census.data?.summary || {},
       routine_rows: Array.isArray(results.routine_truth_smoke.data?.rows)
         ? results.routine_truth_smoke.data.rows
