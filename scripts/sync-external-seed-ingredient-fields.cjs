@@ -8,6 +8,7 @@ const {
   ENRICHMENT_SOURCE,
   SEED_ANCHOR_SOURCE_KIND,
   SEED_KB_SYNC_STATUS,
+  buildSeedKbSyncStatus,
   classifyExternalSeedQuarantine,
   enrichExternalSeedRowIngredients,
 } = require('../src/services/externalSeedIngredientEnrichment');
@@ -160,11 +161,18 @@ function resolveWaveDisposition(row, enrichment, args) {
   const beforeStatus = normalizeNonEmptyString(enrichment?.seed_structured_ingredient_status_before || 'missing');
   const enrichmentSource = normalizeNonEmptyString(enrichment?.enrichment_source || 'none');
   const anchorSourceKind = normalizeNonEmptyString(enrichment?.seed_anchor_source_kind || 'none');
+  const reviewedKbRows = Array.isArray(enrichment?.reviewed_kb_rows) ? enrichment.reviewed_kb_rows : [];
+  const beforeSeedKbSyncStatus =
+    normalizeNonEmptyString(enrichment?.seed_kb_sync_status_before) ||
+    buildSeedKbSyncStatus({
+      seedStatus: beforeStatus,
+      reviewedKbRows,
+    });
   const quarantine = classifyExternalSeedQuarantine({
     row,
-    reviewedKbRows: Array.isArray(enrichment?.reviewed_kb_rows) ? enrichment.reviewed_kb_rows : [],
+    reviewedKbRows,
     seedStatus: beforeStatus,
-    seedKbSyncStatus: normalizeNonEmptyString(enrichment?.seed_kb_sync_status || SEED_KB_SYNC_STATUS.missingBoth),
+    seedKbSyncStatus: beforeSeedKbSyncStatus || SEED_KB_SYNC_STATUS.missingBoth,
     enrichmentSource,
     seedEnrichmentMetadata: {
       quarantine_reason: enrichment?.quarantine_reason,
@@ -198,7 +206,7 @@ function resolveWaveDisposition(row, enrichment, args) {
   if (args.wave === WAVE_MODE.kbReviewed) {
     if (
       enrichmentSource !== ENRICHMENT_SOURCE.kbReviewed ||
-      normalizeNonEmptyString(enrichment?.seed_kb_sync_status) !== SEED_KB_SYNC_STATUS.kbOnlyUnsynced
+      beforeSeedKbSyncStatus !== SEED_KB_SYNC_STATUS.kbOnlyUnsynced
     ) {
       return { eligible: false, quarantineReason: 'not_kb_reviewed', attached, quarantine };
     }
@@ -269,11 +277,27 @@ async function runWithDb(args, mode) {
       for (const row of rows) {
         const enrichment = await enrichExternalSeedRowIngredients({ row });
         const disposition = resolveWaveDisposition(row, enrichment, args);
+        const reviewedKbRows = Array.isArray(enrichment?.reviewed_kb_rows) ? enrichment.reviewed_kb_rows : [];
         const nextRow = enrichment?.row && typeof enrichment.row === 'object' ? enrichment.row : row;
         const shouldWrite = mode === 'apply' && enrichment?.changed === true && disposition.eligible === true;
         const item = {
           seed_id: normalizeNonEmptyString(row.id),
           external_product_id: normalizeNonEmptyString(row.external_product_id),
+          title:
+            normalizeNonEmptyString(row.title) ||
+            normalizeNonEmptyString(row.seed_data?.title) ||
+            normalizeNonEmptyString(row.seed_data?.snapshot?.title) ||
+            null,
+          canonical_url:
+            normalizeNonEmptyString(row.canonical_url) ||
+            normalizeNonEmptyString(row.seed_data?.canonical_url) ||
+            normalizeNonEmptyString(row.seed_data?.snapshot?.canonical_url) ||
+            null,
+          destination_url:
+            normalizeNonEmptyString(row.destination_url) ||
+            normalizeNonEmptyString(row.seed_data?.destination_url) ||
+            normalizeNonEmptyString(row.seed_data?.snapshot?.destination_url) ||
+            null,
           changed: enrichment?.changed === true,
           status:
             enrichment?.changed === true
@@ -289,6 +313,12 @@ async function runWithDb(args, mode) {
             enrichment?.seed_structured_ingredient_status_before || 'missing',
           seed_structured_ingredient_status_after:
             enrichment?.seed_structured_ingredient_status_after || 'missing',
+          seed_kb_sync_status_before:
+            enrichment?.seed_kb_sync_status_before ||
+            buildSeedKbSyncStatus({
+              seedStatus: enrichment?.seed_structured_ingredient_status_before || 'missing',
+              reviewedKbRows,
+            }),
           seed_kb_sync_status: enrichment?.seed_kb_sync_status || 'missing_both',
           runtime_ingredient_evidence_source:
             enrichment?.runtime_ingredient_evidence_source || 'none',
@@ -367,7 +397,17 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  _internals: {
+    parseArgs,
+    resolveWaveDisposition,
+    summarize,
+  },
+};

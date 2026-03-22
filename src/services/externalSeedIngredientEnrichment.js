@@ -71,6 +71,45 @@ const NON_BEAUTY_TITLE_PATTERNS = [
   /\bharness\b/i,
   /\btoy\b/i,
 ];
+const WAVE1_OFF_SURFACE_PATTERNS = [
+  /\beye\b/i,
+  /\blip\b/i,
+  /\bpout\b/i,
+  /\bbody\b/i,
+  /\bbase\b/i,
+  /\bprimer\b/i,
+];
+const WAVE1_BUNDLE_PATTERNS = [
+  /\bkit\b/i,
+  /\bset\b/i,
+  /\bduo\b/i,
+  /\btrio\b/i,
+  /\bcollection\b/i,
+  /\bbundle\b/i,
+];
+const WAVE1_SAFE_FACE_SKINCARE_PATTERNS = [
+  /\bserum\b/i,
+  /\bcream\b/i,
+  /\btonic\b/i,
+  /\btoner\b/i,
+  /\bpeel\b/i,
+  /\bmist\b/i,
+  /\bmask\b/i,
+  /\bcleanser\b/i,
+  /\bface\s+wash\b/i,
+  /\bwash\b/i,
+  /\bmoisturi[sz]er\b/i,
+  /\blotion\b/i,
+  /\bessence\b/i,
+  /\bampoule\b/i,
+  /\boil\b/i,
+  /\bgel\b/i,
+  /\btreatment\b/i,
+  /\bsolution\b/i,
+  /\bsuspension\b/i,
+  /\bsunscreen\b/i,
+  /\bspf\b/i,
+];
 const HARD_WRITEBACK_QUARANTINE_BUCKETS = new Set([
   SEED_QUARANTINE_BUCKET.attachedContamination,
   SEED_QUARANTINE_BUCKET.urlAnchorConflict,
@@ -703,10 +742,47 @@ function externalSeedScopeText(row = {}) {
     .join(' ');
 }
 
+function reviewedKbScopeText(reviewedKbRows = []) {
+  return (Array.isArray(reviewedKbRows) ? reviewedKbRows : [])
+    .flatMap((row) => [
+      row?.product_name,
+      row?.source_ref,
+      row?.brand,
+      row?.category,
+    ])
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function wave1ScopeText(row = {}, reviewedKbRows = []) {
+  return [externalSeedScopeText(row), reviewedKbScopeText(reviewedKbRows)]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function hasObviousNonBeautySignals(row = {}) {
   const haystack = externalSeedScopeText(row);
   if (!haystack) return false;
   return NON_BEAUTY_TITLE_PATTERNS.some((pattern) => pattern.test(haystack));
+}
+
+function classifyWave1ManualScopeSignal(row = {}, reviewedKbRows = []) {
+  const haystack = wave1ScopeText(row, reviewedKbRows);
+  if (!haystack) return null;
+  if (WAVE1_BUNDLE_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return 'row_scope_bundle_signal';
+  }
+  if (WAVE1_OFF_SURFACE_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return 'row_scope_off_surface_signal';
+  }
+  return null;
+}
+
+function hasWave1SafeFaceSkincareSignal(row = {}, reviewedKbRows = []) {
+  const haystack = wave1ScopeText(row, reviewedKbRows);
+  if (!haystack) return false;
+  return WAVE1_SAFE_FACE_SKINCARE_PATTERNS.some((pattern) => pattern.test(haystack));
 }
 
 function classifyExternalSeedQuarantine({
@@ -738,6 +814,21 @@ function classifyExternalSeedQuarantine({
       seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.nonBeautyDomain,
       quarantined_from_wave1: true,
       contamination_signal_source: 'row_scope_non_beauty_signal',
+    };
+  }
+  const manualScopeSignal = classifyWave1ManualScopeSignal(row, reviewedKbRows);
+  if (manualScopeSignal) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.manualUpstreamRequired,
+      quarantined_from_wave1: true,
+      contamination_signal_source: manualScopeSignal,
+    };
+  }
+  if (hasReviewedKbRows && !hasWave1SafeFaceSkincareSignal(row, reviewedKbRows)) {
+    return {
+      seed_quarantine_bucket: SEED_QUARANTINE_BUCKET.manualUpstreamRequired,
+      quarantined_from_wave1: true,
+      contamination_signal_source: 'row_scope_missing_safe_skincare_signal',
     };
   }
   if (
@@ -1020,6 +1111,8 @@ module.exports = {
     isReviewedKbIngredientRow,
     hasRowIngredientNameOnlySignal,
     hasObviousNonBeautySignals,
+    classifyWave1ManualScopeSignal,
+    hasWave1SafeFaceSkincareSignal,
     applyExternalSeedEnrichmentMetadata,
   },
 };

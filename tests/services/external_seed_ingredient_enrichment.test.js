@@ -297,4 +297,112 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.quarantined_from_wave1).toBe(true);
     expect(out.contamination_signal_source).toBe('attached_domain_blocklist');
   });
+
+  test('quarantines reviewed KB off-surface rows from Wave 1 auto-sync', async () => {
+    const row = {
+      id: 'eps_eye',
+      domain: 'pixibeauty.com',
+      title: 'Retinol Eye Cream',
+      canonical_url: 'https://pixibeauty.com/products/retinol-eye-cream',
+      destination_url: 'https://pixibeauty.com/products/retinol-eye-cream',
+      seed_data: {
+        snapshot: {
+          title: 'Retinol Eye Cream',
+          canonical_url: 'https://pixibeauty.com/products/retinol-eye-cream',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [
+        {
+          sku_key: 'extseed:eps_eye:US',
+          parse_status: 'OK',
+          raw_ingredient_text_clean: 'Retinol',
+          inci_list: 'Retinol',
+          product_name: 'Retinol Eye Cream - 25 ml',
+          source_ref: 'https://www.pixibeauty.com/products/retinol-eye-cream',
+        },
+      ],
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.kbReviewed);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('row_scope_off_surface_signal');
+  });
+
+  test('quarantines reviewed KB bundle rows from Wave 1 auto-sync', async () => {
+    const row = {
+      id: 'eps_kit',
+      domain: 'dermalogica.com',
+      title: 'dark spot solutions kit',
+      canonical_url: 'https://dermalogica.com/products/dark-spot-solutions-kit',
+      destination_url: 'https://dermalogica.com/products/dark-spot-solutions-kit',
+      seed_data: {
+        snapshot: {
+          title: 'dark spot solutions kit',
+          canonical_url: 'https://dermalogica.com/products/dark-spot-solutions-kit',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [
+        {
+          sku_key: 'extseed:eps_kit:US',
+          parse_status: 'OK',
+          raw_ingredient_text_clean: 'Niacinamide',
+          inci_list: 'Niacinamide',
+          product_name: 'dark spot solutions kit - KIT',
+          source_ref: 'https://www.dermalogica.com/products/dark-spot-solutions-kit',
+        },
+      ],
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.kbReviewed);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('row_scope_bundle_signal');
+  });
+
+  test('quarantines reviewed KB rows that lack a safe face-skincare class signal', async () => {
+    const row = {
+      id: 'eps_base',
+      domain: 'pixibeauty.com',
+      title: 'On-the-Glow BASE',
+      canonical_url: 'https://pixibeauty.com/products/on-the-glow-base',
+      destination_url: 'https://pixibeauty.com/products/on-the-glow-base',
+      seed_data: {
+        snapshot: {
+          title: 'On-the-Glow BASE',
+          canonical_url: 'https://pixibeauty.com/products/on-the-glow-base',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [
+        {
+          sku_key: 'extseed:eps_base:US',
+          parse_status: 'OK',
+          raw_ingredient_text_clean: 'Niacinamide',
+          inci_list: 'Niacinamide',
+          product_name: 'On-the-Glow BASE',
+          source_ref: 'https://www.pixibeauty.com/products/on-the-glow-base',
+        },
+      ],
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.kbReviewed);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('row_scope_off_surface_signal');
+  });
 });
