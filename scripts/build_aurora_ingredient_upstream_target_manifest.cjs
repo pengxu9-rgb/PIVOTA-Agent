@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function parseArgs(argv) {
-  const out = { inputPath: '', outPath: '' };
+  const out = { inputPath: '', outPath: '', extractAuditPath: '' };
   for (let idx = 0; idx < argv.length; idx += 1) {
     const token = String(argv[idx] || '').trim();
     if (token === '--input') {
@@ -12,6 +12,9 @@ function parseArgs(argv) {
       idx += 1;
     } else if (token === '--out') {
       out.outPath = String(argv[idx + 1] || '').trim();
+      idx += 1;
+    } else if (token === '--extract-audit') {
+      out.extractAuditPath = String(argv[idx + 1] || '').trim();
       idx += 1;
     }
   }
@@ -23,6 +26,50 @@ function normalizePath(value) {
 }
 
 const OFFICIAL_TARGETS = {
+  squalane: [
+    {
+      brand: 'The Ordinary',
+      domain: 'theordinary.com',
+      product_name: '100% Plant-Derived Squalane',
+      pdp_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+      market: 'US',
+      target_step_family: 'oil',
+      rationale: 'Official PDP with explicit squalane naming and oil step alignment.',
+    },
+  ],
+  centella_asiatica: [
+    {
+      brand: 'SKIN1004',
+      domain: 'skin1004.com',
+      product_name: 'Madagascar Centella Ampoule',
+      pdp_url: 'https://www.skin1004.com/products/skin1004-madagascar-centella-ampoule',
+      market: 'US',
+      target_step_family: 'serum',
+      rationale: 'Official PDP with centella-led ampoule naming and serum-family fit.',
+    },
+  ],
+  tranexamic_acid: [
+    {
+      brand: 'Good Molecules',
+      domain: 'goodmolecules.com',
+      product_name: 'Discoloration Correcting Serum',
+      pdp_url: 'https://www.goodmolecules.com/products/discoloration-correcting-serum',
+      market: 'US',
+      target_step_family: 'serum',
+      rationale: 'Official PDP with tranexamic-acid-led brightening serum positioning; currently needs extractor viability check.',
+    },
+  ],
+  lactic_acid: [
+    {
+      brand: 'The Ordinary',
+      domain: 'theordinary.com',
+      product_name: 'Lactic Acid 10% + HA',
+      pdp_url: 'https://theordinary.com/en-us/lactic-acid-10-ha-exfoliator-100426.html',
+      market: 'US',
+      target_step_family: 'serum',
+      rationale: 'Official PDP with explicit lactic-acid naming and leave-on exfoliant serum fit.',
+    },
+  ],
   alpha_arbutin: [
     {
       brand: 'The Ordinary',
@@ -83,12 +130,55 @@ function buildCommandHints(target) {
   return commands;
 }
 
-function buildPipelineNotes(item) {
+function indexExtractAuditRows(doc) {
+  const rows = Array.isArray(doc?.rows) ? doc.rows : [];
+  return rows.reduce((acc, row) => {
+    const ingredientId = String(row?.ingredient_id || '').trim();
+    if (!ingredientId) return acc;
+    if (!Array.isArray(acc[ingredientId])) acc[ingredientId] = [];
+    acc[ingredientId].push(row);
+    return acc;
+  }, {});
+}
+
+function summarizeExtractAudit(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    safe_to_backfill: row.safe_to_backfill === true,
+    http_status: Number.isFinite(row.http_status) ? row.http_status : null,
+    product_count: Math.max(0, Number(row.product_count || 0)),
+    first_title: String(row.first_title || '').trim() || null,
+    representative_url: String(row.representative_url || '').trim() || null,
+    discovery_strategy: String(row.discovery_strategy || '').trim() || null,
+    failure_category: String(row.failure_category || '').trim() || null,
+    block_provider: String(row?.diagnostics?.block_provider || '').trim() || null,
+  };
+}
+
+function resolveTargetExtractAudit(target, extractAuditIndex, ingredientId) {
+  const rows = Array.isArray(extractAuditIndex?.[ingredientId]) ? extractAuditIndex[ingredientId] : [];
+  if (!rows.length) return null;
+  const pdpUrl = String(target?.pdp_url || '').trim();
+  const exact = rows.find((row) => String(row?.url || '').trim() === pdpUrl);
+  return summarizeExtractAudit(exact || rows[0]);
+}
+
+function buildPipelineNotes(item, targetSummaries) {
+  const blockedTargets = targetSummaries.filter(
+    (target) => target?.extract_spot_check_result && target.extract_spot_check_result.safe_to_backfill === false,
+  );
   if (item?.seed_creation_required) {
     return [
       'Current backfill script only refreshes existing external_product_seeds rows; it does not create new rows.',
       'Run catalog extract spot-check on the official PDP target first.',
       'Create or import external seed rows upstream, then use backfill only as a refresh step.',
+    ];
+  }
+  if (blockedTargets.length > 0) {
+    return [
+      'Existing seed rows appear to exist for at least one explicit source.',
+      'At least one official PDP target is not extractor-safe yet; treat that target as manual-upstream until bot protection or discovery issues are resolved.',
+      'Use dry-run backfill only on targets whose extract spot-check result is safe_to_backfill=true.',
     ];
   }
   return [
@@ -97,8 +187,23 @@ function buildPipelineNotes(item) {
   ];
 }
 
-function buildManifestItem(item) {
+function buildManifestItem(item, extractAuditIndex) {
   const targets = OFFICIAL_TARGETS[item?.ingredient_id] || [];
+  const officialTargets = targets.map((target) => ({
+    ...target,
+    extract_spot_check: {
+      method: 'POST',
+      endpoint: 'https://pivota-catalog-intelligence-production.up.railway.app/api/extract',
+      body: {
+        brand: target.brand,
+        domain: target.pdp_url,
+        market: target.market,
+        limit: 50,
+      },
+    },
+    dry_run_command_hints: buildCommandHints(target),
+    extract_spot_check_result: resolveTargetExtractAudit(target, extractAuditIndex, item?.ingredient_id),
+  }));
   return {
     ingredient_id: item?.ingredient_id || null,
     ingredient_name: item?.ingredient_name || null,
@@ -108,21 +213,8 @@ function buildManifestItem(item) {
     seed_creation_required: Boolean(item?.seed_creation_required),
     recommended_action: item?.recommended_action || null,
     source_statuses: item?.source_statuses || null,
-    official_targets: targets.map((target) => ({
-      ...target,
-      extract_spot_check: {
-        method: 'POST',
-        endpoint: 'https://pivota-catalog-intelligence-production.up.railway.app/api/extract',
-        body: {
-          brand: target.brand,
-          domain: target.pdp_url,
-          market: target.market,
-          limit: 50,
-        },
-      },
-      dry_run_command_hints: buildCommandHints(target),
-    })),
-    pipeline_notes: buildPipelineNotes(item),
+    official_targets: officialTargets,
+    pipeline_notes: buildPipelineNotes(item, officialTargets),
     candidate_hints: Array.isArray(item?.candidate_hints) ? item.candidate_hints : [],
   };
 }
@@ -133,10 +225,17 @@ function main() {
   if (!inputPath) throw new Error('Missing required --input <data-supply-backlog.json>');
   const resolvedInput = path.isAbsolute(inputPath) ? inputPath : path.join(process.cwd(), inputPath);
   const input = JSON.parse(fs.readFileSync(resolvedInput, 'utf8'));
-  const items = Array.isArray(input?.items) ? input.items.map(buildManifestItem) : [];
+  const extractAuditPath = normalizePath(args.extractAuditPath);
+  const resolvedExtractAudit = extractAuditPath
+    ? (path.isAbsolute(extractAuditPath) ? extractAuditPath : path.join(process.cwd(), extractAuditPath))
+    : '';
+  const extractAuditDoc = resolvedExtractAudit ? JSON.parse(fs.readFileSync(resolvedExtractAudit, 'utf8')) : null;
+  const extractAuditIndex = indexExtractAuditRows(extractAuditDoc);
+  const items = Array.isArray(input?.items) ? input.items.map((item) => buildManifestItem(item, extractAuditIndex)) : [];
   const outputDoc = {
     generated_at: new Date().toISOString(),
     source_backlog: resolvedInput,
+    extract_audit: resolvedExtractAudit || null,
     x_service_commit: input?.x_service_commit || null,
     items,
   };
@@ -149,10 +248,23 @@ function main() {
   }
 }
 
-try {
-  main();
-  process.exit(0);
-} catch (error) {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+    process.exit(1);
+  }
 }
+
+module.exports = {
+  _internals: {
+    buildManifestItem,
+    buildPipelineNotes,
+    indexExtractAuditRows,
+    parseArgs,
+    resolveTargetExtractAudit,
+    summarizeExtractAudit,
+  },
+};
