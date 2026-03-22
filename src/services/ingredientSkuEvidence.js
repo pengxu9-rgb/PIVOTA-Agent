@@ -706,14 +706,35 @@ function buildRecallCandidateFieldTexts(product) {
 
 function resolveRecallCandidateStep(product) {
   const row = product && typeof product === 'object' ? product : {};
+  const seedData = row.seed_data && typeof row.seed_data === 'object' ? row.seed_data : {};
+  const snapshot = seedData.snapshot && typeof seedData.snapshot === 'object' ? seedData.snapshot : {};
   const direct =
     normalizeRecoTargetStep(row.category) ||
     normalizeRecoTargetStep(row.product_type) ||
     normalizeRecoTargetStep(row.title) ||
-    normalizeRecoTargetStep(row.name);
+    normalizeRecoTargetStep(row.name) ||
+    normalizeRecoTargetStep(row.canonical_url) ||
+    normalizeRecoTargetStep(row.destination_url) ||
+    normalizeRecoTargetStep(snapshot.category) ||
+    normalizeRecoTargetStep(snapshot.title) ||
+    normalizeRecoTargetStep(snapshot.canonical_url) ||
+    normalizeRecoTargetStep(snapshot.destination_url);
   if (direct) return direct;
   const resolved = resolveRecoTargetStepIntent({
-    text: [row.title, row.name, row.category, row.product_type, row.description]
+    text: [
+      row.title,
+      row.name,
+      row.category,
+      row.product_type,
+      row.description,
+      row.canonical_url,
+      row.destination_url,
+      snapshot.title,
+      snapshot.category,
+      snapshot.description,
+      snapshot.canonical_url,
+      snapshot.destination_url,
+    ]
       .map((value) => String(value || '').trim())
       .filter(Boolean)
       .join(' '),

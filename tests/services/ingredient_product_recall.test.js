@@ -641,6 +641,73 @@ describe('ingredientProductRecall', () => {
     expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
 
+  test('keeps direct hit for oil products when oil step is only present in canonical url', async () => {
+    jest.doMock('../../src/services/pciKbClient', () => ({
+      kbQuery: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('to_regclass')) {
+          return { rows: [{ table_name: 'pci_kb.sku_ingredients' }] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) return { rows: [] };
+        const now = new Date().toISOString();
+        return {
+          rows: [
+            {
+              id: 'seed_squalane',
+              external_product_id: 'ext_squalane',
+              destination_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+              canonical_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+              domain: 'theordinary.com',
+              title: '100% Plant-Derived Squalane',
+              image_url: 'https://theordinary.com/squalane.png',
+              price_amount: 10.4,
+              price_currency: 'USD',
+              availability: 'in stock',
+              attached_product_key: null,
+              ingredient_tokens: ['Squalane'],
+              seed_data: {
+                brand: 'The Ordinary',
+                title: '100% Plant-Derived Squalane',
+                canonical_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+                destination_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+                snapshot: {
+                  title: '100% Plant-Derived Squalane',
+                  canonical_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+                  destination_url: 'https://theordinary.com/en-us/100-plant-derived-squalane-face-oil-100398.html',
+                },
+              },
+              updated_at: now,
+              created_at: now,
+            },
+          ],
+        };
+      }),
+    }));
+
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    const out = await recallIngredientProducts({
+      query: 'squalane oil',
+      ingredientId: 'squalane',
+      targetStepFamily: 'oil',
+      limit: 3,
+    });
+
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_hit');
+    expect(out.products.map((row) => row.title || row.name)).toEqual(['100% Plant-Derived Squalane']);
+    expect(out.diagnostics.ingredient_ranked_candidate_samples[0]).toMatchObject({
+      title: '100% Plant-Derived Squalane',
+      candidate_step: 'oil',
+      family_relation: 'same_family',
+    });
+  });
+
   test('prefers surface-explicit B5 products over KB-only generic support serum', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
