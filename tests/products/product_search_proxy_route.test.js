@@ -3315,6 +3315,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         ingredient_registry_match: true,
         ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
         kb_recall_attempted: true,
+        ingredient_direct_source_statuses: expect.any(Object),
       }),
     );
   });
@@ -3475,6 +3476,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         ingredient_direct_main_path_status: 'direct_hit',
         ingredient_direct_miss_reason: null,
         ingredient_direct_display_strategy: 'service_stabilized',
+        ingredient_direct_source_statuses: expect.any(Object),
       }),
     );
   });

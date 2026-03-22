@@ -79,6 +79,31 @@ function summarizeProducts(products, limit = 3) {
   }));
 }
 
+function summarizeSamples(samples, limit = 5) {
+  return (Array.isArray(samples) ? samples : []).slice(0, limit).map((row) => ({
+    title: String(row?.title || '').trim() || null,
+    brand: String(row?.brand || '').trim() || null,
+    domain: String(row?.domain || '').trim() || null,
+    candidate_url: String(row?.candidate_url || '').trim() || null,
+    external_seed_id: String(row?.external_seed_id || '').trim() || null,
+    attached_product_key: String(row?.attached_product_key || '').trim() || null,
+    source_tag: String(row?.source_tag || '').trim() || null,
+    source_bucket: String(row?.source_bucket || '').trim() || null,
+    reject_reason: String(row?.reject_reason || '').trim() || null,
+    candidate_step: String(row?.candidate_step || '').trim() || null,
+    family_relation: String(row?.family_relation || '').trim() || null,
+    kb_explicit: Math.max(0, Number(row?.kb_explicit || 0)),
+    explicit_hits: Math.max(0, Number(row?.explicit_hits || 0)),
+    family_only: Math.max(0, Number(row?.family_only || 0)),
+    target_anchor_hits: Math.max(0, Number(row?.target_anchor_hits || 0)),
+    strong_target_anchor_hits: Math.max(0, Number(row?.strong_target_anchor_hits || 0)),
+    surface_explicit_hits: Math.max(0, Number(row?.surface_explicit_hits || 0)),
+    kb_step_hint_match: Math.max(0, Number(row?.kb_step_hint_match || 0)),
+    same_family_gate_required: Math.max(0, Number(row?.same_family_gate_required || 0)),
+    target_step_negative_signal: Math.max(0, Number(row?.target_step_negative_signal || 0)),
+  }));
+}
+
 function hasExplicitEvidenceBreakdown(row) {
   const breakdown = row && typeof row === 'object' ? row : {};
   return (
@@ -167,13 +192,14 @@ async function fetchAuditRow(baseUrl, limit, [ingredientClass, ingredientId, ing
       typeof metadata.ingredient_direct_source_reject_breakdown === 'object'
         ? metadata.ingredient_direct_source_reject_breakdown
         : {},
+    source_statuses:
+      metadata.ingredient_direct_source_statuses &&
+      typeof metadata.ingredient_direct_source_statuses === 'object'
+        ? metadata.ingredient_direct_source_statuses
+        : {},
     top_products: summarizeProducts(products),
-    ranked_samples: Array.isArray(metadata.ingredient_ranked_candidate_samples)
-      ? metadata.ingredient_ranked_candidate_samples.slice(0, 5)
-      : [],
-    rejected_samples: Array.isArray(metadata.ingredient_rejected_candidate_samples)
-      ? metadata.ingredient_rejected_candidate_samples.slice(0, 5)
-      : [],
+    ranked_samples: summarizeSamples(metadata.ingredient_ranked_candidate_samples, 5),
+    rejected_samples: summarizeSamples(metadata.ingredient_rejected_candidate_samples, 5),
   };
 }
 

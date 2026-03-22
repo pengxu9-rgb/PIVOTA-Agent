@@ -1459,6 +1459,59 @@ describe('ingredientProductRecall', () => {
     );
   });
 
+  test('buildDirectRecallSourceStatuses classifies filtered explicit rows separately from no-row sources', () => {
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const out = _internals.buildDirectRecallSourceStatuses(
+      {
+        kb_attached_seed: { fetched: 4, admitted: 1, rejected: 3, final: 0 },
+        attached_seed: { fetched: 0, admitted: 0, rejected: 0, final: 0 },
+        products_cache: { fetched: 2, admitted: 0, rejected: 2, final: 0 },
+        unattached_seed: { fetched: 1, admitted: 0, rejected: 1, final: 0 },
+        family_fallback: { fetched: 9, admitted: 6, rejected: 3, final: 0 },
+      },
+      {
+        kb_attached_seed: {
+          no_explicit_sku_evidence: 0,
+          step_family_mismatch: 3,
+          all_candidates_filtered_noise: 0,
+          off_surface: 0,
+        },
+        attached_seed: {
+          no_explicit_sku_evidence: 0,
+          step_family_mismatch: 0,
+          all_candidates_filtered_noise: 0,
+          off_surface: 0,
+        },
+        products_cache: {
+          no_explicit_sku_evidence: 2,
+          step_family_mismatch: 0,
+          all_candidates_filtered_noise: 0,
+          off_surface: 0,
+        },
+        unattached_seed: {
+          no_explicit_sku_evidence: 0,
+          step_family_mismatch: 1,
+          all_candidates_filtered_noise: 0,
+          off_surface: 0,
+        },
+        family_fallback: {
+          no_explicit_sku_evidence: 0,
+          step_family_mismatch: 3,
+          all_candidates_filtered_noise: 0,
+          off_surface: 0,
+        },
+      },
+    );
+
+    expect(out).toEqual({
+      kb_attached_seed: 'filtered_after_admission',
+      attached_seed: 'no_rows',
+      products_cache: 'matched_rows_without_explicit_admission',
+      unattached_seed: 'matched_rows_filtered',
+      family_fallback: 'filtered_after_admission',
+    });
+  });
+
   test('buildCandidateEvidence exposes strong-anchor diagnostics for humectant moisturizer gating', () => {
     const { LOCAL_INGREDIENT_RECALL_REGISTRY } = require('../../src/services/ingredientRecallRegistry');
     const { _internals } = require('../../src/services/ingredientSkuEvidence');

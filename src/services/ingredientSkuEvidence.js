@@ -72,6 +72,12 @@ const DIRECT_RECALL_SOURCE_BUCKETS = Object.freeze([
   'unattached_seed',
   'family_fallback',
 ]);
+const DIRECT_RECALL_SOURCE_STATUS_NO_ROWS = 'no_rows';
+const DIRECT_RECALL_SOURCE_STATUS_DIRECT_FINAL = 'direct_final';
+const DIRECT_RECALL_SOURCE_STATUS_FILTERED_AFTER_ADMISSION = 'filtered_after_admission';
+const DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_WITHOUT_EXPLICIT_ADMISSION =
+  'matched_rows_without_explicit_admission';
+const DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_FILTERED = 'matched_rows_filtered';
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -207,6 +213,13 @@ function initDirectRecallSourceRejectBreakdown() {
   }, {});
 }
 
+function initDirectRecallSourceStatuses() {
+  return DIRECT_RECALL_SOURCE_BUCKETS.reduce((acc, key) => {
+    acc[key] = DIRECT_RECALL_SOURCE_STATUS_NO_ROWS;
+    return acc;
+  }, {});
+}
+
 function normalizeDirectRecallSourceBucket(sourceTag) {
   const normalized = String(sourceTag || '').trim().toLowerCase();
   if (!normalized) return '';
@@ -250,6 +263,42 @@ function bumpDirectRecallSourceRejectReason(target, sourceTag, reason, amount = 
   if (!(normalizedReason in target[bucket])) target[bucket][normalizedReason] = 0;
   target[bucket][normalizedReason] =
     Number(target[bucket][normalizedReason] || 0) + Math.max(0, Math.trunc(Number(amount) || 0));
+}
+
+function classifyDirectRecallSourceStatus(stageRow, rejectRow) {
+  const stage = stageRow && typeof stageRow === 'object' ? stageRow : {};
+  const reject = rejectRow && typeof rejectRow === 'object' ? rejectRow : {};
+  const fetched = Math.max(0, Number(stage.fetched || 0));
+  const admitted = Math.max(0, Number(stage.admitted || 0));
+  const rejected = Math.max(0, Number(stage.rejected || 0));
+  const final = Math.max(0, Number(stage.final || 0));
+  const noExplicit = Math.max(0, Number(reject.no_explicit_sku_evidence || 0));
+  const stepMismatch = Math.max(0, Number(reject.step_family_mismatch || 0));
+  const offSurface = Math.max(0, Number(reject.off_surface || 0));
+  const noise = Math.max(0, Number(reject.all_candidates_filtered_noise || 0));
+
+  if (final > 0) return DIRECT_RECALL_SOURCE_STATUS_DIRECT_FINAL;
+  if (admitted > 0) return DIRECT_RECALL_SOURCE_STATUS_FILTERED_AFTER_ADMISSION;
+  if (fetched <= 0 && rejected <= 0) return DIRECT_RECALL_SOURCE_STATUS_NO_ROWS;
+  if (stepMismatch > 0 || offSurface > 0 || noise > 0) {
+    return DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_FILTERED;
+  }
+  if (noExplicit > 0) {
+    return DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_WITHOUT_EXPLICIT_ADMISSION;
+  }
+  if (fetched > 0 || rejected > 0) {
+    return DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_FILTERED;
+  }
+  return DIRECT_RECALL_SOURCE_STATUS_NO_ROWS;
+}
+
+function buildDirectRecallSourceStatuses(stageCounts, rejectBreakdown) {
+  const stages = stageCounts && typeof stageCounts === 'object' ? stageCounts : {};
+  const rejects = rejectBreakdown && typeof rejectBreakdown === 'object' ? rejectBreakdown : {};
+  return DIRECT_RECALL_SOURCE_BUCKETS.reduce((acc, key) => {
+    acc[key] = classifyDirectRecallSourceStatus(stages[key], rejects[key]);
+    return acc;
+  }, {});
 }
 
 function buildPhrasePatterns(phrases) {
@@ -332,6 +381,59 @@ function countStrongFamilyMatches(text, phrases) {
 function normalizeUrl(value) {
   const text = String(value || '').trim();
   return /^https?:\/\//i.test(text) ? text : '';
+}
+
+function extractDiagnosticCandidateUrl(product) {
+  return normalizeUrl(
+    product?.url ||
+      product?.canonical_url ||
+      product?.destination_url ||
+      product?.product_url ||
+      product?.pdp_url,
+  );
+}
+
+function extractDiagnosticCandidateDomain(product) {
+  const directDomain = String(product?.domain || '').trim();
+  if (directDomain) return directDomain;
+  const candidateUrl = extractDiagnosticCandidateUrl(product);
+  if (!candidateUrl) return null;
+  try {
+    return new URL(candidateUrl).hostname || null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, extras = {}) {
+  const sampleEvidence = evidence && typeof evidence === 'object' ? evidence : {};
+  const sourceBucket = normalizeDirectRecallSourceBucket(sourceTag);
+  const title =
+    String(product?.title || product?.name || product?.display_name || product?.product_name || '').trim() || null;
+  const brand = String(product?.brand || product?.vendor || '').trim() || null;
+  const candidateUrl = extractDiagnosticCandidateUrl(product);
+  const externalSeedId = String(product?.external_seed_id || '').trim() || null;
+  const attachedProductKey = String(product?.attached_product_key || '').trim() || null;
+  return {
+    title,
+    brand,
+    domain: extractDiagnosticCandidateDomain(product),
+    candidate_url: candidateUrl || null,
+    external_seed_id: externalSeedId,
+    attached_product_key: attachedProductKey,
+    source_tag: String(sourceTag || '').trim() || null,
+    source_bucket: sourceBucket || null,
+    candidate_step: sampleEvidence?.candidate_step || resolveRecallCandidateStep(product) || null,
+    family_relation: sampleEvidence?.family_relation || null,
+    kb_explicit: Number(extras?.kbExplicit || sampleEvidence?.kb_explicit || 0) > 0 ? 1 : 0,
+    target_anchor_hits: Number(sampleEvidence?.target_anchor_hits || 0) || 0,
+    strong_target_anchor_hits: Number(sampleEvidence?.strong_target_anchor_hits || 0) || 0,
+    surface_explicit_hits: Number(sampleEvidence?.surface_explicit_hits || 0) || 0,
+    kb_step_hint_match: Number(sampleEvidence?.kb_step_hint_match || 0) || 0,
+    same_family_gate_required: Number(sampleEvidence?.same_family_gate_required || 0) || 0,
+    target_step_negative_signal: Number(sampleEvidence?.target_step_negative_signal || 0) || 0,
+    ...(extras && typeof extras === 'object' ? extras : {}),
+  };
 }
 
 function normalizeIngredientRecallTitleForDedupe(product) {
@@ -1812,6 +1914,7 @@ async function recallIngredientProductsFromProfile({
     family_fallback_used: false,
     ingredient_direct_source_stage_counts: initDirectRecallSourceStageCounts(),
     ingredient_direct_source_reject_breakdown: initDirectRecallSourceRejectBreakdown(),
+    ingredient_direct_source_statuses: initDirectRecallSourceStatuses(),
     recall_source_breakdown: {},
     ingredient_candidate_reject_breakdown: {},
     ingredient_rejected_candidate_samples: [],
@@ -1854,21 +1957,13 @@ async function recallIngredientProductsFromProfile({
       1,
     );
     mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, normalizedReason, 1);
-    pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
-      title:
-        String(product?.title || product?.name || product?.display_name || '').trim() || null,
-      source_tag: sourceTag,
+    pushCandidateSample(
+      diagnostics.ingredient_rejected_candidate_samples,
+      buildDiagnosticCandidateSample(product, sourceTag, evidence, {
       reject_reason: normalizedReason,
-      candidate_step: evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
-      family_relation: evidence?.family_relation || null,
-      kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
-      target_anchor_hits: Number(evidence?.target_anchor_hits || 0) || 0,
-      strong_target_anchor_hits: Number(evidence?.strong_target_anchor_hits || 0) || 0,
-      surface_explicit_hits: Number(evidence?.surface_explicit_hits || 0) || 0,
-      kb_step_hint_match: Number(evidence?.kb_step_hint_match || 0) || 0,
-      same_family_gate_required: Number(evidence?.same_family_gate_required || 0) || 0,
-      target_step_negative_signal: Number(evidence?.target_step_negative_signal || 0) || 0,
-    });
+        kbExplicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
+      }),
+    );
   };
 
   const addProduct = (product, sourceTag, { allowFamilyOnly = false, kbEvidence = null } = {}) => {
@@ -2150,21 +2245,13 @@ async function recallIngredientProductsFromProfile({
     diagnostics.ingredient_candidate_evidence_breakdown.ingredient_token_alias += Number(row.evidence.ingredient_token_alias || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.url_alias += Number(row.evidence.url_alias || 0) > 0 ? 1 : 0;
     diagnostics.ingredient_candidate_evidence_breakdown.family_only += Number(row.evidence.family_only || 0) > 0 ? 1 : 0;
-    pushCandidateSample(diagnostics.ingredient_ranked_candidate_samples, {
-      title: String(row.product?.title || row.product?.name || row.product?.display_name || '').trim() || null,
-      source_tag: row.source_tag || null,
-      candidate_step: row.evidence?.candidate_step || null,
-      family_relation: row.evidence?.family_relation || null,
-      kb_explicit: Number(row.evidence?.kb_explicit || 0) > 0 ? 1 : 0,
+    pushCandidateSample(
+      diagnostics.ingredient_ranked_candidate_samples,
+      buildDiagnosticCandidateSample(row.product, row.source_tag || null, row.evidence, {
       explicit_hits: Number(row.evidence?.explicit_hits || 0) || 0,
       family_only: Number(row.evidence?.family_only || 0) > 0 ? 1 : 0,
-      target_anchor_hits: Number(row.evidence?.target_anchor_hits || 0) || 0,
-      strong_target_anchor_hits: Number(row.evidence?.strong_target_anchor_hits || 0) || 0,
-      surface_explicit_hits: Number(row.evidence?.surface_explicit_hits || 0) || 0,
-      kb_step_hint_match: Number(row.evidence?.kb_step_hint_match || 0) || 0,
-      same_family_gate_required: Number(row.evidence?.same_family_gate_required || 0) || 0,
-      target_step_negative_signal: Number(row.evidence?.target_step_negative_signal || 0) || 0,
-    });
+      }),
+    );
   }
 
   const stabilizationRows = candidates.slice(
@@ -2202,6 +2289,10 @@ async function recallIngredientProductsFromProfile({
   });
   const stabilizedHasExplicitEvidence = stabilizedProducts.some((product) => hasProductExplicitRecallEvidence(product));
   diagnostics.ingredient_direct_main_path_status = stabilizedHasExplicitEvidence ? 'direct_hit' : 'direct_empty';
+  diagnostics.ingredient_direct_source_statuses = buildDirectRecallSourceStatuses(
+    diagnostics.ingredient_direct_source_stage_counts,
+    diagnostics.ingredient_direct_source_reject_breakdown,
+  );
   if (stabilizedProducts.length > 0 && stabilizedHasExplicitEvidence) diagnostics.ingredient_direct_miss_reason = null;
 
   return {
@@ -2229,5 +2320,7 @@ module.exports = {
     buildTargetAnchoredExplicitPatterns,
     collapseIngredientRecallProducts,
     normalizeUrl,
+    classifyDirectRecallSourceStatus,
+    buildDirectRecallSourceStatuses,
   },
 };

@@ -8154,6 +8154,11 @@ async function searchIngredientIntentProductsDirect({ search = {}, metadata = {}
       typeof diagnostics.ingredient_direct_source_reject_breakdown === 'object'
         ? { ...diagnostics.ingredient_direct_source_reject_breakdown }
         : {},
+    ingredient_direct_source_statuses:
+      diagnostics.ingredient_direct_source_statuses &&
+      typeof diagnostics.ingredient_direct_source_statuses === 'object'
+        ? { ...diagnostics.ingredient_direct_source_statuses }
+        : {},
     ingredient_candidate_evidence_breakdown:
       diagnostics.ingredient_candidate_evidence_breakdown &&
       typeof diagnostics.ingredient_candidate_evidence_breakdown === 'object'
