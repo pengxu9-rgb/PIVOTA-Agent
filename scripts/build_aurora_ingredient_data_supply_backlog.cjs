@@ -101,8 +101,19 @@ function deriveNextAction(row) {
   return 'review_candidate_hints_and_rebuild_explicit_supply';
 }
 
+function requiresSeedCreation(row) {
+  const gap = buildSourceGapSummary(row);
+  return (
+    gap.kb_attached_seed === 'no_rows' &&
+    gap.attached_seed === 'no_rows' &&
+    gap.products_cache === 'no_rows' &&
+    gap.unattached_seed === 'no_rows'
+  );
+}
+
 function buildItem(row) {
   if (!isDataSupplyBucket(row?.root_cause_bucket)) return null;
+  const seedCreationRequired = requiresSeedCreation(row);
   return {
     ingredient_id: row.ingredient_id || null,
     ingredient_name: row.ingredient_name || null,
@@ -110,6 +121,9 @@ function buildItem(row) {
     query: row.query || null,
     root_cause_bucket: row.root_cause_bucket || null,
     recommended_action: deriveNextAction(row),
+    seed_creation_required: seedCreationRequired,
+    external_seed_refresh_only: true,
+    remediation_lane: seedCreationRequired ? 'create_new_external_seed_supply' : 'refresh_existing_seed_supply',
     miss_reason: row.miss_reason || null,
     query_source: row.query_source || null,
     registry_source: row.registry_source || null,
