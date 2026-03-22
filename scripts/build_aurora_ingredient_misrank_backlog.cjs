@@ -71,6 +71,15 @@ function collectConflictingIngredientIds(text, currentIngredientId) {
   return Array.from(new Set(ids));
 }
 
+function hasIngredientSurfaceAnchor(text, ingredientId) {
+  const profile = LOCAL_INGREDIENT_RECALL_REGISTRY?.[ingredientId];
+  if (!profile) return false;
+  return (
+    countPhraseMatches(text, profile?.exact_phrases) +
+    countPhraseMatches(text, profile?.alias_phrases)
+  ) > 0;
+}
+
 function summarizeReasons(entries) {
   const out = {};
   for (const entry of Array.isArray(entries) ? entries : []) {
@@ -81,15 +90,46 @@ function summarizeReasons(entries) {
   return out;
 }
 
+function findLeadRankedSample(row) {
+  const ranked = Array.isArray(row?.ranked_samples) ? row.ranked_samples : [];
+  const topProducts = Array.isArray(row?.top_products) ? row.top_products : [];
+  const leadTop = topProducts[0] || null;
+  if (!leadTop) return ranked[0] || null;
+
+  const topUrl = normalizeText(leadTop?.url);
+  const topName = normalizeText(leadTop?.name);
+  const topBrand = normalizeText(leadTop?.brand);
+
+  if (topUrl) {
+    const byUrl = ranked.find((sample) => normalizeText(sample?.candidate_url) === topUrl);
+    if (byUrl) return byUrl;
+  }
+
+  if (topName) {
+    const byTitle = ranked.find((sample) => normalizeText(sample?.title) === topName);
+    if (byTitle) return byTitle;
+  }
+
+  if (topName && topBrand) {
+    const byTitleBrand = ranked.find(
+      (sample) =>
+        normalizeText(sample?.title) === topName &&
+        normalizeText(sample?.brand) === topBrand,
+    );
+    if (byTitleBrand) return byTitleBrand;
+  }
+
+  return ranked[0] || null;
+}
+
 function buildMisrankEntry(row, sourceFile) {
   if (!row || row.root_cause_bucket !== 'direct_hit') return null;
   if (normalizeNonEmptyString(row.query_source) !== 'agent_products_ingredient_recall_direct') return null;
 
   const ingredientId = normalizeNonEmptyString(row.ingredient_id);
-  const ranked = Array.isArray(row.ranked_samples) ? row.ranked_samples : [];
   const topProducts = Array.isArray(row.top_products) ? row.top_products : [];
-  const leadRanked = ranked[0] || null;
   const leadTop = topProducts[0] || null;
+  const leadRanked = findLeadRankedSample(row);
   const titleText = [
     leadRanked?.title,
     leadTop?.name,
@@ -100,6 +140,7 @@ function buildMisrankEntry(row, sourceFile) {
   ].map(normalizeNonEmptyString).filter(Boolean).join(' ');
   const combinedText = `${titleText} ${urlText}`.trim();
   const conflictingIngredientIds = collectConflictingIngredientIds(combinedText, ingredientId);
+  const hasCurrentIngredientSurfaceAnchor = hasIngredientSurfaceAnchor(combinedText, ingredientId);
   const reasons = [];
 
   const surfaceExplicitHits = Number(leadRanked?.surface_explicit_hits || 0);
@@ -109,7 +150,7 @@ function buildMisrankEntry(row, sourceFile) {
   if (surfaceExplicitHits <= 0 && strongTargetAnchorHits <= 0 && kbExplicit > 0) {
     reasons.push('kb_only_lead_without_target_anchor');
   }
-  if (conflictingIngredientIds.length > 0) {
+  if (conflictingIngredientIds.length > 0 && !hasCurrentIngredientSurfaceAnchor) {
     reasons.push('competing_title_or_url_anchor');
   }
   if (
@@ -199,6 +240,8 @@ module.exports = {
   _internals: {
     buildMisrankEntry,
     collectConflictingIngredientIds,
+    findLeadRankedSample,
+    hasIngredientSurfaceAnchor,
     parseArgs,
     summarizeReasons,
   },
