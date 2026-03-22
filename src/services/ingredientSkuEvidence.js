@@ -1149,6 +1149,25 @@ function scoreCandidateEvidence(candidate, sourceRank = 0) {
   };
 }
 
+function shouldLateRejectDirectCandidate(candidate) {
+  const evidence = candidate?.evidence && typeof candidate.evidence === 'object'
+    ? candidate.evidence
+    : null;
+  if (!evidence) return null;
+  if (Number(evidence.explicit_hits || 0) <= 0) return null;
+  if (Number(evidence.same_family_gate_required || 0) <= 0) return null;
+  if (String(evidence.family_relation || '').trim() !== 'same_family') return null;
+
+  const hasStrongAnchor = Number(evidence.strong_target_anchor_hits || 0) > 0;
+  const hasKbStepHint = Number(evidence.kb_step_hint_match || 0) > 0;
+  const hasNegativeTargetStepSignal = Number(evidence.target_step_negative_signal || 0) > 0;
+  const hasSurfaceExplicitHits = Number(evidence.surface_explicit_hits || 0) > 0;
+
+  if (hasNegativeTargetStepSignal && !hasSurfaceExplicitHits) return 'step_family_mismatch';
+  if (!hasStrongAnchor && !hasKbStepHint && !hasSurfaceExplicitHits) return 'no_explicit_sku_evidence';
+  return null;
+}
+
 function stabilizeIngredientRecallProducts(products, { recallProfile = null, targetStepFamily = '', queryText = '', maxProducts = 0 } = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!list.length) return [];
@@ -1823,6 +1842,35 @@ async function recallIngredientProductsFromProfile({
   const kbSeedIds = uniqStrings(kbRows.map((row) => extractSeedIdFromSkuKey(row?.sku_key)).filter(Boolean), 80);
   const kbUrls = uniqStrings(kbRows.map((row) => normalizeUrl(row?.source_ref)).filter(Boolean), 80);
 
+  const recordRejectedCandidate = (product, sourceTag, rejectReason, evidence = null, kbEvidence = null) => {
+    const normalizedReason = String(rejectReason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
+    if (normalizedReason === 'step_family_mismatch') stepMismatchCount += 1;
+    else noiseFilteredCount += 1;
+    bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'rejected', 1);
+    bumpDirectRecallSourceRejectReason(
+      diagnostics.ingredient_direct_source_reject_breakdown,
+      sourceTag,
+      normalizedReason,
+      1,
+    );
+    mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, normalizedReason, 1);
+    pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
+      title:
+        String(product?.title || product?.name || product?.display_name || '').trim() || null,
+      source_tag: sourceTag,
+      reject_reason: normalizedReason,
+      candidate_step: evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
+      family_relation: evidence?.family_relation || null,
+      kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
+      target_anchor_hits: Number(evidence?.target_anchor_hits || 0) || 0,
+      strong_target_anchor_hits: Number(evidence?.strong_target_anchor_hits || 0) || 0,
+      surface_explicit_hits: Number(evidence?.surface_explicit_hits || 0) || 0,
+      kb_step_hint_match: Number(evidence?.kb_step_hint_match || 0) || 0,
+      same_family_gate_required: Number(evidence?.same_family_gate_required || 0) || 0,
+      target_step_negative_signal: Number(evidence?.target_step_negative_signal || 0) || 0,
+    });
+  };
+
   const addProduct = (product, sourceTag, { allowFamilyOnly = false, kbEvidence = null } = {}) => {
     if (!product) return;
     const key = buildCandidateKey(product);
@@ -1835,34 +1883,9 @@ async function recallIngredientProductsFromProfile({
       queryText: query,
     });
     if (!scored || !scored.evidence) {
-      const rejectReason = String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise';
-      if (rejectReason === 'step_family_mismatch') stepMismatchCount += 1;
-      else noiseFilteredCount += 1;
-      bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'rejected', 1);
-      bumpDirectRecallSourceRejectReason(
-        diagnostics.ingredient_direct_source_reject_breakdown,
-        sourceTag,
-        rejectReason,
-        1,
-      );
-      mergeBreakdown(diagnostics.ingredient_candidate_reject_breakdown, rejectReason, 1);
-    pushCandidateSample(diagnostics.ingredient_rejected_candidate_samples, {
-      title:
-          String(product?.title || product?.name || product?.display_name || '').trim() || null,
-      source_tag: sourceTag,
-      reject_reason: rejectReason,
-      candidate_step: scored?.evidence?.candidate_step || resolveRecallCandidateStep(product) || null,
-      family_relation: scored?.evidence?.family_relation || null,
-      kb_explicit: Number(kbEvidence?.explicit_hits || 0) > 0 ? 1 : 0,
-      target_anchor_hits: Number(scored?.evidence?.target_anchor_hits || 0) || 0,
-      strong_target_anchor_hits: Number(scored?.evidence?.strong_target_anchor_hits || 0) || 0,
-      surface_explicit_hits: Number(scored?.evidence?.surface_explicit_hits || 0) || 0,
-      kb_step_hint_match: Number(scored?.evidence?.kb_step_hint_match || 0) || 0,
-      same_family_gate_required: Number(scored?.evidence?.same_family_gate_required || 0) || 0,
-      target_step_negative_signal: Number(scored?.evidence?.target_step_negative_signal || 0) || 0,
-    });
-    return;
-  }
+      recordRejectedCandidate(product, sourceTag, scored?.reject_reason, scored?.evidence, kbEvidence);
+      return;
+    }
     seen.add(key);
     bumpDirectRecallSourceStageCount(diagnostics.ingredient_direct_source_stage_counts, sourceTag, 'admitted', 1);
     attachIngredientRecallMeta(product, {
@@ -2049,6 +2072,24 @@ async function recallIngredientProductsFromProfile({
   if (nonNoiseRows.length) candidates = nonNoiseRows;
   const nonBundleRows = candidates.filter((row) => row.bundleLike !== true);
   if (nonBundleRows.length) candidates = nonBundleRows;
+  const lateRejectedRows = [];
+  const lateEligibleRows = [];
+  for (const row of candidates) {
+    const lateRejectReason = shouldLateRejectDirectCandidate(row);
+    if (lateRejectReason) lateRejectedRows.push({ row, lateRejectReason });
+    else lateEligibleRows.push(row);
+  }
+  for (const { row, lateRejectReason } of lateRejectedRows) {
+    recordRejectedCandidate(
+      row?.product,
+      row?.source_tag || 'unknown',
+      lateRejectReason,
+      row?.evidence,
+      Number(row?.evidence?.kb_explicit || 0) > 0 ? { explicit_hits: 1 } : null,
+    );
+  }
+  if (lateEligibleRows.length) candidates = lateEligibleRows;
+  else if (lateRejectedRows.length) candidates = [];
 
   if (!candidates.length && allowFamilyFallback) {
     diagnostics.family_fallback_attempted = true;

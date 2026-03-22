@@ -2129,7 +2129,7 @@ describe('ingredientProductRecall', () => {
     });
 
     expect(out.products).toEqual([]);
-    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('step_family_mismatch');
   });
 
   test('glycerin moisturizer rejects off-surface explicit-only hand mask rows', async () => {
