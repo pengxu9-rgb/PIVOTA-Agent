@@ -5143,6 +5143,9 @@ function resolveIngredientIntentTargetStepFamily({
   if (/\b(spf|sunscreen|sunblock|sun lotion|sun fluid)\b/.test(normalizedQuery)) {
     if (expectedFamilies.includes('sunscreen')) return 'sunscreen';
   }
+  if (/\b(face oil|facial oil|oil)\b/.test(normalizedQuery)) {
+    if (expectedFamilies.includes('oil')) return 'oil';
+  }
   if (/\b(gel|spot treatment|acid|retinol|retinoid|blemish|acne treatment)\b/.test(normalizedQuery)) {
     if (expectedFamilies.includes('treatment')) return 'treatment';
   }

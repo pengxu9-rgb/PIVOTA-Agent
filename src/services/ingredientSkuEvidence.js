@@ -247,8 +247,8 @@ function normalizeDirectRecallSourceBucket(sourceTag) {
   if (normalized.includes('kb_attached_seed') || normalized.includes('kb_named_attached_seed')) {
     return 'kb_attached_seed';
   }
-  if (normalized.includes('attached_seed')) return 'attached_seed';
   if (normalized.includes('unattached_seed')) return 'unattached_seed';
+  if (normalized.includes('attached_seed')) return 'attached_seed';
   return '';
 }
 
@@ -2527,6 +2527,7 @@ module.exports = {
     buildTargetAnchoredExplicitPatterns,
     collapseIngredientRecallProducts,
     normalizeUrl,
+    normalizeDirectRecallSourceBucket,
     classifyDirectRecallSourceStatus,
     buildDirectRecallSourceStatuses,
   },

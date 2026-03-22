@@ -708,6 +708,14 @@ describe('ingredientProductRecall', () => {
     });
   });
 
+  test('normalizes unattached seed source tags into unattached bucket diagnostics', () => {
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    expect(_internals.normalizeDirectRecallSourceBucket('unattached_seed')).toBe('unattached_seed');
+    expect(_internals.normalizeDirectRecallSourceBucket('unattached_seed_target_anchored')).toBe('unattached_seed');
+    expect(_internals.normalizeDirectRecallSourceBucket('kb_unattached_seed')).toBe('unattached_seed');
+    expect(_internals.normalizeDirectRecallSourceBucket('kb_named_unattached_seed')).toBe('unattached_seed');
+  });
+
   test('prefers surface-explicit B5 products over KB-only generic support serum', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {

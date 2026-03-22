@@ -3037,6 +3037,53 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('ingredient-intent search keeps oil intent for squalane oil instead of defaulting to moisturizer', async () => {
+    process.env.DATABASE_URL = 'postgres://ingredient-intent-squalane-target-step-test';
+    jest.doMock('../../src/services/ingredientProductRecall', () => ({
+      recallIngredientProducts: jest.fn(async () => ({
+        products: [],
+        diagnostics: {
+          ingredient_intent_detected: true,
+          ingredient_registry_match: true,
+          ingredient_registry_source: 'local_plus_reference',
+          ingredient_profile_source: 'local_plus_reference',
+          ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
+        },
+      })),
+      resolveIngredientRecallProfileKnowledge: jest.fn(async () => ({
+        profile: {
+          ingredient_id: 'squalane',
+          ingredient_name: 'Squalane',
+          ingredient_class: 'oil',
+          expected_step_families: ['moisturizer', 'oil', 'serum'],
+        },
+        diagnostics: {
+          registry_match: true,
+          registry_source: 'local_plus_reference',
+          profile_source: 'local_plus_reference',
+        },
+      })),
+      resolveIngredientRecallProfile: jest.fn(() => null),
+    }));
+
+    const app = require('../../src/server');
+    const { recallIngredientProducts } = require('../../src/services/ingredientProductRecall');
+    await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'squalane oil',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(recallIngredientProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ingredientId: 'squalane',
+        targetStepFamily: 'oil',
+      }),
+    );
+  });
+
   test('ingredient-intent direct recall keeps same-family ceramide products and drops adjacent-family noise', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-direct-display-rerank-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
