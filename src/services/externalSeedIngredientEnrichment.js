@@ -484,6 +484,23 @@ async function enrichExternalSeedRowIngredients({
   const reviewedKbRows = Array.isArray(kbRows) ? kbRows.filter(isReviewedKbIngredientRow) : await fetchReviewedKbRowsForSeedRow(row);
   const seedData = ensureJsonObject(row.seed_data);
   const beforeStatus = classifySeedStructuredIngredientStatus(seedData);
+  const hasExplicitIngredientAnchor =
+    normalizeNonEmptyString(ingredientId) || normalizeNonEmptyString(ingredientName);
+  if (beforeStatus === SEED_STRUCTURED_STATUS.present && reviewedKbRows.length === 0 && !hasExplicitIngredientAnchor) {
+    return {
+      changed: false,
+      row,
+      enrichment_source: ENRICHMENT_SOURCE.none,
+      seed_structured_ingredient_status_before: beforeStatus,
+      seed_structured_ingredient_status_after: beforeStatus,
+      seed_kb_sync_status: buildSeedKbSyncStatus({ seedStatus: beforeStatus, reviewedKbRows }),
+      runtime_ingredient_evidence_source: buildRuntimeIngredientEvidenceSource({
+        seedStatus: beforeStatus,
+        reviewedKbRows,
+      }),
+      reviewed_kb_rows: reviewedKbRows,
+    };
+  }
   const anchorProfile = resolveAnchorProfile({ row, ingredientId, ingredientName });
   const enrichmentBlock =
     buildBlockFromKbRows(reviewedKbRows, { anchorProfile }) ||

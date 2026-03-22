@@ -103,4 +103,35 @@ describe('externalSeedIngredientEnrichment', () => {
 
     expect(block).toBeNull();
   });
+
+  test('does not re-derive a different anchor when structured ingredient fields are already present', async () => {
+    const row = {
+      id: 'eps_bpo_present',
+      title: 'Rapid Clear Stubborn Acne Spot Gel',
+      canonical_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+      destination_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+      seed_data: {
+        raw_ingredient_text_clean: 'benzoyl peroxide 10%',
+        inci_list: 'benzoyl peroxide 10%',
+        ingredient_tokens: ['benzoyl peroxide', 'bpo'],
+        active_ingredients: ['benzoyl peroxide 10%'],
+        key_ingredients: ['benzoyl peroxide'],
+        snapshot: {
+          title: 'Rapid Clear Stubborn Acne Spot Gel',
+          canonical_url: 'https://neutrogena.example.com/products/rapid-clear-stubborn-acne-spot-gel',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(false);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.none);
+    expect(out.row.seed_data.ingredient_tokens).toEqual(['benzoyl peroxide', 'bpo']);
+    expect(out.row.seed_data.key_ingredients).toEqual(['benzoyl peroxide']);
+    expect(out.row.seed_data.active_ingredients).toEqual(['benzoyl peroxide 10%']);
+  });
 });
