@@ -3393,51 +3393,40 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('ingredient-intent search keeps direct success for generic titles when recall carries KB explicit evidence', async () => {
+  test('ingredient-intent search does not force direct success for generic titles when service reports token-only KB explicit miss', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-recall-kb-explicit-display-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
       recallIngredientProducts: jest.fn(async () => ({
-        products: [
-          {
-            product_id: 'glycerin_barrier_1',
-            merchant_id: 'external_seed',
-            title: 'Barrier Support Moisturizer',
-            category: 'Moisturizer',
-            product_type: 'Moisturizer',
-            canonical_url: 'https://shop.example.com/products/barrier-support-moisturizer',
-            destination_url: 'https://shop.example.com/products/barrier-support-moisturizer',
-            url: 'https://shop.example.com/products/barrier-support-moisturizer',
-            __ingredient_recall_meta: {
-              evidence: {
-                kb_explicit: 1,
-                title_exact: 0,
-                title_alias: 0,
-                ingredient_token_exact: 0,
-                ingredient_token_alias: 0,
-                url_alias: 0,
-                family_only: 0,
-              },
-              candidate_step: 'moisturizer',
-              family_relation: 'same_family',
-              source_tag: 'kb_named_attached_seed',
-            },
-          },
-        ],
+        products: [],
         diagnostics: {
           ingredient_intent_detected: true,
           ingredient_registry_match: true,
           ingredient_registry_source: 'local_plus_reference_plus_signal',
           ingredient_profile_source: 'local_plus_reference_plus_signal',
-          ingredient_direct_miss_reason: null,
+          ingredient_direct_main_path_status: 'direct_empty_unrecovered',
+          ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
           ingredient_candidate_evidence_breakdown: {
             kb_explicit: 1,
             title_exact: 0,
             title_alias: 0,
-            ingredient_token_exact: 0,
+            ingredient_token_exact: 1,
             ingredient_token_alias: 0,
             url_alias: 0,
             family_only: 0,
           },
+          ingredient_ranked_candidate_samples: [
+            {
+              title: 'Barrier Support Moisturizer',
+              kb_explicit: 1,
+              explicit_hits: 2,
+              target_surface_anchor_hits: 0,
+              surface_explicit_hits: 1,
+              runtime_ingredient_evidence_source: 'seed_structured_fields',
+              seed_anchor_source_kind: 'kb_reviewed',
+              structured_token_tier: 'kb_reviewed_seed',
+              source_tag: 'kb_named_attached_seed',
+            },
+          ],
           kb_recall_attempted: true,
           kb_recall_recovered: 1,
           attached_seed_recall_attempted: true,
@@ -3468,14 +3457,12 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.products).toHaveLength(1);
-    expect(resp.body.products[0].title).toBe('Barrier Support Moisturizer');
+    expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'agent_products_ingredient_recall_direct',
-        ingredient_direct_main_path_status: 'direct_hit',
-        ingredient_direct_miss_reason: null,
-        ingredient_direct_display_strategy: 'service_stabilized',
+        query_source: 'agent_products_ingredient_recall_direct_empty',
+        ingredient_direct_main_path_status: 'direct_empty_unrecovered',
+        ingredient_direct_miss_reason: 'no_explicit_sku_evidence',
         ingredient_direct_source_statuses: expect.any(Object),
       }),
     );

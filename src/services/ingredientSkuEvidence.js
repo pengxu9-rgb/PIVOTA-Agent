@@ -91,6 +91,12 @@ const STRUCTURED_TOKEN_TIER = Object.freeze({
   kbReviewedReadThrough: 'kb_reviewed_read_through',
   unknownSeedStructured: 'unknown_seed_structured',
 });
+const KB_EXPLICIT_PROVENANCE = Object.freeze({
+  none: 'none',
+  seedKbReviewed: 'seed_kb_reviewed',
+  kbReviewedReadThrough: 'kb_reviewed_read_through',
+  other: 'other',
+});
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -484,6 +490,15 @@ function resolveKbExplicitWeight(evidence = {}) {
   return 150;
 }
 
+function resolveKbExplicitProvenance(runtimeEvidenceMetadata = {}, kbExplicitHits = 0) {
+  if (Number(kbExplicitHits || 0) <= 0) return KB_EXPLICIT_PROVENANCE.none;
+  const runtimeSource = String(runtimeEvidenceMetadata?.runtime_ingredient_evidence_source || '').trim() || 'none';
+  const anchorSourceKind = String(runtimeEvidenceMetadata?.seed_anchor_source_kind || '').trim() || 'none';
+  if (runtimeSource === 'kb_reviewed_read_through') return KB_EXPLICIT_PROVENANCE.kbReviewedReadThrough;
+  if (anchorSourceKind === 'kb_reviewed') return KB_EXPLICIT_PROVENANCE.seedKbReviewed;
+  return KB_EXPLICIT_PROVENANCE.other;
+}
+
 function isDerivedStructuredTokenNoise(evidence = {}) {
   const tokenTier = String(evidence?.structured_token_tier || STRUCTURED_TOKEN_TIER.none).trim() || STRUCTURED_TOKEN_TIER.none;
   if (
@@ -498,6 +513,20 @@ function isDerivedStructuredTokenNoise(evidence = {}) {
   if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
   if (Number(evidence?.competing_surface_hits || 0) <= 0) return false;
   return true;
+}
+
+function requiresTargetSurfaceAnchorForDirectSuccess(evidence = {}) {
+  const provenance = String(evidence?.kb_explicit_provenance || KB_EXPLICIT_PROVENANCE.none).trim() || KB_EXPLICIT_PROVENANCE.none;
+  if (
+    provenance !== KB_EXPLICIT_PROVENANCE.seedKbReviewed &&
+    provenance !== KB_EXPLICIT_PROVENANCE.kbReviewedReadThrough
+  ) {
+    return false;
+  }
+  if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
+  return Number(evidence?.kb_explicit || 0) > 0 ||
+    Number(evidence?.ingredient_token_exact || 0) > 0 ||
+    Number(evidence?.ingredient_token_alias || 0) > 0;
 }
 
 function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, extras = {}) {
@@ -533,6 +562,7 @@ function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, ext
     seed_anchor_source_kind: runtimeEvidenceMetadata.seed_anchor_source_kind,
     seed_anchor_conflict_status: runtimeEvidenceMetadata.seed_anchor_conflict_status,
     structured_token_tier: String(sampleEvidence?.structured_token_tier || '').trim() || STRUCTURED_TOKEN_TIER.none,
+    kb_explicit_provenance: String(sampleEvidence?.kb_explicit_provenance || '').trim() || KB_EXPLICIT_PROVENANCE.none,
     ...(extras && typeof extras === 'object' ? extras : {}),
   };
 }
@@ -1205,6 +1235,7 @@ function buildCandidateEvidence(
   const structuredTokenTier = resolveStructuredTokenTier(runtimeEvidenceMetadata, {
     ingredientTokenHits,
   });
+  const kbExplicitProvenance = resolveKbExplicitProvenance(runtimeEvidenceMetadata, kbExplicitHits);
   const surfaceExplicitHits =
     targetSurfaceAnchorHits + ingredientTokenHits;
   const familyHits = countPhraseMatches(fieldTexts.family, profile?.family_phrases) + Math.max(0, Number(kbEvidence?.family_hits || 0) || 0);
@@ -1270,6 +1301,7 @@ function buildCandidateEvidence(
     runtime_ingredient_evidence_source: runtimeEvidenceMetadata.runtime_ingredient_evidence_source,
     seed_anchor_source_kind: runtimeEvidenceMetadata.seed_anchor_source_kind,
     structured_token_tier: structuredTokenTier,
+    kb_explicit_provenance: kbExplicitProvenance,
   };
   evidence.family_only = evidence.explicit_hits <= 0 && strongFamilyHits > 0 ? 1 : 0;
 
@@ -1287,6 +1319,9 @@ function buildCandidateEvidence(
   }
   if (isDerivedStructuredTokenNoise(evidence)) {
     return { reject_reason: 'all_candidates_filtered_noise', evidence };
+  }
+  if (requiresTargetSurfaceAnchorForDirectSuccess(evidence)) {
+    return { reject_reason: 'no_explicit_sku_evidence', evidence };
   }
   if (targetStepNegativeSignal && evidence.family_only === 1) {
     return { reject_reason: 'step_family_mismatch', evidence };
@@ -1389,6 +1424,7 @@ function shouldLateRejectDirectCandidate(candidate) {
     : null;
   if (!evidence) return null;
   if (Number(evidence.explicit_hits || 0) <= 0) return null;
+  if (requiresTargetSurfaceAnchorForDirectSuccess(evidence)) return 'no_explicit_sku_evidence';
   if (Number(evidence.same_family_gate_required || 0) <= 0) return null;
   if (String(evidence.family_relation || '').trim() !== 'same_family') return null;
 

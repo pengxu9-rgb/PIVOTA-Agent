@@ -320,6 +320,7 @@ describe('ingredientProductRecall', () => {
           runtime_ingredient_evidence_source: 'seed_structured_fields',
           seed_anchor_source_kind: 'kb_reviewed',
           structured_token_tier: 'kb_reviewed_seed',
+          kb_explicit_provenance: 'seed_kb_reviewed',
           explicit_hits: 2,
         },
       },
@@ -390,6 +391,7 @@ describe('ingredientProductRecall', () => {
           runtime_ingredient_evidence_source: 'seed_structured_fields',
           seed_anchor_source_kind: 'kb_reviewed',
           structured_token_tier: 'kb_reviewed_seed',
+          kb_explicit_provenance: 'seed_kb_reviewed',
           explicit_hits: 2,
         },
       },
@@ -450,6 +452,7 @@ describe('ingredientProductRecall', () => {
           ingredient_token_exact: 1,
           competing_surface_hits: expect.any(Number),
           structured_token_tier: 'kb_reviewed_seed',
+          kb_explicit_provenance: 'seed_kb_reviewed',
         }),
       }),
     );
@@ -503,7 +506,7 @@ describe('ingredientProductRecall', () => {
     expect(out.reject_reason).toBeUndefined();
   });
 
-  test('uses KB ingredient evidence to keep direct recall products even when surface text is generic', async () => {
+  test('rejects kb-reviewed token-only generic support serum when target title and url anchors are absent', async () => {
     jest.doMock('../../src/services/pciKbClient', () => ({
       kbQuery: jest.fn(async (sql) => {
         const text = String(sql || '');
@@ -631,14 +634,11 @@ describe('ingredientProductRecall', () => {
       limit: 3,
     });
 
-    expect(out.products.map((row) => row.title || row.name)).toEqual([
-      'Soothing & Barrier Support Serum',
-    ]);
+    expect(out.products).toEqual([]);
     expect(out.diagnostics.family_fallback_attempted).toBe(false);
     expect(out.diagnostics.family_fallback_used).toBe(false);
-    expect(out.diagnostics.recall_source_breakdown).toEqual({
-      kb_attached_seed: 1,
-    });
+    expect(out.diagnostics.ingredient_direct_main_path_status).toBe('direct_empty');
+    expect(out.diagnostics.ingredient_direct_miss_reason).toBe('no_explicit_sku_evidence');
   });
 
   test('prefers surface-explicit B5 products over KB-only generic support serum', async () => {
