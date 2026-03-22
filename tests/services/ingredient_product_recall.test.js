@@ -308,15 +308,19 @@ describe('ingredientProductRecall', () => {
           kb_explicit: 1,
           title_exact: 0,
           title_alias: 0,
-          ingredient_token_exact: 0,
+          ingredient_token_exact: 1,
           ingredient_token_alias: 0,
           url_alias: 0,
-          surface_explicit_hits: 0,
+          target_surface_anchor_hits: 0,
+          surface_explicit_hits: 1,
           family_hits: 0,
           strong_family_hits: 0,
           family_relation: 'same_family',
           competing_surface_hits: 0,
-          explicit_hits: 1,
+          runtime_ingredient_evidence_source: 'seed_structured_fields',
+          seed_anchor_source_kind: 'kb_reviewed',
+          structured_token_tier: 'kb_reviewed_seed',
+          explicit_hits: 2,
         },
       },
       480,
@@ -335,11 +339,13 @@ describe('ingredientProductRecall', () => {
           ingredient_token_exact: 0,
           ingredient_token_alias: 0,
           url_alias: 0,
+          target_surface_anchor_hits: 1,
           surface_explicit_hits: 1,
           family_hits: 0,
           strong_family_hits: 0,
           family_relation: 'same_family',
           competing_surface_hits: 0,
+          structured_token_tier: 'native',
           explicit_hits: 1,
         },
       },
@@ -372,21 +378,129 @@ describe('ingredientProductRecall', () => {
           kb_explicit: 1,
           title_exact: 0,
           title_alias: 0,
-          ingredient_token_exact: 0,
+          ingredient_token_exact: 1,
           ingredient_token_alias: 0,
           url_alias: 0,
-          surface_explicit_hits: 0,
+          target_surface_anchor_hits: 0,
+          surface_explicit_hits: 1,
           family_hits: 0,
           strong_family_hits: 0,
           family_relation: 'same_family',
           competing_surface_hits: competingHits,
-          explicit_hits: 1,
+          runtime_ingredient_evidence_source: 'seed_structured_fields',
+          seed_anchor_source_kind: 'kb_reviewed',
+          structured_token_tier: 'kb_reviewed_seed',
+          explicit_hits: 2,
         },
       },
       260,
     );
 
-    expect(candidate.score).toBeLessThan(260 + 220 + 40 - 100);
+    expect(candidate.score).toBeLessThan(0);
+  });
+
+  test('buildCandidateEvidence rejects derived structured-token noise when only a competing ingredient owns title and url anchors', () => {
+    const { LOCAL_INGREDIENT_RECALL_REGISTRY } = require('../../src/services/ingredientRecallRegistry');
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const out = _internals.buildCandidateEvidence(
+      {
+        title: 'Biolumin-C Vitamin C Gel Moisturizer',
+        category: 'Moisturizer',
+        ingredient_tokens: ['centella asiatica'],
+        canonical_url: 'https://dermalogica.example.com/products/biolumin-c-vitamin-c-gel-moisturizer',
+        seed_data: {
+          ingredient_tokens: ['centella asiatica'],
+          ingredient_intel: {
+            external_seed_enrichment: {
+              source: 'kb_reviewed',
+              seed_anchor_source_kind: 'kb_reviewed',
+            },
+          },
+          snapshot: {
+            ingredient_tokens: ['centella asiatica'],
+            ingredient_intel: {
+              external_seed_enrichment: {
+                source: 'kb_reviewed',
+                seed_anchor_source_kind: 'kb_reviewed',
+              },
+            },
+          },
+        },
+      },
+      {
+        profile: LOCAL_INGREDIENT_RECALL_REGISTRY.centella_asiatica,
+        targetStepFamily: 'moisturizer',
+        allowFamilyOnly: false,
+        kbEvidence: {
+          exact_hits: 1,
+          alias_hits: 0,
+          family_hits: 1,
+          strong_family_hits: 1,
+          candidate_step_hints: ['moisturizer'],
+        },
+        queryText: 'centella moisturizer',
+      },
+    );
+
+    expect(out).toEqual(
+      expect.objectContaining({
+        reject_reason: 'all_candidates_filtered_noise',
+        evidence: expect.objectContaining({
+          target_surface_anchor_hits: 0,
+          ingredient_token_exact: 1,
+          competing_surface_hits: expect.any(Number),
+          structured_token_tier: 'kb_reviewed_seed',
+        }),
+      }),
+    );
+  });
+
+  test('buildCandidateEvidence keeps title-anchored seed token evidence on the direct path', () => {
+    const { LOCAL_INGREDIENT_RECALL_REGISTRY } = require('../../src/services/ingredientRecallRegistry');
+    const { _internals } = require('../../src/services/ingredientSkuEvidence');
+    const out = _internals.buildCandidateEvidence(
+      {
+        title: 'Centella Calming Serum',
+        category: 'Serum',
+        ingredient_tokens: ['centella asiatica'],
+        canonical_url: 'https://mixsoon.example.com/products/centella-calming-serum',
+        seed_data: {
+          ingredient_tokens: ['centella asiatica'],
+          ingredient_intel: {
+            external_seed_enrichment: {
+              source: 'title_url_anchor',
+              seed_anchor_source_kind: 'explicit_title_anchor',
+            },
+          },
+          snapshot: {
+            ingredient_tokens: ['centella asiatica'],
+            ingredient_intel: {
+              external_seed_enrichment: {
+                source: 'title_url_anchor',
+                seed_anchor_source_kind: 'explicit_title_anchor',
+              },
+            },
+          },
+        },
+      },
+      {
+        profile: LOCAL_INGREDIENT_RECALL_REGISTRY.centella_asiatica,
+        targetStepFamily: 'serum',
+        allowFamilyOnly: false,
+        kbEvidence: null,
+        queryText: 'centella serum',
+      },
+    );
+
+    expect(out).toEqual(
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          target_surface_anchor_hits: expect.any(Number),
+          structured_token_tier: 'title_anchored_seed',
+        }),
+      }),
+    );
+    expect(out.reject_reason).toBeUndefined();
   });
 
   test('uses KB ingredient evidence to keep direct recall products even when surface text is generic', async () => {

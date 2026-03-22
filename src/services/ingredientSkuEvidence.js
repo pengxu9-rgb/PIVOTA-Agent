@@ -82,6 +82,15 @@ const DIRECT_RECALL_SOURCE_STATUS_FILTERED_AFTER_ADMISSION = 'filtered_after_adm
 const DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_WITHOUT_EXPLICIT_ADMISSION =
   'matched_rows_without_explicit_admission';
 const DIRECT_RECALL_SOURCE_STATUS_MATCHED_ROWS_FILTERED = 'matched_rows_filtered';
+const STRUCTURED_TOKEN_TIER = Object.freeze({
+  none: 'none',
+  native: 'native',
+  titleAnchoredSeed: 'title_anchored_seed',
+  descriptionParsedSeed: 'description_parsed_seed',
+  kbReviewedSeed: 'kb_reviewed_seed',
+  kbReviewedReadThrough: 'kb_reviewed_read_through',
+  unknownSeedStructured: 'unknown_seed_structured',
+});
 
 let kbAvailabilityCache = {
   checked_at: 0,
@@ -424,6 +433,73 @@ function resolveRuntimeIngredientEvidenceMetadata(product, sampleEvidence = null
   };
 }
 
+function resolveStructuredTokenTier(
+  runtimeEvidenceMetadata = {},
+  { ingredientTokenHits = 0 } = {},
+) {
+  if (Number(ingredientTokenHits || 0) <= 0) return STRUCTURED_TOKEN_TIER.none;
+  const runtimeSource = String(runtimeEvidenceMetadata?.runtime_ingredient_evidence_source || '').trim() || 'none';
+  const anchorSourceKind = String(runtimeEvidenceMetadata?.seed_anchor_source_kind || '').trim() || 'none';
+  if (runtimeSource === 'kb_reviewed_read_through') return STRUCTURED_TOKEN_TIER.kbReviewedReadThrough;
+  if (runtimeSource !== 'seed_structured_fields') return STRUCTURED_TOKEN_TIER.native;
+  if (
+    anchorSourceKind === 'explicit_title_anchor' ||
+    anchorSourceKind === 'explicit_title_url_anchor' ||
+    anchorSourceKind === 'explicit_url_assisted_anchor'
+  ) {
+    return STRUCTURED_TOKEN_TIER.titleAnchoredSeed;
+  }
+  if (anchorSourceKind === 'description_parse') return STRUCTURED_TOKEN_TIER.descriptionParsedSeed;
+  if (anchorSourceKind === 'kb_reviewed') return STRUCTURED_TOKEN_TIER.kbReviewedSeed;
+  return STRUCTURED_TOKEN_TIER.unknownSeedStructured;
+}
+
+function resolveIngredientTokenWeights(evidence = {}) {
+  const tokenTier = String(evidence?.structured_token_tier || STRUCTURED_TOKEN_TIER.none).trim() || STRUCTURED_TOKEN_TIER.none;
+  if (tokenTier === STRUCTURED_TOKEN_TIER.kbReviewedSeed || tokenTier === STRUCTURED_TOKEN_TIER.kbReviewedReadThrough) {
+    return { exact: 42, alias: 26 };
+  }
+  if (tokenTier === STRUCTURED_TOKEN_TIER.descriptionParsedSeed) {
+    return { exact: 70, alias: 48 };
+  }
+  if (tokenTier === STRUCTURED_TOKEN_TIER.unknownSeedStructured) {
+    return { exact: 58, alias: 36 };
+  }
+  return { exact: 130, alias: 100 };
+}
+
+function resolveKbExplicitWeight(evidence = {}) {
+  const targetSurfaceAnchorHits = Number(evidence?.target_surface_anchor_hits || 0) || 0;
+  if (targetSurfaceAnchorHits > 0) return 220;
+  const tokenTier = String(evidence?.structured_token_tier || STRUCTURED_TOKEN_TIER.none).trim() || STRUCTURED_TOKEN_TIER.none;
+  if (tokenTier === STRUCTURED_TOKEN_TIER.kbReviewedSeed || tokenTier === STRUCTURED_TOKEN_TIER.kbReviewedReadThrough) {
+    return 72;
+  }
+  if (tokenTier === STRUCTURED_TOKEN_TIER.descriptionParsedSeed) {
+    return 110;
+  }
+  if (tokenTier === STRUCTURED_TOKEN_TIER.unknownSeedStructured) {
+    return 96;
+  }
+  return 150;
+}
+
+function isDerivedStructuredTokenNoise(evidence = {}) {
+  const tokenTier = String(evidence?.structured_token_tier || STRUCTURED_TOKEN_TIER.none).trim() || STRUCTURED_TOKEN_TIER.none;
+  if (
+    tokenTier !== STRUCTURED_TOKEN_TIER.kbReviewedSeed &&
+    tokenTier !== STRUCTURED_TOKEN_TIER.kbReviewedReadThrough &&
+    tokenTier !== STRUCTURED_TOKEN_TIER.descriptionParsedSeed &&
+    tokenTier !== STRUCTURED_TOKEN_TIER.unknownSeedStructured
+  ) {
+    return false;
+  }
+  if (Number(evidence?.ingredient_token_exact || 0) + Number(evidence?.ingredient_token_alias || 0) <= 0) return false;
+  if (Number(evidence?.target_surface_anchor_hits || 0) > 0) return false;
+  if (Number(evidence?.competing_surface_hits || 0) <= 0) return false;
+  return true;
+}
+
 function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, extras = {}) {
   const sampleEvidence = evidence && typeof evidence === 'object' ? evidence : {};
   const runtimeEvidenceMetadata = resolveRuntimeIngredientEvidenceMetadata(product, sampleEvidence);
@@ -448,6 +524,7 @@ function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, ext
     kb_explicit: Number(extras?.kbExplicit || sampleEvidence?.kb_explicit || 0) > 0 ? 1 : 0,
     target_anchor_hits: Number(sampleEvidence?.target_anchor_hits || 0) || 0,
     strong_target_anchor_hits: Number(sampleEvidence?.strong_target_anchor_hits || 0) || 0,
+    target_surface_anchor_hits: Number(sampleEvidence?.target_surface_anchor_hits || 0) || 0,
     surface_explicit_hits: Number(sampleEvidence?.surface_explicit_hits || 0) || 0,
     kb_step_hint_match: Number(sampleEvidence?.kb_step_hint_match || 0) || 0,
     same_family_gate_required: Number(sampleEvidence?.same_family_gate_required || 0) || 0,
@@ -455,6 +532,7 @@ function buildDiagnosticCandidateSample(product, sourceTag, evidence = null, ext
     runtime_ingredient_evidence_source: runtimeEvidenceMetadata.runtime_ingredient_evidence_source,
     seed_anchor_source_kind: runtimeEvidenceMetadata.seed_anchor_source_kind,
     seed_anchor_conflict_status: runtimeEvidenceMetadata.seed_anchor_conflict_status,
+    structured_token_tier: String(sampleEvidence?.structured_token_tier || '').trim() || STRUCTURED_TOKEN_TIER.none,
     ...(extras && typeof extras === 'object' ? extras : {}),
   };
 }
@@ -938,10 +1016,6 @@ function hasConflictingIngredientSurfaceSignal(text, profile) {
 function countCompetingIngredientSurfaceHits(text, profile) {
   const normalizedText = String(text || '').trim().toLowerCase();
   if (!normalizedText) return 0;
-  const currentExplicitHits =
-    countPhraseMatches(normalizedText, profile?.exact_phrases) +
-    countPhraseMatches(normalizedText, profile?.alias_phrases);
-  if (currentExplicitHits > 0) return 0;
   let totalHits = 0;
   for (const otherProfile of Object.values(LOCAL_INGREDIENT_RECALL_REGISTRY)) {
     if (!otherProfile || otherProfile.ingredient_id === profile?.ingredient_id) continue;
@@ -1116,6 +1190,9 @@ function buildCandidateEvidence(
   const kbExactHits = Math.max(0, Number(kbEvidence?.exact_hits || 0) || 0);
   const kbAliasHits = Math.max(0, Number(kbEvidence?.alias_hits || 0) || 0);
   const kbExplicitHits = kbExactHits + kbAliasHits;
+  const runtimeEvidenceMetadata = resolveRuntimeIngredientEvidenceMetadata(product, {
+    kb_explicit: kbExplicitHits > 0 ? 1 : 0,
+  });
 
   const titleExactHits = countPhraseMatches(fieldTexts.title, profile?.exact_phrases);
   const titleAliasHits = countPhraseMatches(fieldTexts.title, profile?.alias_phrases);
@@ -1123,8 +1200,13 @@ function buildCandidateEvidence(
   const tokenAliasHits = countPhraseMatches(fieldTexts.ingredient_tokens, profile?.alias_phrases);
   const urlExactHits = countPhraseMatches(fieldTexts.urls, profile?.exact_phrases);
   const urlAliasHits = countPhraseMatches(fieldTexts.urls, profile?.alias_phrases);
+  const targetSurfaceAnchorHits = titleExactHits + titleAliasHits + urlExactHits + urlAliasHits;
+  const ingredientTokenHits = tokenExactHits + tokenAliasHits;
+  const structuredTokenTier = resolveStructuredTokenTier(runtimeEvidenceMetadata, {
+    ingredientTokenHits,
+  });
   const surfaceExplicitHits =
-    titleExactHits + titleAliasHits + tokenExactHits + tokenAliasHits + urlExactHits + urlAliasHits;
+    targetSurfaceAnchorHits + ingredientTokenHits;
   const familyHits = countPhraseMatches(fieldTexts.family, profile?.family_phrases) + Math.max(0, Number(kbEvidence?.family_hits || 0) || 0);
   const strongFamilyHits =
     countStrongFamilyMatches(fieldTexts.family, profile?.family_phrases) +
@@ -1178,12 +1260,16 @@ function buildCandidateEvidence(
     family_relation: familyRelation || null,
     target_anchor_hits: targetAnchorHits,
     strong_target_anchor_hits: strongTargetAnchorHits,
+    target_surface_anchor_hits: targetSurfaceAnchorHits,
     surface_explicit_hits: surfaceExplicitHits,
     competing_surface_hits: competingSurfaceHits,
     kb_step_hint_match: hasSameFamilyKbHint ? 1 : 0,
     same_family_gate_required: sameFamilyGateRequired ? 1 : 0,
     target_step_negative_signal: targetStepNegativeSignal ? 1 : 0,
     off_surface_signal: offSurfaceSignal ? 1 : 0,
+    runtime_ingredient_evidence_source: runtimeEvidenceMetadata.runtime_ingredient_evidence_source,
+    seed_anchor_source_kind: runtimeEvidenceMetadata.seed_anchor_source_kind,
+    structured_token_tier: structuredTokenTier,
   };
   evidence.family_only = evidence.explicit_hits <= 0 && strongFamilyHits > 0 ? 1 : 0;
 
@@ -1198,6 +1284,9 @@ function buildCandidateEvidence(
   }
   if (offSurfaceSignal) {
     return { reject_reason: 'off_surface', evidence };
+  }
+  if (isDerivedStructuredTokenNoise(evidence)) {
+    return { reject_reason: 'all_candidates_filtered_noise', evidence };
   }
   if (targetStepNegativeSignal && evidence.family_only === 1) {
     return { reject_reason: 'step_family_mismatch', evidence };
@@ -1261,23 +1350,25 @@ function scoreCandidateEvidence(candidate, sourceRank = 0) {
   const refill = /\brefill\b/.test(title);
   const obviousNoise = INGREDIENT_RECALL_OBVIOUS_NOISE_RE.test(title);
   const bundleLike = isBundleLikeRecallProduct(candidate?.product);
+  const tokenWeights = resolveIngredientTokenWeights(candidate?.evidence);
   let score = Number(sourceRank || 0);
-  score += Number(candidate?.evidence?.kb_explicit || 0) * 220;
+  score += Number(candidate?.evidence?.kb_explicit || 0) * resolveKbExplicitWeight(candidate?.evidence);
   score += Number(candidate?.evidence?.title_exact || 0) * 180;
   score += Number(candidate?.evidence?.title_alias || 0) * 140;
-  score += Number(candidate?.evidence?.ingredient_token_exact || 0) * 130;
-  score += Number(candidate?.evidence?.ingredient_token_alias || 0) * 100;
+  score += Number(candidate?.evidence?.ingredient_token_exact || 0) * tokenWeights.exact;
+  score += Number(candidate?.evidence?.ingredient_token_alias || 0) * tokenWeights.alias;
   score += Number(candidate?.evidence?.url_alias || 0) * 60;
   score += Number(candidate?.evidence?.strong_family_hits || 0) * (candidate?.evidence?.explicit_hits > 0 ? 10 : 16);
   score += Number(candidate?.evidence?.family_hits || 0) * (candidate?.evidence?.explicit_hits > 0 ? 4 : 2);
   if (
     Number(candidate?.evidence?.kb_explicit || 0) > 0 &&
-    Number(candidate?.evidence?.surface_explicit_hits || 0) <= 0
+    Number(candidate?.evidence?.target_surface_anchor_hits || 0) <= 0
   ) {
     score -= 320;
   }
   score -= Number(candidate?.evidence?.competing_surface_hits || 0) *
-    (Number(candidate?.evidence?.surface_explicit_hits || 0) > 0 ? 20 : 60);
+    (Number(candidate?.evidence?.target_surface_anchor_hits || 0) > 0 ? 20 : 120);
+  if (isDerivedStructuredTokenNoise(candidate?.evidence)) score -= 240;
   if (candidate?.evidence?.family_relation === 'same_family') score += 40;
   if (candidate?.evidence?.family_relation === 'adjacent_family') score -= 10;
   if (obviousNoise) score -= 80;
