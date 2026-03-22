@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const DEFAULT_BASE_URL = process.env.AURORA_AUDIT_BASE_URL || 'https://pivota-agent-production.up.railway.app';
 const DEFAULT_LIMIT = 6;
+const DEFAULT_TIMEOUT_MS = Math.max(5_000, Number.parseInt(process.env.AURORA_AUDIT_TIMEOUT_MS, 10) || 25_000);
 const DEFAULT_OUTPUT_ROOT = path.join(process.cwd(), 'output', 'live-smoke');
 const MATRIX = Object.freeze([
   ['barrier', 'ceramide_np', 'Ceramide NP', 'ceramide moisturizer'],
@@ -30,7 +31,7 @@ const MATRIX = Object.freeze([
 ]);
 
 function parseArgs(argv) {
-  const out = { baseUrl: DEFAULT_BASE_URL, limit: DEFAULT_LIMIT, outPath: '' };
+  const out = { baseUrl: DEFAULT_BASE_URL, limit: DEFAULT_LIMIT, outPath: '', timeoutMs: DEFAULT_TIMEOUT_MS };
   for (let idx = 0; idx < argv.length; idx += 1) {
     const token = String(argv[idx] || '').trim();
     if (token === '--base-url') {
@@ -41,6 +42,9 @@ function parseArgs(argv) {
       idx += 1;
     } else if (token === '--out') {
       out.outPath = String(argv[idx + 1] || '').trim();
+      idx += 1;
+    } else if (token === '--timeout-ms') {
+      out.timeoutMs = Math.max(5_000, Number.parseInt(argv[idx + 1], 10) || DEFAULT_TIMEOUT_MS);
       idx += 1;
     }
   }
@@ -152,17 +156,53 @@ function classifyRecommendedAction(bucket) {
   if (normalized === 'only_family_supply_present') return 'upstream_seed_or_kb_supply_remediation';
   if (normalized === 'no_explicit_supply_in_any_source') return 'upstream_seed_or_kb_supply_remediation';
   if (normalized === 'registry_not_resolved') return 'registry_resolution_fix';
+  if (normalized === 'audit_error') return 'rerun_or_investigate_route_timeout';
   return 'manual_triage';
 }
 
-async function fetchAuditRow(baseUrl, limit, [ingredientClass, ingredientId, ingredientName, query]) {
-  const response = await fetch(buildUrl(baseUrl, query, limit), {
-    method: 'GET',
-    headers: { accept: 'application/json' },
-  });
-  const body = await response.json().catch(() => ({}));
-  const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : {};
-  const products = Array.isArray(body?.products) ? body.products : [];
+async function fetchAuditRow(baseUrl, limit, timeoutMs, [ingredientClass, ingredientId, ingredientName, query]) {
+  let response = null;
+  let body = {};
+  let metadata = {};
+  let products = [];
+  let fetchError = null;
+  try {
+    response = await fetch(buildUrl(baseUrl, query, limit), {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    body = await response.json().catch(() => ({}));
+    metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+    products = Array.isArray(body?.products) ? body.products : [];
+  } catch (error) {
+    fetchError = error;
+  }
+  if (fetchError) {
+    const message = String(fetchError?.name === 'TimeoutError' ? 'audit_timeout' : fetchError?.message || fetchError).trim();
+    return {
+      ingredient_class: ingredientClass,
+      ingredient_id: ingredientId,
+      ingredient_name: ingredientName,
+      query,
+      query_source: null,
+      x_service_commit: null,
+      direct_main_path_status: null,
+      registry_match: false,
+      registry_source: null,
+      profile_source: null,
+      miss_reason: message || 'audit_error',
+      root_cause_bucket: 'audit_error',
+      recommended_action: 'rerun_or_investigate_route_timeout',
+      candidate_evidence_breakdown: {},
+      direct_source_stage_counts: {},
+      direct_source_reject_breakdown: {},
+      source_statuses: {},
+      top_products: [],
+      ranked_samples: [],
+      rejected_samples: [],
+    };
+  }
   return {
     ingredient_class: ingredientClass,
     ingredient_id: ingredientId,
@@ -209,14 +249,15 @@ async function main() {
   const rows = [];
   let serviceCommit = '';
   for (const entry of MATRIX) {
-    const row = await fetchAuditRow(baseUrl, args.limit, entry);
-    row.recommended_action = classifyRecommendedAction(row.root_cause_bucket);
+    const row = await fetchAuditRow(baseUrl, args.limit, args.timeoutMs, entry);
+    row.recommended_action = row.recommended_action || classifyRecommendedAction(row.root_cause_bucket);
     if (!serviceCommit && row.x_service_commit) serviceCommit = row.x_service_commit;
     rows.push(row);
   }
   const summary = {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
+    timeout_ms: args.timeoutMs,
     x_service_commit: serviceCommit || null,
     ingredient_count: rows.length,
     bucket_counts: rows.reduce((acc, row) => {
