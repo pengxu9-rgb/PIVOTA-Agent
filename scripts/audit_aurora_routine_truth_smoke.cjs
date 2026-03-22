@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_BASE_URL = process.env.AURORA_AUDIT_BASE_URL || 'https://pivota-agent-production.up.railway.app';
-const DEFAULT_TIMEOUT_MS = Math.max(5_000, Number.parseInt(process.env.AURORA_AUDIT_TIMEOUT_MS, 10) || 25_000);
+const DEFAULT_TIMEOUT_MS = Math.max(10_000, Number.parseInt(process.env.AURORA_AUDIT_TIMEOUT_MS, 10) || 60_000);
 
 const CASES = Object.freeze([
   {
@@ -89,8 +89,10 @@ async function runCase(baseUrl, timeoutMs, spec) {
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
-      'x-user-id': `aurora-routine-truth-${spec.case_id}`,
-      'x-language': 'EN',
+      'X-Aurora-UID': `aurora_routine_truth_${spec.case_id}`,
+      'X-Trace-ID': `trace_${spec.case_id}_${Date.now()}`,
+      'X-Brief-ID': `brief_${spec.case_id}_${Date.now()}`,
+      'X-Lang': 'EN',
     },
     body: JSON.stringify(spec.body),
     signal: AbortSignal.timeout(timeoutMs),

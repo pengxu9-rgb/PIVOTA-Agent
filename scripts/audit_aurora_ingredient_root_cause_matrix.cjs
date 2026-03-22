@@ -187,9 +187,16 @@ function classifyRecommendedAction(bucket) {
 
 function resolveOutputPath(targetPath) {
   if (!targetPath) return '';
-  return path.isAbsolute(targetPath)
-    ? targetPath
-    : path.join(DEFAULT_OUTPUT_ROOT, targetPath);
+  if (path.isAbsolute(targetPath)) return targetPath;
+  const normalized = targetPath.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('./') ||
+    normalized.startsWith('../') ||
+    normalized.startsWith('output/')
+  ) {
+    return path.join(process.cwd(), targetPath);
+  }
+  return path.join(DEFAULT_OUTPUT_ROOT, targetPath);
 }
 
 function selectMatrixRows(args) {
