@@ -41,6 +41,8 @@ function isLikelyProductImageUrl(value) {
   if (!url) return false;
   const lower = url.toLowerCase();
   if (lower.endsWith('.svg')) return false;
+  if (lower.includes('ivborw0')) return false;
+  if (lower.includes('base64,')) return false;
   if (lower.includes('/brands-logo/')) return false;
   if (lower.includes('/images/icons/')) return false;
   if (lower.includes('/navbar-')) return false;
@@ -81,7 +83,7 @@ function collectImageUrls(...sources) {
       continue;
     }
   }
-  return out;
+  return out.slice(0, 12);
 }
 
 function stableExternalProductId(url) {
@@ -89,6 +91,13 @@ function stableExternalProductId(url) {
   if (!normalized) return '';
   const hash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 24);
   return `ext_${hash}`;
+}
+
+function stableSeedId(url) {
+  const normalized = normalizeHttpUrl(url);
+  if (!normalized) return '';
+  const hash = crypto.createHash('sha256').update(`external-seed::${normalized}`).digest('hex').slice(0, 24);
+  return `eps_${hash}`;
 }
 
 function pickPrimaryVariant(product) {
@@ -136,7 +145,9 @@ function buildSeedRow(item, extractDoc) {
     normalizeHttpUrl(item?.target_url);
   const destinationUrl = canonicalUrl;
   const externalProductId = stableExternalProductId(canonicalUrl || destinationUrl);
+  const seedId = stableSeedId(canonicalUrl || destinationUrl);
   if (!externalProductId) return null;
+  if (!seedId) return null;
 
   const imageUrls = collectImageUrls(
     primaryVariant?.image_urls,
@@ -182,6 +193,7 @@ function buildSeedRow(item, extractDoc) {
   return {
     ingredient_id: item?.ingredient_id || null,
     ingredient_name: item?.ingredient_name || null,
+    seed_id: seedId,
     brand: item?.target_brand || null,
     market: 'US',
     tool: 'creator_agents',
