@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { withClient, getPool } = require('../src/db');
+const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
 
 function parseArgs(argv) {
   const out = { inputPath: '', outPath: '', dryRun: false, apply: false };
@@ -65,6 +66,32 @@ function buildRow(item) {
     attached_product_key: row.attached_product_key ?? null,
     requires_seed_correction: Boolean(row.requires_seed_correction),
     seed_data: ensureObject(row.seed_data),
+  };
+}
+
+async function prepareRow(item) {
+  const row = buildRow(item);
+  const enriched = await enrichExternalSeedRowIngredients({
+    row: {
+      ...row,
+      id: row.seed_id,
+    },
+    ingredientId: row.ingredient_id,
+    ingredientName: row.ingredient_name,
+  });
+  const nextRow = enriched?.row && typeof enriched.row === 'object' ? enriched.row : row;
+  return {
+    ...row,
+    ...nextRow,
+    seed_id: normalizeNonEmptyString(nextRow.seed_id || nextRow.id || row.seed_id),
+    seed_data: ensureObject(nextRow.seed_data),
+    ingredient_writeback_source: enriched?.enrichment_source || 'none',
+    seed_structured_ingredient_status:
+      enriched?.seed_structured_ingredient_status_after ||
+      enriched?.seed_structured_ingredient_status_before ||
+      'missing',
+    seed_kb_sync_status: enriched?.seed_kb_sync_status || 'missing_both',
+    runtime_ingredient_evidence_source: enriched?.runtime_ingredient_evidence_source || 'none',
   };
 }
 
@@ -155,7 +182,7 @@ async function processManifestWithDb(manifest, mode) {
     }
     try {
       for (const item of manifest.items || []) {
-        const row = buildRow(item);
+        const row = await prepareRow(item);
         const validationProblems = validateRow(row);
         if (validationProblems.length) {
           results.push({
@@ -166,6 +193,10 @@ async function processManifestWithDb(manifest, mode) {
             status: 'invalid',
             validation_problems: validationProblems,
             requires_seed_correction: row.requires_seed_correction,
+            ingredient_writeback_source: row.ingredient_writeback_source,
+            seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+            seed_kb_sync_status: row.seed_kb_sync_status,
+            runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
           });
           continue;
         }
@@ -186,6 +217,10 @@ async function processManifestWithDb(manifest, mode) {
               title: normalizeNonEmptyString(match.title),
             })),
             requires_seed_correction: row.requires_seed_correction,
+            ingredient_writeback_source: row.ingredient_writeback_source,
+            seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+            seed_kb_sync_status: row.seed_kb_sync_status,
+            runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
           });
           continue;
         }
@@ -198,6 +233,10 @@ async function processManifestWithDb(manifest, mode) {
             external_product_id: row.external_product_id,
             status: 'would_insert',
             requires_seed_correction: row.requires_seed_correction,
+            ingredient_writeback_source: row.ingredient_writeback_source,
+            seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+            seed_kb_sync_status: row.seed_kb_sync_status,
+            runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
           });
           continue;
         }
@@ -210,6 +249,10 @@ async function processManifestWithDb(manifest, mode) {
           external_product_id: row.external_product_id,
           status: 'inserted',
           requires_seed_correction: row.requires_seed_correction,
+          ingredient_writeback_source: row.ingredient_writeback_source,
+          seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+          seed_kb_sync_status: row.seed_kb_sync_status,
+          runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
         });
       }
 
@@ -226,10 +269,10 @@ async function processManifestWithDb(manifest, mode) {
   });
 }
 
-function processManifestWithoutDb(manifest) {
+async function processManifestWithoutDb(manifest) {
   const results = [];
   for (const item of manifest.items || []) {
-    const row = buildRow(item);
+    const row = await prepareRow(item);
     const validationProblems = validateRow(row);
     if (validationProblems.length) {
       results.push({
@@ -240,6 +283,10 @@ function processManifestWithoutDb(manifest) {
         status: 'invalid',
         validation_problems: validationProblems,
         requires_seed_correction: row.requires_seed_correction,
+        ingredient_writeback_source: row.ingredient_writeback_source,
+        seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+        seed_kb_sync_status: row.seed_kb_sync_status,
+        runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
       });
       continue;
     }
@@ -250,6 +297,10 @@ function processManifestWithoutDb(manifest) {
       external_product_id: row.external_product_id,
       status: 'would_insert_unverified',
       requires_seed_correction: row.requires_seed_correction,
+      ingredient_writeback_source: row.ingredient_writeback_source,
+      seed_structured_ingredient_status: row.seed_structured_ingredient_status,
+      seed_kb_sync_status: row.seed_kb_sync_status,
+      runtime_ingredient_evidence_source: row.runtime_ingredient_evidence_source,
     });
   }
   return results;

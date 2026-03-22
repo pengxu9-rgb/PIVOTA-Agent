@@ -3,6 +3,13 @@ const { kbQuery } = require('./pciKbClient');
 const { auditExternalSeedRow, summarizeAuditResults } = require('./externalSeedContentAudit');
 const { buildExternalSeedHarvesterCandidates } = require('./externalSeedHarvesterBridge');
 const { ensureJsonObject } = require('./externalSeedProducts');
+const {
+  ENRICHMENT_SOURCE,
+  classifySeedStructuredIngredientStatus,
+  fetchReviewedKbRowsForSeedRow,
+  buildSeedKbSyncStatus,
+  buildRuntimeIngredientEvidenceSource,
+} = require('./externalSeedIngredientEnrichment');
 
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
@@ -158,6 +165,22 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
   const candidates = buildExternalSeedHarvesterCandidates(row);
   const candidateIds = candidates.map((candidate) => candidate.candidate_id);
   const kb = await fetchKbCoverage(candidateIds);
+  const reviewedKbRows = await fetchReviewedKbRowsForSeedRow(row);
+  const seedStructuredIngredientStatus = classifySeedStructuredIngredientStatus(row.seed_data);
+  const seedKbSyncStatus = buildSeedKbSyncStatus({
+    seedStatus: seedStructuredIngredientStatus,
+    reviewedKbRows,
+  });
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const ingredientWritebackSource =
+    normalizeNonEmptyString(seedData?.ingredient_intel?.external_seed_enrichment?.source) ||
+    normalizeNonEmptyString(snapshot?.ingredient_intel?.external_seed_enrichment?.source) ||
+    ENRICHMENT_SOURCE.none;
+  const runtimeIngredientEvidenceSource = buildRuntimeIngredientEvidenceSource({
+    seedStatus: seedStructuredIngredientStatus,
+    reviewedKbRows,
+  });
   const matchedKeys = new Set(kb.rows.map((item) => normalizeNonEmptyString(item.sku_key)));
   const parseOkCount = kb.rows.filter((item) => normalizeNonEmptyString(item.parse_status).toUpperCase() === 'OK').length;
   const ingredientCoveredCount = kb.rows.filter(
@@ -189,6 +212,7 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       candidate_count: candidateIds.length,
       kb_table_available: kb.tableAvailable,
       kb_row_count: kb.rows.length,
+      kb_reviewed_row_count: reviewedKbRows.length,
       kb_parse_ok_count: parseOkCount,
       ingredient_covered_count: ingredientCoveredCount,
       kb_coverage_status:
@@ -207,6 +231,10 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
           : ingredientCoveredCount === candidateIds.length
             ? 'complete'
             : 'partial',
+      seed_structured_ingredient_status: seedStructuredIngredientStatus,
+      seed_kb_sync_status: seedKbSyncStatus,
+      ingredient_writeback_source: ingredientWritebackSource,
+      runtime_ingredient_evidence_source: runtimeIngredientEvidenceSource,
       matched_candidate_ids: candidateIds.filter((candidateId) => matchedKeys.has(candidateId)),
     },
     gating: {
@@ -215,6 +243,8 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
       next_step:
         blockerCount > 0
           ? 'fix_blockers_before_harvest'
+          : seedKbSyncStatus === 'kb_only_unsynced'
+            ? 'sync_seed_ingredient_fields'
           : ingredientCoveredCount === candidateIds.length
             ? 'ready_for_kb_use'
             : 'ready_for_harvest',

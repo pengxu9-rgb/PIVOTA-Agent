@@ -2,6 +2,7 @@ const { query } = require('../db');
 const { auditExternalSeedRow, detectGenericTemplateDescription } = require('./externalSeedContentAudit');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 const { ensureJsonObject, collectSeedImageUrls, normalizeSeedVariants } = require('./externalSeedProducts');
+const { enrichExternalSeedRowIngredients } = require('./externalSeedIngredientEnrichment');
 const {
   pickSeedTargetUrl,
   normalizeTargetUrlForMarket,
@@ -78,6 +79,16 @@ async function loadExternalSeedRowById(seedId) {
 }
 
 async function persistExternalSeedRow(row) {
+  const enrichment = await enrichExternalSeedRowIngredients({
+    row,
+    ingredientId:
+      normalizeNonEmptyString(row?.ingredient_id) ||
+      normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_id),
+    ingredientName:
+      normalizeNonEmptyString(row?.ingredient_name) ||
+      normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_name),
+  });
+  const persistedRow = enrichment?.row && typeof enrichment.row === 'object' ? enrichment.row : row;
   await query(
     `
       UPDATE external_product_seeds
@@ -94,18 +105,18 @@ async function persistExternalSeedRow(row) {
       WHERE id = $1
     `,
     [
-      row.id,
-      normalizeNonEmptyString(row.title),
-      normalizeUrlLike(row.canonical_url),
-      normalizeUrlLike(row.destination_url),
-      normalizeNonEmptyString(row.image_url),
-      row.price_amount ?? null,
-      normalizeNonEmptyString(row.price_currency),
-      normalizeNonEmptyString(row.availability),
-      JSON.stringify(ensureJsonObject(row.seed_data)),
+      persistedRow.id,
+      normalizeNonEmptyString(persistedRow.title),
+      normalizeUrlLike(persistedRow.canonical_url),
+      normalizeUrlLike(persistedRow.destination_url),
+      normalizeNonEmptyString(persistedRow.image_url),
+      persistedRow.price_amount ?? null,
+      normalizeNonEmptyString(persistedRow.price_currency),
+      normalizeNonEmptyString(persistedRow.availability),
+      JSON.stringify(ensureJsonObject(persistedRow.seed_data)),
     ],
   );
-  return loadExternalSeedRowById(row.id);
+  return loadExternalSeedRowById(persistedRow.id);
 }
 
 function updateSeedUrlFields(row, nextUrl) {

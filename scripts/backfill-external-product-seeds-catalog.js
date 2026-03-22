@@ -10,6 +10,7 @@ const {
   normalizeSeedVariants,
   normalizeSeedAvailability,
 } = require('../src/services/externalSeedProducts');
+const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -549,13 +550,43 @@ async function processRow(row, options) {
   try {
     const response = await extractSeed(targetUrl, row, options.baseUrl);
     const payload = buildSeedUpdatePayload(row, response, targetUrl);
-    if (options.dryRun || !payload.changed) {
+    const enrichment = await enrichExternalSeedRowIngredients({
+      row: {
+        ...row,
+        ...payload.nextRow,
+        seed_data: payload.nextRow.seed_data,
+      },
+      ingredientId:
+        normalizeNonEmptyString(row?.ingredient_id) ||
+        normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_id),
+      ingredientName:
+        normalizeNonEmptyString(row?.ingredient_name) ||
+        normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_name),
+    });
+    const enrichedNextRow =
+      enrichment?.row && typeof enrichment.row === 'object'
+        ? {
+            ...payload.nextRow,
+            seed_data: ensureJsonObject(enrichment.row.seed_data),
+          }
+        : payload.nextRow;
+    const changed =
+      payload.changed ||
+      JSON.stringify(comparableSeedData(payload.nextRow.seed_data)) !==
+        JSON.stringify(comparableSeedData(enrichedNextRow.seed_data));
+    const enrichedPayload = {
+      ...payload,
+      changed,
+      nextRow: enrichedNextRow,
+      ingredient_enrichment: enrichment || null,
+    };
+    if (options.dryRun || !enrichedPayload.changed) {
       return {
-        status: payload.changed ? 'dry_run' : 'skipped',
-        reason: payload.changed ? null : 'unchanged',
+        status: enrichedPayload.changed ? 'dry_run' : 'skipped',
+        reason: enrichedPayload.changed ? null : 'unchanged',
         row,
         targetUrl,
-        payload,
+        payload: enrichedPayload,
       };
     }
 
@@ -577,21 +608,37 @@ async function processRow(row, options) {
         `,
         [
           row.id,
-          payload.nextRow.title,
-          payload.nextRow.canonical_url,
-          payload.nextRow.destination_url,
-          payload.nextRow.image_url,
-          payload.nextRow.price_amount,
-          payload.nextRow.price_currency,
-          payload.nextRow.availability,
-          JSON.stringify(payload.nextRow.seed_data),
+          enrichedPayload.nextRow.title,
+          enrichedPayload.nextRow.canonical_url,
+          enrichedPayload.nextRow.destination_url,
+          enrichedPayload.nextRow.image_url,
+          enrichedPayload.nextRow.price_amount,
+          enrichedPayload.nextRow.price_currency,
+          enrichedPayload.nextRow.availability,
+          JSON.stringify(enrichedPayload.nextRow.seed_data),
         ],
       );
     });
 
-    return { status: 'updated', row, targetUrl, payload };
+    return { status: 'updated', row, targetUrl, payload: enrichedPayload };
   } catch (error) {
     const nextSeedData = buildFailureSeedData(row, targetUrl, error);
+    const failureEnrichment = await enrichExternalSeedRowIngredients({
+      row: {
+        ...row,
+        seed_data: nextSeedData,
+      },
+      ingredientId:
+        normalizeNonEmptyString(row?.ingredient_id) ||
+        normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_id),
+      ingredientName:
+        normalizeNonEmptyString(row?.ingredient_name) ||
+        normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_name),
+    });
+    const persistedSeedData =
+      failureEnrichment?.row && typeof failureEnrichment.row === 'object'
+        ? ensureJsonObject(failureEnrichment.row.seed_data)
+        : nextSeedData;
     if (!options.dryRun) {
       await query(
         `
@@ -599,7 +646,7 @@ async function processRow(row, options) {
           SET seed_data = $2::jsonb, updated_at = now()
           WHERE id = $1
         `,
-        [row.id, JSON.stringify(nextSeedData)],
+        [row.id, JSON.stringify(persistedSeedData)],
       );
     }
     return { status: 'failed', row, targetUrl, error };
