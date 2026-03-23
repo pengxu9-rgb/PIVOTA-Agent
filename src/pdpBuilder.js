@@ -15,6 +15,10 @@ const BEAUTY_KEYWORDS = [
   'fragrance',
   'perfume',
 ];
+const INGREDIENT_SECTION_HEADING_RE = /\b(ingredients?|inci|full ingredients?)\b/i;
+const ACTIVE_INGREDIENT_SECTION_HEADING_RE = /\b(active ingredients?|key ingredients?|actives?)\b/i;
+const HOW_TO_USE_SECTION_HEADING_RE = /\b(how to use|directions?|usage|application)\b/i;
+const BRAND_STORY_SECTION_HEADING_RE = /\b(brand|story)\b/i;
 
 function createPageRequestId() {
   return `pr_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
@@ -75,6 +79,34 @@ const MODULE_REQUIREMENTS = {
   },
   variant_selector: {
     requiredPaths: ['data.selected_variant_id'],
+  },
+  ingredients_inci: {
+    requiredPaths: ['data.title'],
+    validate: (module) =>
+      hasValue(getByPath(module, 'data.raw_text')) ||
+      (Array.isArray(module?.data?.items) && module.data.items.length > 0),
+  },
+  active_ingredients: {
+    requiredPaths: ['data.title'],
+    validate: (module) =>
+      (Array.isArray(module?.data?.items) && module.data.items.length > 0) ||
+      hasValue(getByPath(module, 'data.raw_text')),
+  },
+  how_to_use: {
+    requiredPaths: ['data.title'],
+    validate: (module) =>
+      hasValue(getByPath(module, 'data.raw_text')) ||
+      (Array.isArray(module?.data?.steps) && module.data.steps.length > 0),
+  },
+  product_facts: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => {
+      const sections = module?.data?.sections;
+      return (
+        Array.isArray(sections) &&
+        sections.some((section) => section?.heading && section?.content && section?.content_type)
+      );
+    },
   },
   product_details: {
     requiredPaths: ['data.sections'],
@@ -442,35 +474,96 @@ function buildMediaItems(product, variants) {
   return items;
 }
 
-function buildDetailSections(product) {
-  const sections = [];
-  const desc = stripHtml(product.description || '');
-  if (desc) {
-    sections.push({
-      heading: 'Description',
-      content_type: 'text',
-      content: desc,
-      collapsed_by_default: false,
-    });
-  }
+function normalizeTextValue(value) {
+  return stripHtml(value || '');
+}
 
-  const rawSections = Array.isArray(product.details_sections)
-    ? product.details_sections
-    : Array.isArray(product.detail_sections)
-      ? product.detail_sections
-      : Array.isArray(product.details)
-        ? product.details
+function normalizeStringList(values, maxItems = 48) {
+  const out = [];
+  const seen = new Set();
+  const normalizedValues =
+    typeof values === 'string'
+      ? values.split(/[,\n;|•]+/)
+      : Array.isArray(values)
+        ? values
         : [];
+  for (const value of normalizedValues) {
+    const normalized =
+      typeof value === 'string'
+        ? normalizeTextValue(value)
+        : normalizeTextValue(
+            value?.name ||
+              value?.label ||
+              value?.title ||
+              value?.ingredient ||
+              value?.value ||
+              value?.text,
+          );
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(maxItems) || 48)) break;
+  }
+  return out;
+}
 
-  rawSections.forEach((s) => {
-    const heading = s.heading || s.title || s.name;
-    const content = s.content || s.value || s.text;
-    if (!heading || !content) return;
-    sections.push({
-      heading: String(heading),
-      content_type: 'text',
-      content: stripHtml(String(content)),
-      collapsed_by_default: s.collapsed_by_default ?? true,
+function splitDelimitedText(input, maxItems = 64) {
+  const text = normalizeTextValue(input);
+  if (!text) return [];
+  return normalizeStringList(text.split(/[,\n;|•]+/), maxItems);
+}
+
+function splitHowToUseSteps(input, maxItems = 8) {
+  const text = normalizeTextValue(input);
+  if (!text) return [];
+  const normalized = text
+    .replace(/\r/g, '\n')
+    .replace(/\s*[•●▪]\s*/g, '\n')
+    .replace(/\s*\d+\.\s*/g, '\n')
+    .replace(/\s*step\s+\d+[:.-]?\s*/gi, '\n');
+  const lines = normalizeStringList(normalized.split(/\n+/), maxItems);
+  if (lines.length > 1) return lines;
+  return normalizeStringList(
+    text
+      .split(/(?:\.\s+)(?=[A-Z])|(?:;\s+)/)
+      .map((part) => part.trim())
+      .filter(Boolean),
+    maxItems,
+  );
+}
+
+function matchesSectionHeading(section, pattern) {
+  return Boolean(pattern && pattern.test(String(section?.heading || '')));
+}
+
+function readDetailSections(product) {
+  const sections = [];
+  const seen = new Set();
+  const sources = [
+    Array.isArray(product.pdp_details_sections) ? product.pdp_details_sections : [],
+    Array.isArray(product.details_sections) ? product.details_sections : [],
+    Array.isArray(product.detail_sections) ? product.detail_sections : [],
+    Array.isArray(product.details) ? product.details : [],
+  ];
+
+  sources.forEach((items) => {
+    items.forEach((item) => {
+      const heading = normalizeTextValue(item?.heading || item?.title || item?.name);
+      const content = normalizeTextValue(
+        item?.body || item?.content || item?.value || item?.text,
+      );
+      if (!heading || !content) return;
+      const key = `${heading.toLowerCase()}|${content.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      sections.push({
+        heading,
+        content_type: 'text',
+        content,
+        collapsed_by_default: item?.collapsed_by_default ?? true,
+      });
     });
   });
 
@@ -484,6 +577,126 @@ function buildDetailSections(product) {
   }
 
   return sections;
+}
+
+function resolveIngredientSourceMeta(product, prefersPdpField = false) {
+  const source = String(
+    product?.ingredient_intel?.external_seed_enrichment?.source ||
+      product?.ingredient_intel?.source ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+
+  if (source === 'kb_reviewed') {
+    return { source_origin: 'reviewed_kb', source_quality_status: 'reviewed' };
+  }
+  if (source === 'pdp_ingredient_fields' || prefersPdpField) {
+    return { source_origin: 'retail_pdp', source_quality_status: 'captured' };
+  }
+  if (source === 'description_parse') {
+    return { source_origin: 'retail_pdp', source_quality_status: 'parsed' };
+  }
+  if (source === 'title_url_anchor') {
+    return { source_origin: 'structured_seed', source_quality_status: 'derived' };
+  }
+  return { source_origin: 'unknown', source_quality_status: 'unknown' };
+}
+
+function buildIngredientsModule(product, detailSections) {
+  const rawText =
+    normalizeTextValue(product.raw_ingredient_text_clean) ||
+    normalizeTextValue(product.pdp_ingredients_raw) ||
+    normalizeTextValue(
+      detailSections.find((section) => matchesSectionHeading(section, INGREDIENT_SECTION_HEADING_RE))
+        ?.content,
+    );
+  const inciItems = normalizeStringList(product.inci_list);
+  const tokenItems = normalizeStringList(product.ingredient_tokens);
+  const normalizedItems = inciItems.length
+    ? inciItems
+    : tokenItems.length
+      ? tokenItems
+      : splitDelimitedText(rawText);
+  if (!rawText && !normalizedItems.length) return null;
+  return {
+    title: 'Ingredients',
+    raw_text: rawText || undefined,
+    items: normalizedItems,
+    ...resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw)),
+  };
+}
+
+function buildActiveIngredientsModule(product, detailSections) {
+  const rawText =
+    normalizeTextValue(product.pdp_active_ingredients_raw) ||
+    normalizeTextValue(
+      detailSections.find((section) => matchesSectionHeading(section, ACTIVE_INGREDIENT_SECTION_HEADING_RE))
+        ?.content,
+    );
+  const items = normalizeStringList(product.active_ingredients);
+  const keyItems = normalizeStringList(product.key_ingredients);
+  const normalizedItems = items.length
+    ? items
+    : keyItems.length
+      ? keyItems
+      : splitDelimitedText(rawText, 16);
+  if (!rawText && !normalizedItems.length) return null;
+  return {
+    title: 'Active ingredients',
+    items: normalizedItems,
+    ...(rawText ? { raw_text: rawText } : {}),
+    ...resolveIngredientSourceMeta(
+      product,
+      Boolean(product.pdp_active_ingredients_raw || product.pdp_ingredients_raw),
+    ),
+  };
+}
+
+function buildHowToUseModule(product, detailSections) {
+  const rawText =
+    normalizeTextValue(product.pdp_how_to_use_raw) ||
+    normalizeTextValue(
+      detailSections.find((section) => matchesSectionHeading(section, HOW_TO_USE_SECTION_HEADING_RE))
+        ?.content,
+    );
+  const steps = splitHowToUseSteps(rawText);
+  if (!rawText && !steps.length) return null;
+  return {
+    title: 'How to use',
+    raw_text: rawText || undefined,
+    steps,
+    source_origin: normalizeTextValue(product.pdp_how_to_use_raw) ? 'retail_pdp' : 'unknown',
+  };
+}
+
+function buildProductFactSections(product, detailSections) {
+  const factSections = detailSections.filter(
+    (section) =>
+      !matchesSectionHeading(section, INGREDIENT_SECTION_HEADING_RE) &&
+      !matchesSectionHeading(section, ACTIVE_INGREDIENT_SECTION_HEADING_RE) &&
+      !matchesSectionHeading(section, HOW_TO_USE_SECTION_HEADING_RE),
+  );
+
+  if (factSections.length) return factSections;
+
+  const fallbackDescription = normalizeTextValue(product.pdp_description_raw || product.description);
+  if (!fallbackDescription) return [];
+  return [
+    {
+      heading: 'Description',
+      content_type: 'text',
+      content: fallbackDescription,
+      collapsed_by_default: false,
+    },
+  ];
+}
+
+function extractBrandStory(product, factSections) {
+  const explicit = normalizeTextValue(product.brand_story);
+  if (explicit) return explicit;
+  const section = factSections.find((item) => matchesSectionHeading(item, BRAND_STORY_SECTION_HEADING_RE));
+  return section?.content || undefined;
 }
 
 function buildReviewsPreview(product, options = {}) {
@@ -657,11 +870,17 @@ function buildPdpPayload(args) {
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
   const mediaItems = buildMediaItems(product, variants);
-  const details = buildDetailSections(product);
+  const detailSections = readDetailSections(product);
+  const ingredientsModule = buildIngredientsModule(product, detailSections);
+  const activeIngredientsModule = buildActiveIngredientsModule(product, detailSections);
+  const howToUseModule = buildHowToUseModule(product, detailSections);
+  const productFactsSections = buildProductFactSections(product, detailSections);
   const reviews = buildReviewsPreview(product, { includeEmpty: args.includeEmptyReviews });
   const recommendations = args.relatedProducts?.length
     ? buildRecommendations(args.relatedProducts, currency)
     : null;
+  const primaryDescription = normalizeTextValue(product.pdp_description_raw || product.description);
+  const brandStory = extractBrandStory(product, productFactsSections);
 
   const modules = [];
   if (mediaItems.length) {
@@ -690,12 +909,44 @@ function buildPdpPayload(args) {
       promotions: product.promotions || [],
     },
   });
-  if (details.length) {
+  if (activeIngredientsModule) {
+    modules.push({
+      module_id: 'm_active_ingredients',
+      type: 'active_ingredients',
+      priority: 82,
+      data: activeIngredientsModule,
+    });
+  }
+  if (ingredientsModule) {
+    modules.push({
+      module_id: 'm_ingredients',
+      type: 'ingredients_inci',
+      priority: 81,
+      data: ingredientsModule,
+    });
+  }
+  if (howToUseModule) {
+    modules.push({
+      module_id: 'm_how_to_use',
+      type: 'how_to_use',
+      priority: 80,
+      data: howToUseModule,
+    });
+  }
+  if (productFactsSections.length) {
+    modules.push({
+      module_id: 'm_product_facts',
+      type: 'product_facts',
+      priority: 71,
+      data: { sections: productFactsSections },
+    });
+  }
+  if (productFactsSections.length) {
     modules.push({
       module_id: 'm_details',
       type: 'product_details',
       priority: 70,
-      data: { sections: details },
+      data: { sections: productFactsSections },
     });
   }
   if (reviews) {
@@ -755,7 +1006,8 @@ function buildPdpPayload(args) {
       availability: productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
-      description: product.description || '',
+      description: primaryDescription || '',
+      ...(brandStory ? { brand_story: brandStory } : {}),
       ...(product.size_guide || product.sizeGuide
         ? { size_guide: product.size_guide || product.sizeGuide }
         : {}),
