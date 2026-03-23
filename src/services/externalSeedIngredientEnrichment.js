@@ -19,6 +19,13 @@ const ENRICHMENT_SOURCE = Object.freeze({
   titleUrlAnchor: 'title_url_anchor',
   none: 'none',
 });
+const ENRICHMENT_SOURCE_PRIORITY = Object.freeze({
+  [ENRICHMENT_SOURCE.none]: 0,
+  [ENRICHMENT_SOURCE.titleUrlAnchor]: 1,
+  [ENRICHMENT_SOURCE.descriptionParse]: 2,
+  [ENRICHMENT_SOURCE.pdpIngredientFields]: 3,
+  [ENRICHMENT_SOURCE.kbReviewed]: 4,
+});
 const SEED_ANCHOR_SOURCE_KIND = Object.freeze({
   kbReviewed: 'kb_reviewed',
   descriptionParse: 'description_parse',
@@ -897,6 +904,45 @@ function buildRuntimeIngredientEvidenceSource({ seedStatus, reviewedKbRows }) {
   return 'none';
 }
 
+function getEnrichmentSourcePriority(source) {
+  const normalized = normalizeNonEmptyString(source) || ENRICHMENT_SOURCE.none;
+  return ENRICHMENT_SOURCE_PRIORITY[normalized] || 0;
+}
+
+function resolveStrongestStructuredUpgradeSource({ row, reviewedKbRows = [] } = {}) {
+  if (Array.isArray(reviewedKbRows) && reviewedKbRows.length > 0) return ENRICHMENT_SOURCE.kbReviewed;
+  if (candidatePdpIngredientTexts(row).length > 0) return ENRICHMENT_SOURCE.pdpIngredientFields;
+  if (candidateIngredientTexts(row).length > 0) return ENRICHMENT_SOURCE.descriptionParse;
+  return ENRICHMENT_SOURCE.none;
+}
+
+function shouldUpgradePresentStructuredSeed({
+  row,
+  reviewedKbRows = [],
+  existingEnrichmentMetadata = {},
+  structuredView = null,
+} = {}) {
+  const existingSource = normalizeNonEmptyString(existingEnrichmentMetadata?.source) || ENRICHMENT_SOURCE.none;
+  const strongestSource = resolveStrongestStructuredUpgradeSource({ row, reviewedKbRows });
+  if (getEnrichmentSourcePriority(strongestSource) <= getEnrichmentSourcePriority(existingSource)) {
+    return false;
+  }
+
+  if (existingSource === ENRICHMENT_SOURCE.titleUrlAnchor) return true;
+
+  const hasRawStructuredText = Boolean(
+    normalizeNonEmptyString(structuredView?.raw_ingredient_text_clean) ||
+      normalizeNonEmptyString(structuredView?.inci_list),
+  );
+  if (!hasRawStructuredText) {
+    return (
+      existingSource === ENRICHMENT_SOURCE.none ||
+      existingSource === ENRICHMENT_SOURCE.descriptionParse
+    );
+  }
+  return false;
+}
+
 function externalSeedScopeText(row = {}) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -1104,11 +1150,26 @@ async function enrichExternalSeedRowIngredients({
   const reviewedKbRows = Array.isArray(kbRows) ? kbRows.filter(isReviewedKbIngredientRow) : await fetchReviewedKbRowsForSeedRow(row);
   const seedData = ensureJsonObject(row.seed_data);
   const beforeStatus = classifySeedStructuredIngredientStatus(seedData);
+  const beforeStructuredView = readStructuredIngredientView(seedData);
   const existingEnrichmentMetadata = readExternalSeedEnrichmentMetadata(seedData);
   const beforeSeedKbSyncStatus = buildSeedKbSyncStatus({ seedStatus: beforeStatus, reviewedKbRows });
   const hasExplicitIngredientAnchor =
     normalizeNonEmptyString(ingredientId) || normalizeNonEmptyString(ingredientName);
-  if (beforeStatus === SEED_STRUCTURED_STATUS.present && reviewedKbRows.length === 0 && !hasExplicitIngredientAnchor) {
+  const shouldAttemptStructuredUpgrade =
+    beforeStatus === SEED_STRUCTURED_STATUS.present &&
+    !hasExplicitIngredientAnchor &&
+    shouldUpgradePresentStructuredSeed({
+      row,
+      reviewedKbRows,
+      existingEnrichmentMetadata,
+      structuredView: beforeStructuredView,
+    });
+  if (
+    beforeStatus === SEED_STRUCTURED_STATUS.present &&
+    reviewedKbRows.length === 0 &&
+    !hasExplicitIngredientAnchor &&
+    !shouldAttemptStructuredUpgrade
+  ) {
     const quarantine = classifyExternalSeedQuarantine({
       row,
       reviewedKbRows,
@@ -1304,5 +1365,6 @@ module.exports = {
     hasWave1SafeFaceSkincareSignal,
     applyExternalSeedEnrichmentMetadata,
     buildIngredientSourceQualityStatus,
+    shouldUpgradePresentStructuredSeed,
   },
 };
