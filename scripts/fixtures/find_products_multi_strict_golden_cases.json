@@ -1,0 +1,114 @@
+[
+  {
+    "id": "beauty_ingredient_niacinamide",
+    "family": "skin_care_ingredient",
+    "query": "niacinamide serum",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids"
+    ],
+    "must_not_return_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "beauty_ingredient_budget_vitamin_c",
+    "family": "skin_care_ingredient",
+    "query": "vitamin c serum under €30",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_not_return_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "beauty_shade_foundation_210",
+    "family": "cosmetics_shade",
+    "query": "foundation shade 210",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "visible_option_intents.0",
+      "matched_visible_option_labels"
+    ]
+  },
+  {
+    "id": "beauty_shade_lipstick_rose_nude",
+    "family": "cosmetics_shade",
+    "query": "lipstick shade rose nude",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "visible_option_intents.0"
+    ]
+  },
+  {
+    "id": "beauty_generic_serum",
+    "family": "generic_beauty_category",
+    "query": "serum",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "query_source"
+    ]
+  },
+  {
+    "id": "fashion_multi_blue_striped_sweater",
+    "family": "fashion_multi_constraint",
+    "query": "blue striped sweater",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "visible_category_intents.0",
+      "visible_attribute_intents.0",
+      "visible_option_intents.0"
+    ]
+  },
+  {
+    "id": "fashion_multi_pink_sleeveless_sweater_size_m",
+    "family": "fashion_multi_constraint",
+    "query": "pink sleeveless sweater size m",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "visible_category_intents.0",
+      "visible_attribute_intents.0",
+      "visible_option_intents.0"
+    ]
+  },
+  {
+    "id": "fashion_multi_polar_fleece_vest_size_xl",
+    "family": "fashion_multi_constraint",
+    "query": "polar fleece vest size xl",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "visible_category_intents.0",
+      "visible_attribute_intents.0",
+      "visible_option_intents.0"
+    ]
+  }
+]
