@@ -14,6 +14,7 @@ const {
 const SEED_INGREDIENT_WRITEBACK_VERSION = 'external_seed_ingredient_writeback_v1';
 const ENRICHMENT_SOURCE = Object.freeze({
   kbReviewed: 'kb_reviewed',
+  pdpIngredientFields: 'pdp_ingredient_fields',
   descriptionParse: 'description_parse',
   titleUrlAnchor: 'title_url_anchor',
   none: 'none',
@@ -48,6 +49,17 @@ const SEED_QUARANTINE_BUCKET = Object.freeze({
   nonBeautyDomain: 'non_beauty_domain',
   manualUpstreamRequired: 'manual_upstream_required',
 });
+const PDP_FIELD_STATUS = Object.freeze({
+  present: 'present',
+  partial: 'partial',
+  missing: 'missing',
+});
+const SEED_DESCRIPTION_ORIGIN = Object.freeze({
+  pdpProductDescription: 'pdp_product_description',
+  pdpVariantDescription: 'pdp_variant_description',
+  syntheticSummary: 'synthetic_summary',
+  legacyUnknown: 'legacy_unknown',
+});
 const REVIEW_STATUS_BLOCKLIST = new Set(['blocked', 'rejected', 'fail', 'failed']);
 const ATTACHED_CONTAMINATION_DOMAIN_BLOCKLIST = new Set([
   'jwx893-fz.myshopify.com',
@@ -75,6 +87,10 @@ const WAVE1_OFF_SURFACE_PATTERNS = [
   /\beye\b/i,
   /\blip\b/i,
   /\bpout\b/i,
+  /\bhand\b/i,
+  /\bfoot\b/i,
+  /\bhair\b/i,
+  /\bscalp\b/i,
   /\bbody\b/i,
   /\bbase\b/i,
   /\bprimer\b/i,
@@ -86,6 +102,7 @@ const WAVE1_BUNDLE_PATTERNS = [
   /\btrio\b/i,
   /\bcollection\b/i,
   /\bbundle\b/i,
+  /\bcollector'?s?\s+case\b/i,
 ];
 const WAVE1_SAFE_FACE_SKINCARE_PATTERNS = [
   /\bserum\b/i,
@@ -116,6 +133,10 @@ const HARD_WRITEBACK_QUARANTINE_BUCKETS = new Set([
   SEED_QUARANTINE_BUCKET.rowIngredientNameOnly,
   SEED_QUARANTINE_BUCKET.nonBeautyDomain,
 ]);
+const INGREDIENT_SECTION_HEADING_PATTERNS = [/\b(ingredients?|inci)\b/i];
+const ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS = [/\bactive ingredients?\b/i];
+const HOW_TO_USE_SECTION_HEADING_PATTERNS = [/\bhow to use\b/i];
+const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
@@ -157,6 +178,28 @@ function asStringArray(value) {
   return [];
 }
 
+function normalizeDetailsSections(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const heading = normalizeNonEmptyString(item?.heading);
+    const body = normalizeNonEmptyString(item?.body);
+    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
+    if (!heading || !body) continue;
+    const key = `${heading.toLowerCase()}|${body.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      heading,
+      body,
+      source_kind: sourceKind,
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -173,7 +216,105 @@ function countPhraseMatches(text, phrases) {
   return hits;
 }
 
-function candidateIngredientTexts(row = {}) {
+function readSeedPdpContentView(seedDataValue) {
+  const seedData = ensureJsonObject(seedDataValue);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return {
+    pdp_description_raw:
+      normalizeNonEmptyString(seedData.pdp_description_raw) ||
+      normalizeNonEmptyString(snapshot.pdp_description_raw),
+    pdp_details_sections: normalizeDetailsSections(
+      Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+        ? seedData.pdp_details_sections
+        : snapshot.pdp_details_sections,
+    ),
+    pdp_ingredients_raw:
+      normalizeNonEmptyString(seedData.pdp_ingredients_raw) ||
+      normalizeNonEmptyString(snapshot.pdp_ingredients_raw),
+    pdp_active_ingredients_raw:
+      normalizeNonEmptyString(seedData.pdp_active_ingredients_raw) ||
+      normalizeNonEmptyString(snapshot.pdp_active_ingredients_raw),
+    pdp_how_to_use_raw:
+      normalizeNonEmptyString(seedData.pdp_how_to_use_raw) ||
+      normalizeNonEmptyString(snapshot.pdp_how_to_use_raw),
+    seed_description_origin:
+      normalizeNonEmptyString(seedData.seed_description_origin) ||
+      normalizeNonEmptyString(snapshot.seed_description_origin),
+    pdp_field_capture_status: isPlainObject(seedData.pdp_field_capture_status)
+      ? seedData.pdp_field_capture_status
+      : isPlainObject(snapshot.pdp_field_capture_status)
+        ? snapshot.pdp_field_capture_status
+        : {},
+  };
+}
+
+function findSectionBodiesByHeading(sections, patterns) {
+  return normalizeDetailsSections(sections)
+    .filter((section) => patterns.some((pattern) => pattern.test(section.heading)))
+    .map((section) => normalizeNonEmptyString(section.body))
+    .filter(Boolean);
+}
+
+function allowDescriptionIngredientFallback(seedDataValue) {
+  const pdpView = readSeedPdpContentView(seedDataValue);
+  const origin = normalizeNonEmptyString(pdpView.seed_description_origin);
+  return (
+    origin === SEED_DESCRIPTION_ORIGIN.pdpProductDescription ||
+    origin === SEED_DESCRIPTION_ORIGIN.pdpVariantDescription
+  );
+}
+
+function classifySeedPdpFieldCoverageStatus(seedDataValue) {
+  const pdpView = readSeedPdpContentView(seedDataValue);
+  const hasDescription = Boolean(pdpView.pdp_description_raw);
+  const hasSections = Array.isArray(pdpView.pdp_details_sections) && pdpView.pdp_details_sections.length > 0;
+  const hasIngredientFields = Boolean(
+    pdpView.pdp_ingredients_raw ||
+      pdpView.pdp_active_ingredients_raw ||
+      findSectionBodiesByHeading(
+        pdpView.pdp_details_sections,
+        [...INGREDIENT_SECTION_HEADING_PATTERNS, ...ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS],
+      ).length > 0,
+  );
+  const hasHowToUse = Boolean(
+    pdpView.pdp_how_to_use_raw ||
+      findSectionBodiesByHeading(pdpView.pdp_details_sections, HOW_TO_USE_SECTION_HEADING_PATTERNS).length > 0,
+  );
+  const categories = [hasDescription, hasSections, hasIngredientFields, hasHowToUse].filter(Boolean).length;
+  if (categories >= 2) return PDP_FIELD_STATUS.present;
+  if (categories === 1) return PDP_FIELD_STATUS.partial;
+  return PDP_FIELD_STATUS.missing;
+}
+
+function buildIngredientSourceQualityStatus({ seedDataValue, reviewedKbRows = [] } = {}) {
+  if (Array.isArray(reviewedKbRows) && reviewedKbRows.length > 0) return 'kb_reviewed';
+  const pdpView = readSeedPdpContentView(seedDataValue);
+  if (
+    pdpView.pdp_ingredients_raw ||
+    pdpView.pdp_active_ingredients_raw ||
+    findSectionBodiesByHeading(
+      pdpView.pdp_details_sections,
+      [...INGREDIENT_SECTION_HEADING_PATTERNS, ...ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS],
+    ).length > 0
+  ) {
+    return 'pdp_ingredient_fields';
+  }
+  if (allowDescriptionIngredientFallback(seedDataValue) && extractRawIngredientText(pdpView.pdp_description_raw)) {
+    return 'pdp_labeled_description_only';
+  }
+  if (
+    normalizeNonEmptyString(pdpView.seed_description_origin) === SEED_DESCRIPTION_ORIGIN.syntheticSummary ||
+    SYNTHETIC_SUMMARY_RE.test(pdpView.pdp_description_raw)
+  ) {
+    return 'synthetic_summary_blocked';
+  }
+  if (normalizeNonEmptyString(pdpView.seed_description_origin) === SEED_DESCRIPTION_ORIGIN.legacyUnknown) {
+    return 'legacy_description_only';
+  }
+  return 'none';
+}
+
+function candidatePdpIngredientTexts(row = {}) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const variants = Array.isArray(snapshot.variants)
@@ -181,12 +322,30 @@ function candidateIngredientTexts(row = {}) {
     : Array.isArray(seedData.variants)
       ? seedData.variants
       : [];
+  const pdpView = readSeedPdpContentView(seedData);
+  const labeledDescriptionText = allowDescriptionIngredientFallback(seedData)
+    ? extractRawIngredientText(pdpView.pdp_description_raw)
+    : '';
+  const labeledVariantTexts = allowDescriptionIngredientFallback(seedData)
+    ? variants.map((variant) => extractRawIngredientText(variant?.description)).filter(Boolean)
+    : [];
   return uniqStrings([
-    ...variants.map((variant) => extractRawIngredientText(variant?.description)).filter(Boolean),
-    extractRawIngredientText(snapshot.description),
-    extractRawIngredientText(seedData.description),
-    extractRawIngredientText(row.description),
+    pdpView.pdp_ingredients_raw,
+    pdpView.pdp_active_ingredients_raw,
+    ...findSectionBodiesByHeading(pdpView.pdp_details_sections, INGREDIENT_SECTION_HEADING_PATTERNS),
+    ...findSectionBodiesByHeading(pdpView.pdp_details_sections, ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS),
+    labeledDescriptionText,
+    ...labeledVariantTexts,
   ], 16);
+}
+
+function candidateIngredientTexts(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const pdpView = readSeedPdpContentView(seedData);
+  if (allowDescriptionIngredientFallback(seedData)) {
+    return uniqStrings([extractRawIngredientText(pdpView.pdp_description_raw)], 8);
+  }
+  return [];
 }
 
 function readStructuredIngredientView(seedDataValue) {
@@ -606,6 +765,28 @@ function buildBlockFromKbRows(kbRows, { anchorProfile = null } = {}) {
   });
 }
 
+function buildBlockFromPdpIngredientFields(row, { anchorProfile = null } = {}) {
+  const rawIngredientTexts = candidatePdpIngredientTexts(row);
+  if (!rawIngredientTexts.length) return null;
+  const combined = rawIngredientTexts.join(', ');
+  const ingredientTokens = extractRegistryTokensFromText(combined, anchorProfile ? [anchorProfile] : []);
+  return buildIngredientBlock({
+    rawIngredientText: rawIngredientTexts[0],
+    inciList: combined,
+    ingredientTokens,
+    activeIngredients: ingredientTokens,
+    keyIngredients: ingredientTokens,
+    source: ENRICHMENT_SOURCE.pdpIngredientFields,
+    metadata: {
+      parsed_from_pdp_fields: true,
+      seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.descriptionParse,
+      seed_anchor_conflict_status: SEED_ANCHOR_CONFLICT_STATUS.none,
+      url_anchor_conflict: false,
+      quarantine_reason: null,
+    },
+  });
+}
+
 function buildBlockFromDescriptionParse(row, { anchorProfile = null } = {}) {
   const rawIngredientTexts = candidateIngredientTexts(row);
   if (!rawIngredientTexts.length) return null;
@@ -961,6 +1142,7 @@ async function enrichExternalSeedRowIngredients({
   const anchorProfile = anchorDecision.anchorProfile;
   const enrichmentBlock =
     buildBlockFromKbRows(reviewedKbRows, { anchorProfile }) ||
+    buildBlockFromPdpIngredientFields(row, { anchorProfile }) ||
     buildBlockFromDescriptionParse(row, { anchorProfile }) ||
     buildBlockFromAnchor(anchorDecision);
   const tentativeEnrichmentSource =
@@ -1088,22 +1270,29 @@ module.exports = {
   SEED_STRUCTURED_STATUS,
   SEED_KB_SYNC_STATUS,
   SEED_QUARANTINE_BUCKET,
+  PDP_FIELD_STATUS,
+  SEED_DESCRIPTION_ORIGIN,
   classifySeedStructuredIngredientStatus,
+  classifySeedPdpFieldCoverageStatus,
   hasSeedStructuredIngredientEvidence,
   fetchReviewedKbRowsForSeedRow,
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
+  buildIngredientSourceQualityStatus,
   readExternalSeedEnrichmentMetadata,
   classifyExternalSeedQuarantine,
   enrichExternalSeedRowIngredients,
   _internals: {
     candidateIngredientTexts,
+    candidatePdpIngredientTexts,
     extractRegistryTokensFromText,
     buildBlockFromKbRows,
+    buildBlockFromPdpIngredientFields,
     buildBlockFromDescriptionParse,
     buildBlockFromAnchor,
     mergeStructuredBlockIntoSeedData,
     readStructuredIngredientView,
+    readSeedPdpContentView,
     profileAnchorTitleTexts,
     profileAnchorUrlTexts,
     resolveAnchorProfileDecision,
@@ -1114,5 +1303,6 @@ module.exports = {
     classifyWave1ManualScopeSignal,
     hasWave1SafeFaceSkincareSignal,
     applyExternalSeedEnrichmentMetadata,
+    buildIngredientSourceQualityStatus,
   },
 };

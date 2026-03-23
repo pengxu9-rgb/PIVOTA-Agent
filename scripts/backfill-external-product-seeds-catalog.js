@@ -110,6 +110,43 @@ function uniqueStrings(values) {
   return out;
 }
 
+function normalizeDetailsSections(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const heading = normalizeNonEmptyString(item?.heading);
+    const body = normalizeNonEmptyString(item?.body);
+    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
+    if (!heading || !body) continue;
+    const key = `${heading.toLowerCase()}|${body.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      heading,
+      body,
+      source_kind: sourceKind,
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
+function normalizeFieldCaptureStatus(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const next = {};
+  for (const [key, rawValue] of Object.entries(value)) {
+    const normalized = normalizeNonEmptyString(rawValue).toLowerCase();
+    if (!normalized) continue;
+    next[key] = normalized === 'present' ? 'present' : 'missing';
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function looksLikeSyntheticSummaryText(value) {
+  return /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i.test(normalizeNonEmptyString(value));
+}
+
 function buildExtractRequestBody(targetUrl, row) {
   const requestBody = {
     brand:
@@ -274,6 +311,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const snapshot = ensureJsonObject(seedData.snapshot);
   const manualOverrides = ensureJsonObject(seedData.manual_overrides);
   const manualDescription = normalizeNonEmptyString(manualOverrides.description);
+  const existingDescriptionOrigin = normalizeNonEmptyString(
+    seedData.seed_description_origin || snapshot.seed_description_origin,
+  );
   const fallbackPollutedRow =
     looksLikeKnownNonProductUrl(row?.canonical_url || row?.destination_url) &&
     looksLikeDirectProductTargetUrl(targetUrl);
@@ -324,13 +364,36 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.variants?.find((variant) => variant.description)?.description ||
       effectiveSnapshotVariants.find((variant) => variant.description)?.description,
   );
+  const productDescriptionRaw = normalizeNonEmptyString(representativeProduct?.description_raw);
+  const pdpDetailsSections = normalizeDetailsSections(representativeProduct?.details_sections);
+  const pdpIngredientsRaw = normalizeNonEmptyString(representativeProduct?.ingredients_raw);
+  const pdpActiveIngredientsRaw = normalizeNonEmptyString(representativeProduct?.active_ingredients_raw);
+  const pdpHowToUseRaw = normalizeNonEmptyString(representativeProduct?.how_to_use_raw);
+  const pdpFieldCaptureStatus = normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
+    normalizeFieldCaptureStatus(seedData.pdp_field_capture_status) ||
+    normalizeFieldCaptureStatus(snapshot.pdp_field_capture_status);
   const suppressStaleDescriptionFallback =
     (failureCategory === 'no_product_urls' || failureCategory === 'non_product_fallback_page') &&
     !manualDescription &&
-    !liveExtractedDescription;
+    !liveExtractedDescription &&
+    !productDescriptionRaw;
+  const nextDescriptionOrigin = (() => {
+    if (manualDescription) return existingDescriptionOrigin || 'legacy_unknown';
+    if (liveExtractedDescription) return 'pdp_variant_description';
+    if (productDescriptionRaw) return 'pdp_product_description';
+    if (existingDescriptionOrigin) return existingDescriptionOrigin;
+    const legacyDescription =
+      normalizeNonEmptyString(snapshot.description) ||
+      normalizeNonEmptyString(seedData.description) ||
+      normalizeNonEmptyString(row?.description);
+    if (looksLikeSyntheticSummaryText(legacyDescription)) return 'synthetic_summary';
+    if (legacyDescription) return 'legacy_unknown';
+    return '';
+  })();
   const description = manualDescription ||
     normalizeNonEmptyString(
       liveExtractedDescription ||
+        productDescriptionRaw ||
         (!suppressStaleDescriptionFallback
           ? (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description
           : ''),
@@ -364,11 +427,32 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
     description:
-      manualDescription || liveExtractedDescription
-        ? liveExtractedDescription || normalizeNonEmptyString(snapshot.description)
+      manualDescription || liveExtractedDescription || productDescriptionRaw
+        ? liveExtractedDescription || productDescriptionRaw || normalizeNonEmptyString(snapshot.description)
         : suppressStaleDescriptionFallback
           ? ''
           : description || normalizeNonEmptyString(snapshot.description),
+    ...(productDescriptionRaw ? { pdp_description_raw: productDescriptionRaw } : seedData.pdp_description_raw || snapshot.pdp_description_raw ? {
+      pdp_description_raw: normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw),
+    } : {}),
+    ...(pdpDetailsSections.length > 0 ? { pdp_details_sections: pdpDetailsSections } : Array.isArray(seedData.pdp_details_sections) || Array.isArray(snapshot.pdp_details_sections) ? {
+      pdp_details_sections: normalizeDetailsSections(
+        Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+          ? seedData.pdp_details_sections
+          : snapshot.pdp_details_sections,
+      ),
+    } : {}),
+    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw ? {
+      pdp_ingredients_raw: normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
+    } : {}),
+    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw ? {
+      pdp_active_ingredients_raw: normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw),
+    } : {}),
+    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw ? {
+      pdp_how_to_use_raw: normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+    } : {}),
+    ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
+    ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
     image_urls: mergedImageUrls,
     images: mergedImageUrls,
@@ -390,6 +474,23 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextSeedData = {
     ...seedData,
     ...(description ? { description } : {}),
+    ...(productDescriptionRaw ? { pdp_description_raw: productDescriptionRaw } : seedData.pdp_description_raw ? {
+      pdp_description_raw: normalizeNonEmptyString(seedData.pdp_description_raw),
+    } : {}),
+    ...(pdpDetailsSections.length > 0 ? { pdp_details_sections: pdpDetailsSections } : Array.isArray(seedData.pdp_details_sections) ? {
+      pdp_details_sections: normalizeDetailsSections(seedData.pdp_details_sections),
+    } : {}),
+    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : seedData.pdp_ingredients_raw ? {
+      pdp_ingredients_raw: normalizeNonEmptyString(seedData.pdp_ingredients_raw),
+    } : {}),
+    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : seedData.pdp_active_ingredients_raw ? {
+      pdp_active_ingredients_raw: normalizeNonEmptyString(seedData.pdp_active_ingredients_raw),
+    } : {}),
+    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : seedData.pdp_how_to_use_raw ? {
+      pdp_how_to_use_raw: normalizeNonEmptyString(seedData.pdp_how_to_use_raw),
+    } : {}),
+    ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
+    ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),

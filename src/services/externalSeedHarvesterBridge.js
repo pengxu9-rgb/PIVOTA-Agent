@@ -2,6 +2,9 @@ const crypto = require('node:crypto');
 
 const { ensureJsonObject, normalizeSeedVariants } = require('./externalSeedProducts');
 const { auditExternalSeedRow, ANOMALY_SEVERITY } = require('./externalSeedContentAudit');
+const INGREDIENT_SECTION_HEADING_RE = /\b(ingredients?|inci)\b/i;
+const ACTIVE_INGREDIENT_SECTION_HEADING_RE = /\bactive ingredients?\b/i;
+const PDP_DESCRIPTION_ORIGIN_ALLOWLIST = new Set(['pdp_product_description', 'pdp_variant_description']);
 
 function normalizeNonEmptyString(value) {
   return String(value || '').trim();
@@ -120,6 +123,60 @@ function extractRawIngredientText(description) {
     .slice(0, 4000);
 }
 
+function normalizeDetailsSections(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const heading = normalizeNonEmptyString(item?.heading);
+    const body = normalizeNonEmptyString(item?.body);
+    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
+    if (!heading || !body) continue;
+    const key = `${heading.toLowerCase()}|${body.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      heading,
+      body,
+      source_kind: sourceKind,
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
+function readSeedPdpIngredientTexts(row) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const pdpDescriptionRaw =
+    normalizeNonEmptyString(seedData.pdp_description_raw) ||
+    normalizeNonEmptyString(snapshot.pdp_description_raw);
+  const seedDescriptionOrigin =
+    normalizeNonEmptyString(seedData.seed_description_origin) ||
+    normalizeNonEmptyString(snapshot.seed_description_origin);
+  const detailsSections = normalizeDetailsSections(
+    Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+      ? seedData.pdp_details_sections
+      : snapshot.pdp_details_sections,
+  );
+  const sectionIngredientBodies = detailsSections
+    .filter((section) => INGREDIENT_SECTION_HEADING_RE.test(section.heading) || ACTIVE_INGREDIENT_SECTION_HEADING_RE.test(section.heading))
+    .map((section) => normalizeNonEmptyString(section.body))
+    .filter(Boolean);
+  const labeledDescription =
+    PDP_DESCRIPTION_ORIGIN_ALLOWLIST.has(seedDescriptionOrigin) ? extractRawIngredientText(pdpDescriptionRaw) : '';
+
+  return [
+    normalizeNonEmptyString(seedData.pdp_ingredients_raw) || normalizeNonEmptyString(snapshot.pdp_ingredients_raw),
+    normalizeNonEmptyString(seedData.pdp_active_ingredients_raw) ||
+      normalizeNonEmptyString(snapshot.pdp_active_ingredients_raw),
+    ...sectionIngredientBodies,
+    labeledDescription,
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean);
+}
+
 function buildCandidateId(row, variant, index) {
   const seedId = normalizeNonEmptyString(row?.id);
   const tokenBase =
@@ -202,10 +259,16 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
     normalizeUrlLike(row?.canonical_url) ||
     normalizeUrlLike(snapshot.destination_url) ||
     normalizeUrlLike(row?.destination_url);
+  const seedDescriptionOrigin =
+    normalizeNonEmptyString(seedData.seed_description_origin) ||
+    normalizeNonEmptyString(snapshot.seed_description_origin);
+  const allowDescriptionFallback = PDP_DESCRIPTION_ORIGIN_ALLOWLIST.has(seedDescriptionOrigin);
+  const pdpIngredientTexts = readSeedPdpIngredientTexts(row);
   const productLevelIngredientText =
-    extractRawIngredientText(snapshot.description) ||
-    extractRawIngredientText(seedData.description) ||
-    extractRawIngredientText(row?.description);
+    pdpIngredientTexts[0] ||
+    (allowDescriptionFallback ? extractRawIngredientText(snapshot.description) : '') ||
+    (allowDescriptionFallback ? extractRawIngredientText(seedData.description) : '') ||
+    (allowDescriptionFallback ? extractRawIngredientText(row?.description) : '');
 
   if (variants.length === 0) {
     const candidateId = buildCandidateId(row, { variant_id: 'product', sku: 'product' }, 0);
@@ -234,8 +297,9 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
       const variantId = normalizeNonEmptyString(variant?.variant_id || variant?.id);
       const variantUrl = buildVariantSourceUrl(normalizeUrlLike(variant?.url) || sourceUrl, variantId);
       const rawIngredientText =
-        extractRawIngredientText(variant?.description) ||
-        extractRawIngredientText(snapshot.description) ||
+        pdpIngredientTexts[0] ||
+        (allowDescriptionFallback ? extractRawIngredientText(variant?.description) : '') ||
+        (allowDescriptionFallback ? extractRawIngredientText(snapshot.description) : '') ||
         productLevelIngredientText;
       return {
         candidate_id: candidateId,

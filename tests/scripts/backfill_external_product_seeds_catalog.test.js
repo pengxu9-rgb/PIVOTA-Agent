@@ -294,6 +294,72 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('persists PDP raw fields and provenance when extractor returns module-level product data', () => {
+    const row = {
+      id: 'eps_rare_spf',
+      title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+      canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+      destination_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+      image_url: '',
+      price_amount: 32,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        description: 'OFFICIAL: stale synthetic summary',
+        snapshot: {
+          canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+            url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+            description_raw: 'A breathable tinted moisturizer with SPF 20.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
+                source_kind: 'accordion_ingredients',
+              },
+            ],
+            ingredients_raw: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
+            active_ingredients_raw: 'Titanium Dioxide, Zinc Oxide',
+            how_to_use_raw: 'Apply before sun exposure.',
+            field_capture_status: {
+              description_raw: 'present',
+              details_sections: 'present',
+              ingredients_raw: 'present',
+              active_ingredients_raw: 'present',
+              how_to_use_raw: 'present',
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+    );
+
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe('A breathable tinted moisturizer with SPF 20.');
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe('Titanium Dioxide 3.4%, Zinc Oxide 14.37%');
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe('Titanium Dioxide, Zinc Oxide');
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe('Apply before sun exposure.');
+    expect(payload.nextRow.seed_data.seed_description_origin).toBe('pdp_product_description');
+    expect(payload.nextRow.seed_data.snapshot.pdp_details_sections).toEqual([
+      {
+        heading: 'Ingredients',
+        body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
+        source_kind: 'accordion_ingredients',
+      },
+    ]);
+  });
+
   test('clears stale top-level seed description when a blocked seed still has no product URLs', () => {
     const row = {
       id: 'eps_blocked_collection',

@@ -6,9 +6,11 @@ const { ensureJsonObject } = require('./externalSeedProducts');
 const {
   ENRICHMENT_SOURCE,
   classifySeedStructuredIngredientStatus,
+  classifySeedPdpFieldCoverageStatus,
   fetchReviewedKbRowsForSeedRow,
   buildSeedKbSyncStatus,
   buildRuntimeIngredientEvidenceSource,
+  buildIngredientSourceQualityStatus,
   readExternalSeedEnrichmentMetadata,
   classifyExternalSeedQuarantine,
 } = require('./externalSeedIngredientEnrichment');
@@ -169,6 +171,7 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
   const kb = await fetchKbCoverage(candidateIds);
   const reviewedKbRows = await fetchReviewedKbRowsForSeedRow(row);
   const seedStructuredIngredientStatus = classifySeedStructuredIngredientStatus(row.seed_data);
+  const seedPdpFieldCoverageStatus = classifySeedPdpFieldCoverageStatus(row.seed_data);
   const seedKbSyncStatus = buildSeedKbSyncStatus({
     seedStatus: seedStructuredIngredientStatus,
     reviewedKbRows,
@@ -191,6 +194,10 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
     seedStatus: seedStructuredIngredientStatus,
     reviewedKbRows,
   });
+  const ingredientSourceQualityStatus = buildIngredientSourceQualityStatus({
+    seedDataValue: row.seed_data,
+    reviewedKbRows,
+  });
   const matchedKeys = new Set(kb.rows.map((item) => normalizeNonEmptyString(item.sku_key)));
   const parseOkCount = kb.rows.filter((item) => normalizeNonEmptyString(item.parse_status).toUpperCase() === 'OK').length;
   const ingredientCoveredCount = kb.rows.filter(
@@ -199,6 +206,14 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
 
   const blockerCount = audit.findings.filter((finding) => finding.severity === 'blocker').length;
   const reviewCount = audit.findings.filter((finding) => finding.severity === 'review').length;
+  const languageReview = audit.findings.some((finding) =>
+    ['fr_content_in_us_seed', 'es_content_in_us_seed', 'non_english_description_for_us_seed'].includes(
+      normalizeNonEmptyString(finding?.anomaly_type),
+    ),
+  );
+  const localeMismatch = audit.findings.some(
+    (finding) => normalizeNonEmptyString(finding?.anomaly_type) === 'locale_market_mismatch',
+  );
   const diagnostics = ensureJsonObject(ensureJsonObject(row.seed_data).snapshot?.diagnostics);
 
   return {
@@ -241,8 +256,19 @@ async function getExternalSeedPipelineStatus({ externalSeedId, productUrl }) {
           : ingredientCoveredCount === candidateIds.length
             ? 'complete'
             : 'partial',
+      seed_pdp_field_coverage_status: seedPdpFieldCoverageStatus,
       seed_structured_ingredient_status: seedStructuredIngredientStatus,
       seed_kb_sync_status: seedKbSyncStatus,
+      seed_description_origin:
+        normalizeNonEmptyString(seedData.seed_description_origin) ||
+        normalizeNonEmptyString(snapshot.seed_description_origin) ||
+        null,
+      seed_language_market_status: localeMismatch
+        ? 'locale_market_mismatch'
+        : languageReview
+          ? 'market_language_review'
+          : 'ok',
+      ingredient_source_quality_status: ingredientSourceQualityStatus,
       ingredient_writeback_source: ingredientWritebackSource,
       runtime_ingredient_evidence_source: runtimeIngredientEvidenceSource,
       seed_anchor_source_kind: seedEnrichmentMetadata.seed_anchor_source_kind,
