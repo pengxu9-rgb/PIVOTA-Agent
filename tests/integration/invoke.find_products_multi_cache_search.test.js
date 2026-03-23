@@ -965,7 +965,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(true);
   });
 
-  test('generic serum cache flow stays skincare-clean and keeps supplement diagnostics bucket-safe', async () => {
+  test('generic serum cache flow prefers internal skincare results over external supplement', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
 
     jest.doMock('../../src/db', () => ({
@@ -989,6 +989,20 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                   product_type: 'Serum',
                   status: 'published',
                   inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_serum_2',
+                  product_id: 'prod_serum_2',
+                  merchant_id: 'merch_skin',
+                  title: 'Barrier Support Serum',
+                  description: 'hydrating skincare serum for daily barrier support',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 7,
                 },
               },
               {
@@ -1028,7 +1042,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const externalSupplement = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '') === 'serum')
       .reply(200, {
         status: 'success',
         success: true,
@@ -1076,17 +1090,29 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(
-      ['cache_cross_merchant_search', 'cache_cross_merchant_search_supplemented'],
-    ).toContain(resp.body.metadata?.query_source);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect((resp.body.products || []).some((item) => /niacinamide/i.test(String(item?.title || '')))).toBe(true);
+    expect((resp.body.products || []).some((item) => /serum/i.test(String(item?.title || '')))).toBe(true);
     expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(true);
+    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(true);
+    expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBe(0);
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
       expect.objectContaining({
         beauty_query_bucket: 'skincare',
         cache_query_mode: 'raw_first',
         internal_filtered_irrelevant_count: expect.any(Number),
+        supplement: expect.objectContaining({
+          applied: false,
+          reason: 'specific_beauty_internal_preferred',
+          gate: expect.objectContaining({
+            beauty_bucket: 'skincare',
+            internal_count: 2,
+          }),
+        }),
+        cache_validation: expect.objectContaining({
+          accepted: true,
+          min_count: 1,
+        }),
       }),
     );
     expect(
@@ -1104,11 +1130,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(
       Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_bucket_mix_after?.tools || 0),
     ).toBe(0);
-    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.diversity_targeted).toBe(false);
-    expect(
-      resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.query_variants || [],
-    ).not.toEqual(expect.arrayContaining(['perfume', 'fragrance', 'parfum']));
-    expect(externalSupplement.isDone()).toBe(true);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.diversity_targeted).not.toBe(true);
+    expect(externalSupplement.isDone()).toBe(false);
   });
 
   test('foundation brush query keeps beauty tools results after bucket backstop', async () => {
