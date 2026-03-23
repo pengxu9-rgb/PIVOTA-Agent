@@ -155,6 +155,28 @@ function normalizeFieldCaptureStatus(value) {
   return Object.keys(next).length > 0 ? next : null;
 }
 
+function deriveFieldCaptureStatus(reportedStatus, fields) {
+  const next = {
+    ...(normalizeFieldCaptureStatus(reportedStatus) || {}),
+  };
+
+  const truthyFields = {
+    description_raw: normalizeNonEmptyString(fields?.description_raw),
+    details_sections: Array.isArray(fields?.details_sections) ? fields.details_sections : [],
+    ingredients_raw: normalizeNonEmptyString(fields?.ingredients_raw),
+    active_ingredients_raw: normalizeNonEmptyString(fields?.active_ingredients_raw),
+    how_to_use_raw: normalizeNonEmptyString(fields?.how_to_use_raw),
+  };
+
+  if (truthyFields.description_raw) next.description_raw = 'present';
+  if (truthyFields.details_sections.length > 0) next.details_sections = 'present';
+  if (truthyFields.ingredients_raw) next.ingredients_raw = 'present';
+  if (truthyFields.active_ingredients_raw) next.active_ingredients_raw = 'present';
+  if (truthyFields.how_to_use_raw) next.how_to_use_raw = 'present';
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
 function looksLikeSyntheticSummaryText(value) {
   return /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i.test(normalizeNonEmptyString(value));
 }
@@ -405,9 +427,38 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const pdpIngredientsRaw = normalizeNonEmptyString(representativeProduct?.ingredients_raw);
   const pdpActiveIngredientsRaw = normalizeNonEmptyString(representativeProduct?.active_ingredients_raw);
   const pdpHowToUseRaw = normalizeNonEmptyString(representativeProduct?.how_to_use_raw);
-  const pdpFieldCaptureStatus = normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
-    normalizeFieldCaptureStatus(seedData.pdp_field_capture_status) ||
-    normalizeFieldCaptureStatus(snapshot.pdp_field_capture_status);
+  const nextPdpDescriptionRaw =
+    productDescriptionRaw ||
+    normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw);
+  const nextPdpDetailsSections =
+    pdpDetailsSections.length > 0
+      ? pdpDetailsSections
+      : normalizeDetailsSections(
+          Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+            ? seedData.pdp_details_sections
+            : snapshot.pdp_details_sections,
+        );
+  const nextPdpIngredientsRaw =
+    pdpIngredientsRaw ||
+    normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+  const nextPdpActiveIngredientsRaw =
+    pdpActiveIngredientsRaw ||
+    normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw);
+  const nextPdpHowToUseRaw =
+    pdpHowToUseRaw ||
+    normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+  const pdpFieldCaptureStatus = deriveFieldCaptureStatus(
+    normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
+      normalizeFieldCaptureStatus(seedData.pdp_field_capture_status) ||
+      normalizeFieldCaptureStatus(snapshot.pdp_field_capture_status),
+    {
+      description_raw: nextPdpDescriptionRaw,
+      details_sections: nextPdpDetailsSections,
+      ingredients_raw: nextPdpIngredientsRaw,
+      active_ingredients_raw: nextPdpActiveIngredientsRaw,
+      how_to_use_raw: nextPdpHowToUseRaw,
+    },
+  );
   const suppressStaleDescriptionFallback =
     (failureCategory === 'no_product_urls' || failureCategory === 'non_product_fallback_page') &&
     !manualDescription &&
@@ -468,25 +519,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         : suppressStaleDescriptionFallback
           ? ''
           : description || normalizeNonEmptyString(snapshot.description),
-    ...(productDescriptionRaw ? { pdp_description_raw: productDescriptionRaw } : seedData.pdp_description_raw || snapshot.pdp_description_raw ? {
-      pdp_description_raw: normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw),
-    } : {}),
-    ...(pdpDetailsSections.length > 0 ? { pdp_details_sections: pdpDetailsSections } : Array.isArray(seedData.pdp_details_sections) || Array.isArray(snapshot.pdp_details_sections) ? {
-      pdp_details_sections: normalizeDetailsSections(
-        Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
-          ? seedData.pdp_details_sections
-          : snapshot.pdp_details_sections,
-      ),
-    } : {}),
-    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw ? {
-      pdp_ingredients_raw: normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
-    } : {}),
-    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw ? {
-      pdp_active_ingredients_raw: normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw),
-    } : {}),
-    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw ? {
-      pdp_how_to_use_raw: normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
-    } : {}),
+    ...(nextPdpDescriptionRaw ? { pdp_description_raw: nextPdpDescriptionRaw } : {}),
+    ...(nextPdpDetailsSections.length > 0 ? { pdp_details_sections: nextPdpDetailsSections } : {}),
+    ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
+    ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
+    ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
@@ -510,21 +547,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextSeedData = {
     ...seedData,
     ...(description ? { description } : {}),
-    ...(productDescriptionRaw ? { pdp_description_raw: productDescriptionRaw } : seedData.pdp_description_raw ? {
-      pdp_description_raw: normalizeNonEmptyString(seedData.pdp_description_raw),
-    } : {}),
-    ...(pdpDetailsSections.length > 0 ? { pdp_details_sections: pdpDetailsSections } : Array.isArray(seedData.pdp_details_sections) ? {
-      pdp_details_sections: normalizeDetailsSections(seedData.pdp_details_sections),
-    } : {}),
-    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : seedData.pdp_ingredients_raw ? {
-      pdp_ingredients_raw: normalizeNonEmptyString(seedData.pdp_ingredients_raw),
-    } : {}),
-    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : seedData.pdp_active_ingredients_raw ? {
-      pdp_active_ingredients_raw: normalizeNonEmptyString(seedData.pdp_active_ingredients_raw),
-    } : {}),
-    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : seedData.pdp_how_to_use_raw ? {
-      pdp_how_to_use_raw: normalizeNonEmptyString(seedData.pdp_how_to_use_raw),
-    } : {}),
+    ...(nextPdpDescriptionRaw ? { pdp_description_raw: nextPdpDescriptionRaw } : {}),
+    ...(nextPdpDetailsSections.length > 0 ? { pdp_details_sections: nextPdpDetailsSections } : {}),
+    ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
+    ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
+    ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),

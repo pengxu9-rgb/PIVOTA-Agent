@@ -361,6 +361,70 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('marks PDP field capture status as present when raw fields exist even if extractor status is stale', () => {
+    const row = {
+      id: 'eps_fenty_fat_water',
+      title: 'Fat Water Niacinamide Pore-Refining Toner Serum',
+      canonical_url: 'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+      destination_url: 'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+      image_url: '',
+      price_amount: 12.6,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        seed_description_origin: 'pdp_variant_description',
+        snapshot: {},
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry',
+            url: 'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+            description_raw: 'A serum-toner hybrid that refines pores.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body: 'Niacinamide, Barbados Cherry, Australian Lemon Myrtle',
+                source_kind: 'accordion_ingredients',
+              },
+            ],
+            ingredients_raw: 'Niacinamide, Barbados Cherry, Australian Lemon Myrtle',
+            field_capture_status: {
+              description_raw: 'missing',
+              details_sections: 'missing',
+              ingredients_raw: 'missing',
+              active_ingredients_raw: 'missing',
+              how_to_use_raw: 'missing',
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      'https://fentybeauty.com/products/fat-water-niacinamide-pore-refining-toner-serum-with-barbados-cherry',
+    );
+
+    expect(payload.nextRow.seed_data.pdp_field_capture_status).toEqual({
+      description_raw: 'present',
+      details_sections: 'present',
+      ingredients_raw: 'present',
+      active_ingredients_raw: 'missing',
+      how_to_use_raw: 'missing',
+    });
+    expect(payload.nextRow.seed_data.snapshot.pdp_field_capture_status).toEqual({
+      description_raw: 'present',
+      details_sections: 'present',
+      ingredients_raw: 'present',
+      active_ingredients_raw: 'missing',
+      how_to_use_raw: 'missing',
+    });
+  });
+
   test('clears stale top-level seed description when a blocked seed still has no product URLs', () => {
     const row = {
       id: 'eps_blocked_collection',
