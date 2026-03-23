@@ -132,6 +132,18 @@ function normalizeDetailsSections(value, maxItems = 24) {
   return out;
 }
 
+function stableComparableJson(value) {
+  if (Array.isArray(value)) return value.map((item) => stableComparableJson(item));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      out[key] = stableComparableJson(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
 function normalizeFieldCaptureStatus(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const next = {};
@@ -299,8 +311,12 @@ function comparableSeedData(value) {
   const snapshot = ensureJsonObject(next.snapshot);
   const rootIngredientIntel = ensureJsonObject(next.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
-  return {
+  return stableComparableJson({
     ...next,
+    ...(Array.isArray(next.pdp_details_sections)
+      ? { pdp_details_sections: normalizeDetailsSections(next.pdp_details_sections) }
+      : {}),
+    ...(Array.isArray(next.variants) ? { variants: normalizeSeedVariants(next, null) } : {}),
     ingredient_intel: {
       ...rootIngredientIntel,
       external_seed_enrichment: {
@@ -311,6 +327,10 @@ function comparableSeedData(value) {
     snapshot: {
       ...snapshot,
       extracted_at: null,
+      ...(Array.isArray(snapshot.pdp_details_sections)
+        ? { pdp_details_sections: normalizeDetailsSections(snapshot.pdp_details_sections) }
+        : {}),
+      ...(Array.isArray(snapshot.variants) ? { variants: normalizeSeedVariants(snapshot, null) } : {}),
       ingredient_intel: {
         ...snapshotIngredientIntel,
         external_seed_enrichment: {
@@ -319,7 +339,7 @@ function comparableSeedData(value) {
         },
       },
     },
-  };
+  });
 }
 
 function buildSeedUpdatePayload(row, response, targetUrl) {

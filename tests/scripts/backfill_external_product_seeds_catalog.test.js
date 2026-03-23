@@ -523,4 +523,106 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(base.ingredient_intel.external_seed_enrichment.synced_at).toBeNull();
     expect(base.snapshot.ingredient_intel.external_seed_enrichment.synced_at).toBeNull();
   });
+
+  test('comparableSeedData ignores object key ordering churn inside pdp sections and variants', () => {
+    const before = comparableSeedData({
+      pdp_details_sections: [
+        {
+          body: 'Water, Glycerin',
+          heading: 'Ingredients',
+          source_kind: 'accordion_button',
+        },
+      ],
+      variants: [
+        {
+          sku: '83008',
+          url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+          price: '24.00',
+          stock: 'In Stock',
+          currency: 'USD',
+          image_url: 'https://example.com/rose.jpg',
+          image_urls: ['https://example.com/rose.jpg'],
+          variant_id: '12268097536096',
+          description: '',
+          option_name: 'Title',
+          option_value: 'Default Title',
+        },
+      ],
+      snapshot: {
+        pdp_details_sections: [
+          {
+            body: 'Water, Glycerin',
+            heading: 'Ingredients',
+            source_kind: 'accordion_button',
+          },
+        ],
+        variants: [
+          {
+            sku: '83008',
+            url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+            price: '24.00',
+            stock: 'In Stock',
+            currency: 'USD',
+            image_url: 'https://example.com/rose.jpg',
+            image_urls: ['https://example.com/rose.jpg'],
+            variant_id: '12268097536096',
+            description: '',
+            option_name: 'Title',
+            option_value: 'Default Title',
+          },
+        ],
+      },
+    });
+
+    const after = comparableSeedData({
+      pdp_details_sections: [
+        {
+          heading: 'Ingredients',
+          body: 'Water, Glycerin',
+          source_kind: 'accordion_button',
+        },
+      ],
+      variants: [
+        {
+          sku: '83008',
+          variant_id: '12268097536096',
+          url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+          option_name: 'Title',
+          option_value: 'Default Title',
+          price: '24.00',
+          currency: 'USD',
+          stock: 'In Stock',
+          image_url: 'https://example.com/rose.jpg',
+          image_urls: ['https://example.com/rose.jpg'],
+          description: '',
+        },
+      ],
+      snapshot: {
+        pdp_details_sections: [
+          {
+            heading: 'Ingredients',
+            body: 'Water, Glycerin',
+            source_kind: 'accordion_button',
+          },
+        ],
+        variants: [
+          {
+            sku: '83008',
+            variant_id: '12268097536096',
+            url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+            option_name: 'Title',
+            option_value: 'Default Title',
+            price: '24.00',
+            currency: 'USD',
+            stock: 'In Stock',
+            image_url: 'https://example.com/rose.jpg',
+            image_urls: ['https://example.com/rose.jpg'],
+            description: '',
+          },
+        ],
+      },
+    });
+
+    expect(before).toEqual(after);
+  });
 });
