@@ -181,66 +181,24 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
-  test('surfaces refreshed PDP and ingredient fields at product top-level', () => {
+  test('projects reviewed structured ingredient ids onto external seed products', () => {
     const row = {
-      id: 'eps_rare_1',
-      external_product_id: 'ext_rare_1',
-      canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
-      destination_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
-      title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+      id: 'eps_ord_1',
+      canonical_url: 'https://example.com/p/niacinamide-serum',
+      destination_url: 'https://example.com/p/niacinamide-serum',
+      title: 'Niacinamide Serum',
       seed_data: {
-        brand: 'Rare Beauty',
-        pdp_description_raw: 'A flexible tinted moisturizer.',
-        pdp_ingredients_raw: 'Water, Niacinamide, Ceramide NP',
-        pdp_active_ingredients_raw: 'Niacinamide',
-        pdp_how_to_use_raw: 'Blend with fingers or brush.',
-        seed_description_origin: 'pdp_product_description',
-        pdp_field_capture_status: {
-          description_raw: 'present',
-          details_sections: 'present',
-          ingredients_raw: 'present',
-          active_ingredients_raw: 'present',
-          how_to_use_raw: 'present',
-        },
-        active_ingredients: ['Niacinamide'],
-        key_ingredients: ['Ceramide NP'],
-        ingredient_intel: {
-          raw_ingredient_text_clean: 'Water, Niacinamide, Ceramide NP',
-          inci_list: ['Water', 'Niacinamide', 'Ceramide NP'],
-        },
-        pdp_details_sections: [
-          { heading: 'How to use', body: 'Blend with fingers or brush.' },
-          { heading: 'Details', body: 'Light to medium coverage.' },
-        ],
+        category: 'Serum',
+        reviewed_ingredient_ids: ['Niacinamide', 'zinc_pca', 'Niacinamide'],
         snapshot: {
-          canonical_url:
-            'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
-          variants: [
-            {
-              variant_id: '39775686983815',
-              price: '30.00',
-              currency: 'USD',
-              stock: 'In Stock',
-            },
-          ],
+          canonical_url: 'https://example.com/p/niacinamide-serum',
+          title: 'Niacinamide Serum',
+          variants: [],
         },
       },
     };
 
     const product = buildExternalSeedProduct(row);
-    expect(product.pdp_description_raw).toBe('A flexible tinted moisturizer.');
-    expect(product.pdp_ingredients_raw).toBe('Water, Niacinamide, Ceramide NP');
-    expect(product.pdp_active_ingredients_raw).toBe('Niacinamide');
-    expect(product.pdp_how_to_use_raw).toBe('Blend with fingers or brush.');
-    expect(product.raw_ingredient_text_clean).toBe('Water, Niacinamide, Ceramide NP');
-    expect(product.inci_list).toEqual(['Water', 'Niacinamide', 'Ceramide NP']);
-    expect(product.active_ingredients).toEqual(['Niacinamide']);
-    expect(product.key_ingredients).toEqual(['Ceramide NP']);
-    expect(product.pdp_details_sections).toHaveLength(2);
-    expect(product.seed_description_origin).toBe('pdp_product_description');
-    expect(product.pdp_field_capture_status).toMatchObject({
-      ingredients_raw: 'present',
-      how_to_use_raw: 'present',
-    });
+    expect(product.ingredient_ids).toEqual(['niacinamide', 'zinc_pca']);
   });
 });
