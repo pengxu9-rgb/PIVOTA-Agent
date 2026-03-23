@@ -612,7 +612,7 @@ function matchLabelsFromProducts(products, labels, rules, textGetter) {
   return out;
 }
 
-function buildFashionConstraintMetadata({ rawQuery, products, existingMetadata }) {
+function buildFashionConstraintState(rawQuery, existingMetadata) {
   const existingMeta =
     existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
       ? existingMetadata
@@ -635,9 +635,63 @@ function buildFashionConstraintMetadata({ rawQuery, products, existingMetadata }
     ? existingMeta.visible_option_intents.map((item) => String(item || '')).filter(Boolean)
     : derivedVisibleOptionIntents;
 
-  const hasFashionConstraintSignal =
-    visibleCategoryIntents.length > 0 &&
-    (visibleAttributeIntents.length > 0 || visibleOptionIntents.length > 0);
+  return {
+    visibleCategoryIntents,
+    visibleAttributeIntents,
+    visibleOptionIntents,
+    hasFashionConstraintSignal:
+      visibleCategoryIntents.length > 0 &&
+      (visibleAttributeIntents.length > 0 || visibleOptionIntents.length > 0),
+  };
+}
+
+function productMatchesAllRuleLabels(product, labels, rules, textGetter) {
+  const text = String(textGetter(product) || '');
+  if (!Array.isArray(labels) || labels.length === 0) return true;
+  if (!text) return false;
+  return labels.every((label) => {
+    const rule = (Array.isArray(rules) ? rules : []).find((item) => String(item?.label || '') === String(label));
+    return rule && rule.match instanceof RegExp ? rule.match.test(text) : false;
+  });
+}
+
+function filterProductsByFashionConstraints(products, state) {
+  const list = Array.isArray(products) ? products : [];
+  if (!state?.hasFashionConstraintSignal || list.length === 0) return list;
+
+  return list.filter((product) => {
+    const productText = buildProductText(product);
+    const optionText = collectProductOptionText(product);
+    return (
+      productMatchesAllRuleLabels(product, state.visibleCategoryIntents, FASHION_VISIBLE_CATEGORY_RULES, () => productText) &&
+      productMatchesAllRuleLabels(product, state.visibleAttributeIntents, FASHION_VISIBLE_ATTRIBUTE_RULES, () => productText) &&
+      productMatchesAllRuleLabels(
+        product,
+        state.visibleOptionIntents.filter((label) => String(label || '').startsWith('size_')),
+        FASHION_VISIBLE_SIZE_OPTION_RULES,
+        () => optionText,
+      ) &&
+      productMatchesAllRuleLabels(
+        product,
+        state.visibleOptionIntents.filter((label) => String(label || '').startsWith('color_')),
+        FASHION_VISIBLE_COLOR_OPTION_RULES,
+        () => `${productText} ${optionText}`,
+      )
+    );
+  });
+}
+
+function buildFashionConstraintMetadata({ rawQuery, products, existingMetadata }) {
+  const existingMeta =
+    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+      ? existingMetadata
+      : {};
+  const {
+    visibleCategoryIntents,
+    visibleAttributeIntents,
+    visibleOptionIntents,
+    hasFashionConstraintSignal,
+  } = buildFashionConstraintState(rawQuery, existingMeta);
   if (!hasFashionConstraintSignal) return {};
 
   const matchedVisibleCategories = Array.isArray(existingMeta.matched_visible_categories)
@@ -3409,6 +3463,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (!skipConstraintReorder) {
     filtered = reorderProductsForConstraints(filtered, intent, rawQuery);
   }
+  const fashionConstraintState = buildFashionConstraintState(rawQuery, metadata);
+  const fashionConstraintBefore = filtered.length;
+  filtered = filterProductsByFashionConstraints(filtered, fashionConstraintState);
+  const fashionConstraintDropped =
+    Boolean(fashionConstraintState?.hasFashionConstraintSignal) && filtered.length < fashionConstraintBefore;
   const preDomainFilterCandidates = Array.isArray(filtered) ? filtered.slice() : [];
   const domainFilterResult = applyDomainHardFilter(filtered, intent, rawQuery, {
     brandQueryDetected,
@@ -3823,6 +3882,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   if (postQualityHardFail) reasonCodes.add('LOW_CONF_POST');
   if (brandQueryBypassAmbiguity) reasonCodes.add('BRAND_QUERY_BYPASS_AMBIGUITY');
   if (domainFilterResult?.dropped > 0) reasonCodes.add('DOMAIN_HARD_FILTERED');
+  if (fashionConstraintDropped) reasonCodes.add('FASHION_VISIBLE_CONSTRAINT_FILTERED');
   if (beautyBucketFilterResult?.dropped > 0) reasonCodes.add('BEAUTY_BUCKET_FILTERED');
   if (domainCondenserResult?.debug?.applied) reasonCodes.add('DOMAIN_CONDENSED');
 

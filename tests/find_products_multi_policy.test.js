@@ -1237,11 +1237,67 @@ describe('find_products_multi intent + filtering', () => {
       rawUserQuery: 'blue striped sweater',
     });
 
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products.map((item) => item.id)).toEqual(['sweater-1']);
     expect(resp.metadata?.visible_category_intents).toEqual(['sweater']);
     expect(resp.metadata?.visible_attribute_intents).toEqual(['striped']);
     expect(resp.metadata?.visible_option_intents).toEqual(['color_blue']);
     expect(resp.metadata?.matched_visible_categories).toEqual(['sweater']);
     expect(resp.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
     expect(resp.metadata?.matched_visible_option_labels).toEqual(['color_blue']);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
+  });
+
+  test('fashion multi-constraint query filters mixed upstream results to strict visible matches', () => {
+    const intent = extractIntentRuleBased('polar fleece vest size xl', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'vest-xl-1',
+            title: 'Polar Fleece Winter Vest',
+            description: 'Warm polar fleece vest for cold weather.',
+            variants: [
+              {
+                id: 'var-xl-1',
+                title: 'XL / Navy',
+                options: { Size: 'XL', Color: 'Navy' },
+              },
+            ],
+          }),
+          makeRawProduct({
+            id: 'vest-m-1',
+            title: 'Polar Fleece Winter Vest',
+            description: 'Warm polar fleece vest for cold weather.',
+            variants: [
+              {
+                id: 'var-m-1',
+                title: 'M / Navy',
+                options: { Size: 'M', Color: 'Navy' },
+              },
+            ],
+          }),
+          makeRawProduct({
+            id: 'beauty-1',
+            title: 'Supersize Hydrating Milky Mist',
+            description: 'Hydrating beauty mist with extra large bottle.',
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'polar fleece vest size xl' } },
+      rawUserQuery: 'polar fleece vest size xl',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products.map((item) => item.id)).toEqual(['vest-xl-1']);
+    expect(resp.metadata?.visible_category_intents).toEqual(['vest']);
+    expect(resp.metadata?.visible_attribute_intents).toEqual(['fleece']);
+    expect(resp.metadata?.visible_option_intents).toEqual(['size_xl']);
+    expect(resp.metadata?.matched_visible_categories).toEqual(['vest']);
+    expect(resp.metadata?.matched_visible_attribute_labels).toEqual(['fleece']);
+    expect(resp.metadata?.matched_visible_option_labels).toEqual(['size_xl']);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
   });
 });
