@@ -7071,7 +7071,12 @@ function resolveCacheValidationMinCount(queryClass) {
 
 function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const list = Array.isArray(products) ? products : [];
-  const minCount = resolveCacheValidationMinCount(queryClass);
+  const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: queryText, queryClass, intent });
+  const minCount =
+    beautyQueryProfile?.isSpecificBeautyQuery === true &&
+    beautyQueryProfile?.bucket === 'skincare'
+      ? 1
+      : resolveCacheValidationMinCount(queryClass);
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
   const domainEntropy = computeDomainEntropyTopK(list, 10);
   const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
@@ -21565,6 +21570,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
+          const preferInternalSpecificBeautyCache =
+            cacheBeautyQueryProfile?.isSpecificBeautyQuery === true &&
+            cacheBeautyQueryProfile?.bucket === 'skincare' &&
+            internalProductsAfterAnchor.length > 0;
           const cacheUiSurface = normalizeSearchUiSurface(
             metadata?.ui_surface ||
               effectivePayload?.metadata?.ui_surface ||
@@ -21713,6 +21722,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     internal_count: baselineInternalProducts.length,
                     raw_internal_count: internalProductsAfterAnchor.length,
                     min_internal_required: 3,
+                  },
+                };
+              } else if (preferInternalSpecificBeautyCache) {
+                supplementMeta = {
+                  attempted: false,
+                  applied: false,
+                  added_count: 0,
+                  reason: 'specific_beauty_internal_preferred',
+                  gate: {
+                    beauty_bucket: cacheBeautyQueryProfile?.bucket || null,
+                    internal_count: internalProductsAfterAnchor.length,
                   },
                 };
               } else if (!canApplyExternalFillGate) {
@@ -22066,7 +22086,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             !hasMerchantScope &&
             Boolean(cacheQueryText) &&
             externalCount <= 0 &&
-            !isLookupQuery;
+            !isLookupQuery &&
+            !preferInternalSpecificBeautyCache;
           if (cacheMissingExternalForUnified) {
             effectiveCacheHit = false;
           }
