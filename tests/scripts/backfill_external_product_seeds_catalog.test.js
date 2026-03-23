@@ -107,6 +107,61 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(product).toBeNull();
   });
 
+  test('accepts a strong successor PDP for stale direct product targets when title affinity and PDP fields are present', () => {
+    const row = {
+      title: 'Shade and Illuminate Soft Radiance Foundation SPF 50',
+      canonical_url: 'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+      destination_url:
+        'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+      seed_data: {
+        snapshot: {
+          canonical_url:
+            'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+        },
+      },
+    };
+
+    const product = chooseRepresentativeProduct(
+      {
+        products: [
+          {
+            title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+            url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+            description_raw: 'A skincare-infused foundation with SPF 50+.',
+            ingredients_raw: 'Water, Glycerin, Niacinamide',
+            details_sections: [
+              {
+                heading: 'How To Use',
+                body: 'Apply onto primed skin.',
+                source_kind: 'accordion_how_to_use',
+              },
+            ],
+          },
+          {
+            title: 'Lip Color',
+            url: 'https://www.tomfordbeauty.com/products/lip-color',
+            description_raw: 'A lipstick.',
+            ingredients_raw: 'Wax, Pigments',
+            details_sections: [
+              {
+                heading: 'Details',
+                body: 'Satin finish.',
+                source_kind: 'accordion_details',
+              },
+            ],
+          },
+        ],
+      },
+      'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+      row,
+    );
+
+    expect(product.title).toBe('Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+');
+    expect(product.url).toBe(
+      'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+    );
+  });
+
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {
     const row = {
       canonical_url: 'https://theordinary.com/en-us/contact-us.html',
@@ -359,6 +414,90 @@ describe('backfill-external-product-seeds-catalog', () => {
         source_kind: 'accordion_ingredients',
       },
     ]);
+  });
+
+  test('upgrades stale direct product seeds to a successor PDP when the extractor returns a stronger replacement', () => {
+    const row = {
+      id: 'eps_tomford_foundation',
+      title: 'Shade and Illuminate Soft Radiance Foundation SPF 50',
+      canonical_url: 'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+      destination_url:
+        'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+      image_url: '',
+      price_amount: 95,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Shade and Illuminate Soft Radiance Foundation SPF 50',
+        snapshot: {
+          canonical_url:
+            'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+            url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+            description_raw: 'A skincare-infused foundation with SPF 50+.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body: 'Water, Glycerin, Niacinamide',
+                source_kind: 'accordion_ingredients',
+              },
+            ],
+            ingredients_raw: 'Water, Glycerin, Niacinamide',
+            active_ingredients_raw: 'Niacinamide',
+            how_to_use_raw: 'Apply onto primed skin.',
+            field_capture_status: {
+              description_raw: 'present',
+              details_sections: 'present',
+              ingredients_raw: 'present',
+              active_ingredients_raw: 'present',
+              how_to_use_raw: 'present',
+            },
+            variants: [],
+          },
+        ],
+        variants: [
+          {
+            id: 'TCT117',
+            sku: 'TCT117',
+            product_url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+            url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50?variant=53059916267733',
+            description: '',
+            image_url: 'https://www.tomfordbeauty.com/cdn/shop/files/tct117.png',
+            image_urls: ['https://www.tomfordbeauty.com/cdn/shop/files/tct117.png'],
+            price: '95.00',
+            currency: 'USD',
+            stock: 'In Stock',
+          },
+        ],
+        diagnostics: { failure_category: null },
+      },
+      'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=11.0_Dusk',
+    );
+
+    expect(payload.nextRow.title).toBe('Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+');
+    expect(payload.nextRow.canonical_url).toBe(
+      'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+    );
+    expect(payload.nextRow.destination_url).toBe(
+      'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50?variant=53059916267733',
+    );
+    expect(payload.nextRow.seed_data.seed_description_origin).toBe('pdp_product_description');
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe('A skincare-infused foundation with SPF 50+.');
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe('Water, Glycerin, Niacinamide');
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe('Niacinamide');
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe('Apply onto primed skin.');
+    expect(payload.nextRow.seed_data.snapshot.canonical_url).toBe(
+      'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+    );
   });
 
   test('marks PDP field capture status as present when raw fields exist even if extractor status is stale', () => {

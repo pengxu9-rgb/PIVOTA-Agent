@@ -87,6 +87,80 @@ function looksLikeDirectProductTargetUrl(value) {
   }
 }
 
+const REPRESENTATIVE_TITLE_STOP_WORDS = new Set([
+  'and',
+  'the',
+  'with',
+  'for',
+  'tom',
+  'ford',
+  'beauty',
+  'broad',
+  'spectrum',
+]);
+
+function tokenizeRepresentativeTitle(value) {
+  return new Set(
+    normalizeNonEmptyString(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token && !REPRESENTATIVE_TITLE_STOP_WORDS.has(token) && (token.length >= 3 || /^\d+$/.test(token))),
+  );
+}
+
+function countSharedTokens(left, right) {
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared += 1;
+  }
+  return shared;
+}
+
+function countRepresentativePdpSignals(product) {
+  return [
+    normalizeNonEmptyString(product?.description_raw),
+    normalizeNonEmptyString(product?.ingredients_raw),
+    normalizeNonEmptyString(product?.active_ingredients_raw),
+    normalizeNonEmptyString(product?.how_to_use_raw),
+    normalizeDetailsSections(product?.details_sections).length > 0 ? '__details__' : '',
+  ].filter(Boolean).length;
+}
+
+function chooseDirectSuccessorProduct(products, row) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const rowTokens = tokenizeRepresentativeTitle(row?.title || seedData.title || snapshot.title);
+  if (rowTokens.size === 0) return null;
+
+  let best = null;
+  let bestScore = -1;
+  for (const product of products) {
+    const productUrl = normalizeUrlLike(product?.url);
+    if (!looksLikeDirectProductTargetUrl(productUrl)) continue;
+
+    const pdpSignalCount = countRepresentativePdpSignals(product);
+    if (pdpSignalCount === 0) continue;
+
+    const productTokens = tokenizeRepresentativeTitle(product?.title);
+    const sharedTokenCount = countSharedTokens(rowTokens, productTokens);
+    if (sharedTokenCount < 2) continue;
+
+    const score =
+      sharedTokenCount * 10 +
+      pdpSignalCount * 4 +
+      (productUrl.includes('/products/') ? 3 : 0) +
+      (Array.isArray(product?.variants) && product.variants.length > 0 ? 1 : 0);
+    if (score > bestScore) {
+      best = product;
+      bestScore = score;
+    }
+  }
+
+  return best;
+}
+
 function looksLikeKnownNonProductUrl(value) {
   const normalized = normalizeUrlLike(value);
   if (!normalized) return false;
@@ -288,7 +362,11 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
     if (candidateKeys.has(productKey) || comparableKeys.has(comparableProductKey)) return product;
   }
 
-  if (looksLikeDirectProductTargetUrl(targetUrl)) return null;
+  if (looksLikeDirectProductTargetUrl(targetUrl)) {
+    const successorProduct = chooseDirectSuccessorProduct(products, row);
+    if (successorProduct) return successorProduct;
+    return null;
+  }
   return products[0];
 }
 
