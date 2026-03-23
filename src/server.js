@@ -23263,8 +23263,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         querySource === 'cache_cross_merchant_search_supplemented';
       const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
+      const isLookupSoftFallbackSource =
+        isErrorSoftFallbackSource && (isLookupPolicyQuery || isAliasLookupQuery);
       const skipPolicyForLookupSoftFallback =
-        isErrorSoftFallbackSource ||
+        isLookupSoftFallbackSource ||
         (isResolverLookupSource && isLookupPolicyQuery) ||
         (isCacheLookupSource && isLookupPolicyQuery) ||
         (querySource === 'agent_products_search' && isAliasLookupQuery);
