@@ -180,4 +180,25 @@ describe('externalSeedProducts helper', () => {
       }),
     );
   });
+
+  test('projects reviewed structured ingredient ids onto external seed products', () => {
+    const row = {
+      id: 'eps_ord_1',
+      canonical_url: 'https://example.com/p/niacinamide-serum',
+      destination_url: 'https://example.com/p/niacinamide-serum',
+      title: 'Niacinamide Serum',
+      seed_data: {
+        category: 'Serum',
+        reviewed_ingredient_ids: ['Niacinamide', 'zinc_pca', 'Niacinamide'],
+        snapshot: {
+          canonical_url: 'https://example.com/p/niacinamide-serum',
+          title: 'Niacinamide Serum',
+          variants: [],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.ingredient_ids).toEqual(['niacinamide', 'zinc_pca']);
+  });
 });

@@ -1,7 +1,10 @@
 const {
   buildExternalSeedHarvesterCandidates,
+  buildVariantSourceUrl,
+  classifyIngredientScope,
   extractRawIngredientText,
   filterCandidatesForHarvester,
+  shouldExcludeCandidate,
 } = require('../../src/services/externalSeedHarvesterBridge');
 
 describe('externalSeedHarvesterBridge', () => {
@@ -46,9 +49,90 @@ describe('externalSeedHarvesterBridge', () => {
         sku_key: 'extseed:eps_ole_1:41609',
         brand: 'Ole Henriksen',
         product_name: 'Banana Bright Vitamin C Serum - 30ml',
-        source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+        source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum?variant=41609',
         raw_ingredient_text: 'Water, Ascorbic Acid, Glycerin.',
       }),
+    );
+  });
+
+  test('prefers structured snapshot ingredient fields over legacy ad-copy descriptions', () => {
+    const row = {
+      id: 'eps_tomford_1',
+      external_product_id: 'ext_tomford_1',
+      market: 'US',
+      canonical_url: 'https://www.tomfordbeauty.com/product/hyaluronic-energizing-mist?size=95_ml',
+      title: 'Hyaluronic Energizing Mist',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        description: 'OFFICIAL: A multi-use formula that hydrates, primes and refreshes skin.',
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/product/hyaluronic-energizing-mist?size=95_ml',
+          title: 'Hyaluronic Energizing Mist',
+          description: 'OFFICIAL: A multi-use formula that hydrates, primes and refreshes skin.',
+          ingredients_raw:
+            'Ingredients: Water Aqua Eau, Glycerin, Butylene Glycol, Panthenol, Sodium Hyaluronate.',
+          variants: [
+            {
+              sku: 'T6K101',
+              variant_id: '52015792881877',
+              option_value: '95.0 ml',
+              url: 'https://www.tomfordbeauty.com/products/hyaluronic-energizing-mist',
+            },
+          ],
+        },
+      },
+    };
+
+    const candidates = buildExternalSeedHarvesterCandidates(row);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        product_name: 'Hyaluronic Energizing Mist - 95.0 ml',
+        source_ref: 'https://www.tomfordbeauty.com/products/hyaluronic-energizing-mist?variant=52015792881877',
+        raw_ingredient_text:
+          'Ingredients: Water Aqua Eau, Glycerin, Butylene Glycol, Panthenol, Sodium Hyaluronate.',
+      }),
+    );
+  });
+
+  test('appends variant query parameter when seed only stores generic PDP url', () => {
+    expect(buildVariantSourceUrl('https://www.pixibeauty.com/products/on-the-glow-blush', '42457583845472')).toBe(
+      'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+    );
+    expect(
+      buildVariantSourceUrl(
+        'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+        '999999',
+      ),
+    ).toBe('https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472');
+
+    const row = {
+      id: 'eps_pixi_1',
+      external_product_id: 'ext_pixi_1',
+      market: 'US',
+      canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+      title: 'On-the-Glow Blush',
+      seed_data: {
+        brand: 'Pixi Beauty',
+        snapshot: {
+          canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+          title: 'On-the-Glow Blush',
+          variants: [
+            {
+              sku: 'PIXI-CASSIS',
+              variant_id: '42457583845472',
+              option_value: 'Cassis',
+              url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+            },
+          ],
+        },
+      },
+    };
+
+    const candidates = buildExternalSeedHarvesterCandidates(row);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].source_ref).toBe(
+      'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
     );
   });
 
@@ -59,12 +143,13 @@ describe('externalSeedHarvesterBridge', () => {
         domain: 'example.com',
         market: 'US',
         canonical_url: 'https://example.com/en-us/good-product.html',
-        title: 'Good Product',
+        title: 'Good Cleanser',
         seed_data: {
           brand: 'Example',
           snapshot: {
             canonical_url: 'https://example.com/en-us/good-product.html',
-            title: 'Good Product',
+            title: 'Good Cleanser',
+            category: 'Skincare',
             variants: [
               {
                 sku: 'GOOD-1',
@@ -101,5 +186,202 @@ describe('externalSeedHarvesterBridge', () => {
     expect(result.skipped[0].findings).toEqual(
       expect.arrayContaining([expect.objectContaining({ anomaly_type: 'non_product_fallback_page' })]),
     );
+  });
+
+  test('classifies skincare vs non-skincare ingredient scope conservatively', () => {
+    const skincareRow = {
+      title: 'Banana Bright Vitamin C Serum',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+      seed_data: {
+        snapshot: {
+          category: 'Skincare',
+        },
+      },
+    };
+    const skincareCandidate = {
+      product_name: 'Banana Bright Vitamin C Serum - 30ml',
+      source_ref: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum?variant=41609',
+    };
+    expect(classifyIngredientScope(skincareRow, skincareCandidate)).toEqual(
+      expect.objectContaining({ decision: 'allow' }),
+    );
+
+    const makeupRow = {
+      title: 'On-the-Glow Blush',
+      canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+    };
+    const makeupCandidate = {
+      product_name: 'On-the-Glow Blush - Cassis',
+      source_ref: 'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',
+    };
+    expect(classifyIngredientScope(makeupRow, makeupCandidate)).toEqual(
+      expect.objectContaining({ decision: 'block', reason: 'non_skincare_product_class' }),
+    );
+
+    const lipCandidate = {
+      product_name: 'Pout Preserve Peptide Lip Treatment - Sweet Macaron',
+      source_ref: 'https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment?variant=45276839575724',
+    };
+    expect(classifyIngredientScope({}, lipCandidate)).toEqual(
+      expect.objectContaining({ decision: 'review' }),
+    );
+  });
+
+  test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Pixi E-Gift Card 200 - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Ultimate Glow Skin Routine Set - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Best Of Pixi Bundle - Default Title',
+      }),
+    ).toBe(true);
+    expect(
+      shouldExcludeCandidate({
+        product_name: 'Banana Bright Vitamin C Serum - 30ml',
+      }),
+    ).toBe(false);
+
+    const rows = [
+      {
+        id: 'eps_bundle_1',
+        domain: 'pixibeauty.com',
+        market: 'US',
+        canonical_url: 'https://www.pixibeauty.com/products/ultimate-glow-mystery-box',
+        title: 'Ultimate Glow Skin Routine Set - Default Title',
+        seed_data: {
+          brand: 'PIXI BEAUTY',
+          snapshot: {
+            canonical_url: 'https://www.pixibeauty.com/products/ultimate-glow-mystery-box',
+            title: 'Ultimate Glow Skin Routine Set - Default Title',
+            variants: [
+              {
+                sku: 'PIXI-BUNDLE-1',
+                variant_id: 'PIXI-BUNDLE-1',
+                title: 'Default Title',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(0);
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          row_id: 'eps_bundle_1',
+          reason: 'candidate_policy_filtered',
+        }),
+      ]),
+    );
+  });
+
+  test('blocks makeup candidates from default harvester export while allowing skincare candidates', () => {
+    const rows = [
+      {
+        id: 'eps_skin_1',
+        domain: 'olehenriksen.com',
+        market: 'US',
+        canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+        title: 'Banana Bright Vitamin C Serum',
+        seed_data: {
+          brand: 'Ole Henriksen',
+          snapshot: {
+            category: 'Skincare',
+            canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+            title: 'Banana Bright Vitamin C Serum',
+            variants: [
+              {
+                sku: '41609',
+                variant_id: '41609',
+                option_value: '30ml',
+                url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
+              },
+            ],
+          },
+        },
+      },
+      {
+        id: 'eps_makeup_1',
+        domain: 'pixibeauty.com',
+        market: 'US',
+        canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+        title: 'On-the-Glow Blush',
+        seed_data: {
+          brand: 'Pixi Beauty',
+          snapshot: {
+            canonical_url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+            title: 'On-the-Glow Blush',
+            variants: [
+              {
+                sku: 'PIXI-CASSIS',
+                variant_id: '42457583845472',
+                option_value: 'Cassis',
+                url: 'https://www.pixibeauty.com/products/on-the-glow-blush',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(1);
+    expect(result.exported[0].row.id).toBe('eps_skin_1');
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          row_id: 'eps_makeup_1',
+          reason: 'non_skincare_candidate',
+        }),
+      ]),
+    );
+  });
+
+  test('keeps single-variant skincare products when Shopify uses Default Title', () => {
+    const rows = [
+      {
+        id: 'eps_skin_default_title',
+        domain: 'fentybeauty.com',
+        market: 'US',
+        canonical_url: 'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+        title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+        seed_data: {
+          brand: 'Fenty Skin',
+          snapshot: {
+            canonical_url: 'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+            title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+            variants: [
+              {
+                sku: '59437',
+                variant_id: '40839548960813',
+                option_value: 'Default Title',
+                url: 'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(1);
+    expect(result.exported[0].candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_name: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+        }),
+      ]),
+    );
+    expect(result.skipped).toHaveLength(0);
   });
 });

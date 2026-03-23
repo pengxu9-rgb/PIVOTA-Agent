@@ -55,6 +55,7 @@ const {
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
+const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
 const {
   buildSearchDebugBundle,
   shouldExposeDebugBundle,
@@ -599,6 +600,879 @@ function resolveSubmitPaymentContract(upstreamPayload = {}) {
     payment_status_raw: normalizedStatus.payment_status_raw,
     confirmation_owner: isClientOwned ? 'client' : 'backend',
     requires_client_confirmation: isClientOwned,
+  };
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    if (value != null) {
+      const normalized = String(value).trim();
+      if (normalized) return normalized;
+    }
+  }
+  return null;
+}
+
+function pruneEmptyFields(input = {}) {
+  const output = {};
+  for (const [key, value] of Object.entries(input || {})) {
+    if (value == null) continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (isPlainObject(value) && Object.keys(value).length === 0) continue;
+    output[key] = value;
+  }
+  return output;
+}
+
+function getInvokeScopedBuyerRef(payload = {}) {
+  const store = getInvokeAuthContext();
+  return firstNonEmptyString(
+    store?.buyer_ref,
+    payload?.payment?.buyer_ref,
+    payload?.payment?.buyerRef,
+    payload?.order?.buyer_ref,
+    payload?.order?.buyerRef,
+    payload?.quote?.buyer_ref,
+    payload?.quote?.buyerRef,
+    payload?.buyer_ref,
+    payload?.buyerRef,
+  );
+}
+
+function buildInvokeRequestContext({
+  payload = {},
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+  fallbackCurrency = null,
+} = {}) {
+  const context = isPlainObject(payload?.context) ? payload.context : {};
+  return pruneEmptyFields({
+    tenant_id: firstNonEmptyString(payload?.tenant_id, context?.tenant_id, metadata?.tenant_id),
+    request_id: firstNonEmptyString(context?.request_id, gatewayRequestId),
+    channel: firstNonEmptyString(context?.channel, metadata?.source, clientChannel),
+    locale: firstNonEmptyString(payload?.locale, context?.locale, context?.language),
+    currency: firstNonEmptyString(
+      payload?.currency,
+      payload?.payment?.currency,
+      payload?.order?.currency,
+      payload?.quote?.currency,
+      context?.currency,
+      fallbackCurrency,
+    ),
+    country: firstNonEmptyString(payload?.market, context?.country, context?.market),
+    delivery_region: firstNonEmptyString(
+      payload?.delivery_region,
+      context?.delivery_region,
+      context?.deliveryRegion,
+      context?.region,
+    ),
+    user_constraints: isPlainObject(context?.user_constraints)
+      ? context.user_constraints
+      : isPlainObject(payload?.user_constraints)
+        ? payload.user_constraints
+        : undefined,
+    consent_context: isPlainObject(context?.consent_context)
+      ? context.consent_context
+      : isPlainObject(payload?.consent_context)
+        ? payload.consent_context
+        : undefined,
+  });
+}
+
+function buildInvokeBuyerContext({ source = {}, payload = {} } = {}) {
+  const shippingAddress = isPlainObject(source?.shipping_address)
+    ? source.shipping_address
+    : isPlainObject(payload?.shipping_address)
+      ? payload.shipping_address
+      : undefined;
+  return pruneEmptyFields({
+    customer_email: firstNonEmptyString(
+      source?.customer_email,
+      source?.customerEmail,
+      payload?.customer_email,
+      payload?.customerEmail,
+    ),
+    customer_name: firstNonEmptyString(
+      source?.customer_name,
+      source?.customerName,
+      shippingAddress?.recipient_name,
+      shippingAddress?.name,
+    ),
+    shipping_address: shippingAddress,
+    buyer_ref: getInvokeScopedBuyerRef(payload),
+  });
+}
+
+function buildQuotePreviewV2Body({
+  payload = {},
+  quote = {},
+  merchantId = null,
+  offerId = null,
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+} = {}) {
+  const offerRefs = Array.isArray(quote?.items)
+    ? quote.items
+        .map((item) => {
+          const productId = firstNonEmptyString(item?.product_id, item?.productId);
+          const variantId = firstNonEmptyString(
+            item?.variant_id,
+            item?.variantId,
+            item?.sku,
+            item?.product_id,
+            item?.productId,
+          );
+          const quantity = Math.max(1, Number(item?.quantity || 1) || 1);
+          if (!productId || !variantId) return null;
+          return pruneEmptyFields({
+            offer_id: firstNonEmptyString(item?.offer_id, item?.offerId, offerId),
+            product_id: productId,
+            variant_id: variantId,
+            quantity,
+          });
+        })
+        .filter(Boolean)
+    : [];
+
+  return pruneEmptyFields({
+    merchant_id: merchantId,
+    offer_refs: offerRefs,
+    discount_codes: Array.isArray(quote?.discount_codes) ? quote.discount_codes : undefined,
+    buyer_context: buildInvokeBuyerContext({ source: quote, payload }),
+    selected_delivery_option: isPlainObject(quote?.selected_delivery_option)
+      ? quote.selected_delivery_option
+      : undefined,
+    request_context: buildInvokeRequestContext({
+      payload,
+      metadata,
+      clientChannel,
+      gatewayRequestId,
+      fallbackCurrency: quote?.currency,
+    }),
+  });
+}
+
+function buildCreateOrderV2Body({
+  payload = {},
+  order = {},
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+} = {}) {
+  return pruneEmptyFields({
+    quote_id: firstNonEmptyString(order?.quote_id, order?.quoteId),
+    buyer_context: buildInvokeBuyerContext({ source: order, payload }),
+    request_context: buildInvokeRequestContext({
+      payload,
+      metadata,
+      clientChannel,
+      gatewayRequestId,
+      fallbackCurrency: order?.currency,
+    }),
+    metadata: isPlainObject(order?.metadata) ? order.metadata : undefined,
+    preferred_psp: firstNonEmptyString(order?.preferred_psp, payload?.preferred_psp),
+    idempotency_key: firstNonEmptyString(
+      order?.idempotency_key,
+      order?.idempotencyKey,
+      payload?.idempotency_key,
+      payload?.idempotencyKey,
+    ),
+  });
+}
+
+function buildCheckoutSessionV2Body({
+  payload = {},
+  payment = {},
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+} = {}) {
+  const buyerContext = buildInvokeBuyerContext({ source: payment, payload });
+  return pruneEmptyFields({
+    order_id: firstNonEmptyString(payment?.order_id, payment?.orderId),
+    return_url: firstNonEmptyString(
+      payment?.return_url,
+      payment?.returnUrl,
+      payment?.redirect_url,
+      payment?.redirectUrl,
+      payload?.return_url,
+      payload?.returnUrl,
+    ),
+    buyer_ref: getInvokeScopedBuyerRef(payload),
+    requested_scopes: Array.isArray(payment?.requested_scopes) ? payment.requested_scopes : undefined,
+    market: firstNonEmptyString(payment?.market, payload?.market),
+    locale: firstNonEmptyString(payment?.locale, payload?.locale, payload?.context?.locale),
+    source: firstNonEmptyString(payment?.source, metadata?.source, clientChannel),
+    customer_email: buyerContext.customer_email,
+    shipping_address: buyerContext.shipping_address,
+    request_context: buildInvokeRequestContext({
+      payload,
+      metadata,
+      clientChannel,
+      gatewayRequestId,
+      fallbackCurrency: payment?.currency,
+    }),
+  });
+}
+
+function buildSearchProductsV2Body({
+  payload = {},
+  search = {},
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+  defaultSearchAllMerchants = false,
+} = {}) {
+  const page = Math.max(1, Number(search?.page || 1) || 1);
+  const limit = Math.min(
+    Math.max(1, Number(search?.page_size || search?.limit || 20) || 20),
+    SEARCH_LIMIT_MAX,
+  );
+  const offset = (page - 1) * limit;
+  const merchantId = firstNonEmptyString(search?.merchant_id, search?.merchantId);
+  const merchantIdsRaw = Array.isArray(search?.merchant_ids)
+    ? search.merchant_ids
+    : Array.isArray(search?.merchantIds)
+      ? search.merchantIds
+      : [];
+  const merchantIds = uniqueStrings(
+    merchantIdsRaw.map((value) => String(value || '').trim()).filter(Boolean),
+  );
+  const explicitSearchAllMerchants =
+    search?.search_all_merchants === true || search?.searchAllMerchants === true;
+  const searchAllMerchants =
+    explicitSearchAllMerchants ||
+    (!merchantId && merchantIds.length === 0 && Boolean(defaultSearchAllMerchants));
+
+  return pruneEmptyFields({
+    merchant_id: merchantId,
+    merchant_ids: !merchantId && merchantIds.length > 0 ? merchantIds : undefined,
+    search_all_merchants: searchAllMerchants,
+    query: search?.query != null ? String(search.query || '') : undefined,
+    category: firstNonEmptyString(search?.category),
+    catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
+    min_price: search?.price_min ?? search?.min_price,
+    max_price: search?.price_max ?? search?.max_price,
+    in_stock_only: search?.in_stock_only !== false,
+    limit,
+    offset,
+    allow_external_seed: search?.allow_external_seed,
+    external_seed_only: search?.external_seed_only,
+    allow_stale_cache: search?.allow_stale_cache,
+    external_seed_strategy: firstNonEmptyString(search?.external_seed_strategy),
+    fast_mode: search?.fast_mode,
+    request_context: buildInvokeRequestContext({
+      payload,
+      metadata,
+      clientChannel,
+      gatewayRequestId,
+      fallbackCurrency: firstNonEmptyString(search?.currency, payload?.currency),
+    }),
+  });
+}
+
+function getRequestedCatalogSurface({ search = {}, metadata = {} } = {}) {
+  return String(
+    firstNonEmptyString(
+      search?.catalog_surface,
+      search?.catalogSurface,
+      metadata?.catalog_surface,
+      metadata?.catalogSurface,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+}
+
+const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES = Object.freeze({
+  'ascorbic acid': 'ascorbic_acid',
+  'azelaic acid': 'azelaic_acid',
+  'benzoyl peroxide': 'benzoyl_peroxide',
+  ceramide: 'ceramide_np',
+  ceramides: 'ceramide_np',
+  'ceramide np': 'ceramide_np',
+  glycerin: 'glycerin',
+  glycerine: 'glycerin',
+  'hyaluronic acid': 'hyaluronic_acid',
+  niacinamide: 'niacinamide',
+  panthenol: 'panthenol',
+  retinol: 'retinol',
+  'salicylic acid': 'salicylic_acid',
+  'vitamin c': 'ascorbic_acid',
+  'zinc pca': 'zinc_pca',
+});
+
+const STRICT_FIND_PRODUCTS_MULTI_SHADE_CATEGORY_TERMS = Object.freeze([
+  'foundation',
+  'lipstick',
+  'blush',
+  'gloss',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_VISIBLE_ATTRIBUTE_TERMS = Object.freeze([
+  'fragrance free',
+  'sensitive skin',
+  'hydrating',
+  'brightening',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
+  'serum',
+  'moisturizer',
+  'cleanser',
+  'toner',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
+  1,
+  Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
+);
+
+function isStrictCommerceCatalogSurface(surface) {
+  return ['agent_api', 'acp', 'ucp'].includes(String(surface || '').trim().toLowerCase());
+}
+
+function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryProfile = null) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return [];
+  const beautyBucket = String(beautyQueryProfile?.bucket || '').trim().toLowerCase();
+  const isBeautyQuery = Boolean(beautyQueryProfile?.isBeautyQuery);
+  if (isBeautyQuery && beautyBucket && beautyBucket !== 'skincare') {
+    return [];
+  }
+  const intents = [];
+  for (const [term, ingredientId] of Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
+    if (!normalizedQuery.includes(normalizeSearchTextForMatch(term))) continue;
+    if (!intents.includes(ingredientId)) intents.push(ingredientId);
+  }
+  return intents;
+}
+
+function extractStrictFindProductsMultiShadeOptionIntents(queryText, beautyQueryProfile = null) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return [];
+  const beautyBucket = String(beautyQueryProfile?.bucket || '').trim().toLowerCase();
+  const isBeautyQuery = Boolean(beautyQueryProfile?.isBeautyQuery);
+  if (isBeautyQuery && !['general', 'base_makeup', 'lip_makeup'].includes(beautyBucket)) {
+    return [];
+  }
+  if (!STRICT_FIND_PRODUCTS_MULTI_SHADE_CATEGORY_TERMS.some((term) => normalizedQuery.includes(term))) {
+    return [];
+  }
+  const intents = [];
+  const shadePattern = /\bshade\s+([a-z0-9][a-z0-9 ]{0,30})\b/g;
+  for (const match of normalizedQuery.matchAll(shadePattern)) {
+    const rawValue = normalizeSearchTextForMatch(match[1] || '');
+    if (!rawValue) continue;
+    const label = `shade_${rawValue.replace(/\s+/g, '_')}`;
+    if (!intents.includes(label)) intents.push(label);
+  }
+  return intents;
+}
+
+function hasStrictFindProductsMultiBudgetConstraint(queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return false;
+  return (
+    /\b(under|below|over|above|less than|more than)\s+\d+\b/.test(normalizedQuery) ||
+    /\b\d+\s*(usd|eur|gbp|cny)\b/.test(normalizedQuery) ||
+    /(?:€|\$|£)\s*\d+/.test(String(queryText || ''))
+  );
+}
+
+function extractStrictFindProductsMultiVisibleAttributeIntents(queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return [];
+  return STRICT_FIND_PRODUCTS_MULTI_VISIBLE_ATTRIBUTE_TERMS.filter((term) =>
+    normalizedQuery.includes(normalizeSearchTextForMatch(term)),
+  );
+}
+
+function getStrictFindProductsMultiConstraintDecision({ search = {}, metadata = {} } = {}) {
+  const requestedCatalogSurface = getRequestedCatalogSurface({ search, metadata });
+  const rawQuery = String(search?.query || '').trim();
+  if (!rawQuery && isStrictCommerceCatalogSurface(requestedCatalogSurface)) {
+    return {
+      enabled: true,
+      catalogSurface: requestedCatalogSurface,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents: [],
+      shadeOptionIntents: [],
+    };
+  }
+  if (!rawQuery) {
+    return {
+      enabled: false,
+      catalogSurface: null,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents: [],
+      shadeOptionIntents: [],
+    };
+  }
+
+  const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery });
+  const ingredientIntents = extractStrictFindProductsMultiIngredientIntents(
+    rawQuery,
+    beautyQueryProfile,
+  );
+  const shadeOptionIntents = extractStrictFindProductsMultiShadeOptionIntents(
+    rawQuery,
+    beautyQueryProfile,
+  );
+  const hasIngredientConstraint = ingredientIntents.length > 0;
+  const hasShadeConstraint = shadeOptionIntents.length > 0;
+  if (!hasIngredientConstraint && !hasShadeConstraint) {
+    return {
+      enabled: false,
+      catalogSurface: null,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents,
+      shadeOptionIntents,
+    };
+  }
+
+  const visibleAttributeIntents = extractStrictFindProductsMultiVisibleAttributeIntents(rawQuery);
+  const hasBudgetConstraint = hasStrictFindProductsMultiBudgetConstraint(rawQuery);
+  const hasAdditionalConstraint =
+    visibleAttributeIntents.length > 0 ||
+    hasBudgetConstraint ||
+    (hasIngredientConstraint && hasShadeConstraint);
+  const strictConstraintReason = hasAdditionalConstraint
+    ? 'multi_constraint'
+    : hasIngredientConstraint
+      ? 'ingredient'
+      : 'shade';
+
+  return {
+    enabled: isStrictCommerceCatalogSurface(requestedCatalogSurface) || hasIngredientConstraint || hasShadeConstraint,
+    catalogSurface: isStrictCommerceCatalogSurface(requestedCatalogSurface)
+      ? requestedCatalogSurface
+      : 'agent_api',
+    strictConstraintQuery: hasIngredientConstraint || hasShadeConstraint,
+    strictConstraintReason,
+    ingredientIntents,
+    shadeOptionIntents,
+  };
+}
+
+function shouldUseStrictFindProductsMultiInvoke({ search = {}, metadata = {} } = {}) {
+  return getStrictFindProductsMultiConstraintDecision({ search, metadata }).enabled;
+}
+
+function extractStrictFindProductsMultiSkincareCategoryIntents(queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return [];
+  return STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS.filter((term) =>
+    normalizedQuery.includes(normalizeSearchTextForMatch(term)),
+  );
+}
+
+function buildSqlLikeClauses(columnSql, values, params, startIndex) {
+  const clauses = [];
+  let paramIndex = startIndex;
+  for (const value of values) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) continue;
+    params.push(`%${normalized}%`);
+    clauses.push(`${columnSql} LIKE $${paramIndex}`);
+    paramIndex += 1;
+  }
+  return { clauses, nextIndex: paramIndex };
+}
+
+function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [], categoryIntents = [], inStockOnly = true } = {}) {
+  if (!product || typeof product !== 'object') return false;
+  const productIngredientIds = Array.isArray(product.ingredient_ids)
+    ? product.ingredient_ids.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (ingredientIntents.length > 0 && !ingredientIntents.every((intent) => productIngredientIds.includes(intent))) {
+    return false;
+  }
+
+  const visibilityHaystack = normalizeSearchTextForMatch(
+    [
+      product.title,
+      product.product_type,
+      product.category,
+      product.description,
+      product.canonical_url,
+      product.destination_url,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (
+    categoryIntents.length > 0 &&
+    !categoryIntents.every((intent) => visibilityHaystack.includes(normalizeSearchTextForMatch(intent)))
+  ) {
+    return false;
+  }
+
+  if (inStockOnly && product.in_stock !== true) {
+    return false;
+  }
+
+  return true;
+}
+
+async function prefetchStrictIngredientExternalSeedCandidates({
+  search = {},
+  strictInvokeDecision = null,
+  rawQueryText = null,
+} = {}) {
+  if (!process.env.DATABASE_URL) return [];
+
+  const decision =
+    strictInvokeDecision && typeof strictInvokeDecision === 'object'
+      ? strictInvokeDecision
+      : getStrictFindProductsMultiConstraintDecision({ search, metadata: {} });
+  const ingredientIntents = Array.isArray(decision?.ingredientIntents)
+    ? decision.ingredientIntents.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (!decision?.strictConstraintQuery || ingredientIntents.length === 0) {
+    return [];
+  }
+
+  const queryText = String(rawQueryText || search?.query || '').trim();
+  const categoryIntents = extractStrictFindProductsMultiSkincareCategoryIntents(queryText);
+  const textTerms = [
+    ...ingredientIntents.map((value) => value.replace(/_/g, ' ')),
+    ...(categoryIntents.length > 0 ? categoryIntents : STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS),
+  ];
+
+  const params = ['US'];
+  let paramIndex = 2;
+  const titleLike = buildSqlLikeClauses('LOWER(COALESCE(title, \'\'))', textTerms, params, paramIndex);
+  paramIndex = titleLike.nextIndex;
+  const urlLike = buildSqlLikeClauses(
+    'LOWER(COALESCE(canonical_url, \'\'))',
+    textTerms,
+    params,
+    paramIndex,
+  );
+  paramIndex = urlLike.nextIndex;
+  const seedDataLike = buildSqlLikeClauses(
+    'LOWER(CAST(COALESCE(seed_data, \'{}\'::jsonb) AS TEXT))',
+    textTerms,
+    params,
+    paramIndex,
+  );
+  paramIndex = seedDataLike.nextIndex;
+  params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
+
+  const sql = `
+    SELECT
+      id,
+      external_product_id,
+      market,
+      tool,
+      destination_url,
+      canonical_url,
+      domain,
+      title,
+      image_url,
+      price_amount,
+      price_currency,
+      availability,
+      seed_data,
+      status,
+      attached_product_key,
+      created_at,
+      updated_at
+    FROM external_product_seeds
+    WHERE status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (
+        ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
+      )
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT $${paramIndex}
+  `;
+
+  try {
+    const result = await query(sql, params);
+    const candidates = [];
+    const seen = new Set();
+    for (const row of result?.rows || []) {
+      const product = buildExternalSeedProduct(row);
+      if (!product) continue;
+      product.market = row.market || 'US';
+      product.tool = row.tool || '*';
+      product.external_seed_id = product.external_seed_id || row.id || null;
+      if (!productMatchesStrictIngredientPrefetch(product, {
+        ingredientIntents,
+        categoryIntents,
+        inStockOnly: search?.in_stock_only !== false,
+      })) {
+        continue;
+      }
+      const dedupeKey = String(product.product_id || product.id || '').trim();
+      if (!dedupeKey || seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      candidates.push(product);
+      if (candidates.length >= STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT) break;
+    }
+    return candidates;
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), queryText, ingredientIntents, categoryIntents },
+      'strict ingredient external seed prefetch failed',
+    );
+    return [];
+  }
+}
+
+async function buildFindProductsMultiInvokeBody({
+  payload = {},
+  search = {},
+  metadata = {},
+  clientChannel = 'shop',
+  gatewayRequestId = null,
+  defaultSearchAllMerchants = false,
+  strictInvokeDecision = null,
+  rawQueryText = null,
+} = {}) {
+  const resolvedStrictInvokeDecision =
+    strictInvokeDecision && typeof strictInvokeDecision === 'object'
+      ? strictInvokeDecision
+      : getStrictFindProductsMultiConstraintDecision({ search, metadata });
+  const requestedCatalogSurface =
+    String(resolvedStrictInvokeDecision?.catalogSurface || '').trim().toLowerCase() ||
+    getRequestedCatalogSurface({ search, metadata });
+  const normalizedSearch = {
+    ...(search && typeof search === 'object' ? search : {}),
+    ...(requestedCatalogSurface ? { catalog_surface: requestedCatalogSurface } : {}),
+    ...(
+      resolvedStrictInvokeDecision?.strictConstraintQuery && String(rawQueryText || '').trim()
+        ? { query: String(rawQueryText || '').trim() }
+        : {}
+    ),
+  };
+  const prefetchedExternalSeedCandidates = await prefetchStrictIngredientExternalSeedCandidates({
+    search: normalizedSearch,
+    strictInvokeDecision: resolvedStrictInvokeDecision,
+    rawQueryText,
+  });
+  return {
+    operation: 'find_products_multi',
+    payload: {
+      search: buildSearchProductsV2Body({
+        payload,
+        search: normalizedSearch,
+        metadata,
+        clientChannel,
+        gatewayRequestId,
+        defaultSearchAllMerchants,
+      }),
+    },
+    metadata: pruneEmptyFields({
+      ...(metadata && typeof metadata === 'object' ? metadata : {}),
+      catalog_surface: requestedCatalogSurface || undefined,
+      ...(prefetchedExternalSeedCandidates.length > 0
+        ? {
+            external_seed_candidates: prefetchedExternalSeedCandidates,
+            external_seed_prefetch_source: 'agent_strict_ingredient_prefetch',
+          }
+        : {}),
+    }),
+  };
+}
+
+function isCanonicalSearchProduct(product) {
+  return Boolean(product) && typeof product === 'object' && !Array.isArray(product) && (
+    Array.isArray(product.offers) ||
+    Array.isArray(product.variants) ||
+    typeof product.canonical_title === 'string' ||
+    (product.provenance && typeof product.provenance === 'object' && !Array.isArray(product.provenance))
+  );
+}
+
+function getCanonicalSearchFallbackReason(err) {
+  const status = Number(err?.response?.status || 0) || 0;
+  if ([404, 405, 415, 422].includes(status)) return `status_${status}`;
+  const message = String(err?.message || '').toLowerCase();
+  if (message.includes('nock: no match for request')) return 'contract_not_mocked';
+  return null;
+}
+
+function normalizeCanonicalSearchVariant(variant) {
+  if (!isPlainObject(variant)) return null;
+  const attrs = isPlainObject(variant.variant_attributes) ? variant.variant_attributes : {};
+  return pruneEmptyFields({
+    ...variant,
+    id: firstNonEmptyString(variant.id, variant.variant_id),
+    variant_id: firstNonEmptyString(variant.variant_id, variant.id),
+    title: firstNonEmptyString(attrs.title, variant.title),
+    sku: firstNonEmptyString(attrs.sku, variant.sku),
+    option1: firstNonEmptyString(attrs.option1, variant.option1),
+    option2: firstNonEmptyString(attrs.option2, variant.option2),
+    option3: firstNonEmptyString(attrs.option3, variant.option3),
+    selected_options: Array.isArray(attrs.selected_options) ? attrs.selected_options : undefined,
+  });
+}
+
+function normalizeCanonicalSearchProductCompat(product) {
+  if (!isCanonicalSearchProduct(product)) return product;
+  const provenance = isPlainObject(product.provenance) ? product.provenance : {};
+  const primaryOffer =
+    Array.isArray(product.offers) && product.offers.length > 0 && isPlainObject(product.offers[0])
+      ? product.offers[0]
+      : {};
+  const availability = isPlainObject(primaryOffer.availability) ? primaryOffer.availability : {};
+  const shippingSummary = isPlainObject(primaryOffer.shipping_summary) ? primaryOffer.shipping_summary : {};
+  const imageRefs = Array.isArray(product.image_refs)
+    ? product.image_refs.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const normalizedVariants = Array.isArray(product.variants)
+    ? product.variants.map((variant) => normalizeCanonicalSearchVariant(variant)).filter(Boolean)
+    : [];
+
+  return pruneEmptyFields({
+    ...product,
+    id: firstNonEmptyString(product.id, product.product_id),
+    product_id: firstNonEmptyString(product.product_id, product.id),
+    merchant_id: firstNonEmptyString(
+      product.merchant_id,
+      provenance.merchant_id,
+      primaryOffer.merchant_id,
+    ),
+    merchant_name: firstNonEmptyString(product.merchant_name, provenance.merchant_name),
+    title: firstNonEmptyString(product.title, product.canonical_title, product.name),
+    name: firstNonEmptyString(product.name, product.canonical_title, product.title),
+    category: firstNonEmptyString(product.category, product.canonical_category, product.product_type),
+    product_type: firstNonEmptyString(
+      product.product_type,
+      product.canonical_category,
+      product.category,
+    ),
+    brand: firstNonEmptyString(product.brand, product.vendor),
+    vendor: firstNonEmptyString(product.vendor, product.brand),
+    offer_id: firstNonEmptyString(product.offer_id, primaryOffer.offer_id),
+    merchant_sku: firstNonEmptyString(product.sku, primaryOffer.merchant_sku),
+    price: primaryOffer.price != null ? primaryOffer.price : product.price,
+    currency: firstNonEmptyString(product.currency, primaryOffer.currency),
+    in_stock:
+      typeof availability.in_stock === 'boolean'
+        ? availability.in_stock
+        : product.in_stock,
+    inventory_quantity:
+      availability.inventory_quantity != null
+        ? availability.inventory_quantity
+        : product.inventory_quantity,
+    shipping: Object.keys(shippingSummary).length > 0 ? shippingSummary : product.shipping,
+    estimated_delivery: firstNonEmptyString(
+      product.estimated_delivery,
+      shippingSummary.estimated_delivery,
+    ),
+    shipping_fee:
+      shippingSummary.shipping_fee != null ? shippingSummary.shipping_fee : product.shipping_fee,
+    source: firstNonEmptyString(product.source, provenance.source_type, primaryOffer.source_type),
+    platform: firstNonEmptyString(
+      product.platform,
+      provenance.connector,
+      primaryOffer.connector,
+    ),
+    cached_at: firstNonEmptyString(
+      product.cached_at,
+      provenance.freshness_ts,
+      primaryOffer.freshness_ts,
+    ),
+    updated_at: firstNonEmptyString(
+      product.updated_at,
+      provenance.freshness_ts,
+      primaryOffer.freshness_ts,
+    ),
+    score:
+      product.score != null
+        ? product.score
+        : primaryOffer.confidence != null
+          ? primaryOffer.confidence
+          : product.confidence,
+    confidence:
+      product.confidence != null ? product.confidence : primaryOffer.confidence,
+    image_url: firstNonEmptyString(product.image_url, imageRefs[0]),
+    images: imageRefs.length > 0 ? imageRefs : product.images,
+    variants: normalizedVariants.length > 0 ? normalizedVariants : product.variants,
+  });
+}
+
+function extractCanonicalQuoteId(payload = {}) {
+  if (!isPlainObject(payload)) return null;
+  if (isPlainObject(payload.quote)) {
+    return firstNonEmptyString(payload.quote.quote_id, payload.quote.quoteId, payload.quote_id);
+  }
+  return firstNonEmptyString(payload.quote_id, payload.quoteId);
+}
+
+function normalizePreviewQuoteCompat(upstreamPayload = {}) {
+  if (!isPlainObject(upstreamPayload) || !isPlainObject(upstreamPayload.quote)) {
+    return upstreamPayload;
+  }
+  const quote = upstreamPayload.quote;
+  const priceBreakdown = isPlainObject(quote.price_breakdown) ? quote.price_breakdown : {};
+  const shippingBreakdown = isPlainObject(quote.shipping_breakdown) ? quote.shipping_breakdown : {};
+  const taxBreakdown = isPlainObject(quote.tax_breakdown) ? quote.tax_breakdown : {};
+  return {
+    ...upstreamPayload,
+    ...quote,
+    pricing: pruneEmptyFields({
+      subtotal: priceBreakdown.subtotal,
+      discount_total: priceBreakdown.discount_total,
+      shipping_fee: shippingBreakdown.shipping_fee,
+      tax: taxBreakdown.tax,
+      total: priceBreakdown.total,
+      currency: firstNonEmptyString(priceBreakdown.currency, quote.currency),
+    }),
+    delivery_options: Array.isArray(shippingBreakdown.delivery_options)
+      ? shippingBreakdown.delivery_options
+      : [],
+    engine: firstNonEmptyString(quote?.provenance?.engine, quote?.policy_snapshot?.engine),
+    engine_ref: firstNonEmptyString(quote?.provenance?.engine_ref, quote?.policy_snapshot?.engine_ref),
+    quote,
+  };
+}
+
+function normalizeCreateOrderCompat(upstreamPayload = {}) {
+  if (!isPlainObject(upstreamPayload) || !isPlainObject(upstreamPayload.order)) {
+    return upstreamPayload;
+  }
+  const order = upstreamPayload.order;
+  const amounts = isPlainObject(order.amounts) ? order.amounts : {};
+  const fulfillmentSummary = isPlainObject(order.fulfillment_summary) ? order.fulfillment_summary : {};
+  const paymentSummary = isPlainObject(upstreamPayload.payment)
+    ? upstreamPayload.payment
+    : isPlainObject(order.payment_summary)
+      ? order.payment_summary
+      : {};
+  return {
+    ...upstreamPayload,
+    ...order,
+    total_amount: amounts.total != null ? amounts.total : upstreamPayload.total_amount,
+    subtotal: amounts.subtotal != null ? amounts.subtotal : upstreamPayload.subtotal,
+    shipping_fee: amounts.shipping_fee != null ? amounts.shipping_fee : upstreamPayload.shipping_fee,
+    tax: amounts.tax != null ? amounts.tax : upstreamPayload.tax,
+    currency: firstNonEmptyString(amounts.currency, upstreamPayload.currency),
+    payment_status: firstNonEmptyString(order.payment_status, upstreamPayload.payment_status),
+    payment: paymentSummary,
+    tracking: Object.keys(fulfillmentSummary).length ? fulfillmentSummary : upstreamPayload.tracking,
+    order_lines: Array.isArray(order.line_items) ? order.line_items : upstreamPayload.order_lines,
+    order,
   };
 }
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
@@ -2835,13 +3709,18 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
   };
 
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const pagination =
+    base.pagination && typeof base.pagination === 'object' && !Array.isArray(base.pagination)
+      ? base.pagination
+      : {};
   const products = getProducts(raw);
   const normalizedProducts = products.map((product) => {
     if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
-    const { primaryImageUrl, normalizedImages } = normalizeProductImages(product);
-    if (!primaryImageUrl && normalizedImages.length === 0) return product;
+    const compatProduct = normalizeCanonicalSearchProductCompat(product);
+    const { primaryImageUrl, normalizedImages } = normalizeProductImages(compatProduct);
+    if (!primaryImageUrl && normalizedImages.length === 0) return compatProduct;
     return {
-      ...product,
+      ...compatProduct,
       ...(primaryImageUrl ? { image_url: primaryImageUrl } : {}),
       ...(normalizedImages.length > 0 ? { images: normalizedImages } : {}),
     };
@@ -2853,17 +3732,28 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
     base.total_count ??
     base.totalCount ??
     base.page_total ??
-    base.pageTotal;
+    base.pageTotal ??
+    pagination.total ??
+    pagination.count ??
+    pagination.total_count ??
+    pagination.totalCount;
   const total = typeof totalRaw === 'number' ? totalRaw : normalizedProducts.length;
 
-  const limitRaw = ctx.limit ?? base.limit ?? base.page_size ?? base.pageSize;
-  const offsetRaw = ctx.offset ?? base.offset ?? 0;
+  const limitRaw =
+    ctx.limit ??
+    base.limit ??
+    base.page_size ??
+    base.pageSize ??
+    pagination.limit ??
+    pagination.page_size ??
+    pagination.pageSize;
+  const offsetRaw = ctx.offset ?? base.offset ?? pagination.offset ?? 0;
   const limit = Number(limitRaw);
   const offset = Number(offsetRaw);
   const page =
     Number.isFinite(limit) && limit > 0 && Number.isFinite(offset) && offset >= 0
       ? Math.floor(offset / limit) + 1
-      : base.page || 1;
+      : base.page || pagination.page || 1;
 
   const mergedMetadata =
     base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata)
@@ -2880,7 +3770,12 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
     products: normalizedProducts,
     total,
     page,
-    page_size: typeof base.page_size === 'number' ? base.page_size : normalizedProducts.length,
+    page_size:
+      typeof base.page_size === 'number'
+        ? base.page_size
+        : Number.isFinite(limit) && limit > 0
+          ? limit
+          : normalizedProducts.length,
     reply: base.reply ?? null,
     metadata: mergedMetadata,
   };
@@ -3150,6 +4045,183 @@ function buildSearchRelevanceDebug({ intent, products, diversityPenaltyApplied =
     out.category_mix_topN = null;
   }
   return out;
+}
+
+function buildServiceVersionMetadata() {
+  return {
+    service: SERVICE_NAME,
+    commit: SERVICE_GIT_SHA_SHORT,
+    build_id: SERVICE_BUILD_ID,
+    branch: SERVICE_GIT_BRANCH || null,
+    deployment_id: SERVICE_DEPLOYMENT_ID || null,
+    started_at: SERVICE_STARTED_AT,
+  };
+}
+
+function buildCacheStageDiagnosticBundle(cacheStage = null) {
+  const stage =
+    cacheStage && typeof cacheStage === 'object' && !Array.isArray(cacheStage)
+      ? cacheStage
+      : null;
+  if (!stage) return null;
+  const retrievalSources = Array.isArray(stage.retrieval_sources) ? stage.retrieval_sources : [];
+  const strictSource =
+    retrievalSources.find(
+      (item) => item && typeof item === 'object' && String(item.source || '') === 'lexical_cache',
+    ) || null;
+  const relaxedSource =
+    retrievalSources.find(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        String(item.source || '') === 'lexical_cache_relaxed_no_onboarding',
+    ) || null;
+  const intOrZero = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+  };
+  const selectedSource =
+    stage.selected_source != null ? String(stage.selected_source || '').trim() || null : null;
+  return {
+    cache_stage_attempted: Boolean(stage.attempted),
+    cache_stage_query_terms: Array.isArray(stage.query_terms) ? stage.query_terms : [],
+    cache_stage_strict_total: intOrZero(
+      stage.strict_total != null ? stage.strict_total : strictSource?.total,
+    ),
+    cache_stage_relaxed_total: intOrZero(
+      stage.relaxed_total != null ? stage.relaxed_total : relaxedSource?.total,
+    ),
+    cache_stage_filtered_irrelevant_count: intOrZero(stage.filtered_irrelevant_count),
+    cache_stage_beauty_bucket:
+      stage.beauty_bucket != null ? String(stage.beauty_bucket || '').trim() || null : null,
+    cache_stage_selected_source: selectedSource,
+  };
+}
+
+function buildCacheStageSnapshot({
+  hit = false,
+  candidateCount = 0,
+  relevantCount = 0,
+  retrievalSources = [],
+  cacheRouteDebug = null,
+  selectedSource = null,
+} = {}) {
+  const stage = {
+    hit: Boolean(hit),
+    candidate_count: Number(candidateCount || 0),
+    relevant_count: Number(relevantCount || 0),
+    retrieval_sources: Array.isArray(retrievalSources) ? retrievalSources : [],
+    attempted: Boolean(cacheRouteDebug?.attempted),
+    query_terms: Array.isArray(cacheRouteDebug?.cache_query_terms)
+      ? cacheRouteDebug.cache_query_terms
+      : [],
+    strict_total: (() => {
+      const lexical = Array.isArray(retrievalSources)
+        ? retrievalSources.find((item) => String(item?.source || '') === 'lexical_cache')
+        : null;
+      return Number(lexical?.total || 0) || 0;
+    })(),
+    relaxed_total: (() => {
+      const relaxed = Array.isArray(retrievalSources)
+        ? retrievalSources.find(
+            (item) => String(item?.source || '') === 'lexical_cache_relaxed_no_onboarding',
+          )
+        : null;
+      return Number(relaxed?.total || 0) || 0;
+    })(),
+    filtered_irrelevant_count: Number(
+      cacheRouteDebug?.internal_filtered_irrelevant_count || 0,
+    ) || 0,
+    beauty_bucket:
+      cacheRouteDebug?.beauty_query_bucket != null
+        ? String(cacheRouteDebug.beauty_query_bucket || '').trim() || null
+        : null,
+    selected_source: selectedSource || null,
+  };
+  return stage;
+}
+
+function decideGenericSkincareCachePreference({
+  rawQuery = '',
+  queryClass = null,
+  beautyBucket = null,
+  strictConstraintQuery = false,
+  upstreamResponse = null,
+  cacheResponse = null,
+} = {}) {
+  const queryText = String(rawQuery || '').trim();
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass || undefined,
+  });
+  const effectiveBeautyBucket = String(
+    beautyBucket || beautyQueryProfile?.bucket || '',
+  ).trim().toLowerCase();
+  const upstreamProducts = Array.isArray(upstreamResponse?.products) ? upstreamResponse.products : [];
+  const cacheProducts = Array.isArray(cacheResponse?.products) ? cacheResponse.products : [];
+  const upstreamQuerySource = String(upstreamResponse?.metadata?.query_source || '').trim();
+  const cacheInternalProducts = cacheProducts.filter((product) => !isExternalSeedProduct(product));
+  const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
+  const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const genericSerumCategoryQuery =
+    hasSerumSignal &&
+    genericQueryClass &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery);
+  const upstreamExternalOnly =
+    upstreamProducts.length > 0 && upstreamProducts.every((product) => isExternalSeedProduct(product));
+  const evaluated =
+    genericSerumCategoryQuery &&
+    cacheInternalProducts.length > 0 &&
+    upstreamProducts.length > 0 &&
+    !upstreamQuerySource.startsWith('cache_');
+
+  if (!genericSerumCategoryQuery) {
+    return {
+      evaluated: false,
+      decision: 'keep_upstream',
+      reason: 'not_generic_skincare_serum_query',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: cacheInternalProducts.length,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  if (!upstreamExternalOnly) {
+    return {
+      evaluated,
+      decision: 'keep_upstream',
+      reason: 'upstream_not_external_only',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: cacheInternalProducts.length,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  if (cacheInternalProducts.length <= 0) {
+    return {
+      evaluated,
+      decision: 'keep_upstream',
+      reason: 'cache_internal_unavailable',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: 0,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  return {
+    evaluated: true,
+    decision: 'replace_with_cache',
+    reason: 'generic_skincare_internal_preferred',
+    beauty_bucket: effectiveBeautyBucket || null,
+    cache_internal_count: cacheInternalProducts.length,
+    upstream_external_only: upstreamExternalOnly,
+    upstream_query_source: upstreamQuerySource || null,
+  };
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -3557,6 +4629,13 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   if (diagnostics.strict_empty_reason) {
     metadata.strict_empty_reason = String(diagnostics.strict_empty_reason);
   }
+  const cacheStageBundle = buildCacheStageDiagnosticBundle(
+    diagnostics?.search_trace?.cache_stage || metadata?.search_trace?.cache_stage || null,
+  );
+  if (cacheStageBundle && cacheStageBundle.cache_stage_attempted) {
+    Object.assign(metadata, cacheStageBundle);
+  }
+  metadata.service_version = buildServiceVersionMetadata();
   if (diagnostics.relevance_debug && typeof diagnostics.relevance_debug === 'object') {
     metadata.relevance_debug = diagnostics.relevance_debug;
   }
@@ -3784,6 +4863,187 @@ function parseQueryStringArray(value) {
     .filter(Boolean);
 }
 
+function normalizeSearchUiSurface(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized || '';
+}
+
+function parseQueryJsonObject(value) {
+  const raw = firstQueryParamValue(value);
+  if (!raw) return null;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTravelLookupSlotState(raw) {
+  const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+  if (!input) return { asked_slots: [], resolved_slots: {} };
+  const askedSlots = Array.isArray(input.asked_slots)
+    ? Array.from(
+        new Set(
+          input.asked_slots
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  const resolvedSlots =
+    input.resolved_slots && typeof input.resolved_slots === 'object' && !Array.isArray(input.resolved_slots)
+      ? Object.fromEntries(
+          Object.entries(input.resolved_slots)
+            .map(([key, val]) => [String(key || '').trim().toLowerCase(), String(val || '').trim()])
+            .filter(([key, val]) => key && val),
+        )
+      : {};
+  return {
+    asked_slots: askedSlots,
+    resolved_slots: resolvedSlots,
+  };
+}
+
+function hasTravelLookupSlotState(slotState) {
+  return Boolean(
+    slotState &&
+      ((Array.isArray(slotState.asked_slots) && slotState.asked_slots.length > 0) ||
+        (slotState.resolved_slots &&
+          typeof slotState.resolved_slots === 'object' &&
+          Object.keys(slotState.resolved_slots).length > 0)),
+  );
+}
+
+function normalizeTravelLookupChoice(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ');
+}
+
+function appendSearchQueryHint(queryText, hint) {
+  const base = String(queryText || '').trim();
+  const next = String(hint || '').trim();
+  if (!next) return base;
+  const normalizedBase = normalizeSearchTextForMatch(base);
+  const normalizedHint = normalizeSearchTextForMatch(next);
+  if (normalizedBase && normalizedHint && normalizedBase.includes(normalizedHint)) return base;
+  return [base, next].filter(Boolean).join(' ').trim();
+}
+
+function applyTravelLookupClarificationToSearch(search, slot, answer) {
+  const normalizedSlot = String(slot || '').trim().toLowerCase();
+  const rawAnswer = String(answer || '').trim();
+  const normalizedAnswer = normalizeTravelLookupChoice(rawAnswer);
+  if (!normalizedSlot || !rawAnswer) return;
+
+  if (normalizedSlot === 'brand') {
+    if (
+      normalizedAnswer === 'no brand preference' ||
+      normalizedAnswer === '无品牌偏好'
+    ) {
+      return;
+    }
+    if (normalizedAnswer === 'global brands' || normalizedAnswer === '国际品牌') {
+      search.query = appendSearchQueryHint(search.query, 'global brand');
+      return;
+    }
+    if (normalizedAnswer === 'local brands' || normalizedAnswer === '本地品牌') {
+      search.query = appendSearchQueryHint(search.query, 'local brand');
+      return;
+    }
+    if (normalizedAnswer === 'value-for-money first' || normalizedAnswer === '性价比优先') {
+      search.query = appendSearchQueryHint(search.query, 'value for money budget');
+      return;
+    }
+    search.query = appendSearchQueryHint(search.query, rawAnswer);
+    return;
+  }
+
+  if (normalizedSlot === 'budget') {
+    const budgetRanges = new Map([
+      ['$0-25', [0, 25]],
+      ['$25-50', [25, 50]],
+      ['$50-100', [50, 100]],
+      ['$100+', [100, null]],
+    ]);
+    const range = budgetRanges.get(normalizedAnswer);
+    if (range) {
+      search.min_price = range[0];
+      if (range[1] == null) delete search.max_price;
+      else search.max_price = range[1];
+      return;
+    }
+  }
+
+  search.query = appendSearchQueryHint(search.query, rawAnswer);
+}
+
+function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
+  const uiSurface = normalizeSearchUiSurface(
+    firstQueryParamValue(query.ui_surface || query.uiSurface),
+  );
+  const context = {};
+  if (uiSurface) {
+    metadata.ui_surface = uiSurface;
+    context.ui_surface = uiSurface;
+  }
+
+  const parsedSlotState = normalizeTravelLookupSlotState(
+    parseQueryJsonObject(query.slot_state || query.slotState),
+  );
+  const clarificationSlot = String(
+    firstQueryParamValue(query.clarification_slot || query.clarificationSlot) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const clarificationAnswer = String(
+    firstQueryParamValue(query.clarification_answer || query.clarificationAnswer) || '',
+  ).trim();
+
+  if (clarificationSlot) {
+    parsedSlotState.asked_slots = Array.from(
+      new Set([
+        ...parsedSlotState.asked_slots,
+        clarificationSlot,
+      ]),
+    );
+  }
+  if (clarificationSlot && clarificationAnswer) {
+    parsedSlotState.resolved_slots = {
+      ...parsedSlotState.resolved_slots,
+      [clarificationSlot]: clarificationAnswer,
+    };
+    applyTravelLookupClarificationToSearch(search, clarificationSlot, clarificationAnswer);
+  }
+
+  if (uiSurface === 'travel_lookup') {
+    if (search.allow_external_seed === undefined) {
+      search.allow_external_seed = true;
+    }
+    if (!String(search.external_seed_strategy || '').trim()) {
+      search.external_seed_strategy = 'unified_relevance';
+    }
+    if (search.fast_mode === undefined) {
+      search.fast_mode = true;
+    }
+  }
+
+  if (hasTravelLookupSlotState(parsedSlotState)) {
+    context.asked_slots = parsedSlotState.asked_slots;
+    context.resolved_slots = parsedSlotState.resolved_slots;
+    metadata.slot_state = parsedSlotState;
+  }
+
+  return Object.keys(context).length > 0 ? context : null;
+}
+
 function normalizeAgentSource(source) {
   return String(source || '')
     .trim()
@@ -3990,6 +5250,28 @@ function buildSearchProductKey(product) {
   return `${merchantId}::${productId}`;
 }
 
+function normalizeSearchProductUrlForDedupe(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) return raw.toLowerCase();
+  try {
+    const url = new URL(raw);
+    return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/, '').toLowerCase()}`;
+  } catch {
+    return raw.toLowerCase();
+  }
+}
+
+function buildTravelLookupSearchProductDedupeKey(product) {
+  if (!product || typeof product !== 'object') return '';
+  const urlKey =
+    normalizeSearchProductUrlForDedupe(product.canonical_url) ||
+    normalizeSearchProductUrlForDedupe(product.destination_url) ||
+    normalizeSearchProductUrlForDedupe(product.external_url);
+  if (urlKey) return urlKey;
+  return buildSearchProductKey(product);
+}
+
 function normalizeSearchProductTitleForDedupe(product) {
   if (!product || typeof product !== 'object') return '';
   const title = String(
@@ -4012,8 +5294,18 @@ function collapseNearDuplicateSearchProducts(products, options = {}) {
       ? Math.floor(perTitleLimitRaw)
       : 1;
   const counts = new Map();
+  const seenDedupeKeys = new Set();
+  const dedupeKey =
+    typeof options.dedupeKey === 'function'
+      ? options.dedupeKey
+      : null;
   const out = [];
   for (const product of list) {
+    const productDedupeKey = dedupeKey ? String(dedupeKey(product) || '').trim() : '';
+    if (productDedupeKey) {
+      if (seenDedupeKeys.has(productDedupeKey)) continue;
+      seenDedupeKeys.add(productDedupeKey);
+    }
     const titleKey = normalizeSearchProductTitleForDedupe(product);
     if (!titleKey) {
       out.push(product);
@@ -4053,6 +5345,8 @@ function normalizeProductImages(product) {
   pushFromArray(src.image_urls);
   pushFromArray(src.variants);
   pushFromArray(src.media);
+  pushFromArray(src?.seed_data?.variants);
+  pushFromArray(src?.seed_data?.snapshot?.variants);
   pushFromArray(src?.seed_data?.snapshot?.image_urls);
   pushFromArray(src?.seed_data?.snapshot?.images);
 
@@ -4066,7 +5360,11 @@ function normalizeProductImages(product) {
   };
 }
 
-function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass }) {
+function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass, uiSurface }) {
+  const normalizedUiSurface = normalizeSearchUiSurface(uiSurface);
+  if (normalizedUiSurface === 'travel_lookup') {
+    return 1;
+  }
   const normalizedClass = String(queryClass || intent?.query_class || '').trim().toLowerCase();
   const primaryDomain = String(intent?.primary_domain || '').trim().toLowerCase();
   const scenarioName = String(intent?.scenario?.name || '').trim().toLowerCase();
@@ -4097,6 +5395,70 @@ function resolveSearchDedupePerTitleLimit({ queryText, intent, queryClass }) {
   }
 
   return 1;
+}
+
+function normalizeSearchAvailabilityState(product, options = {}) {
+  if (!product || typeof product !== 'object') return 'unknown';
+  if (typeof product.in_stock === 'boolean') {
+    return product.in_stock ? 'in_stock' : 'out_of_stock';
+  }
+  if (typeof product.available === 'boolean') {
+    return product.available ? 'in_stock' : 'out_of_stock';
+  }
+  const availability = String(product.availability || '').trim().toLowerCase();
+  if (availability.includes('out_of_stock') || availability.includes('out of stock')) return 'out_of_stock';
+  if (availability.includes('in_stock') || availability.includes('in stock') || availability === 'available') {
+    return 'in_stock';
+  }
+  const quantity = product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity;
+  if (quantity != null && quantity !== '' && Number.isFinite(Number(quantity))) {
+    return Number(quantity) > 0 ? 'in_stock' : 'out_of_stock';
+  }
+  if (options.includeVariants !== false && Array.isArray(product.variants) && product.variants.length > 0) {
+    const states = product.variants.map((variant) => normalizeSearchAvailabilityState(variant, { includeVariants: false }));
+    if (states.includes('in_stock')) return 'in_stock';
+    if (states.every((state) => state === 'out_of_stock')) return 'out_of_stock';
+  }
+  return 'unknown';
+}
+
+function postProcessTravelLookupProductsResponse(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const products = Array.isArray(body.products) ? body.products : [];
+  if (products.length === 0) return body;
+  const deduped = collapseNearDuplicateSearchProducts(products, {
+    perTitleLimit: 1,
+    dedupeKey: buildTravelLookupSearchProductDedupeKey,
+  });
+  const availabilityRank = {
+    in_stock: 0,
+    unknown: 1,
+    out_of_stock: 2,
+  };
+  const ranked = deduped
+    .map((product, index) => {
+      const availabilityState = normalizeSearchAvailabilityState(product);
+      return {
+        index,
+        availabilityState,
+        product: {
+          ...product,
+          availability_state: availabilityState,
+        },
+      };
+    })
+    .sort((left, right) => {
+      const rankDiff = availabilityRank[left.availabilityState] - availabilityRank[right.availabilityState];
+      if (rankDiff !== 0) return rankDiff;
+      return left.index - right.index;
+    })
+    .map((entry) => entry.product);
+  return {
+    ...body,
+    products: ranked,
+    total: ranked.length,
+    page_size: ranked.length,
+  };
 }
 
 function extractSearchQueryText(rawQuery) {
@@ -4897,7 +6259,16 @@ function resolveCacheValidationMinCount(queryClass) {
 
 function evaluateCacheQualityGate({ products, queryText, intent, queryClass }) {
   const list = Array.isArray(products) ? products : [];
-  const minCount = resolveCacheValidationMinCount(queryClass);
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: queryText,
+    queryClass,
+    intent,
+  });
+  const minCount =
+    beautyQueryProfile?.isSpecificBeautyQuery === true &&
+    beautyQueryProfile?.bucket === 'skincare'
+      ? 1
+      : resolveCacheValidationMinCount(queryClass);
   const anchorRatio = computeAnchorRatioTopK(queryText, list, 10);
   const domainEntropy = computeDomainEntropyTopK(list, 10);
   const expectedDomain = inferIntentDomainKeyForCacheValidation(intent, queryText);
@@ -5057,6 +6428,12 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const source = String(firstQueryParamValue(query.source) || '').trim().toLowerCase();
   if (source) metadata.source = source;
 
+  const context = applyTravelLookupContinuationFromQuery({
+    query,
+    search,
+    metadata,
+  });
+
   if (!metadata.source && !search.catalog_surface && textQuery) {
     const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery: textQuery });
     if (beautyQueryProfile?.isBeautyQuery) {
@@ -5066,6 +6443,7 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   }
 
   const payload = { search };
+  if (context) payload.context = context;
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
   return payload;
 }
@@ -6220,10 +7598,9 @@ function normalizeAgentProductDetailResponse(raw) {
 // Routing map for real Pivota API endpoints
 const ROUTE_MAP = {
   find_products: {
-    // Use the stable Agent Search endpoint (GET) to avoid upstream /agent/shop/v1/invoke timeouts.
-    method: 'GET',
-    path: '/agent/v1/products/search',
-    paramType: 'query',
+    method: 'POST',
+    path: '/agent/v2/products/search',
+    paramType: 'body',
   },
   find_similar_products: {
     // Delegate to Python shopping gateway for multi-merchant similarity.
@@ -6233,11 +7610,9 @@ const ROUTE_MAP = {
   },
   // Cross-merchant product search via backend shopping gateway
   find_products_multi: {
-    // Prefer the stable Agent Search endpoint (GET). We can opt into cross-merchant
-    // search via merchant_ids[] or search_all_merchants=true.
-    method: 'GET',
-    path: '/agent/v1/products/search',
-    paramType: 'query',
+    method: 'POST',
+    path: '/agent/v2/products/search',
+    paramType: 'body',
   },
   products_recommendations: {
     method: 'GET',
@@ -6259,7 +7634,7 @@ const ROUTE_MAP = {
   },
   preview_quote: {
     method: 'POST',
-    path: '/agent/v1/quotes/preview',
+    path: '/agent/v2/quotes/preview',
     paramType: 'body',
   },
   create_order: {
@@ -6274,17 +7649,17 @@ const ROUTE_MAP = {
   },
   submit_payment: {
     method: 'POST',
-    path: '/agent/v1/payments',
+    path: '/agent/v2/payments/checkout-sessions',
     paramType: 'body'
   },
   get_order_status: {
     method: 'GET',
-    path: '/agent/v1/orders/{order_id}/track',
+    path: '/agent/v2/orders/{order_id}/tracking',
     paramType: 'path'
   },
   request_after_sales: {
     method: 'POST',
-    path: '/agent/v1/orders/{order_id}/refund',
+    path: '/agent/v2/orders/{order_id}/refunds',
     paramType: 'mixed' // path params + optional body
   },
   track_product_click: {
@@ -7441,9 +8816,16 @@ function getInvokeAuthApiKey() {
 }
 
 function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback = true } = {}) {
+  const forwardedHeaders = pruneEmptyFields({
+    'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt),
+    'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref),
+  });
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
   if (normalizedCheckoutToken) {
-    return { 'X-Checkout-Token': normalizedCheckoutToken };
+    return {
+      'X-Checkout-Token': normalizedCheckoutToken,
+      ...forwardedHeaders,
+    };
   }
 
   const callerApiKey = getInvokeAuthApiKey();
@@ -7451,6 +8833,7 @@ function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback =
     return {
       'X-API-Key': callerApiKey,
       Authorization: `Bearer ${callerApiKey}`,
+      ...forwardedHeaders,
     };
   }
 
@@ -7458,9 +8841,10 @@ function buildInvokeUpstreamAuthHeaders({ checkoutToken, allowInternalFallback =
     return {
       'X-API-Key': PIVOTA_API_KEY,
       Authorization: `Bearer ${PIVOTA_API_KEY}`,
+      ...forwardedHeaders,
     };
   }
-  return {};
+  return forwardedHeaders;
 }
 
 function isPromoActive(promo, nowTs) {
@@ -16417,6 +17801,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   let crossMerchantCacheProtectedResponse = null;
   let queryParams = {};
+  let strictCommerceFindProductsMulti = false;
+  let strictFindProductsMultiDecision = {
+    enabled: false,
+    catalogSurface: null,
+    strictConstraintQuery: false,
+    strictConstraintReason: null,
+  };
   try {
     let creatorCacheRouteDebug = null;
     let crossMerchantCacheRouteDebug = null;
@@ -16434,6 +17825,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    if (operation === 'find_products_multi') {
 	      const source = metadata?.source;
 	      const search = effectivePayload.search || effectivePayload || {};
+        strictFindProductsMultiDecision = getStrictFindProductsMultiConstraintDecision({
+          search,
+          metadata,
+        });
+        strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
 	      const queryText = String(search.query || '').trim();
 	      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
@@ -16445,7 +17841,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : false;
       const creatorCacheCanShortCircuit =
         CREATOR_CACHE_SHORT_CIRCUIT_ENABLED && !creatorBrandLikeQuery;
-      if (isCreatorUiColdStart && process.env.DATABASE_URL) {
+      if (!strictCommerceFindProductsMulti && isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
           const limit = search.limit || 20;
@@ -16517,7 +17913,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       // For creator UI queries, also prefer searching sellable cache so query results
       // stay consistent with the featured pool and the merchant portal.
-      if (isCreatorUi && queryText.length > 0 && process.env.DATABASE_URL) {
+      if (!strictCommerceFindProductsMulti && isCreatorUi && queryText.length > 0 && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
           const limit = search.limit || 20;
@@ -16616,7 +18012,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // browse feed directly from products_cache.
       const isCrossMerchantBrowseColdStart =
         !isCreatorUi && queryText.length === 0 && !hasMerchantScope;
-      if (isCrossMerchantBrowseColdStart && process.env.DATABASE_URL) {
+      if (!strictCommerceFindProductsMulti && isCrossMerchantBrowseColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
@@ -16705,7 +18101,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !isCreatorUi &&
         (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
         !hasMerchantScope;
-      if (isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
+      if (!strictCommerceFindProductsMulti && isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
         try {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
@@ -16794,6 +18190,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
+          const preferInternalSpecificBeautyCache =
+            cacheBeautyQueryProfile?.isSpecificBeautyQuery === true &&
+            cacheBeautyQueryProfile?.bucket === 'skincare' &&
+            internalProductsAfterAnchor.length > 0;
           const safeResultLimit = Math.max(1, Number(limit || 20));
           const needsPrimaryFillSupplement = internalProductsAfterAnchor.length < safeResultLimit;
           const shouldSkipExternalSupplementForPetHarness =
@@ -16851,6 +18251,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   gate: {
                     internal_count: internalProductsAfterAnchor.length,
                     min_internal_required: 3,
+                  },
+                };
+              } else if (preferInternalSpecificBeautyCache) {
+                supplementMeta = {
+                  attempted: false,
+                  applied: false,
+                  added_count: 0,
+                  reason: 'specific_beauty_internal_preferred',
+                  gate: {
+                    beauty_bucket: cacheBeautyQueryProfile?.bucket || null,
+                    internal_count: internalProductsAfterAnchor.length,
                   },
                 };
               } else if (!canApplyExternalFillGate) {
@@ -16974,9 +18385,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             queryText: cacheQueryText,
             intent: effectiveIntent,
             queryClass: findProductsExpansionMeta?.query_class || effectiveIntent?.query_class || null,
+            uiSurface:
+              metadata?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              null,
           });
           const effectiveProducts = collapseNearDuplicateSearchProducts(supplementedProducts, {
             perTitleLimit: dedupePerTitleLimit,
+            ...(normalizeSearchUiSurface(
+              metadata?.ui_surface ||
+                payload?.metadata?.ui_surface ||
+                payload?.context?.ui_surface ||
+                null,
+            ) === 'travel_lookup'
+              ? { dedupeKey: buildTravelLookupSearchProductDedupeKey }
+              : {}),
           });
           const cacheRelevant = cacheQueryText
             ? isProxySearchFallbackRelevant({ products: effectiveProducts }, cacheQueryText)
@@ -17150,7 +18574,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             !hasMerchantScope &&
             Boolean(cacheQueryText) &&
             externalCount <= 0 &&
-            !isLookupQuery;
+            !isLookupQuery &&
+            !preferInternalSpecificBeautyCache;
           if (cacheMissingExternalForUnified) {
             effectiveCacheHit = false;
           }
@@ -17231,12 +18656,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 associationPlan: traceAssociationPlan,
                 flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
-                cacheStage: {
+                cacheStage: buildCacheStageSnapshot({
                   hit: true,
-                  candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                  retrieval_sources: fromCache.retrieval_sources || [],
-                },
+                  candidateCount: Number(effectiveProducts.length || 0),
+                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                  retrievalSources: fromCache.retrieval_sources || [],
+                  cacheRouteDebug: crossMerchantCacheRouteDebug,
+                  selectedSource: supplementMeta.applied
+                    ? 'cache_supplemented_external'
+                    : 'internal_cache',
+                }),
                 upstreamStage: {
                   called: false,
                   timeout: false,
@@ -17450,12 +18879,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   associationPlan: traceAssociationPlan,
                   flagsSnapshot: traceFlagsSnapshot,
                   intent: effectiveIntent,
-                  cacheStage: {
+                  cacheStage: buildCacheStageSnapshot({
                     hit: false,
-                    candidate_count: 0,
-                    relevant_count: 0,
-                    retrieval_sources: fromCache.retrieval_sources || [],
-                  },
+                    candidateCount: 0,
+                    relevantCount: 0,
+                    retrievalSources: fromCache.retrieval_sources || [],
+                    cacheRouteDebug: crossMerchantCacheRouteDebug,
+                    selectedSource: 'cache_early_decision',
+                  }),
                   upstreamStage: {
                     called: false,
                     timeout: false,
@@ -17546,12 +18977,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     associationPlan: traceAssociationPlan,
                     flagsSnapshot: traceFlagsSnapshot,
                     intent: effectiveIntent,
-                    cacheStage: {
+                    cacheStage: buildCacheStageSnapshot({
                       hit: false,
-                      candidate_count: Number(effectiveProducts.length || 0),
-                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                      retrieval_sources: fromCache.retrieval_sources || [],
-                    },
+                      candidateCount: Number(effectiveProducts.length || 0),
+                      relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                      retrievalSources: fromCache.retrieval_sources || [],
+                      cacheRouteDebug: crossMerchantCacheRouteDebug,
+                      selectedSource: 'resolver_after_cache_miss',
+                    }),
                     upstreamStage: {
                       called: false,
                       timeout: false,
@@ -17674,12 +19107,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 associationPlan: traceAssociationPlan,
                 flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
-                cacheStage: {
+                cacheStage: buildCacheStageSnapshot({
                   hit: false,
-                  candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                  retrieval_sources: fromCache.retrieval_sources || [],
-                },
+                  candidateCount: Number(effectiveProducts.length || 0),
+                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                  retrievalSources: fromCache.retrieval_sources || [],
+                  cacheRouteDebug: crossMerchantCacheRouteDebug,
+                  selectedSource: 'upstream_after_cache',
+                }),
                 upstreamStage: {
                   called: false,
                   timeout: false,
@@ -17823,6 +19258,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    // Build URL with path parameters
 	    let url = `${searchInvokeBase}${route.path}`;
 	    let requestBody = {};
+	    let requoteRequestBody = null;
 	    queryParams = {};
 
     // Handle different parameter types
@@ -17864,6 +19300,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           offset,
         };
         queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        requestBody = buildSearchProductsV2Body({
+          payload,
+          search,
+          metadata,
+          clientChannel,
+          gatewayRequestId,
+          defaultSearchAllMerchants: searchAllMerchants,
+        });
         break;
       }
 
@@ -17935,6 +19379,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           offset,
         };
         queryParams = applyShoppingCatalogQueryGuards(queryParams, metadata?.source);
+        strictFindProductsMultiDecision =
+          operation === 'find_products_multi' && strictFindProductsMultiDecision?.enabled
+            ? strictFindProductsMultiDecision
+            : getStrictFindProductsMultiConstraintDecision({ search, metadata });
+        strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
+        if (strictCommerceFindProductsMulti) {
+          url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+          requestBody = await buildFindProductsMultiInvokeBody({
+            payload,
+            search,
+            metadata,
+            clientChannel,
+            gatewayRequestId,
+            defaultSearchAllMerchants:
+              !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+            rawQueryText: rawUserQuery || search?.query,
+          });
+        } else {
+          requestBody = buildSearchProductsV2Body({
+            payload,
+            search,
+            metadata,
+            clientChannel,
+            gatewayRequestId,
+            defaultSearchAllMerchants:
+              !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
+          });
+        }
         break;
       }
       
@@ -18135,7 +19608,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          }
 	        }
 
-	        requestBody = normalizedQuote;
+	        url = `${PIVOTA_API_BASE}/agent/v2/quotes/preview`;
+	        requestBody = buildQuotePreviewV2Body({
+	          payload,
+	          quote: normalizedQuote,
+	          merchantId: effectiveMerchantId,
+	          offerId,
+	          metadata,
+	          clientChannel,
+	          gatewayRequestId,
+	        });
 	        break;
 	      }
       
@@ -18190,6 +19672,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        // Optional hint for PSP selection / checkout mode
 	        const preferredPsp =
 	          order.preferred_psp || payload.preferred_psp || undefined;
+	        const hasQuoteId = Boolean(firstNonEmptyString(order.quote_id, order.quoteId));
+
+	        if (hasQuoteId) {
+	          url = `${PIVOTA_API_BASE}/agent/v2/orders`;
+	          requestBody = buildCreateOrderV2Body({
+	            payload,
+	            order,
+	            metadata,
+	            clientChannel,
+	            gatewayRequestId,
+	          });
+	          requoteRequestBody = buildQuotePreviewV2Body({
+	            payload,
+	            quote: {
+	              merchant_id,
+	              items: rewrittenItems,
+	              discount_codes: order.discount_codes,
+	              customer_email: order.customer_email,
+	              shipping_address: order.shipping_address,
+	              selected_delivery_option: order.selected_delivery_option,
+	            },
+	            merchantId: merchant_id,
+	            offerId,
+	            metadata,
+	            clientChannel,
+	            gatewayRequestId,
+	          });
+	          break;
+	        }
 	        
         // Build request body with all required fields
 	        requestBody = {
@@ -18263,53 +19774,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       
       case 'submit_payment': {
-        // Map payment fields - Pivota uses 'total_amount' not 'amount'
         const payment = payload.payment || {};
-        // 支持两种调用格式：
-        // 1) payment_method_hint: "stripe_checkout"
-        // 2) payment_method: "stripe_checkout"
-        const methodHint =
-          payment.payment_method_hint ||
-          (typeof payment.payment_method === 'string'
-            ? payment.payment_method
-            : undefined);
-
-        let idempotencyKey =
-          payment.idempotency_key ||
-          payment.idempotencyKey ||
-          payload.idempotency_key ||
-          payload.idempotencyKey ||
-          undefined;
-        if (!idempotencyKey && payment.order_id) {
-          const basis = JSON.stringify({
-            order_id: payment.order_id,
-            method: methodHint || '',
-            expected_amount: payment.expected_amount || null,
-            currency: payment.currency || null,
-          });
-          idempotencyKey = `pivota_gateway:${createHash('sha256').update(basis).digest('hex').slice(0, 24)}`;
-        }
-
-        requestBody = {
-          order_id: payment.order_id,
-          total_amount: payment.expected_amount, // Changed from 'amount' to 'total_amount'
-          currency: payment.currency,
-          // payment_method expects an object, not a string
-          payment_method: methodHint
-            ? {
-                type: methodHint,
-            // Add default fields for different payment types
-                ...(methodHint === 'card' && {
-                  card: {
-                    // Placeholder for card details if needed
-                  },
-                }),
-              }
-            : undefined,
-          redirect_url: payment.return_url,
-          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-          ...(payload.ap2_state && { ap2_state: payload.ap2_state })
-        };
+        requestBody = buildCheckoutSessionV2Body({
+          payload,
+          payment,
+          metadata,
+          clientChannel,
+          gatewayRequestId,
+        });
         break;
       }
       
@@ -18321,7 +19793,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             message: 'order_id is required'
           });
         }
-        url = url.replace('{order_id}', payload.status.order_id);
+        url = url.replace('{order_id}', encodeURIComponent(payload.status.order_id));
         break;
       }
       
@@ -18343,7 +19815,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         // Support cancel via request_after_sales for external agentic tools.
         // - requested_action=cancel -> POST /agent/v1/orders/{order_id}/cancel
-        // - default (or refund)     -> POST /agent/v1/orders/{order_id}/refund
+        // - default (or refund)     -> POST /agent/v2/orders/{order_id}/refunds
         if (requestedAction === 'cancel') {
           url = `${PIVOTA_API_BASE}/agent/v1/orders/${encodeURIComponent(orderId)}/cancel`;
           break;
@@ -18356,7 +19828,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
         }
 
-        if (payload.status.reason) requestBody = { reason: payload.status.reason };
+        const refund = payload.refund || {};
+        requestBody = pruneEmptyFields({
+          amount:
+            payload.status.amount ??
+            payload.status.requested_amount ??
+            refund.amount,
+          reason: firstNonEmptyString(payload.status.reason, refund.reason),
+          restore_inventory:
+            payload.status.restore_inventory ??
+            refund.restore_inventory ??
+            true,
+          idempotency_key: firstNonEmptyString(
+            payload.status.idempotency_key,
+            payload.status.idempotencyKey,
+            refund.idempotency_key,
+            refund.idempotencyKey,
+            payload.idempotency_key,
+            payload.idempotencyKey,
+          ),
+        });
         break;
       }
 
@@ -18429,7 +19920,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
 
     // Make the upstream request
-    const queryString = buildQueryString(queryParams);
+    const queryString =
+      strictCommerceFindProductsMulti && operation === 'find_products_multi'
+        ? ''
+        : buildQueryString(queryParams);
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
     const primarySearchAnchorTokens = extractSearchAnchorTokens(primarySearchQueryText);
     const isLookupPolicyQuery = isLookupStyleSearchQuery(primarySearchQueryText, primarySearchAnchorTokens);
@@ -18455,6 +19949,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : getUpstreamTimeoutMs(operation),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
+    const legacySearchAxiosConfig =
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      !(strictCommerceFindProductsMulti && operation === 'find_products_multi')
+        ? {
+            method: 'GET',
+            url: `${searchInvokeBase}/agent/v1/products/search${queryString}`,
+            headers: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+            timeout: axiosConfig.timeout,
+          }
+        : null;
     const callTrackedUpstream = async (op, config) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
@@ -18473,6 +19977,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
+    let searchContractBridgeMeta = null;
     let resolverRejectedReason = null;
     let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
@@ -18663,7 +20168,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) {
-        response = await callTrackedUpstream(operation, axiosConfig);
+        try {
+          response = await callTrackedUpstream(operation, axiosConfig);
+          if (operation === 'find_products' || operation === 'find_products_multi') {
+            searchContractBridgeMeta =
+              operation === 'find_products_multi' && strictCommerceFindProductsMulti
+                ? {
+                    attempted_contract: 'shop_invoke_strict',
+                    resolved_contract: 'shop_invoke_strict',
+                    legacy_fallback: false,
+                  }
+                : {
+                    attempted_contract: 'agent_v2',
+                    resolved_contract: 'agent_v2',
+                    legacy_fallback: false,
+                  };
+          }
+        } catch (primaryErr) {
+          const legacyFallbackReason =
+            operation === 'find_products' || operation === 'find_products_multi'
+              ? getCanonicalSearchFallbackReason(primaryErr)
+              : null;
+          if (legacySearchAxiosConfig && legacyFallbackReason) {
+            response = await callTrackedUpstream(operation, legacySearchAxiosConfig);
+            searchContractBridgeMeta = {
+              attempted_contract: 'agent_v2',
+              resolved_contract: 'agent_v1',
+              legacy_fallback: true,
+              fallback_reason: legacyFallbackReason,
+            };
+          } else {
+            throw primaryErr;
+          }
+        }
         if (operation === 'get_product_detail') {
           productDetailCacheMeta = { hit: false, source: 'upstream' };
         }
@@ -18701,27 +20238,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const { code } = extractUpstreamErrorCode(err);
         if (quoteId && isRetryableQuoteError(code)) {
           try {
-            const quoteBody = {
-              merchant_id: normalizedOrderRequest.merchant_id,
-              items: Array.isArray(normalizedOrderRequest.items)
-                ? normalizedOrderRequest.items.map((it) => ({
-                    product_id: it.product_id,
-                    variant_id: it.variant_id || undefined,
-                    quantity: it.quantity,
-                  }))
-                : [],
-              discount_codes: normalizedOrderRequest.discount_codes || [],
-              customer_email: normalizedOrderRequest.customer_email || undefined,
-              shipping_address: normalizedOrderRequest.shipping_address || undefined,
-              ...(normalizedOrderRequest.selected_delivery_option
-                ? {
-                    selected_delivery_option:
-                      normalizedOrderRequest.selected_delivery_option,
-                  }
-                : {}),
-            };
+            const quoteBody =
+              requoteRequestBody ||
+              buildQuotePreviewV2Body({
+                payload,
+                quote: {
+                  merchant_id: normalizedOrderRequest.merchant_id,
+                  items: Array.isArray(normalizedOrderRequest.items)
+                    ? normalizedOrderRequest.items.map((it) => ({
+                        product_id: it.product_id,
+                        variant_id: it.variant_id || undefined,
+                        quantity: it.quantity,
+                      }))
+                    : [],
+                  discount_codes: normalizedOrderRequest.discount_codes || [],
+                  customer_email: normalizedOrderRequest.customer_email || undefined,
+                  shipping_address: normalizedOrderRequest.shipping_address || undefined,
+                  ...(normalizedOrderRequest.selected_delivery_option
+                    ? {
+                        selected_delivery_option:
+                          normalizedOrderRequest.selected_delivery_option,
+                      }
+                    : {}),
+                },
+                merchantId: normalizedOrderRequest.merchant_id,
+                metadata,
+                clientChannel,
+                gatewayRequestId,
+              });
 
-            const quoteUrl = `${PIVOTA_API_BASE}/agent/v1/quotes/preview`;
+            const quoteUrl = `${PIVOTA_API_BASE}/agent/v2/quotes/preview`;
             const quoteResp = await callTrackedUpstream('preview_quote', {
               method: 'POST',
               url: quoteUrl,
@@ -18733,7 +20279,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               data: quoteBody,
             });
 
-            const newQuoteId = quoteResp && quoteResp.data ? quoteResp.data.quote_id : null;
+            const newQuoteId = extractCanonicalQuoteId(
+              quoteResp && quoteResp.data ? quoteResp.data : null,
+            );
             if (newQuoteId) {
               normalizedOrderRequest.quote_id = newQuoteId;
               axiosConfig.data =
@@ -18769,6 +20317,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
+          response = {
+            status: 200,
+            data: buildProxySearchSoftFallbackResponse({
+              queryParams,
+              reason: 'strict_surface_exception',
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: 'strict_invoke_exception',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+              querySource: 'agent_products_error_fallback',
+            }),
+          };
+        }
+        if (response) {
+          // Explicit strict commerce surfaces must not fall back to legacy search paths.
+        } else {
         const secondarySkipBrandLike = Boolean(
           detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like,
         );
@@ -18937,6 +20505,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }),
           };
         }
+        }
       }
 
       if (!response) throw err;
@@ -18965,9 +20534,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
+      if (searchContractBridgeMeta) {
+        upstreamData = {
+          ...upstreamData,
+          metadata: {
+            ...(upstreamData?.metadata || {}),
+            contract_bridge: searchContractBridgeMeta,
+          },
+        };
+      }
     }
 
-    if (operation === 'find_products' || operation === 'find_products_multi') {
+    if (
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      !(operation === 'find_products_multi' && strictCommerceFindProductsMulti)
+    ) {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
       const primaryUsableCount = countUsableSearchProducts(upstreamData?.products);
       const primaryUnusable = Boolean(queryText) && shouldFallbackProxySearch(upstreamData, response.status);
@@ -19749,12 +21330,54 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
+    if (operation === 'preview_quote') {
+      upstreamData = normalizePreviewQuoteCompat(upstreamData);
+    }
+
+    if (operation === 'create_order') {
+      upstreamData = normalizeCreateOrderCompat(upstreamData);
+    }
+
+    if (
+      operation === 'get_order_status' &&
+      upstreamData &&
+      typeof upstreamData === 'object' &&
+      !Array.isArray(upstreamData) &&
+      upstreamData.tracking &&
+      typeof upstreamData.tracking === 'object' &&
+      !Array.isArray(upstreamData.tracking)
+    ) {
+      upstreamData = {
+        ...upstreamData,
+        ...upstreamData.tracking,
+      };
+    }
+
+    if (
+      operation === 'request_after_sales' &&
+      upstreamData &&
+      typeof upstreamData === 'object' &&
+      !Array.isArray(upstreamData) &&
+      upstreamData.refund &&
+      typeof upstreamData.refund === 'object' &&
+      !Array.isArray(upstreamData.refund)
+    ) {
+      upstreamData = {
+        ...upstreamData,
+        ...upstreamData.refund,
+      };
+    }
+
     const promotions = await getActivePromotions(now, creatorId);
 
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
       const p = upstreamData || {};
+      const checkoutSession =
+        p.checkout_session && typeof p.checkout_session === 'object' && !Array.isArray(p.checkout_session)
+          ? p.checkout_session
+          : null;
       const paymentObj =
         p.payment && typeof p.payment === 'object' && !Array.isArray(p.payment)
           ? p.payment
@@ -19764,6 +21387,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         p.psp_used ||
         paymentObj.psp ||
         paymentObj.psp_used ||
+        checkoutSession?.provider ||
         null;
 
       let paymentAction =
@@ -19794,10 +21418,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             url: p.next_action.redirect_url,
             raw: null,
           };
+        } else if (checkoutSession?.hosted_url) {
+          paymentAction = {
+            type: 'redirect_url',
+            client_secret: null,
+            url: checkoutSession.hosted_url,
+            raw: null,
+          };
         }
       }
 
-      const paymentContract = resolveSubmitPaymentContract(p);
+      const paymentStatusSource =
+        checkoutSession && !p.payment_status && !p?.payment?.payment_status
+          ? { ...p, payment_status: 'requires_action' }
+          : p;
+      const paymentContract = resolveSubmitPaymentContract(paymentStatusSource);
       checkoutRuntime.checkoutTraceId = gatewayRequestId;
       checkoutRuntime.paymentStatus = paymentContract.payment_status;
       checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
@@ -19805,6 +21440,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const wrapped = {
         ...p,
+        ...(checkoutSession && p.status === 'success'
+          ? { upstream_status: p.status, status: paymentContract.payment_status }
+          : {}),
         payment_status: paymentContract.payment_status,
         confirmation_owner: paymentContract.confirmation_owner,
         requires_client_confirmation: paymentContract.requires_client_confirmation,
@@ -19813,11 +21451,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : {}),
         psp: psp || null,
         payment_action: paymentAction || null,
+        checkout_session: checkoutSession || null,
+        checkout_session_id: checkoutSession?.checkout_session_id || null,
+        checkout_url: checkoutSession?.hosted_url || null,
         payment: {
           ...paymentObj,
           psp: psp || null,
           client_secret: p.client_secret || paymentObj.client_secret || null,
           payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || null,
+          checkout_session_id:
+            checkoutSession?.checkout_session_id || paymentObj.checkout_session_id || null,
+          checkout_token: checkoutSession?.checkout_token || paymentObj.checkout_token || null,
+          hosted_url: checkoutSession?.hosted_url || paymentObj.hosted_url || null,
           payment_action: paymentAction || null,
           payment_status: paymentContract.payment_status,
           confirmation_owner: paymentContract.confirmation_owner,
@@ -19887,6 +21532,77 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             includeEmptyReviews: pdpOptions.includeEmptyReviews,
             debug: pdpOptions.debug,
           }),
+        };
+      }
+    }
+
+    if (
+      operation === 'find_products_multi' &&
+      crossMerchantCacheProtectedResponse &&
+      Array.isArray(crossMerchantCacheProtectedResponse.products) &&
+      crossMerchantCacheProtectedResponse.products.length > 0
+    ) {
+      const cachePreferenceDecision = decideGenericSkincareCachePreference({
+        rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryClass: traceQueryClass || effectiveIntent?.query_class || null,
+        beautyBucket:
+          crossMerchantCacheRouteDebug?.beauty_query_bucket ||
+          buildBeautyQueryProfile({
+            rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+            queryClass: traceQueryClass || effectiveIntent?.query_class || null,
+            intent: effectiveIntent,
+          })?.bucket ||
+          null,
+        strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
+        upstreamResponse: upstreamData,
+        cacheResponse: crossMerchantCacheProtectedResponse,
+      });
+      if (cachePreferenceDecision.decision === 'replace_with_cache') {
+        const protectedMeta =
+          crossMerchantCacheProtectedResponse.metadata &&
+          typeof crossMerchantCacheProtectedResponse.metadata === 'object' &&
+          !Array.isArray(crossMerchantCacheProtectedResponse.metadata)
+            ? crossMerchantCacheProtectedResponse.metadata
+            : {};
+        const existingRouteDebug =
+          protectedMeta.route_debug &&
+          typeof protectedMeta.route_debug === 'object' &&
+          !Array.isArray(protectedMeta.route_debug)
+            ? protectedMeta.route_debug
+            : {};
+        const existingCacheRouteDebug =
+          existingRouteDebug.cross_merchant_cache &&
+          typeof existingRouteDebug.cross_merchant_cache === 'object' &&
+          !Array.isArray(existingRouteDebug.cross_merchant_cache)
+            ? existingRouteDebug.cross_merchant_cache
+            : {};
+        upstreamData = {
+          ...crossMerchantCacheProtectedResponse,
+          metadata: {
+            ...protectedMeta,
+            serum_cache_override: {
+              applied: true,
+              decision: cachePreferenceDecision.decision,
+              reason: cachePreferenceDecision.reason,
+              beauty_bucket: cachePreferenceDecision.beauty_bucket,
+              cache_internal_count: cachePreferenceDecision.cache_internal_count,
+              upstream_external_only: cachePreferenceDecision.upstream_external_only,
+              upstream_query_source: cachePreferenceDecision.upstream_query_source,
+            },
+            route_debug: {
+              ...existingRouteDebug,
+              cross_merchant_cache: {
+                ...existingCacheRouteDebug,
+                serum_cache_override: {
+                  applied: true,
+                  decision: cachePreferenceDecision.decision,
+                  reason: cachePreferenceDecision.reason,
+                  cache_internal_count: cachePreferenceDecision.cache_internal_count,
+                  upstream_query_source: cachePreferenceDecision.upstream_query_source,
+                },
+              },
+            },
+          },
         };
       }
     }
@@ -20084,22 +21800,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         (fallbackMeta && typeof fallbackMeta.reason === 'string' && fallbackMeta.reason.trim()) ||
         (querySource === 'agent_products_error_fallback' ? 'error_soft_fallback' : null);
       const cacheStage = crossMerchantCacheRouteDebug
-        ? {
+        ? buildCacheStageSnapshot({
             hit: Boolean(crossMerchantCacheRouteDebug.cache_hit),
-            candidate_count: Number(crossMerchantCacheRouteDebug.products_count || 0),
-            relevant_count: Number(
+            candidateCount: Number(crossMerchantCacheRouteDebug.products_count || 0),
+            relevantCount: Number(
               crossMerchantCacheRouteDebug.internal_products_relevant_count ??
                 crossMerchantCacheRouteDebug.products_count ??
                 0,
             ),
-            retrieval_sources: crossMerchantCacheRouteDebug.retrieval_sources || [],
-          }
-        : {
+            retrievalSources: crossMerchantCacheRouteDebug.retrieval_sources || [],
+            cacheRouteDebug: crossMerchantCacheRouteDebug,
+            selectedSource: querySource.startsWith('cache_')
+              ? querySource === 'cache_cross_merchant_search_supplemented'
+                ? 'cache_supplemented_external'
+                : querySource === 'cache_cross_merchant_search_early_decision'
+                  ? 'cache_early_decision'
+                  : 'internal_cache'
+              : crossMerchantCacheRouteDebug.attempted
+                ? 'upstream_after_cache'
+                : null,
+          })
+        : buildCacheStageSnapshot({
             hit: false,
-            candidate_count: 0,
-            relevant_count: 0,
-            retrieval_sources: [],
-          };
+            candidateCount: 0,
+            relevantCount: 0,
+            retrievalSources: [],
+            cacheRouteDebug: null,
+            selectedSource: null,
+          });
       const resolverStage = {
         called: Boolean(shouldAttemptResolverFirst),
         hit: Boolean(resolverFirstResult && Number(resolverFirstResult.usableCount || 0) > 0),
@@ -20260,6 +21988,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
+
+      if (
+        normalizeSearchUiSurface(
+          enriched?.metadata?.ui_surface ||
+            metadata?.ui_surface ||
+            effectivePayload?.metadata?.ui_surface ||
+            effectivePayload?.context?.ui_surface,
+        ) === 'travel_lookup'
+      ) {
+        enriched = postProcessTravelLookupProductsResponse(enriched);
+      }
     }
 
     return res.status(response.status).json(enriched);
@@ -20303,12 +22042,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               associationPlan: traceAssociationPlan,
               flagsSnapshot: traceFlagsSnapshot,
               intent: effectiveIntent,
-              cacheStage: {
+              cacheStage: buildCacheStageSnapshot({
                 hit: true,
-                candidate_count: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                relevant_count: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                retrieval_sources: [],
-              },
+                candidateCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
+                relevantCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
+                retrievalSources: [],
+                cacheRouteDebug: crossMerchantCacheRouteDebug,
+                selectedSource: 'invoke_outer_cache_guard',
+              }),
               upstreamStage: {
                 called: true,
                 timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
@@ -20325,7 +22066,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }),
           },
         );
-        return res.status(200).json(cacheGuardDiagnosed);
+        const finalCacheGuardBody =
+          normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface,
+          ) === 'travel_lookup'
+            ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
+            : cacheGuardDiagnosed;
+        return res.status(200).json(finalCacheGuardBody);
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
@@ -20370,17 +22119,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            findProductsExpansionMeta?.expanded_query ||
 	            String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
 	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
-		          queryClass: traceQueryClass,
-		          rewriteGate: traceRewriteGate,
-		          associationPlan: traceAssociationPlan,
-		          flagsSnapshot: traceFlagsSnapshot,
-		          intent: effectiveIntent,
-	          cacheStage: {
+	          queryClass: traceQueryClass,
+	          rewriteGate: traceRewriteGate,
+	          associationPlan: traceAssociationPlan,
+	          flagsSnapshot: traceFlagsSnapshot,
+	          intent: effectiveIntent,
+	          cacheStage: buildCacheStageSnapshot({
 	            hit: false,
-	            candidate_count: 0,
-	            relevant_count: 0,
-	            retrieval_sources: [],
-	          },
+	            candidateCount: 0,
+	            relevantCount: 0,
+	            retrievalSources: [],
+	            cacheRouteDebug: crossMerchantCacheRouteDebug,
+	            selectedSource: null,
+	          }),
 	          upstreamStage: {
 	            called: true,
 	            timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
@@ -20495,6 +22246,14 @@ function registerExternalInvokeRoute(path, clientChannel) {
         agent_id: req?.invokeAuth?.agent_id || null,
         auth_mode: req?.invokeAuth?.auth_mode || null,
         auth_source: req?.invokeAuth?.auth_source || null,
+        agent_user_jwt: firstNonEmptyString(
+          req?.header('X-Agent-User-JWT'),
+          req?.header('x-agent-user-jwt'),
+        ),
+        buyer_ref: firstNonEmptyString(
+          req?.header('X-Buyer-Ref'),
+          req?.header('x-buyer-ref'),
+        ),
       },
       () =>
         handleInvokeRequest(req, res, {
@@ -20629,6 +22388,15 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   normalizeProductImages,
+  buildFindProductsMultiPayloadFromQuery,
+  buildServiceVersionMetadata,
+  buildCacheStageDiagnosticBundle,
+  buildCacheStageSnapshot,
+  decideGenericSkincareCachePreference,
+  collapseNearDuplicateSearchProducts,
+  buildTravelLookupSearchProductDedupeKey,
+  normalizeSearchAvailabilityState,
+  postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
