@@ -550,6 +550,63 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     ).toBe(true);
   });
 
+  test('generic fashion error fallback still emits visible constraint metadata', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'blue striped sweater')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        total: 1,
+        products: [
+          {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            product_id: 'beauty_noise_001',
+            title: 'Round Powder Brush',
+            product_type: 'Beauty Tool',
+            status: 'active',
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'blue striped sweater',
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        visible_category_intents: ['sweater'],
+        visible_attribute_intents: ['striped'],
+        visible_option_intents: ['color_blue'],
+        matched_visible_categories: [],
+        matched_visible_attribute_labels: [],
+        matched_visible_option_labels: [],
+      }),
+    );
+  });
+
   test('does not run resolver-first for broad recommendation queries when strong-only is enabled', async () => {
     const queryText = 'best toner for very dry sensitive skin under $30';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
