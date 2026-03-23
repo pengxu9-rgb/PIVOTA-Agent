@@ -6,10 +6,14 @@ const request = require('supertest');
 const nock = require('nock');
 
 describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
+  let prevDatabaseUrl;
+
   beforeEach(() => {
     jest.resetModules();
     nock.cleanAll();
     nock.disableNetConnect();
+    prevDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
     nock.enableNetConnect((host) => {
       const value = String(host || '');
       return value.includes('127.0.0.1') || value.includes('localhost') || value === '::1';
@@ -17,9 +21,12 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../../src/db');
     jest.resetModules();
     nock.cleanAll();
     nock.enableNetConnect();
+    if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
   test('routes explicit agent_api surface to strict shopping invoke', async () => {
@@ -292,6 +299,113 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
         }),
+      }),
+    );
+  });
+
+  test('prefetches external seed candidates for strict ingredient queries and forwards them to shopping invoke', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_fenty_refill',
+              market: 'US',
+              tool: '*',
+              destination_url:
+                'https://fentybeauty.com/en-nl/products/watch-ya-tone-niacinamide-dark-spot-serum-refill?variant=40839564427309',
+              canonical_url:
+                'https://fentybeauty.com/en-nl/products/watch-ya-tone-niacinamide-dark-spot-serum-refill?variant=40839564427309',
+              domain: 'fentybeauty.com',
+              title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+              image_url: 'https://cdn.example/fenty-serum.jpg',
+              price_amount: 22,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+                description: 'External reviewed niacinamide serum refill.',
+                category: 'Serum',
+                brand: 'Fenty Skin',
+                reviewed_ingredient_ids: ['niacinamide'],
+                variants: [
+                  {
+                    id: 'seed_variant_default',
+                    title: 'Default Title',
+                    price: 22,
+                    availability: 'in_stock',
+                  },
+                ],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-23T00:00:00Z',
+              updated_at: '2026-03-23T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['niacinamide'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.metadata).toEqual(
+      expect.objectContaining({
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+        external_seed_prefetch_source: 'agent_strict_ingredient_prefetch',
+        external_seed_candidates: expect.any(Array),
+      }),
+    );
+    expect(capturedBody?.metadata?.external_seed_candidates).toHaveLength(1);
+    expect(capturedBody?.metadata?.external_seed_candidates?.[0]).toEqual(
+      expect.objectContaining({
+        source: 'external_seed',
+        product_type: 'Serum',
+        ingredient_ids: ['niacinamide'],
+        external_seed_id: 'seed_fenty_refill',
       }),
     );
   });

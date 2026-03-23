@@ -63,6 +63,100 @@ function normalizeHttpUrl(value) {
   return url;
 }
 
+function normalizeIngredientToken(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  const normalized = raw
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  const aliases = {
+    'ascorbic acid': 'ascorbic_acid',
+    'azelaic acid': 'azelaic_acid',
+    'benzoyl peroxide': 'benzoyl_peroxide',
+    ceramide: 'ceramide_np',
+    ceramides: 'ceramide_np',
+    'ceramide np': 'ceramide_np',
+    glycerin: 'glycerin',
+    glycerine: 'glycerin',
+    'hyaluronic acid': 'hyaluronic_acid',
+    niacinamide: 'niacinamide',
+    panthenol: 'panthenol',
+    retinol: 'retinol',
+    'salicylic acid': 'salicylic_acid',
+    'vitamin c': 'ascorbic_acid',
+    'zinc pca': 'zinc_pca',
+  };
+  return aliases[normalized] || normalized.replace(/\s+/g, '_');
+}
+
+function appendStructuredIngredientIds(out, raw) {
+  if (raw == null) return;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        appendStructuredIngredientIds(out, JSON.parse(trimmed));
+        return;
+      } catch {}
+    }
+    for (const token of trimmed.split(/[;,|]/)) {
+      const normalized = normalizeIngredientToken(token);
+      if (normalized && !out.includes(normalized)) out.push(normalized);
+    }
+    return;
+  }
+  if (Array.isArray(raw)) {
+    for (const item of raw) appendStructuredIngredientIds(out, item);
+    return;
+  }
+  if (typeof raw === 'object') {
+    for (const key of [
+      'ingredient_ids',
+      'ingredientIds',
+      'reviewed_ingredient_ids',
+      'reviewedIngredientIds',
+      'canonical_ingredient_ids',
+      'canonicalIngredientIds',
+      'platform_metadata',
+      'platformMetadata',
+      'beauty_meta',
+      'beautyMeta',
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) {
+        appendStructuredIngredientIds(out, raw[key]);
+      }
+    }
+    return;
+  }
+  const normalized = normalizeIngredientToken(raw);
+  if (normalized && !out.includes(normalized)) out.push(normalized);
+}
+
+function collectStructuredIngredientIds(row, seedData, snapshot) {
+  const out = [];
+  for (const candidate of [
+    row?.reviewed_ingredient_ids,
+    row?.canonical_ingredient_ids,
+    row?.ingredient_ids,
+    row?.platform_metadata,
+    seedData?.reviewed_ingredient_ids,
+    seedData?.canonical_ingredient_ids,
+    seedData?.ingredient_ids,
+    seedData?.platform_metadata,
+    snapshot?.reviewed_ingredient_ids,
+    snapshot?.canonical_ingredient_ids,
+    snapshot?.ingredient_ids,
+    snapshot?.platform_metadata,
+  ]) {
+    appendStructuredIngredientIds(out, candidate);
+  }
+  return out;
+}
+
 function firstNonEmptyString(...values) {
   for (const value of values) {
     const normalized = String(value || '').trim();
@@ -610,6 +704,7 @@ function buildExternalSeedProduct(row) {
   const category = String(seedData.category || seedData.product?.category || snapshot.category || '').trim() || undefined;
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
+  const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
 
   let variants = normalizeSeedVariants(seedData, row);
   let imageUrls = normalizeSeedImageUrls(seedData, row);
