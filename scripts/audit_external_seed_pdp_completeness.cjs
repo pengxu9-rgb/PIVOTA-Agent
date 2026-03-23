@@ -118,8 +118,12 @@ function classifyUrlDriftStatus(extractorResponse = {}) {
 function classifySeedPdpSyncStatus(extractorProduct, row) {
   const extractorStatus = classifyExtractorCompleteness(extractorProduct);
   const seedStatus = classifySeedPdpFieldCoverageStatus(row?.seed_data);
-  if ((extractorStatus === 'present' || extractorStatus === 'partial') && seedStatus === 'present') return 'synced';
-  if ((extractorStatus === 'present' || extractorStatus === 'partial') && seedStatus !== 'present') {
+  if (extractorStatus === 'present' && seedStatus === 'present') return 'synced';
+  if (extractorStatus === 'partial' && (seedStatus === 'partial' || seedStatus === 'present')) return 'synced';
+  if ((extractorStatus === 'present' || extractorStatus === 'partial') && seedStatus === 'missing') {
+    return 'extractor_only_unsynced';
+  }
+  if (extractorStatus === 'present' && seedStatus === 'partial') {
     return 'extractor_only_unsynced';
   }
   if (extractorStatus === 'missing' && seedStatus !== 'missing') return 'seed_only';
@@ -130,6 +134,12 @@ function classifyAuditBucket({ extractorResponse, extractorProduct, row, audit, 
   const urlDrift = classifyUrlDriftStatus(extractorResponse);
   if (urlDrift === 'suspected_url_drift') return 'url_drift';
   if (seedLanguageMarketStatus(audit) !== 'ok') return 'market_language_drift';
+  if (
+    Array.isArray(audit?.findings) &&
+    audit.findings.some((finding) => normalizeNonEmptyString(finding?.anomaly_type) === 'non_product_fallback_page')
+  ) {
+    return 'non_product_fallback';
+  }
   if (
     normalizeNonEmptyString(ensureJsonObject(row?.seed_data).seed_description_origin) === 'synthetic_summary' ||
     Array.isArray(audit?.findings) &&
@@ -322,3 +332,9 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  classifyExtractorCompleteness,
+  classifySeedPdpSyncStatus,
+  classifyAuditBucket,
+};

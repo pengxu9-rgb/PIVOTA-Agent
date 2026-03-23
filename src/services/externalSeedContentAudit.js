@@ -246,6 +246,7 @@ function detectNonProductFallback(row, title, description, canonicalUrl) {
   if (path && NON_PRODUCT_PATH_RE.test(path)) return true;
   const combined = `${normalizeNonEmptyString(title)} ${normalizeNonEmptyString(description)}`.toLowerCase();
   return (
+    /\b(e-?gift\s*card|gift\s*card|gift\s*certificate|carte\s+cadeau)\b/i.test(combined) ||
     /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i.test(combined) ||
     /\b(this product is used for the app|bogos(?:\.io)?|free gift bogo bundle|buy x get y|secomapp)\b/i.test(combined)
   );
