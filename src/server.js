@@ -42,6 +42,7 @@ const { getState: getRecommendSessionState, saveState: saveRecommendSessionState
 const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  hasFashionConstraintQuerySignal,
 } = require('./findProductsMulti/policy');
 const {
   buildBeautyQueryProfile,
@@ -4910,6 +4911,11 @@ function isCatalogGuardSource(source) {
     normalized === 'creator-agent-ui' ||
     (PROXY_SEARCH_AURORA_FORCE_FAST_MODE && isAuroraSource(source))
   );
+}
+
+function shouldApplyFindProductsMultiPolicyForQuery({ intent, rawQuery, responseMetadata }) {
+  if (intent) return true;
+  return hasFashionConstraintQuerySignal(rawQuery, responseMetadata);
 }
 
 function isResolverFirstCatalogSource(source) {
@@ -19700,7 +19706,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       
       let maybePolicy = mockResponse;
-      if (operation === 'find_products_multi' && effectiveIntent) {
+      if (
+        operation === 'find_products_multi' &&
+        shouldApplyFindProductsMultiPolicyForQuery({
+          intent: effectiveIntent,
+          rawQuery: rawUserQuery,
+          responseMetadata: mockResponse?.metadata,
+        })
+      ) {
         maybePolicy = applyFindProductsMultiPolicy({
           response: mockResponse,
           intent: effectiveIntent,
@@ -21247,7 +21260,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
             };
 
-            const withPolicy = effectiveIntent
+            const withPolicy = shouldApplyFindProductsMultiPolicyForQuery({
+              intent: effectiveIntent,
+              rawQuery: rawUserQuery,
+              responseMetadata: upstreamData?.metadata,
+            })
               ? applyFindProductsMultiPolicy({
                   response: upstreamData,
                   intent: effectiveIntent,
@@ -21900,14 +21917,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
           const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
           const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
+          const cacheFashionConstraintSignal = hasFashionConstraintQuerySignal(
+            cacheQueryText,
+            upstreamData?.metadata,
+          );
           const shouldSkipLookupPolicyForCacheHit =
+            !cacheFashionConstraintSignal &&
             isLookupQuery &&
             (cacheLookupClass || !cachePolicyQueryClass) &&
             String(upstreamData?.metadata?.query_source || '').startsWith(
               'cache_cross_merchant_search',
             );
           const withPolicy =
-            effectiveIntent && !shouldSkipLookupPolicyForCacheHit
+            shouldApplyFindProductsMultiPolicyForQuery({
+              intent: effectiveIntent,
+              rawQuery: rawUserQuery,
+              responseMetadata: upstreamData?.metadata,
+            }) && !shouldSkipLookupPolicyForCacheHit
               ? applyFindProductsMultiPolicy({
                   response: upstreamData,
                   intent: effectiveIntent,
@@ -22447,7 +22473,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   : {}),
               },
             };
-            const strictEmptyWithPolicy = effectiveIntent
+            const strictEmptyWithPolicy = shouldApplyFindProductsMultiPolicyForQuery({
+              intent: effectiveIntent,
+              rawQuery: cacheQueryText,
+              responseMetadata: strictEmptyBase?.metadata,
+            })
               ? applyFindProductsMultiPolicy({
                   response: strictEmptyBase,
                   intent: effectiveIntent,
@@ -25159,7 +25189,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     let maybePolicy = upstreamData;
-    if (operation === 'find_products_multi' && effectiveIntent) {
+    if (
+      operation === 'find_products_multi' &&
+      shouldApplyFindProductsMultiPolicyForQuery({
+        intent: effectiveIntent,
+        rawQuery: rawUserQuery,
+        responseMetadata: upstreamData?.metadata,
+      })
+    ) {
       const upstreamMetadata =
         upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
           ? (upstreamData.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
@@ -25172,6 +25209,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         .trim()
         .toLowerCase();
       const policyQueryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
+      const fashionConstraintSignalForPolicy = hasFashionConstraintQuerySignal(
+        policyQueryText,
+        upstreamMetadata,
+      );
       const isLookupPolicyQuery = isLookupStyleSearchQuery(
         policyQueryText,
         extractSearchAnchorTokens(policyQueryText),
@@ -25188,11 +25229,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const isLookupSoftFallbackSource =
         isErrorSoftFallbackSource && (isLookupPolicyQuery || isAliasLookupQuery);
       const skipPolicyForLookupSoftFallback =
-        resolvedContract === 'shop_invoke_strict' ||
-        isLookupSoftFallbackSource ||
-        (isResolverLookupSource && isLookupPolicyQuery) ||
-        (isCacheLookupSource && isLookupPolicyQuery) ||
-        (querySource === 'agent_products_search' && isAliasLookupQuery);
+        !fashionConstraintSignalForPolicy &&
+        (resolvedContract === 'shop_invoke_strict' ||
+          isLookupSoftFallbackSource ||
+          (isResolverLookupSource && isLookupPolicyQuery) ||
+          (isCacheLookupSource && isLookupPolicyQuery) ||
+          (querySource === 'agent_products_search' && isAliasLookupQuery));
 
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData

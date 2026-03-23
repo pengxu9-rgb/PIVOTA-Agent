@@ -110,5 +110,27 @@
       "visible_attribute_intents.0",
       "visible_option_intents.0"
     ]
+  },
+  {
+    "id": "fashion_attr_striped_sweater",
+    "family": "fashion_constraint_fallback",
+    "query": "striped sweater",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "visible_category_intents.0",
+      "visible_attribute_intents.0"
+    ]
+  },
+  {
+    "id": "fashion_option_sweater_size_m",
+    "family": "fashion_constraint_fallback",
+    "query": "sweater size m",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "visible_category_intents.0",
+      "visible_option_intents.0"
+    ]
   }
 ]
