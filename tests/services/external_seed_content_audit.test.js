@@ -231,4 +231,40 @@ describe('externalSeedContentAudit', () => {
       }),
     );
   });
+
+  test('flags carte cadeau rows as non-product fallback pages', () => {
+    const row = {
+      id: 'eps_patyka_gift',
+      domain: 'patyka.com',
+      market: 'US',
+      canonical_url: 'https://patyka.com/products/carte-cadeau-simone-perele',
+      title: 'Carte Cadeau Simone Pérèle',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://patyka.com/products/carte-cadeau-simone-perele',
+          description: 'Carte cadeau digitale valable sur une sélection de produits.',
+          variants: [
+            {
+              sku: 'GIFT-1',
+              variant_id: 'GIFT-1',
+              currency: 'EUR',
+              price: '50.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/gift.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'non_product_fallback_page',
+          severity: 'blocker',
+        }),
+      ]),
+    );
+  });
 });
