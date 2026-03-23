@@ -891,6 +891,12 @@ function buildSearchProductsV2Body({
     query: search?.query != null ? String(search.query || '') : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
+    commerce_surface: firstNonEmptyString(
+      search?.commerce_surface,
+      search?.commerceSurface,
+      search?.catalog_surface,
+      search?.catalogSurface,
+    ),
     min_price: search?.price_min ?? search?.min_price,
     max_price: search?.price_max ?? search?.max_price,
     in_stock_only: search?.in_stock_only !== false,
@@ -1109,7 +1115,12 @@ function buildFindProductsMultiInvokeBody({
     getRequestedCatalogSurface({ search, metadata });
   const normalizedSearch = {
     ...(search && typeof search === 'object' ? search : {}),
-    ...(requestedCatalogSurface ? { catalog_surface: requestedCatalogSurface } : {}),
+    ...(requestedCatalogSurface
+      ? {
+          catalog_surface: requestedCatalogSurface,
+          commerce_surface: requestedCatalogSurface,
+        }
+      : {}),
     ...(
       resolvedStrictInvokeDecision?.strictConstraintQuery && String(rawQueryText || '').trim()
         ? { query: String(rawQueryText || '').trim() }
@@ -1131,6 +1142,7 @@ function buildFindProductsMultiInvokeBody({
     metadata: pruneEmptyFields({
       ...(metadata && typeof metadata === 'object' ? metadata : {}),
       catalog_surface: requestedCatalogSurface || undefined,
+      commerce_surface: requestedCatalogSurface || undefined,
     }),
   };
 }
