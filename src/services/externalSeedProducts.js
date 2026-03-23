@@ -63,6 +63,57 @@ function normalizeHttpUrl(value) {
   return url;
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function normalizeStringList(value, maxItems = 64) {
+  const out = [];
+  const seen = new Set();
+
+  const append = (candidate) => {
+    const normalized = normalizeIngredientSignalToken(candidate);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(normalized);
+  };
+
+  const visit = (input) => {
+    if (!input) return;
+    if (typeof input === 'string') {
+      input
+        .split(/[,\n;|•]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach(append);
+      return;
+    }
+    if (Array.isArray(input)) {
+      input.forEach(visit);
+      return;
+    }
+    if (typeof input !== 'object') return;
+    append(
+      input.name ||
+        input.title ||
+        input.label ||
+        input.value ||
+        input.ingredient_name ||
+        input.display_name ||
+        input.inci_name,
+    );
+  };
+
+  visit(value);
+  return out.slice(0, maxItems);
+}
+
 function normalizeIngredientSignalToken(value) {
   const text = String(value || '')
     .replace(/\[more\]/gi, ' ')
@@ -374,6 +425,10 @@ function buildExternalSeedProduct(row) {
 
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const ingredientIntel = ensureJsonObject(seedData.ingredient_intel);
+  const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
+  const science = ensureJsonObject(seedData.science);
+  const snapshotScience = ensureJsonObject(snapshot.science);
   const destinationUrl = String(
     snapshot.destination_url || row.destination_url || seedData.destination_url || '',
   ).trim();
@@ -392,6 +447,71 @@ function buildExternalSeedProduct(row) {
     String(snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId).trim() ||
     externalProductId;
   const description = String(snapshot.description || row.description || seedData.description || '').trim();
+  const pdpDescriptionRaw = firstNonEmptyString(
+    seedData.pdp_description_raw,
+    snapshot.pdp_description_raw,
+  );
+  const pdpIngredientsRaw = firstNonEmptyString(
+    seedData.pdp_ingredients_raw,
+    snapshot.pdp_ingredients_raw,
+  );
+  const pdpActiveIngredientsRaw = firstNonEmptyString(
+    seedData.pdp_active_ingredients_raw,
+    snapshot.pdp_active_ingredients_raw,
+  );
+  const pdpHowToUseRaw = firstNonEmptyString(
+    seedData.pdp_how_to_use_raw,
+    snapshot.pdp_how_to_use_raw,
+  );
+  const rawIngredientTextClean = firstNonEmptyString(
+    ingredientIntel.raw_ingredient_text_clean,
+    snapshotIngredientIntel.raw_ingredient_text_clean,
+    seedData.raw_ingredient_text_clean,
+    snapshot.raw_ingredient_text_clean,
+  );
+  const inciList = normalizeStringList(
+    ingredientIntel.inci_list ||
+      snapshotIngredientIntel.inci_list ||
+      ingredientIntel.inci_normalized ||
+      snapshotIngredientIntel.inci_normalized,
+  );
+  const activeIngredients = normalizeStringList(
+    seedData.active_ingredients ||
+      seedData.activeIngredients ||
+      snapshot.active_ingredients ||
+      snapshot.activeIngredients ||
+      science.key_ingredients ||
+      science.keyIngredients ||
+      snapshotScience.key_ingredients ||
+      snapshotScience.keyIngredients,
+    24,
+  );
+  const keyIngredients = normalizeStringList(
+    seedData.key_ingredients ||
+      seedData.keyIngredients ||
+      snapshot.key_ingredients ||
+      snapshot.keyIngredients ||
+      science.key_ingredients ||
+      science.keyIngredients ||
+      snapshotScience.key_ingredients ||
+      snapshotScience.keyIngredients,
+    24,
+  );
+  const pdpDetailsSections = Array.isArray(seedData.pdp_details_sections)
+    ? seedData.pdp_details_sections
+    : Array.isArray(snapshot.pdp_details_sections)
+      ? snapshot.pdp_details_sections
+      : [];
+  const pdpFieldCaptureStatus =
+    (seedData.pdp_field_capture_status && typeof seedData.pdp_field_capture_status === 'object')
+      ? seedData.pdp_field_capture_status
+      : (snapshot.pdp_field_capture_status && typeof snapshot.pdp_field_capture_status === 'object')
+        ? snapshot.pdp_field_capture_status
+        : undefined;
+  const seedDescriptionOrigin = firstNonEmptyString(
+    seedData.seed_description_origin,
+    snapshot.seed_description_origin,
+  );
   const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
   const category = String(seedData.category || seedData.product?.category || snapshot.category || '').trim() || undefined;
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
@@ -489,6 +609,18 @@ function buildExternalSeedProduct(row) {
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: seedData,
     variants,
+    ...(rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
+    ...(inciList.length ? { inci_list: inciList } : {}),
+    ...(activeIngredients.length ? { active_ingredients: activeIngredients } : {}),
+    ...(keyIngredients.length ? { key_ingredients: keyIngredients } : {}),
+    ...(pdpDescriptionRaw ? { pdp_description_raw: pdpDescriptionRaw } : {}),
+    ...(pdpDetailsSections.length ? { pdp_details_sections: pdpDetailsSections } : {}),
+    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : {}),
+    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : {}),
+    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : {}),
+    ...(seedDescriptionOrigin ? { seed_description_origin: seedDescriptionOrigin } : {}),
+    ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
+    ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(category ? { category } : {}),

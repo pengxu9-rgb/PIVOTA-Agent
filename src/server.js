@@ -76,7 +76,10 @@ const {
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
 } = require('./findProductsMulti/brandLexicon');
-const { buildExternalSeedProduct } = require('./services/externalSeedProducts');
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
+} = require('./services/externalSeedProducts');
 const {
   recallIngredientProducts,
   resolveIngredientRecallProfile,
@@ -2350,6 +2353,59 @@ async function fetchProductDetailFromProductsCache(args) {
   }
 }
 
+async function fetchExternalSeedProductDetail(args) {
+  if (!process.env.DATABASE_URL) return null;
+  const productId = String(args?.productId || '').trim();
+  if (!productId) return null;
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          status,
+          attached_product_key,
+          created_at,
+          updated_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND (
+            id::text = $1
+            OR external_product_id = $1
+            OR coalesce(seed_data->>'external_product_id', '') = $1
+            OR coalesce(seed_data->>'product_id', '') = $1
+            OR coalesce(seed_data->'snapshot'->>'product_id', '') = $1
+          )
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      [productId],
+    );
+    const row = res?.rows && res.rows[0] ? res.rows[0] : null;
+    if (!row) return null;
+    const product = buildExternalSeedProduct(row);
+    if (!product) return null;
+    return attachProductDetailSource(normalizeProductDetailPrice(product), 'external_seed_detail');
+  } catch (err) {
+    logger.warn(
+      { err: err.message, productId },
+      'Failed to load product detail from external_product_seeds',
+    );
+    return null;
+  }
+}
+
 function attachProductDetailSource(product, detailSource) {
   if (!product || typeof product !== 'object') return product;
   const source = String(detailSource || '').trim();
@@ -2422,6 +2478,23 @@ async function fetchProductDetailForOffers(args) {
   }
 
   const loadPromise = (async () => {
+    if (merchantId === EXTERNAL_SEED_MERCHANT_ID) {
+      const externalSeedProduct = await fetchExternalSeedProductDetail({ productId });
+      if (externalSeedProduct) {
+        if (PRODUCT_DETAIL_CACHE_ENABLED) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: externalSeedProduct,
+            metadata: {
+              query_source: 'external_product_seeds',
+            },
+          });
+        }
+        return externalSeedProduct;
+      }
+    }
+
     if (process.env.DATABASE_URL) {
       const fromDb = await fetchProductDetailFromProductsCache({
         merchantId,
@@ -26399,6 +26472,8 @@ module.exports._debug = {
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,
   catalogSyncState,
+  fetchProductDetailForOffers,
+  fetchExternalSeedProductDetail,
 };
 
 if (require.main === module) {
