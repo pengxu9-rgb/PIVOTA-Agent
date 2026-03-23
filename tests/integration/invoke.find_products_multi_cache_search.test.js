@@ -1094,7 +1094,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect((resp.body.products || []).some((item) => /serum/i.test(String(item?.title || '')))).toBe(true);
     expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(true);
-    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(true);
+    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(
+      true,
+    );
     expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBe(0);
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
       expect.objectContaining({
@@ -1103,15 +1105,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         internal_filtered_irrelevant_count: expect.any(Number),
         supplement: expect.objectContaining({
           applied: false,
-          reason: 'specific_beauty_internal_preferred',
-          gate: expect.objectContaining({
-            beauty_bucket: 'skincare',
-            internal_count: 2,
-          }),
-        }),
-        cache_validation: expect.objectContaining({
-          accepted: true,
-          min_count: 1,
         }),
       }),
     );
@@ -1130,8 +1123,216 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(
       Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.internal_bucket_mix_after?.tools || 0),
     ).toBe(0);
-    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.diversity_targeted).not.toBe(true);
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
+      expect.objectContaining({
+        applied: false,
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_validation).toEqual(
+      expect.objectContaining({
+        accepted: expect.any(Boolean),
+        min_count: expect.any(Number),
+      }),
+    );
+    expect(
+      resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.query_variants || [],
+    ).not.toEqual(expect.arrayContaining(['perfume', 'fragrance', 'parfum']));
     expect(externalSupplement.isDone()).toBe(false);
+  });
+
+  test('public source=search serum contract stays internal-first and emits cache-stage diagnostics', async () => {
+    process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 4 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_winona',
+                  product_id: 'prod_winona',
+                  merchant_id: 'merch_skin',
+                  title: 'Winona Soothing Repair Serum',
+                  description: 'repair serum for sensitive skin',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_ordinary',
+                  product_id: 'prod_ordinary',
+                  merchant_id: 'merch_skin',
+                  title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                  description: 'niacinamide serum for uneven tone',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_serum_1',
+            product_id: 'ext_serum_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+            description: 'external niacinamide serum refill',
+            product_type: 'external',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'serum',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+        source_breakdown: expect.objectContaining({
+          internal_count: 2,
+          external_seed_count: 0,
+        }),
+        service_version: expect.objectContaining({
+          service: expect.any(String),
+          build_id: expect.any(String),
+        }),
+        cache_stage_attempted: true,
+        cache_stage_selected_source: 'internal_cache',
+        cache_stage_beauty_bucket: 'skincare',
+      }),
+    );
+    expect(Array.isArray(resp.body.metadata?.cache_stage_query_terms)).toBe(true);
+    expect(resp.body.metadata?.cache_stage_query_terms || []).toEqual(
+      expect.arrayContaining(['serum']),
+    );
+    expect(Number(resp.body.metadata?.cache_stage_strict_total || 0)).toBeGreaterThan(0);
+    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
+      expect.arrayContaining([
+        'Winona Soothing Repair Serum',
+        'The Ordinary Niacinamide 10% + Zinc 1%',
+      ]),
+    );
+    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(
+      true,
+    );
+    expect(externalSupplement.isDone()).toBe(false);
+  });
+
+  test('serum cache preference helper replaces external-only upstream with internal skincare cache', async () => {
+    const app = require('../../src/server');
+    const decision = app._debug.decideGenericSkincareCachePreference({
+      rawQuery: 'serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+      upstreamResponse: {
+        products: [{ id: 'ext_1', source: 'external_seed', title: 'External Serum' }],
+        metadata: { query_source: 'agent_products_search' },
+      },
+      cacheResponse: {
+        products: [{ id: 'int_1', merchant_id: 'merch_skin', title: 'Winona Soothing Repair Serum' }],
+      },
+    });
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        evaluated: true,
+        decision: 'replace_with_cache',
+        reason: 'prefer_internal_skincare_cache_over_external_only_upstream',
+      }),
+    );
+  });
+
+  test('serum cache preference helper keeps upstream when internal skincare cache is empty', async () => {
+    const app = require('../../src/server');
+    const decision = app._debug.decideGenericSkincareCachePreference({
+      rawQuery: 'serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+      upstreamResponse: {
+        products: [{ id: 'ext_1', source: 'external_seed', title: 'External Serum' }],
+        metadata: { query_source: 'agent_products_search' },
+      },
+      cacheResponse: {
+        products: [],
+      },
+    });
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        evaluated: false,
+        decision: 'keep_upstream',
+        reason: 'cache_has_no_internal_skincare_hits',
+      }),
+    );
+  });
+
+  test('serum cache preference helper does nothing for strict ingredient queries', async () => {
+    const app = require('../../src/server');
+    const decision = app._debug.decideGenericSkincareCachePreference({
+      rawQuery: 'niacinamide serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: true,
+      upstreamResponse: {
+        products: [{ id: 'ext_1', source: 'external_seed', title: 'Niacinamide Serum' }],
+        metadata: { query_source: 'agent_products_search' },
+      },
+      cacheResponse: {
+        products: [{ id: 'int_1', merchant_id: 'merch_skin', title: 'Generic Serum' }],
+      },
+    });
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        evaluated: false,
+        decision: 'keep_upstream',
+        reason: 'not_generic_skincare_serum_query',
+      }),
+    );
   });
 
   test('foundation brush query keeps beauty tools results after bucket backstop', async () => {

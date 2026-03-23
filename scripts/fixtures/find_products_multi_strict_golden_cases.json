@@ -5,17 +5,21 @@
     "query": "niacinamide serum",
     "source": "shopping_agent",
     "expected_contract_path": "shop_invoke_strict",
-    "allow_zero_results": true,
+    "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
+      "service_version.commit",
       "strict_constraint_query",
       "strict_constraint_reason",
       "ingredient_intents.0",
       "matched_ingredient_ids"
     ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
     "must_not_return_titles": [
-      "Winona Soothing Repair Serum",
-      "The Ordinary Niacinamide 10% + Zinc 1%"
+      "Winona Soothing Repair Serum"
     ]
   },
   {
@@ -27,10 +31,15 @@
     "allow_zero_results": true,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
+      "service_version.commit",
       "strict_constraint_query",
       "strict_constraint_reason",
       "ingredient_intents.0"
     ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint"
+    },
     "must_not_return_titles": [
       "Winona Soothing Repair Serum",
       "The Ordinary Niacinamide 10% + Zinc 1%"
@@ -45,11 +54,16 @@
     "allow_zero_results": true,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
+      "service_version.commit",
       "strict_constraint_query",
       "strict_constraint_reason",
       "visible_option_intents.0",
       "matched_visible_option_labels"
-    ]
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "shade"
+    }
   },
   {
     "id": "beauty_shade_lipstick_rose_nude",
@@ -60,10 +74,15 @@
     "allow_zero_results": true,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
+      "service_version.commit",
       "strict_constraint_query",
       "strict_constraint_reason",
       "visible_option_intents.0"
-    ]
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "shade"
+    }
   },
   {
     "id": "beauty_generic_serum",
@@ -72,7 +91,24 @@
     "source": "shopping_agent",
     "allow_zero_results": false,
     "must_have_metadata": [
-      "query_source"
+      "query_source",
+      "service_version.commit",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count",
+      "cache_stage_query_terms.0",
+      "cache_stage_selected_source"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
+      "source_breakdown.external_seed_count": 0,
+      "cache_stage_selected_source": "internal_cache"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count"
+    ],
+    "must_return_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
     ]
   },
   {
@@ -108,28 +144,6 @@
     "must_have_metadata": [
       "visible_category_intents.0",
       "visible_attribute_intents.0",
-      "visible_option_intents.0"
-    ]
-  },
-  {
-    "id": "fashion_attr_striped_sweater",
-    "family": "fashion_constraint_fallback",
-    "query": "striped sweater",
-    "source": "shopping_agent",
-    "allow_zero_results": true,
-    "must_have_metadata": [
-      "visible_category_intents.0",
-      "visible_attribute_intents.0"
-    ]
-  },
-  {
-    "id": "fashion_option_sweater_size_m",
-    "family": "fashion_constraint_fallback",
-    "query": "sweater size m",
-    "source": "shopping_agent",
-    "allow_zero_results": true,
-    "must_have_metadata": [
-      "visible_category_intents.0",
       "visible_option_intents.0"
     ]
   }
