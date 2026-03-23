@@ -17,6 +17,7 @@ describe('externalSeedHarvesterBridge', () => {
       title: 'Banana Bright Vitamin C Serum',
       seed_data: {
         brand: 'Ole Henriksen',
+        seed_description_origin: 'pdp_variant_description',
         snapshot: {
           canonical_url: 'https://olehenriksen.com/products/banana-bright-vitamin-c-serum',
           title: 'Banana Bright Vitamin C Serum',
@@ -53,6 +54,40 @@ describe('externalSeedHarvesterBridge', () => {
         raw_ingredient_text: 'Water, Ascorbic Acid, Glycerin.',
       }),
     );
+  });
+
+  test('prefers PDP ingredient-class fields over generic description fallback', () => {
+    const row = {
+      id: 'eps_rare_spf',
+      external_product_id: 'ext_rare_spf',
+      market: 'US',
+      canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+      title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+      seed_data: {
+        brand: 'Rare Beauty',
+        pdp_ingredients_raw: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
+        pdp_active_ingredients_raw: 'Titanium Dioxide, Zinc Oxide',
+        seed_description_origin: 'synthetic_summary',
+        pdp_description_raw:
+          'OFFICIAL: Tinted coverage. /// SOCIAL HIGHLIGHTS: Viral on TikTok. Ingredients: this should not be used.',
+        snapshot: {
+          canonical_url:
+            'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+          title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+          variants: [
+            {
+              sku: 'RARE-SPF-1',
+              variant_id: 'RARE-SPF-1',
+              url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+            },
+          ],
+        },
+      },
+    };
+
+    const candidates = buildExternalSeedHarvesterCandidates(row);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].raw_ingredient_text).toBe('Titanium Dioxide 3.4%, Zinc Oxide 14.37%');
   });
 
   test('appends variant query parameter when seed only stores generic PDP url', () => {

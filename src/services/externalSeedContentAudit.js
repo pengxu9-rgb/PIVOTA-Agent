@@ -11,6 +11,7 @@ const LOCALE_PATH_SEGMENT_RE = /^[a-z]{2}(?:-|_)[a-z]{2}$/i;
 const NON_PRODUCT_PATH_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
 const GENERIC_TEMPLATE_RE = /^experience the ultimate luxury with\s+/i;
+const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const LANGUAGE_MARKERS = Object.freeze({
   de: [
     /\blichtschutzfaktor\b/i,
@@ -143,6 +144,11 @@ function getPrimaryDescription(row) {
   return normalizeNonEmptyString(variantDescription || snapshot?.description || row?.description || seedData?.description);
 }
 
+function getSeedDescriptionOrigin(row) {
+  const { seedData, snapshot } = getSnapshot(row);
+  return normalizeNonEmptyString(seedData.seed_description_origin || snapshot.seed_description_origin);
+}
+
 function getImageUrls(row) {
   const { seedData } = getSnapshot(row);
   return collectSeedImageUrls(seedData, row);
@@ -213,6 +219,10 @@ function detectGenericTemplateDescription(title, description) {
   return normalizedDescription.toLowerCase().includes(normalizedTitle.toLowerCase());
 }
 
+function detectSyntheticSummaryDescription(description) {
+  return SYNTHETIC_SUMMARY_RE.test(normalizeNonEmptyString(description));
+}
+
 function detectDuplicateVariantSkus(variants) {
   const counts = new Map();
   for (const variant of variants) {
@@ -268,6 +278,7 @@ function auditExternalSeedRow(row, options = {}) {
   const localeSegment = parseLocaleSegment(canonicalUrl);
   const detectedLanguage = options.detectedLanguage || detectLanguage(description);
   const lastExtractedAt = getLastExtractedAt(row, snapshot);
+  const seedDescriptionOrigin = getSeedDescriptionOrigin(row);
 
   if (expectedLocale && localeSegment && !localeSegmentsAreLanguageCompatible(expectedLocale, localeSegment)) {
     findings.push(
@@ -310,6 +321,21 @@ function auditExternalSeedRow(row, options = {}) {
           description_excerpt: description.slice(0, 280),
         },
         recommendedAction: 'Replace the fallback template copy with source PDP description text or clear the field for manual review.',
+        autoFixable: false,
+      }),
+    );
+  }
+
+  if (seedDescriptionOrigin === 'synthetic_summary' || detectSyntheticSummaryDescription(description)) {
+    findings.push(
+      buildFinding(row, snapshot, {
+        anomalyType: 'seed_description_pollution',
+        severity: ANOMALY_SEVERITY.review,
+        evidence: {
+          seed_description_origin: seedDescriptionOrigin || 'synthetic_summary',
+          description_excerpt: description.slice(0, 280),
+        },
+        recommendedAction: 'Prefer PDP raw fields and exclude synthetic summary text from ingredient extraction inputs.',
         autoFixable: false,
       }),
     );

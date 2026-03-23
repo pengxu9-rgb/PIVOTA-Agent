@@ -111,6 +111,52 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(block).toBeNull();
   });
 
+  test('pdp ingredient fields produce structured ingredient evidence without relying on generic description', () => {
+    const block = _internals.buildBlockFromPdpIngredientFields(
+      {
+        seed_data: {
+          pdp_ingredients_raw: 'Water, Glycerin, Ceramide NP, Cholesterol',
+          pdp_details_sections: [
+            {
+              heading: 'How to Use',
+              body: 'Use morning and night.',
+              source_kind: 'accordion_how_to_use',
+            },
+          ],
+        },
+      },
+      {},
+    );
+
+    expect(block).toEqual(
+      expect.objectContaining({
+        raw_ingredient_text_clean: 'Water, Glycerin, Ceramide NP, Cholesterol',
+        ingredient_tokens: expect.arrayContaining(['Ceramide NP']),
+        key_ingredients: expect.arrayContaining(['Ceramide NP']),
+        ingredient_intel: expect.objectContaining({
+          external_seed_enrichment: expect.objectContaining({
+            source: ENRICHMENT_SOURCE.pdpIngredientFields,
+            parsed_from_pdp_fields: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  test('synthetic summary origin does not feed description-based ingredient parsing', () => {
+    const block = _internals.buildBlockFromDescriptionParse(
+      {
+        seed_data: {
+          seed_description_origin: 'synthetic_summary',
+          pdp_description_raw: 'OFFICIAL: Brightens skin. /// SOCIAL HIGHLIGHTS: TikTok loves it. Ingredients: Water, Niacinamide.',
+        },
+      },
+      {},
+    );
+
+    expect(block).toBeNull();
+  });
+
   test('does not re-derive a different anchor when structured ingredient fields are already present', async () => {
     const row = {
       id: 'eps_bpo_present',
@@ -332,6 +378,62 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
     expect(out.quarantined_from_wave1).toBe(true);
     expect(out.contamination_signal_source).toBe('row_scope_off_surface_signal');
+  });
+
+  test('quarantines hand-mask title anchors from Wave 1 auto-sync', async () => {
+    const row = {
+      id: 'eps_hand_mask',
+      domain: 'fentybeauty.com',
+      title: 'Hydra’Reset Intensive Recovery Glycerin Hand Mask',
+      canonical_url: 'https://fentybeauty.com/products/hydrareset-intensive-recovery-glycerin-hand-mask',
+      destination_url: 'https://fentybeauty.com/products/hydrareset-intensive-recovery-glycerin-hand-mask',
+      seed_data: {
+        snapshot: {
+          title: 'Hydra’Reset Intensive Recovery Glycerin Hand Mask',
+          canonical_url: 'https://fentybeauty.com/products/hydrareset-intensive-recovery-glycerin-hand-mask',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      ingredientId: 'glycerin',
+      ingredientName: 'Glycerin',
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.titleUrlAnchor);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('row_scope_off_surface_signal');
+  });
+
+  test("quarantines collector's-case bundle title anchors from Wave 1 auto-sync", async () => {
+    const row = {
+      id: 'eps_collectors_case',
+      domain: 'fentybeauty.com',
+      title: "Skincare Lov'rs Cleanser, Toner, SPF Moisturizer + Collector's Case",
+      canonical_url: 'https://fentybeauty.com/products/skincare-lovrs-cleanser-toner-spf-moisturizer-collectors-case',
+      destination_url: 'https://fentybeauty.com/products/skincare-lovrs-cleanser-toner-spf-moisturizer-collectors-case',
+      seed_data: {
+        snapshot: {
+          title: "Skincare Lov'rs Cleanser, Toner, SPF Moisturizer + Collector's Case",
+          canonical_url: 'https://fentybeauty.com/products/skincare-lovrs-cleanser-toner-spf-moisturizer-collectors-case',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      ingredientId: 'sunscreen_filters',
+      ingredientName: 'Sunscreen Filters',
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.titleUrlAnchor);
+    expect(out.seed_quarantine_bucket).toBe(SEED_QUARANTINE_BUCKET.manualUpstreamRequired);
+    expect(out.quarantined_from_wave1).toBe(true);
+    expect(out.contamination_signal_source).toBe('row_scope_bundle_signal');
   });
 
   test('quarantines reviewed KB bundle rows from Wave 1 auto-sync', async () => {

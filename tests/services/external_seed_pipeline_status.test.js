@@ -20,11 +20,13 @@ jest.mock('../../src/services/externalSeedHarvesterBridge', () => ({
 jest.mock('../../src/services/externalSeedIngredientEnrichment', () => ({
   ENRICHMENT_SOURCE: {
     kbReviewed: 'kb_reviewed',
+    pdpIngredientFields: 'pdp_ingredient_fields',
     descriptionParse: 'description_parse',
     titleUrlAnchor: 'title_url_anchor',
     none: 'none',
   },
   classifySeedStructuredIngredientStatus: jest.fn(() => 'missing'),
+  classifySeedPdpFieldCoverageStatus: jest.fn(() => 'partial'),
   fetchReviewedKbRowsForSeedRow: jest.fn(async () => [
     {
       sku_key: 'extseed:eps_bpo:US',
@@ -35,6 +37,7 @@ jest.mock('../../src/services/externalSeedIngredientEnrichment', () => ({
   ]),
   buildSeedKbSyncStatus: jest.fn(() => 'kb_only_unsynced'),
   buildRuntimeIngredientEvidenceSource: jest.fn(() => 'kb_reviewed_read_through'),
+  buildIngredientSourceQualityStatus: jest.fn(() => 'kb_reviewed'),
   classifyExternalSeedQuarantine: jest.fn(() => ({
     seed_quarantine_bucket: null,
     quarantined_from_wave1: false,
@@ -109,8 +112,12 @@ describe('externalSeedPipelineStatus', () => {
 
     expect(status.coverage).toEqual(
       expect.objectContaining({
+        seed_pdp_field_coverage_status: 'partial',
         seed_structured_ingredient_status: 'missing',
         seed_kb_sync_status: 'kb_only_unsynced',
+        seed_description_origin: null,
+        seed_language_market_status: 'ok',
+        ingredient_source_quality_status: 'kb_reviewed',
         runtime_ingredient_evidence_source: 'kb_reviewed_read_through',
         kb_reviewed_row_count: 1,
         seed_anchor_source_kind: 'none',

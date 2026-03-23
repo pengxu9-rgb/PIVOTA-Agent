@@ -133,6 +133,45 @@ describe('externalSeedContentAudit', () => {
     );
   });
 
+  test('flags synthetic summary description pollution', () => {
+    const row = {
+      id: 'eps_rare_summary',
+      domain: 'rarebeauty.com',
+      market: 'US',
+      canonical_url: 'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+      title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20 Sunscreen',
+      seed_data: {
+        seed_description_origin: 'synthetic_summary',
+        snapshot: {
+          canonical_url:
+            'https://rarebeauty.com/products/positive-light-tinted-moisturizer-broad-spectrum-spf-20-sunscreen',
+          description: 'OFFICIAL: Lightweight tint. /// SOCIAL HIGHLIGHTS: Viral SPF with dewy finish.',
+          variants: [
+            {
+              sku: 'RARE-SPF-1',
+              variant_id: 'RARE-SPF-1',
+              currency: 'USD',
+              price: '32.00',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/rare.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'seed_description_pollution',
+          severity: 'review',
+          evidence: expect.objectContaining({ seed_description_origin: 'synthetic_summary' }),
+        }),
+      ]),
+    );
+  });
+
   test('does not flag same-language locale variants like en-eu for US seeds', () => {
     const row = {
       id: 'eps_locale_compatible',
