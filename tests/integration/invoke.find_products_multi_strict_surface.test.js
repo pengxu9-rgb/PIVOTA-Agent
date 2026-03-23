@@ -46,6 +46,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
             query_source: 'cache_multi_intent',
             serving_mode: 'eligible_only',
             catalog_surface: 'agent_api',
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
           },
         };
       })
@@ -82,12 +84,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         operation: 'find_products_multi',
         metadata: expect.objectContaining({
           catalog_surface: 'agent_api',
+          commerce_surface: 'agent_api',
         }),
       }),
     );
     expect(capturedBody?.payload?.search).toEqual(
       expect.objectContaining({
         catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
         limit: 10,
       }),
     );
@@ -108,6 +112,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         serving_mode: 'eligible_only',
+        strict_constraint_query: true,
+        strict_constraint_reason: 'ingredient',
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
@@ -131,6 +137,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
             query_source: 'cache_multi_intent',
             serving_mode: 'eligible_only',
             ingredient_intents: ['ascorbic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'multi_constraint',
           },
         };
       })
@@ -175,12 +183,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         operation: 'find_products_multi',
         metadata: expect.objectContaining({
           catalog_surface: 'agent_api',
+          commerce_surface: 'agent_api',
         }),
       }),
     );
     expect(capturedBody?.payload?.search).toEqual(
       expect.objectContaining({
         catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
         limit: 10,
       }),
     );
@@ -198,6 +208,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         query_source: 'cache_multi_intent',
         serving_mode: 'eligible_only',
         ingredient_intents: ['ascorbic_acid'],
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
@@ -221,6 +233,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
             query_source: 'cache_multi_intent',
             serving_mode: 'eligible_only',
             visible_option_intents: ['shade_210'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'shade',
           },
         };
       });
@@ -263,6 +277,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       expect.objectContaining({
         query: 'foundation shade 210',
         catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
         limit: 10,
       }),
     );
@@ -271,6 +286,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       expect.objectContaining({
         serving_mode: 'eligible_only',
         visible_option_intents: ['shade_210'],
+        strict_constraint_query: true,
+        strict_constraint_reason: 'shade',
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
