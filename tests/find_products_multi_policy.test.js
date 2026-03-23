@@ -1300,4 +1300,56 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.matched_visible_option_labels).toEqual(['size_xl']);
     expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
   });
+
+  test('fashion raw-query constraints still apply when intent extraction misses', () => {
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'sweater-m-1',
+            title: 'Classic Knitted Sweater',
+            description: 'Soft knit sweater for everyday wear.',
+            variants: [
+              {
+                id: 'var-m-1',
+                title: 'M / Black',
+                options: { Size: 'M', Color: 'Black' },
+              },
+            ],
+          }),
+          makeRawProduct({
+            id: 'sweater-xl-1',
+            title: 'Classic Knitted Sweater',
+            description: 'Soft knit sweater for everyday wear.',
+            variants: [
+              {
+                id: 'var-xl-1',
+                title: 'XL / Black',
+                options: { Size: 'XL', Color: 'Black' },
+              },
+            ],
+          }),
+          makeRawProduct({
+            id: 'lingerie-1',
+            title: "Sweet Satin Lace Plus Size women's sleepwear set 4905",
+            description: 'Velvet lace sleepwear set for women.',
+          }),
+        ],
+        reply: null,
+      },
+      intent: null,
+      requestPayload: { search: { query: 'sweater size m' } },
+      rawUserQuery: 'sweater size m',
+    });
+
+    expect(Array.isArray(resp.products)).toBe(true);
+    expect(resp.products.map((item) => item.id)).toEqual(['sweater-m-1']);
+    expect(resp.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.metadata?.visible_attribute_intents).toEqual([]);
+    expect(resp.metadata?.visible_option_intents).toEqual(['size_m']);
+    expect(resp.metadata?.matched_visible_categories).toEqual(['sweater']);
+    expect(resp.metadata?.matched_visible_attribute_labels).toEqual([]);
+    expect(resp.metadata?.matched_visible_option_labels).toEqual(['size_m']);
+    expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
+  });
 });

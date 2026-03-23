@@ -645,6 +645,10 @@ function buildFashionConstraintState(rawQuery, existingMetadata) {
   };
 }
 
+function hasFashionConstraintQuerySignal(rawQuery, existingMetadata) {
+  return Boolean(buildFashionConstraintState(rawQuery, existingMetadata)?.hasFashionConstraintSignal);
+}
+
 function productMatchesAllRuleLabels(product, labels, rules, textGetter) {
   const text = String(textGetter(product) || '');
   if (!Array.isArray(labels) || labels.length === 0) return true;
@@ -4256,5 +4260,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 module.exports = {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  hasFashionConstraintQuerySignal,
   pruneRecentQueries,
 };

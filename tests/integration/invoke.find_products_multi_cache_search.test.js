@@ -777,6 +777,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         rawUserQuery: payload?.search?.query || '',
       })),
       applyFindProductsMultiPolicy: applyPolicyMock,
+      hasFashionConstraintQuerySignal: jest.fn(() => false),
     }));
 
     jest.doMock('../../src/db', () => ({
@@ -2082,5 +2083,213 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['fleece']);
     expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['size_xl']);
     expect(resp.body.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
+  });
+
+  test('fashion raw-query constraints still apply on cache hits when intent extraction misses', async () => {
+    jest.doMock('../../src/findProductsMulti/policy', () => {
+      const actual = jest.requireActual('../../src/findProductsMulti/policy');
+      return {
+        ...actual,
+        buildFindProductsMultiContext: async ({ payload }) => ({
+          adjustedPayload: payload,
+          intent: null,
+          expansion_meta: null,
+          rawUserQuery: payload?.search?.query || payload?.query || '',
+        }),
+      };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 3 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_fashion_1',
+                merchant_name: 'Fashion One',
+                product_data: {
+                  id: 'prod_sweater_m_1',
+                  product_id: 'prod_sweater_m_1',
+                  merchant_id: 'merch_fashion_1',
+                  title: 'Classic Knitted Sweater',
+                  description: 'Soft knit sweater for everyday wear.',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  variants: [
+                    {
+                      id: 'var_sweater_m_1',
+                      title: 'M / Black',
+                      options: { Size: 'M', Color: 'Black' },
+                    },
+                  ],
+                },
+              },
+              {
+                merchant_id: 'merch_fashion_1',
+                merchant_name: 'Fashion One',
+                product_data: {
+                  id: 'prod_sweater_xl_1',
+                  product_id: 'prod_sweater_xl_1',
+                  merchant_id: 'merch_fashion_1',
+                  title: 'Classic Knitted Sweater',
+                  description: 'Soft knit sweater for everyday wear.',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  variants: [
+                    {
+                      id: 'var_sweater_xl_1',
+                      title: 'XL / Black',
+                      options: { Size: 'XL', Color: 'Black' },
+                    },
+                  ],
+                },
+              },
+              {
+                merchant_id: 'merch_sleepwear_1',
+                merchant_name: 'Sleepwear One',
+                product_data: {
+                  id: 'prod_sleepwear_1',
+                  product_id: 'prod_sleepwear_1',
+                  merchant_id: 'merch_sleepwear_1',
+                  title: "Sweet Satin Lace Plus Size women's sleepwear set 4905",
+                  description: 'Velvet lace sleepwear set for women.',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'sweater size m',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect(resp.body.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.body.metadata?.visible_attribute_intents).toEqual([]);
+    expect(resp.body.metadata?.visible_option_intents).toEqual(['size_m']);
+    expect(resp.body.metadata?.matched_visible_categories).toEqual(['sweater']);
+    expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual([]);
+    expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['size_m']);
+    expect(resp.body.products.map((item) => item.product_id || item.id)).toEqual(['prod_sweater_m_1']);
+    expect(resp.body.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
+  });
+
+  test('fashion raw-query constraints still apply on resolver fallback when intent extraction misses', async () => {
+    jest.doMock('../../src/findProductsMulti/policy', () => {
+      const actual = jest.requireActual('../../src/findProductsMulti/policy');
+      return {
+        ...actual,
+        buildFindProductsMultiContext: async ({ payload }) => ({
+          adjustedPayload: payload,
+          intent: null,
+          expansion_meta: null,
+          rawUserQuery: payload?.search?.query || payload?.query || '',
+        }),
+      };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'striped sweater' && !String(q.merchant_id || ''))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_sweater_striped_1',
+            product_id: 'prod_sweater_striped_1',
+            merchant_id: 'merch_fashion_1',
+            title: 'Warm Fall/Winter Striped Knitted Sweater',
+            description: 'Striped knitted sweater for pets.',
+            status: 'active',
+            inventory_quantity: 6,
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_resolver_fallback',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'striped sweater',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_resolver_fallback');
+    expect(resp.body.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.body.metadata?.visible_attribute_intents).toEqual(['striped']);
+    expect(resp.body.metadata?.visible_option_intents).toEqual([]);
+    expect(resp.body.metadata?.matched_visible_categories).toEqual(['sweater']);
+    expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
+    expect(resp.body.metadata?.matched_visible_option_labels).toEqual([]);
+    expect(resp.body.products.map((item) => item.product_id || item.id)).toEqual(['prod_sweater_striped_1']);
   });
 });
