@@ -1100,7 +1100,188 @@ function shouldUseStrictFindProductsMultiInvoke({ search = {}, metadata = {} } =
   return getStrictFindProductsMultiConstraintDecision({ search, metadata }).enabled;
 }
 
-function buildFindProductsMultiInvokeBody({
+const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
+  'serum',
+  'moisturizer',
+  'cleanser',
+  'toner',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
+  1,
+  Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
+);
+
+function extractStrictFindProductsMultiSkincareCategoryIntents(queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
+  if (!normalizedQuery) return [];
+  return STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS.filter((term) =>
+    normalizedQuery.includes(normalizeSearchTextForMatch(term)),
+  );
+}
+
+function buildSqlLikeClauses(columnSql, values, params, startIndex) {
+  const clauses = [];
+  let paramIndex = startIndex;
+  for (const value of values) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) continue;
+    params.push(`%${normalized}%`);
+    clauses.push(`${columnSql} LIKE $${paramIndex}`);
+    paramIndex += 1;
+  }
+  return { clauses, nextIndex: paramIndex };
+}
+
+function productMatchesStrictIngredientPrefetch(
+  product,
+  { ingredientIntents = [], categoryIntents = [], inStockOnly = true } = {},
+) {
+  if (!product || typeof product !== 'object') return false;
+  const productIngredientIds = Array.isArray(product.ingredient_ids)
+    ? product.ingredient_ids.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (ingredientIntents.length > 0 && !ingredientIntents.every((intent) => productIngredientIds.includes(intent))) {
+    return false;
+  }
+
+  const visibilityHaystack = normalizeSearchTextForMatch(
+    [
+      product.title,
+      product.product_type,
+      product.category,
+      product.description,
+      product.canonical_url,
+      product.destination_url,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (
+    categoryIntents.length > 0 &&
+    !categoryIntents.every((intent) => visibilityHaystack.includes(normalizeSearchTextForMatch(intent)))
+  ) {
+    return false;
+  }
+
+  if (inStockOnly && product.in_stock !== true) {
+    return false;
+  }
+
+  return true;
+}
+
+async function prefetchStrictIngredientExternalSeedCandidates({
+  search = {},
+  strictInvokeDecision = null,
+  rawQueryText = null,
+} = {}) {
+  if (!process.env.DATABASE_URL) return [];
+
+  const decision =
+    strictInvokeDecision && typeof strictInvokeDecision === 'object'
+      ? strictInvokeDecision
+      : getStrictFindProductsMultiConstraintDecision({ search, metadata: {} });
+  const ingredientIntents = Array.isArray(decision?.ingredientIntents)
+    ? decision.ingredientIntents.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (!decision?.strictConstraintQuery || ingredientIntents.length === 0) {
+    return [];
+  }
+
+  const queryText = String(rawQueryText || search?.query || '').trim();
+  const categoryIntents = extractStrictFindProductsMultiSkincareCategoryIntents(queryText);
+  const textTerms = [
+    ...ingredientIntents.map((value) => value.replace(/_/g, ' ')),
+    ...(categoryIntents.length > 0 ? categoryIntents : STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS),
+  ];
+
+  const params = ['US'];
+  let paramIndex = 2;
+  const titleLike = buildSqlLikeClauses('LOWER(COALESCE(title, \'\'))', textTerms, params, paramIndex);
+  paramIndex = titleLike.nextIndex;
+  const urlLike = buildSqlLikeClauses(
+    'LOWER(COALESCE(canonical_url, \'\'))',
+    textTerms,
+    params,
+    paramIndex,
+  );
+  paramIndex = urlLike.nextIndex;
+  const seedDataLike = buildSqlLikeClauses(
+    'LOWER(CAST(COALESCE(seed_data, \'{}\'::jsonb) AS TEXT))',
+    textTerms,
+    params,
+    paramIndex,
+  );
+  paramIndex = seedDataLike.nextIndex;
+  params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
+
+  const sql = `
+    SELECT
+      id,
+      external_product_id,
+      market,
+      tool,
+      destination_url,
+      canonical_url,
+      domain,
+      title,
+      image_url,
+      price_amount,
+      price_currency,
+      availability,
+      seed_data,
+      status,
+      attached_product_key,
+      created_at,
+      updated_at
+    FROM external_product_seeds
+    WHERE status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND (
+        ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
+      )
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT $${paramIndex}
+  `;
+
+  try {
+    const result = await query(sql, params);
+    const candidates = [];
+    const seen = new Set();
+    for (const row of result?.rows || []) {
+      const product = buildExternalSeedProduct(row);
+      if (!product) continue;
+      product.market = row.market || 'US';
+      product.tool = row.tool || '*';
+      product.external_seed_id = product.external_seed_id || row.id || null;
+      if (
+        !productMatchesStrictIngredientPrefetch(product, {
+          ingredientIntents,
+          categoryIntents,
+          inStockOnly: search?.in_stock_only !== false,
+        })
+      ) {
+        continue;
+      }
+      const dedupeKey = String(product.product_id || product.id || '').trim();
+      if (!dedupeKey || seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      candidates.push(product);
+      if (candidates.length >= STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT) break;
+    }
+    return candidates;
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), queryText, ingredientIntents, categoryIntents },
+      'strict ingredient external seed prefetch failed',
+    );
+    return [];
+  }
+}
+
+async function buildFindProductsMultiInvokeBody({
   payload = {},
   search = {},
   metadata = {},
@@ -1131,6 +1312,11 @@ function buildFindProductsMultiInvokeBody({
         : {}
     ),
   };
+  const prefetchedExternalSeedCandidates = await prefetchStrictIngredientExternalSeedCandidates({
+    search: normalizedSearch,
+    strictInvokeDecision: resolvedStrictInvokeDecision,
+    rawQueryText,
+  });
   return {
     operation: 'find_products_multi',
     payload: {
@@ -1147,6 +1333,12 @@ function buildFindProductsMultiInvokeBody({
       ...(metadata && typeof metadata === 'object' ? metadata : {}),
       catalog_surface: requestedCatalogSurface || undefined,
       commerce_surface: requestedCatalogSurface || undefined,
+      ...(prefetchedExternalSeedCandidates.length > 0
+        ? {
+            external_seed_candidates: prefetchedExternalSeedCandidates,
+            external_seed_prefetch_source: 'agent_strict_ingredient_prefetch',
+          }
+        : {}),
     }),
   };
 }
@@ -22878,7 +23070,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
         if (strictCommerceFindProductsMulti) {
           url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
-          requestBody = buildFindProductsMultiInvokeBody({
+          requestBody = await buildFindProductsMultiInvokeBody({
             payload,
             search,
             metadata,
