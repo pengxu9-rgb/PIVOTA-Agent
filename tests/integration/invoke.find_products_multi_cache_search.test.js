@@ -1969,4 +1969,118 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
     expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['color_blue']);
   });
+
+  test('fashion multi-constraint query filters generic upstream results to strict visible matches', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const mixedUpstreamBody = {
+      status: 'success',
+      success: true,
+      products: [
+        {
+          id: 'prod_vest_xl_1',
+          product_id: 'prod_vest_xl_1',
+          merchant_id: 'merch_pet_1',
+          title: 'Warm Polar Fleece Vest',
+          description: 'Insulated polar fleece vest for cold weather.',
+          status: 'active',
+          inventory_quantity: 8,
+          price: 22.93,
+          currency: 'EUR',
+          variants: [
+            {
+              id: 'var_vest_xl_1',
+              title: 'XL / Blue',
+              options: { Size: 'XL', Color: 'Blue' },
+            },
+          ],
+        },
+        {
+          id: 'prod_vest_m_1',
+          product_id: 'prod_vest_m_1',
+          merchant_id: 'merch_pet_1',
+          title: 'Warm Polar Fleece Vest',
+          description: 'Insulated polar fleece vest for cold weather.',
+          status: 'active',
+          inventory_quantity: 8,
+          price: 22.93,
+          currency: 'EUR',
+          variants: [
+            {
+              id: 'var_vest_m_1',
+              title: 'M / Blue',
+              options: { Size: 'M', Color: 'Blue' },
+            },
+          ],
+        },
+        {
+          id: 'prod_beauty_1',
+          product_id: 'prod_beauty_1',
+          merchant_id: 'merch_beauty_1',
+          title: 'Supersize Hydrating Milky Mist',
+          description: 'Hydrating beauty mist with extra large bottle.',
+          status: 'active',
+          inventory_quantity: 20,
+          price: 25,
+          currency: 'USD',
+        },
+      ],
+      total: 3,
+      metadata: {
+        query_source: 'agent_products_search',
+      },
+    };
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes('polar fleece vest size xl') && !String(q.merchant_id || ''))
+      .reply(200, mixedUpstreamBody);
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'polar fleece vest size xl',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.map((item) => item.product_id || item.id)).toEqual(['prod_vest_xl_1']);
+    expect(resp.body.metadata?.visible_category_intents).toEqual(['vest']);
+    expect(resp.body.metadata?.visible_attribute_intents).toEqual(['fleece']);
+    expect(resp.body.metadata?.visible_option_intents).toEqual(['size_xl']);
+    expect(resp.body.metadata?.matched_visible_categories).toEqual(['vest']);
+    expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['fleece']);
+    expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['size_xl']);
+    expect(resp.body.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
+  });
 });
