@@ -6,6 +6,12 @@ const MARKET_LOCALE_SEGMENT = Object.freeze({
   SG: 'en-sg',
   JP: 'ja-jp',
 });
+const MARKET_EXPECTED_CURRENCY = Object.freeze({
+  US: 'USD',
+  'EU-DE': 'EUR',
+  SG: 'SGD',
+  JP: 'JPY',
+});
 
 const LOCALE_PATH_SEGMENT_RE = /^[a-z]{2}(?:-|_)[a-z]{2}$/i;
 const NON_PRODUCT_PATH_RE =
@@ -265,6 +271,61 @@ function detectPriceCurrencyMismatch(row, variants) {
   };
 }
 
+function detectMarketCurrencyMismatch(row, variants, market, title, description) {
+  const expectedCurrency = normalizeCurrency(MARKET_EXPECTED_CURRENCY[normalizeNonEmptyString(market).toUpperCase()]);
+  if (!expectedCurrency) return null;
+
+  const rowCurrency = normalizeCurrency(row?.price_currency);
+  const variantCurrencies = Array.from(
+    new Set(variants.map((variant) => normalizeCurrency(variant?.currency)).filter(Boolean)),
+  );
+  const mismatchedVariantCurrencies = variantCurrencies.filter((currency) => currency !== expectedCurrency);
+  const hasRowMismatch = rowCurrency && rowCurrency !== expectedCurrency;
+  if (!hasRowMismatch && mismatchedVariantCurrencies.length === 0) return null;
+
+  return {
+    market: normalizeNonEmptyString(market).toUpperCase(),
+    expected_currency: expectedCurrency,
+    row_currency: rowCurrency || null,
+    variant_currencies: variantCurrencies,
+    title_contains_currency_symbol: /€|\bEUR\b|\$|\bUSD\b/i.test(normalizeNonEmptyString(title)),
+    description_contains_currency_symbol: /€|\bEUR\b|\$|\bUSD\b/i.test(normalizeNonEmptyString(description)),
+  };
+}
+
+function collectSizeTitleCandidates(row, snapshot, seedData, variants) {
+  const values = [
+    snapshot?.title,
+    row?.title,
+    seedData?.title,
+    ...variants.map((variant) => variant?.title),
+  ];
+  return Array.from(new Set(values.map((value) => normalizeNonEmptyString(value)).filter(Boolean)));
+}
+
+function detectMetricOnlySizeInUsSeed(row, snapshot, seedData, variants) {
+  const market = normalizeNonEmptyString(row?.market).toUpperCase();
+  if (market !== 'US') return null;
+
+  const titles = collectSizeTitleCandidates(row, snapshot, seedData, variants);
+  if (titles.length === 0) return null;
+
+  const metricMatches = [];
+  const imperialMatches = [];
+  for (const title of titles) {
+    const metric = title.match(/\b\d+(?:[.,]\d+)?\s?(?:ml|g|kg|l)\b/gi) || [];
+    const imperial = title.match(/\b\d+(?:[.,]\d+)?\s?(?:fl\.?\s?oz|oz|lb|lbs)\b/gi) || [];
+    if (metric.length > 0) metricMatches.push({ title, matches: metric });
+    if (imperial.length > 0) imperialMatches.push({ title, matches: imperial });
+  }
+
+  if (metricMatches.length === 0 || imperialMatches.length > 0) return null;
+  return {
+    market,
+    metric_only_titles: metricMatches.slice(0, 5),
+  };
+}
+
 function auditExternalSeedRow(row, options = {}) {
   const findings = [];
   const { seedData, snapshot } = getSnapshot(row);
@@ -280,6 +341,7 @@ function auditExternalSeedRow(row, options = {}) {
   const detectedLanguage = options.detectedLanguage || detectLanguage(description);
   const lastExtractedAt = getLastExtractedAt(row, snapshot);
   const seedDescriptionOrigin = getSeedDescriptionOrigin(row);
+  const isNonProductFallback = canonicalUrl && detectNonProductFallback(row, title, description, canonicalUrl);
 
   if (expectedLocale && localeSegment && !localeSegmentsAreLanguageCompatible(expectedLocale, localeSegment)) {
     findings.push(
@@ -342,7 +404,7 @@ function auditExternalSeedRow(row, options = {}) {
     );
   }
 
-  if (canonicalUrl && detectNonProductFallback(row, title, description, canonicalUrl)) {
+  if (isNonProductFallback) {
     findings.push(
       buildFinding(row, snapshot, {
         anomalyType: 'non_product_fallback_page',
@@ -369,6 +431,36 @@ function auditExternalSeedRow(row, options = {}) {
         autoFixable: false,
       }),
     );
+  }
+
+  if (!isNonProductFallback) {
+    const marketCurrencyMismatch = detectMarketCurrencyMismatch(row, variants, market, title, description);
+    if (marketCurrencyMismatch) {
+      findings.push(
+        buildFinding(row, snapshot, {
+          anomalyType: 'market_currency_mismatch',
+          severity: ANOMALY_SEVERITY.blocker,
+          evidence: marketCurrencyMismatch,
+          recommendedAction:
+            'Refresh the seed from the market-correct PDP so row and variant pricing match the expected currency for this market.',
+          autoFixable: false,
+        }),
+      );
+    }
+
+    const metricOnlySize = detectMetricOnlySizeInUsSeed(row, snapshot, seedData, variants);
+    if (metricOnlySize) {
+      findings.push(
+        buildFinding(row, snapshot, {
+          anomalyType: 'metric_only_size_in_us_seed',
+          severity: ANOMALY_SEVERITY.review,
+          evidence: metricOnlySize,
+          recommendedAction:
+            'Review the PDP locale and merchandising copy so US seeds expose user-facing size information in the expected unit system.',
+          autoFixable: false,
+        }),
+      );
+    }
   }
 
   if (imageUrls.length === 0) {

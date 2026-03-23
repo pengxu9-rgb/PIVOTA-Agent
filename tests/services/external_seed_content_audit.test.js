@@ -266,5 +266,99 @@ describe('externalSeedContentAudit', () => {
         }),
       ]),
     );
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ anomaly_type: 'market_currency_mismatch' })]),
+    );
+  });
+
+  test('flags US seeds that still carry EUR pricing as market currency mismatch', () => {
+    const row = {
+      id: 'eps_patyka_eur_us',
+      domain: 'patyka.com',
+      market: 'US',
+      canonical_url: 'https://patyka.com/en-us/products/soothing-milky-toner',
+      price_currency: 'EUR',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://patyka.com/en-us/products/soothing-milky-toner',
+          title: 'Lotion Lactee Apaisante',
+          description: 'A soothing toner for sensitive skin.',
+          variants: [
+            {
+              sku: 'PAT-TONER-1',
+              variant_id: 'PAT-TONER-1',
+              title: '200 ml',
+              currency: 'EUR',
+              price: '18.90',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/patyka-toner.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'market_currency_mismatch',
+          severity: 'blocker',
+          evidence: expect.objectContaining({
+            market: 'US',
+            expected_currency: 'USD',
+            row_currency: 'EUR',
+            variant_currencies: ['EUR'],
+          }),
+        }),
+      ]),
+    );
+  });
+
+  test('flags metric-only size copy on US seeds', () => {
+    const row = {
+      id: 'eps_patyka_metric_only',
+      domain: 'patyka.com',
+      market: 'US',
+      canonical_url: 'https://patyka.com/en-us/products/soothing-milky-toner',
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://patyka.com/en-us/products/soothing-milky-toner',
+          title: 'Soothing Milky Toner',
+          description: 'A soothing toner for sensitive skin.',
+          variants: [
+            {
+              sku: 'PAT-TONER-2',
+              variant_id: 'PAT-TONER-2',
+              title: '200 ml',
+              currency: 'USD',
+              price: '18.90',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/patyka-toner.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = auditExternalSeedRow(row);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'metric_only_size_in_us_seed',
+          severity: 'review',
+          evidence: expect.objectContaining({
+            market: 'US',
+            metric_only_titles: expect.arrayContaining([
+              expect.objectContaining({
+                title: '200 ml',
+                matches: ['200 ml'],
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    );
   });
 });
