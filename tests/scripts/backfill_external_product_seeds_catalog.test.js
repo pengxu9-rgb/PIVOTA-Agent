@@ -3,6 +3,7 @@ const {
   buildExtractRequestBody,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
+  comparableSeedData,
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
@@ -480,5 +481,46 @@ describe('backfill-external-product-seeds-catalog', () => {
         }),
       }),
     );
+  });
+
+  test('comparableSeedData ignores enrichment synced_at churn for idempotent postchecks', () => {
+    const base = comparableSeedData({
+      ingredient_intel: {
+        external_seed_enrichment: {
+          source: 'pdp_ingredient_fields',
+          synced_at: '2026-03-23T01:00:00.000Z',
+        },
+      },
+      snapshot: {
+        extracted_at: '2026-03-23T01:00:00.000Z',
+        ingredient_intel: {
+          external_seed_enrichment: {
+            source: 'pdp_ingredient_fields',
+            synced_at: '2026-03-23T01:00:00.000Z',
+          },
+        },
+      },
+    });
+    const next = comparableSeedData({
+      ingredient_intel: {
+        external_seed_enrichment: {
+          source: 'pdp_ingredient_fields',
+          synced_at: '2026-03-23T02:00:00.000Z',
+        },
+      },
+      snapshot: {
+        extracted_at: '2026-03-23T02:00:00.000Z',
+        ingredient_intel: {
+          external_seed_enrichment: {
+            source: 'pdp_ingredient_fields',
+            synced_at: '2026-03-23T02:00:00.000Z',
+          },
+        },
+      },
+    });
+
+    expect(base).toEqual(next);
+    expect(base.ingredient_intel.external_seed_enrichment.synced_at).toBeNull();
+    expect(base.snapshot.ingredient_intel.external_seed_enrichment.synced_at).toBeNull();
   });
 });

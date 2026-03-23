@@ -297,11 +297,27 @@ function mapSnapshotVariants(product, response, existingSeedData) {
 function comparableSeedData(value) {
   const next = ensureJsonObject(value);
   const snapshot = ensureJsonObject(next.snapshot);
+  const rootIngredientIntel = ensureJsonObject(next.ingredient_intel);
+  const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
   return {
     ...next,
+    ingredient_intel: {
+      ...rootIngredientIntel,
+      external_seed_enrichment: {
+        ...ensureJsonObject(rootIngredientIntel.external_seed_enrichment),
+        synced_at: null,
+      },
+    },
     snapshot: {
       ...snapshot,
       extracted_at: null,
+      ingredient_intel: {
+        ...snapshotIngredientIntel,
+        external_seed_enrichment: {
+          ...ensureJsonObject(snapshotIngredientIntel.external_seed_enrichment),
+          synced_at: null,
+        },
+      },
     },
   };
 }
@@ -827,6 +843,7 @@ module.exports = {
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
   buildFailureSeedData,
+  comparableSeedData,
   normalizeComparableUrlKey,
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,

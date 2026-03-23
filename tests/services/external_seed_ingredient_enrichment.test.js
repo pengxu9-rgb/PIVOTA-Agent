@@ -188,6 +188,70 @@ describe('externalSeedIngredientEnrichment', () => {
     expect(out.row.seed_data.active_ingredients).toEqual(['benzoyl peroxide 10%']);
   });
 
+  test('upgrades title-anchor structured state when stronger pdp ingredient fields become available', async () => {
+    const row = {
+      id: 'eps_pixi_upgrade',
+      title: 'Rose Ceramide Cream',
+      canonical_url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+      destination_url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+      seed_data: {
+        ingredient_tokens: ['Ceramide NP'],
+        key_ingredients: ['Ceramide NP'],
+        ingredient_intel: {
+          external_seed_enrichment: {
+            source: ENRICHMENT_SOURCE.titleUrlAnchor,
+            seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.explicitTitleUrlAnchor,
+          },
+        },
+        pdp_ingredients_raw: 'Water, Glycerin, Ceramide NP, Cholesterol',
+        pdp_details_sections: [
+          {
+            heading: 'Ingredients',
+            body: 'Water, Glycerin, Ceramide NP, Cholesterol',
+            source_kind: 'accordion_ingredients',
+          },
+        ],
+        seed_description_origin: 'pdp_product_description',
+        snapshot: {
+          title: 'Rose Ceramide Cream',
+          canonical_url: 'https://pixibeauty.example.com/products/rose-ceramide-cream',
+          ingredient_tokens: ['Ceramide NP'],
+          key_ingredients: ['Ceramide NP'],
+          ingredient_intel: {
+            external_seed_enrichment: {
+              source: ENRICHMENT_SOURCE.titleUrlAnchor,
+              seed_anchor_source_kind: SEED_ANCHOR_SOURCE_KIND.explicitTitleUrlAnchor,
+            },
+          },
+          pdp_ingredients_raw: 'Water, Glycerin, Ceramide NP, Cholesterol',
+          pdp_details_sections: [
+            {
+              heading: 'Ingredients',
+              body: 'Water, Glycerin, Ceramide NP, Cholesterol',
+              source_kind: 'accordion_ingredients',
+            },
+          ],
+          seed_description_origin: 'pdp_product_description',
+        },
+      },
+    };
+
+    const out = await enrichExternalSeedRowIngredients({
+      row,
+      kbRows: [],
+    });
+
+    expect(out.changed).toBe(true);
+    expect(out.enrichment_source).toBe(ENRICHMENT_SOURCE.pdpIngredientFields);
+    expect(out.row.seed_data.raw_ingredient_text_clean).toBe('Water, Glycerin, Ceramide NP, Cholesterol');
+    expect(out.row.seed_data.ingredient_intel.external_seed_enrichment).toEqual(
+      expect.objectContaining({
+        source: ENRICHMENT_SOURCE.pdpIngredientFields,
+        parsed_from_pdp_fields: true,
+      }),
+    );
+  });
+
   test('does not bulk-anchor a blank row from family-only title text', async () => {
     const row = {
       id: 'eps_family_only',
