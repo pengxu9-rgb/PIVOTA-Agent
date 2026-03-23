@@ -1182,4 +1182,66 @@ describe('find_products_multi intent + filtering', () => {
       }),
     );
   });
+
+  test('fashion multi-constraint query emits visible constraint metadata on generic lane', () => {
+    const intent = extractIntentRuleBased('pink sleeveless sweater size m', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: { products: [], reply: null },
+      intent,
+      requestPayload: { search: { query: 'pink sleeveless sweater size m' } },
+      rawUserQuery: 'pink sleeveless sweater size m',
+    });
+
+    expect(resp.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.metadata?.visible_attribute_intents).toEqual(['sleeveless']);
+    expect(resp.metadata?.visible_option_intents).toEqual(['size_m', 'color_pink']);
+    expect(resp.metadata?.matched_visible_categories).toEqual([]);
+    expect(resp.metadata?.matched_visible_attribute_labels).toEqual([]);
+    expect(resp.metadata?.matched_visible_option_labels).toEqual([]);
+  });
+
+  test('fashion multi-constraint query records matched visible labels when product evidence exists', () => {
+    const intent = extractIntentRuleBased('blue striped sweater', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'sweater-1',
+            title: 'Blue Striped Knitted Sweater',
+            description: 'Classic striped knit sweater for women.',
+            variants: [
+              {
+                id: 'var-blue-1',
+                title: 'Medium / Blue',
+                options: { Size: 'Medium', Color: 'Blue' },
+              },
+            ],
+          }),
+          makeRawProduct({
+            id: 'sweater-2',
+            title: 'Plain Knitted Sweater',
+            description: 'Classic knit sweater for women.',
+            variants: [
+              {
+                id: 'var-red-1',
+                title: 'Medium / Red',
+                options: { Size: 'Medium', Color: 'Red' },
+              },
+            ],
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'blue striped sweater' } },
+      rawUserQuery: 'blue striped sweater',
+    });
+
+    expect(resp.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.metadata?.visible_attribute_intents).toEqual(['striped']);
+    expect(resp.metadata?.visible_option_intents).toEqual(['color_blue']);
+    expect(resp.metadata?.matched_visible_categories).toEqual(['sweater']);
+    expect(resp.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
+    expect(resp.metadata?.matched_visible_option_labels).toEqual(['color_blue']);
+  });
 });

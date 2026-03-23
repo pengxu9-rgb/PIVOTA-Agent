@@ -482,8 +482,193 @@ function hasDogMeasurementsInQuery(rawQuery) {
   return (
     /\b\d{2,3}\s*(cm|mm|in|inch|inches)\b/i.test(q) ||
     /胸围|胸圍|背长|背長|颈围|頸圍|胴回り|背丈|首回り/.test(q) ||
-    /\b(XXL|2XL|3XL|4XL|5XL|XL)\b/i.test(q)
+      /\b(XXL|2XL|3XL|4XL|5XL|XL)\b/i.test(q)
   );
+}
+
+const FASHION_VISIBLE_CATEGORY_RULES = [
+  { label: 'sweater', query: /\b(sweater|jumper)\b|毛衣|针织衫/i, match: /\b(sweater|jumper|knit sweater)\b|毛衣|针织/i },
+  { label: 'hoodie', query: /\bhoodie\b|卫衣/i, match: /\bhoodie\b|卫衣/i },
+  { label: 'vest', query: /\bvest\b|背心/i, match: /\bvest\b|背心/i },
+  { label: 'dress', query: /\bdress\b|连衣裙|洋装/i, match: /\bdress\b|连衣裙|洋装/i },
+  { label: 'skirt', query: /\bskirt\b|半身裙|短裙/i, match: /\bskirt\b|半身裙|短裙/i },
+];
+
+const FASHION_VISIBLE_ATTRIBUTE_RULES = [
+  { label: 'striped', query: /\bstriped\b|条纹/i, match: /\bstriped\b|条纹/i },
+  { label: 'sleeveless', query: /\bsleeveless\b|无袖/i, match: /\bsleeveless\b|无袖/i },
+  { label: 'fleece', query: /\b(polar\s+fleece|fleece)\b|抓绒|摇粒绒/i, match: /\b(polar\s+fleece|fleece)\b|抓绒|摇粒绒/i },
+  { label: 'color_block', query: /\bcolor[\s-]?block\b|撞色/i, match: /\bcolor[\s-]?block\b|撞色/i },
+  { label: 'knitted', query: /\b(knitted|knit)\b|针织/i, match: /\b(knitted|knit)\b|针织/i },
+  { label: 'waterproof', query: /\bwaterproof\b|防水/i, match: /\bwaterproof\b|防水/i },
+  { label: 'wool', query: /\bwool\b|羊毛/i, match: /\bwool\b|羊毛/i },
+  { label: 'cotton', query: /\bcotton\b|棉/i, match: /\bcotton\b|纯棉|全棉/i },
+];
+
+const FASHION_VISIBLE_COLOR_OPTION_RULES = [
+  { label: 'color_black', query: /\bblack\b|黑/i, match: /\bblack\b|黑/i },
+  { label: 'color_blue', query: /\bblue\b|蓝/i, match: /\bblue\b|蓝/i },
+  { label: 'color_gray', query: /\b(gray|grey)\b|灰/i, match: /\b(gray|grey)\b|灰/i },
+  { label: 'color_pink', query: /\bpink\b|粉/i, match: /\bpink\b|粉/i },
+  { label: 'color_red', query: /\bred\b|红/i, match: /\bred\b|红/i },
+  { label: 'color_white', query: /\bwhite\b|白/i, match: /\bwhite\b|白/i },
+];
+
+const FASHION_VISIBLE_SIZE_OPTION_RULES = [
+  {
+    label: 'size_xs',
+    query: /\bsize[\s:-]*xs\b|\bextra\s+small\b|尺码[\s:-]*xs|尺碼[\s:-]*xs/i,
+    match: /\b(extra\s+small|xs)\b/i,
+  },
+  {
+    label: 'size_s',
+    query: /\bsize[\s:-]*s\b|\bsmall\b|尺码[\s:-]*s|尺碼[\s:-]*s/i,
+    match: /\b(small|s)\b/i,
+  },
+  {
+    label: 'size_m',
+    query: /\bsize[\s:-]*m\b|\bmedium\b|尺码[\s:-]*m|尺碼[\s:-]*m/i,
+    match: /\b(medium|m)\b/i,
+  },
+  {
+    label: 'size_l',
+    query: /\bsize[\s:-]*l\b|\blarge\b|尺码[\s:-]*l|尺碼[\s:-]*l/i,
+    match: /\b(large|l)\b/i,
+  },
+  {
+    label: 'size_xl',
+    query: /\bsize[\s:-]*xl\b|\bx-?large\b|尺码[\s:-]*xl|尺碼[\s:-]*xl/i,
+    match: /\b(x-?large|xl)\b/i,
+  },
+  {
+    label: 'size_xxl',
+    query: /\bsize[\s:-]*(xxl|2xl)\b|\b(xx-?large|2x-?large)\b|尺码[\s:-]*(xxl|2xl)|尺碼[\s:-]*(xxl|2xl)/i,
+    match: /\b(xx-?large|2x-?large|xxl|2xl)\b/i,
+  },
+];
+
+function extractPatternLabels(rawQuery, rules) {
+  const text = String(rawQuery || '');
+  const labels = [];
+  for (const rule of Array.isArray(rules) ? rules : []) {
+    if (!rule || !rule.label || !(rule.query instanceof RegExp)) continue;
+    if (rule.query.test(text)) labels.push(String(rule.label));
+  }
+  return Array.from(new Set(labels));
+}
+
+function collectProductOptionText(product) {
+  const fragments = [];
+  const variants = Array.isArray(product?.variants)
+    ? product.variants
+    : Array.isArray(product?.product_data?.variants)
+      ? product.product_data.variants
+      : [];
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    if (variant.title) fragments.push(String(variant.title));
+    if (variant.name) fragments.push(String(variant.name));
+    const options = variant.options;
+    if (Array.isArray(options)) {
+      for (const item of options) {
+        if (item == null) continue;
+        if (typeof item === 'string' || typeof item === 'number') {
+          fragments.push(String(item));
+        } else if (typeof item === 'object') {
+          if (item.name) fragments.push(String(item.name));
+          if (item.value) fragments.push(String(item.value));
+          if (item.option_name) fragments.push(String(item.option_name));
+          if (item.option_value) fragments.push(String(item.option_value));
+        }
+      }
+    } else if (options && typeof options === 'object') {
+      for (const [name, value] of Object.entries(options)) {
+        if (name) fragments.push(String(name));
+        if (value != null) fragments.push(String(value));
+      }
+    }
+  }
+  if (Array.isArray(product?.visible_option_labels)) {
+    fragments.push(...product.visible_option_labels.map((item) => String(item || '')));
+  }
+  if (Array.isArray(product?.attributes?.pivota?.visible_option_labels)) {
+    fragments.push(...product.attributes.pivota.visible_option_labels.map((item) => String(item || '')));
+  }
+  return fragments.join(' ').toLowerCase();
+}
+
+function matchLabelsFromProducts(products, labels, rules, textGetter) {
+  const list = Array.isArray(products) ? products : [];
+  const out = [];
+  for (const label of Array.isArray(labels) ? labels : []) {
+    const rule = (Array.isArray(rules) ? rules : []).find((item) => String(item?.label || '') === String(label));
+    if (!rule || !(rule.match instanceof RegExp)) continue;
+    const matched = list.some((product) => {
+      const text = String(textGetter(product) || '');
+      return text.length > 0 && rule.match.test(text);
+    });
+    if (matched) out.push(String(label));
+  }
+  return out;
+}
+
+function buildFashionConstraintMetadata({ rawQuery, products, existingMetadata }) {
+  const existingMeta =
+    existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata)
+      ? existingMetadata
+      : {};
+
+  const derivedVisibleCategoryIntents = extractPatternLabels(rawQuery, FASHION_VISIBLE_CATEGORY_RULES);
+  const derivedVisibleAttributeIntents = extractPatternLabels(rawQuery, FASHION_VISIBLE_ATTRIBUTE_RULES);
+  const derivedVisibleOptionIntents = [
+    ...extractPatternLabels(rawQuery, FASHION_VISIBLE_SIZE_OPTION_RULES),
+    ...extractPatternLabels(rawQuery, FASHION_VISIBLE_COLOR_OPTION_RULES),
+  ];
+
+  const visibleCategoryIntents = Array.isArray(existingMeta.visible_category_intents)
+    ? existingMeta.visible_category_intents.map((item) => String(item || '')).filter(Boolean)
+    : derivedVisibleCategoryIntents;
+  const visibleAttributeIntents = Array.isArray(existingMeta.visible_attribute_intents)
+    ? existingMeta.visible_attribute_intents.map((item) => String(item || '')).filter(Boolean)
+    : derivedVisibleAttributeIntents;
+  const visibleOptionIntents = Array.isArray(existingMeta.visible_option_intents)
+    ? existingMeta.visible_option_intents.map((item) => String(item || '')).filter(Boolean)
+    : derivedVisibleOptionIntents;
+
+  const hasFashionConstraintSignal =
+    visibleCategoryIntents.length > 0 &&
+    (visibleAttributeIntents.length > 0 || visibleOptionIntents.length > 0);
+  if (!hasFashionConstraintSignal) return {};
+
+  const matchedVisibleCategories = Array.isArray(existingMeta.matched_visible_categories)
+    ? existingMeta.matched_visible_categories.map((item) => String(item || '')).filter(Boolean)
+    : matchLabelsFromProducts(products, visibleCategoryIntents, FASHION_VISIBLE_CATEGORY_RULES, (product) =>
+        buildProductText(product),
+      );
+  const matchedVisibleAttributeLabels = Array.isArray(existingMeta.matched_visible_attribute_labels)
+    ? existingMeta.matched_visible_attribute_labels.map((item) => String(item || '')).filter(Boolean)
+    : matchLabelsFromProducts(products, visibleAttributeIntents, FASHION_VISIBLE_ATTRIBUTE_RULES, (product) =>
+        buildProductText(product),
+      );
+  const matchedVisibleOptionLabels = Array.isArray(existingMeta.matched_visible_option_labels)
+    ? existingMeta.matched_visible_option_labels.map((item) => String(item || '')).filter(Boolean)
+    : [
+        ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_SIZE_OPTION_RULES, (product) =>
+          collectProductOptionText(product),
+        ),
+        ...matchLabelsFromProducts(products, visibleOptionIntents, FASHION_VISIBLE_COLOR_OPTION_RULES, (product) =>
+          `${buildProductText(product)} ${collectProductOptionText(product)}`,
+        ),
+      ];
+
+  return {
+    visible_category_intents: visibleCategoryIntents,
+    visible_attribute_intents: visibleAttributeIntents,
+    visible_option_intents: visibleOptionIntents,
+    matched_visible_categories: Array.from(new Set(matchedVisibleCategories)),
+    matched_visible_attribute_labels: Array.from(new Set(matchedVisibleAttributeLabels)),
+    matched_visible_option_labels: Array.from(new Set(matchedVisibleOptionLabels)),
+  };
 }
 
 function isPetHarnessProduct(product) {
@@ -3692,6 +3877,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           },
         }
       : existingMeta;
+  const fashionConstraintMetadata = buildFashionConstraintMetadata({
+    rawQuery,
+    products: filtered,
+    existingMetadata: mergedMetadata,
+  });
 
   const shouldOverrideReply =
     !augmented.reply ||
@@ -3899,6 +4089,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       ? {
           metadata: {
             ...mergedMetadata,
+            ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
@@ -3936,6 +4127,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       : {
           metadata: {
             ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
+            ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             search_decision: {
