@@ -966,6 +966,18 @@ const STRICT_FIND_PRODUCTS_MULTI_VISIBLE_ATTRIBUTE_TERMS = Object.freeze([
   'brightening',
 ]);
 
+const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
+  'serum',
+  'moisturizer',
+  'cleanser',
+  'toner',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
+  1,
+  Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
+);
+
 function isStrictCommerceCatalogSurface(surface) {
   return ['agent_api', 'acp', 'ucp'].includes(String(surface || '').trim().toLowerCase());
 }
@@ -1099,19 +1111,6 @@ function getStrictFindProductsMultiConstraintDecision({ search = {}, metadata = 
 function shouldUseStrictFindProductsMultiInvoke({ search = {}, metadata = {} } = {}) {
   return getStrictFindProductsMultiConstraintDecision({ search, metadata }).enabled;
 }
-
-const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
-  'serum',
-  'moisturizer',
-  'cleanser',
-  'toner',
-]);
-
-const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
-  1,
-  Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
-);
-
 function extractStrictFindProductsMultiSkincareCategoryIntents(queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
   if (!normalizedQuery) return [];
@@ -4174,6 +4173,198 @@ function buildSearchRelevanceDebug({ intent, products, diversityPenaltyApplied =
   return out;
 }
 
+function buildServiceVersionMetadata() {
+  return {
+    service: SERVICE_NAME,
+    commit: SERVICE_GIT_SHA_SHORT,
+    build_id: SERVICE_BUILD_ID,
+    branch: SERVICE_GIT_BRANCH || null,
+    deployment_id: SERVICE_DEPLOYMENT_ID || null,
+    started_at: SERVICE_STARTED_AT,
+  };
+}
+
+function buildCacheStageDiagnosticBundle(cacheStage = null, cacheRouteDebug = null) {
+  const stage =
+    cacheStage && typeof cacheStage === 'object' && !Array.isArray(cacheStage)
+      ? cacheStage
+      : null;
+  const routeDebug =
+    cacheRouteDebug && typeof cacheRouteDebug === 'object' && !Array.isArray(cacheRouteDebug)
+      ? cacheRouteDebug
+      : null;
+  if (!stage && !routeDebug) return null;
+  const retrievalSources = Array.isArray(stage?.retrieval_sources) ? stage.retrieval_sources : [];
+  const strictSource =
+    retrievalSources.find(
+      (item) => item && typeof item === 'object' && String(item.source || '') === 'lexical_cache',
+    ) || null;
+  const relaxedSource =
+    retrievalSources.find(
+      (item) =>
+        item &&
+        typeof item === 'object' &&
+        String(item.source || '') === 'lexical_cache_relaxed_no_onboarding',
+    ) || null;
+  const intOrZero = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+  };
+  const selectedSource =
+    stage?.selected_source != null ? String(stage.selected_source || '').trim() || null : null;
+  return {
+    cache_stage_attempted: Boolean(stage?.attempted ?? routeDebug?.attempted),
+    cache_stage_query_terms: Array.isArray(stage?.query_terms)
+      ? stage.query_terms
+      : Array.isArray(routeDebug?.cache_query_terms)
+        ? routeDebug.cache_query_terms
+        : [],
+    cache_stage_strict_total: intOrZero(
+      stage?.strict_total != null ? stage.strict_total : strictSource?.total,
+    ),
+    cache_stage_relaxed_total: intOrZero(
+      stage?.relaxed_total != null ? stage.relaxed_total : relaxedSource?.total,
+    ),
+    cache_stage_filtered_irrelevant_count: intOrZero(
+      stage?.filtered_irrelevant_count != null
+        ? stage.filtered_irrelevant_count
+        : routeDebug?.internal_filtered_irrelevant_count,
+    ),
+    cache_stage_beauty_bucket:
+      stage?.beauty_bucket != null
+        ? String(stage.beauty_bucket || '').trim() || null
+        : routeDebug?.beauty_query_bucket != null
+          ? String(routeDebug.beauty_query_bucket || '').trim() || null
+          : null,
+    cache_stage_selected_source: selectedSource,
+  };
+}
+
+function buildCacheStageSnapshot({
+  hit = false,
+  candidateCount = 0,
+  relevantCount = 0,
+  retrievalSources = [],
+  cacheRouteDebug = null,
+  selectedSource = null,
+} = {}) {
+  return {
+    hit: Boolean(hit),
+    candidate_count: Number(candidateCount || 0),
+    relevant_count: Number(relevantCount || 0),
+    retrieval_sources: Array.isArray(retrievalSources) ? retrievalSources : [],
+    attempted: Boolean(cacheRouteDebug?.attempted),
+    query_terms: Array.isArray(cacheRouteDebug?.cache_query_terms)
+      ? cacheRouteDebug.cache_query_terms
+      : [],
+    strict_total: (() => {
+      const lexical = Array.isArray(retrievalSources)
+        ? retrievalSources.find((item) => String(item?.source || '') === 'lexical_cache')
+        : null;
+      return Number(lexical?.total || 0) || 0;
+    })(),
+    relaxed_total: (() => {
+      const relaxed = Array.isArray(retrievalSources)
+        ? retrievalSources.find(
+            (item) => String(item?.source || '') === 'lexical_cache_relaxed_no_onboarding',
+          )
+        : null;
+      return Number(relaxed?.total || 0) || 0;
+    })(),
+    filtered_irrelevant_count: Number(
+      cacheRouteDebug?.internal_filtered_irrelevant_count || 0,
+    ) || 0,
+    beauty_bucket:
+      cacheRouteDebug?.beauty_query_bucket != null
+        ? String(cacheRouteDebug.beauty_query_bucket || '').trim() || null
+        : null,
+    selected_source: selectedSource || null,
+  };
+}
+
+function decideGenericSkincareCachePreference({
+  rawQuery = '',
+  queryClass = null,
+  beautyBucket = null,
+  strictConstraintQuery = false,
+  upstreamResponse = null,
+  cacheResponse = null,
+} = {}) {
+  const queryText = String(rawQuery || '').trim();
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass || undefined,
+  });
+  const effectiveBeautyBucket = String(
+    beautyBucket || beautyQueryProfile?.bucket || '',
+  ).trim().toLowerCase();
+  const upstreamProducts = Array.isArray(upstreamResponse?.products) ? upstreamResponse.products : [];
+  const cacheProducts = Array.isArray(cacheResponse?.products) ? cacheResponse.products : [];
+  const upstreamQuerySource = String(upstreamResponse?.metadata?.query_source || '').trim();
+  const cacheInternalProducts = cacheProducts.filter((product) => !isExternalSeedProduct(product));
+  const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
+  const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const genericSerumCategoryQuery =
+    hasSerumSignal &&
+    genericQueryClass &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery);
+  const upstreamExternalOnly =
+    upstreamProducts.length > 0 && upstreamProducts.every((product) => isExternalSeedProduct(product));
+  const evaluated =
+    genericSerumCategoryQuery &&
+    cacheInternalProducts.length > 0 &&
+    upstreamProducts.length > 0 &&
+    !upstreamQuerySource.startsWith('cache_');
+
+  if (!genericSerumCategoryQuery) {
+    return {
+      evaluated: false,
+      decision: 'keep_upstream',
+      reason: 'not_generic_skincare_serum_query',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: cacheInternalProducts.length,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  if (!upstreamExternalOnly) {
+    return {
+      evaluated,
+      decision: 'keep_upstream',
+      reason: 'upstream_not_external_only',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: cacheInternalProducts.length,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  if (cacheInternalProducts.length === 0) {
+    return {
+      evaluated,
+      decision: 'keep_upstream',
+      reason: 'cache_has_no_internal_skincare_hits',
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: 0,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
+
+  return {
+    evaluated,
+    decision: 'replace_with_cache',
+    reason: 'prefer_internal_skincare_cache_over_external_only_upstream',
+    beauty_bucket: effectiveBeautyBucket || null,
+    cache_internal_count: cacheInternalProducts.length,
+    upstream_external_only: upstreamExternalOnly,
+    upstream_query_source: upstreamQuerySource || null,
+  };
+}
+
 function withSearchDiagnostics(body, diagnostics = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -4591,6 +4782,23 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   if (diagnostics.strict_empty_reason) {
     metadata.strict_empty_reason = String(diagnostics.strict_empty_reason);
   }
+  const cacheRouteDebug =
+    metadata.route_debug &&
+    typeof metadata.route_debug === 'object' &&
+    !Array.isArray(metadata.route_debug) &&
+    metadata.route_debug.cross_merchant_cache &&
+    typeof metadata.route_debug.cross_merchant_cache === 'object' &&
+    !Array.isArray(metadata.route_debug.cross_merchant_cache)
+      ? metadata.route_debug.cross_merchant_cache
+      : null;
+  const cacheStageBundle = buildCacheStageDiagnosticBundle(
+    diagnostics?.search_trace?.cache_stage || metadata?.search_trace?.cache_stage || null,
+    cacheRouteDebug,
+  );
+  if (cacheStageBundle && cacheStageBundle.cache_stage_attempted) {
+    Object.assign(metadata, cacheStageBundle);
+  }
+  metadata.service_version = buildServiceVersionMetadata();
   if (diagnostics.relevance_debug && typeof diagnostics.relevance_debug === 'object') {
     metadata.relevance_debug = diagnostics.relevance_debug;
   }
@@ -22360,12 +22568,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 associationPlan: traceAssociationPlan,
                 flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
-                cacheStage: {
+                cacheStage: buildCacheStageSnapshot({
                   hit: true,
-                  candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                  retrieval_sources: fromCache.retrieval_sources || [],
-                },
+                  candidateCount: Number(effectiveProducts.length || 0),
+                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                  retrievalSources: fromCache.retrieval_sources || [],
+                  cacheRouteDebug: crossMerchantCacheRouteDebug,
+                  selectedSource: 'internal_cache',
+                }),
                 upstreamStage: {
                   called: false,
                   timeout: false,
@@ -22579,12 +22789,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   associationPlan: traceAssociationPlan,
                   flagsSnapshot: traceFlagsSnapshot,
                   intent: effectiveIntent,
-                  cacheStage: {
+                  cacheStage: buildCacheStageSnapshot({
                     hit: false,
-                    candidate_count: 0,
-                    relevant_count: 0,
-                    retrieval_sources: fromCache.retrieval_sources || [],
-                  },
+                    candidateCount: 0,
+                    relevantCount: 0,
+                    retrievalSources: fromCache.retrieval_sources || [],
+                    cacheRouteDebug: crossMerchantCacheRouteDebug,
+                    selectedSource: 'cache_empty',
+                  }),
                   upstreamStage: {
                     called: false,
                     timeout: false,
@@ -22675,12 +22887,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     associationPlan: traceAssociationPlan,
                     flagsSnapshot: traceFlagsSnapshot,
                     intent: effectiveIntent,
-                    cacheStage: {
+                    cacheStage: buildCacheStageSnapshot({
                       hit: false,
-                      candidate_count: Number(effectiveProducts.length || 0),
-                      relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                      retrieval_sources: fromCache.retrieval_sources || [],
-                    },
+                      candidateCount: Number(effectiveProducts.length || 0),
+                      relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                      retrievalSources: fromCache.retrieval_sources || [],
+                      cacheRouteDebug: crossMerchantCacheRouteDebug,
+                      selectedSource: 'resolver_fallback',
+                    }),
                     upstreamStage: {
                       called: false,
                       timeout: false,
@@ -22807,12 +23021,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 associationPlan: traceAssociationPlan,
                 flagsSnapshot: traceFlagsSnapshot,
                 intent: effectiveIntent,
-                cacheStage: {
+                cacheStage: buildCacheStageSnapshot({
                   hit: false,
-                  candidate_count: Number(effectiveProducts.length || 0),
-                  relevant_count: Number(internalProductsAfterAnchor.length || 0),
-                  retrieval_sources: fromCache.retrieval_sources || [],
-                },
+                  candidateCount: Number(effectiveProducts.length || 0),
+                  relevantCount: Number(internalProductsAfterAnchor.length || 0),
+                  retrievalSources: fromCache.retrieval_sources || [],
+                  cacheRouteDebug: crossMerchantCacheRouteDebug,
+                  selectedSource: 'cache_strict_empty',
+                }),
                 upstreamStage: {
                   called: false,
                   timeout: false,
@@ -25474,6 +25690,77 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
+    if (
+      operation === 'find_products_multi' &&
+      crossMerchantCacheProtectedResponse &&
+      Array.isArray(crossMerchantCacheProtectedResponse.products) &&
+      crossMerchantCacheProtectedResponse.products.length > 0
+    ) {
+      const cachePreferenceDecision = decideGenericSkincareCachePreference({
+        rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryClass: traceQueryClass || effectiveIntent?.query_class || null,
+        beautyBucket:
+          crossMerchantCacheRouteDebug?.beauty_query_bucket ||
+          buildBeautyQueryProfile({
+            rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+            queryClass: traceQueryClass || effectiveIntent?.query_class || null,
+            intent: effectiveIntent,
+          })?.bucket ||
+          null,
+        strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
+        upstreamResponse: upstreamData,
+        cacheResponse: crossMerchantCacheProtectedResponse,
+      });
+      if (cachePreferenceDecision.decision === 'replace_with_cache') {
+        const protectedMeta =
+          crossMerchantCacheProtectedResponse?.metadata &&
+          typeof crossMerchantCacheProtectedResponse.metadata === 'object' &&
+          !Array.isArray(crossMerchantCacheProtectedResponse.metadata)
+            ? crossMerchantCacheProtectedResponse.metadata
+            : {};
+        const existingRouteDebug =
+          protectedMeta?.route_debug &&
+          typeof protectedMeta.route_debug === 'object' &&
+          !Array.isArray(protectedMeta.route_debug)
+            ? protectedMeta.route_debug
+            : {};
+        const existingCacheRouteDebug =
+          existingRouteDebug?.cross_merchant_cache &&
+          typeof existingRouteDebug.cross_merchant_cache === 'object' &&
+          !Array.isArray(existingRouteDebug.cross_merchant_cache)
+            ? existingRouteDebug.cross_merchant_cache
+            : {};
+        upstreamData = {
+          ...crossMerchantCacheProtectedResponse,
+          metadata: {
+            ...protectedMeta,
+            serum_cache_override: {
+              applied: true,
+              decision: cachePreferenceDecision.decision,
+              reason: cachePreferenceDecision.reason,
+              beauty_bucket: cachePreferenceDecision.beauty_bucket,
+              cache_internal_count: cachePreferenceDecision.cache_internal_count,
+              upstream_external_only: cachePreferenceDecision.upstream_external_only,
+              upstream_query_source: cachePreferenceDecision.upstream_query_source,
+            },
+            route_debug: {
+              ...existingRouteDebug,
+              cross_merchant_cache: {
+                ...existingCacheRouteDebug,
+                serum_cache_override: {
+                  applied: true,
+                  decision: cachePreferenceDecision.decision,
+                  reason: cachePreferenceDecision.reason,
+                  cache_internal_count: cachePreferenceDecision.cache_internal_count,
+                  upstream_query_source: cachePreferenceDecision.upstream_query_source,
+                },
+              },
+            },
+          },
+        };
+      }
+    }
+
     let maybePolicy = upstreamData;
     if (
       operation === 'find_products_multi' &&
@@ -26332,12 +26619,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               associationPlan: traceAssociationPlan,
               flagsSnapshot: traceFlagsSnapshot,
               intent: effectiveIntent,
-              cacheStage: {
+              cacheStage: buildCacheStageSnapshot({
                 hit: true,
-                candidate_count: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                relevant_count: Number(crossMerchantCacheProtectedResponse.products.length || 0),
-                retrieval_sources: [],
-              },
+                candidateCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
+                relevantCount: Number(crossMerchantCacheProtectedResponse.products.length || 0),
+                retrievalSources: [],
+                cacheRouteDebug: crossMerchantCacheRouteDebug,
+                selectedSource: 'internal_cache',
+              }),
               upstreamStage: {
                 called: true,
                 timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
@@ -26409,15 +26698,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          expansionMode: findProductsExpansionMeta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE,
 		          queryClass: traceQueryClass,
 		          rewriteGate: traceRewriteGate,
-		          associationPlan: traceAssociationPlan,
-		          flagsSnapshot: traceFlagsSnapshot,
-		          intent: effectiveIntent,
-	          cacheStage: {
+	          associationPlan: traceAssociationPlan,
+	          flagsSnapshot: traceFlagsSnapshot,
+	          intent: effectiveIntent,
+	          cacheStage: buildCacheStageSnapshot({
 	            hit: false,
-	            candidate_count: 0,
-	            relevant_count: 0,
-	            retrieval_sources: [],
-	          },
+	            candidateCount: 0,
+	            relevantCount: 0,
+	            retrievalSources: [],
+	            cacheRouteDebug: crossMerchantCacheRouteDebug,
+	            selectedSource: 'invoke_outer_exception',
+	          }),
 	          upstreamStage: {
 	            called: true,
 	            timeout: String(err?.code || '').toUpperCase() === 'ECONNABORTED',
@@ -26673,6 +26964,7 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  decideGenericSkincareCachePreference,
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildProxySearchSoftFallbackResponse,

@@ -75,7 +75,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       allow_zero_results: true,
       must_have_metadata: [],
       must_not_return_titles: [],
+      must_return_titles: [],
       must_return_one_of_titles: [],
+      must_equal_metadata: {},
+      must_be_positive_metadata: [],
       expected_contract_path: null,
       catalog_surface: null,
     };
@@ -99,8 +102,22 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     must_not_return_titles: Array.isArray(rawCase?.must_not_return_titles)
       ? rawCase.must_not_return_titles.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    must_return_titles: Array.isArray(rawCase?.must_return_titles)
+      ? rawCase.must_return_titles.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     must_return_one_of_titles: Array.isArray(rawCase?.must_return_one_of_titles)
       ? rawCase.must_return_one_of_titles.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    must_equal_metadata:
+      rawCase?.must_equal_metadata && typeof rawCase.must_equal_metadata === 'object'
+        ? Object.fromEntries(
+            Object.entries(rawCase.must_equal_metadata)
+              .map(([key, value]) => [String(key || '').trim(), value])
+              .filter(([key]) => key),
+          )
+        : {},
+    must_be_positive_metadata: Array.isArray(rawCase?.must_be_positive_metadata)
+      ? rawCase.must_be_positive_metadata.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
@@ -213,6 +230,16 @@ function normalizeTitles(products) {
     .filter(Boolean);
 }
 
+function valuesEqual(left, right) {
+  if (typeof left === 'number' || typeof right === 'number') {
+    return Number(left) === Number(right);
+  }
+  if (typeof left === 'boolean' || typeof right === 'boolean') {
+    return Boolean(left) === Boolean(right);
+  }
+  return String(left) === String(right);
+}
+
 function evaluateCase(row) {
   const spec = row?.caseSpec || {};
   const data = row?.data || {};
@@ -264,6 +291,15 @@ function evaluateCase(row) {
     }
   }
 
+  const mustReturn = Array.isArray(spec.must_return_titles) ? spec.must_return_titles : [];
+  for (const requiredTitle of mustReturn) {
+    const normalizedRequired = normalizeText(requiredTitle);
+    if (!normalizedRequired) continue;
+    if (!titles.some((title) => normalizeText(title).includes(normalizedRequired))) {
+      reasons.push(`missing_exact_required_title:${requiredTitle}`);
+    }
+  }
+
   const mustReturnOneOf = Array.isArray(spec.must_return_one_of_titles)
     ? spec.must_return_one_of_titles
     : [];
@@ -276,6 +312,37 @@ function evaluateCase(row) {
     });
     if (!hasAllowedTitle) {
       reasons.push(`missing_required_title:${mustReturnOneOf.join(' | ')}`);
+    }
+  }
+
+  const mustEqualMetadata =
+    spec.must_equal_metadata && typeof spec.must_equal_metadata === 'object'
+      ? spec.must_equal_metadata
+      : {};
+  for (const [rawPath, expectedValue] of Object.entries(mustEqualMetadata)) {
+    const pathText = String(rawPath || '').trim();
+    if (!pathText) continue;
+    const actualValue = pathText.startsWith('metadata.')
+      ? getPath(data, pathText)
+      : getPath(metadata, pathText) ?? getPath(data, pathText);
+    if (!valuesEqual(actualValue, expectedValue)) {
+      reasons.push(
+        `metadata_mismatch:${pathText}:expected=${JSON.stringify(expectedValue)} actual=${JSON.stringify(actualValue)}`,
+      );
+    }
+  }
+
+  const mustBePositive = Array.isArray(spec.must_be_positive_metadata)
+    ? spec.must_be_positive_metadata
+    : [];
+  for (const rawPath of mustBePositive) {
+    const pathText = String(rawPath || '').trim();
+    if (!pathText) continue;
+    const actualValue = pathText.startsWith('metadata.')
+      ? getPath(data, pathText)
+      : getPath(metadata, pathText) ?? getPath(data, pathText);
+    if (!(Number(actualValue) > 0)) {
+      reasons.push(`metadata_not_positive:${pathText}:actual=${JSON.stringify(actualValue)}`);
     }
   }
 
@@ -356,6 +423,10 @@ function classifyRow(row) {
     metadata && typeof metadata.contract_bridge === 'object' && !Array.isArray(metadata.contract_bridge)
       ? metadata.contract_bridge
       : {};
+  const serviceVersion =
+    metadata && typeof metadata.service_version === 'object' && !Array.isArray(metadata.service_version)
+      ? metadata.service_version
+      : {};
   const products = Array.isArray(data.products) ? data.products : [];
   const querySource = String(metadata.query_source || '');
   const upstreamCode = String(
@@ -400,6 +471,7 @@ function classifyRow(row) {
     matchedIngredientIds: Array.isArray(metadata.matched_ingredient_ids)
       ? metadata.matched_ingredient_ids
       : [],
+    serviceCommit: String(serviceVersion.commit || ''),
     visibleOptionIntents: Array.isArray(metadata.visible_option_intents)
       ? metadata.visible_option_intents
       : [],
@@ -607,6 +679,7 @@ async function main() {
           resolved_contract: row.metrics.resolvedContract,
           strict_constraint_query: row.metrics.strictConstraintQuery,
           strict_constraint_reason: row.metrics.strictConstraintReason,
+          service_commit: row.metrics.serviceCommit,
           ingredient_intents: row.metrics.ingredientIntents,
           matched_ingredient_ids: row.metrics.matchedIngredientIds,
           visible_option_intents: row.metrics.visibleOptionIntents,
