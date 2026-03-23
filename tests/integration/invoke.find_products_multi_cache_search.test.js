@@ -1884,4 +1884,87 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(String(resp.body.metadata?.proxy_search_fallback?.route || '').length).toBeGreaterThan(0);
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
+
+  test('fashion multi-constraint query returns visible intent metadata on generic upstream lane', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'blue striped sweater' && !String(q.merchant_id || ''))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_sweater_blue_striped_1',
+            product_id: 'prod_sweater_blue_striped_1',
+            merchant_id: 'merch_live_1',
+            title: 'Blue Striped Knitted Sweater',
+            description: 'Classic striped knit sweater for women.',
+            status: 'active',
+            inventory_quantity: 6,
+            price: 27.65,
+            currency: 'EUR',
+            variants: [
+              {
+                id: 'var_blue_1',
+                title: 'Medium / Blue',
+                options: { Size: 'Medium', Color: 'Blue' },
+              },
+            ],
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'blue striped sweater',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(externalSupplement.isDone()).toBe(true);
+    expect(resp.body.metadata?.visible_category_intents).toEqual(['sweater']);
+    expect(resp.body.metadata?.visible_attribute_intents).toEqual(['striped']);
+    expect(resp.body.metadata?.visible_option_intents).toEqual(['color_blue']);
+    expect(resp.body.metadata?.matched_visible_categories).toEqual(['sweater']);
+    expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
+    expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['color_blue']);
+  });
 });
