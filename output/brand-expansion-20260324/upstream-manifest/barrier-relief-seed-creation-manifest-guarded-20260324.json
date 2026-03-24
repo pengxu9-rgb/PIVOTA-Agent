@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-03-24T12:34:41.583Z",
+  "source_summary": "/Users/pengchydan/dev/_wt_pivota_agent_pdp_brand_expansion_20260323/output/brand-expansion-20260324/upstream-manifest/barrier-relief-seed-creation-summary-20260324.json",
+  "item_count": 0,
+  "rejected_count": 1,
+  "items": [],
+  "rejected_items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "The Formularx",
+      "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+      "extract_status": "usable",
+      "rejection_reason": "market_signal_mismatch",
+      "rejection_evidence": {
+        "market": "US",
+        "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+        "country_matches": [
+          "india",
+          "India",
+          "Noida",
+          "Uttar Pradesh"
+        ],
+        "currency_matches": [
+          "₹",
+          "INR",
+          "Rs. 5",
+          "Rs. 6",
+          "Rs.5"
+        ],
+        "phone_matches": [
+          "+91-7042771727"
+        ],
+        "html_snippet": "ass=\"section-template--19981173752044__custom_liquid_dta6Le-padding\"> <div class=\"line-block\">dermatologist trusted india’s #1 barrier care brand for sensitive skin</div> <style>.line-block { text-align: center; text-transform: upper"
+      }
+    }
+  ]
+}

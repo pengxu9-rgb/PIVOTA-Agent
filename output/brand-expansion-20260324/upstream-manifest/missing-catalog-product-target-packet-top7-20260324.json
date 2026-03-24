@@ -1,15 +1,19 @@
 {
   "generated_at": "2026-03-24T10:28:54.213Z",
   "tranche": "missing_catalog_product_target_collection_top7",
-  "completed": [
+  "completed": [],
+  "quarantined": [
     {
       "query_sample": "Barrier Relief Moisturizer",
-      "status": "confirmed_and_inserted",
+      "status": "quarantined_market_mismatch",
       "target_brand": "The Formularx",
       "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
       "extract_artifact": "output/brand-expansion-20260324/upstream-manifest/barrier-relief-extract-live-20260324.json",
+      "guarded_manifest_artifact": "output/brand-expansion-20260324/upstream-manifest/barrier-relief-seed-creation-manifest-guarded-20260324.json",
       "seed_id": "eps_9c9c09996a8c94753b0a50b8",
-      "external_product_id": "ext_5d0b6c48510de26f2e8753aa"
+      "external_product_id": "ext_5d0b6c48510de26f2e8753aa",
+      "quarantine_reason": "market_signal_mismatch",
+      "quarantine_note": "Official PDP resolves, but page signals India market: Noida/Uttar Pradesh, +91 contact, and INR pricing."
     }
   ],
   "pending": [
