@@ -1328,6 +1328,13 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   paramIndex = seedDataLike.nextIndex;
   params.push(Math.max(STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT * 3, 24));
 
+  const structuredIngredientEvidenceClauses = [
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'reviewed_ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+    "COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids') = 'array' THEN COALESCE(seed_data, '{}'::jsonb)->'snapshot'->'ingredient_ids' ELSE '[]'::jsonb END), 0) > 0",
+  ];
+
   const sql = `
     SELECT
       id,
@@ -1351,6 +1358,9 @@ async function prefetchStrictIngredientExternalSeedCandidates({
     WHERE status = 'active'
       AND attached_product_key IS NULL
       AND market = $1
+      AND (
+        ${structuredIngredientEvidenceClauses.join(' OR ')}
+      )
       AND (
         ${[...titleLike.clauses, ...urlLike.clauses, ...seedDataLike.clauses].join(' OR ')}
       )
