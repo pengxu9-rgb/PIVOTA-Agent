@@ -1,0 +1,210 @@
+[
+  {
+    "id": "external_strict_niacinamide_serum_validity",
+    "family": "external_strict_positive",
+    "query": "niacinamide serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ],
+    "must_not_return_titles": [
+      "Winona Soothing Repair Serum"
+    ]
+  },
+  {
+    "id": "external_strict_vitamin_c_serum_validity",
+    "family": "external_strict_positive",
+    "query": "vitamin c serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum"
+    ]
+  },
+  {
+    "id": "external_strict_vitamin_c_serum_budget_eur_validity",
+    "family": "external_strict_positive",
+    "query": "vitamin c serum under €30",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "budget_fx_applied",
+      "budget_fx_rate",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint",
+      "budget_fx_applied": true
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_titles": [
+      "Vitamin-C Serum"
+    ]
+  },
+  {
+    "id": "external_strict_hyaluronic_acid_serum_precision",
+    "family": "external_false_positive_sentinel",
+    "query": "hyaluronic acid serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_not_return_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill"
+    ]
+  },
+  {
+    "id": "external_strict_retinol_serum_precision",
+    "family": "external_false_positive_sentinel",
+    "query": "retinol serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_not_return_titles": [
+      "Vitamin-C Serum",
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Truth Serum",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill"
+    ]
+  },
+  {
+    "id": "external_strict_salicylic_acid_serum_coverage",
+    "family": "external_coverage_gap",
+    "query": "salicylic acid serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    }
+  },
+  {
+    "id": "external_strict_ceramide_serum_coverage",
+    "family": "external_coverage_gap",
+    "query": "ceramide serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    }
+  },
+  {
+    "id": "external_parser_hyaluronic_serum_gap",
+    "family": "query_parse_gap",
+    "query": "hyaluronic serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    }
+  },
+  {
+    "id": "external_parser_peptide_serum_gap",
+    "family": "query_parse_gap",
+    "query": "peptide serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    }
+  }
+]
