@@ -9,6 +9,7 @@ BACKEND_REPO="${PIVOTA_BACKEND_REPO:-/Users/pengchydan/dev/Pivota-cursor-create-
 ACP_REPO="${PIVOTA_ACP_REPO:-/Users/pengchydan/dev/pivota-acp-revert}"
 CATALOG_REPO="${PIVOTA_CATALOG_REPO:-/Users/pengchydan/dev/Pivota-catalog-intelligence}"
 BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
+BACKEND_PUBLIC_BASE_URL="${BACKEND_PUBLIC_BASE_URL:-https://web-production-fedb.up.railway.app}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/llm-agent-infra-readiness}"
 
 timestamp() {
@@ -83,6 +84,103 @@ if not isinstance(svc, dict):
 commit = svc.get("commit")
 if isinstance(commit, str) and commit.strip():
     print(commit.strip())
+PY
+}
+
+probe_backend_public_version() {
+  python3 - "${BACKEND_PUBLIC_BASE_URL%/}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base = sys.argv[1].rstrip("/")
+
+
+def nonempty(value):
+    if isinstance(value, str):
+        value = value.strip()
+        return value or ""
+    return ""
+
+
+def normalize_headers(headers):
+    return {str(k).lower(): str(v).strip() for k, v in headers.items()}
+
+
+def extract_header_fields(headers):
+    return {
+        "commit": nonempty(headers.get("x-service-commit")),
+        "build_id": nonempty(headers.get("x-service-build-id")),
+        "deployment_id": nonempty(headers.get("x-service-deployment-id")),
+    }
+
+
+def extract_payload_fields(payload):
+    if not isinstance(payload, dict):
+        return {}
+    version = payload.get("version")
+    if not isinstance(version, dict):
+        version = {}
+    railway = payload.get("railway")
+    if not isinstance(railway, dict):
+        railway = {}
+    return {
+        "commit": nonempty(version.get("commit")) or nonempty(payload.get("build_id")) or nonempty(payload.get("commit_sha")),
+        "full_sha": nonempty(version.get("full_sha")) or nonempty(payload.get("full_sha")) or nonempty(payload.get("commit_sha")),
+        "build_id": nonempty(version.get("build_id")) or nonempty(payload.get("build_id")),
+        "deployment_id": nonempty(version.get("deployment_id")) or nonempty(payload.get("deployment_id")),
+        "service": nonempty(version.get("service")) or nonempty(payload.get("service")),
+        "environment": nonempty(version.get("environment")) or nonempty(railway.get("environment")),
+    }
+
+
+for path in ("/__build", "/health"):
+    url = f"{base}{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            body = response.read().decode("utf-8", "replace")
+            headers = normalize_headers(response.headers)
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        continue
+
+    payload = {}
+    if body.strip():
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = {}
+
+    info = extract_header_fields(headers)
+    info.update({k: v for k, v in extract_payload_fields(payload).items() if v})
+    if any(info.get(key) for key in ("commit", "full_sha", "build_id", "deployment_id", "service")):
+        info["probe_path"] = path
+        print(json.dumps(info))
+        raise SystemExit(0)
+
+print("{}")
+PY
+}
+
+json_field() {
+  local json="$1"
+  local field="$2"
+  RESPONSE_JSON="${json}" python3 - "${field}" <<'PY'
+import json
+import os
+import sys
+
+field = sys.argv[1]
+text = os.environ.get("RESPONSE_JSON", "").strip()
+if not text:
+    raise SystemExit(0)
+try:
+    data = json.loads(text)
+except Exception:
+    raise SystemExit(0)
+value = data.get(field)
+if isinstance(value, str) and value.strip():
+    print(value.strip())
 PY
 }
 
@@ -161,12 +259,21 @@ elif [[ -f "${ACP_REPO}/tests/test_agent_control_plane_contract.py" ]]; then
 fi
 
 agent_prod_commit="$(probe_agent_service_version)"
+backend_public_version_json="$(probe_backend_public_version)"
+backend_prod_commit="$(json_field "${backend_public_version_json}" "commit")"
+backend_prod_full_sha="$(json_field "${backend_public_version_json}" "full_sha")"
+backend_prod_build_id="$(json_field "${backend_public_version_json}" "build_id")"
+backend_prod_deployment_id="$(json_field "${backend_public_version_json}" "deployment_id")"
+backend_prod_service="$(json_field "${backend_public_version_json}" "service")"
+backend_prod_environment="$(json_field "${backend_public_version_json}" "environment")"
+backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_path")"
 
 {
   echo "# Pivota LLM / Agent Infrastructure Readiness"
   echo
   echo "- Timestamp (UTC): ${TS}"
   echo "- Base URL: ${BASE_URL}"
+  echo "- Backend public base URL: ${BACKEND_PUBLIC_BASE_URL}"
   echo "- Agent clean repo: \`${AGENT_CLEAN_REPO}\`"
   echo
   echo "## Repo Inventory"
@@ -184,6 +291,17 @@ agent_prod_commit="$(probe_agent_service_version)"
     echo "- Agent public \`service_version.commit\`: \`${agent_prod_commit}\`"
   else
     echo "- Agent public \`service_version.commit\`: missing"
+  fi
+  if [[ -n "${backend_prod_commit}" || -n "${backend_prod_full_sha}" || -n "${backend_prod_service}" ]]; then
+    echo "- Backend public \`version.commit\`: \`${backend_prod_commit:-missing}\`"
+    echo "- Backend public \`version.full_sha\`: \`${backend_prod_full_sha:-missing}\`"
+    echo "- Backend public \`version.build_id\`: \`${backend_prod_build_id:-missing}\`"
+    echo "- Backend public \`version.deployment_id\`: \`${backend_prod_deployment_id:-missing}\`"
+    echo "- Backend public \`version.service\`: \`${backend_prod_service:-missing}\`"
+    echo "- Backend public \`version.environment\`: \`${backend_prod_environment:-missing}\`"
+    echo "- Backend public probe path: \`${backend_prod_probe_path:-missing}\`"
+  else
+    echo "- Backend public version surface: missing"
   fi
   echo
   echo "## Verification Runs"
@@ -229,7 +347,7 @@ agent_prod_commit="$(probe_agent_service_version)"
     done
   fi
 
-  if [[ -n "${agent_prod_commit}" ]]; then
+  if [[ -n "${agent_prod_commit}" && -n "${backend_prod_commit}" && "${backend_prod_service}" == "pivota-backend" ]]; then
     provenance_ok="green"
   fi
   if [[ "$(path_tracked_in_origin "${AGENT_CANONICAL_REPO}" ".github/workflows/shopping-search-release-gate.yml")" != "yes" ]]; then
@@ -260,9 +378,9 @@ agent_prod_commit="$(probe_agent_service_version)"
   echo "## Next Fixes"
   echo
   echo "1. Add catalog-intelligence clean-main gates to this audit so ingredient pipeline readiness is measured, not assumed."
-  echo "2. Add a stable backend public build/version surface equivalent to agent service_version."
-  echo "3. Reduce backend/ACP deprecation warnings so green gates are also clean gates."
-  echo "4. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
+  echo "2. Reduce backend/ACP deprecation warnings so green gates are also clean gates."
+  echo "3. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
+  echo "4. Keep backend public version probing wired into readiness and release workflows so deploy provenance stays two-sided."
 } >"${REPORT_MD}"
 
 STEPS_TSV="${RUN_DIR}/steps.tsv"
@@ -286,8 +404,18 @@ for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
 summary = {
     "timestamp_utc": "${TS}",
     "base_url": "${BASE_URL}",
+    "backend_public_base_url": "${BACKEND_PUBLIC_BASE_URL}",
     "agent_clean_repo": "${AGENT_CLEAN_REPO}",
     "agent_public_service_version_commit": "${agent_prod_commit}",
+    "backend_public_version": {
+        "commit": "${backend_prod_commit}",
+        "full_sha": "${backend_prod_full_sha}",
+        "build_id": "${backend_prod_build_id}",
+        "deployment_id": "${backend_prod_deployment_id}",
+        "service": "${backend_prod_service}",
+        "environment": "${backend_prod_environment}",
+        "probe_path": "${backend_prod_probe_path}",
+    },
     "steps": steps,
 }
 
