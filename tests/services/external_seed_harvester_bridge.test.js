@@ -220,6 +220,20 @@ describe('externalSeedHarvesterBridge', () => {
     expect(classifyIngredientScope({}, lipCandidate)).toEqual(
       expect.objectContaining({ decision: 'review' }),
     );
+
+    const ingredientLedSolutionCandidate = {
+      product_name: 'Salicylic Acid 2% Solution - 769915231731',
+      source_ref: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html?variant=769915231731',
+    };
+    expect(
+      classifyIngredientScope(
+        {
+          title: 'Salicylic Acid 2% Solution',
+          canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+        },
+        ingredientLedSolutionCandidate,
+      ),
+    ).toEqual(expect.objectContaining({ decision: 'allow', reason: 'ingredient_led_solution' }));
   });
 
   test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
@@ -355,5 +369,45 @@ describe('externalSeedHarvesterBridge', () => {
         }),
       ]),
     );
+  });
+
+  test('exports ingredient-led skincare solutions for harvester review when step family is implicit', () => {
+    const rows = [
+      {
+        id: 'eps_salicylic_solution_1',
+        domain: 'theordinary.com',
+        market: 'US',
+        canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+        title: 'Salicylic Acid 2% Solution',
+        seed_data: {
+          brand: 'The Ordinary',
+          snapshot: {
+            category: 'Skincare',
+            canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+            title: 'Salicylic Acid 2% Solution',
+            variants: [
+              {
+                sku: '769915231731',
+                variant_id: '769915231731',
+                option_value: '769915231731',
+                url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+              },
+            ],
+          },
+        },
+      },
+    ];
+
+    const result = filterCandidatesForHarvester(rows);
+    expect(result.exported).toHaveLength(1);
+    expect(result.exported[0].row.id).toBe('eps_salicylic_solution_1');
+    expect(result.exported[0].candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_name: 'Salicylic Acid 2% Solution - 769915231731',
+        }),
+      ]),
+    );
+    expect(result.skipped).toHaveLength(0);
   });
 });
