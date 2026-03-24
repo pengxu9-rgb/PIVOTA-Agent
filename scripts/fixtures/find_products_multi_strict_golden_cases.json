@@ -99,12 +99,12 @@
       "cache_stage_selected_source"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search",
-      "source_breakdown.external_seed_count": 0,
+      "query_source": "cache_cross_merchant_search_supplemented",
       "cache_stage_selected_source": "internal_cache"
     },
     "must_be_positive_metadata": [
-      "source_breakdown.internal_count"
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
     ],
     "must_return_titles": [
       "Winona Soothing Repair Serum",
