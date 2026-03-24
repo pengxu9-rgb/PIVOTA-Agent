@@ -1,0 +1,588 @@
+{
+  "generated_at": "2026-03-24T08:50:40.979Z",
+  "source_export": "/Users/pengchydan/dev/_wt_pivota_agent_pdp_brand_expansion_20260323/output/brand-expansion-20260324/upstream-manifest/missing-catalog-products-live-20260324.json",
+  "total_rows": 164,
+  "shortlist_count": 25,
+  "items": [
+    {
+      "normalized_query": "barrier relief moisturizer",
+      "query_sample": "Barrier Relief Moisturizer",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 1308,
+      "last_seen_at": "2026-03-22T15:52:18.165Z",
+      "priority_score": 2308
+    },
+    {
+      "normalized_query": "calm recovery serum",
+      "query_sample": "Calm Recovery Serum",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 775,
+      "last_seen_at": "2026-03-22T15:52:18.316Z",
+      "priority_score": 1775
+    },
+    {
+      "normalized_query": "azelaic support cream",
+      "query_sample": "Azelaic Support Cream",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 717,
+      "last_seen_at": "2026-03-20T21:17:08.616Z",
+      "priority_score": 1717
+    },
+    {
+      "normalized_query": "night retinol emulsion",
+      "query_sample": "Night Retinol Emulsion",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 594,
+      "last_seen_at": "2026-03-22T15:52:17.986Z",
+      "priority_score": 1594
+    },
+    {
+      "normalized_query": "balance niacinamide gel",
+      "query_sample": "Balance Niacinamide Gel",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 384,
+      "last_seen_at": "2026-03-19T14:09:01.788Z",
+      "priority_score": 1384
+    },
+    {
+      "normalized_query": "daily bright c serum",
+      "query_sample": "Daily Bright C Serum",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 356,
+      "last_seen_at": "2026-03-19T14:09:02.582Z",
+      "priority_score": 1356
+    },
+    {
+      "normalized_query": "refine bha lotion",
+      "query_sample": "Refine BHA Lotion",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "product_url_missing",
+      "all_reasons": [
+        "product_url_missing"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "seen_count": 79,
+      "last_seen_at": "2026-03-18T14:40:08.674Z",
+      "priority_score": 1079
+    },
+    {
+      "normalized_query": "paulas choice 2 percent bha liquid",
+      "query_sample": "Paula's Choice 2% BHA Liquid",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 114,
+      "last_seen_at": "2026-03-01T13:57:19.832Z",
+      "priority_score": 354
+    },
+    {
+      "normalized_query": "dr wu daily renewal serum 8 percent total acids",
+      "query_sample": "Dr. Wu Daily Renewal Serum (8% total acids)",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 99,
+      "last_seen_at": "2026-03-01T13:45:53.605Z",
+      "priority_score": 339
+    },
+    {
+      "normalized_query": "sunscreen_filters_https_www_amazon_com_s_k_uv_20filters_20skincare_20product_20best",
+      "query_sample": "sunscreen filters skincare best",
+      "ingredient_id": "sunscreen_filters",
+      "ingredient_name": "UV filters",
+      "primary_reason": "ingredient_plan_v2_external_fallback",
+      "all_reasons": [
+        "ingredient_plan_v2_external_fallback"
+      ],
+      "status_tokens": [
+        "external_executor_empty"
+      ],
+      "source_tokens": [
+        "catalog_miss"
+      ],
+      "capture_modes": [
+        "sync_external_executor"
+      ],
+      "candidate_urls": [
+        "https://www.amazon.com/s?k=UV%20filters%20skincare%20product%20best"
+      ],
+      "query_kind": "ingredient_query",
+      "operator_lane": "external_executor_followup",
+      "recommended_action": "review fallback candidate and promote official seed if valid",
+      "seen_count": 154,
+      "last_seen_at": "2026-02-26T02:32:04.326Z",
+      "priority_score": 334
+    },
+    {
+      "normalized_query": "estée lauder advanced night repair",
+      "query_sample": "Estée Lauder Advanced Night Repair",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 86,
+      "last_seen_at": "2026-03-01T13:45:19.968Z",
+      "priority_score": 326
+    },
+    {
+      "normalized_query": "paulas choice skin perfecting 2 percent bha liquid exfoliant",
+      "query_sample": "Paula's Choice Skin Perfecting 2% BHA Liquid Exfoliant",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 81,
+      "last_seen_at": "2026-03-04T15:09:33.217Z",
+      "priority_score": 321
+    },
+    {
+      "normalized_query": "the ordinary glycolic acid 7 percent toning solution",
+      "query_sample": "The Ordinary Glycolic Acid 7% Toning Solution",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 80,
+      "last_seen_at": "2026-03-03T05:04:07.138Z",
+      "priority_score": 320
+    },
+    {
+      "normalized_query": "la roche posay effaclar clarifying solution",
+      "query_sample": "La Roche-Posay Effaclar Clarifying Solution",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 62,
+      "last_seen_at": "2026-02-14T03:47:19.465Z",
+      "priority_score": 302
+    },
+    {
+      "normalized_query": "ipsa time reset aqua",
+      "query_sample": "IPSA Time Reset Aqua",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 59,
+      "last_seen_at": "2026-02-11T14:30:01.018Z",
+      "priority_score": 299
+    },
+    {
+      "normalized_query": "ceramide_np_https_www_amazon_com_s_k_ceramide_20np_20skincare_20product_20best",
+      "query_sample": "ceramide np skincare best",
+      "ingredient_id": "ceramide_np",
+      "ingredient_name": "Ceramide NP",
+      "primary_reason": "ingredient_plan_v2_external_fallback",
+      "all_reasons": [
+        "ingredient_plan_v2_external_fallback"
+      ],
+      "status_tokens": [
+        "external_executor_empty"
+      ],
+      "source_tokens": [
+        "catalog_partial"
+      ],
+      "capture_modes": [
+        "sync_external_executor"
+      ],
+      "candidate_urls": [
+        "https://www.amazon.com/s?k=Ceramide%20NP%20skincare%20product%20best"
+      ],
+      "query_kind": "ingredient_query",
+      "operator_lane": "external_executor_followup",
+      "recommended_action": "review fallback candidate and promote official seed if valid",
+      "seen_count": 107,
+      "last_seen_at": "2026-02-26T02:32:04.484Z",
+      "priority_score": 287
+    },
+    {
+      "normalized_query": "benzoyl_peroxide_https_www_amazon_com_s_k_benzoyl_20peroxide_20skincare_20product_20best",
+      "query_sample": "Benzoyl peroxide skincare product best",
+      "ingredient_id": "benzoyl_peroxide",
+      "ingredient_name": "Benzoyl peroxide",
+      "primary_reason": "ingredient_plan_v2_external_fallback",
+      "all_reasons": [
+        "ingredient_plan_v2_external_fallback"
+      ],
+      "status_tokens": [
+        "external_fallback_returned"
+      ],
+      "source_tokens": [
+        "catalog_partial"
+      ],
+      "capture_modes": [
+        "sync_external_fallback"
+      ],
+      "candidate_urls": [
+        "https://www.amazon.com/s?k=Benzoyl%20peroxide%20skincare%20product%20best"
+      ],
+      "query_kind": "ingredient_query",
+      "operator_lane": "external_fallback_review",
+      "recommended_action": "review fallback candidate and promote official seed if valid",
+      "seen_count": 106,
+      "last_seen_at": "2026-02-26T02:32:05.282Z",
+      "priority_score": 286
+    },
+    {
+      "normalized_query": "the ordinary niacinamide 10 percent plus zinc 1 percent",
+      "query_sample": "The Ordinary Niacinamide 10% + Zinc 1%",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 44,
+      "last_seen_at": "2026-02-11T15:34:34.723Z",
+      "priority_score": 284
+    },
+    {
+      "normalized_query": "azelaic_acid_https_www_amazon_com_s_k_azelaic_20acid_20skincare_20product_20best",
+      "query_sample": "Azelaic acid skincare product best",
+      "ingredient_id": "azelaic_acid",
+      "ingredient_name": "Azelaic acid",
+      "primary_reason": "ingredient_plan_v2_external_fallback",
+      "all_reasons": [
+        "ingredient_plan_v2_external_fallback"
+      ],
+      "status_tokens": [
+        "external_fallback_returned"
+      ],
+      "source_tokens": [
+        "catalog_partial"
+      ],
+      "capture_modes": [
+        "sync_external_fallback"
+      ],
+      "candidate_urls": [
+        "https://www.amazon.com/s?k=Azelaic%20acid%20skincare%20product%20best"
+      ],
+      "query_kind": "ingredient_query",
+      "operator_lane": "external_fallback_review",
+      "recommended_action": "review fallback candidate and promote official seed if valid",
+      "seen_count": 102,
+      "last_seen_at": "2026-02-26T02:32:04.952Z",
+      "priority_score": 282
+    },
+    {
+      "normalized_query": "zinc_pca_https_www_amazon_com_s_k_zinc_20pca_20skincare_20product_20best",
+      "query_sample": "Zinc PCA skincare product best",
+      "ingredient_id": "zinc_pca",
+      "ingredient_name": "Zinc PCA",
+      "primary_reason": "ingredient_plan_v2_external_fallback",
+      "all_reasons": [
+        "ingredient_plan_v2_external_fallback"
+      ],
+      "status_tokens": [
+        "external_fallback_returned"
+      ],
+      "source_tokens": [
+        "catalog_partial"
+      ],
+      "capture_modes": [
+        "sync_external_fallback"
+      ],
+      "candidate_urls": [
+        "https://www.amazon.com/s?k=Zinc%20PCA%20skincare%20product%20best"
+      ],
+      "query_kind": "ingredient_query",
+      "operator_lane": "external_fallback_review",
+      "recommended_action": "review fallback candidate and promote official seed if valid",
+      "seen_count": 100,
+      "last_seen_at": "2026-02-26T02:32:04.796Z",
+      "priority_score": 280
+    },
+    {
+      "normalized_query": "la roche posay lrp toleriane purifying foaming cleanser",
+      "query_sample": "La Roche-Posay LRP Toleriane Purifying Foaming Cleanser",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 39,
+      "last_seen_at": "2026-02-14T03:21:18.308Z",
+      "priority_score": 279
+    },
+    {
+      "normalized_query": "winona soothing repair serum",
+      "query_sample": "Winona Soothing Repair Serum",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 31,
+      "last_seen_at": "2026-02-11T15:36:46.522Z",
+      "priority_score": 271
+    },
+    {
+      "normalized_query": "skinceuticals hydrating b5 gel",
+      "query_sample": "SkinCeuticals Hydrating B5 Gel",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 25,
+      "last_seen_at": "2026-02-21T02:39:35.626Z",
+      "priority_score": 265
+    },
+    {
+      "normalized_query": "bioderma sensibio h2o micellar",
+      "query_sample": "Bioderma Sensibio H2O Micellar",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 21,
+      "last_seen_at": "2026-02-21T02:35:29.275Z",
+      "priority_score": 261
+    },
+    {
+      "normalized_query": "kiehls clearly corrective dark spot solution",
+      "query_sample": "Kiehl's Clearly Corrective Dark Spot Solution",
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "primary_reason": "no_candidates",
+      "all_reasons": [
+        "no_candidates"
+      ],
+      "status_tokens": [
+        "unknown"
+      ],
+      "source_tokens": [],
+      "capture_modes": [],
+      "candidate_urls": [],
+      "query_kind": "product_query",
+      "operator_lane": "resolver_or_seed_targeting",
+      "recommended_action": "spot-check resolver query and add stable alias or explicit seed target",
+      "seen_count": 19,
+      "last_seen_at": "2026-02-14T03:21:18.217Z",
+      "priority_score": 259
+    }
+  ]
+}

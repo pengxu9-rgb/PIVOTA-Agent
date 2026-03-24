@@ -1,0 +1,261 @@
+{
+  "total": 164,
+  "by_status": [
+    [
+      "unknown",
+      142
+    ],
+    [
+      "external_fallback_returned",
+      8
+    ],
+    [
+      "external_executor_returned",
+      7
+    ],
+    [
+      "external_executor_empty",
+      6
+    ],
+    [
+      "external_executor_budget_exhausted",
+      1
+    ]
+  ],
+  "by_source": [
+    [
+      "null",
+      142
+    ],
+    [
+      "catalog_partial",
+      17
+    ],
+    [
+      "catalog_miss",
+      5
+    ]
+  ],
+  "by_capture_mode": [
+    [
+      "null",
+      142
+    ],
+    [
+      "sync_external_executor",
+      14
+    ],
+    [
+      "sync_external_fallback",
+      8
+    ]
+  ],
+  "by_ingredient_id": [
+    [
+      "null",
+      142
+    ],
+    [
+      "azelaic_acid",
+      3
+    ],
+    [
+      "zinc_pca",
+      3
+    ],
+    [
+      "ceramide_np",
+      3
+    ],
+    [
+      "sunscreen_filters",
+      3
+    ],
+    [
+      "salicylic_acid",
+      3
+    ],
+    [
+      "benzoyl_peroxide",
+      2
+    ],
+    [
+      "ascorbic_acid",
+      2
+    ],
+    [
+      "glycerin",
+      2
+    ],
+    [
+      "retinol",
+      1
+    ]
+  ],
+  "by_reason": [
+    [
+      "no_candidates",
+      44
+    ],
+    [
+      "blacklisted_category_or_title",
+      36
+    ],
+    [
+      "heuristic_relevance_reject",
+      31
+    ],
+    [
+      "ingredient_plan_v2_external_fallback",
+      22
+    ],
+    [
+      "product_url_missing",
+      14
+    ],
+    [
+      "low_confidence",
+      12
+    ],
+    [
+      "non_skincare_category",
+      4
+    ],
+    [
+      "single_llm_relevance_reject",
+      1
+    ]
+  ],
+  "sample": [
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "Calm Recovery Serum",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "product_url_missing",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 775,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "Barrier Relief Moisturizer",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "product_url_missing",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 1308,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "Night Retinol Emulsion",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "product_url_missing",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 594,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "Azelaic Support Cream",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "product_url_missing",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 717,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "daily face sunscreen",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "blacklisted_category_or_title",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 12,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "UV filters skincare product best",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "blacklisted_category_or_title",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 1820,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "soothing serum",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "heuristic_relevance_reject",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 2,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "barrier repair serum",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "heuristic_relevance_reject",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 4,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "spf 50 sunscreen",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "blacklisted_category_or_title",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 3,
+      "candidate_url": ""
+    },
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "query_sample": "broad spectrum sunscreen",
+      "source": "",
+      "status": "unknown",
+      "capture_mode": "",
+      "last_reason": "heuristic_relevance_reject",
+      "failure_reason": "",
+      "rejected_reason": "",
+      "seen_count": 3,
+      "candidate_url": ""
+    }
+  ]
+}
