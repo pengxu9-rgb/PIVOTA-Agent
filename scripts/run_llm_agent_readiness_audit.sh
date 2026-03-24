@@ -150,7 +150,11 @@ if [[ -f "${BACKEND_REPO}/scripts/run_agent_rollout_gate.sh" ]]; then
     bash -lc "cd '${BACKEND_REPO}' && bash ./scripts/run_agent_rollout_gate.sh"
 fi
 
-if [[ -f "${ACP_REPO}/tests/test_agent_control_plane_contract.py" ]]; then
+if [[ -f "${ACP_REPO}/scripts/run_control_plane_contract_gate.sh" ]]; then
+  run_step \
+    "acp_control_plane_contract_gate_local" \
+    bash -lc "cd '${ACP_REPO}' && bash ./scripts/run_control_plane_contract_gate.sh"
+elif [[ -f "${ACP_REPO}/tests/test_agent_control_plane_contract.py" ]]; then
   run_step \
     "acp_control_plane_contract_gate_local" \
     bash -lc "cd '${ACP_REPO}' && python3 -m pytest tests/test_agent_governance_contract.py tests/test_agent_control_plane_contract.py tests/test_runtime_interface_drift.py tests/test_agent_rollout_contract.py tests/test_agent_docs_runtime.py tests/test_route_uniqueness.py -q"
@@ -171,7 +175,7 @@ agent_prod_commit="$(probe_agent_service_version)"
   echo "| --- | --- | --- | --- | --- | ---: | --- |"
   echo "| Agent canonical | \`${AGENT_CANONICAL_REPO}\` | \`$(repo_branch "${AGENT_CANONICAL_REPO}")\` | \`$(repo_head "${AGENT_CANONICAL_REPO}")\` | \`$(repo_origin_main "${AGENT_CANONICAL_REPO}")\` | $(repo_dirty_count "${AGENT_CANONICAL_REPO}") | shopping gate tracked: $(path_tracked_in_origin "${AGENT_CANONICAL_REPO}" ".github/workflows/shopping-search-release-gate.yml") |"
   echo "| Backend canonical | \`${BACKEND_REPO}\` | \`$(repo_branch "${BACKEND_REPO}")\` | \`$(repo_head "${BACKEND_REPO}")\` | \`$(repo_origin_main "${BACKEND_REPO}")\` | $(repo_dirty_count "${BACKEND_REPO}") | rollout gate tracked: $(path_tracked_in_origin "${BACKEND_REPO}" "scripts/run_agent_rollout_gate.sh") |"
-  echo "| ACP canonical | \`${ACP_REPO}\` | \`$(repo_branch "${ACP_REPO}")\` | \`$(repo_head "${ACP_REPO}")\` | \`$(repo_origin_main "${ACP_REPO}")\` | $(repo_dirty_count "${ACP_REPO}") | control-plane tests tracked: $(path_tracked_in_origin "${ACP_REPO}" "tests/test_agent_control_plane_contract.py") |"
+  echo "| ACP canonical | \`${ACP_REPO}\` | \`$(repo_branch "${ACP_REPO}")\` | \`$(repo_head "${ACP_REPO}")\` | \`$(repo_origin_main "${ACP_REPO}")\` | $(repo_dirty_count "${ACP_REPO}") | control-plane gate tracked: $(path_tracked_in_origin "${ACP_REPO}" "scripts/run_control_plane_contract_gate.sh") |"
   echo "| Catalog canonical | \`${CATALOG_REPO}\` | \`$(repo_branch "${CATALOG_REPO}")\` | \`$(repo_head "${CATALOG_REPO}")\` | \`$(repo_origin_main "${CATALOG_REPO}")\` | $(repo_dirty_count "${CATALOG_REPO}") | n/a |"
   echo
   echo "## Production Truth"
@@ -234,7 +238,7 @@ agent_prod_commit="$(probe_agent_service_version)"
   if [[ "$(path_tracked_in_origin "${BACKEND_REPO}" "scripts/run_agent_rollout_gate.sh")" != "yes" ]]; then
     backend_contract_ok="red"
   fi
-  if [[ "$(path_tracked_in_origin "${ACP_REPO}" "tests/test_agent_control_plane_contract.py")" != "yes" ]]; then
+  if [[ "$(path_tracked_in_origin "${ACP_REPO}" "scripts/run_control_plane_contract_gate.sh")" != "yes" ]]; then
     acp_ok="amber"
   fi
 
@@ -243,22 +247,22 @@ agent_prod_commit="$(probe_agent_service_version)"
   echo "- checkout / payment aftercare: ${payment_ok}"
   echo "  - blocker: payment-aftercare gate regression if not green."
   echo "- backend docs / runtime contracts: ${backend_contract_ok}"
-  echo "  - blocker: backend rollout gate is currently local-only and not tracked in origin/main."
+  echo "  - blocker: none if green; otherwise inspect backend rollout gate failures."
   echo "- dispute / operations workflow: ${backend_contract_ok}"
-  echo "  - blocker: same backend rollout gate; current local candidate has known docs/SLA drift failures."
+  echo "  - blocker: none if green; otherwise inspect backend rollout gate failures."
   echo "- ACP control-plane: ${acp_ok}"
-  echo "  - blocker: local gate passes, but clean merged-main tracking is incomplete if amber."
+  echo "  - blocker: none if green; otherwise inspect ACP control-plane gate coverage or merged-main tracking."
   echo "- deploy provenance / workflow gates: ${provenance_ok}"
-  echo "  - blocker: shopping release workflow missing from agent origin/main until this branch merges."
+  echo "  - blocker: none if green; otherwise verify public service_version and release workflow tracking."
   echo "- catalog-intelligence / ingredient pipeline readiness: ${catalog_ok}"
   echo "  - blocker: no clean-main automated gate wired into this audit yet."
   echo
   echo "## Next Fixes"
   echo
-  echo "1. Merge the agent shopping search release workflow and skincare smoke assets."
-  echo "2. Upstream backend rollout gate files from local canonical repo into a clean branch, then fix the current docs title and PCS dashboard SLA drift."
-  echo "3. Upstream ACP control-plane contract test stack from local canonical repo into a clean branch to remove local-only ambiguity."
-  echo "4. Keep production smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
+  echo "1. Add catalog-intelligence clean-main gates to this audit so ingredient pipeline readiness is measured, not assumed."
+  echo "2. Add a stable backend public build/version surface equivalent to agent service_version."
+  echo "3. Reduce backend/ACP deprecation warnings so green gates are also clean gates."
+  echo "4. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
 } >"${REPORT_MD}"
 
 STEPS_TSV="${RUN_DIR}/steps.tsv"
