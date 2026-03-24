@@ -40,6 +40,8 @@ The audit writes a timestamped report under `reports/llm-agent-infra-readiness/`
 - canonical repo inventory under `~/dev`
 - branch / HEAD / `origin/main` drift
 - dirty worktree counts
+- agent public `service_version`
+- backend public `/__build` or `/health` `version` surface
 - shopping search targeted regressions
 - production skincare smoke
 - backend payment-aftercare gate
@@ -51,3 +53,10 @@ The audit writes a timestamped report under `reports/llm-agent-infra-readiness/`
 - `green`: verified with passing tests or production smoke
 - `amber`: present but incomplete, local-only, or missing a merged-main gate
 - `red`: failing contract or known cross-repo disconnect
+
+## Provenance Standard
+
+Deploy provenance is only `green` when both of these are true:
+
+- the public agent gateway returns a non-empty `metadata.service_version.commit`
+- the public backend returns a non-empty `version.commit` and canonical `version.service=pivota-backend`
