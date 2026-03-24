@@ -305,12 +305,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
 
   test('prefetches external seed candidates for strict ingredient queries and forwards them to shopping invoke', async () => {
     process.env.DATABASE_URL = 'postgres://test';
+    let capturedPrefetchSql = null;
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
         if (!text.includes('FROM external_product_seeds')) {
           return { rows: [] };
         }
+        capturedPrefetchSql = text;
         return {
           rows: [
             {
@@ -408,6 +410,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         external_seed_id: 'seed_fenty_refill',
       }),
     );
+    expect(capturedPrefetchSql).toContain("reviewed_ingredient_ids");
+    expect(capturedPrefetchSql).toContain("ingredient_ids");
   });
 
   test('treats hyaluronic serum as a strict ingredient query', async () => {
