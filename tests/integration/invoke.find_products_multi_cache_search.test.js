@@ -1042,7 +1042,13 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     const externalSupplement = nock('http://pivota.test')
       .get('/agent/v1/products/search')
-      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '') === 'serum')
+      .query(
+        (q) =>
+          String(q.merchant_id || '') === 'external_seed' &&
+          String(q.query || '')
+            .toLowerCase()
+            .includes('serum'),
+      )
       .reply(200, {
         status: 'success',
         success: true,
@@ -1090,21 +1096,21 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search');
+    expect(resp.body.metadata?.query_source).toBe('cache_cross_merchant_search_supplemented');
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect((resp.body.products || []).some((item) => /serum/i.test(String(item?.title || '')))).toBe(true);
     expect((resp.body.products || []).every((item) => !/\bbrush\b/i.test(String(item?.title || '')))).toBe(true);
-    expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(
+    expect((resp.body.products || []).some((item) => String(item?.merchant_id || '') === 'external_seed')).toBe(
       true,
     );
-    expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBe(0);
+    expect(resp.body.metadata?.source_breakdown?.external_seed_count).toBeGreaterThan(0);
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
       expect.objectContaining({
         beauty_query_bucket: 'skincare',
         cache_query_mode: 'raw_first',
         internal_filtered_irrelevant_count: expect.any(Number),
         supplement: expect.objectContaining({
-          applied: false,
+          applied: true,
         }),
       }),
     );
@@ -1125,7 +1131,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     ).toBe(0);
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement).toEqual(
       expect.objectContaining({
-        applied: false,
+        applied: true,
       }),
     );
     expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_validation).toEqual(
@@ -1137,7 +1143,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(
       resp.body.metadata?.route_debug?.cross_merchant_cache?.supplement?.query_variants || [],
     ).not.toEqual(expect.arrayContaining(['perfume', 'fragrance', 'parfum']));
-    expect(externalSupplement.isDone()).toBe(false);
+    expect(externalSupplement.isDone()).toBe(true);
   });
 
   test('public source=search serum contract stays internal-first and emits cache-stage diagnostics', async () => {
@@ -1260,7 +1266,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
   });
 
-  test('serum cache preference helper replaces external-only upstream with internal skincare cache', async () => {
+  test('serum cache preference helper keeps upstream when internal preference is disabled', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -1279,8 +1285,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(decision).toEqual(
       expect.objectContaining({
         evaluated: true,
-        decision: 'replace_with_cache',
-        reason: 'prefer_internal_skincare_cache_over_external_only_upstream',
+        decision: 'keep_upstream',
+        reason: 'internal_preference_disabled',
       }),
     );
   });

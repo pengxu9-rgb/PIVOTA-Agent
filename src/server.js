@@ -4356,8 +4356,8 @@ function decideGenericSkincareCachePreference({
 
   return {
     evaluated,
-    decision: 'replace_with_cache',
-    reason: 'prefer_internal_skincare_cache_over_external_only_upstream',
+    decision: 'keep_upstream',
+    reason: 'internal_preference_disabled',
     beauty_bucket: effectiveBeautyBucket || null,
     cache_internal_count: cacheInternalProducts.length,
     upstream_external_only: upstreamExternalOnly,
@@ -9554,8 +9554,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
   const baseVariants = buildBrandQueryVariants(queryText, brandTerms);
   const guidanceVariants = buildGuidanceRecallSupplementQueries(queryText, guidanceContext);
   const fragranceVariants =
-    !hasFragranceFreeSkincareSignal(queryText) &&
-    (/\b(perfume|fragrance|parfum|cologne)\b/i.test(queryText) || hasExplicitCategory)
+    !hasFragranceFreeSkincareSignal(queryText) && hasFragranceSearchSignal(queryText)
       ? ['perfume', 'fragrance', 'parfum', 'cologne', 'body mist', 'eau de parfum']
       : [];
   const queryVariants = Array.from(
@@ -21970,10 +21969,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               )
             : internalProductsForRecall;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
-          const preferInternalSpecificBeautyCache =
-            cacheBeautyQueryProfile?.isSpecificBeautyQuery === true &&
-            cacheBeautyQueryProfile?.bucket === 'skincare' &&
-            internalProductsAfterAnchor.length > 0;
+          // Let generic skincare category queries mix internal cache hits with
+          // relevant external seed supplement instead of forcing an internal-only lane.
+          const preferInternalSpecificBeautyCache = false;
           const cacheUiSurface = normalizeSearchUiSurface(
             metadata?.ui_surface ||
               effectivePayload?.metadata?.ui_surface ||
