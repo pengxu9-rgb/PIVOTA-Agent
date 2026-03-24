@@ -78,6 +78,11 @@ const SKINCARE_ALLOW_PATTERNS = [
   /\bpatches?\b/i,
 ];
 
+const INGREDIENT_LED_SOLUTION_PATTERNS = [
+  /\b(salicylic acid|azelaic acid|benzoyl peroxide|hyaluronic acid|niacinamide|retinol|vitamin c)\b/i,
+  /\bsolution\b/i,
+];
+
 const NON_SKINCARE_BLOCK_PATTERNS = [
   /\bblush\b/i,
   /\bbronzer?\b/i,
@@ -242,6 +247,10 @@ function classifyIngredientScope(row, candidate) {
 
   if (SKINCARE_ALLOW_PATTERNS.some((pattern) => pattern.test(haystack))) {
     return { decision: 'allow', reason: 'skincare_signals_present' };
+  }
+
+  if (INGREDIENT_LED_SOLUTION_PATTERNS.every((pattern) => pattern.test(haystack))) {
+    return { decision: 'allow', reason: 'ingredient_led_solution' };
   }
 
   return { decision: 'review', reason: 'missing_explicit_skincare_signals' };
