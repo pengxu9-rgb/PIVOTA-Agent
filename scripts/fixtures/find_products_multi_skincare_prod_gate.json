@@ -1,0 +1,129 @@
+[
+  {
+    "id": "skincare_generic_serum_prod",
+    "family": "generic_skincare_category",
+    "query": "serum",
+    "source": "search",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "query_source",
+      "service_version.commit",
+      "source_breakdown"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Truth Serum",
+      "Vitamin-C Serum",
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill"
+    ]
+  },
+  {
+    "id": "skincare_strict_niacinamide_serum_prod",
+    "family": "strict_ingredient",
+    "query": "niacinamide serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ],
+    "must_not_return_titles": [
+      "Winona Soothing Repair Serum"
+    ]
+  },
+  {
+    "id": "skincare_strict_vitamin_c_serum_prod",
+    "family": "strict_ingredient",
+    "query": "vitamin c serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum"
+    ]
+  },
+  {
+    "id": "skincare_strict_vitamin_c_serum_budget_eur_prod",
+    "family": "strict_ingredient_budget",
+    "query": "vitamin c serum under €30",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "budget_fx_applied",
+      "budget_fx_rate",
+      "budget_fx_source"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint",
+      "budget_fx_applied": true,
+      "budget_fx_candidate_currency": "USD",
+      "budget_fx_unresolved": false
+    },
+    "must_return_one_of_titles": [
+      "Vitamin-C Serum"
+    ]
+  },
+  {
+    "id": "skincare_strict_vitamin_c_serum_budget_usd_prod",
+    "family": "strict_ingredient_budget",
+    "query": "vitamin c serum under $30",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint"
+    },
+    "must_return_one_of_titles": [
+      "Vitamin-C Serum"
+    ]
+  }
+]

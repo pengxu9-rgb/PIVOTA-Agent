@@ -22,6 +22,8 @@ function parseArgs(argv) {
       String(process.env.SEARCH_MATRIX_EVAL_MODE || '').trim().toLowerCase() === 'true',
     evalHeader: process.env.SEARCH_MATRIX_EVAL_HEADER || 'X-Eval',
     evalHeaderValue: process.env.SEARCH_MATRIX_EVAL_HEADER_VALUE || '1',
+    failOnGateFailures:
+      String(process.env.SEARCH_MATRIX_FAIL_ON_GATE_FAILURES || '').trim().toLowerCase() === 'true',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -37,6 +39,7 @@ function parseArgs(argv) {
     if (token === '--eval-mode') args.evalMode = true;
     if (token === '--eval-header' && next) args.evalHeader = String(next);
     if (token === '--eval-header-value' && next) args.evalHeaderValue = String(next);
+    if (token === '--fail-on-gate-failures') args.failOnGateFailures = true;
   }
   return args;
 }
@@ -762,8 +765,17 @@ async function main() {
   ].join('\n');
   fs.writeFileSync(mdPath, md, 'utf8');
 
+  const result = {
+    ok: !(args.failOnGateFailures && gateFailureCount > 0),
+    summary,
+    json: jsonPath,
+    markdown: mdPath,
+  };
   // eslint-disable-next-line no-console
-  console.log(JSON.stringify({ ok: true, summary, json: jsonPath, markdown: mdPath }, null, 2));
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.ok) {
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {
