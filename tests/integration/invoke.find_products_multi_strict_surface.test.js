@@ -508,6 +508,55 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('treats salicylic serum as a strict ingredient query', async () => {
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['salicylic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'salicylic serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.payload?.search).toEqual(
+      expect.objectContaining({
+        query: 'salicylic serum',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+      }),
+    );
+  });
+
   test('filters prefetched external seed candidates that lack target surface anchors', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     jest.doMock('../../src/db', () => ({

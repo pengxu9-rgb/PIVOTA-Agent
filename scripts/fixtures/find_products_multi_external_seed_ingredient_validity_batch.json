@@ -205,5 +205,23 @@
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     }
+  },
+  {
+    "id": "external_parser_salicylic_serum_gap",
+    "family": "query_parse_gap",
+    "query": "salicylic serum",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    }
   }
 ]

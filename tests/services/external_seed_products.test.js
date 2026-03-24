@@ -202,7 +202,7 @@ describe('externalSeedProducts helper', () => {
     expect(product.ingredient_ids).toEqual(['niacinamide', 'zinc_pca']);
   });
 
-  test('normalizes hyaluronic and peptide aliases onto canonical ingredient ids', () => {
+  test('normalizes hyaluronic, peptide, and salicylic aliases onto canonical ingredient ids', () => {
     const row = {
       id: 'eps_multi_alias_1',
       canonical_url: 'https://example.com/p/hydrating-peptide-serum',
@@ -210,7 +210,7 @@ describe('externalSeedProducts helper', () => {
       title: 'Hydrating Peptide Serum',
       seed_data: {
         category: 'Serum',
-        reviewed_ingredient_ids: ['Hyaluronic', 'sodium hyaluronate', 'Copper Peptide', 'peptides'],
+        reviewed_ingredient_ids: ['Hyaluronic', 'sodium hyaluronate', 'Copper Peptide', 'peptides', 'Salicylic'],
         snapshot: {
           canonical_url: 'https://example.com/p/hydrating-peptide-serum',
           title: 'Hydrating Peptide Serum',
@@ -220,6 +220,6 @@ describe('externalSeedProducts helper', () => {
     };
 
     const product = buildExternalSeedProduct(row);
-    expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'peptides']);
+    expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'peptides', 'salicylic_acid']);
   });
 });

@@ -997,7 +997,7 @@ const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
   }),
   salicylic_acid: Object.freeze({
     display_name: 'Salicylic Acid',
-    aliases: ['salicylic acid', 'bha'],
+    aliases: ['salicylic acid', 'salicylic', 'bha'],
     expected_step_families: ['serum', 'treatment', 'cleanser'],
   }),
   zinc_pca: Object.freeze({
