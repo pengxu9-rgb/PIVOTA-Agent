@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-03-24T10:28:54.213Z",
+  "tranche": "missing_catalog_product_target_collection_top7",
+  "completed": [
+    {
+      "query_sample": "Barrier Relief Moisturizer",
+      "status": "confirmed_and_inserted",
+      "target_brand": "The Formularx",
+      "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+      "extract_artifact": "output/brand-expansion-20260324/upstream-manifest/barrier-relief-extract-live-20260324.json",
+      "seed_id": "eps_9c9c09996a8c94753b0a50b8",
+      "external_product_id": "ext_5d0b6c48510de26f2e8753aa"
+    }
+  ],
+  "pending": [
+    {
+      "query_sample": "Calm Recovery Serum",
+      "normalized_query": "calm recovery serum",
+      "seen_count": 775,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    },
+    {
+      "query_sample": "Azelaic Support Cream",
+      "normalized_query": "azelaic support cream",
+      "seen_count": 717,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    },
+    {
+      "query_sample": "Night Retinol Emulsion",
+      "normalized_query": "night retinol emulsion",
+      "seen_count": 594,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    },
+    {
+      "query_sample": "Balance Niacinamide Gel",
+      "normalized_query": "balance niacinamide gel",
+      "seen_count": 384,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    },
+    {
+      "query_sample": "Daily Bright C Serum",
+      "normalized_query": "daily bright c serum",
+      "seen_count": 356,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    },
+    {
+      "query_sample": "Refine BHA Lotion",
+      "normalized_query": "refine bha lotion",
+      "seen_count": 79,
+      "primary_reason": "product_url_missing",
+      "operator_lane": "create_explicit_product_target",
+      "recommended_action": "collect official PDP target and create/attach explicit seed",
+      "status": "pending_manual_target_collection"
+    }
+  ]
+}

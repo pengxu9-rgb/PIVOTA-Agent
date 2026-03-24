@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-03-24T10:26:02.563Z",
+  "input_path": "/Users/pengchydan/dev/_wt_pivota_agent_pdp_brand_expansion_20260323/output/brand-expansion-20260324/upstream-manifest/barrier-relief-seed-creation-manifest-20260324.json",
+  "summary": {
+    "mode": "dry_run",
+    "database_available": false,
+    "scanned": 1,
+    "inserted": 0,
+    "skipped_existing": 0,
+    "would_insert": 0,
+    "would_insert_unverified": 1,
+    "invalid": 0,
+    "requires_seed_correction_count": 0
+  },
+  "correction_followups": [],
+  "items": [
+    {
+      "ingredient_id": "",
+      "ingredient_name": "",
+      "seed_id": "eps_9c9c09996a8c94753b0a50b8",
+      "external_product_id": "ext_5d0b6c48510de26f2e8753aa",
+      "status": "would_insert_unverified",
+      "requires_seed_correction": false,
+      "ingredient_writeback_source": "title_url_anchor",
+      "seed_structured_ingredient_status": "present",
+      "seed_kb_sync_status": "seed_only",
+      "runtime_ingredient_evidence_source": "seed_structured_fields"
+    }
+  ]
+}

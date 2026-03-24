@@ -1,0 +1,244 @@
+{
+  "generated_at": "2026-03-24T10:23:48.409Z",
+  "source_summary": "/Users/pengchydan/dev/_wt_pivota_agent_pdp_brand_expansion_20260323/output/brand-expansion-20260324/upstream-manifest/barrier-relief-seed-creation-summary-20260324.json",
+  "item_count": 1,
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "The Formularx",
+      "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+      "extract_status": "usable",
+      "seed_row": {
+        "ingredient_id": null,
+        "ingredient_name": null,
+        "seed_id": "eps_9c9c09996a8c94753b0a50b8",
+        "brand": "The Formularx",
+        "market": "US",
+        "tool": "creator_agents",
+        "status": "active",
+        "domain": "theformularx.com",
+        "external_product_id": "ext_5d0b6c48510de26f2e8753aa",
+        "canonical_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+        "destination_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+        "title": "Barrier Relief Lightweight Ceramide  Moisturizer with Niacinamide",
+        "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+        "price_amount": 594,
+        "price_currency": "USD",
+        "availability": "in_stock",
+        "attached_product_key": null,
+        "requires_seed_correction": false,
+        "seed_data": {
+          "brand": "The Formularx",
+          "title": "Barrier Relief Lightweight Ceramide  Moisturizer with Niacinamide",
+          "description": "",
+          "external_product_id": "ext_5d0b6c48510de26f2e8753aa",
+          "canonical_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+          "destination_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+          "price_amount": 594,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+          "image_urls": [
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+            "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+          ],
+          "images": [
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+            "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+            "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+          ],
+          "variants": [
+            {
+              "sku": "BR-M-50",
+              "variant_id": "46181109203180",
+              "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+              "option_name": "Size",
+              "option_value": "50g",
+              "price": "594",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+                "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+              ]
+            },
+            {
+              "sku": "BR-M-100",
+              "variant_id": "46181109235948",
+              "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+              "option_name": "Size",
+              "option_value": "100g",
+              "price": "721",
+              "currency": "USD",
+              "stock": "In Stock",
+              "description": "",
+              "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+              "image_urls": [
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+                "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+                "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+              ]
+            }
+          ],
+          "snapshot": {
+            "source": "catalog_intelligence_seed_creation_manifest",
+            "extracted_at": "2026-03-24T10:23:48.408Z",
+            "canonical_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+            "destination_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+            "title": "Barrier Relief Lightweight Ceramide  Moisturizer with Niacinamide",
+            "description": "",
+            "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+              "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+            ],
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+              "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+              "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+            ],
+            "variants": [
+              {
+                "sku": "BR-M-50",
+                "variant_id": "46181109203180",
+                "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+                "option_name": "Size",
+                "option_value": "50g",
+                "price": "594",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+                  "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+                ]
+              },
+              {
+                "sku": "BR-M-100",
+                "variant_id": "46181109235948",
+                "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+                "option_name": "Size",
+                "option_value": "100g",
+                "price": "721",
+                "currency": "USD",
+                "stock": "In Stock",
+                "description": "",
+                "image_url": "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+                "image_urls": [
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/Final_-_Marketplace_Barrier_Relief_Catalogue_3.png?v=1762428608",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_brighten_skin_control_acne_and_reduce_skin_sensitivity.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_to_repair_damaged_skin_barrier.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_with_Niacinamide_for_sensitive_skin.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer_niacinamide_hyaluronic_acid_ceramides_colloidal_oat.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_Barrier_Relief_Lightweight_Ceramide_Moisturizer._Non-sticky_non-comedogenic_non-greasy.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_-_Dermatologist_trusted_Best_Moisturizer_brand_for_sensitive_skin_with_focus_on_skin_barrier.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_better_than_korean_moisturizers.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_made_by_scientists_and_trusted_by_dermatologists_for_sensitive_skin.png?v=1766567934",
+                  "https://cdn.shopify.com/s/files/1/0536/3931/5624/files/The_Formularx_barrier_relief_ceramide_moisturizer_50g_and_100g.png?v=1762428608",
+                  "https://theformularx.com/cdn/shop/files/The_Formularx_barrier_relief_lightweight_ceramide_moisturizer_100g.png?v=1762428608&width=1920"
+                ]
+              }
+            ],
+            "diagnostics": {
+              "requested_domain": "theformularx.com",
+              "resolved_base_url": "https://theformularx.com",
+              "discovery_strategy": "shopify_json",
+              "failure_category": null,
+              "block_provider": null,
+              "http_trace": [
+                {
+                  "url": "https://theformularx.com/products/barrier-relief-moisturizer.js",
+                  "status": 200
+                },
+                {
+                  "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+                  "status": 200
+                },
+                {
+                  "url": "https://theformularx.com/",
+                  "status": 200
+                },
+                {
+                  "url": "https://theformularx.com/products/barrier-relief-moisturizer",
+                  "status": 200
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

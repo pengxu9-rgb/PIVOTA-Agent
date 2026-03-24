@@ -362,7 +362,7 @@ async function main() {
 
   const results = databaseAvailable
     ? await processManifestWithDb(manifest, mode)
-    : processManifestWithoutDb(manifest);
+    : await processManifestWithoutDb(manifest);
   const output = {
     generated_at: new Date().toISOString(),
     input_path: inputPath,

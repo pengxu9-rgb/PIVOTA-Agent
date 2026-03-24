@@ -1,0 +1,51 @@
+{
+  "resolved": false,
+  "product_ref": null,
+  "confidence": 0.23,
+  "reason": "low_confidence",
+  "candidates": [
+    {
+      "product_ref": {
+        "product_id": "9886499864904",
+        "merchant_id": "merch_efbc46b4619cfbdf"
+      },
+      "title": "The Ordinary Niacinamide 10% + Zinc 1%",
+      "score": 0.23
+    }
+  ],
+  "normalized_query": "barrier relief moisturizer",
+  "metadata": {
+    "lang": "en",
+    "timeout_ms": 2500,
+    "latency_ms": 2503,
+    "sources": [
+      {
+        "source": "products_cache",
+        "ok": true,
+        "count": 1
+      },
+      {
+        "source": "products_cache_global",
+        "ok": true,
+        "count": 1
+      },
+      {
+        "source": "agent_search_global",
+        "ok": false,
+        "reason": "upstream_timeout",
+        "attempts": 1
+      }
+    ],
+    "prefer_merchants": [
+      "merch_208139f7600dbf42",
+      "merch_efbc46b4619cfbdf"
+    ],
+    "allow_external_seed": true,
+    "external_seed_strategy": "unified_relevance",
+    "resolve_reason_code": "no_candidates",
+    "view_details_external_seed_enabled": true,
+    "view_details_external_seed_strategy": "unified_relevance",
+    "view_details_timeout_ms": 2500
+  },
+  "reason_code": "no_candidates"
+}

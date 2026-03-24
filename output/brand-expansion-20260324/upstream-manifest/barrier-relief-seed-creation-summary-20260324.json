@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-03-24T10:23:22.485Z",
+  "item_count": 1,
+  "items": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "target_brand": "The Formularx",
+      "target_url": "https://theformularx.com/products/barrier-relief-moisturizer",
+      "extract_status": "usable",
+      "safe_to_create_seed": true,
+      "artifact_path": "output/brand-expansion-20260324/upstream-manifest/barrier-relief-extract-live-20260324.json"
+    }
+  ]
+}
