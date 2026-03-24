@@ -2,7 +2,17 @@
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const http = require('node:http');
+const https = require('node:https');
 const path = require('node:path');
+
+const MARKET_GUARDRAIL = Object.freeze({
+  US: {
+    countryPatterns: [/\bindia\b/i, /\bnoida\b/i, /\buttar pradesh\b/i],
+    currencyPatterns: [/₹/i, /\bINR\b/i, /\bRs\.?\s*\d/gi],
+    phonePatterns: [/\+91[-\s]?\d{6,}/i],
+  },
+});
 
 function parseArgs(argv) {
   const out = { summaryPath: '', outPath: '' };
@@ -34,6 +44,14 @@ function ensureObject(value) {
 function normalizeHttpUrl(value) {
   const next = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(next) ? next : '';
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = normalizeNonEmptyString(value);
+    if (normalized) return normalized;
+  }
+  return '';
 }
 
 function isLikelyProductImageUrl(value) {
@@ -84,6 +102,162 @@ function collectImageUrls(...sources) {
     }
   }
   return out.slice(0, 12);
+}
+
+function uniqueNormalizedMatches(html, patterns) {
+  const out = [];
+  const source = String(html || '');
+  for (const pattern of patterns || []) {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    const nextPattern = new RegExp(pattern.source, flags);
+    for (const match of source.matchAll(nextPattern)) {
+      const value = normalizeNonEmptyString(match?.[0]);
+      if (!value || out.includes(value)) continue;
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+function buildSnippet(html, token) {
+  const source = String(html || '');
+  const needle = normalizeNonEmptyString(token);
+  if (!source || !needle) return '';
+  const idx = source.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx === -1) return '';
+  const start = Math.max(0, idx - 120);
+  const end = Math.min(source.length, idx + needle.length + 120);
+  return source.slice(start, end).replace(/\s+/g, ' ').trim();
+}
+
+function fetchHtml(url, redirects = 0) {
+  const normalizedUrl = normalizeHttpUrl(url);
+  if (!normalizedUrl) return Promise.resolve({ ok: false, final_url: '', html: '', error: 'missing_url' });
+  if (redirects > 3) {
+    return Promise.resolve({ ok: false, final_url: normalizedUrl, html: '', error: 'too_many_redirects' });
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const onDone = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    let parsed;
+    try {
+      parsed = new URL(normalizedUrl);
+    } catch {
+      onDone({ ok: false, final_url: normalizedUrl, html: '', error: 'invalid_url' });
+      return;
+    }
+
+    const transport = parsed.protocol === 'http:' ? http : https;
+    const req = transport.get(
+      normalizedUrl,
+      {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (Codex seed creation guardrail)',
+          accept: 'text/html,application/xhtml+xml',
+        },
+      },
+      (res) => {
+        const statusCode = Number(res.statusCode || 0);
+        const location = normalizeNonEmptyString(res.headers?.location);
+        if (statusCode >= 300 && statusCode < 400 && location) {
+          const redirectUrl = new URL(location, normalizedUrl).toString();
+          res.resume();
+          fetchHtml(redirectUrl, redirects + 1).then(onDone);
+          return;
+        }
+
+        const chunks = [];
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          if (typeof chunk === 'string' && chunks.join('').length < 1024 * 1024) {
+            chunks.push(chunk);
+          }
+        });
+        res.on('end', () => {
+          onDone({
+            ok: statusCode >= 200 && statusCode < 300,
+            final_url: normalizedUrl,
+            html: chunks.join(''),
+            status_code: statusCode,
+          });
+        });
+      },
+    );
+
+    req.setTimeout(8000, () => {
+      req.destroy(new Error('timeout'));
+    });
+    req.on('error', (error) => {
+      onDone({
+        ok: false,
+        final_url: normalizedUrl,
+        html: '',
+        error: normalizeNonEmptyString(error?.message || error),
+      });
+    });
+  });
+}
+
+function detectMarketSignalMismatch({ market, html, url }) {
+  const profile = MARKET_GUARDRAIL[normalizeNonEmptyString(market).toUpperCase()];
+  if (!profile) return null;
+  const source = String(html || '');
+  if (!source) return null;
+
+  const countryMatches = uniqueNormalizedMatches(source, profile.countryPatterns);
+  const currencyMatches = uniqueNormalizedMatches(source, profile.currencyPatterns);
+  const phoneMatches = uniqueNormalizedMatches(source, profile.phonePatterns);
+  if (countryMatches.length === 0 && currencyMatches.length === 0 && phoneMatches.length === 0) return null;
+
+  const firstSignal = firstNonEmpty(countryMatches[0], currencyMatches[0], phoneMatches[0]);
+  return {
+    rejection_reason: 'market_signal_mismatch',
+    evidence: {
+      market: normalizeNonEmptyString(market).toUpperCase(),
+      target_url: normalizeHttpUrl(url),
+      country_matches: countryMatches,
+      currency_matches: currencyMatches,
+      phone_matches: phoneMatches,
+      html_snippet: buildSnippet(source, firstSignal),
+    },
+  };
+}
+
+async function buildMarketGuardrailDecision(item, extractDoc, seedRow) {
+  const market = normalizeNonEmptyString(seedRow?.market || item?.market || 'US').toUpperCase() || 'US';
+  const targetUrl =
+    normalizeHttpUrl(item?.target_url) ||
+    normalizeHttpUrl(seedRow?.canonical_url) ||
+    normalizeHttpUrl(seedRow?.destination_url);
+  if (!targetUrl) return { blocked: false, market, checked: false, reason: 'missing_target_url' };
+
+  const page = await fetchHtml(targetUrl);
+  if (!page.ok || !page.html) {
+    return {
+      blocked: false,
+      market,
+      checked: false,
+      reason: page.error || `status_${page.status_code || 0}`,
+    };
+  }
+
+  const mismatch = detectMarketSignalMismatch({ market, html: page.html, url: page.final_url || targetUrl });
+  if (!mismatch) {
+    return { blocked: false, market, checked: true, reason: null };
+  }
+  return {
+    blocked: true,
+    market,
+    checked: true,
+    reason: mismatch.rejection_reason,
+    evidence: mismatch.evidence,
+  };
 }
 
 function stableExternalProductId(url) {
@@ -228,7 +402,7 @@ function buildSeedRow(item, extractDoc) {
   };
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
   const summaryPath = normalizePath(args.summaryPath);
   if (!summaryPath) throw new Error('Missing required --summary <extract-summary.json>');
@@ -236,6 +410,7 @@ function main() {
   const summary = JSON.parse(fs.readFileSync(resolvedSummary, 'utf8'));
   const items = Array.isArray(summary?.items) ? summary.items : [];
   const manifestItems = [];
+  const rejectedItems = [];
   for (const item of items) {
     if (!item?.safe_to_create_seed) continue;
     const artifactPath = normalizePath(item?.artifact_path);
@@ -244,6 +419,19 @@ function main() {
     const extractDoc = JSON.parse(fs.readFileSync(resolvedArtifact, 'utf8'));
     const seedRow = buildSeedRow(item, extractDoc);
     if (!seedRow) continue;
+    const guardrail = await buildMarketGuardrailDecision(item, extractDoc, seedRow);
+    if (guardrail.blocked) {
+      rejectedItems.push({
+        ingredient_id: item.ingredient_id || null,
+        ingredient_name: item.ingredient_name || null,
+        target_brand: item.target_brand || null,
+        target_url: item.target_url || null,
+        extract_status: item.extract_status || null,
+        rejection_reason: guardrail.reason || 'market_signal_mismatch',
+        rejection_evidence: guardrail.evidence || null,
+      });
+      continue;
+    }
     manifestItems.push({
       ingredient_id: item.ingredient_id || null,
       ingredient_name: item.ingredient_name || null,
@@ -258,7 +446,9 @@ function main() {
     generated_at: new Date().toISOString(),
     source_summary: resolvedSummary,
     item_count: manifestItems.length,
+    rejected_count: rejectedItems.length,
     items: manifestItems,
+    rejected_items: rejectedItems,
   };
   const output = `${JSON.stringify(outputDoc, null, 2)}\n`;
   process.stdout.write(output);
@@ -269,10 +459,25 @@ function main() {
   }
 }
 
-try {
-  main();
-  process.exit(0);
-} catch (error) {
-  process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
-  process.exit(1);
+if (require.main === module) {
+  main()
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      process.stderr.write(`${error && error.stack ? error.stack : String(error)}\n`);
+      process.exit(1);
+    });
 }
+
+module.exports = {
+  _internals: {
+    parseArgs,
+    normalizeHttpUrl,
+    parsePrice,
+    buildSeedRow,
+    fetchHtml,
+    detectMarketSignalMismatch,
+    buildMarketGuardrailDecision,
+  },
+};
