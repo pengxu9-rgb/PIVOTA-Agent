@@ -106,6 +106,9 @@ const SKINCARE_REVIEW_PATTERNS = [
   /\btint\b/i,
 ];
 
+const DESCRIPTION_SECTION_STOP_RE =
+  /(?:^|\n)\s*(?:how to use|details?|benefits?|recommended use|application|directions|product dimensions?|package dimensions?|shade(?:s)? available)\b[\s:]/i;
+
 function extractRawIngredientText(description) {
   const text = normalizeNonEmptyString(description);
   if (!text) return '';
@@ -113,10 +116,25 @@ function extractRawIngredientText(description) {
   const labeledMatch =
     text.match(/ingredients and safety:\s*([\s\S]+)$/i) ||
     text.match(/ingredients?\s*:\s*([\s\S]+)$/i);
-  if (!labeledMatch) return '';
+  if (labeledMatch) {
+    const raw = normalizeNonEmptyString(labeledMatch[1]);
+    if (raw) {
+      return raw
+        .replace(/\n{3,}/g, '\n\n')
+        .slice(0, 4000);
+    }
+  }
 
-  const raw = normalizeNonEmptyString(labeledMatch[1]);
+  const headingMatch = text.match(/(?:^|\n)\s*ingredients(?:\s+and\s+safety)?\s*\n+([\s\S]+)$/i);
+  if (!headingMatch) return '';
+
+  let raw = normalizeNonEmptyString(headingMatch[1]);
   if (!raw) return '';
+
+  const stopMatch = raw.match(DESCRIPTION_SECTION_STOP_RE);
+  if (stopMatch && typeof stopMatch.index === 'number' && stopMatch.index > 0) {
+    raw = normalizeNonEmptyString(raw.slice(0, stopMatch.index));
+  }
 
   return raw
     .replace(/\n{3,}/g, '\n\n')

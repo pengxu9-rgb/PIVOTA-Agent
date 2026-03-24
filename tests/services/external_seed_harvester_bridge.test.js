@@ -56,6 +56,24 @@ describe('externalSeedHarvesterBridge', () => {
     );
   });
 
+  test('extracts raw ingredient text from uppercase header blocks without colon labels', () => {
+    const description = [
+      'Brighten up your complexion with this illuminating pressed powder highlighter.',
+      'HOW TO USE',
+      'Apply to high points of the face.',
+      'DETAILS',
+      'Product Dimensions: 64mm x 15mm x 64mm',
+      'Package Dimensions: 67mm x 17mm x 67mm',
+      'INGREDIENTS',
+      'Moonbeam: Mica, Caprylic/Capric Triglyceride, Triethylhexanoin.',
+      'Sunset: Mica, Silica, Tocopheryl Acetate.',
+    ].join('\n');
+
+    expect(extractRawIngredientText(description)).toBe(
+      'Moonbeam: Mica, Caprylic/Capric Triglyceride, Triethylhexanoin.\nSunset: Mica, Silica, Tocopheryl Acetate.',
+    );
+  });
+
   test('prefers PDP ingredient-class fields over generic description fallback', () => {
     const row = {
       id: 'eps_rare_spf',
