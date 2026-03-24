@@ -409,4 +409,184 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       }),
     );
   });
+
+  test('treats hyaluronic serum as a strict ingredient query', async () => {
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['hyaluronic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hyaluronic serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.payload?.search).toEqual(
+      expect.objectContaining({
+        query: 'hyaluronic serum',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+      }),
+    );
+  });
+
+  test('treats peptide serum as a strict ingredient query', async () => {
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['peptides'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'peptide serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.payload?.search).toEqual(
+      expect.objectContaining({
+        query: 'peptide serum',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+      }),
+    );
+  });
+
+  test('filters prefetched external seed candidates that lack target surface anchors', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_bad_hyaluronic',
+              market: 'US',
+              tool: '*',
+              destination_url: 'https://ole.example/products/banana-bright-vitamin-c-serum',
+              canonical_url: 'https://ole.example/products/banana-bright-vitamin-c-serum',
+              domain: 'ole.example',
+              title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+              image_url: 'https://cdn.example/banana-bright.jpg',
+              price_amount: 70,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+                description: 'Seed contains hyaluronic acid in reviewed ingredients but no target title anchor.',
+                category: 'Serum',
+                reviewed_ingredient_ids: ['ascorbic_acid', 'hyaluronic_acid'],
+                variants: [],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-24T00:00:00Z',
+              updated_at: '2026-03-24T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['hyaluronic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hyaluronic acid serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.metadata?.external_seed_candidates).toBeUndefined();
+    expect(capturedBody?.metadata?.external_seed_prefetch_source).toBeUndefined();
+  });
 });

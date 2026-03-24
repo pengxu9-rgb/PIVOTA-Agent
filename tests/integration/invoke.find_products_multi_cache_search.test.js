@@ -546,7 +546,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '').includes('copper peptides serum') &&
+          String(q.query || '').includes('repair serum') &&
           String(q.search_all_merchants || '') === 'true' &&
           String(q.fast_mode || '') === 'true' &&
           String(q.allow_stale_cache || '') === 'false'
@@ -557,9 +557,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         success: true,
         products: [
           {
-            product_id: 'cp_1',
+            product_id: 'repair_serum_1',
             merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Copper Peptide Serum',
+            title: 'Barrier Repair Serum',
             status: 'active',
           },
         ],
@@ -573,7 +573,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'copper peptides serum',
+            query: 'repair serum',
             page: 1,
             limit: 10,
             in_stock_only: true,

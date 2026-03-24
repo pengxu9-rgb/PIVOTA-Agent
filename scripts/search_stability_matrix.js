@@ -575,6 +575,23 @@ async function main() {
   const nonEmptyCount = classified.filter((row) => row.metrics.productCount > 0).length;
   const clarifyCount = classified.filter((row) => row.metrics.clarifyTriggered).length;
   const gateFailureCount = classified.filter((row) => !row.gate.passed).length;
+  const strictPrecisionFailureCount = classified.filter(
+    (row) => row.family === 'external_false_positive_sentinel' && !row.gate.passed,
+  ).length;
+  const strictParserGapCount = classified.filter(
+    (row) => row.family === 'query_parse_gap' && !row.gate.passed,
+  ).length;
+  const strictCoverageGapCount = classified.filter(
+    (row) => row.family === 'external_coverage_gap' && row.metrics.strictEmpty,
+  ).length;
+  const falsePositiveTitleCount = classified.reduce(
+    (count, row) =>
+      count +
+      (Array.isArray(row.gate.reasons)
+        ? row.gate.reasons.filter((reason) => String(reason || '').startsWith('forbidden_title:')).length
+        : 0),
+    0,
+  );
   const perQueryClass = {};
   const perCase = {};
 
@@ -638,6 +655,10 @@ async function main() {
     non_empty_rate: total ? nonEmptyCount / total : 0,
     clarify_rate: total ? clarifyCount / total : 0,
     gate_failure_rate: total ? gateFailureCount / total : 0,
+    strict_precision_failure_rate: total ? strictPrecisionFailureCount / total : 0,
+    strict_parser_gap_rate: total ? strictParserGapCount / total : 0,
+    strict_coverage_gap_rate: total ? strictCoverageGapCount / total : 0,
+    false_positive_title_count: falsePositiveTitleCount,
     per_query_class: perQueryClass,
     cases: cases.map((item) => ({
       id: item.id,
@@ -715,6 +736,10 @@ async function main() {
     `- non_empty_rate: ${summary.non_empty_rate.toFixed(4)}`,
     `- clarify_rate: ${summary.clarify_rate.toFixed(4)}`,
     `- gate_failure_rate: ${summary.gate_failure_rate.toFixed(4)}`,
+    `- strict_precision_failure_rate: ${summary.strict_precision_failure_rate.toFixed(4)}`,
+    `- strict_parser_gap_rate: ${summary.strict_parser_gap_rate.toFixed(4)}`,
+    `- strict_coverage_gap_rate: ${summary.strict_coverage_gap_rate.toFixed(4)}`,
+    `- false_positive_title_count: ${summary.false_positive_title_count}`,
     '',
     '| metric | value |',
     '|---|---:|',
@@ -726,6 +751,10 @@ async function main() {
     `| non_empty_count | ${nonEmptyCount} |`,
     `| clarify_count | ${clarifyCount} |`,
     `| gate_failure_count | ${gateFailureCount} |`,
+    `| strict_precision_failure_count | ${strictPrecisionFailureCount} |`,
+    `| strict_parser_gap_count | ${strictParserGapCount} |`,
+    `| strict_coverage_gap_count | ${strictCoverageGapCount} |`,
+    `| false_positive_title_count | ${falsePositiveTitleCount} |`,
     '',
     '## Per Query Class',
     '',

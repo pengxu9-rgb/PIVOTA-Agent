@@ -934,23 +934,93 @@ function getRequestedCatalogSurface({ search = {}, metadata = {} } = {}) {
     .toLowerCase();
 }
 
-const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES = Object.freeze({
-  'ascorbic acid': 'ascorbic_acid',
-  'azelaic acid': 'azelaic_acid',
-  'benzoyl peroxide': 'benzoyl_peroxide',
-  ceramide: 'ceramide_np',
-  ceramides: 'ceramide_np',
-  'ceramide np': 'ceramide_np',
-  glycerin: 'glycerin',
-  glycerine: 'glycerin',
-  'hyaluronic acid': 'hyaluronic_acid',
-  niacinamide: 'niacinamide',
-  panthenol: 'panthenol',
-  retinol: 'retinol',
-  'salicylic acid': 'salicylic_acid',
-  'vitamin c': 'ascorbic_acid',
-  'zinc pca': 'zinc_pca',
+const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
+  ascorbic_acid: Object.freeze({
+    display_name: 'Vitamin C',
+    aliases: ['ascorbic acid', 'vitamin c', 'l ascorbic acid'],
+    expected_step_families: ['serum', 'treatment'],
+  }),
+  azelaic_acid: Object.freeze({
+    display_name: 'Azelaic Acid',
+    aliases: ['azelaic acid', 'azelaic'],
+    expected_step_families: ['serum', 'treatment', 'cream'],
+  }),
+  benzoyl_peroxide: Object.freeze({
+    display_name: 'Benzoyl Peroxide',
+    aliases: ['benzoyl peroxide', 'benzoyl', 'bpo'],
+    expected_step_families: ['treatment', 'cleanser', 'gel'],
+  }),
+  ceramide_np: Object.freeze({
+    display_name: 'Ceramide NP',
+    aliases: ['ceramide', 'ceramides', 'ceramide np'],
+    expected_step_families: ['serum', 'moisturizer'],
+  }),
+  glycerin: Object.freeze({
+    display_name: 'Glycerin',
+    aliases: ['glycerin', 'glycerine'],
+    expected_step_families: ['serum', 'moisturizer'],
+  }),
+  hyaluronic_acid: Object.freeze({
+    display_name: 'Hyaluronic Acid',
+    aliases: ['hyaluronic acid', 'hyaluronic', 'hyaluron', 'sodium hyaluronate'],
+    expected_step_families: ['serum', 'moisturizer'],
+  }),
+  niacinamide: Object.freeze({
+    display_name: 'Niacinamide',
+    aliases: ['niacinamide', 'nicotinamide', 'vitamin b3'],
+    expected_step_families: ['serum', 'treatment'],
+  }),
+  panthenol: Object.freeze({
+    display_name: 'Panthenol',
+    aliases: ['panthenol', 'vitamin b5', 'provitamin b5', 'b5'],
+    expected_step_families: ['serum', 'moisturizer'],
+  }),
+  peptides: Object.freeze({
+    display_name: 'Peptides',
+    aliases: [
+      'peptide',
+      'peptides',
+      'multi peptide',
+      'multi-peptide',
+      'copper peptide',
+      'copper peptides',
+      'tripeptide',
+      'tetrapeptide',
+      'hexapeptide',
+    ],
+    expected_step_families: ['serum', 'treatment'],
+  }),
+  retinol: Object.freeze({
+    display_name: 'Retinol',
+    aliases: ['retinol', 'retinoid', 'vitamin a'],
+    expected_step_families: ['serum', 'treatment', 'cream'],
+  }),
+  salicylic_acid: Object.freeze({
+    display_name: 'Salicylic Acid',
+    aliases: ['salicylic acid', 'bha'],
+    expected_step_families: ['serum', 'treatment', 'cleanser'],
+  }),
+  zinc_pca: Object.freeze({
+    display_name: 'Zinc PCA',
+    aliases: ['zinc pca', 'zinc'],
+    expected_step_families: ['serum', 'treatment'],
+  }),
 });
+
+const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES).flatMap(([ingredientId, profile]) => {
+      const aliases = [
+        ingredientId.replace(/_/g, ' '),
+        ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
+      ];
+      return aliases
+        .map((term) => normalizeSearchTextForMatch(term))
+        .filter(Boolean)
+        .map((term) => [term, ingredientId]);
+    }),
+  ),
+);
 
 const STRICT_FIND_PRODUCTS_MULTI_SHADE_CATEGORY_TERMS = Object.freeze([
   'foundation',
@@ -992,7 +1062,7 @@ function extractStrictFindProductsMultiIngredientIntents(queryText, beautyQueryP
   }
   const intents = [];
   for (const [term, ingredientId] of Object.entries(STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_ALIASES)) {
-    if (!normalizedQuery.includes(normalizeSearchTextForMatch(term))) continue;
+    if (!normalizedQuery.includes(term)) continue;
     if (!intents.includes(ingredientId)) intents.push(ingredientId);
   }
   return intents;
@@ -1167,6 +1237,43 @@ function productMatchesStrictIngredientPrefetch(
     return false;
   }
 
+  if (ingredientIntents.length > 0) {
+    const surfaceText = normalizeSearchTextForMatch(
+      [
+        product.title,
+        product.product_type,
+        product.category,
+        product.canonical_url,
+        product.destination_url,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    const resolvedStepFamilies = STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS.filter((term) =>
+      surfaceText.includes(normalizeSearchTextForMatch(term)),
+    );
+    for (const ingredientId of ingredientIntents) {
+      const profile = STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES[ingredientId] || null;
+      const targetTerms = [
+        ingredientId.replace(/_/g, ' '),
+        ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
+      ]
+        .map((term) => normalizeSearchTextForMatch(term))
+        .filter(Boolean);
+      const targetSurfaceAnchor = targetTerms.some((term) => surfaceText.includes(term));
+      const expectedStepFamilies =
+        profile && Array.isArray(profile.expected_step_families)
+          ? profile.expected_step_families.map((value) => normalizeSearchTextForMatch(value)).filter(Boolean)
+          : [];
+      const stepFamilyMismatch =
+        expectedStepFamilies.length > 0 &&
+        resolvedStepFamilies.length > 0 &&
+        !expectedStepFamilies.some((value) => resolvedStepFamilies.includes(value));
+      if (stepFamilyMismatch) return false;
+      if (!targetSurfaceAnchor) return false;
+    }
+  }
+
   return true;
 }
 
@@ -1191,7 +1298,13 @@ async function prefetchStrictIngredientExternalSeedCandidates({
   const queryText = String(rawQueryText || search?.query || '').trim();
   const categoryIntents = extractStrictFindProductsMultiSkincareCategoryIntents(queryText);
   const textTerms = [
-    ...ingredientIntents.map((value) => value.replace(/_/g, ' ')),
+    ...ingredientIntents.flatMap((value) => {
+      const profile = STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES[value] || null;
+      return [
+        value.replace(/_/g, ' '),
+        ...((profile && Array.isArray(profile.aliases)) ? profile.aliases : []),
+      ];
+    }),
     ...(categoryIntents.length > 0 ? categoryIntents : STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS),
   ];
 

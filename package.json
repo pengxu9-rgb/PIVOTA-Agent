@@ -31,6 +31,7 @@
     "probe:search:stability": "node scripts/search_stability_matrix.js",
     "smoke:search:skincare:prod": "bash scripts/smoke_find_products_multi_skincare_prod.sh",
     "audit:search:external-ingredient-validity": "bash scripts/audit_find_products_multi_external_seed_ingredient_validity.sh",
+    "audit:search:external-ingredient-coverage": "node scripts/audit_external_seed_ingredient_coverage.js",
     "audit:readiness:llm-agent": "bash scripts/run_llm_agent_readiness_audit.sh",
     "obs:snapshot:export": "node scripts/export_observability_snapshot.js",
     "probe:route:prod": "node scripts/probe_prod_route_chain.js",
