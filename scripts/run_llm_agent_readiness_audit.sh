@@ -242,6 +242,12 @@ run_step \
   "backend_payment_aftercare_gate_local" \
   bash -lc "cd '${BACKEND_REPO}' && bash ./scripts/run_payment_aftercare_gate.sh"
 
+if [[ -f "${CATALOG_REPO}/scripts/run_catalog_intelligence_gate.sh" ]]; then
+  run_step \
+    "catalog_intelligence_gate_local" \
+    bash -lc "cd '${CATALOG_REPO}' && bash ./scripts/run_catalog_intelligence_gate.sh"
+fi
+
 if [[ -f "${BACKEND_REPO}/scripts/run_agent_rollout_gate.sh" ]]; then
   run_step \
     "backend_rollout_gate_local_candidate" \
@@ -283,7 +289,7 @@ backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_pa
   echo "| Agent canonical | \`${AGENT_CANONICAL_REPO}\` | \`$(repo_branch "${AGENT_CANONICAL_REPO}")\` | \`$(repo_head "${AGENT_CANONICAL_REPO}")\` | \`$(repo_origin_main "${AGENT_CANONICAL_REPO}")\` | $(repo_dirty_count "${AGENT_CANONICAL_REPO}") | shopping gate tracked: $(path_tracked_in_origin "${AGENT_CANONICAL_REPO}" ".github/workflows/shopping-search-release-gate.yml") |"
   echo "| Backend canonical | \`${BACKEND_REPO}\` | \`$(repo_branch "${BACKEND_REPO}")\` | \`$(repo_head "${BACKEND_REPO}")\` | \`$(repo_origin_main "${BACKEND_REPO}")\` | $(repo_dirty_count "${BACKEND_REPO}") | rollout gate tracked: $(path_tracked_in_origin "${BACKEND_REPO}" "scripts/run_agent_rollout_gate.sh") |"
   echo "| ACP canonical | \`${ACP_REPO}\` | \`$(repo_branch "${ACP_REPO}")\` | \`$(repo_head "${ACP_REPO}")\` | \`$(repo_origin_main "${ACP_REPO}")\` | $(repo_dirty_count "${ACP_REPO}") | control-plane gate tracked: $(path_tracked_in_origin "${ACP_REPO}" "scripts/run_control_plane_contract_gate.sh") |"
-  echo "| Catalog canonical | \`${CATALOG_REPO}\` | \`$(repo_branch "${CATALOG_REPO}")\` | \`$(repo_head "${CATALOG_REPO}")\` | \`$(repo_origin_main "${CATALOG_REPO}")\` | $(repo_dirty_count "${CATALOG_REPO}") | n/a |"
+  echo "| Catalog canonical | \`${CATALOG_REPO}\` | \`$(repo_branch "${CATALOG_REPO}")\` | \`$(repo_head "${CATALOG_REPO}")\` | \`$(repo_origin_main "${CATALOG_REPO}")\` | $(repo_dirty_count "${CATALOG_REPO}") | catalog gate tracked: $(path_tracked_in_origin "${CATALOG_REPO}" "scripts/run_catalog_intelligence_gate.sh") |"
   echo
   echo "## Production Truth"
   echo
@@ -344,6 +350,12 @@ backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_pa
       if [[ "${STEP_NAMES[$i]}" == "acp_control_plane_contract_gate_local" && "${STEP_STATUSES[$i]}" == "fail" ]]; then
         acp_ok="red"
       fi
+      if [[ "${STEP_NAMES[$i]}" == "catalog_intelligence_gate_local" && "${STEP_STATUSES[$i]}" == "pass" ]]; then
+        catalog_ok="green"
+      fi
+      if [[ "${STEP_NAMES[$i]}" == "catalog_intelligence_gate_local" && "${STEP_STATUSES[$i]}" == "fail" ]]; then
+        catalog_ok="red"
+      fi
     done
   fi
 
@@ -359,6 +371,11 @@ backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_pa
   if [[ "$(path_tracked_in_origin "${ACP_REPO}" "scripts/run_control_plane_contract_gate.sh")" != "yes" ]]; then
     acp_ok="amber"
   fi
+  if [[ "$(path_tracked_in_origin "${CATALOG_REPO}" "scripts/run_catalog_intelligence_gate.sh")" != "yes" ]]; then
+    if [[ "${catalog_ok}" == "green" ]]; then
+      catalog_ok="amber"
+    fi
+  fi
 
   echo "- shopping commerce retrieval: ${shopping_ok}"
   echo "  - blocker: none if green; otherwise inspect search smoke or agent search regression logs."
@@ -373,14 +390,14 @@ backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_pa
   echo "- deploy provenance / workflow gates: ${provenance_ok}"
   echo "  - blocker: none if green; otherwise verify public service_version and release workflow tracking."
   echo "- catalog-intelligence / ingredient pipeline readiness: ${catalog_ok}"
-  echo "  - blocker: no clean-main automated gate wired into this audit yet."
+  echo "  - blocker: none if green; otherwise inspect catalog gate failures or merged-main tracking."
   echo
   echo "## Next Fixes"
   echo
-  echo "1. Add catalog-intelligence clean-main gates to this audit so ingredient pipeline readiness is measured, not assumed."
-  echo "2. Reduce backend/ACP deprecation warnings so green gates are also clean gates."
-  echo "3. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
-  echo "4. Keep backend public version probing wired into readiness and release workflows so deploy provenance stays two-sided."
+  echo "1. Reduce backend/ACP/catalog deprecation warnings so green gates are also clean gates."
+  echo "2. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
+  echo "3. Keep backend public version probing wired into readiness and release workflows so deploy provenance stays two-sided."
+  echo "4. Keep catalog-intelligence gate aligned with real extract/harvester drift so ingredient readiness does not silently regress."
 } >"${REPORT_MD}"
 
 STEPS_TSV="${RUN_DIR}/steps.tsv"
