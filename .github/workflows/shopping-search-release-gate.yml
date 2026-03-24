@@ -1,0 +1,77 @@
+name: Shopping Search Release Gate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/server.js"
+      - "src/findProductsMulti/**"
+      - "src/services/externalSeedProducts.js"
+      - "src/services/externalSeedHarvesterBridge.js"
+      - "scripts/search_stability_matrix.js"
+      - "scripts/smoke_find_products_multi_skincare_prod.sh"
+      - "scripts/verify_deployed_commit_matches.sh"
+      - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
+      - ".github/workflows/shopping-search-release-gate.yml"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Public agent base URL"
+        required: false
+        default: "https://agent.pivota.cc"
+      wait_for_commit:
+        description: "Wait for deployed commit to match this workflow commit"
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: shopping-search-release-gate
+  cancel-in-progress: true
+
+jobs:
+  prod_smoke:
+    name: Production Search Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Verify deployed commit
+        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Run skincare production smoke gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" \
+          VERIFY_DEPLOY=0 \
+          TIMEOUT_MS=25000 \
+          ROUNDS=1 \
+          OUT_DIR="reports/search-prod-skincare-release-gate" \
+          bash scripts/smoke_find_products_multi_skincare_prod.sh
+
+      - name: Upload smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopping-search-release-gate
+          path: reports/search-prod-skincare-release-gate
+          if-no-files-found: error
