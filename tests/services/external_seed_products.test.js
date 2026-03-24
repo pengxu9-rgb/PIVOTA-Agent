@@ -201,4 +201,25 @@ describe('externalSeedProducts helper', () => {
     const product = buildExternalSeedProduct(row);
     expect(product.ingredient_ids).toEqual(['niacinamide', 'zinc_pca']);
   });
+
+  test('normalizes hyaluronic and peptide aliases onto canonical ingredient ids', () => {
+    const row = {
+      id: 'eps_multi_alias_1',
+      canonical_url: 'https://example.com/p/hydrating-peptide-serum',
+      destination_url: 'https://example.com/p/hydrating-peptide-serum',
+      title: 'Hydrating Peptide Serum',
+      seed_data: {
+        category: 'Serum',
+        reviewed_ingredient_ids: ['Hyaluronic', 'sodium hyaluronate', 'Copper Peptide', 'peptides'],
+        snapshot: {
+          canonical_url: 'https://example.com/p/hydrating-peptide-serum',
+          title: 'Hydrating Peptide Serum',
+          variants: [],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'peptides']);
+  });
 });
