@@ -1,42 +1,91 @@
 name: Shopping Search Release Gate
 
 on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL for production smoke"
+        required: false
+        default: "https://agent.pivota.cc"
+      wait_for_commit:
+        description: "Wait for deployed service_version.commit to match this workflow commit"
+        type: boolean
+        required: false
+        default: true
   push:
     branches:
       - main
     paths:
-      - "src/server.js"
-      - "src/findProductsMulti/**"
-      - "src/services/externalSeedProducts.js"
-      - "src/services/externalSeedHarvesterBridge.js"
+      - ".github/workflows/shopping-search-release-gate.yml"
+      - "package.json"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/verify_deployed_commit_matches.sh"
       - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
-      - ".github/workflows/shopping-search-release-gate.yml"
-  workflow_dispatch:
-    inputs:
-      base_url:
-        description: "Public agent base URL"
-        required: false
-        default: "https://agent.pivota.cc"
-      wait_for_commit:
-        description: "Wait for deployed commit to match this workflow commit"
-        type: boolean
-        required: false
-        default: true
+      - "src/server.js"
+      - "src/findProductsMulti/**"
+      - "src/services/externalSeedProducts.js"
+      - "src/services/externalSeedHarvesterBridge.js"
+      - "tests/find_products_multi_policy.test.js"
+      - "tests/integration/invoke.find_products_multi_cache_search.test.js"
+      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+      - "tests/services/external_seed_products.test.js"
+      - "tests/services/external_seed_harvester_bridge.test.js"
 
 concurrency:
   group: shopping-search-release-gate
   cancel-in-progress: true
 
 jobs:
-  prod_smoke:
-    name: Production Search Smoke
+  unit:
+    name: Shopping Search Unit + Contract Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify release source
+        shell: bash
+        env:
+          EXPECTED_REPO_NAME: PIVOTA-Agent
+          ALLOWED_BRANCH_REGEX: "^main$"
+        run: |
+          bash scripts/verify_release_source.sh
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Static script checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/server.js
+          node --check scripts/search_stability_matrix.js
+          bash -n scripts/smoke_find_products_multi_skincare_prod.sh
+          bash -n scripts/verify_deployed_commit_matches.sh
+
+      - name: Search regressions
+        run: |
+          npx jest --runInBand \
+            tests/integration/invoke.find_products_multi_cache_search.test.js \
+            tests/integration/invoke.find_products_multi_strict_surface.test.js \
+            tests/services/external_seed_products.test.js \
+            tests/services/external_seed_harvester_bridge.test.js \
+            tests/find_products_multi_policy.test.js
+
+  runtime_smoke:
+    name: Shopping Search Runtime Smoke
+    runs-on: ubuntu-latest
+    needs: [unit]
     env:
-      BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+      BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,14 +99,14 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Verify deployed commit
+      - name: Verify deployed commit via service_version
         if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
 
-      - name: Run skincare production smoke gate
+      - name: Production skincare smoke
         shell: bash
         run: |
           set -euo pipefail
