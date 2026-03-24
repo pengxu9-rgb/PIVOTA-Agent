@@ -78,7 +78,7 @@ const STEP_PATTERNS = Object.freeze([
   {
     step: 'treatment',
     patterns: [
-      /\b(treatment|spot treatment|retinol|retinoid|acid treatment|bha|aha|blemish treatment|acne treatment)\b/i,
+      /\b(treatment|spot treatment|retinol|retinoid|acid treatment|bha|aha|blemish treatment|acne treatment|exfoliator|exfoliating treatment|liquid exfoliant|resurfacing treatment)\b/i,
       /功效/,
       /祛痘/,
       /刷酸/,
@@ -178,6 +178,8 @@ const EXACT_ALIAS_MAP = Object.freeze({
   sunblock: 'sunscreen',
   mask: 'mask',
   treatment: 'treatment',
+  exfoliator: 'treatment',
+  'liquid exfoliant': 'treatment',
   oil: 'oil',
   面霜: 'moisturizer',
   保湿霜: 'moisturizer',
