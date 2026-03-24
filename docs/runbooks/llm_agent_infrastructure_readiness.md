@@ -23,6 +23,7 @@ Readiness conclusions must distinguish:
 
 - Aurora BFF release gate: `.github/workflows/aurora-bff-release-gate.yml`
 - Shopping search release gate: `.github/workflows/shopping-search-release-gate.yml`
+- Catalog intelligence release gate: `.github/workflows/catalog-intelligence-release-gate.yml`
 - Production skincare smoke: `scripts/smoke_find_products_multi_skincare_prod.sh`
 
 ## Audit Entry Point
@@ -43,6 +44,7 @@ The audit writes a timestamped report under `reports/llm-agent-infra-readiness/`
 - agent public `service_version`
 - backend public `/__build` or `/health` `version` surface
 - shopping search targeted regressions
+- catalog-intelligence clean-main gate
 - production skincare smoke
 - backend payment-aftercare gate
 - backend rollout gate candidate, when present locally
