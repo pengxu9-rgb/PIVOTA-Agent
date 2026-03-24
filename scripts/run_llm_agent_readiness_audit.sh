@@ -394,7 +394,7 @@ backend_prod_probe_path="$(json_field "${backend_public_version_json}" "probe_pa
   echo
   echo "## Next Fixes"
   echo
-  echo "1. Reduce backend/ACP/catalog deprecation warnings so green gates are also clean gates."
+  echo "1. Keep backend/ACP/catalog gates warning-free so future readiness runs fail on new hygiene drift instead of normalizing it."
   echo "2. Keep production shopping smoke as a required release gate for any search, ingredient, budget FX, or external parity changes."
   echo "3. Keep backend public version probing wired into readiness and release workflows so deploy provenance stays two-sided."
   echo "4. Keep catalog-intelligence gate aligned with real extract/harvester drift so ingredient readiness does not silently regress."
