@@ -114,4 +114,35 @@ describe('build_aurora_external_seed_creation_manifest', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('does not block on country-only footer market directory links', async () => {
+    const { server, url } = await startServer(`
+      <html>
+        <body>
+          <footer>
+            <div>ASIA</div>
+            <a href="http://paulaschoice.in">India</a>
+            <a href="http://paulaschoice.tw">Taiwan</a>
+          </footer>
+          <div>Regular price $35.00</div>
+        </body>
+      </html>
+    `);
+
+    try {
+      const item = {
+        ingredient_id: null,
+        ingredient_name: null,
+        target_brand: "Paula's Choice",
+        target_url: url,
+        extract_status: 'usable',
+      };
+      const extractDoc = makeExtractDoc(url, { price: '35.00', currency: 'USD' });
+      const seedRow = buildSeedRow(item, extractDoc);
+      const guardrail = await buildMarketGuardrailDecision(item, extractDoc, seedRow);
+      expect(guardrail.blocked).toBe(false);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

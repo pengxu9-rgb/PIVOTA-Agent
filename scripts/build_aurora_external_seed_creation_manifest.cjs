@@ -214,6 +214,12 @@ function detectMarketSignalMismatch({ market, html, url }) {
   const currencyMatches = uniqueNormalizedMatches(source, profile.currencyPatterns);
   const phoneMatches = uniqueNormalizedMatches(source, profile.phonePatterns);
   if (countryMatches.length === 0 && currencyMatches.length === 0 && phoneMatches.length === 0) return null;
+  const signalBuckets =
+    (countryMatches.length > 0 ? 1 : 0) +
+    (currencyMatches.length > 0 ? 1 : 0) +
+    (phoneMatches.length > 0 ? 1 : 0);
+  const hasStrongMarketSignal = currencyMatches.length > 0 || phoneMatches.length > 0;
+  if (!hasStrongMarketSignal && signalBuckets < 2) return null;
 
   const firstSignal = firstNonEmpty(countryMatches[0], currencyMatches[0], phoneMatches[0]);
   return {
