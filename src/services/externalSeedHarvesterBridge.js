@@ -106,6 +106,10 @@ const SKINCARE_REVIEW_PATTERNS = [
   /\btint\b/i,
 ];
 
+const STRONG_ACTIVE_SOLUTION_ALLOW_PATTERNS = [
+  /\b(salicylic acid|salicylic|azelaic acid|retinol|retinoid|niacinamide|benzoyl peroxide)\b/i,
+];
+
 function extractRawIngredientText(description) {
   const text = normalizeNonEmptyString(description);
   if (!text) return '';
@@ -242,6 +246,12 @@ function classifyIngredientScope(row, candidate) {
 
   if (SKINCARE_ALLOW_PATTERNS.some((pattern) => pattern.test(haystack))) {
     return { decision: 'allow', reason: 'skincare_signals_present' };
+  }
+
+  const hasSolutionSignal = /\bsolution\b/i.test(haystack);
+  const hasStrongActiveSignal = STRONG_ACTIVE_SOLUTION_ALLOW_PATTERNS.some((pattern) => pattern.test(haystack));
+  if (hasSolutionSignal && hasStrongActiveSignal) {
+    return { decision: 'allow', reason: 'strong_active_solution_signal' };
   }
 
   return { decision: 'review', reason: 'missing_explicit_skincare_signals' };

@@ -2,6 +2,14 @@ const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const SKINCARE_CATEGORY_TERMS = Object.freeze(['serum', 'moisturizer', 'cleanser', 'toner']);
+const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
+  'salicylic_acid',
+  'niacinamide',
+  'retinol',
+  'azelaic_acid',
+  'benzoyl_peroxide',
+]);
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -114,6 +122,21 @@ function normalizeIngredientToken(value) {
   return aliases[normalized] || normalized.replace(/\s+/g, '_');
 }
 
+function normalizeSearchTextForMatch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function titleCaseWord(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function appendStructuredIngredientIds(out, raw) {
   if (raw == null) return;
   if (typeof raw === 'string') {
@@ -177,6 +200,39 @@ function collectStructuredIngredientIds(row, seedData, snapshot) {
     appendStructuredIngredientIds(out, candidate);
   }
   return out;
+}
+
+function inferExternalSeedSkincareCategory({
+  explicitCategory,
+  title,
+  description,
+  canonicalUrl,
+  destinationUrl,
+  ingredientIds,
+} = {}) {
+  const explicit = String(explicitCategory || '').trim();
+  if (explicit) return explicit;
+
+  const haystack = normalizeSearchTextForMatch(
+    [title, description, canonicalUrl, destinationUrl].filter(Boolean).join(' '),
+  );
+  if (!haystack) return undefined;
+
+  for (const term of SKINCARE_CATEGORY_TERMS) {
+    if (haystack.includes(term)) return titleCaseWord(term);
+  }
+
+  const normalizedIngredientIds = Array.isArray(ingredientIds)
+    ? ingredientIds.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (
+    haystack.includes('solution') &&
+    normalizedIngredientIds.some((value) => STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS.has(value))
+  ) {
+    return 'Serum';
+  }
+
+  return undefined;
 }
 
 function firstNonEmptyString(...values) {
@@ -629,9 +685,18 @@ function buildExternalSeedProduct(row) {
     snapshot.seed_description_origin,
   );
   const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
-  const category = String(seedData.category || seedData.product?.category || snapshot.category || '').trim() || undefined;
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
+  const category = inferExternalSeedSkincareCategory({
+    explicitCategory: String(
+      seedData.category || seedData.product?.category || snapshot.category || '',
+    ).trim(),
+    title,
+    description,
+    canonicalUrl,
+    destinationUrl,
+    ingredientIds,
+  });
 
   let variants = normalizeSeedVariants(seedData, row);
   let imageUrls = normalizeSeedImageUrls(seedData, row);
@@ -751,6 +816,7 @@ module.exports = {
   ensureJsonObject,
   normalizeSeedAvailability,
   availabilityToInStock,
+  inferExternalSeedSkincareCategory,
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,

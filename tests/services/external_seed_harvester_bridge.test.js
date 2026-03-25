@@ -222,6 +222,21 @@ describe('externalSeedHarvesterBridge', () => {
     );
   });
 
+  test('allows strong active solution skincare candidates into harvester review scope', () => {
+    const solutionRow = {
+      title: 'Salicylic Acid 2% Solution',
+      canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+    };
+    const solutionCandidate = {
+      product_name: 'Salicylic Acid 2% Solution - 769915231731',
+      source_ref:
+        'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html?variant=90f2867a0fd0',
+    };
+    expect(classifyIngredientScope(solutionRow, solutionCandidate)).toEqual(
+      expect.objectContaining({ decision: 'allow', reason: 'strong_active_solution_signal' }),
+    );
+  });
+
   test('excludes gift cards, bundles, and default title candidates from harvester export', () => {
     expect(
       shouldExcludeCandidate({
