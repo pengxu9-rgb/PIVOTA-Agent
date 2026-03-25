@@ -40,6 +40,22 @@ const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const { getState: getRecommendSessionState, saveState: saveRecommendSessionState } = require('./recommend/session');
 const {
+  normalizeSourceToken: normalizeCommerceSourceToken,
+  resolveSourceProfile: resolveCommerceSourceProfile,
+  getDefaultEntryLayerForSource,
+  isPublicSearchSource: isPublicSearchSourceFromProfile,
+  isShoppingAgentSource: isShoppingAgentSourceFromProfile,
+  isAuroraSource: isAuroraSourceFromProfile,
+} = require('./api/gateway/sourceProfiles');
+const {
+  buildCommerceLayerDispatchPlan,
+  dispatchCommerceLayer,
+} = require('./api/gateway/layerDispatcher');
+const {
+  createShoppingContext,
+  validateShoppingContextGrowth,
+} = require('./modules/contracts/shoppingContext');
+const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
   hasFashionConstraintQuerySignal,
@@ -5519,26 +5535,15 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
 }
 
 function normalizeAgentSource(source) {
-  return String(source || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, '-')
-    .replace(/-+/g, '-');
+  return normalizeCommerceSourceToken(source);
 }
 
 function isShoppingSource(source) {
-  const normalized = normalizeAgentSource(source);
-  return (
-    normalized === 'shopping-agent' ||
-    normalized === 'shopping-agent-ui' ||
-    normalized === 'shopping-agent-web' ||
-    normalized === 'shopping-web' ||
-    normalized === 'agent-sdk-fixed-delegate'
-  );
+  return isShoppingAgentSourceFromProfile(source);
 }
 
 function isPublicSearchSource(source) {
-  return normalizeAgentSource(source) === 'search';
+  return isPublicSearchSourceFromProfile(source);
 }
 
 function isCreatorUiSource(source) {
@@ -5565,8 +5570,7 @@ function isResolverFirstCatalogSource(source) {
 }
 
 function isAuroraSource(source) {
-  const normalized = normalizeAgentSource(source);
-  return normalized === 'aurora-chatbox' || normalized === 'aurora-bff';
+  return isAuroraSourceFromProfile(source);
 }
 
 function getProxySearchApiBase(source) {
@@ -27175,6 +27179,12 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   decideGenericSkincareCachePreference,
+  resolveCommerceSourceProfile,
+  getDefaultEntryLayerForSource,
+  buildCommerceLayerDispatchPlan,
+  dispatchCommerceLayer,
+  createShoppingContext,
+  validateShoppingContextGrowth,
   stripExternalSeedStrategyOverride,
   isPublicSearchSource,
   applyShoppingCatalogQueryGuards,
