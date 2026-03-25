@@ -18,6 +18,7 @@ on:
     paths:
       - ".github/workflows/shopping-search-release-gate.yml"
       - "package.json"
+      - "scripts/check_budget_fx_freshness.js"
       - "scripts/search_stability_matrix.js"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
       - "scripts/verify_deployed_commit_matches.sh"
@@ -66,6 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check src/server.js
+          node --check scripts/check_budget_fx_freshness.js
           node --check scripts/search_stability_matrix.js
           bash -n scripts/smoke_find_products_multi_skincare_prod.sh
           bash -n scripts/verify_deployed_commit_matches.sh
@@ -105,6 +107,12 @@ jobs:
         run: |
           set -euo pipefail
           BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Verify budget FX freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node scripts/check_budget_fx_freshness.js --base-url "$BASE_URL" --endpoint /api/gateway --source search
 
       - name: Production skincare smoke
         shell: bash
