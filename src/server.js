@@ -40,21 +40,31 @@ const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const { getState: getRecommendSessionState, saveState: saveRecommendSessionState } = require('./recommend/session');
 const {
-  normalizeSourceToken: normalizeCommerceSourceToken,
   resolveSourceProfile: resolveCommerceSourceProfile,
   getDefaultEntryLayerForSource,
-  isPublicSearchSource: isPublicSearchSourceFromProfile,
-  isShoppingAgentSource: isShoppingAgentSourceFromProfile,
-  isAuroraSource: isAuroraSourceFromProfile,
 } = require('./api/gateway/sourceProfiles');
 const {
   buildCommerceLayerDispatchPlan,
   dispatchCommerceLayer,
 } = require('./api/gateway/layerDispatcher');
 const {
+  normalizeExternalSeedStrategy,
+  stripExternalSeedStrategyOverride,
+  applyFindProductsMultiSourceContract,
+  createSourcePolicyRuntime,
+} = require('./modules/policy/sourcePolicy');
+const {
   createShoppingContext,
   validateShoppingContextGrowth,
 } = require('./modules/contracts/shoppingContext');
+const {
+  uiChatFindLatestScenarioSelection,
+  uiChatFindLatestShoppingIntent,
+  uiChatIsScenarioClarification,
+  uiChatBuildLoopBreakQuery,
+  uiChatBuildLoopBreakRetryArgs,
+  uiChatShouldUseRetryResult,
+} = require('./modules/decisioning/shopping_agent/loopBreak');
 const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
@@ -1795,21 +1805,6 @@ const PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS =
   'false';
 const PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED =
   String(process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED || 'true').toLowerCase() === 'true';
-function normalizeExternalSeedStrategy(value, fallback = 'unified_relevance') {
-  const token = String(value || '')
-    .trim()
-    .toLowerCase();
-  if (token === 'supplement_internal_first') return 'unified_relevance';
-  if (token === 'legacy' || token === 'unified_relevance') return token;
-  return fallback;
-}
-
-function stripExternalSeedStrategyOverride(params = {}) {
-  const next = { ...params };
-  delete next.external_seed_strategy;
-  delete next.externalSeedStrategy;
-  return next;
-}
 const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY_RAW = String(
   process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'unified_relevance',
 )
@@ -1833,6 +1828,29 @@ const PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = (() => {
     'unified_relevance',
   );
 })();
+const {
+  normalizeAgentSource,
+  isShoppingSource,
+  isPublicSearchSource,
+  isCreatorUiSource,
+  isCatalogGuardSource,
+  isResolverFirstCatalogSource,
+  isAuroraSource,
+  getProxySearchApiBase,
+  getAuroraFallbackOverrides,
+  applyShoppingCatalogQueryGuards: applyBaseShoppingCatalogQueryGuards,
+} = createSourcePolicyRuntime({
+  pivotaApiBase: PIVOTA_API_BASE,
+  auroraApiBase: PROXY_SEARCH_AURORA_API_BASE,
+  forceAuroraFastMode: PROXY_SEARCH_AURORA_FORCE_FAST_MODE,
+  disableSkipAfterResolverMiss: PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
+  forceSecondaryFallback: PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
+  forceInvokeFallback: PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
+  auroraAllowExternalSeed: PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED,
+  auroraExternalSeedStrategy: PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY,
+  parseQueryBoolean,
+  firstQueryParamValue,
+});
 const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
   String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
 const PROXY_SEARCH_CREATOR_SCOPE_TO_CONFIG =
@@ -5534,59 +5552,9 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
   return Object.keys(context).length > 0 ? context : null;
 }
 
-function normalizeAgentSource(source) {
-  return normalizeCommerceSourceToken(source);
-}
-
-function isShoppingSource(source) {
-  return isShoppingAgentSourceFromProfile(source);
-}
-
-function isPublicSearchSource(source) {
-  return isPublicSearchSourceFromProfile(source);
-}
-
-function isCreatorUiSource(source) {
-  return normalizeAgentSource(source) === 'creator-agent-ui';
-}
-
-function isCatalogGuardSource(source) {
-  const normalized = normalizeAgentSource(source);
-  return (
-    isShoppingSource(source) ||
-    normalized === 'creator-agent' ||
-    normalized === 'creator-agent-ui' ||
-    (PROXY_SEARCH_AURORA_FORCE_FAST_MODE && isAuroraSource(source))
-  );
-}
-
 function shouldApplyFindProductsMultiPolicyForQuery({ intent, rawQuery, responseMetadata }) {
   if (intent) return true;
   return hasFashionConstraintQuerySignal(rawQuery, responseMetadata);
-}
-
-function isResolverFirstCatalogSource(source) {
-  return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
-}
-
-function isAuroraSource(source) {
-  return isAuroraSourceFromProfile(source);
-}
-
-function getProxySearchApiBase(source) {
-  if (isAuroraSource(source) && PROXY_SEARCH_AURORA_API_BASE) return PROXY_SEARCH_AURORA_API_BASE;
-  return PIVOTA_API_BASE;
-}
-
-function getAuroraFallbackOverrides(source, operation) {
-  const isAurora = isAuroraSource(source) && String(operation || '').trim() === 'find_products_multi';
-  return {
-    active: isAurora,
-    strategySource: isAurora ? 'aurora_force_path' : 'default',
-    disableSkipAfterResolverMiss: isAurora && PROXY_SEARCH_AURORA_DISABLE_SKIP_AFTER_RESOLVER_MISS,
-    forceSecondaryFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK,
-    forceInvokeFallback: isAurora && PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK,
-  };
 }
 
 const GUIDANCE_ONLY_UI_SURFACE = 'ingredient_plan_guidance_only';
@@ -5849,39 +5817,15 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
       : {};
-  if (isPublicSearchSource(source)) {
-    return stripExternalSeedStrategyOverride(params);
-  }
+  if (isPublicSearchSource(source)) return applyBaseShoppingCatalogQueryGuards(params, source);
   if (!isCatalogGuardSource(source)) return params;
-  const isAurora = isAuroraSource(source);
+  const guardedBase = applyBaseShoppingCatalogQueryGuards(params, source);
   const guidanceContext = extractGuidanceRetrievalContext(params, {
     queryText: extractSearchQueryText(params),
   });
-  const explicitAllowExternalSeed = parseQueryBoolean(
-    params.allow_external_seed ?? params.allowExternalSeed,
-  );
   const explicitFastMode = parseQueryBoolean(params.fast_mode ?? params.fastMode);
-  const explicitExternalSeedStrategy = firstQueryParamValue(
-    params.external_seed_strategy ?? params.externalSeedStrategy,
-  );
-  const allowExternalSeed =
-    explicitAllowExternalSeed !== undefined
-      ? explicitAllowExternalSeed
-      : (isAurora ? PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED : true);
-  const normalizedExternalSeedStrategy = normalizeExternalSeedStrategy(
-    explicitExternalSeedStrategy ||
-      (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first'),
-    isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first',
-  );
-  const externalSeedStrategy =
-    !isAurora && normalizedExternalSeedStrategy === 'unified_relevance'
-      ? 'supplement_internal_first'
-      : normalizedExternalSeedStrategy;
   return {
-    ...params,
-    allow_external_seed: allowExternalSeed,
-    allow_stale_cache: false,
-    external_seed_strategy: externalSeedStrategy,
+    ...guardedBase,
     fast_mode:
       explicitFastMode !== undefined
         ? explicitFastMode
@@ -5914,27 +5858,6 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
             : {}),
         }
       : {}),
-  };
-}
-
-function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operation = '') {
-  if (String(operation || '').trim() !== 'find_products_multi') return rawPayload;
-  if (!isPublicSearchSource(metadata?.source)) return rawPayload;
-  const payload =
-    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : {};
-  const rawSearch =
-    payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
-      ? payload.search
-      : null;
-  if (!rawSearch) return payload;
-  const changed =
-    Object.prototype.hasOwnProperty.call(rawSearch, 'external_seed_strategy') ||
-    Object.prototype.hasOwnProperty.call(rawSearch, 'externalSeedStrategy');
-  if (!changed) return payload;
-  const nextSearch = stripExternalSeedStrategyOverride(rawSearch);
-  return {
-    ...payload,
-    search: nextSearch,
   };
 }
 
@@ -27362,192 +27285,6 @@ async function callPivotaToolViaGateway(args) {
   }
 
   return data;
-}
-
-const UI_CHAT_SCENARIO_OPTIONS = [
-  {
-    key: 'commute',
-    zh: '通勤/上班',
-    en: 'commute/work',
-    aliases: ['通勤', '上班', 'commute', 'work'],
-  },
-  {
-    key: 'date',
-    zh: '约会',
-    en: 'date night',
-    aliases: ['约会', 'date', 'date night', 'datenight'],
-  },
-  {
-    key: 'travel',
-    zh: '出差/旅行',
-    en: 'business trip/travel',
-    aliases: ['出差', '旅行', 'travel', 'business trip', 'trip'],
-  },
-  {
-    key: 'outdoor',
-    zh: '户外/徒步',
-    en: 'hiking/outdoor',
-    aliases: ['户外', '徒步', '登山', 'hiking', 'outdoor', 'trekking'],
-  },
-];
-
-const UI_CHAT_SHOPPING_INTENT_RE =
-  /(推荐|商品|买|购买|清单|套装|口红|粉底|化妆|刷|护肤|品牌|预算|travel|hiking|leash|products?|recommend|buy|shopping|gift|skincare|makeup)/i;
-
-const UI_CHAT_SCENARIO_CLARIFY_REASON_CODES = new Set([
-  'CLARIFY_SCENARIO',
-  'CLARIFY_AMBIGUOUS_QUERY',
-]);
-
-function uiChatNormalizeText(input) {
-  return String(input || '')
-    .toLowerCase()
-    .replace(/[\s\p{P}\p{S}]+/gu, '')
-    .trim();
-}
-
-function uiChatExtractText(message) {
-  if (!message) return '';
-  if (typeof message.content === 'string') return message.content;
-  if (Array.isArray(message.content)) {
-    return message.content
-      .map((item) => (item && typeof item === 'object' ? item.text : ''))
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-  }
-  return '';
-}
-
-function uiChatParseScenarioSelection(text) {
-  const normalized = uiChatNormalizeText(text);
-  if (!normalized) return null;
-  for (const option of UI_CHAT_SCENARIO_OPTIONS) {
-    for (const alias of option.aliases) {
-      const aliasNorm = uiChatNormalizeText(alias);
-      if (!aliasNorm) continue;
-      if (normalized === aliasNorm || normalized.includes(aliasNorm)) {
-        return option;
-      }
-    }
-  }
-  return null;
-}
-
-function uiChatFindLatestScenarioSelection(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') continue;
-    const text = uiChatExtractText(message);
-    const option = uiChatParseScenarioSelection(text);
-    if (option) return { option, index, text };
-  }
-  return null;
-}
-
-function uiChatFindLatestShoppingIntent(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') continue;
-    const text = uiChatExtractText(message);
-    if (!text || !UI_CHAT_SHOPPING_INTENT_RE.test(text)) continue;
-    const scenarioSelection = uiChatParseScenarioSelection(text);
-    if (scenarioSelection && uiChatNormalizeText(text).length <= 8) continue;
-    return { text, index };
-  }
-  return null;
-}
-
-function uiChatGetFindProductsQuery(args) {
-  return String(args?.payload?.search?.query || '').trim();
-}
-
-function uiChatIsFindProductsMultiOperation(args) {
-  return String(args?.operation || '').trim() === 'find_products_multi';
-}
-
-function uiChatGetFinalDecision(result) {
-  const traceDecision = result?.metadata?.search_trace?.final_decision;
-  if (typeof traceDecision === 'string' && traceDecision.trim()) return traceDecision.trim();
-  const decision = result?.metadata?.search_decision?.final_decision;
-  if (typeof decision === 'string' && decision.trim()) return decision.trim();
-  return '';
-}
-
-function uiChatGetClarificationReason(result) {
-  const reason = result?.clarification?.reason_code;
-  if (typeof reason === 'string' && reason.trim()) return reason.trim();
-  const reasonCodes = result?.metadata?.search_trace?.reason_codes;
-  if (Array.isArray(reasonCodes)) {
-    const hit = reasonCodes.find((code) => UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(String(code || '')));
-    if (hit) return String(hit);
-  }
-  return '';
-}
-
-function uiChatIsScenarioClarification(result) {
-  const finalDecision = uiChatGetFinalDecision(result);
-  if (finalDecision !== 'clarify') return false;
-  const reason = uiChatGetClarificationReason(result);
-  if (UI_CHAT_SCENARIO_CLARIFY_REASON_CODES.has(reason)) return true;
-  const question = String(result?.clarification?.question || '').trim();
-  if (!question) return false;
-  return /场景|scenario|prioritize|哪一类|which/i.test(question);
-}
-
-function uiChatBuildLoopBreakQuery({ shoppingText, scenarioOption }) {
-  if (!shoppingText || !scenarioOption) return '';
-  const base = String(shoppingText || '').trim();
-  if (!base) return '';
-  const hasZh = /[\u4e00-\u9fff]/.test(base);
-  const suffix = hasZh ? ` 使用场景：${scenarioOption.zh}` : ` scenario: ${scenarioOption.en}`;
-  const normalizedBase = uiChatNormalizeText(base);
-  const normalizedScenarioZh = uiChatNormalizeText(scenarioOption.zh);
-  const normalizedScenarioEn = uiChatNormalizeText(scenarioOption.en);
-  if (normalizedBase.includes(normalizedScenarioZh) || normalizedBase.includes(normalizedScenarioEn)) {
-    return base;
-  }
-  return `${base}${suffix}`.trim();
-}
-
-function uiChatBuildLoopBreakRetryArgs(args, messages, toolResult) {
-  if (!uiChatIsFindProductsMultiOperation(args)) return null;
-  if (!uiChatIsScenarioClarification(toolResult)) return null;
-  const scenarioSelection = uiChatFindLatestScenarioSelection(messages);
-  if (!scenarioSelection) return null;
-  const shoppingIntent = uiChatFindLatestShoppingIntent(messages);
-  if (!shoppingIntent) return null;
-  const currentQuery = uiChatGetFindProductsQuery(args);
-  const nextQuery = uiChatBuildLoopBreakQuery({
-    shoppingText: shoppingIntent.text,
-    scenarioOption: scenarioSelection.option,
-  });
-  if (!nextQuery) return null;
-  if (uiChatNormalizeText(nextQuery) === uiChatNormalizeText(currentQuery)) return null;
-  const nextArgs = JSON.parse(JSON.stringify(args || {}));
-  if (!nextArgs.payload || typeof nextArgs.payload !== 'object') nextArgs.payload = {};
-  if (!nextArgs.payload.search || typeof nextArgs.payload.search !== 'object') nextArgs.payload.search = {};
-  nextArgs.payload.search.query = nextQuery;
-  nextArgs.metadata = {
-    ...(nextArgs.metadata && typeof nextArgs.metadata === 'object' ? nextArgs.metadata : {}),
-    ui_chat_loop_break: 'scenario_selection_retry',
-    ui_chat_loop_break_scenario: scenarioSelection.option.key,
-  };
-  return {
-    nextArgs,
-    nextQuery,
-    scenario: scenarioSelection.option.key,
-    baseQuery: shoppingIntent.text,
-  };
-}
-
-function uiChatShouldUseRetryResult(initialResult, retryResult) {
-  if (!retryResult || typeof retryResult !== 'object') return false;
-  if (Array.isArray(retryResult.products) && retryResult.products.length > 0) return true;
-  const initialDecision = uiChatGetFinalDecision(initialResult);
-  const retryDecision = uiChatGetFinalDecision(retryResult);
-  if (retryDecision && retryDecision !== initialDecision) return true;
-  return false;
 }
 
 async function runAgentWithTools(messages) {
