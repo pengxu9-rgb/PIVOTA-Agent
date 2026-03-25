@@ -184,31 +184,75 @@
     ]
   },
   {
-    "id": "shopping_agent_product_lookup_ipsa",
-    "family": "product_lookup",
-    "query": "IPSA Time Reset Aqua",
+    "id": "shopping_agent_merchant_query_ipsa_products",
+    "family": "merchant_query",
+    "query": "IPSA products",
     "source": "shopping_agent",
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
-      "query_source"
+      "query_source",
+      "search_trace.final_decision"
     ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "cache_returned"
+    },
     "must_return_one_of_titles": [
       "IPSA Time Reset Aqua"
     ]
   },
   {
-    "id": "aurora_bff_product_lookup_ipsa",
-    "family": "product_lookup",
-    "query": "IPSA Time Reset Aqua",
+    "id": "aurora_bff_merchant_query_ipsa_products",
+    "family": "merchant_query",
+    "query": "IPSA products",
     "source": "aurora-bff",
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
-      "query_source"
+      "query_source",
+      "search_trace.final_decision"
     ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "cache_returned"
+    },
     "must_return_one_of_titles": [
       "IPSA Time Reset Aqua"
+    ]
+  },
+  {
+    "id": "shopping_agent_clarify_date_makeup",
+    "family": "clarify_required",
+    "query": "有什么适合今晚约会的",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "service_version.commit",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "clarify"
+    },
+    "must_have_clarification": true,
+    "must_have_reason_codes": [
+      "AMBIGUITY_CLARIFY"
+    ]
+  },
+  {
+    "id": "aurora_bff_clarify_date_makeup",
+    "family": "clarify_required",
+    "query": "有什么适合今晚约会的",
+    "source": "aurora-bff",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "service_version.commit",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "clarify"
+    },
+    "must_have_clarification": true,
+    "must_have_reason_codes": [
+      "AMBIGUITY_CLARIFY"
     ]
   }
 ]

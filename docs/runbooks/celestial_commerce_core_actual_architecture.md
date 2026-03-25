@@ -1,6 +1,6 @@
 # Celestial Commerce Core Actual Architecture
 
-This document captures the current target logical architecture for the early Celestial commerce core refactor.
+This document captures the currently implemented logical architecture after the early commerce-core refactor skeleton landed.
 
 It is intentionally a logical module diagram, not a physical deployment diagram.
 
@@ -88,6 +88,15 @@ Users / External Callers
 - Gateway does not own business state.
 - `ShoppingContext` only carries cross-layer handoff fields.
 - Decisioning constraints and execution constraints must stay separate.
+
+## Current Stable Behavior
+
+- `source=search` remains the public, stable ingress profile.
+- `source=shopping_agent` remains the broad commerce ingress profile.
+- `source=aurora-bff` remains the Aurora orchestration ingress profile.
+- Public search still ignores caller-supplied widening overrides.
+- Broad commerce retrieval on `shopping_agent` and `aurora-bff` still uses internal base plus external supplement.
+- Strict ingredient/constraint routing remains shared infrastructure, but its primary narrowing semantics now belong to decisioning rather than execution-facing ownership.
 
 ## Near-Exact Resolution Note
 

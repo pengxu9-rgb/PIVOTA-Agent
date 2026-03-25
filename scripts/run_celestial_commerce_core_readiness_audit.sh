@@ -324,16 +324,17 @@ fi
   echo "| Prompt/Intent Readiness | ${prompt_intent_status} | $( if [[ "${prompt_intent_status}" == "green" ]]; then echo "none"; elif [[ "${prompt_intent_status}" == "amber" ]]; then echo "shopping-agent prompt/loop-break contract is testable locally, but not yet backed by stable live prompt fixtures"; else echo "shopping_agent helper/query-rewrite gate failing"; fi ) |"
   echo "| Query Decomposition Readiness | ${query_decomposition_status} | $( if [[ "${query_decomposition_status}" == "green" ]]; then echo "none"; elif [[ "${query_decomposition_status}" == "amber" ]]; then echo "merchant vs product decomposition still lacks a canonical live acceptance corpus"; else echo "scenario clarify/query rewrite contract incomplete"; fi ) |"
   echo "| Commerce Search Contract Readiness | ${commerce_search_status} | $( if [[ "${commerce_search_status}" == "green" ]]; then echo "none"; else echo "public search contract or prod smoke failing"; fi ) |"
-  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "Aurora routing/source propagation is covered, but merchant-style live fixtures are still missing"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
-  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "clarify-required and timeout/degrade scenarios are not yet part of the stable live gate"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
+  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "merchant-style live routing is now covered, but exact product lookup on shopping_agent is still live-flaky and remains local-only"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
+  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "clarify-required live behavior is covered, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
   echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "agent/backend public version surface incomplete"; fi ) |"
   echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "L1/L2 semantics are aligned by contract and smoke today, but still coordinated across multiple modules"; else echo "source contracts and prod semantics still diverge"; fi ) |"
   echo
   echo "## Next Fixes"
   echo
   echo "1. Keep \`search\`, \`shopping_agent\`, and \`aurora-bff\` contract fixtures in one shared prod smoke so future drift is visible immediately."
-  echo "2. Add merchant-style and clarify-required live cases once their runtime contracts are stable enough for deterministic assertions."
-  echo "3. If Aurora and shopping-agent semantics diverge again, move the shared commerce query contract into a single reusable module instead of env-level coordination."
+  echo "2. Add stable live prompt fixtures for \`/ui/chat\` so shopping-agent prompt understanding can graduate from local helper coverage to true end-to-end coverage."
+  echo "3. Stabilize exact product-lookup routing for \`shopping_agent\` and only then promote product-specific lookup back into the shared live commerce-core smoke."
+  echo "4. If Aurora and shopping-agent semantics diverge again, move the shared commerce query contract into a single reusable module instead of env-level coordination."
 } >"${REPORT_MD}"
 
 STEPS_JSONL="${RUN_DIR}/steps.jsonl"

@@ -8,6 +8,8 @@ This document defines ingress source profiles for the Celestial commerce core.
 
 Pair this document with [Celestial Commerce Core Actual Architecture](./celestial_commerce_core_actual_architecture.md).
 
+For the current implementation shape, see [Celestial Commerce Core Actual Architecture](./celestial_commerce_core_actual_architecture.md).
+
 ## Layer Map
 
 ### Orchestration
