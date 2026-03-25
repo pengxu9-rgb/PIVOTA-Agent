@@ -31,6 +31,8 @@ function normalizeNonEmptyString(value) {
 
 const BUNDLE_LIKE_TITLE_RE =
   /\b(?:bundle|duo|trio|set|kit|collection|party of \d+|pair|vault|routine|regimen)\b/i;
+const MARKETING_PARTIAL_TITLE_RE =
+  /\b(?:giftset|gift set|ritual|glow[- ]up|glow up|like a goddess|the iconics|pink fever|infinite glow)\b/i;
 
 const CROSS_BRAND_RULES = Object.freeze([
   { name: 'mufe', match: /\b(?:mufe|make up for ever)\b/i, domains: ['makeupforever.com', 'mufe.com'] },
@@ -54,6 +56,10 @@ const CROSS_BRAND_RULES = Object.freeze([
 
 function looksLikeBundleLikeProduct(value) {
   return BUNDLE_LIKE_TITLE_RE.test(normalizeNonEmptyString(value));
+}
+
+function looksLikeMarketingPartialTitle(value) {
+  return MARKETING_PARTIAL_TITLE_RE.test(normalizeNonEmptyString(value));
 }
 
 function normalizeHostname(value) {
@@ -138,6 +144,7 @@ function buildBatchCandidateDecision({ status, target_url, title, before_state, 
   if (!allowBundles && (looksLikeBundleLikeProduct(title) || looksLikeBundleLikeProduct(target_url))) {
     reasons.push('bundle_like_product');
   }
+  if (looksLikeMarketingPartialTitle(title)) reasons.push('marketing_partial_title');
   if (crossBrandAnomaly) reasons.push('cross_brand_title_anomaly');
 
   return {
@@ -426,6 +433,7 @@ module.exports = {
   detectCrossBrandTitleAnomaly,
   hasSubstantiveCompletenessImprovement,
   looksLikeBundleLikeProduct,
+  looksLikeMarketingPartialTitle,
   normalizeHostname,
   summarizeCompletenessDelta,
   summarizeMissingFields,

@@ -4,6 +4,7 @@ const {
   detectCrossBrandTitleAnomaly,
   hasSubstantiveCompletenessImprovement,
   looksLikeBundleLikeProduct,
+  looksLikeMarketingPartialTitle,
   summarizeCompletenessDelta,
   summarizeMissingFields,
 } = require('../../scripts/run_external_seed_completeness_batches.cjs');
@@ -235,5 +236,42 @@ describe('run_external_seed_completeness_batches', () => {
 
     expect(decision.allow_apply).toBe(false);
     expect(decision.reasons).toEqual(expect.arrayContaining(['details_only_improvement']));
+  });
+
+  test('buildBatchCandidateDecision blocks marketing partial titles', () => {
+    const decision = buildBatchCandidateDecision(
+      {
+        status: 'dry_run',
+        title: 'The Radiance Ritual',
+        target_url: 'https://us.nuxe.com/products/the-radiance-ritual',
+        before_state: {
+          pdp_description_raw_present: false,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 0,
+          raw_ingredient_text_clean_present: false,
+        },
+        next_state: {
+          canonical_url: 'https://us.nuxe.com/products/the-radiance-ritual',
+          pdp_description_raw_present: true,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 1,
+          raw_ingredient_text_clean_present: false,
+        },
+      },
+      'US',
+    );
+
+    expect(decision.allow_apply).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(['marketing_partial_title']));
+  });
+
+  test('looksLikeMarketingPartialTitle catches NUXE weak partial titles', () => {
+    expect(looksLikeMarketingPartialTitle('Holidays Giftset The Iconics')).toBe(true);
+    expect(looksLikeMarketingPartialTitle('The Prodigieux Hair Glow-Up')).toBe(true);
+    expect(looksLikeMarketingPartialTitle('Detangling Leave-in Hair Milk')).toBe(false);
   });
 });
