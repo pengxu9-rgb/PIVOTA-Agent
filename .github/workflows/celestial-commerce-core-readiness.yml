@@ -45,6 +45,7 @@ on:
       - "tests/shopping_agent_loop_break.test.js"
       - "tests/shopping_agent_guidance_context.test.js"
       - "tests/shopping_agent_guidance_retrieval_plan.test.js"
+      - "tests/shopping_agent_guidance_fastpath.test.js"
       - "tests/integration/invoke.find_products_multi_cache_search.test.js"
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
 
@@ -98,6 +99,7 @@ jobs:
             tests/shopping_agent_loop_break.test.js \
             tests/shopping_agent_guidance_context.test.js \
             tests/shopping_agent_guidance_retrieval_plan.test.js \
+            tests/shopping_agent_guidance_fastpath.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js
 
