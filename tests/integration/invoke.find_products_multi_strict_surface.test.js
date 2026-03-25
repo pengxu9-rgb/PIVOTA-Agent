@@ -620,6 +620,105 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('prefetches hyaluronic strict candidates with inferred serum category from canonical url', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_hyaluronic_serum',
+              market: 'US',
+              tool: '*',
+              destination_url:
+                'https://theordinary.com/en-us/hyaluronic-acid-2-b5-serum-with-ceramides-100637.html',
+              canonical_url:
+                'https://theordinary.com/en-us/hyaluronic-acid-2-b5-serum-with-ceramides-100637.html',
+              domain: 'theordinary.com',
+              title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+              image_url: 'https://cdn.example/hyaluronic-serum.jpg',
+              price_amount: 14,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+                description: 'Reviewed hyaluronic external seed.',
+                brand: 'The Ordinary',
+                reviewed_ingredient_ids: ['hyaluronic_acid', 'panthenol', 'glycerin'],
+                variants: [
+                  {
+                    id: 'seed_variant_default',
+                    title: 'Default Title',
+                    price: 14,
+                    availability: 'in_stock',
+                  },
+                ],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-25T00:00:00Z',
+              updated_at: '2026-03-25T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['hyaluronic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hyaluronic serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.metadata?.external_seed_candidates).toHaveLength(1);
+    expect(capturedBody?.metadata?.external_seed_candidates?.[0]).toEqual(
+      expect.objectContaining({
+        title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+        category: 'Serum',
+        product_type: 'Serum',
+        ingredient_ids: expect.arrayContaining(['hyaluronic_acid']),
+        external_seed_id: 'seed_hyaluronic_serum',
+      }),
+    );
+  });
+
   test('treats peptide serum as a strict ingredient query', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
