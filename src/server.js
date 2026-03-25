@@ -91,6 +91,9 @@ const {
   createGuidanceFastpathRuntime,
 } = require('./modules/decisioning/shopping_agent/guidanceFastpath');
 const {
+  createGuidanceLadderOutcomeRuntime,
+} = require('./modules/decisioning/shopping_agent/guidanceLadderOutcome');
+const {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
   hasFashionConstraintQuerySignal,
@@ -1923,6 +1926,20 @@ const {
   buildSearchDecisionProductKey,
   classifySharedBeautyCoarseCandidate,
   withStageBudget,
+});
+const {
+  buildGuidanceAttemptRecord,
+  buildGuidanceSkippedAttemptRecord,
+  shouldAdoptGuidanceAttempt,
+  finalizeGuidanceLadderResult,
+} = createGuidanceLadderOutcomeRuntime({
+  compareGuidanceCandidatePools,
+  buildGuidanceFastpathFailureClass,
+  stabilizeGuidanceFastpathDisplayProducts,
+  normalizeGuidanceDiscoveryProductPdpContract,
+  getGuidanceFastpathRemainingBudgetMs,
+  countCandidateOriginBreakdown,
+  inferGuidanceDiscoverySourceUsed,
 });
 const CREATOR_CACHE_SHORT_CIRCUIT_ENABLED =
   String(process.env.CREATOR_CACHE_SHORT_CIRCUIT_ENABLED || 'false').toLowerCase() === 'true';
@@ -7873,31 +7890,22 @@ async function runGuidanceServerOwnedLadderSearch({
       ok: true,
     });
 
-    const attemptRecord = {
-      attempt_index: index + 1,
-      intent_strength: attempt.intent_strength,
-      selected_query: attempt.selected_query,
-      cluster_queries: clusterQueries,
-      internal_candidate_count: internalProducts.length,
-      external_candidate_count: externalProducts.length,
-      merged_candidate_count: mergedProducts.length,
-      internal_query_traces: internalQueryTraces,
-      external_query_traces: Array.isArray(externalPhase.result?.metadata?.retrieval_query_debug)
-        ? externalPhase.result.metadata.retrieval_query_debug
-        : [],
-      target_relevance_class_counts:
-        searchDecision?.target_relevance_class_counts ||
-        candidateSummary?.counts ||
-        null,
-      step_success_class: searchDecision?.step_success_class || null,
-      success_contract_satisfied: searchDecision?.success_contract_result?.satisfied === true,
-      duration_ms: Date.now() - attemptStartedAt,
+    const attemptRecord = buildGuidanceAttemptRecord({
+      attemptIndex: index + 1,
+      attempt,
+      clusterQueries,
+      internalProducts,
+      externalProducts,
+      internalQueryTraces,
+      externalPhase,
+      mergedProducts,
+      searchDecision,
+      candidateSummary,
+      durationMs: Date.now() - attemptStartedAt,
       adopted: false,
-    };
+    });
 
-    const shouldAdopt =
-      !selectedAttempt ||
-      compareGuidanceCandidatePools(candidateSummary, selectedSummary) > 0;
+    const shouldAdopt = shouldAdoptGuidanceAttempt(selectedSummary, candidateSummary);
     if (shouldAdopt) {
       selectedAttempt = {
         ...attempt,
@@ -7916,154 +7924,44 @@ async function runGuidanceServerOwnedLadderSearch({
     if (index === 0) {
       const remainingBeforeSupportive = getGuidanceFastpathRemainingBudgetMs(startedAt);
       if (remainingBeforeSupportive < GUIDANCE_FASTPATH_SUPPORTIVE_ATTEMPT_BUDGET_MS) {
-        attemptTrace.push({
-          attempt_index: index + 2,
-          intent_strength: attempts[index + 1]?.intent_strength || 'supportive_family',
-          selected_query: attempts[index + 1]?.selected_query || null,
-          cluster_queries: Array.isArray(attempts[index + 1]?.cluster_queries)
-            ? attempts[index + 1].cluster_queries
-            : [],
-          adopted: false,
-          skipped_reason: 'budget_exhausted',
-        });
+        attemptTrace.push(
+          buildGuidanceSkippedAttemptRecord({
+            attemptIndex: index + 2,
+            attempt: attempts[index + 1],
+            skippedReason: 'budget_exhausted',
+          }),
+        );
         break;
       }
     }
   }
-
-  const selectedDecision = selectedAttempt?.searchDecision || null;
-  const selectedDisplayProducts = Array.isArray(selectedAttempt?.displayProducts)
-    ? selectedAttempt.displayProducts
-    : [];
-  const selectedAttemptQuery = String(selectedAttempt?.selected_query || attempts[0]?.selected_query || queryText).trim();
-  const failureClass = buildGuidanceFastpathFailureClass(selectedDecision, selectedSummary);
-  const successContractResult =
-    selectedDecision?.success_contract_result && typeof selectedDecision.success_contract_result === 'object'
-      ? {
-          ...selectedDecision.success_contract_result,
-          failure_class:
-            selectedDecision.success_contract_result.satisfied === true
-              ? null
-              : selectedDecision.success_contract_result.failure_class || failureClass,
-        }
-      : {
-          applied: true,
-          satisfied: false,
-          step_success_class: null,
-          failure_class: failureClass,
-        };
-
-  const stabilizedDisplayProducts = stabilizeGuidanceFastpathDisplayProducts(
-    selectedDisplayProducts,
+  const finalized = finalizeGuidanceLadderResult({
+    selectedAttempt,
+    selectedSummary,
+    attempts,
     queryText,
     guidanceContext,
-  );
-  const responseProducts = stabilizedDisplayProducts
-    .slice(0, requestedLimit)
-    .map((product) => normalizeGuidanceDiscoveryProductPdpContract(product));
-  const remainingBudgetMs = getGuidanceFastpathRemainingBudgetMs(startedAt);
-  const searchDecision = {
-    contract_version:
-      selectedDecision?.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
-    hit_quality:
-      selectedDecision?.hit_quality ||
-      (responseProducts.length > 0 ? 'valid_hit' : 'empty'),
-    invalid_hit_reason:
-      selectedDecision?.invalid_hit_reason ||
-      (responseProducts.length > 0 ? null : failureClass),
-    query_bucket: selectedDecision?.query_bucket || null,
-    query_target_step_family: guidanceContext.target_step_family,
-    topk_bucket_mix: selectedDecision?.topk_bucket_mix || {},
-    same_family_topk_count: selectedDecision?.same_family_topk_count || 0,
-    exact_step_topk_count: selectedDecision?.exact_step_topk_count || 0,
-    strong_goal_family_topk_count: selectedDecision?.strong_goal_family_topk_count || 0,
-    supportive_same_family_topk_count: selectedDecision?.supportive_same_family_topk_count || 0,
-    query_step_strength:
-      selectedDecision?.query_step_strength ||
-      selectedAttempt?.intent_strength ||
-      attempts[0]?.intent_strength ||
-      guidanceContext.query_step_strength,
-    decision_mode: GUIDANCE_ONLY_DECISION_MODE,
-    execution_mode: GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER,
-    latency_mode: GUIDANCE_FASTPATH_LATENCY_MODE,
-    normalized_intent:
-      selectedDecision?.normalized_intent ||
-      normalizedIntent ||
-      null,
-    step_success_class: selectedDecision?.step_success_class || null,
-    success_contract_result: successContractResult,
-    candidate_origin_counts: countCandidateOriginBreakdown(selectedAttempt?.mergedProducts || responseProducts),
-    candidate_class_counts:
-      selectedDecision?.candidate_class_counts ||
-      selectedSummary?.counts ||
-      {},
-    target_relevance_class_counts:
-      selectedDecision?.target_relevance_class_counts ||
-      selectedSummary?.counts ||
-      {},
-    noise_drop_counts: selectedDecision?.noise_drop_counts || {},
-    raw_result_count:
-      selectedDecision?.raw_result_count ||
-      (Array.isArray(selectedAttempt?.mergedProducts) ? selectedAttempt.mergedProducts.length : 0),
-    displayable_candidate_count:
-      selectedDecision?.displayable_candidate_count ||
-      responseProducts.length,
-    products_returned_count: responseProducts.length,
-    product_only_applied: true,
-    service_rows_filtered_count:
-      selectedDecision?.service_rows_filtered_count || 0,
-    discovery_source_used: inferGuidanceDiscoverySourceUsed(responseProducts, allowExternalSeed),
-    query_exhausted: true,
-  };
+    requestedLimit,
+    startedAt,
+    allowExternalSeed,
+    normalizedIntent,
+    attemptTrace,
+    phaseTrace,
+    externalSeedRowsRaw,
+    externalSeedRowsRelevant,
+    externalSeedRowsAppended,
+    beautySearchDecisionContractVersion: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+  });
 
   return {
     status: 'success',
     success: true,
-    products: responseProducts,
-    total: responseProducts.length,
+    products: finalized.responseProducts,
+    total: finalized.responseProducts.length,
     page: 1,
-    page_size: responseProducts.length,
+    page_size: finalized.responseProducts.length,
     reply: null,
-    metadata: {
-      query_source: 'agent_products_guidance_fastpath',
-      fetched_at: new Date().toISOString(),
-      ui_surface: GUIDANCE_ONLY_UI_SURFACE,
-      decision_mode: GUIDANCE_ONLY_DECISION_MODE,
-      execution_mode: GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER,
-      latency_mode: GUIDANCE_FASTPATH_LATENCY_MODE,
-      retrieval_mode: GUIDANCE_RETRIEVAL_MODE,
-      legacy_pipeline_bypassed: true,
-      resolver_first_applied: false,
-      pass2_attempted: false,
-      secondary_attempted: false,
-      second_stage_expansion_attempted: false,
-      attempt_count: attemptTrace.filter((attempt) => !attempt.skipped_reason).length,
-      selected_attempt_query: selectedAttemptQuery || null,
-      attempt_trace: attemptTrace,
-      phase_trace: phaseTrace,
-      server_budget_ms: GUIDANCE_FASTPATH_TOTAL_BUDGET_MS,
-      remaining_budget_ms: remainingBudgetMs,
-      client_timeout_recommended_ms: GUIDANCE_FASTPATH_CLIENT_TIMEOUT_RECOMMENDED_MS,
-      source_breakdown: {
-        internal_count: countCandidateOriginBreakdown(responseProducts).internal_live,
-        external_seed_count: countCandidateOriginBreakdown(responseProducts).external_supplement,
-        stale_cache_used: false,
-        strategy_applied: GUIDANCE_SOURCE_POLICY,
-      },
-      external_seed_rows_fetched: externalSeedRowsRaw,
-      external_seed_rows_relevant: externalSeedRowsRelevant,
-      external_seed_rows_appended: externalSeedRowsAppended,
-      external_seed_rows_built: externalSeedRowsRelevant,
-      external_seed_returned_count: countCandidateOriginBreakdown(responseProducts).external_supplement,
-      product_only_applied: true,
-      service_rows_filtered_count: 0,
-      discovery_source_used: inferGuidanceDiscoverySourceUsed(responseProducts, allowExternalSeed),
-      query_step_strength: searchDecision.query_step_strength,
-      query_target_step_family: guidanceContext.target_step_family,
-      target_relevance_class_counts: searchDecision.target_relevance_class_counts,
-      search_decision: searchDecision,
-      query_exhausted: true,
-    },
+    metadata: finalized.metadata,
   };
 }
 
