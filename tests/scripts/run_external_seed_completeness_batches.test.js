@@ -55,6 +55,30 @@ describe('run_external_seed_completeness_batches', () => {
     expect(hasSubstantiveCompletenessImprovement(delta)).toBe(true);
   });
 
+  test('hasSubstantiveCompletenessImprovement ignores description-plus-details only gains', () => {
+    const delta = summarizeCompletenessDelta(
+      {
+        pdp_description_raw_present: false,
+        pdp_ingredients_raw_present: false,
+        pdp_active_ingredients_raw_present: false,
+        pdp_how_to_use_raw_present: false,
+        pdp_details_sections_count: 0,
+        raw_ingredient_text_clean_present: false,
+      },
+      {
+        pdp_description_raw_present: true,
+        pdp_ingredients_raw_present: false,
+        pdp_active_ingredients_raw_present: false,
+        pdp_how_to_use_raw_present: false,
+        pdp_details_sections_count: 1,
+        raw_ingredient_text_clean_present: false,
+      },
+    );
+
+    expect(delta.improved_fields).toEqual(['pdp_description_raw', 'pdp_details_sections']);
+    expect(hasSubstantiveCompletenessImprovement(delta)).toBe(false);
+  });
+
   test('buildBatchCandidateDecision blocks dry runs with no missing-field improvement', () => {
     const decision = buildBatchCandidateDecision(
       {
@@ -224,6 +248,37 @@ describe('run_external_seed_completeness_batches', () => {
         next_state: {
           canonical_url: 'https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment-grape-fizz',
           pdp_description_raw_present: false,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 1,
+          raw_ingredient_text_clean_present: false,
+        },
+      },
+      'US',
+    );
+
+    expect(decision.allow_apply).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(['details_only_improvement']));
+  });
+
+  test('buildBatchCandidateDecision blocks description-plus-details-only improvements', () => {
+    const decision = buildBatchCandidateDecision(
+      {
+        status: 'dry_run',
+        title: 'NUXE Iconics',
+        target_url: 'https://us.nuxe.com/products/nuxe-iconics',
+        before_state: {
+          pdp_description_raw_present: false,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 0,
+          raw_ingredient_text_clean_present: false,
+        },
+        next_state: {
+          canonical_url: 'https://us.nuxe.com/products/nuxe-iconics',
+          pdp_description_raw_present: true,
           pdp_ingredients_raw_present: false,
           pdp_active_ingredients_raw_present: false,
           pdp_how_to_use_raw_present: false,

@@ -127,7 +127,7 @@ function summarizeCompletenessDelta(beforeState, afterState) {
 function hasSubstantiveCompletenessImprovement(delta) {
   const improvements = Array.isArray(delta?.improved_fields) ? delta.improved_fields : [];
   return improvements.some((field) =>
-    ['pdp_description_raw', 'ingredients_or_active', 'pdp_how_to_use_raw', 'raw_ingredient_text_clean'].includes(field),
+    ['ingredients_or_active', 'pdp_how_to_use_raw', 'raw_ingredient_text_clean'].includes(field),
   );
 }
 
