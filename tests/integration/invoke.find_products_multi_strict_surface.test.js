@@ -817,6 +817,104 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('prefetches strong active solution candidates for salicylic serum queries', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_salicylic_solution',
+              market: 'US',
+              tool: '*',
+              destination_url:
+                'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+              canonical_url:
+                'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+              domain: 'theordinary.com',
+              title: 'Salicylic Acid 2% Solution',
+              image_url: 'https://cdn.example/salicylic.jpg',
+              price_amount: 18,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Salicylic Acid 2% Solution',
+                description: 'Leave-on salicylic acid treatment for blemish-prone skin.',
+                reviewed_ingredient_ids: ['Salicylic Acid'],
+                variants: [
+                  {
+                    id: 'seed_variant_default',
+                    title: 'Default Title',
+                    price: 18,
+                    availability: 'in_stock',
+                  },
+                ],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-25T00:00:00Z',
+              updated_at: '2026-03-25T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    let capturedBody = null;
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [],
+          total: 0,
+          metadata: {
+            query_source: 'cache_multi_intent',
+            serving_mode: 'eligible_only',
+            ingredient_intents: ['salicylic_acid'],
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'salicylic acid serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(capturedBody?.metadata?.external_seed_candidates).toHaveLength(1);
+    expect(capturedBody?.metadata?.external_seed_candidates?.[0]).toEqual(
+      expect.objectContaining({
+        source: 'external_seed',
+        product_type: 'Serum',
+        category: 'Serum',
+        ingredient_ids: ['salicylic_acid'],
+        external_seed_id: 'seed_salicylic_solution',
+      }),
+    );
+  });
+
   test('filters prefetched external seed candidates that lack target surface anchors', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     jest.doMock('../../src/db', () => ({

@@ -244,4 +244,28 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Serum');
     expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'panthenol']);
   });
+
+  test('infers serum category for strong active solution skincare products', () => {
+    const row = {
+      id: 'eps_salicylic_solution',
+      canonical_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+      destination_url: 'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+      title: 'Salicylic Acid 2% Solution',
+      availability: 'in_stock',
+      seed_data: {
+        reviewed_ingredient_ids: ['Salicylic Acid'],
+        snapshot: {
+          canonical_url:
+            'https://theordinary.com/en-us/salicylic-acid-2-solution-acne-control-100098.html',
+          title: 'Salicylic Acid 2% Solution',
+          variants: [],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.ingredient_ids).toEqual(['salicylic_acid']);
+    expect(product.product_type).toBe('Serum');
+    expect(product.category).toBe('Serum');
+  });
 });
