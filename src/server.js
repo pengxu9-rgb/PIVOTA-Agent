@@ -1787,6 +1787,13 @@ function normalizeExternalSeedStrategy(value, fallback = 'unified_relevance') {
   if (token === 'legacy' || token === 'unified_relevance') return token;
   return fallback;
 }
+
+function stripExternalSeedStrategyOverride(params = {}) {
+  const next = { ...params };
+  delete next.external_seed_strategy;
+  delete next.externalSeedStrategy;
+  return next;
+}
 const PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY_RAW = String(
   process.env.PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY || 'unified_relevance',
 )
@@ -5530,6 +5537,10 @@ function isShoppingSource(source) {
   );
 }
 
+function isPublicSearchSource(source) {
+  return normalizeAgentSource(source) === 'search';
+}
+
 function isCreatorUiSource(source) {
   return normalizeAgentSource(source) === 'creator-agent-ui';
 }
@@ -5834,6 +5845,9 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
     queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams)
       ? { ...queryParams }
       : {};
+  if (isPublicSearchSource(source)) {
+    return stripExternalSeedStrategyOverride(params);
+  }
   if (!isCatalogGuardSource(source)) return params;
   const isAurora = isAuroraSource(source);
   const guidanceContext = extractGuidanceRetrievalContext(params, {
@@ -5896,6 +5910,27 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
             : {}),
         }
       : {}),
+  };
+}
+
+function applyFindProductsMultiSourceContract(rawPayload, metadata = {}, operation = '') {
+  if (String(operation || '').trim() !== 'find_products_multi') return rawPayload;
+  if (!isPublicSearchSource(metadata?.source)) return rawPayload;
+  const payload =
+    rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload) ? rawPayload : {};
+  const rawSearch =
+    payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+      ? payload.search
+      : null;
+  if (!rawSearch) return payload;
+  const changed =
+    Object.prototype.hasOwnProperty.call(rawSearch, 'external_seed_strategy') ||
+    Object.prototype.hasOwnProperty.call(rawSearch, 'externalSeedStrategy');
+  if (!changed) return payload;
+  const nextSearch = stripExternalSeedStrategyOverride(rawSearch);
+  return {
+    ...payload,
+    search: nextSearch,
   };
 }
 
@@ -19431,9 +19466,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
 
-    const { operation, payload } = parsed.data;
+    const { operation, payload: parsedPayload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
-    const metadata = normalizeMetadata(req.body.metadata, payload);
+    const metadata = normalizeMetadata(req.body.metadata, parsedPayload);
+    const payload = applyFindProductsMultiSourceContract(parsedPayload, metadata, operation);
     const creatorId = extractCreatorId({ ...payload, metadata });
     const now = new Date();
     let findProductsMultiCtx = null;
