@@ -1212,11 +1212,15 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         beauty_query_bucket: 'skincare',
         cache_query_mode: 'raw_first',
         internal_filtered_irrelevant_count: expect.any(Number),
+        timeout_budget_ms: expect.any(Number),
         supplement: expect.objectContaining({
           applied: true,
         }),
       }),
     );
+    expect(
+      Number(resp.body.metadata?.route_debug?.cross_merchant_cache?.timeout_budget_ms || 0),
+    ).toBeGreaterThan(2200);
     expect(
       Array.isArray(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_query_terms),
     ).toBe(true);
@@ -1442,6 +1446,31 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         reason: 'not_generic_skincare_serum_query',
       }),
     );
+  });
+
+  test('generic skincare serum cache stage budget is raised above the baseline budget', async () => {
+    const app = require('../../src/server');
+    const budgetMs = app._debug.resolveFindProductsMultiCacheStageBudgetMs({
+      rawQuery: 'serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+    });
+
+    expect(budgetMs).toBe(app._debug.FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS);
+    expect(budgetMs).toBeGreaterThan(app._debug.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS);
+  });
+
+  test('strict ingredient queries keep the baseline cache stage budget', async () => {
+    const app = require('../../src/server');
+    const budgetMs = app._debug.resolveFindProductsMultiCacheStageBudgetMs({
+      rawQuery: 'niacinamide serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: true,
+    });
+
+    expect(budgetMs).toBe(app._debug.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS);
   });
 
   test('foundation brush query keeps beauty tools results after bucket backstop', async () => {
