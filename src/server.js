@@ -22542,20 +22542,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             String(upstreamData?.metadata?.query_source || '').startsWith(
               'cache_cross_merchant_search',
             );
+          const explicitCommerceSurface = extractExplicitCommerceSurface(
+            effectivePayload.search || effectivePayload || {},
+            metadata,
+          );
+          const cacheHitResponseBase =
+            explicitCommerceSurface.explicit
+              ? attachEligibleOfferFieldsToSearchResponse(
+                  upstreamData,
+                  explicitCommerceSurface.commerceSurface,
+                )
+              : upstreamData;
           const withPolicy =
             shouldApplyFindProductsMultiPolicyForQuery({
               intent: effectiveIntent,
               rawQuery: rawUserQuery,
-              responseMetadata: upstreamData?.metadata,
+              responseMetadata: cacheHitResponseBase?.metadata,
             }) && !shouldSkipLookupPolicyForCacheHit
               ? applyFindProductsMultiPolicy({
-                  response: upstreamData,
+                  response: cacheHitResponseBase,
                   intent: effectiveIntent,
                   requestPayload: effectivePayload,
                   metadata: policyMetadata,
                   rawUserQuery,
                 })
-              : upstreamData;
+              : cacheHitResponseBase;
           const withPolicyProducts = Array.isArray(withPolicy?.products)
             ? withPolicy.products
             : [];

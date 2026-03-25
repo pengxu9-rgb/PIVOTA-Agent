@@ -387,6 +387,109 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     }
   });
 
+  test('preserves eligible-only contract for cache-returned agent_api results', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_winona_1',
+                  product_id: 'prod_winona_1',
+                  merchant_id: 'merch_1',
+                  title: 'Winona Soothing Repair Serum',
+                  vendor: 'Winona',
+                  status: 'published',
+                  inventory_quantity: 9,
+                  price: 39,
+                  currency: 'USD',
+                  variants: [
+                    {
+                      id: 'var_winona_1',
+                      variant_id: 'var_winona_1',
+                      sku: 'sku_winona_1',
+                      price: 39,
+                      inventory_quantity: 9,
+                    },
+                  ],
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.search_all_merchants || '') === 'true')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Winona products',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+            commerce_surface: 'agent_api',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+        commerce_surface: 'agent_api',
+        serving_mode: 'eligible_only',
+      }),
+    );
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'prod_winona_1',
+        merchant_id: 'merch_1',
+        commerce_surface: 'agent_api',
+        top_offer_summary: expect.objectContaining({
+          purchase_route: 'internal_checkout',
+          merchant_id: 'merch_1',
+          product_id: 'prod_winona_1',
+          variant_id: 'var_winona_1',
+          sku_id: 'sku_winona_1',
+          commerce_surface: 'agent_api',
+        }),
+        exact_resolution_identifiers: expect.objectContaining({
+          merchant_id: 'merch_1',
+          product_id: 'prod_winona_1',
+          variant_id: 'var_winona_1',
+          sku_id: 'sku_winona_1',
+        }),
+      }),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('accepts top-level payload query for find_products_multi', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
