@@ -3,6 +3,7 @@ const {
   chunkList,
   detectCrossBrandTitleAnomaly,
   hasSubstantiveCompletenessImprovement,
+  looksLikeAccessoryToolProduct,
   looksLikeBundleLikeProduct,
   looksLikeMarketingPartialTitle,
   summarizeCompletenessDelta,
@@ -218,6 +219,11 @@ describe('run_external_seed_completeness_batches', () => {
     expect(looksLikeBundleLikeProduct('BeamCream Smoothing Body Moisturizer')).toBe(false);
   });
 
+  test('looksLikeAccessoryToolProduct catches brush-style tools', () => {
+    expect(looksLikeAccessoryToolProduct('Foundation Brush 02')).toBe(true);
+    expect(looksLikeAccessoryToolProduct('BeamCream Smoothing Body Moisturizer')).toBe(false);
+  });
+
   test('detectCrossBrandTitleAnomaly allows matching domain brand families', () => {
     expect(
       detectCrossBrandTitleAnomaly(
@@ -322,6 +328,37 @@ describe('run_external_seed_completeness_batches', () => {
 
     expect(decision.allow_apply).toBe(false);
     expect(decision.reasons).toEqual(expect.arrayContaining(['marketing_partial_title']));
+  });
+
+  test('buildBatchCandidateDecision blocks accessory tool products', () => {
+    const decision = buildBatchCandidateDecision(
+      {
+        status: 'dry_run',
+        title: 'Foundation Brush 02',
+        target_url: 'https://www.tomfordbeauty.com/products/foundation-brush-02',
+        before_state: {
+          pdp_description_raw_present: false,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 0,
+          raw_ingredient_text_clean_present: false,
+        },
+        next_state: {
+          canonical_url: 'https://www.tomfordbeauty.com/products/foundation-brush-02',
+          pdp_description_raw_present: true,
+          pdp_ingredients_raw_present: true,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 2,
+          raw_ingredient_text_clean_present: false,
+        },
+      },
+      'US',
+    );
+
+    expect(decision.allow_apply).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(['accessory_tool_product']));
   });
 
   test('looksLikeMarketingPartialTitle catches NUXE weak partial titles', () => {

@@ -33,6 +33,8 @@ const BUNDLE_LIKE_TITLE_RE =
   /\b(?:bundle|duo|trio|set|kit|collection|party of \d+|pair|vault|routine|regimen)\b/i;
 const MARKETING_PARTIAL_TITLE_RE =
   /\b(?:giftset|gift set|ritual|glow[- ]up|glow up|like a goddess|the iconics|pink fever|infinite glow)\b/i;
+const ACCESSORY_TOOL_TITLE_RE =
+  /\b(?:brush|brushes|applicator|applicators|sharpener|sharpeners|sponge|sponges|puff|puffs|tweezer|tweezers|curler|curlers)\b/i;
 
 const CROSS_BRAND_RULES = Object.freeze([
   { name: 'mufe', match: /\b(?:mufe|make up for ever)\b/i, domains: ['makeupforever.com', 'mufe.com'] },
@@ -60,6 +62,10 @@ function looksLikeBundleLikeProduct(value) {
 
 function looksLikeMarketingPartialTitle(value) {
   return MARKETING_PARTIAL_TITLE_RE.test(normalizeNonEmptyString(value));
+}
+
+function looksLikeAccessoryToolProduct(value) {
+  return ACCESSORY_TOOL_TITLE_RE.test(normalizeNonEmptyString(value));
 }
 
 function normalizeHostname(value) {
@@ -145,6 +151,9 @@ function buildBatchCandidateDecision({ status, target_url, title, before_state, 
     reasons.push('bundle_like_product');
   }
   if (looksLikeMarketingPartialTitle(title)) reasons.push('marketing_partial_title');
+  if (looksLikeAccessoryToolProduct(title) || looksLikeAccessoryToolProduct(target_url)) {
+    reasons.push('accessory_tool_product');
+  }
   if (crossBrandAnomaly) reasons.push('cross_brand_title_anomaly');
 
   return {
@@ -432,6 +441,7 @@ module.exports = {
   chunkList,
   detectCrossBrandTitleAnomaly,
   hasSubstantiveCompletenessImprovement,
+  looksLikeAccessoryToolProduct,
   looksLikeBundleLikeProduct,
   looksLikeMarketingPartialTitle,
   normalizeHostname,
