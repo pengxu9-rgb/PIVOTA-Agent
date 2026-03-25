@@ -1373,6 +1373,259 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(externalSupplement.isDone()).toBe(false);
   });
 
+  test.each([
+    ['unified_relevance'],
+    ['supplement_internal_first'],
+  ])(
+    'public source=search ignores %s override and keeps healthy internal cache hit',
+    async (externalSeedStrategy) => {
+      process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+      jest.doMock('../../src/db', () => ({
+        query: async (sql) => {
+          const text = String(sql || '');
+          if (text.includes('COUNT(*)::int AS total')) {
+            return { rows: [{ total: 4 }] };
+          }
+          if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+            return {
+              rows: [
+                {
+                  merchant_id: 'merch_skin',
+                  merchant_name: 'Skin Shop',
+                  product_data: {
+                    id: 'prod_winona',
+                    product_id: 'prod_winona',
+                    merchant_id: 'merch_skin',
+                    title: 'Winona Soothing Repair Serum',
+                    description: 'repair serum for sensitive skin',
+                    product_type: 'Serum',
+                    status: 'published',
+                    inventory_quantity: 6,
+                  },
+                },
+                {
+                  merchant_id: 'merch_skin',
+                  merchant_name: 'Skin Shop',
+                  product_data: {
+                    id: 'prod_ordinary',
+                    product_id: 'prod_ordinary',
+                    merchant_id: 'merch_skin',
+                    title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                    description: 'niacinamide serum for uneven tone',
+                    product_type: 'Serum',
+                    status: 'published',
+                    inventory_quantity: 8,
+                  },
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        },
+      }));
+
+      const externalSupplement = nock('http://pivota.test')
+        .get('/agent/v1/products/search')
+        .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+        .reply(200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: 'ext_serum_1',
+              product_id: 'ext_serum_1',
+              merchant_id: 'external_seed',
+              source: 'external_seed',
+              title: 'Multi-Peptide + HA Serum',
+              description: 'external serum candidate',
+              product_type: 'external',
+              status: 'active',
+            },
+          ],
+          total: 1,
+        });
+
+      const upstreamSearch = nock('http://pivota.test')
+        .get('/agent/v1/products/search')
+        .query((q) => String(q.search_all_merchants || '') === 'true' && String(q.query || '') === 'serum')
+        .reply(200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: 'ext_upstream_1',
+              product_id: 'ext_upstream_1',
+              merchant_id: 'external_seed',
+              source: 'external_seed',
+              title: 'Anti-Blemish Serum',
+              status: 'active',
+            },
+          ],
+          total: 1,
+        });
+
+      const app = require('../../src/server');
+      const resp = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'find_products_multi',
+          payload: {
+            search: {
+              query: 'serum',
+              page: 1,
+              limit: 5,
+              in_stock_only: true,
+              external_seed_strategy: externalSeedStrategy,
+            },
+          },
+          metadata: {
+            source: 'search',
+          },
+        });
+
+      expect(resp.status).toBe(200);
+      expect(resp.body.metadata).toEqual(
+        expect.objectContaining({
+          query_source: 'cache_cross_merchant_search',
+          source_breakdown: expect.objectContaining({
+            internal_count: 2,
+            external_seed_count: 0,
+            strategy_applied: 'cache_only',
+          }),
+          cache_stage_selected_source: 'internal_cache',
+        }),
+      );
+      expect(resp.body.metadata?.route_debug?.cross_merchant_cache).toEqual(
+        expect.objectContaining({
+          cache_hit: true,
+          cache_hit_base: true,
+          cache_missing_external_for_unified: false,
+          cache_strict_empty_bypassed: false,
+        }),
+      );
+      expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
+        expect.arrayContaining([
+          'Winona Soothing Repair Serum',
+          'The Ordinary Niacinamide 10% + Zinc 1%',
+        ]),
+      );
+      expect((resp.body.products || []).every((item) => String(item?.merchant_id || '') !== 'external_seed')).toBe(
+        true,
+      );
+      expect(externalSupplement.isDone()).toBe(false);
+      expect(upstreamSearch.isDone()).toBe(false);
+    },
+  );
+
+  test('aurora-bff serum contract stays internal-first while supplementing external coverage', async () => {
+    process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 4 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_winona',
+                  product_id: 'prod_winona',
+                  merchant_id: 'merch_skin',
+                  title: 'Winona Soothing Repair Serum',
+                  description: 'repair serum for sensitive skin',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+              {
+                merchant_id: 'merch_skin',
+                merchant_name: 'Skin Shop',
+                product_data: {
+                  id: 'prod_ordinary',
+                  product_id: 'prod_ordinary',
+                  merchant_id: 'merch_skin',
+                  title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                  description: 'niacinamide serum for uneven tone',
+                  product_type: 'Serum',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'ext_serum_1',
+            product_id: 'ext_serum_1',
+            merchant_id: 'external_seed',
+            source: 'external_seed',
+            title: 'UV Filters SPF 45 Serum',
+            description: 'spf serum candidate',
+            product_type: 'external',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'serum',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search_supplemented',
+        source_breakdown: expect.objectContaining({
+          internal_count: 2,
+          external_seed_count: 1,
+          strategy_applied: 'unified_relevance',
+        }),
+        cache_stage_selected_source: 'internal_cache',
+      }),
+    );
+    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
+      expect.arrayContaining([
+        'Winona Soothing Repair Serum',
+        'The Ordinary Niacinamide 10% + Zinc 1%',
+        'UV Filters SPF 45 Serum',
+      ]),
+    );
+    expect(externalSupplement.isDone()).toBe(true);
+  });
+
   test('serum cache preference helper keeps upstream when internal preference is disabled', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
