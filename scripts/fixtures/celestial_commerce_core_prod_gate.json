@@ -1,0 +1,214 @@
+[
+  {
+    "id": "public_search_serum_default",
+    "family": "public_search_contract",
+    "query": "serum",
+    "source": "search",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "source_breakdown.external_seed_count": 0
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "public_search_serum_ignore_unified_relevance_override",
+    "family": "public_search_contract",
+    "query": "serum",
+    "source": "search",
+    "request_search": {
+      "external_seed_strategy": "unified_relevance"
+    },
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "source_breakdown.external_seed_count": 0
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "public_search_serum_ignore_supplement_override",
+    "family": "public_search_contract",
+    "query": "serum",
+    "source": "search",
+    "request_search": {
+      "external_seed_strategy": "supplement_internal_first"
+    },
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "source_breakdown.external_seed_count": 0
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "shopping_agent_serum_broad",
+    "family": "broad_commerce_search",
+    "query": "serum",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search_supplemented",
+      "cache_stage_selected_source": "internal_cache"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "aurora_bff_serum_broad",
+    "family": "broad_commerce_search",
+    "query": "serum",
+    "source": "aurora-bff",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search_supplemented",
+      "cache_stage_selected_source": "internal_cache"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "shopping_agent_strict_niacinamide_serum",
+    "family": "strict_consistency",
+    "query": "niacinamide serum",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
+    "id": "aurora_bff_strict_niacinamide_serum",
+    "family": "strict_consistency",
+    "query": "niacinamide serum",
+    "source": "aurora-bff",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
+    "id": "shopping_agent_product_lookup_ipsa",
+    "family": "product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source"
+    ],
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
+    "id": "aurora_bff_product_lookup_ipsa",
+    "family": "product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "aurora-bff",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source"
+    ],
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  }
+]
