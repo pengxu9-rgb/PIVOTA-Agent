@@ -9,6 +9,8 @@ These source tokens are not just runtime params. They are the primary layer boun
 - Aurora chat orchestration
 - the broader Celestial engine
 
+For the current implementation shape, see [Celestial Commerce Core Actual Architecture](./celestial_commerce_core_actual_architecture.md).
+
 ## Layer Map
 
 ### L0: `search`
