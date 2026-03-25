@@ -90,6 +90,50 @@ describe('externalSeedHarvesterBridge', () => {
     expect(candidates[0].raw_ingredient_text).toBe('Titanium Dioxide 3.4%, Zinc Oxide 14.37%');
   });
 
+  test('keeps single-variant Shopify Default Title rows as product candidates when PDP active ingredients exist', () => {
+    const row = {
+      id: 'eps_cocokind_1',
+      external_product_id: 'ext_cocokind_1',
+      market: 'US',
+      canonical_url: 'https://www.cocokind.com/products/ceramide-barrier-serum',
+      title: 'ceramide barrier serum',
+      seed_data: {
+        brand: 'cocokind',
+        pdp_active_ingredients_raw:
+          'ceramide NP, ceramide NS, ceramide AP, ceramide EOS, ceramide EOP, squalane, beta-glucan',
+        product_type: 'serum',
+        product_category: 'serum',
+        snapshot: {
+          canonical_url: 'https://www.cocokind.com/products/ceramide-barrier-serum',
+          title: 'ceramide barrier serum',
+          product_type: 'serum',
+          product_category: 'serum',
+          variants: [
+            {
+              sku: 'FG60042',
+              variant_id: '43111161168048',
+              option_name: 'Title',
+              option_value: 'Default Title',
+              url: 'https://www.cocokind.com/products/ceramide-barrier-serum',
+            },
+          ],
+        },
+      },
+    };
+
+    const candidates = buildExternalSeedHarvesterCandidates(row);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        product_name: 'ceramide barrier serum',
+        source_ref: 'https://www.cocokind.com/products/ceramide-barrier-serum?variant=43111161168048',
+        raw_ingredient_text:
+          'ceramide NP, ceramide NS, ceramide AP, ceramide EOS, ceramide EOP, squalane, beta-glucan',
+      }),
+    );
+    expect(shouldExcludeCandidate(candidates[0])).toBe(false);
+  });
+
   test('appends variant query parameter when seed only stores generic PDP url', () => {
     expect(buildVariantSourceUrl('https://www.pixibeauty.com/products/on-the-glow-blush', '42457583845472')).toBe(
       'https://www.pixibeauty.com/products/on-the-glow-blush?variant=42457583845472',

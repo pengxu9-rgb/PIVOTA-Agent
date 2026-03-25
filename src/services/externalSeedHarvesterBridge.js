@@ -192,7 +192,7 @@ function buildCandidateId(row, variant, index) {
 function buildProductName(baseTitle, variant) {
   const title = normalizeNonEmptyString(baseTitle);
   const optionValue = normalizeNonEmptyString(variant?.option_value || variant?.title);
-  if (!optionValue || /^default$/i.test(optionValue)) return title;
+  if (!optionValue || /^default(?:\s+title)?$/i.test(optionValue)) return title;
   return `${title} - ${optionValue}`;
 }
 
