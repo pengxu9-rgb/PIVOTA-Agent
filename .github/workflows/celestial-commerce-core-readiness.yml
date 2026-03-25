@@ -41,6 +41,8 @@ on:
       - "tests/aurora_commerce_core_contracts.test.js"
       - "tests/celestial_commerce_core_layer_dispatch.test.js"
       - "tests/celestial_commerce_core_shopping_context.test.js"
+      - "tests/celestial_commerce_core_source_policy.test.js"
+      - "tests/shopping_agent_loop_break.test.js"
       - "tests/integration/invoke.find_products_multi_cache_search.test.js"
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
 
@@ -90,6 +92,8 @@ jobs:
             tests/aurora_commerce_core_contracts.test.js \
             tests/celestial_commerce_core_layer_dispatch.test.js \
             tests/celestial_commerce_core_shopping_context.test.js \
+            tests/celestial_commerce_core_source_policy.test.js \
+            tests/shopping_agent_loop_break.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js
 
