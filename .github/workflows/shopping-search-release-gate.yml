@@ -68,6 +68,7 @@ jobs:
           set -euo pipefail
           node --check src/server.js
           node --check scripts/check_budget_fx_freshness.js
+          node --check scripts/warm_find_products_multi_runtime.js
           node --check scripts/search_stability_matrix.js
           bash -n scripts/smoke_find_products_multi_skincare_prod.sh
           bash -n scripts/verify_deployed_commit_matches.sh
@@ -113,6 +114,19 @@ jobs:
         run: |
           set -euo pipefail
           BASE_URL="$BASE_URL" node scripts/check_budget_fx_freshness.js --base-url "$BASE_URL" --endpoint /api/gateway --source search
+
+      - name: Warm production search runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" node scripts/warm_find_products_multi_runtime.js \
+            --base-url "$BASE_URL" \
+            --endpoint /api/gateway \
+            --query serum \
+            --source search \
+            --attempts 2 \
+            --delay-ms 3000 \
+            --timeout-ms 25000
 
       - name: Production skincare smoke
         shell: bash
