@@ -1964,6 +1964,10 @@ const FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS, 2200),
 );
+const FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS = Math.max(
+  FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS, 4200),
+);
 const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
   300,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS, 1200),
@@ -4486,6 +4490,37 @@ function decideGenericSkincareCachePreference({
     upstream_external_only: upstreamExternalOnly,
     upstream_query_source: upstreamQuerySource || null,
   };
+}
+
+function resolveFindProductsMultiCacheStageBudgetMs({
+  rawQuery = '',
+  queryClass = null,
+  beautyBucket = null,
+  strictConstraintQuery = false,
+} = {}) {
+  const queryText = String(rawQuery || '').trim();
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass || undefined,
+  });
+  const effectiveBeautyBucket = String(
+    beautyBucket || beautyQueryProfile?.bucket || '',
+  ).trim().toLowerCase();
+  const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
+  const genericQueryClass =
+    !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const genericSkincareSerumCategoryQuery =
+    hasSerumSignal &&
+    genericQueryClass &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery);
+
+  if (!genericSkincareSerumCategoryQuery) {
+    return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
+  }
+
+  return FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS;
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -22008,6 +22043,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
+          const cacheStageBudgetMs = resolveFindProductsMultiCacheStageBudgetMs({
+            rawQuery: cacheQueryText,
+            queryClass: cachePolicyQueryClass,
+            beautyBucket: cacheBeautyQueryProfile?.bucket || null,
+            strictConstraintQuery: strictCommerceFindProductsMulti,
+          });
           const baseCacheSearchQueryText =
             preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
               ? cacheQueryText
@@ -22016,7 +22057,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const elapsedMs = Math.max(0, Date.now() - cacheStageStartedAt);
             const remainingBudgetMs = Math.max(
               100,
-              FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS - elapsedMs,
+              cacheStageBudgetMs - elapsedMs,
             );
             return await withStageBudget(
               searchCrossMerchantFromCache(queryTextForCache, page, limit, {
@@ -22463,6 +22504,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cache_query_terms: Array.isArray(fromCache?.query_terms) ? fromCache.query_terms : [],
             upstream_query: queryText,
             latency_ms: Math.max(0, Date.now() - cacheStageStartedAt),
+            timeout_budget_ms: cacheStageBudgetMs,
             page,
             limit,
             in_stock_only: inStockOnly,
@@ -23221,7 +23263,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             limit: search.limit || search.page_size || 20,
             in_stock_only: inStockOnly,
             cache_hit: false,
-            timeout_budget_ms: FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+            timeout_budget_ms: cacheStageBudgetMs,
             stage_timeout: String(err?.code || '').toUpperCase() === 'STAGE_TIMEOUT',
             beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
             error: String(err && err.message ? err.message : err),
@@ -27097,6 +27139,9 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   decideGenericSkincareCachePreference,
+  resolveFindProductsMultiCacheStageBudgetMs,
+  FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
+  FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS,
   normalizeProductImages,
   buildFindProductsMultiPayloadFromQuery,
   buildProxySearchSoftFallbackResponse,
