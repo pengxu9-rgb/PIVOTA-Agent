@@ -4,10 +4,10 @@
 
 This runbook defines the trusted readiness workflow for the Celestial commerce core:
 
-- `search`
-- `shopping_agent`
-- `aurora-bff`
-- downstream merchant/product search handoff
+- Aurora Beauty orchestration
+- Shopping Agent decisioning
+- execution-facing commerce resolution
+- source profile ingress contracts
 
 It is narrower than the full LLM/agent infrastructure readiness audit.
 
@@ -22,10 +22,10 @@ It is narrower than the full LLM/agent infrastructure readiness audit.
 
 ### Layer contracts
 
-- L0 public search contract
-- L1 shopping-agent contract
-- L2 Aurora-BFF commerce contract
-- L3 Celestial engine governance assumptions
+- Aurora orchestration contract
+- Shopping Agent decisioning contract
+- execution-facing resolution contract
+- source profile contract
 
 ### Core chain
 
@@ -48,10 +48,33 @@ The audit writes a timestamped report under `reports/celestial-commerce-core-rea
 
 ## Gates
 
+- Milestone 0 baseline gate
 - Public search contract gate
 - Shopping-agent commerce gate
 - Aurora commerce orchestration gate
 - Production commerce-core smoke
+
+## Milestone 0 Rule
+
+Do not start dispatcher rewiring until the milestone0 baseline is in place and passing.
+
+The baseline must cover:
+
+- Aurora clarify
+- Shopping Agent ranking
+- Search exact resolution
+- merchant vs product query
+- strict ingredient constraint
+
+## Freeze Rule
+
+Starting in Milestone 1:
+
+- new business logic must not be added directly to `src/server.js`
+- new business logic must not be added directly to route helpers
+- new behavior must land in the corresponding facade/module
+
+`src/server.js` and route helpers are limited to ingress, dispatch, tracing, provenance, and response mapping changes.
 
 ## Scorecard Dimensions
 

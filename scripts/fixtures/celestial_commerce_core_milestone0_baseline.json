@@ -1,0 +1,38 @@
+[
+  {
+    "id": "aurora_clarify_date_makeup",
+    "source": "aurora-bff",
+    "task_type": "discovery",
+    "expected_entry_layer": "orchestration",
+    "expected_status": "delegated"
+  },
+  {
+    "id": "shopping_agent_strict_niacinamide_serum",
+    "source": "shopping_agent",
+    "task_type": "discovery",
+    "expected_entry_layer": "decisioning",
+    "expected_status": "no_match"
+  },
+  {
+    "id": "shopping_agent_merchant_query_ipsa_products",
+    "source": "shopping_agent",
+    "task_type": "discovery",
+    "expected_entry_layer": "decisioning",
+    "expected_status": "no_match"
+  },
+  {
+    "id": "public_search_exact_product_ipsa",
+    "source": "search",
+    "task_type": "exact_product",
+    "expected_entry_layer": "execution_facing",
+    "expected_status": "not_resolved"
+  },
+  {
+    "id": "public_search_near_exact_resolution_vitamin_c_serum_30",
+    "source": "search",
+    "task_type": "exact_product",
+    "expected_entry_layer": "execution_facing",
+    "expected_status": "not_resolved",
+    "semantics_note": "near_exact_resolution is tracked as an execution-facing subtype of exact_product in milestone0"
+  }
+]
