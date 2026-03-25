@@ -32,7 +32,7 @@
     "verify:budget-fx:prod": "node scripts/check_budget_fx_freshness.js",
     "smoke:search:skincare:prod": "bash scripts/smoke_find_products_multi_skincare_prod.sh",
     "smoke:commerce-core:prod": "bash scripts/smoke_celestial_commerce_core_prod.sh",
-    "test:commerce-core:milestone0": "node ./node_modules/.bin/jest --watchman=false --runInBand tests/celestial_commerce_core_contracts.test.js tests/aurora_commerce_core_contracts.test.js tests/celestial_commerce_core_layer_dispatch.test.js tests/celestial_commerce_core_shopping_context.test.js tests/celestial_commerce_core_source_policy.test.js tests/shopping_agent_loop_break.test.js tests/shopping_agent_guidance_context.test.js tests/shopping_agent_guidance_retrieval_plan.test.js",
+    "test:commerce-core:milestone0": "node ./node_modules/.bin/jest --watchman=false --runInBand tests/celestial_commerce_core_contracts.test.js tests/aurora_commerce_core_contracts.test.js tests/celestial_commerce_core_layer_dispatch.test.js tests/celestial_commerce_core_shopping_context.test.js tests/celestial_commerce_core_source_policy.test.js tests/shopping_agent_loop_break.test.js tests/shopping_agent_guidance_context.test.js tests/shopping_agent_guidance_retrieval_plan.test.js tests/shopping_agent_guidance_fastpath.test.js",
     "verify:commerce-core:boundaries": "node scripts/verify_celestial_commerce_core_boundaries.js",
     "audit:search:external-ingredient-validity": "bash scripts/audit_find_products_multi_external_seed_ingredient_validity.sh",
     "audit:search:external-ingredient-coverage": "node scripts/audit_external_seed_ingredient_coverage.js",
