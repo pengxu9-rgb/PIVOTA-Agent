@@ -82,8 +82,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_not_return_titles: [],
       must_return_titles: [],
       must_return_one_of_titles: [],
+      must_have_reason_codes: [],
       must_equal_metadata: {},
       must_be_positive_metadata: [],
+      must_have_clarification: null,
       expected_contract_path: null,
       catalog_surface: null,
     };
@@ -121,6 +123,9 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     must_return_one_of_titles: Array.isArray(rawCase?.must_return_one_of_titles)
       ? rawCase.must_return_one_of_titles.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    must_have_reason_codes: Array.isArray(rawCase?.must_have_reason_codes)
+      ? rawCase.must_have_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     must_equal_metadata:
       rawCase?.must_equal_metadata && typeof rawCase.must_equal_metadata === 'object'
         ? Object.fromEntries(
@@ -132,6 +137,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     must_be_positive_metadata: Array.isArray(rawCase?.must_be_positive_metadata)
       ? rawCase.must_be_positive_metadata.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    must_have_clarification:
+      typeof rawCase?.must_have_clarification === 'boolean'
+        ? rawCase.must_have_clarification
+        : null,
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
     in_stock_only: rawCase?.in_stock_only !== false,
@@ -266,6 +275,8 @@ function evaluateCase(row) {
       ? metadata.contract_bridge
       : {};
   const titles = normalizeTitles(products);
+  const reasonCodes = Array.isArray(data.reason_codes) ? data.reason_codes.map((item) => String(item || '').trim()).filter(Boolean) : [];
+  const hasClarification = Boolean(data?.clarification && data.clarification.question);
   const reasons = [];
 
   if (spec.expected_contract_path) {
@@ -325,6 +336,25 @@ function evaluateCase(row) {
     });
     if (!hasAllowedTitle) {
       reasons.push(`missing_required_title:${mustReturnOneOf.join(' | ')}`);
+    }
+  }
+
+  if (typeof spec.must_have_clarification === 'boolean') {
+    if (hasClarification !== spec.must_have_clarification) {
+      reasons.push(
+        `clarification_mismatch:expected=${JSON.stringify(spec.must_have_clarification)} actual=${JSON.stringify(hasClarification)}`,
+      );
+    }
+  }
+
+  const mustHaveReasonCodes = Array.isArray(spec.must_have_reason_codes)
+    ? spec.must_have_reason_codes
+    : [];
+  for (const requiredCode of mustHaveReasonCodes) {
+    const normalizedRequiredCode = String(requiredCode || '').trim();
+    if (!normalizedRequiredCode) continue;
+    if (!reasonCodes.includes(normalizedRequiredCode)) {
+      reasons.push(`missing_reason_code:${normalizedRequiredCode}`);
     }
   }
 

@@ -11,6 +11,8 @@ This runbook defines the trusted readiness workflow for the Celestial commerce c
 
 It is narrower than the full LLM/agent infrastructure readiness audit.
 
+Pair this runbook with [Celestial Commerce Core Actual Architecture](./celestial_commerce_core_actual_architecture.md) when checking implementation drift against the long-term Celestial plan.
+
 ## Execution Rules
 
 - Use only repos under `~/dev` as execution sources.
@@ -52,6 +54,18 @@ The audit writes a timestamped report under `reports/celestial-commerce-core-rea
 - Shopping-agent commerce gate
 - Aurora commerce orchestration gate
 - Production commerce-core smoke
+
+## Stable Scenario Baseline
+
+The commerce-core baseline should keep these scenario families under one shared smoke:
+
+- public internal-first search contract
+- broad `shopping_agent` / `aurora-bff` commerce search
+- strict ingredient consistency
+- merchant-style query routing
+- clarify-required query behavior
+
+Exact product-specific lookup should stay covered, but if a source contract is still live-flaky, keep it in local contract tests until runtime routing is stabilized enough for deterministic production smoke.
 
 ## Scorecard Dimensions
 
