@@ -2,10 +2,13 @@ const {
   buildBatchCandidateDecision,
   chunkList,
   detectCrossBrandTitleAnomaly,
+  detectSuspiciousTitleShift,
   hasSubstantiveCompletenessImprovement,
   looksLikeAccessoryToolProduct,
   looksLikeBundleLikeProduct,
   looksLikeMarketingPartialTitle,
+  normalizeTitleForComparison,
+  summarizeTitleOverlap,
   summarizeCompletenessDelta,
   summarizeMissingFields,
 } = require('../../scripts/run_external_seed_completeness_batches.cjs');
@@ -224,6 +227,37 @@ describe('run_external_seed_completeness_batches', () => {
     expect(looksLikeAccessoryToolProduct('BeamCream Smoothing Body Moisturizer')).toBe(false);
   });
 
+  test('normalizeTitleForComparison normalizes punctuation and case', () => {
+    expect(normalizeTitleForComparison("Rose D'Amalfi Eau de Parfum")).toBe('rose d amalfi eau de parfum');
+  });
+
+  test('summarizeTitleOverlap reports high containment for close title matches', () => {
+    expect(summarizeTitleOverlap('Cleansing Concentrate', 'TOM FORD RESEARCH Cleansing Concentrate')).toMatchObject({
+      shared_count: 2,
+      containment: 1,
+    });
+  });
+
+  test('detectSuspiciousTitleShift flags low-overlap successor title shifts', () => {
+    expect(
+      detectSuspiciousTitleShift(
+        'Shade and Illuminate Radiance Enhancer',
+        'Shade and Illuminate Concealer',
+      ),
+    ).toMatchObject({
+      shared_count: 2,
+    });
+  });
+
+  test('detectSuspiciousTitleShift allows exact or near-contained successor titles', () => {
+    expect(
+      detectSuspiciousTitleShift(
+        'Cleansing Concentrate',
+        'TOM FORD RESEARCH Cleansing Concentrate',
+      ),
+    ).toBeNull();
+  });
+
   test('detectCrossBrandTitleAnomaly allows matching domain brand families', () => {
     expect(
       detectCrossBrandTitleAnomaly(
@@ -359,6 +393,41 @@ describe('run_external_seed_completeness_batches', () => {
 
     expect(decision.allow_apply).toBe(false);
     expect(decision.reasons).toEqual(expect.arrayContaining(['accessory_tool_product']));
+  });
+
+  test('buildBatchCandidateDecision blocks suspicious title-shift successors', () => {
+    const decision = buildBatchCandidateDecision(
+      {
+        status: 'dry_run',
+        title: 'Shade and Illuminate Radiance Enhancer',
+        target_url: 'https://www.tomfordbeauty.com/product/shade-and-illuminate-radiance-enhancer?shade=Light',
+        before_state: {
+          pdp_description_raw_present: false,
+          pdp_ingredients_raw_present: false,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: false,
+          pdp_details_sections_count: 0,
+          raw_ingredient_text_clean_present: false,
+        },
+        next_state: {
+          title: 'Shade and Illuminate Concealer',
+          canonical_url: 'https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer',
+          pdp_description_raw_present: true,
+          pdp_ingredients_raw_present: true,
+          pdp_active_ingredients_raw_present: false,
+          pdp_how_to_use_raw_present: true,
+          pdp_details_sections_count: 3,
+          raw_ingredient_text_clean_present: true,
+        },
+      },
+      'US',
+    );
+
+    expect(decision.allow_apply).toBe(false);
+    expect(decision.reasons).toEqual(expect.arrayContaining(['title_shift_successor']));
+    expect(decision.title_shift_anomaly).toMatchObject({
+      shared_count: 2,
+    });
   });
 
   test('looksLikeMarketingPartialTitle catches NUXE weak partial titles', () => {

@@ -35,6 +35,21 @@ const MARKETING_PARTIAL_TITLE_RE =
   /\b(?:giftset|gift set|ritual|glow[- ]up|glow up|like a goddess|the iconics|pink fever|infinite glow)\b/i;
 const ACCESSORY_TOOL_TITLE_RE =
   /\b(?:brush|brushes|applicator|applicators|sharpener|sharpeners|sponge|sponges|puff|puffs|tweezer|tweezers|curler|curlers)\b/i;
+const TITLE_OVERLAP_STOP_WORDS = new Set([
+  'tom',
+  'ford',
+  'beauty',
+  'and',
+  'the',
+  'with',
+  'for',
+  'of',
+  'broad',
+  'spectrum',
+  'spf',
+  'ml',
+  'oz',
+]);
 
 const CROSS_BRAND_RULES = Object.freeze([
   { name: 'mufe', match: /\b(?:mufe|make up for ever)\b/i, domains: ['makeupforever.com', 'mufe.com'] },
@@ -66,6 +81,58 @@ function looksLikeMarketingPartialTitle(value) {
 
 function looksLikeAccessoryToolProduct(value) {
   return ACCESSORY_TOOL_TITLE_RE.test(normalizeNonEmptyString(value));
+}
+
+function normalizeTitleForComparison(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function tokenizeTitleForOverlap(value) {
+  return new Set(
+    normalizeTitleForComparison(value)
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token && !TITLE_OVERLAP_STOP_WORDS.has(token) && token.length >= 2),
+  );
+}
+
+function summarizeTitleOverlap(currentTitle, nextTitle) {
+  const currentTokens = tokenizeTitleForOverlap(currentTitle);
+  const nextTokens = tokenizeTitleForOverlap(nextTitle);
+  let sharedCount = 0;
+  for (const token of currentTokens) {
+    if (nextTokens.has(token)) sharedCount += 1;
+  }
+
+  const unionCount = new Set([...currentTokens, ...nextTokens]).size;
+  const minCount = Math.min(currentTokens.size, nextTokens.size);
+  return {
+    current_count: currentTokens.size,
+    next_count: nextTokens.size,
+    shared_count: sharedCount,
+    union_count: unionCount,
+    containment: minCount > 0 ? sharedCount / minCount : 0,
+    jaccard: unionCount > 0 ? sharedCount / unionCount : 0,
+  };
+}
+
+function detectSuspiciousTitleShift(currentTitle, nextTitle) {
+  const current = normalizeNonEmptyString(currentTitle);
+  const next = normalizeNonEmptyString(nextTitle);
+  if (!current || !next) return null;
+  if (normalizeTitleForComparison(current) === normalizeTitleForComparison(next)) return null;
+
+  const overlap = summarizeTitleOverlap(current, next);
+  if (overlap.shared_count >= 2 && overlap.containment >= 0.75) return null;
+
+  return {
+    current_title: current,
+    next_title: next,
+    ...overlap,
+  };
 }
 
 function normalizeHostname(value) {
@@ -143,6 +210,7 @@ function buildBatchCandidateDecision({ status, target_url, title, before_state, 
   const reasons = Array.isArray(baseDecision.reasons) ? [...baseDecision.reasons] : [];
   const allowBundles = Boolean(options.allowBundles);
   const crossBrandAnomaly = detectCrossBrandTitleAnomaly(title, target_url, next_state);
+  const titleShiftAnomaly = detectSuspiciousTitleShift(title, next_state?.title);
 
   if (!delta.improved) reasons.push('no_missing_field_improvement');
   if (delta.improved && !hasSubstantiveCompletenessImprovement(delta)) reasons.push('details_only_improvement');
@@ -155,12 +223,14 @@ function buildBatchCandidateDecision({ status, target_url, title, before_state, 
     reasons.push('accessory_tool_product');
   }
   if (crossBrandAnomaly) reasons.push('cross_brand_title_anomaly');
+  if (titleShiftAnomaly) reasons.push('title_shift_successor');
 
   return {
     allow_apply: reasons.length === 0,
     reasons,
     base_guard: baseDecision,
     cross_brand_anomaly: crossBrandAnomaly,
+    title_shift_anomaly: titleShiftAnomaly,
     delta,
   };
 }
@@ -440,10 +510,13 @@ module.exports = {
   buildBatchCandidateDecision,
   chunkList,
   detectCrossBrandTitleAnomaly,
+  detectSuspiciousTitleShift,
   hasSubstantiveCompletenessImprovement,
   looksLikeAccessoryToolProduct,
   looksLikeBundleLikeProduct,
   looksLikeMarketingPartialTitle,
+  normalizeTitleForComparison,
+  summarizeTitleOverlap,
   normalizeHostname,
   summarizeCompletenessDelta,
   summarizeMissingFields,
