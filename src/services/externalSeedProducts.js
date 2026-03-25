@@ -8,6 +8,13 @@ const SKINCARE_STEP_CATEGORY_PATTERNS = [
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
 ];
+const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
+  'salicylic_acid',
+  'niacinamide',
+  'retinol',
+  'azelaic_acid',
+  'benzoyl_peroxide',
+]);
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -77,18 +84,6 @@ function normalizeExplicitSkincareCategory(value) {
     if (pattern.test(text)) return label;
   }
   return text;
-}
-
-function inferExternalSeedSkincareCategory(...values) {
-  const surfaceText = values
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ');
-  if (!surfaceText) return '';
-  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
-    if (pattern.test(surfaceText)) return label;
-  }
-  return '';
 }
 
 function normalizeIngredientToken(value) {
@@ -205,6 +200,40 @@ function collectStructuredIngredientIds(row, seedData, snapshot) {
     appendStructuredIngredientIds(out, candidate);
   }
   return out;
+}
+
+function inferExternalSeedSkincareCategory({
+  explicitCategory,
+  title,
+  description,
+  canonicalUrl,
+  destinationUrl,
+  ingredientIds,
+} = {}) {
+  const explicit = normalizeExplicitSkincareCategory(explicitCategory);
+  if (explicit) return explicit;
+
+  const surfaceText = [title, description, canonicalUrl, destinationUrl]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!surfaceText) return '';
+
+  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
+    if (pattern.test(surfaceText)) return label;
+  }
+
+  const normalizedIngredientIds = Array.isArray(ingredientIds)
+    ? ingredientIds.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (
+    /\bsolution\b/i.test(surfaceText) &&
+    normalizedIngredientIds.some((value) => STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS.has(value))
+  ) {
+    return 'Serum';
+  }
+
+  return '';
 }
 
 function firstNonEmptyString(...values) {
@@ -665,9 +694,17 @@ function buildExternalSeedProduct(row) {
     normalizeExplicitSkincareCategory(seedData.productType) ||
     normalizeExplicitSkincareCategory(snapshot.product_type) ||
     normalizeExplicitSkincareCategory(snapshot.productType);
-  const category = explicitCategory || inferExternalSeedSkincareCategory(title, canonicalUrl, destinationUrl) || undefined;
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
+  const category = inferExternalSeedSkincareCategory({
+    explicitCategory,
+    title,
+    description,
+    canonicalUrl,
+    destinationUrl,
+    ingredientIds,
+  });
+  const normalizedCategory = category || undefined;
 
   let variants = normalizeSeedVariants(seedData, row);
   let imageUrls = normalizeSeedImageUrls(seedData, row);
@@ -754,7 +791,7 @@ function buildExternalSeedProduct(row) {
     inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
     in_stock: inStock,
     availability: availability || undefined,
-    product_type: category || 'external',
+    product_type: normalizedCategory || 'external',
     source: 'external_seed',
     ...(ingredientIds.length ? { ingredient_ids: ingredientIds } : {}),
     url: canonicalUrl || destinationUrl || undefined,
@@ -777,7 +814,7 @@ function buildExternalSeedProduct(row) {
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
-    ...(category ? { category } : {}),
+    ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };
 }
 
@@ -787,6 +824,7 @@ module.exports = {
   ensureJsonObject,
   normalizeSeedAvailability,
   availabilityToInStock,
+  inferExternalSeedSkincareCategory,
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
