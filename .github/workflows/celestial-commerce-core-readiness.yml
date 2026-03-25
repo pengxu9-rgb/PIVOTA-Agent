@@ -1,0 +1,129 @@
+name: Celestial Commerce Core Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL for commerce-core smoke"
+        required: false
+        default: "https://agent.pivota.cc"
+      backend_public_base_url:
+        description: "Backend public base URL for version probing"
+        required: false
+        default: "https://web-production-fedb.up.railway.app"
+      wait_for_commit:
+        description: "Wait for deployed agent commit before running production smoke"
+        type: boolean
+        required: false
+        default: true
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/celestial-commerce-core-readiness.yml"
+      - "package.json"
+      - "docs/runbooks/celestial_commerce_core_readiness.md"
+      - "docs/runbooks/celestial_commerce_core_source_contracts.md"
+      - "docs/runbooks/llm_agent_infrastructure_readiness.md"
+      - "scripts/run_celestial_commerce_core_readiness_audit.sh"
+      - "scripts/smoke_celestial_commerce_core_prod.sh"
+      - "scripts/search_stability_matrix.js"
+      - "scripts/verify_deployed_commit_matches.sh"
+      - "scripts/fixtures/celestial_commerce_core_prod_gate.json"
+      - "src/server.js"
+      - "src/auroraBff/routes.js"
+      - "tests/celestial_commerce_core_contracts.test.js"
+      - "tests/aurora_commerce_core_contracts.test.js"
+      - "tests/integration/invoke.find_products_multi_cache_search.test.js"
+      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+
+concurrency:
+  group: celestial-commerce-core-readiness
+  cancel-in-progress: true
+
+jobs:
+  local_contracts:
+    name: Celestial Commerce Core Local Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify release source
+        shell: bash
+        env:
+          EXPECTED_REPO_NAME: PIVOTA-Agent
+          ALLOWED_BRANCH_REGEX: "^main$"
+        run: |
+          bash scripts/verify_release_source.sh
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/server.js
+          node --check scripts/search_stability_matrix.js
+          bash -n scripts/smoke_celestial_commerce_core_prod.sh
+          bash -n scripts/run_celestial_commerce_core_readiness_audit.sh
+
+      - name: Commerce core gates
+        run: |
+          npx jest --runInBand \
+            tests/celestial_commerce_core_contracts.test.js \
+            tests/aurora_commerce_core_contracts.test.js \
+            tests/integration/invoke.find_products_multi_cache_search.test.js \
+            tests/integration/invoke.find_products_multi_strict_surface.test.js
+
+  readiness_audit:
+    name: Celestial Commerce Core Readiness Audit
+    runs-on: ubuntu-latest
+    needs: [local_contracts]
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
+      BACKEND_PUBLIC_BASE_URL: ${{ inputs.backend_public_base_url || vars.PIVOTA_BACKEND_PUBLIC_BASE_URL || 'https://web-production-fedb.up.railway.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Verify deployed commit via service_version
+        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Run commerce-core readiness audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$BASE_URL" \
+          BACKEND_PUBLIC_BASE_URL="$BACKEND_PUBLIC_BASE_URL" \
+          OUT_DIR="reports/celestial-commerce-core-readiness-ci" \
+          bash scripts/run_celestial_commerce_core_readiness_audit.sh
+
+      - name: Upload readiness reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: celestial-commerce-core-readiness
+          path: reports/celestial-commerce-core-readiness-ci
+          if-no-files-found: error

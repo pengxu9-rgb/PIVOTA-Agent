@@ -23,8 +23,19 @@ Readiness conclusions must distinguish:
 
 - Aurora BFF release gate: `.github/workflows/aurora-bff-release-gate.yml`
 - Shopping search release gate: `.github/workflows/shopping-search-release-gate.yml`
+- Celestial commerce core readiness: `.github/workflows/celestial-commerce-core-readiness.yml`
 - Catalog intelligence release gate: `.github/workflows/catalog-intelligence-release-gate.yml`
 - Production skincare smoke: `scripts/smoke_find_products_multi_skincare_prod.sh`
+
+## Narrow Commerce-Core Audit
+
+For the layered commerce stack (`search` / `shopping_agent` / `aurora-bff`), run:
+
+```bash
+npm run audit:readiness:commerce-core
+```
+
+This produces a narrower scorecard focused on source contracts, commerce retrieval semantics, prompt/query decomposition helpers, and production smoke for the commerce core.
 
 ## Audit Entry Point
 

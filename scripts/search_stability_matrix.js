@@ -75,6 +75,8 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       id: fallbackId || normalizeText(rawCase).replace(/\s+/g, '_') || 'query_case',
       query: rawCase,
       source: defaultSource,
+      request_metadata: {},
+      request_search: {},
       allow_zero_results: true,
       must_have_metadata: [],
       must_not_return_titles: [],
@@ -98,6 +100,14 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     query,
     source: String(rawCase?.source || '').trim() || defaultSource,
     catalog_surface: String(rawCase?.catalog_surface || rawCase?.catalogSurface || '').trim() || null,
+    request_metadata:
+      rawCase?.request_metadata && typeof rawCase.request_metadata === 'object' && !Array.isArray(rawCase.request_metadata)
+        ? { ...rawCase.request_metadata }
+        : {},
+    request_search:
+      rawCase?.request_search && typeof rawCase.request_search === 'object' && !Array.isArray(rawCase.request_search)
+        ? { ...rawCase.request_search }
+        : {},
     allow_zero_results: rawCase?.allow_zero_results !== false,
     must_have_metadata: Array.isArray(rawCase?.must_have_metadata)
       ? rawCase.must_have_metadata.map((item) => String(item || '').trim()).filter(Boolean)
@@ -511,11 +521,17 @@ async function main() {
       };
       try {
         const metadata = {
+          ...(caseSpec.request_metadata && typeof caseSpec.request_metadata === 'object'
+            ? caseSpec.request_metadata
+            : {}),
           source: caseSpec.source || args.source,
           ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
           ...(args.evalMode ? { eval_mode: true } : {}),
         };
         const search = {
+          ...(caseSpec.request_search && typeof caseSpec.request_search === 'object'
+            ? caseSpec.request_search
+            : {}),
           query: caseSpec.query,
           limit: caseSpec.limit || 10,
           in_stock_only: caseSpec.in_stock_only !== false,
