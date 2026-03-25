@@ -222,4 +222,26 @@ describe('externalSeedProducts helper', () => {
     const product = buildExternalSeedProduct(row);
     expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'peptides', 'salicylic_acid']);
   });
+
+  test('infers skincare serum category from canonical url when explicit seed category is missing', () => {
+    const row = {
+      id: 'eps_ord_hyaluronic',
+      canonical_url: 'https://theordinary.com/en-us/hyaluronic-acid-2-b5-serum-with-ceramides-100637.html',
+      destination_url: 'https://theordinary.com/en-us/hyaluronic-acid-2-b5-serum-with-ceramides-100637.html',
+      title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+      seed_data: {
+        reviewed_ingredient_ids: ['hyaluronic_acid', 'panthenol'],
+        snapshot: {
+          canonical_url: 'https://theordinary.com/en-us/hyaluronic-acid-2-b5-serum-with-ceramides-100637.html',
+          title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+          variants: [],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.category).toBe('Serum');
+    expect(product.product_type).toBe('Serum');
+    expect(product.ingredient_ids).toEqual(['hyaluronic_acid', 'panthenol']);
+  });
 });

@@ -2,6 +2,12 @@ const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const SKINCARE_STEP_CATEGORY_PATTERNS = [
+  ['Serum', /\b(serum|essence|ampoule|concentrate)\b/i],
+  ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
+  ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
+  ['Toner', /\b(toner|mist|pad)\b/i],
+];
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -61,6 +67,28 @@ function normalizeHttpUrl(value) {
   const url = String(value || '').trim();
   if (!/^https?:\/\//i.test(url)) return '';
   return url;
+}
+
+function normalizeExplicitSkincareCategory(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^external$/i.test(text)) return '';
+  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
+    if (pattern.test(text)) return label;
+  }
+  return text;
+}
+
+function inferExternalSeedSkincareCategory(...values) {
+  const surfaceText = values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!surfaceText) return '';
+  for (const [label, pattern] of SKINCARE_STEP_CATEGORY_PATTERNS) {
+    if (pattern.test(surfaceText)) return label;
+  }
+  return '';
 }
 
 function normalizeIngredientToken(value) {
@@ -629,7 +657,15 @@ function buildExternalSeedProduct(row) {
     snapshot.seed_description_origin,
   );
   const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
-  const category = String(seedData.category || seedData.product?.category || snapshot.category || '').trim() || undefined;
+  const explicitCategory =
+    normalizeExplicitSkincareCategory(seedData.category) ||
+    normalizeExplicitSkincareCategory(seedData.product?.category) ||
+    normalizeExplicitSkincareCategory(snapshot.category) ||
+    normalizeExplicitSkincareCategory(seedData.product_type) ||
+    normalizeExplicitSkincareCategory(seedData.productType) ||
+    normalizeExplicitSkincareCategory(snapshot.product_type) ||
+    normalizeExplicitSkincareCategory(snapshot.productType);
+  const category = explicitCategory || inferExternalSeedSkincareCategory(title, canonicalUrl, destinationUrl) || undefined;
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
 
