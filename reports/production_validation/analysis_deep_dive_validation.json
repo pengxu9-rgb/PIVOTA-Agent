@@ -1,0 +1,237 @@
+{
+  "version": "1.0",
+  "request_id": "de5088ee-be5c-4a39-b381-d827e4e533a9",
+  "trace_id": "t_prod_validate_1773928947",
+  "assistant_text": "Absolutely \u2014 let\u2019s make this simple and actionable.\n\nFocus for this deep dive: Tell me more about my skin. This explanation stays grounded in your latest analysis. Your current routine is more consistent with a need for careful retinoid management to protect your skin barrier. Key signals: Retinol serum appears to be your main PM retinoid step.; Some ingredients like retinol do not fully align with the plan.. Next steps: Keep retinol use at a low frequency.; Apply barrier cream right after retinol on treatment nights.. Current confidence: medium.",
+  "cards": [
+    {
+      "id": "analysis_followup_story_de5088ee-be5c-4a39-b381-d827e4e533a9",
+      "type": "analysis_story_v2",
+      "priority": 2,
+      "title": "Analysis story",
+      "tags": [],
+      "sections": [],
+      "actions": [],
+      "payload": {
+        "schema_version": "aurora.analysis_story.v2",
+        "confidence_overall": {
+          "level": "medium"
+        },
+        "skin_profile": {
+          "current_strengths": [
+            "You already have a cleanser + moisturizer backbone, so this can be improved without rebuilding the whole routine.",
+            "Retinol serum already gives you one clear PM treatment lane.",
+            "You already have a daytime sunscreen step in place, so the job is mostly cadence and tolerability."
+          ]
+        },
+        "priority_findings": [
+          {
+            "priority": 1,
+            "title": "Retinol serum appears to be your main PM retinoid step.",
+            "detail": "Retinol serum appears to be your main PM retinoid step.",
+            "evidence_region_or_module": []
+          },
+          {
+            "priority": 2,
+            "title": "Some ingredients like retinol do not fully align with the plan.",
+            "detail": "Some ingredients like retinol do not fully align with the plan.",
+            "evidence_region_or_module": []
+          }
+        ],
+        "target_state": [
+          "Keep the PM retinoid lane, but make it sustainable instead of irritating."
+        ],
+        "core_principles": [
+          "Keep only one strong-active lane at a time.",
+          "Stabilize the current steps before escalating.",
+          "Retinoid nights should be paired with moisturizer and a slower cadence."
+        ],
+        "am_plan": [
+          {
+            "step": "Gentle cleanser",
+            "purpose": "Keep the cleanse step simple and non-irritating"
+          },
+          {
+            "step": "Barrier cream",
+            "purpose": "Keep barrier support in the morning"
+          },
+          {
+            "step": "SPF50",
+            "purpose": "Make the existing sunscreen a fixed daily step"
+          }
+        ],
+        "pm_plan": [
+          {
+            "step": "Gentle cleanser",
+            "purpose": "Keep the evening routine simple at the start"
+          },
+          {
+            "step": "Retinol serum (low frequency first)",
+            "purpose": "Make the retinoid lane tolerable before deciding to intensify"
+          },
+          {
+            "step": "Barrier cream",
+            "purpose": "Leave enough recovery support after the active step"
+          }
+        ],
+        "timeline": {
+          "first_4_weeks": [
+            "Week 1: lock the current routine and stop escalating it.",
+            "Week 2-3: keep the retinoid to 2-3 nights per week and watch for stinging, redness, or peeling.",
+            "Week 4: only consider another new active if the routine stays fully calm."
+          ],
+          "week_8_12_expectation": [
+            "By weeks 8-12, the win should be better tolerance and more complete daytime protection, not aggressive escalation."
+          ]
+        },
+        "ui_card_v1": {
+          "headline": "Your current routine is more consistent with a need for careful retinoid management to protect your skin barrier.",
+          "key_points": [
+            "Retinol serum appears to be your main PM retinoid step.",
+            "Some ingredients like retinol do not fully align with the plan."
+          ],
+          "actions_now": [
+            "Keep retinol use at a low frequency.",
+            "Apply barrier cream right after retinol on treatment nights."
+          ],
+          "avoid_now": [
+            "If retinoid use causes persistent stinging, redness, or peeling, pause it and go back to cleanser + moisturizer only."
+          ],
+          "confidence_label": "medium",
+          "next_checkin": "Week 1: lock the current routine and stop escalating it."
+        },
+        "safety_notes": [
+          "If retinoid use causes persistent stinging, redness, or peeling, pause it and go back to cleanser + moisturizer only."
+        ],
+        "disclaimer_non_medical": true,
+        "summary": "Focus for this deep dive: Tell me more about my skin. This explanation stays grounded in your latest analysis. Your current routine is more consistent with a need for careful retinoid management to protect your skin barrier. Key signals: Retinol serum appears to be your main PM retinoid step.; Some ingredients like retinol do not fully align with the plan.. Next steps: Keep retinol use at a low frequency.; Apply barrier cream right after retinol on treatment nights.. Current confidence: medium."
+      }
+    }
+  ],
+  "follow_up_questions": [],
+  "suggested_quick_replies": [
+    {
+      "id": "chip.aurora.next_action.ingredient_plan",
+      "label": "Explain the ingredient plan",
+      "value": "Explain the ingredient plan",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.ingredient_plan"
+      }
+    },
+    {
+      "id": "chip.aurora.next_action.routine_deep_dive",
+      "label": "What issues does my routine have?",
+      "value": "What issues does my routine have?",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.routine_deep_dive"
+      }
+    },
+    {
+      "id": "chip.aurora.next_action.safety_concerns",
+      "label": "Anything I should watch out for?",
+      "value": "Anything I should watch out for?",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.safety_concerns"
+      }
+    },
+    {
+      "id": "chip_keep_chatting",
+      "label": "Ask me anything",
+      "value": "Ask me anything",
+      "metadata": {
+        "action_id": "chip_keep_chatting"
+      }
+    }
+  ],
+  "meta": {
+    "intent_canonical": "unknown",
+    "intent_source": "none",
+    "gate_type": "none",
+    "loop_count": 0,
+    "break_applied": "none",
+    "env_source": null,
+    "policy_version": "aurora_chat_v2_p0",
+    "rollout_variant": "v2_weather",
+    "rollout_bucket": 82,
+    "rollout_bucket_key_source": "anon_id",
+    "rollout_forced_variant": null,
+    "rollout_applied": true,
+    "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+    "flags_effective": {
+      "profile_v2": true,
+      "qa_planner_v1": true,
+      "safety_engine_v1": true,
+      "travel_weather_live_v1": true,
+      "loop_breaker_v2": true,
+      "skill_router_v2": true,
+      "chat_response_meta": true
+    },
+    "gate_policy_version": "aurora_gate_policy_answer_first_v1",
+    "gate_decisions": [],
+    "advisory_count": 0,
+    "degraded": false
+  },
+  "session_patch": {
+    "next_state": "IDLE_CHAT",
+    "meta": {
+      "safety_gate_mode": "advisory_only_v1",
+      "safety_advisory_emitted": false,
+      "intent_canonical": "unknown",
+      "intent_source": "none",
+      "gate_type": "none",
+      "loop_count": 0,
+      "break_applied": "none",
+      "env_source": null,
+      "policy_version": "aurora_chat_v2_p0",
+      "rollout_variant": "v2_weather",
+      "rollout_bucket": 82,
+      "rollout_bucket_key_source": "anon_id",
+      "rollout_forced_variant": null,
+      "rollout_applied": true,
+      "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+      "flags_effective": {
+        "profile_v2": true,
+        "qa_planner_v1": true,
+        "safety_engine_v1": true,
+        "travel_weather_live_v1": true,
+        "loop_breaker_v2": true,
+        "skill_router_v2": true,
+        "chat_response_meta": true
+      },
+      "gate_policy_version": "aurora_gate_policy_answer_first_v1",
+      "gate_decisions": [],
+      "advisory_count": 0,
+      "degraded": false
+    },
+    "llm": {
+      "llm_provider_requested": "gemini",
+      "llm_model_requested": "gemini-3-pro-preview",
+      "llm_provider_effective": null,
+      "llm_model_effective": null
+    }
+  },
+  "ops": {
+    "thread_ops": [],
+    "profile_patch": [],
+    "routine_patch": [],
+    "experiment_events": []
+  },
+  "safety": {
+    "risk_level": "none",
+    "red_flags": [],
+    "disclaimer": ""
+  },
+  "telemetry": {
+    "intent": "unknown",
+    "intent_confidence": 0,
+    "entities": [],
+    "ui_language": "EN",
+    "matching_language": "EN",
+    "language_mismatch": false,
+    "language_resolution_source": "header",
+    "gate_type": "none",
+    "env_source": null,
+    "degraded": false,
+    "intent_source": "none"
+  }
+}

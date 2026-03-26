@@ -1,0 +1,214 @@
+{
+  "summary": {
+    "generated_at": "2026-03-25T05:34:36.200Z",
+    "target": "app",
+    "base_url": "https://agent.pivota.cc",
+    "endpoint": "/agent/shop/v1/invoke",
+    "upstream_base": "https://web-production-fedb.up.railway.app",
+    "total_cases": 6,
+    "strict_cases": 5,
+    "strict_pass_count": 0,
+    "strict_fail_count": 5,
+    "all_strict_green": false
+  },
+  "rows": [
+    {
+      "id": "fp_exact_ipsa",
+      "label": "find_products exact lookup",
+      "operation": "find_products",
+      "query": "IPSA Time Reset Aqua",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 1481,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": false,
+        "relevance_ok": false,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    },
+    {
+      "id": "fp_generic_brush",
+      "label": "find_products generic brush lookup",
+      "operation": "find_products",
+      "query": "foundation brush",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 1185,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": false,
+        "relevance_ok": false,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    },
+    {
+      "id": "fpm_exact_ipsa_eligible_only",
+      "label": "find_products_multi exact lookup eligible-only",
+      "operation": "find_products_multi",
+      "query": "IPSA Time Reset Aqua",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 301,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": false,
+        "relevance_ok": false,
+        "eligible_only_ok": false,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    },
+    {
+      "id": "fpm_brand_winona",
+      "label": "find_products_multi brand lookup",
+      "operation": "find_products_multi",
+      "query": "Winona products",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 284,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": false,
+        "relevance_ok": false,
+        "eligible_only_ok": false,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    },
+    {
+      "id": "fpm_tool_brush",
+      "label": "find_products_multi tool-first brush query",
+      "operation": "find_products_multi",
+      "query": "foundation brush recommendation",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 6714,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": false,
+        "relevance_ok": false,
+        "eligible_only_ok": false,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    },
+    {
+      "id": "fpm_scenario_date_makeup",
+      "label": "find_products_multi scenario query",
+      "operation": "find_products_multi",
+      "query": "我今晚有个约会，要化妆，要推荐点商品吧？",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 5235,
+      "evaluation": {
+        "observe_only": true,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": true
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": null,
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": null
+        },
+        "clarification": null,
+        "top_products": []
+      }
+    }
+  ]
+}

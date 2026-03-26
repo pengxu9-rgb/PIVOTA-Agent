@@ -57,11 +57,16 @@ const shoppingTool = {
         type: "string",
         enum: [
           "find_products",
+          "find_products_multi",
           "get_product_detail",
+          "offers.resolve",
+          "preview_quote",
           "create_order",
+          "confirm_payment",
           "submit_payment",
           "get_order_status",
-          "request_after_sales"
+          "request_after_sales",
+          "track_product_click"
         ]
       },
       payload: {

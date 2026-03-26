@@ -1,7 +1,7 @@
 {
   "name": "pivota_shopping_tool",
   "version": "1.0",
-  "description": "Unified shopping tool backed by Pivota, ACP, and AP2. Use it for product search, order creation, payments, order tracking, and after-sales. Version 1.0 - Reference implementation for LLM integrations.",
+  "description": "Unified shopping tool backed by Pivota, ACP, and AP2. Use it for product search, quote preview, order creation, payment submission/confirmation, order tracking, and supported after-sales actions. Version 1.0 - Reference implementation for LLM integrations.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -15,6 +15,7 @@
           "offers.resolve",
           "preview_quote",
           "create_order",
+          "confirm_payment",
           "submit_payment",
           "get_order_status",
           "request_after_sales",
@@ -112,8 +113,9 @@
           },
           "order": {
             "type": "object",
-            "description": "Used when operation = create_order",
+            "description": "Used when operation = create_order or confirm_payment",
             "properties": {
+              "order_id": { "type": "string", "description": "Required when operation = confirm_payment." },
               "quote_id": { "type": "string", "description": "Required when quote-first is enabled upstream." },
               "discount_codes": { "type": "array", "items": { "type": "string" } },
               "items": {
@@ -215,13 +217,13 @@
           },
           "status": {
             "type": "object",
-            "description": "Used when operation = get_order_status or request_after_sales.",
+            "description": "Used when operation = get_order_status or request_after_sales. Current public after-sales actions are refund and cancel.",
             "properties": {
               "order_id": { "type": "string" },
               "reason": { "type": "string" },
               "requested_action": {
                 "type": "string",
-                "enum": ["refund", "return", "exchange", "support"]
+                "enum": ["refund", "cancel"]
               }
             },
             "additionalProperties": true

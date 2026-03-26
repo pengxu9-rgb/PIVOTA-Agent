@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-03-06T17:50:12.512Z",
+  "args": {
+    "cases": "tests/fixtures/skin/skin_prompt_eval_cases.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "reports/skin-prompt-quality/judged-run-1",
+    "repeats": 5,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "single",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 30000,
+    "skipJudge": false
+  },
+  "summary": [
+    {
+      "stage": "vision",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 0.6667,
+      "avg_score": 5.53,
+      "hard_fail_rate": 0.4,
+      "below8_rate": 0.4,
+      "repeat_consistency": 0.6667,
+      "pass": false
+    },
+    {
+      "stage": "vision",
+      "locale": "zh-CN",
+      "count": 15,
+      "success_rate": 0.6667,
+      "avg_score": 5.53,
+      "hard_fail_rate": 0.4,
+      "below8_rate": 0.4,
+      "repeat_consistency": 0.6,
+      "pass": false
+    },
+    {
+      "stage": "report",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 0.4667,
+      "avg_score": 3.07,
+      "hard_fail_rate": 0.7333,
+      "below8_rate": 0.7333,
+      "repeat_consistency": 0.4667,
+      "pass": false
+    },
+    {
+      "stage": "report",
+      "locale": "zh-CN",
+      "count": 10,
+      "success_rate": 0.9,
+      "avg_score": 8.5,
+      "hard_fail_rate": 0.1,
+      "below8_rate": 0.1,
+      "repeat_consistency": 0.5,
+      "pass": false
+    },
+    {
+      "stage": "deepening",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 0.9333,
+      "avg_score": 8.31,
+      "hard_fail_rate": 0.1333,
+      "below8_rate": 0.1333,
+      "repeat_consistency": 0.5333,
+      "pass": false
+    },
+    {
+      "stage": "deepening",
+      "locale": "zh-CN",
+      "count": 15,
+      "success_rate": 1,
+      "avg_score": 9.87,
+      "hard_fail_rate": 0,
+      "below8_rate": 0,
+      "repeat_consistency": 0.5333,
+      "pass": false
+    }
+  ]
+}

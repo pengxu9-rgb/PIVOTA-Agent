@@ -1,0 +1,31 @@
+name: Full Repo Gate
+
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+
+concurrency:
+  group: full-repo-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full_repo_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Full repo gate
+        env:
+          JEST_MAX_OLD_SPACE_SIZE_MB: "8192"
+        run: npm run test:gate:full-repo

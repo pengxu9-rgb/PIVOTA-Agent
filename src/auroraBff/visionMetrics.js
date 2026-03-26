@@ -542,6 +542,7 @@ function normalizeAuroraSkinFlowStage(stage) {
     token === 'artifact_created' ||
     token === 'ingredient_plan' ||
     token === 'analysis_timeout_degraded' ||
+    token === 'analysis_optional_step' ||
     token === 'reco_request' ||
     token === 'reco_generated' ||
     token === 'reco_low_confidence' ||

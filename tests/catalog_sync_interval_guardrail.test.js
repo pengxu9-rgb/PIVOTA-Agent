@@ -96,7 +96,7 @@ describe('creator catalog auto-sync interval guardrail', () => {
     );
   });
 
-  test('uses full-sync default limit when env is unset', async () => {
+  test('uses the current default limit when env is unset', async () => {
     process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS = '1200';
     delete process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT;
 
@@ -107,7 +107,7 @@ describe('creator catalog auto-sync interval guardrail', () => {
     expect(resp.body?.catalog_sync).toEqual(
       expect.objectContaining({
         limit_configured: null,
-        limit_effective: 5000,
+        limit_effective: 200,
         limit_fallback_applied: true,
         limit_raised_to_min: false,
         limit_clamped_to_max: false,
@@ -115,7 +115,7 @@ describe('creator catalog auto-sync interval guardrail', () => {
     );
   });
 
-  test('raises configured limit to guardrail minimum', async () => {
+  test('preserves configured limit when it is already within bounds', async () => {
     process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS = '1200';
     process.env.CREATOR_CATALOG_AUTO_SYNC_LIMIT = '200';
 
@@ -126,9 +126,9 @@ describe('creator catalog auto-sync interval guardrail', () => {
     expect(resp.body?.catalog_sync).toEqual(
       expect.objectContaining({
         limit_configured: 200,
-        limit_effective: 500,
+        limit_effective: 200,
         limit_fallback_applied: false,
-        limit_raised_to_min: true,
+        limit_raised_to_min: false,
       }),
     );
   });

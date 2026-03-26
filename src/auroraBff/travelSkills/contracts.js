@@ -9,6 +9,7 @@ const { composeTravelReply } = require('../travelReplyComposer');
 const { getTravelContextKbEntry, upsertTravelContextKbEntry } = require('../travelKbStore');
 const { evaluateTravelKbBackfill, buildTravelKbUpsertEntry } = require('../travelKbPolicy');
 const { buildProductRecommendationsBundle, toLegacyRecommendationsPayload } = require('../productMatcherV1');
+const { resolvePreferredLegacyTravelPlan } = require('../travelPlans');
 const {
   recordAuroraTravelLlmCall,
   recordAuroraTravelLlmTrigger,
@@ -84,7 +85,7 @@ function monthBucketFromDate(dateToken, nowMs) {
 
 function pickTravelContextFromProfile(profile) {
   const p = isPlainObject(profile) ? profile : {};
-  const travelPlan = isPlainObject(p.travel_plan) ? p.travel_plan : isPlainObject(p.travelPlan) ? p.travelPlan : {};
+  const travelPlan = resolvePreferredLegacyTravelPlan(p) || {};
   return {
     destination: normalizeText(travelPlan.destination, 120),
     startDate: normalizeDateToken(travelPlan.start_date),

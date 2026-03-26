@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-03-07T03:11:24.605Z",
+  "args": {
+    "cases": "/tmp/skin_prompt_min3.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "",
+    "repeats": 1,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "off",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 15000,
+    "skipJudge": true
+  },
+  "summary": [
+    {
+      "stage": "vision",
+      "locale": "en-US",
+      "count": 1,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 0,
+      "repeat_consistency": 1,
+      "pass": true
+    },
+    {
+      "stage": "report",
+      "locale": "en-US",
+      "count": 1,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 0,
+      "repeat_consistency": 1,
+      "pass": true
+    },
+    {
+      "stage": "deepening",
+      "locale": "en-US",
+      "count": 1,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 0,
+      "repeat_consistency": 1,
+      "pass": true
+    }
+  ],
+  "consistency_diffs": [
+    {
+      "case_id": "vision_pass_quality_en",
+      "stage": "vision",
+      "locale": "en-US",
+      "dominant_signature": "{\"insufficient_reason\":null,\"observations\":[\"bumps:forehead:mild\",\"pores:nose:mild\",\"shine:t_zone:mild\",\"uneven_tone:full_face:moderate\"],\"visibility_status\":\"sufficient\"}",
+      "signatures": [
+        {
+          "signature": "{\"insufficient_reason\":null,\"observations\":[\"bumps:forehead:mild\",\"pores:nose:mild\",\"shine:t_zone:mild\",\"uneven_tone:full_face:moderate\"],\"visibility_status\":\"sufficient\"}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"insufficient_reason\":null,\"observations\":[\"bumps:forehead:mild\",\"pores:nose:mild\",\"shine:t_zone:mild\",\"uneven_tone:full_face:moderate\"],\"visibility_status\":\"sufficient\"}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    },
+    {
+      "case_id": "report_barrier_redness_en",
+      "stage": "report",
+      "locale": "en-US",
+      "dominant_signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+      "signatures": [
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    },
+    {
+      "case_id": "deepening_reactions_en",
+      "stage": "deepening",
+      "locale": "en-US",
+      "dominant_signature": "{\"advice_items\":[\"pause_if_stinging\",\"protect_barrier\",\"track_redness\"],\"phase\":\"reactions\",\"question_intent\":\"reaction_check\",\"summary_priority\":\"redness\"}",
+      "signatures": [
+        {
+          "signature": "{\"advice_items\":[\"pause_if_stinging\",\"protect_barrier\",\"track_redness\"],\"phase\":\"reactions\",\"question_intent\":\"reaction_check\",\"summary_priority\":\"redness\"}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"advice_items\":[\"pause_if_stinging\",\"protect_barrier\",\"track_redness\"],\"phase\":\"reactions\",\"question_intent\":\"reaction_check\",\"summary_priority\":\"redness\"}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    }
+  ]
+}

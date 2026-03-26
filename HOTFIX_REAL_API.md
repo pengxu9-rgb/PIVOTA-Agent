@@ -122,7 +122,7 @@ curl -X POST https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke
 将这些更改推送到 GitHub 以触发 Railway 自动部署：
 
 ```bash
-cd "/Users/pengchydan/Desktop/Pivota Agent"
+cd "$HOME/dev/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend"
 git add -A
 git commit -m "fix: Update gateway routing for real Pivota API requirements
 

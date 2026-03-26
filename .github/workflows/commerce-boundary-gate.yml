@@ -1,0 +1,74 @@
+name: Commerce Boundary Focused Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/server.js"
+      - "src/schema.js"
+      - "src/commerce/**"
+      - "src/adminAuth.js"
+      - "src/pdpCorePrewarmRuntime.js"
+      - "src/lookReplicator/**"
+      - "src/auroraBff/app.js"
+      - "src/auroraBff/registerOpsRoutes.js"
+      - "src/auroraBff/routes.js"
+      - "src/platform/**"
+      - "tests/adminAuth.test.js"
+      - "tests/pdpCorePrewarmRuntime.test.js"
+      - "tests/aurora_registerOpsRoutes.test.js"
+      - "tests/commerce/**"
+      - "tests/contracts/toolSchemaParity.test.js"
+      - "tests/lookReplicator/lookReplicator_commerce_invoke.test.js"
+      - "tests/integration/invoke.v2.test.js"
+      - "tests/integration/preview_quote.test.js"
+      - "tests/integration/create_order_quote_id_passthrough.test.js"
+      - "tests/integration/create_order_order_request_wrapper.test.js"
+      - "tests/integration/submit_payment_contract.test.js"
+      - "tests/integration/submit_payment_reliability.test.js"
+      - "tests/integration/confirm_payment_reliability.test.js"
+      - "tests/integration/request_after_sales_cancel_routing.test.js"
+      - "tests/integration/invoke.offers.resolve.test.js"
+      - "tests/integration/invoke.get_product_detail.test.js"
+      - "tests/integration/invoke.pdp_and_group.test.js"
+      - "tests/integration/invoke.resolve_product_candidates.test.js"
+      - "tests/integration/invoke.find_products_cache_browse.test.js"
+      - "tests/integration/invoke.find_products_multi_cache_search.test.js"
+      - "tests/integration/invoke.find_products_multi_fallback.test.js"
+      - "tests/integration/invoke.track_product_click.test.js"
+      - "tests/boundary_service_imports.node.test.cjs"
+      - "tests/standalone_service_apps.node.test.cjs"
+      - "tests/aurora_bff_reco_catalog.node.test.cjs"
+      - "tests/aurora_bff_pdp_prefetch.node.test.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/test_preflight.sh"
+      - "scripts/test_commerce_boundary*.sh"
+      - ".github/workflows/commerce-boundary-gate.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: commerce-boundary-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commerce_boundary_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Test preflight
+        run: npm run test:preflight
+
+      - name: Commerce boundary focused gate
+        run: npm run test:gate:commerce:focused

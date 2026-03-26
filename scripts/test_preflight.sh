@@ -3,9 +3,10 @@ set -euo pipefail
 
 PROJECT_DIR_NAME="PIVOTA-Agent-hotfix"
 CI_PROJECT_DIR_NAME="${CI_PROJECT_DIR_NAME:-PIVOTA-Agent}"
-REQUIRED_NODE_MAJOR="20"
+LOCAL_PROJECT_DIR_NAME="${LOCAL_PROJECT_DIR_NAME:-pivota-agent-backend}"
+ALLOWED_NODE_MAJORS="${TEST_PREFLIGHT_ALLOWED_NODE_MAJORS:-20,24}"
 SCAN_TIMEOUT_SECONDS="${TEST_PREFLIGHT_SCAN_TIMEOUT_SECONDS:-15}"
-MAX_SCAN_FILES="${TEST_PREFLIGHT_MAX_SCAN_FILES:-1200}"
+MAX_SCAN_FILES="${TEST_PREFLIGHT_MAX_SCAN_FILES:-10000}"
 MAX_DALESS_PROBE="${TEST_PREFLIGHT_MAX_DALESS_PROBE:-8}"
 MAX_BLOCKING_DALESS="${TEST_PREFLIGHT_MAX_BLOCKING_DALESS:-5}"
 
@@ -48,8 +49,8 @@ if [[ "$cwd" == *"/_deploy_tmp_"* ]]; then
 fi
 
 cwd_base="$(basename "$cwd")"
-if [[ "$cwd_base" != "$PROJECT_DIR_NAME" && "$cwd_base" != "$CI_PROJECT_DIR_NAME" ]]; then
-  fail "run tests from project root '$PROJECT_DIR_NAME' (or CI root '$CI_PROJECT_DIR_NAME'). current: $cwd"
+if [[ "$cwd_base" != "$PROJECT_DIR_NAME" && "$cwd_base" != "$CI_PROJECT_DIR_NAME" && "$cwd_base" != "$LOCAL_PROJECT_DIR_NAME" ]]; then
+  fail "run tests from project root '$PROJECT_DIR_NAME', '$LOCAL_PROJECT_DIR_NAME' (or CI root '$CI_PROJECT_DIR_NAME'). current: $cwd"
 fi
 
 if [[ "$cwd" == *"/Desktop/"* ]]; then
@@ -69,8 +70,8 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 node_major="$(node -p "process.versions.node.split('.')[0]")"
-if [[ "$node_major" != "$REQUIRED_NODE_MAJOR" ]]; then
-  fail "node major must be $REQUIRED_NODE_MAJOR. current: $(node -v)"
+if [[ ",$ALLOWED_NODE_MAJORS," != *",$node_major,"* ]]; then
+  fail "node major must be one of [$ALLOWED_NODE_MAJORS]. current: $(node -v)"
 fi
 
 resolved_zod="$(node -p "require.resolve('zod/package.json')" 2>/dev/null || true)"
@@ -126,4 +127,4 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   fi
 fi
 
-echo "[test:preflight] ok: node_major=$node_major zod=$resolved_zod"
+echo "[test:preflight] ok: node_major=$node_major allowed=[$ALLOWED_NODE_MAJORS] zod=$resolved_zod"

@@ -7,6 +7,7 @@ const { INTENT_ENUM } = require('../src/auroraBff/intentCanonical');
 const {
   normalizeTravelProfilePatch,
   resolveTravelPlansState,
+  resolvePreferredLegacyTravelPlan,
   selectActiveTrip,
   applyTravelExtractionToProfile,
 } = require('../src/auroraBff/travelPlans');
@@ -185,6 +186,38 @@ test('resolveTravelPlansState falls back to home region when no active trip', ()
   assert.equal(state.home_region, 'San Francisco');
   assert.equal(state.active_trip, null);
   assert.equal(state.active_mode, 'none');
+});
+
+test('resolvePreferredLegacyTravelPlan falls back to most relevant completed trip when no active trip exists', () => {
+  const plan = resolvePreferredLegacyTravelPlan(
+    {
+      travel_plans: [
+        {
+          trip_id: 'trip_old',
+          destination: 'London',
+          start_date: '2026-02-01',
+          end_date: '2026-02-03',
+          created_at_ms: 1,
+          updated_at_ms: 1,
+        },
+        {
+          trip_id: 'trip_recent',
+          destination: 'Paris',
+          start_date: '2026-03-10',
+          end_date: '2026-03-15',
+          created_at_ms: 2,
+          updated_at_ms: 3,
+        },
+      ],
+      travel_plan: null,
+    },
+    { nowMs: Date.parse('2026-03-21T10:00:00.000Z') },
+  );
+
+  assert.ok(plan && typeof plan === 'object');
+  assert.equal(plan.destination, 'Paris');
+  assert.equal(plan.start_date, '2026-03-10');
+  assert.equal(plan.end_date, '2026-03-15');
 });
 
 test('resolveQaPlan weather/travel uses home region fallback when all trips are expired', () => {

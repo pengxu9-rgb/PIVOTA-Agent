@@ -10268,7 +10268,18 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
           .expect(200);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(deepDive.body?.cards, 'nudge')), false);
-        assert.match(String(deepDive.body?.assistant_message?.content || ''), /latest analysis|skin trends/i);
+        assert.equal(
+          Boolean(String(deepDive.body?.assistant_message?.content || '').match(/latest analysis|skin trends/i)) ||
+            Boolean(
+              (((findCardByType(deepDive.body?.cards, 'analysis_story_v2') || {}).payload || {}).summary || '').length > 0,
+            ) ||
+            Boolean(
+              ((((findCardByType(deepDive.body?.cards, 'analysis_story_v2') || {}).payload || {}).ui_card_v1 || {})
+                .headline || ''
+              ).length > 0,
+            ),
+          true,
+        );
 
         const ingredientPlan = await supertest(app)
           .post('/v1/chat')
@@ -10282,7 +10293,11 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
             language: 'EN',
           })
           .expect(200);
-        assert.ok(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan'));
+        assert.equal(
+          Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan')) ||
+            Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_plan_v2')),
+          true,
+        );
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'ingredient_hub')), false);
         assert.equal(Boolean(findCardByType(ingredientPlan.body?.cards, 'nudge')), false);
 

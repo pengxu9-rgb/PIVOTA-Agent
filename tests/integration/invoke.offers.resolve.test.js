@@ -170,7 +170,7 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.metadata?.pdp_open_path).toBe('ref');
   });
 
-  it('no candidates keeps explicit reason_code=no_candidates and external pdp target', async () => {
+  it('no candidates keeps explicit reason_code=no_candidates and fails closed', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(404, {
@@ -209,7 +209,9 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(res.body.reason_code).toBe('no_candidates');
     expect(Array.isArray(res.body.offers)).toBe(true);
     expect(res.body.offers.length).toBe(0);
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(res.body.metadata?.pdp_open_path || null).toBeNull();
+    expect(res.body.metadata?.commerce_surface).toBe('agent_api');
     expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
   });
 
@@ -249,11 +251,12 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(cacheScope.isDone()).toBe(false);
     expect(res.body.status).toBe('success');
     expect(res.body.reason_code).toBe('no_candidates');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(res.body.metadata?.pdp_open_path || null).toBeNull();
     expect(res.body.metadata?.resolve_fail_reason).toBe('no_candidates');
   });
 
-  it('db timeout keeps explicit reason_code=db_timeout and external pdp target', async () => {
+  it('db timeout keeps explicit reason_code=db_timeout and fails closed', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(503, {
@@ -287,13 +290,14 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(cacheScope.isDone()).toBe(true);
     expect(res.body.status).toBe('success');
     expect(res.body.reason_code).toBe('db_timeout');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(res.body.metadata?.pdp_open_path || null).toBeNull();
     expect(res.body.metadata?.resolve_fail_reason).toBe('db_timeout');
     expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('subject timeout short-circuits to external fallback without waiting cache search', async () => {
+  it('subject timeout short-circuits to fail-closed response without waiting cache search', async () => {
     const subjectScope = nock(process.env.PIVOTA_API_BASE)
       .post('/v1/subject/resolve')
       .reply(503, {
@@ -329,7 +333,8 @@ describe('/agent/shop/v1/invoke offers.resolve hardening', () => {
     expect(cacheScope.isDone()).toBe(false);
     expect(res.body.status).toBe('success');
     expect(res.body.reason_code).toBe('upstream_timeout');
-    expect(res.body.pdp_target?.v1?.path).toBe('external');
+    expect(res.body.pdp_target?.v1 || null).toBeNull();
+    expect(res.body.metadata?.pdp_open_path || null).toBeNull();
     expect(res.body.metadata?.resolve_fail_reason).toBe('upstream_timeout');
     expect(Array.isArray(res.body.metadata?.sources)).toBe(true);
     expect(res.body.metadata.sources.length).toBeGreaterThanOrEqual(1);

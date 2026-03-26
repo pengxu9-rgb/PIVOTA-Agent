@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-03-06T17:06:22.704Z",
+  "args": {
+    "cases": "tests/fixtures/skin/skin_prompt_eval_cases.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "reports/skin-prompt-quality/raw-run-2",
+    "repeats": 5,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "off",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 30000,
+    "skipJudge": true
+  },
+  "summary": [
+    {
+      "stage": "vision",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 0.6667,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.6,
+      "pass": false
+    },
+    {
+      "stage": "vision",
+      "locale": "zh-CN",
+      "count": 15,
+      "success_rate": 0.6667,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.8,
+      "pass": false
+    },
+    {
+      "stage": "report",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 0.7333,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.4,
+      "pass": false
+    },
+    {
+      "stage": "report",
+      "locale": "zh-CN",
+      "count": 10,
+      "success_rate": 0.9,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.3,
+      "pass": false
+    },
+    {
+      "stage": "deepening",
+      "locale": "en-US",
+      "count": 15,
+      "success_rate": 1,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.6667,
+      "pass": true
+    },
+    {
+      "stage": "deepening",
+      "locale": "zh-CN",
+      "count": 15,
+      "success_rate": 1,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "repeat_consistency": 0.5333,
+      "pass": true
+    }
+  ]
+}

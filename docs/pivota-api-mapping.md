@@ -2,6 +2,10 @@
 
 This doc tracks how the Pivota Shopping Agent gateway and tool schema map to the real Pivota API. Use it when switching from mock to production.
 
+Public vs runtime note:
+- `docs/tool-schema.json` documents the public shopping-tool contract for LLM integrations.
+- `src/schema.js` accepts additional runtime-only operations such as `get_pdp_v2`, `resolve_product_group`, and `resolve_product_candidates`.
+
 ## 1) Endpoints
 
 Gateway entry: `POST /agent/shop/v1/invoke`
@@ -12,8 +16,10 @@ Real production routing (gateway -> upstream):
 - `operation = "preview_quote"` → `POST {PIVOTA_API_BASE}/agent/v1/quotes/preview`
 - `operation = "create_order"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/create`
 - `operation = "submit_payment"` → `POST {PIVOTA_API_BASE}/agent/v1/payments`
+- `operation = "confirm_payment"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/confirm-payment`
 - `operation = "get_order_status"` → `GET {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/track`
-- `operation = "request_after_sales"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/refund`
+- `operation = "request_after_sales"` + `requested_action = "refund"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/refund`
+- `operation = "request_after_sales"` + `requested_action = "cancel"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/cancel`
 
 Note: The gateway maintains the unified `POST /agent/shop/v1/invoke` interface for all operations, 
 internally converting to appropriate HTTP methods and paths.
@@ -92,6 +98,16 @@ For each operation, align required/optional fields and note any differences.
   - `payment_status`: "succeeded", "failed", "requires_action"
   - If `requires_action`: check `redirect_url` or `instructions`
 
+### 2.4.1 confirm_payment
+- Gateway receives: `payload.order` (preferred), or any payload containing `order_id`
+- Upstream expects: Path parameter (POST request)
+- Parameter mapping:
+  - `payload.order.order_id` → `{order_id}` in path (required)
+  - Gateway also accepts fallback forms like `payload.payment.order_id` or top-level `payload.order_id`
+- Notes:
+  - Use this after `submit_payment` returns a user-action-required state and the user reports completion
+  - Current gateway sends an empty POST body and relies on the path param only
+
 ### 2.5 get_order_status
 - Gateway receives: `payload.status` (JSON body)
 - Upstream expects: Path parameter (GET request)
@@ -110,12 +126,13 @@ For each operation, align required/optional fields and note any differences.
 - Upstream expects: Path parameter + optional body (POST request)
 - Parameter mapping:
   - `payload.status.order_id` → `{order_id}` in path (required)
-  - `payload.status.requested_action` → Determines refund type (full/partial)
+  - `payload.status.requested_action` → Determines refund vs cancel route
   - `payload.status.reason` → `reason` in body (optional but recommended)
 - Notes:
-  - Current endpoint only supports refunds (not exchanges/returns)
-  - Response includes refund status and processing timeline
-  - Agent must own the order to request refund
+  - Current public contract only supports `refund` and `cancel`
+  - `refund` posts to `/refund`; `cancel` posts to `/cancel`
+  - Response includes request status and processing timeline
+  - Agent must own the order to request refund/cancel
 
 ## 3) Response mapping
 

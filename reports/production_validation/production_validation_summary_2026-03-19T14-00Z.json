@@ -1,0 +1,94 @@
+{
+  "validated_at": "2026-03-19T14:02:27Z",
+  "base": "https://pivota-agent-production.up.railway.app",
+  "trace_id": "t_prod_validate_1773928947",
+  "uid": "uid_prod_validate_1773928947",
+  "checks": {
+    "health": {
+      "ok": true,
+      "commit": "1e9d8716735b",
+      "deployment_id": "b0c545b1-5bf6-484d-aa91-20763b370bd0",
+      "started_at": "2026-03-19T07:23:17.262Z"
+    },
+    "analysis_skin_empty": {
+      "card_types": [
+        "analysis_story_v2",
+        "ingredient_plan_v2",
+        "confidence_notice"
+      ],
+      "has_story_v2": true,
+      "has_ingredient_plan_v2": true,
+      "has_legacy_ingredient_plan": false
+    },
+    "analysis_skin_routine": {
+      "card_types": [
+        "analysis_story_v2",
+        "routine_products_preview",
+        "routine_fit_summary",
+        "ingredient_plan_v2"
+      ],
+      "has_story_v2": true,
+      "has_routine_fit_summary": true,
+      "has_ingredient_plan_v2": true,
+      "has_routine_products_preview": true
+    },
+    "analysis_deep_dive": {
+      "card_types": [
+        "analysis_story_v2"
+      ],
+      "assistant_message_len": 0,
+      "has_bad_fallback": false
+    },
+    "analysis_routine_deep_dive": {
+      "card_types": [
+        "analysis_story_v2",
+        "routine_fit_summary",
+        "confidence_notice"
+      ],
+      "has_routine_fit_summary": true,
+      "has_bad_fallback": false
+    },
+    "product_analyze_name": {
+      "card_types": [
+        "product_analysis"
+      ],
+      "verdict": "Unknown"
+    },
+    "product_parse_url": {
+      "trace_id_matches": true,
+      "card_types": [
+        "product_parse"
+      ]
+    },
+    "product_analyze_url": {
+      "trace_id_matches": true,
+      "card_types": [
+        "product_analysis"
+      ],
+      "has_product_analysis": true,
+      "has_url_fetch_attempts": true,
+      "verdict": "Caution"
+    },
+    "kb_counts": {
+      "pci_kb_sku_ingredients_total": 249,
+      "reviewed_runtime_evidence": 171,
+      "source_type_counts": [
+        [
+          "reviewed_runtime_evidence:hybrid_canonical_primary",
+          77
+        ],
+        [
+          "reviewed_runtime_evidence:reference_only",
+          94
+        ]
+      ]
+    }
+  },
+  "overall": {
+    "health_ok": true,
+    "rollout_probe_reference": "reports/production_validation/aurora_rollout_probe_2026-03-19T13-59-54-542Z.json",
+    "smoke_script_status": "failed_due_to_legacy_ingredient_plan_assertion",
+    "runtime_contract_observed": "ingredient_plan_v2",
+    "prod_runtime_followups_ok": false
+  }
+}

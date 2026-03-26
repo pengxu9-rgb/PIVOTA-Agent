@@ -1,0 +1,298 @@
+{
+  "version": "1.0",
+  "request_id": "f4f8f4f3-b354-48ac-bf97-3f4ee2a2a2d2",
+  "trace_id": "t_prod_validate_1773928947",
+  "assistant_text": "Absolutely \u2014 let\u2019s make this simple and actionable.\n\nYou asked to focus on: What should I simplify first?. Your current routine is rated as partial_match. Your routine has a solid base, but a few simplifications or sequencing changes would improve it. The lowest-scoring dimensions are ingredient match 34%, conflict risk 67%. Main concerns: The routine appears to include ingredients to watch, including Retinol..",
+  "cards": [
+    {
+      "id": "analysis_story_f4f8f4f3-b354-48ac-bf97-3f4ee2a2a2d2",
+      "type": "analysis_story_v2",
+      "priority": 2,
+      "title": "Analysis story",
+      "tags": [],
+      "sections": [],
+      "actions": [],
+      "payload": {
+        "schema_version": "aurora.analysis_story.v2",
+        "confidence_overall": {
+          "level": "low"
+        },
+        "skin_profile": {
+          "current_strengths": [
+            "Visible signals are limited; start with a barrier-safe routine."
+          ]
+        },
+        "priority_findings": [],
+        "target_state": [
+          "Stabilize barrier first, then improve tone and texture consistency."
+        ],
+        "core_principles": [
+          "Stability first, then progression; avoid stacking multiple strong actives at once.",
+          "Daily UV protection is the baseline for pigmentation and photoaging control."
+        ],
+        "am_plan": [
+          {
+            "step": "Gentle cleanse",
+            "purpose": "Minimize irritation load"
+          },
+          {
+            "step": "Hydration/repair serum",
+            "purpose": "Support barrier stability"
+          },
+          {
+            "step": "SPF50+ sunscreen",
+            "purpose": "Control UV exposure"
+          }
+        ],
+        "pm_plan": [
+          {
+            "step": "Gentle cleanse",
+            "purpose": "Remove daytime residue"
+          },
+          {
+            "step": "Single core active (low frequency)",
+            "purpose": "Reduce irritation risk"
+          },
+          {
+            "step": "Barrier moisturizer",
+            "purpose": "Night recovery"
+          }
+        ],
+        "timeline": {
+          "first_4_weeks": [
+            "Week 1: keep cleanse-moisturize-sunscreen baseline only.",
+            "Week 2-3: add one active gradually, every other day.",
+            "Week 4: scale only if tolerance remains stable."
+          ],
+          "week_8_12_expectation": [
+            "Expect visible stability and tone improvements in 8-12 weeks."
+          ]
+        },
+        "ui_card_v1": {
+          "headline": "Photo analysis could not be completed. Please retake photos in natural daylight for accurate results.",
+          "key_points": [],
+          "actions_now": [
+            "AM: Gentle cleanse",
+            "AM: Hydration/repair serum",
+            "PM: Gentle cleanse",
+            "PM: Single core active (low frequency)"
+          ],
+          "avoid_now": [
+            "If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair."
+          ],
+          "confidence_label": "low",
+          "next_checkin": "Week 1: keep cleanse-moisturize-sunscreen baseline only."
+        },
+        "safety_notes": [
+          "If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair."
+        ],
+        "disclaimer_non_medical": true
+      }
+    },
+    {
+      "id": "routine_fit_f4f8f4f3-b354-48ac-bf97-3f4ee2a2a2d2",
+      "type": "routine_fit_summary",
+      "priority": 2,
+      "title": "Routine fit",
+      "tags": [],
+      "sections": [],
+      "actions": [],
+      "payload": {
+        "overall_fit": "partial_match",
+        "fit_score": 0.6828000000000001,
+        "summary": "Your routine has a solid base, but a few simplifications or sequencing changes would improve it.",
+        "highlights": [
+          "AM sunscreen is already in place, which supports tolerance and pigmentation control.",
+          "The routine already covers the core cleanse and moisturize structure."
+        ],
+        "concerns": [
+          "The routine appears to include ingredients to watch, including Retinol."
+        ],
+        "dimension_scores": {
+          "ingredient_match": {
+            "score": 0.33999999999999997,
+            "note": "Some ingredients do not fully align with the current plan, including Retinol."
+          },
+          "routine_completeness": {
+            "score": 1,
+            "note": "AM/PM core steps are mostly covered."
+          },
+          "conflict_risk": {
+            "score": 0.6699999999999999,
+            "note": "No major high-risk overlaps stand out right now."
+          },
+          "sensitivity_safety": {
+            "score": 0.8,
+            "note": "The routine structure looks reasonably tolerable overall."
+          }
+        },
+        "next_questions": [
+          "What should I simplify first?",
+          "Which actives should I avoid stacking on the same night?",
+          "How often should I use the active steps?"
+        ]
+      }
+    },
+    {
+      "id": "conf_f4f8f4f3-b354-48ac-bf97-3f4ee2a2a2d2_rules",
+      "type": "confidence_notice",
+      "priority": 2,
+      "title": "Confidence notice",
+      "tags": [],
+      "sections": [],
+      "actions": [],
+      "payload": {
+        "reason": "default",
+        "severity": "warn",
+        "confidence": {
+          "score": 0.42,
+          "level": "low",
+          "rationale": [
+            "rules_only_fallback"
+          ]
+        },
+        "message": "Current guidance is running in conservative mode.",
+        "actions": [
+          "continue_routine_intake",
+          "retry_routine_generation"
+        ],
+        "details": [
+          "rules_only_structured_fallback"
+        ]
+      }
+    }
+  ],
+  "follow_up_questions": [],
+  "suggested_quick_replies": [
+    {
+      "id": "chip.aurora.next_action.deep_dive_skin",
+      "label": "Tell me more about my skin",
+      "value": "Tell me more about my skin",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.deep_dive_skin"
+      }
+    },
+    {
+      "id": "chip.aurora.next_action.ingredient_plan",
+      "label": "Explain the ingredient plan",
+      "value": "Explain the ingredient plan",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.ingredient_plan"
+      }
+    },
+    {
+      "id": "chip.aurora.next_action.safety_concerns",
+      "label": "Anything I should watch out for?",
+      "value": "Anything I should watch out for?",
+      "metadata": {
+        "action_id": "chip.aurora.next_action.safety_concerns"
+      }
+    },
+    {
+      "id": "chip_keep_chatting",
+      "label": "Ask me anything",
+      "value": "Ask me anything",
+      "metadata": {
+        "action_id": "chip_keep_chatting"
+      }
+    }
+  ],
+  "meta": {
+    "intent_canonical": "routine",
+    "intent_source": "action_id",
+    "gate_type": "none",
+    "loop_count": 0,
+    "break_applied": "none",
+    "env_source": null,
+    "policy_version": "aurora_chat_v2_p0",
+    "rollout_variant": "v2_weather",
+    "rollout_bucket": 82,
+    "rollout_bucket_key_source": "anon_id",
+    "rollout_forced_variant": null,
+    "rollout_applied": true,
+    "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+    "flags_effective": {
+      "profile_v2": true,
+      "qa_planner_v1": true,
+      "safety_engine_v1": true,
+      "travel_weather_live_v1": true,
+      "loop_breaker_v2": true,
+      "skill_router_v2": true,
+      "chat_response_meta": true
+    },
+    "gate_policy_version": "aurora_gate_policy_answer_first_v1",
+    "gate_decisions": [],
+    "advisory_count": 0,
+    "degraded": false
+  },
+  "session_patch": {
+    "next_state": "IDLE_CHAT",
+    "meta": {
+      "safety_gate_mode": "advisory_only_v1",
+      "safety_advisory_emitted": false,
+      "intent_canonical": "routine",
+      "intent_source": "action_id",
+      "gate_type": "none",
+      "loop_count": 0,
+      "break_applied": "none",
+      "env_source": null,
+      "policy_version": "aurora_chat_v2_p0",
+      "rollout_variant": "v2_weather",
+      "rollout_bucket": 82,
+      "rollout_bucket_key_source": "anon_id",
+      "rollout_forced_variant": null,
+      "rollout_applied": true,
+      "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+      "flags_effective": {
+        "profile_v2": true,
+        "qa_planner_v1": true,
+        "safety_engine_v1": true,
+        "travel_weather_live_v1": true,
+        "loop_breaker_v2": true,
+        "skill_router_v2": true,
+        "chat_response_meta": true
+      },
+      "gate_policy_version": "aurora_gate_policy_answer_first_v1",
+      "gate_decisions": [],
+      "advisory_count": 0,
+      "degraded": false
+    },
+    "llm": {
+      "llm_provider_requested": "gemini",
+      "llm_model_requested": "gemini-3-pro-preview",
+      "llm_provider_effective": null,
+      "llm_model_effective": null
+    }
+  },
+  "ops": {
+    "thread_ops": [
+      {
+        "op": "thread_push",
+        "topic_id": "routine",
+        "summary": "Absolutely \u2014 let\u2019s make this simple and actionable.\n\nYou asked to focus on: What should I simplify first?. Your current routine is rated as partial_match. Your routine has a solid base, but a few simplifications or seque",
+        "timestamp_ms": 1773928984645
+      }
+    ],
+    "profile_patch": [],
+    "routine_patch": [],
+    "experiment_events": []
+  },
+  "safety": {
+    "risk_level": "none",
+    "red_flags": [],
+    "disclaimer": ""
+  },
+  "telemetry": {
+    "intent": "routine",
+    "intent_confidence": 0.98,
+    "entities": [],
+    "ui_language": "EN",
+    "matching_language": "EN",
+    "language_mismatch": false,
+    "language_resolution_source": "header",
+    "gate_type": "none",
+    "env_source": null,
+    "degraded": false,
+    "intent_source": "action_id"
+  }
+}

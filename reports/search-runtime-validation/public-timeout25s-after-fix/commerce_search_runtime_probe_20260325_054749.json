@@ -1,0 +1,325 @@
+{
+  "summary": {
+    "generated_at": "2026-03-25T05:48:26.293Z",
+    "target": "http",
+    "base_url": "https://agent.pivota.cc",
+    "endpoint": "/api/gateway",
+    "upstream_base": null,
+    "total_cases": 6,
+    "strict_cases": 5,
+    "strict_pass_count": 3,
+    "strict_fail_count": 2,
+    "all_strict_green": false
+  },
+  "rows": [
+    {
+      "id": "fp_exact_ipsa",
+      "label": "find_products exact lookup",
+      "operation": "find_products",
+      "query": "IPSA Time Reset Aqua",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 1044,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [
+          "ipsa",
+          "time reset aqua"
+        ],
+        "product_count": 1,
+        "overall_ok": true
+      },
+      "response": {
+        "total": 1,
+        "page_size": 1,
+        "metadata": {
+          "query_source": "agent_products_resolver_fallback",
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": "resolver_returned"
+        },
+        "clarification": null,
+        "top_products": [
+          {
+            "title": "IPSA Time Reset Aqua",
+            "brand": "IPSA",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9886500127048",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "fp_generic_brush",
+      "label": "find_products generic brush lookup",
+      "operation": "find_products",
+      "query": "foundation brush",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 4247,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [
+          "brush"
+        ],
+        "product_count": 20,
+        "overall_ok": true
+      },
+      "response": {
+        "total": 43,
+        "page_size": 20,
+        "metadata": {
+          "query_source": "agent_products_search",
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": "upstream_returned"
+        },
+        "clarification": null,
+        "top_products": [
+          {
+            "title": "Small Foundation Brush — Seamless, Streak‑Free Base • Soft Synthetic Fibers",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859782246728",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          },
+          {
+            "title": "Small Eyeshadow Brush — Soft Wash to Smoky • Soft Synthetic Fibers • With Pouch",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859793420616",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          },
+          {
+            "title": "Small Eyeshadow Brush — Soft Wash to Smoky • Soft Synthetic Fibers",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859789455688",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "fpm_exact_ipsa_eligible_only",
+      "label": "find_products_multi exact lookup eligible-only",
+      "operation": "find_products_multi",
+      "query": "IPSA Time Reset Aqua",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 2774,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [
+          "ipsa",
+          "time reset aqua"
+        ],
+        "product_count": 1,
+        "overall_ok": true
+      },
+      "response": {
+        "total": 1,
+        "page_size": 1,
+        "metadata": {
+          "query_source": "agent_products_resolver_fallback",
+          "serving_mode": "eligible_only",
+          "commerce_surface": "agent_api",
+          "strict_empty": false,
+          "final_decision": "resolver_returned"
+        },
+        "clarification": null,
+        "top_products": [
+          {
+            "title": "IPSA Time Reset Aqua",
+            "brand": "IPSA",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9886500127048",
+            "commerce_surface": "agent_api",
+            "purchase_route": "internal_checkout",
+            "has_top_offer_summary": true,
+            "has_exact_resolution_identifiers": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "fpm_brand_winona",
+      "label": "find_products_multi brand lookup",
+      "operation": "find_products_multi",
+      "query": "Winona products",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 2562,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": false,
+        "offer_summary_ok": false,
+        "clarification_triggered": false,
+        "anchor_hits": [
+          "winona"
+        ],
+        "product_count": 1,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 1,
+        "page_size": 1,
+        "metadata": {
+          "query_source": "cache_cross_merchant_search",
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": "cache_returned"
+        },
+        "clarification": null,
+        "top_products": [
+          {
+            "title": "Winona Soothing Repair Serum",
+            "brand": "Winona",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9886500749640",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "fpm_tool_brush",
+      "label": "find_products_multi tool-first brush query",
+      "operation": "find_products_multi",
+      "query": "foundation brush recommendation",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 2421,
+      "evaluation": {
+        "observe_only": false,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": false,
+        "offer_summary_ok": true,
+        "clarification_triggered": false,
+        "anchor_hits": [
+          "brush"
+        ],
+        "product_count": 10,
+        "overall_ok": false
+      },
+      "response": {
+        "total": 10,
+        "page_size": 10,
+        "metadata": {
+          "query_source": "cache_cross_merchant_search",
+          "serving_mode": null,
+          "commerce_surface": null,
+          "strict_empty": false,
+          "final_decision": "cache_returned"
+        },
+        "clarification": null,
+        "top_products": [
+          {
+            "title": "Small Foundation Brush — Seamless, Streak‑Free Base • Soft Synthetic Fibers",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859782246728",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          },
+          {
+            "title": "Round Foundation Brush — Skin‑Like Finish in Minutes • Soft Synthetic Fibers",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859800138056",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          },
+          {
+            "title": "Round Foundation Brush — Skin‑Like Finish in Minutes • Soft Synthetic Fibers",
+            "brand": "MOYU",
+            "merchant_id": "merch_efbc46b4619cfbdf",
+            "product_id": "9859791618376",
+            "commerce_surface": null,
+            "purchase_route": null,
+            "has_top_offer_summary": false,
+            "has_exact_resolution_identifiers": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "fpm_scenario_date_makeup",
+      "label": "find_products_multi scenario query",
+      "operation": "find_products_multi",
+      "query": "我今晚有个约会，要化妆，要推荐点商品吧？",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 23597,
+      "evaluation": {
+        "observe_only": true,
+        "min_products_ok": true,
+        "relevance_ok": true,
+        "eligible_only_ok": true,
+        "offer_summary_ok": true,
+        "clarification_triggered": true,
+        "anchor_hits": [],
+        "product_count": 0,
+        "overall_ok": true
+      },
+      "response": {
+        "total": 0,
+        "page_size": 0,
+        "metadata": {
+          "query_source": "agent_products_error_fallback",
+          "serving_mode": "eligible_only",
+          "commerce_surface": "agent_api",
+          "strict_empty": true,
+          "final_decision": "clarify"
+        },
+        "clarification": {
+          "reason": null,
+          "question": "你主要使用场景是哪一个？",
+          "options_count": 4
+        },
+        "top_products": []
+      }
+    }
+  ]
+}

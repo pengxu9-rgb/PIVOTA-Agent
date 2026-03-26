@@ -77,6 +77,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../../src/auroraBff/routes');
     nock.cleanAll();
     nock.enableNetConnect();
 

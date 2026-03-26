@@ -1,0 +1,80 @@
+{
+  "request_id": "76385ec7-3d85-4e35-a537-2b2e69d7eb59",
+  "trace_id": "t_prod_validate_1773928947",
+  "assistant_message": null,
+  "suggested_chips": [],
+  "cards": [
+    {
+      "card_id": "parse_76385ec7-3d85-4e35-a537-2b2e69d7eb59",
+      "type": "product_parse",
+      "payload": {
+        "product": {
+          "brand": "Labseries",
+          "name": "all in one",
+          "display_name": "Labseries all in one",
+          "url": "https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one",
+          "category": "product"
+        },
+        "confidence": 0.32,
+        "missing_info": [
+          "upstream_missing_or_unstructured",
+          "heuristic_url_parse",
+          "anchor_soft_blocked_ambiguous",
+          "anchor_id_not_used_due_to_low_trust"
+        ],
+        "anchor_trust": {
+          "level": "soft_blocked",
+          "usable_for_anchor_id": false,
+          "reasons": [
+            "anchor_soft_blocked_ambiguous"
+          ]
+        },
+        "anchor_resolution": {
+          "source": "heuristic_url",
+          "candidate_quality": "medium",
+          "url_consistency": 1
+        },
+        "parse_source": "heuristic_url",
+        "recovery_path": [
+          "upstream_structured_miss",
+          "answer_json_miss",
+          "upstream_parse_anchor_soft_blocked",
+          "heuristic_url",
+          "heuristic_url_anchor_soft_blocked"
+        ]
+      },
+      "field_missing": [
+        {
+          "field": "parse.fallback",
+          "reason": "heuristic_url"
+        },
+        {
+          "field": "payload.product_ref",
+          "reason": "low_confidence"
+        }
+      ]
+    }
+  ],
+  "session_patch": {
+    "next_state": "PRODUCT_LINK_EVAL",
+    "meta": {
+      "retrieval_path_version": "aurora_retrieval_v2"
+    }
+  },
+  "events": [
+    {
+      "event_name": "value_moment",
+      "timestamp": 1773928989543,
+      "request_id": "76385ec7-3d85-4e35-a537-2b2e69d7eb59",
+      "trace_id": "t_prod_validate_1773928947",
+      "aurora_uid": "uid_prod_validate_1773928947",
+      "brief_id": "b_prod_validate_1773928947",
+      "lang": "EN",
+      "trigger_source": "text",
+      "state": null,
+      "data": {
+        "kind": "product_parse"
+      }
+    }
+  ]
+}

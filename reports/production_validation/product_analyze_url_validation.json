@@ -1,0 +1,1070 @@
+{
+  "request_id": "c1adae05-adf0-4ab9-b95f-bbd08a829791",
+  "trace_id": "t_prod_validate_1773928947",
+  "assistant_message": null,
+  "suggested_chips": [],
+  "cards": [
+    {
+      "card_id": "analyze_c1adae05-adf0-4ab9-b95f-bbd08a829791",
+      "type": "product_analysis",
+      "payload": {
+        "dupes": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.462,
+              "level": "med",
+              "reasons": [
+                "dupes=upstream_or_router",
+                "coverage=20%",
+                "source_quality=46%",
+                "freshness=86%",
+                "consistency=72%",
+                "missing_fields=dupes.candidates"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "dupes.candidates"
+            ],
+            "warnings": [
+              "dupes_missing"
+            ]
+          },
+          "block_type": "dupes"
+        },
+        "product": {
+          "url": "https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one",
+          "name": "All-In-One Defense Lotion Moisturizer SPF 35",
+          "brand": "Lab Series",
+          "price": {
+            "amount": 65,
+            "source": "json_ld_offer",
+            "unknown": false,
+            "currency": "USD",
+            "captured_at": "2026-02-27T02:34:13.002Z"
+          },
+          "display_name": "Lab Series All-In-One Defense Lotion Moisturizer SPF 35"
+        },
+        "evidence": {
+          "science": {
+            "fit_notes": [
+              "Oily-skin context generally prioritizes oil control and low-clog load.",
+              "For sensitive or impaired-barrier days, start low-frequency and avoid same-night stacking of strong actives.",
+              "Ingredient-source consistency is limited; cross-check with package INCI."
+            ],
+            "mechanisms": [
+              "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).",
+              "Humectant blend suggests hydration support and moisture retention."
+            ],
+            "risk_notes": [
+              "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+              "May include fragrance-related ingredients; patch testing is recommended for sensitive skin."
+            ],
+            "key_ingredients": [
+              "Niacinamide",
+              "Sodium Hyaluronate",
+              "L Ascorbic Acid",
+              "Retinol",
+              "Hyaluronic Acid",
+              "Tretinoin",
+              "Acetyl Hexapeptide-8 Or Argireline",
+              "Vitamin C"
+            ]
+          },
+          "sources": [
+            {
+              "url": "https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one",
+              "type": "official_page",
+              "label": "labseries.com",
+              "confidence": 0.78
+            },
+            {
+              "url": "https://incidecoder.com/products/dermedicine-all-in-one",
+              "type": "inci_decoder",
+              "label": "INCIDecoder",
+              "confidence": 0.82
+            }
+          ],
+          "confidence": 0.73,
+          "expert_notes": [
+            "Evidence source: ingredient list parsed from labseries.com.",
+            "INCIDecoder supplement loaded (58 ingredients, match=0.82).",
+            "Price signal from page: USD 65 (used for comparable matching).",
+            "Visible page rating is about 4.4/5 (n=362).",
+            "On-page text signals: positive themes 7, negative themes 1.",
+            "Note: these social signals are aggregated from public product-page text, not full cross-platform crawl."
+          ],
+          "missing_info": [
+            "retail_source_no_match",
+            "incidecoder_source_used",
+            "version_verification_needed",
+            "concentration_unknown",
+            "related_semantics_reclassified"
+          ],
+          "social_signals": {
+            "platform_scores": {
+              "BrandSite": 0.88
+            },
+            "risk_for_groups": [
+              "Sensitive skin: start low and monitor for stinging/redness.",
+              "Acne-prone skin: watch for clogging/breakout feedback.",
+              "Impaired barrier: prioritize moisturizer and reduce active layering."
+            ],
+            "typical_negative": [
+              "drying feel"
+            ],
+            "typical_positive": [
+              "hydration"
+            ]
+          },
+          "key_ingredients_by_function": [
+            {
+              "function": "Humectants",
+              "ingredients": [
+                "Sodium Hyaluronate",
+                "Hyaluronic Acid"
+              ],
+              "confidence": "high"
+            },
+            {
+              "function": "Brightening",
+              "ingredients": [
+                "Niacinamide",
+                "L Ascorbic Acid",
+                "Vitamin C"
+              ],
+              "confidence": "high"
+            },
+            {
+              "function": "Retinoids",
+              "ingredients": [
+                "Retinol",
+                "Tretinoin"
+              ],
+              "confidence": "high"
+            }
+          ],
+          "product_type_reasoning": "Product type classified as spf_moisturizer based on name/URL/ingredient signals."
+        },
+        "skin_fit": {
+          "suitable_for": [],
+          "not_recommended_for": [
+            "high_sensitivity",
+            "impaired_barrier",
+            "fragrance_sensitive"
+          ],
+          "contraindications": [
+            {
+              "condition": "high_sensitivity_or_impaired_barrier",
+              "why": "Fit signal: manage excess sebum and reduce clog-prone load; lower irritation exposure and redness risk; keep acne/comedone control on track."
+            },
+            {
+              "condition": "fragrance_sensitivity",
+              "why": "May include fragrance-related ingredients; patch testing is recommended for sensitive skin."
+            }
+          ],
+          "routine_tips": [
+            "Start with low frequency and pause if stinging/redness occurs."
+          ],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 336,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.733,
+              "level": "med",
+              "reasons": [
+                "rules_first=skin_fit",
+                "coverage=65%",
+                "source_quality=74%",
+                "freshness=92%",
+                "consistency=72%",
+                "missing_fields=profile.skinType,profile.sensitivity,profile.barrierStatus"
+              ]
+            },
+            "evidence": [
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_assessment",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Fit signal: manage excess sebum and reduce clog-prone load; lower irritation exposure and redness risk; keep acne/comedone control on track. | Fit: your goals include acne/marks; niacinamide/zinc commonly align with that.",
+                "data": {
+                  "assessment_reasons": [
+                    "Fit signal: manage excess sebum and reduce clog-prone load; lower irritation exposure and redness risk; keep acne/comedone control on track.",
+                    "Fit: your goals include acne/marks; niacinamide/zinc commonly align with that.",
+                    "Detected key ingredients: Key Ingredients, Niacinamide, Sodium Hyaluronate, L Ascorbic Acid, Retinol.",
+                    "Contains retinoid-like ingredients with higher irritation/dryness risk early on."
+                  ],
+                  "verdict": "Caution"
+                }
+              },
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_science",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Risk notes: Contains retinoid-like ingredients with higher irritation/dryness risk early on. | May include fragrance-related ingredients; patch testing is recommended for sensitive skin.",
+                "data": {
+                  "risk_notes": [
+                    "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+                    "May include fragrance-related ingredients; patch testing is recommended for sensitive skin."
+                  ]
+                }
+              }
+            ],
+            "missing_fields": [
+              "profile.skinType",
+              "profile.sensitivity",
+              "profile.barrierStatus"
+            ],
+            "warnings": [
+              "profile.goals_missing"
+            ]
+          }
+        },
+        "assessment": {
+          "not_for": [
+            "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+            "May include fragrance-related ingredients; patch testing is recommended for sensitive skin."
+          ],
+          "reasons": [
+            "Fit signal: manage excess sebum and reduce clog-prone load; lower irritation exposure and redness risk; keep acne/comedone control on track.",
+            "Fit: your goals include acne/marks; niacinamide/zinc commonly align with that.",
+            "Contains retinoid-like ingredients with higher irritation/dryness risk early on."
+          ],
+          "summary": "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+          "verdict": "Caution",
+          "best_for": [
+            "Ingredient-source consistency is limited; cross-check with package INCI."
+          ],
+          "how_to_use": {
+            "timing": "am",
+            "frequency": "daily",
+            "steps": [
+              "Cleanse gently first.",
+              "Apply a thin layer and avoid stacking strong actives.",
+              "Follow with moisturizer and daytime SPF.",
+              "Patch test is recommended for new products.",
+              "Reapply about every 2 hours when outdoors."
+            ],
+            "stop_signs": [
+              "Pause and switch to gentle barrier support if persistent stinging/redness/peeling occurs."
+            ],
+            "observation_window": "Monitor for 10-14 days before increasing frequency.",
+            "pairing_rules": []
+          },
+          "if_not_ideal": [
+            "If persistent stinging/redness appears, pause this product and return to a gentle cleanse + barrier-repair baseline.",
+            "Start low-frequency (2-3x/week) and monitor for 10-14 days before increasing usage."
+          ],
+          "anchor_product": {
+            "url": "https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one",
+            "name": "All-In-One Defense Lotion Moisturizer SPF 35",
+            "brand": "Lab Series",
+            "price": {
+              "amount": 65,
+              "source": "json_ld_offer",
+              "unknown": false,
+              "currency": "USD",
+              "captured_at": "2026-02-27T02:34:13.002Z"
+            },
+            "display_name": "Lab Series All-In-One Defense Lotion Moisturizer SPF 35"
+          },
+          "better_pairing": [
+            "Pairing idea: keep consistent daytime SPF and single-variable PM iteration to judge fit reliably."
+          ],
+          "formula_intent": [
+            "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).",
+            "Humectant blend suggests hydration support and moisture retention.",
+            "Core driver: Retinol (retinoid), mainly targeting Most effective for long-term texture/lines, but can be irritating\u2014ramp slowly.."
+          ],
+          "hero_ingredient": {
+            "why": "Most effective for long-term texture/lines, but can be irritating\u2014ramp slowly.",
+            "name": "Retinol",
+            "role": "retinoid",
+            "source": "heuristic"
+          },
+          "follow_up_question": "Do you prefer \u201cgentler\u201d or \u201cfaster-visible results\u201d? I can tune the next-step options based on that.",
+          "ingredient_confidence_tier": "low",
+          "verdict_level": "cautiously_ok",
+          "top_takeaways": [
+            "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).",
+            "Humectant blend suggests hydration support and moisture retention.",
+            "Core driver: Retinol (retinoid), mainly targeting Most effective for long-term texture/lines, but can be irritating\u2014ramp slowly..",
+            "Fit signal: manage excess sebum and reduce clog-prone load; lower irritation exposure and redness risk; keep acne/comedone control on track.",
+            "Fit: your goals include acne/marks; niacinamide/zinc commonly align with that."
+          ],
+          "watchouts": [
+            {
+              "issue": "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+              "status": "possible",
+              "what_to_do": "Add barrier hydration and reduce frequency."
+            },
+            {
+              "issue": "May include fragrance-related ingredients; patch testing is recommended for sensitive skin.",
+              "status": "possible",
+              "what_to_do": "Patch test first; stop if stinging or redness persists."
+            }
+          ],
+          "data_quality_banner": "Ingredient evidence relies on INCIDecoder and may vary by version/region. Cross-check your package INCI before relying on ingredient-specific guidance."
+        },
+        "confidence": 0.73,
+        "provenance": {
+          "generated_at": "2026-02-27T02:34:14.852Z",
+          "contract_version": "aurora.product_intel.contract.v2",
+          "pipeline": "reco_blocks_dag.v1",
+          "source": "url_realtime_product_intel_async_backfill",
+          "validation_mode": "soft_fail",
+          "mode": "async_backfill",
+          "kb_write": {
+            "policy": "allow_all",
+            "attempted": true,
+            "persisted": true,
+            "blocked_reason": null,
+            "audit_blocked_reason": null
+          },
+          "url_fetch": {
+            "attempts": [
+              {
+                "status": 200,
+                "provider": "native",
+                "strategy": "axios_default"
+              }
+            ],
+            "final_strategy": "axios_default"
+          },
+          "interleave": {
+            "enabled": false,
+            "rankerA": "ranker_v1",
+            "rankerB": "ranker_v2"
+          },
+          "block_stats": {
+            "catalog_ann": {
+              "timeout": false,
+              "eligible": 6,
+              "returned": 6,
+              "duration_ms": 485,
+              "budget_profile": {
+                "mode": "async_backfill",
+                "timeout_ms": 8000,
+                "per_query_min_ms": 220,
+                "soft_deadline_ms": 7780,
+                "search_timeout_ms": 7820
+              },
+              "query_attempted": 1,
+              "attempted_sources": [
+                "https://web-production-fedb.up.railway.app"
+              ],
+              "attempted_endpoints": [
+                "https://web-production-fedb.up.railway.app/agent/v1/beauty/products/search"
+              ],
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            },
+            "kb_backfill": {
+              "timeout": false,
+              "eligible": 0,
+              "returned": 0,
+              "duration_ms": 4,
+              "query_attempted": 0,
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            },
+            "dupe_pipeline": {
+              "timeout": false,
+              "eligible": 0,
+              "returned": 0,
+              "duration_ms": 3,
+              "query_attempted": 0,
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            },
+            "skin_fit_light": {
+              "timeout": false,
+              "eligible": 0,
+              "returned": 0,
+              "duration_ms": 4,
+              "query_attempted": 0,
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            },
+            "on_page_related": {
+              "error": "timeout",
+              "timeout": true,
+              "eligible": 0,
+              "returned": 0,
+              "duration_ms": 221,
+              "query_attempted": 0,
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            },
+            "ingredient_index": {
+              "timeout": false,
+              "eligible": 0,
+              "returned": 0,
+              "duration_ms": 4,
+              "query_attempted": 0,
+              "resolver_first_applied": false,
+              "transient_failure_count": 0,
+              "source_temporarily_deprioritized": false,
+              "resolver_first_skipped_for_aurora": false
+            }
+          },
+          "dogfood_mode": false,
+          "inci_decoder": {
+            "url": "https://incidecoder.com/products/dermedicine-all-in-one",
+            "query": "Labseries All In One",
+            "provider": "incidecoder",
+            "match_score": 0.817,
+            "overlap_count": 0,
+            "ingredient_count": 58
+          },
+          "on_page_mode": "fallback_only",
+          "quality_band": "high",
+          "source_chain": [
+            "official_page",
+            "inci_decoder",
+            "llm_extraction"
+          ],
+          "fallbacks_used": [
+            "related_on_page_fallback",
+            "kb_backfill_dupes"
+          ],
+          "competitor_meta": {
+            "stale": false,
+            "source": "reco_async_backfill",
+            "degraded": false,
+            "confidence": 0.55,
+            "very_stale": false,
+            "snapshot_age_sec": 1377
+          },
+          "confidence_band": "medium",
+          "gate_relax_mode": "aggressive",
+          "guardrail_flags": [],
+          "kb_serve_policy": "serve_with_labels",
+          "kb_write_policy": "allow_all",
+          "timed_out_blocks": [
+            "on_page_related"
+          ],
+          "ingredient_consensus": {
+            "stats": {
+              "retail_count": 0,
+              "official_count": 0,
+              "inci_decoder_count": 56,
+              "cross_source_covered": 0,
+              "overlap_inci_official": 0,
+              "overlap_retail_official": 0
+            },
+            "has_conflict": false,
+            "confidence_tier": "low"
+          },
+          "retrieval_degradation": {
+            "degraded": false,
+            "attempted_sources": [],
+            "resolver_first_applied": false,
+            "transient_failure_count": 0,
+            "source_temporarily_deprioritized": false,
+            "resolver_first_skipped_for_aurora": false
+          },
+          "social_enrichment_status": "pending_async",
+          "catalog_ann_reason_counts": {
+            "upstream_error": 2
+          },
+          "dogfood_features_effective": {
+            "interleave": false,
+            "exploration": false,
+            "async_rerank": false,
+            "show_employee_feedback_controls": false
+          },
+          "related_semantics_reclassified": true,
+          "exploration_inserted_count_by_block": {
+            "dupes": 0,
+            "competitors": 0,
+            "related_products": 0
+          },
+          "guardrail_applied": false,
+          "guardrail_mode": "telemetry_only",
+          "guardrail_violations": [],
+          "guardrail_circuit_open": false,
+          "guardrail_circuit_until_ms": 0,
+          "auto_rollback_flag": false,
+          "social_fetch_mode": "stale_kb",
+          "llm_route": {
+            "stage": "stage_1",
+            "provider": "gemini",
+            "model": "gemini-3-pro-preview",
+            "trigger_reason": "url_realtime_kb_hit"
+          },
+          "anchor_trust": {
+            "level": "none",
+            "usable_for_anchor_id": false,
+            "reasons": [
+              "anchor_soft_blocked_ambiguous"
+            ],
+            "source": "none",
+            "candidate_quality": "none",
+            "url_consistency": 0
+          },
+          "lock_top_n_on_first_paint": 3
+        },
+        "competitors": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.466,
+              "level": "med",
+              "reasons": [
+                "competitor_recall=reco_blocks_router",
+                "coverage=20%",
+                "source_quality=48%",
+                "freshness=86%",
+                "consistency=72%",
+                "missing_fields=competitors.candidates"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "competitors.candidates"
+            ],
+            "warnings": [
+              "no_competitor_candidates_from_upstream"
+            ]
+          },
+          "block_type": "competitors"
+        },
+        "missing_info": [
+          "retail_source_no_match",
+          "incidecoder_source_used",
+          "version_verification_needed",
+          "ingredient_concentration_unknown",
+          "related_semantics_reclassified",
+          "anchor_filtered_client_payload_anchor_soft_blocked_non_skincare",
+          "anchor_filtered_client_payload_anchor_soft_blocked_ambiguous",
+          "analysis_in_progress",
+          "competitor_category_unknown_blocked",
+          "anchor_soft_blocked_ambiguous",
+          "concentration_unknown"
+        ],
+        "profile_prompt": {
+          "needed": true,
+          "missing_fields": [
+            "skinType",
+            "sensitivity",
+            "barrierStatus"
+          ],
+          "cta_action": "open_profile",
+          "cta_target": "profile_sheet"
+        },
+        "social_signals": {
+          "platforms": [
+            {
+              "name": "BrandSite",
+              "mention_count": null,
+              "sample_size": null,
+              "time_window": null,
+              "sentiment": {
+                "pos": 0.88,
+                "neu": 0.12,
+                "neg": 0
+              },
+              "top_topics": [
+                {
+                  "topic": "hydration",
+                  "count": null,
+                  "polarity": "pos"
+                }
+              ],
+              "risk_terms": [
+                {
+                  "term": "Sensitive skin: start low and monitor for stinging/redness.",
+                  "count": null
+                },
+                {
+                  "term": "Acne-prone skin: watch for clogging/breakout feedback.",
+                  "count": null
+                },
+                {
+                  "term": "Impaired barrier: prioritize moisturizer and reduce active layering.",
+                  "count": null
+                }
+              ]
+            }
+          ],
+          "overall_summary": {
+            "top_pos_themes": [
+              "hydration"
+            ],
+            "top_neg_themes": [
+              "drying feel"
+            ],
+            "watchouts": [
+              "Sensitive skin: start low and monitor for stinging/redness.",
+              "Acne-prone skin: watch for clogging/breakout feedback.",
+              "Impaired barrier: prioritize moisturizer and reduce active layering."
+            ]
+          },
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 48,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.805,
+              "level": "high",
+              "reasons": [
+                "social_aggregation=partial",
+                "source_quality=58%",
+                "freshness=70%",
+                "consistency=66%"
+              ]
+            },
+            "evidence": [
+              {
+                "source_type": "social",
+                "source_name": "aurora_social_signals",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Platform scores: BrandSite=0.88",
+                "data": {
+                  "platform_scores": {
+                    "BrandSite": 0.88
+                  }
+                }
+              },
+              {
+                "source_type": "social",
+                "source_name": "aurora_social_signals",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Positive: hydration | Negative: drying feel | Risk groups: Sensitive skin: start low and monitor for stinging/redness., Acne-prone skin: watch for clogging/breakout feedback.",
+                "data": {
+                  "typical_positive": [
+                    "hydration"
+                  ],
+                  "typical_negative": [
+                    "drying feel"
+                  ],
+                  "risk_for_groups": [
+                    "Sensitive skin: start low and monitor for stinging/redness.",
+                    "Acne-prone skin: watch for clogging/breakout feedback.",
+                    "Impaired barrier: prioritize moisturizer and reduce active layering."
+                  ]
+                }
+              }
+            ],
+            "warnings": [
+              "social_sample_size_missing",
+              "social_time_window_missing"
+            ]
+          }
+        },
+        "ingredient_intel": {
+          "inci_raw": "Niacinamide, Sodium Hyaluronate, L Ascorbic Acid, Retinol, Hyaluronic Acid, Tretinoin, Acetyl Hexapeptide-8 Or Argireline, Vitamin C",
+          "inci_normalized": [
+            {
+              "inci": "Niacinamide",
+              "functions": [
+                "barrier_support",
+                "oil_control",
+                "tone_evening"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Sodium Hyaluronate",
+              "functions": [
+                "humectant_hydration"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            },
+            {
+              "inci": "L Ascorbic Acid",
+              "functions": [
+                "antioxidant_brightening"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Retinol",
+              "functions": [
+                "retinoid",
+                "texture_refine"
+              ],
+              "risks": [
+                "retinoid",
+                "irritant"
+              ],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Hyaluronic Acid",
+              "functions": [
+                "humectant_hydration"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Tretinoin",
+              "functions": [
+                "retinoid",
+                "texture_refine"
+              ],
+              "risks": [
+                "retinoid",
+                "irritant"
+              ],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Acetyl Hexapeptide-8 Or Argireline",
+              "functions": [
+                "barrier_support",
+                "humectant_hydration"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            },
+            {
+              "inci": "Vitamin C",
+              "functions": [
+                "antioxidant_brightening"
+              ],
+              "risks": [],
+              "suitability_tags": []
+            }
+          ],
+          "actives": [
+            {
+              "name": "Niacinamide",
+              "rationale": "Evidence-derived active from science.key_ingredients (Niacinamide)."
+            },
+            {
+              "name": "Sodium Hyaluronate",
+              "rationale": "Humectant blend suggests hydration support and moisture retention."
+            },
+            {
+              "name": "L Ascorbic Acid",
+              "rationale": "Evidence-derived active from science.key_ingredients (L Ascorbic Acid)."
+            },
+            {
+              "name": "Retinol",
+              "rationale": "Evidence-derived active from science.key_ingredients (Retinol)."
+            },
+            {
+              "name": "Hyaluronic Acid",
+              "rationale": "Humectant blend suggests hydration support and moisture retention."
+            },
+            {
+              "name": "Tretinoin",
+              "rationale": "Evidence-derived active from science.key_ingredients (Tretinoin)."
+            },
+            {
+              "name": "Acetyl Hexapeptide-8 Or Argireline",
+              "rationale": "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration)."
+            },
+            {
+              "name": "Vitamin C",
+              "rationale": "Evidence-derived active from science.key_ingredients (Vitamin C)."
+            }
+          ],
+          "red_flags": [
+            "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+            "May include fragrance-related ingredients; patch testing is recommended for sensitive skin.",
+            "retinoid",
+            "irritant"
+          ],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 336,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.908,
+              "level": "high",
+              "reasons": [
+                "evidence_first=science",
+                "source_quality=82%",
+                "freshness=90%",
+                "consistency=76%"
+              ]
+            },
+            "evidence": [
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_structured",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Science key ingredients: Niacinamide, Sodium Hyaluronate, L Ascorbic Acid, Retinol, Hyaluronic Acid, Tretinoin, Acetyl Hexapeptide-8 Or Argireline, Vitamin C",
+                "data": {
+                  "key_ingredients": [
+                    "Niacinamide",
+                    "Sodium Hyaluronate",
+                    "L Ascorbic Acid",
+                    "Retinol",
+                    "Hyaluronic Acid",
+                    "Tretinoin",
+                    "Acetyl Hexapeptide-8 Or Argireline",
+                    "Vitamin C"
+                  ]
+                }
+              },
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_structured",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration). | Humectant blend suggests hydration support and moisture retention.",
+                "data": {
+                  "mechanisms": [
+                    "Peptide complexes are commonly used to support firmness and the look of fine lines (effect depends on formula and concentration).",
+                    "Humectant blend suggests hydration support and moisture retention."
+                  ],
+                  "fit_notes": [
+                    "Oily-skin context generally prioritizes oil control and low-clog load.",
+                    "For sensitive or impaired-barrier days, start low-frequency and avoid same-night stacking of strong actives.",
+                    "Ingredient-source consistency is limited; cross-check with package INCI."
+                  ]
+                }
+              },
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_structured",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Risk notes: Contains retinoid-like ingredients with higher irritation/dryness risk early on. | May include fragrance-related ingredients; patch testing is recommended for sensitive skin.",
+                "data": {
+                  "risk_notes": [
+                    "Contains retinoid-like ingredients with higher irritation/dryness risk early on.",
+                    "May include fragrance-related ingredients; patch testing is recommended for sensitive skin."
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "related_products": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:10.964Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.678,
+              "level": "med",
+              "reasons": [
+                "related_products=upstream_or_router",
+                "coverage=60%",
+                "source_quality=64%",
+                "freshness=86%",
+                "consistency=72%"
+              ]
+            },
+            "evidence": [
+              {
+                "source_type": "catalog",
+                "source_name": "aurora_related_products",
+                "captured_at": "2026-03-19T14:03:10.964Z",
+                "excerpt": "Candidates: Moisturizer/SPF",
+                "data": {
+                  "candidates": [
+                    {
+                      "brand": "Lab Series",
+                      "name": "Moisturizer/SPF",
+                      "similarity_score": 0.725,
+                      "why_candidate": {
+                        "summary": "Moisturizer/SPF is selected because high brand affinity indicates strong relation and moderate co-view signal.",
+                        "reasons_user_visible": [
+                          "High brand affinity indicates strong relation.",
+                          "Moderate co-view signal.",
+                          "Moderate KB routine association."
+                        ],
+                        "boundary_user_visible": "Related products are contextual references and not cross-brand substitutes."
+                      },
+                      "score_breakdown": {
+                        "category_use_case_match": 1,
+                        "ingredient_functional_similarity": 0.45,
+                        "skin_fit_similarity": 0.42,
+                        "social_reference_strength": 0.61,
+                        "price_distance": 0.4,
+                        "brand_constraint": 1,
+                        "quality": 0,
+                        "score_total": 0.725,
+                        "brand_affinity": 1,
+                        "co_view": 0.5,
+                        "kb_routine": 0.5
+                      },
+                      "source": {
+                        "type": "on_page_related"
+                      },
+                      "evidence_refs": [],
+                      "price_band": "unknown",
+                      "compare_highlights": [
+                        "Same-brand/context candidate; compare INCI and concentration before final pick.",
+                        "https://www.labseries.com/skincare-moisturize"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "block_type": "related_products"
+        },
+        "user_facing_gaps": [
+          "retail_source_no_match",
+          "incidecoder_source_used",
+          "version_verification_needed",
+          "ingredient_concentration_unknown",
+          "related_semantics_reclassified",
+          "anchor_filtered_client_payload_anchor_soft_blocked_non_skincare",
+          "anchor_filtered_client_payload_anchor_soft_blocked_ambiguous",
+          "analysis_in_progress",
+          "competitor_category_unknown_blocked",
+          "anchor_soft_blocked_ambiguous"
+        ],
+        "confidence_by_block": {
+          "ingredient_intel": {
+            "score": 0.908,
+            "level": "high",
+            "reasons": [
+              "evidence_first=science",
+              "source_quality=82%",
+              "freshness=90%",
+              "consistency=76%"
+            ]
+          },
+          "skin_fit": {
+            "score": 0.89,
+            "level": "high",
+            "reasons": [
+              "rules_first=skin_fit",
+              "source_quality=74%",
+              "freshness=92%",
+              "consistency=72%"
+            ]
+          },
+          "social_signals": {
+            "score": 0.805,
+            "level": "high",
+            "reasons": [
+              "social_aggregation=partial",
+              "source_quality=58%",
+              "freshness=70%",
+              "consistency=66%"
+            ]
+          },
+          "competitors": {
+            "score": 0.55,
+            "level": "med",
+            "reasons": [
+              "competitor_recall_available",
+              "fallback_related_on_page_fallback",
+              "fallback_kb_backfill_dupes"
+            ]
+          },
+          "related_products": {
+            "score": 0.4,
+            "level": "med",
+            "reasons": [
+              "related_candidates_sparse"
+            ]
+          },
+          "dupes": {
+            "score": 0.35,
+            "level": "low",
+            "reasons": [
+              "dupe_candidates_sparse"
+            ]
+          }
+        },
+        "product_intel_contract_version": "aurora.product_intel.contract.v2",
+        "inci_status": {
+          "extraction": "success",
+          "consensus_tier": "low",
+          "sources": [
+            {
+              "type": "official_page",
+              "url": "https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one",
+              "confidence": 0.78,
+              "ingredient_count": 0
+            },
+            {
+              "type": "inci_decoder",
+              "url": "https://incidecoder.com/products/dermedicine-all-in-one",
+              "confidence": 0.82,
+              "ingredient_count": 0
+            }
+          ],
+          "verification_required": true,
+          "total_ingredients": 8
+        }
+      },
+      "field_missing": []
+    }
+  ],
+  "session_patch": {
+    "next_state": "PRODUCT_LINK_EVAL",
+    "meta": {
+      "retrieval_path_version": "aurora_retrieval_v2",
+      "profile_context_source": "db_only_profile",
+      "request_profile_overlay_applied": false,
+      "analysis_context_usage": {
+        "snapshot_present": true,
+        "context_source_mode": "artifact",
+        "analysis_context_available": true,
+        "snapshot_id": "acs_07944acb4ed1216130",
+        "source_mix_summary": [
+          "system_heuristic"
+        ],
+        "derived_from_artifact_signature": "20340bd34d80d6d0",
+        "snapshot_fields_used": [
+          "goals",
+          "skin_type_tendency",
+          "sensitivity_tendency",
+          "barrier_status_tendency",
+          "ingredient_targets",
+          "ingredient_avoid",
+          "risk_axes"
+        ],
+        "hard_context_fields_used": [],
+        "soft_context_fields_used": [
+          "ingredient_targets",
+          "ingredient_avoid"
+        ],
+        "explicit_override_applied": false,
+        "adapter_version": "analysis_context_adapter_v1",
+        "context_mode": "snapshot_soft_only"
+      }
+    }
+  },
+  "events": [
+    {
+      "event_name": "value_moment",
+      "timestamp": 1773928991989,
+      "request_id": "c1adae05-adf0-4ab9-b95f-bbd08a829791",
+      "trace_id": "t_prod_validate_1773928947",
+      "aurora_uid": "uid_prod_validate_1773928947",
+      "brief_id": "b_prod_validate_1773928947",
+      "lang": "EN",
+      "trigger_source": "text",
+      "state": null,
+      "data": {
+        "kind": "product_analyze",
+        "mode": "url_realtime_product_intel_kb_hit"
+      }
+    }
+  ]
+}

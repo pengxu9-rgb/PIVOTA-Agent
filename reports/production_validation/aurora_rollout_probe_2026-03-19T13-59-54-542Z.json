@@ -1,0 +1,466 @@
+{
+  "started_at_utc": "2026-03-19T13:59:46.761Z",
+  "finished_at_utc": "2026-03-19T13:59:54.542Z",
+  "config": {
+    "base": "https://pivota-agent-production.up.railway.app",
+    "endpoint": "/v1/chat",
+    "samples": 6,
+    "concurrency": 2,
+    "timeout_ms": 10000,
+    "retry_count": 1,
+    "retry_backoff_ms": 350,
+    "include_policy_debug_header": true
+  },
+  "summary": {
+    "total_requests": 6,
+    "success_200": 6,
+    "non_200_count": 0,
+    "parse_error_count": 0,
+    "network_error_count": 0,
+    "meta_null_count": 0,
+    "variant_mismatch_count": 0,
+    "bucket_mismatch_count": 0,
+    "policy_mismatch_count": 0,
+    "bucket_out_of_range_count": 0,
+    "infra_flake_count": 0,
+    "recovered_after_retry_count": 0,
+    "mismatch_count": 0,
+    "header_variant_counts": {
+      "v2_weather": 6
+    },
+    "header_variant_pct": {
+      "v2_weather": 100
+    },
+    "header_policy_version_counts": {
+      "aurora_chat_v2_p0": 6
+    },
+    "bucket_min": 25,
+    "bucket_max": 74,
+    "failures": []
+  },
+  "alerts": {
+    "checks": [
+      {
+        "id": "meta_missing",
+        "severity": "high",
+        "triggered": false,
+        "value": 0,
+        "threshold": "> 0",
+        "note": "meta must always be present"
+      },
+      {
+        "id": "header_meta_mismatch",
+        "severity": "high",
+        "triggered": false,
+        "value": 0,
+        "threshold": "> 0",
+        "note": "header/meta drift detected"
+      },
+      {
+        "id": "bucket_out_of_range",
+        "severity": "high",
+        "triggered": false,
+        "value": 0,
+        "threshold": "> 0",
+        "note": "bucket must stay in [0,99]"
+      },
+      {
+        "id": "elevated_failures",
+        "severity": "high",
+        "triggered": false,
+        "value": "0 (recent_failure_runs=0)",
+        "threshold": ">=2 runs with non_200_or_parse_error in 10m",
+        "note": "transient CDN failures need 2-run confirmation"
+      },
+      {
+        "id": "infra_flake_single_run",
+        "severity": "warn",
+        "triggered": false,
+        "value": 0,
+        "threshold": "> 0 on single run (no page)",
+        "note": "expected for intermittent CDN/WAF noise"
+      }
+    ],
+    "severity": "none"
+  },
+  "rows": [
+    {
+      "index": 0,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 1886,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "67",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 1886,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "67",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 67,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_0_1773928786762_uq72qi",
+          "sessionId": "rollout_probe_session_0_1773928786761_xxi9y9"
+        }
+      }
+    },
+    {
+      "index": 1,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 7761,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "36",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 7761,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "36",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 36,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_1_1773928786779_9jkv4q",
+          "sessionId": "rollout_probe_session_1_1773928786779_395dhk"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 1349,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "54",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 1349,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "54",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 54,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_2_1773928788649_oriabr",
+          "sessionId": "rollout_probe_session_2_1773928788649_3f8yte"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 1310,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "74",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 1310,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "74",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 74,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_3_1773928789998_9wbppu",
+          "sessionId": "rollout_probe_session_3_1773928789998_mja2vk"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 1540,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "25",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 1540,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "25",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 25,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_4_1773928791308_bty1y2",
+          "sessionId": "rollout_probe_session_4_1773928791308_pqulnz"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "attempts": [
+        {
+          "idx": 0,
+          "status": 200,
+          "elapsed_ms": 1653,
+          "error": null,
+          "headers": {
+            "variant": "v2_weather",
+            "bucketRaw": "52",
+            "policyVersion": "aurora_chat_v2_p0"
+          },
+          "reasons": [],
+          "infra_flake": false,
+          "retryable": false
+        }
+      ],
+      "recovered_after_retry": false,
+      "final": {
+        "status": 200,
+        "elapsed_ms": 1653,
+        "error": null,
+        "headers": {
+          "variant": "v2_weather",
+          "bucketRaw": "52",
+          "policyVersion": "aurora_chat_v2_p0"
+        },
+        "meta": {
+          "policy_version": "aurora_chat_v2_p0",
+          "rollout_variant": "v2_weather",
+          "rollout_bucket": 52,
+          "rollout_bucket_key_source": "session_id",
+          "rollout_forced_variant": null,
+          "rollout_applied": true,
+          "build_sha": "1e9d8716735b267f38d25b880b0b827e32bbff38",
+          "flags_effective": {
+            "profile_v2": true,
+            "qa_planner_v1": true,
+            "safety_engine_v1": true,
+            "travel_weather_live_v1": true,
+            "loop_breaker_v2": true,
+            "skill_router_v2": true,
+            "chat_response_meta": true
+          },
+          "gate_policy_version": "aurora_gate_policy_answer_first_v1"
+        },
+        "invariants": {
+          "metaNull": false,
+          "bucketOutOfRange": false,
+          "variantMismatch": false,
+          "bucketMismatch": false,
+          "policyMismatch": false
+        },
+        "reasons": [],
+        "infra_flake": false,
+        "parse_error": false,
+        "request": {
+          "uid": "rollout_probe_uid_5_1773928792849_zaufzp",
+          "sessionId": "rollout_probe_session_5_1773928792849_dvzryf"
+        }
+      }
+    }
+  ]
+}

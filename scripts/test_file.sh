@@ -32,7 +32,7 @@ for target in "$@"; do
 done
 
 if [[ ${#node_targets[@]} -gt 0 ]]; then
-  node --test "${node_targets[@]}"
+  node --test --test-concurrency=1 "${node_targets[@]}"
 fi
 
 if [[ ${#jest_targets[@]} -gt 0 ]]; then

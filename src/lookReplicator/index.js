@@ -3,7 +3,7 @@ const { createSignedUpload, uploadPublicAsset } = require('./storage');
 const { createJob, getJob, getShare, updateJob, listJobs, createUser, verifyUserCredentials } = require('./store');
 const { makeMockLookResult } = require('./mockResult');
 const { JobQueue } = require('./jobQueue');
-const { parseMultipart, rmrf } = require('./multipart');
+const { parseMultipart, rmrf } = require('../platform/shared/multipart');
 const { runLookReplicatePipeline, parseOptionalJsonField, normalizeLocale, normalizePreferenceMode } = require('./lookReplicatePipeline');
 const { runTryOnReplicateOneClickGemini } = require("./tryOnReplicateOneClickGemini");
 const { runTryOnGenerateImageGemini } = require("./tryOnGenerateImageGemini");
@@ -19,6 +19,7 @@ const os = require('os');
 const fs = require('fs');
 const { loadTechniqueKB } = require('../layer2/kb/loadTechniqueKB');
 const { renderSkeletonFromKB } = require('../layer2/personalization/renderSkeletonFromKB');
+const { createRemoteCommerceClient } = require('../commerce/client');
 
 const DEFAULT_JOB_CONCURRENCY = Number(process.env.LOOK_REPLICATOR_JOB_CONCURRENCY || 2);
 const queue = new JobQueue({ concurrency: DEFAULT_JOB_CONCURRENCY });
@@ -146,6 +147,49 @@ function requireLookReplicatorAuth(req, res) {
     return false;
   }
   return true;
+}
+
+function buildLookReplicatorCommerceHeaders() {
+  const rawKey = String(
+    process.env.LOOK_REPLICATOR_COMMERCE_API_KEY ||
+      process.env.SHOP_GATEWAY_AGENT_API_KEY ||
+      process.env.PIVOTA_AGENT_API_KEY ||
+      process.env.AGENT_API_KEY ||
+      process.env.PIVOTA_API_KEY ||
+      '',
+  ).trim();
+  if (!rawKey) return {};
+  return {
+    'X-Agent-API-Key': rawKey,
+    Authorization: `Bearer ${rawKey}`,
+  };
+}
+
+function resolveLookReplicatorCommerceClient(explicitClient) {
+  if (explicitClient && typeof explicitClient.invoke === 'function') {
+    return explicitClient;
+  }
+
+  const baseUrl = String(
+    process.env.LOOK_REPLICATOR_COMMERCE_BASE_URL ||
+      process.env.PIVOTA_SHOP_BASE_URL ||
+      process.env.AGENT_API_BASE ||
+      process.env.PIVOTA_BACKEND_BASE_URL ||
+      '',
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  if (!baseUrl) {
+    return null;
+  }
+
+  return createRemoteCommerceClient({
+    resolveBaseUrl: () => baseUrl,
+    buildHeaders: () => buildLookReplicatorCommerceHeaders(),
+    defaultVersion: 'v1',
+    defaultClientChannel: 'shop',
+    timeoutMs: 20_000,
+  });
 }
 
 function scheduleMockProgress({ jobId, market, locale, logger }) {
@@ -477,9 +521,10 @@ function inferMarketFromInvokeRequest(req) {
   );
 }
 
-function mountLookReplicatorRoutes(app, { logger }) {
+function mountLookReplicatorRoutes(app, { logger, commerceClient } = {}) {
   const MAX_UPLOAD_BYTES = Number(process.env.LOOK_REPLICATOR_MAX_UPLOAD_BYTES || 25 * 1024 * 1024);
   const allowedContentTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  const resolvedCommerceClient = resolveLookReplicatorCommerceClient(commerceClient);
 
   // --- Auth (email/password; for Next.js server-side usage behind API key) ---
   app.post('/api/look-replicate/auth/register', async (req, res) => {
@@ -1202,15 +1247,23 @@ function mountLookReplicatorRoutes(app, { logger }) {
       return res.status(400).json({ error: 'UNSUPPORTED_OPERATION', operation });
     }
 
-    const localPort = Number(req?.socket?.localPort) || Number(process.env.PORT) || 3000;
-    const upstreamUrl = `http://127.0.0.1:${localPort}/agent/shop/v1/invoke`;
-    try {
-      const upstream = await axios.post(upstreamUrl, parsed.data, {
-        timeout: 20_000,
-        headers: { 'Content-Type': 'application/json' },
-        validateStatus: () => true,
+    if (!resolvedCommerceClient) {
+      return res.status(503).json({
+        error: 'COMMERCE_CLIENT_UNAVAILABLE',
+        message: 'Commerce client is not configured',
       });
-      return res.status(upstream.status).json(upstream.data);
+    }
+
+    try {
+      const upstream = await resolvedCommerceClient.invoke(parsed.data, {
+        version: 'v1',
+        clientChannel: 'shop',
+        headers: req.headers,
+        routeContext: {
+          path: '/api/look-replicate/commerce/invoke',
+        },
+      });
+      return res.status(upstream.statusCode).json(upstream.body);
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err), operation }, 'lookReplicator commerce invoke failed');
       return res.status(502).json({ error: 'UPSTREAM_UNREACHABLE', message: 'Failed to invoke commerce service' });

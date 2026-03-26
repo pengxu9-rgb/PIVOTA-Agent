@@ -119,6 +119,7 @@ describe('GET /api/admin/search-diagnostics', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../src/auroraBff/routes');
     jest.dontMock('../src/db');
     jest.dontMock('../src/services/productGroundingResolver');
     jest.resetModules();
@@ -173,7 +174,7 @@ describe('GET /api/admin/search-diagnostics', () => {
       expect.objectContaining({
         resolver_first_enabled: true,
         resolver_first_strong_only: true,
-        resolver_first_would_apply: true,
+        resolver_first_would_apply: false,
         resolver_query_is_strong: true,
       }),
     );

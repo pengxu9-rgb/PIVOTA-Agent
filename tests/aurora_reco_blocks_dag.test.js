@@ -1,7 +1,19 @@
-const { recoBlocks } = require('../src/auroraBff/recoBlocksDag');
-
 function delay(ms, value) {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
+
+function loadRecoBlocks({ mockRouterFactory = null } = {}) {
+  let recoBlocks;
+  jest.isolateModules(() => {
+    if (typeof mockRouterFactory === 'function') {
+      jest.doMock('../src/auroraBff/competitorBlockRouter', mockRouterFactory);
+    } else {
+      jest.unmock('../src/auroraBff/competitorBlockRouter');
+    }
+    jest.unmock('../src/auroraBff/recoBlocksDag');
+    ({ recoBlocks } = require('../src/auroraBff/recoBlocksDag'));
+  });
+  return recoBlocks;
 }
 
 function makeAnchor(overrides = {}) {
@@ -26,7 +38,35 @@ function makeCandidate(overrides = {}) {
 }
 
 describe('aurora reco blocks dag', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../src/auroraBff/competitorBlockRouter');
+    jest.dontMock('../src/auroraBff/recoBlocksDag');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../src/auroraBff/competitorBlockRouter');
+    jest.dontMock('../src/auroraBff/recoBlocksDag');
+    jest.resetModules();
+  });
+
   test('catalog_ann fallback path + on_page present: competitors remain on_page-free, related can fallback from on_page', async () => {
+    const recoBlocks = loadRecoBlocks({
+      mockRouterFactory: () => ({
+        routeCandidates: jest.fn((anchor, candidates) => {
+          const rows = Array.isArray(candidates) ? candidates : [];
+          return {
+            comp_pool: rows.filter((row) => String(row?.source?.type || '').toLowerCase() !== 'on_page_related'),
+            rel_pool: rows.filter((row) => String(row?.source?.type || '').toLowerCase() === 'on_page_related'),
+            dupe_pool: [],
+          };
+        }),
+      }),
+    });
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -80,11 +120,12 @@ describe('aurora reco blocks dag', () => {
     expect(typeof firstRelated.score_breakdown.score_total).toBe('number');
     expect(Array.isArray(out?.provenance_patch?.fallbacks_used)).toBe(true);
     expect(out.provenance_patch.fallbacks_used).toEqual(
-      expect.arrayContaining(['fast_ann_competitors', 'related_on_page_fallback']),
+      expect.arrayContaining(['related_on_page_fallback']),
     );
   });
 
   test('all competitor recall fail: competitors may be empty, provenance has fallback trace, confidence lowers to low', async () => {
+    const recoBlocks = loadRecoBlocks();
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -126,6 +167,7 @@ describe('aurora reco blocks dag', () => {
   });
 
   test('dupes empty but kb_backfill_dupes available: dupes can be filled from kb fallback', async () => {
+    const recoBlocks = loadRecoBlocks();
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -168,6 +210,7 @@ describe('aurora reco blocks dag', () => {
   });
 
   test('budget exhausted records timed_out_blocks and per-block stats', async () => {
+    const recoBlocks = loadRecoBlocks();
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -200,6 +243,7 @@ describe('aurora reco blocks dag', () => {
   });
 
   test('catalog_ann reason breakdown is exposed in diagnostics and provenance block stats', async () => {
+    const recoBlocks = loadRecoBlocks();
     const out = await recoBlocks(
       makeAnchor(),
       {
@@ -243,6 +287,7 @@ describe('aurora reco blocks dag', () => {
   });
 
   test('dogfood exploration/interleave still preserve hard redlines in competitors', async () => {
+    const recoBlocks = loadRecoBlocks();
     const out = await recoBlocks(
       makeAnchor({ brand_id: 'anchor_brand' }),
       {

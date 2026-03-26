@@ -120,7 +120,7 @@ skin_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{}')"
 
 printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1|type)=="object") and ((.payload.ui_card_v1.headline//"")|length>0))'
-printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists" '.cards | any(.type=="ingredient_plan")'
+printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists (v1/v2)" '.cards | any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
 printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story exists" '
   if (.cards | any(.type=="analysis_story_v2"))
   then (.cards | any(.type=="analysis_summary")) | not
@@ -136,7 +136,7 @@ skin_routine_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Vitamin C serum","moisturizer":"Barrier cream","spf":"SPF50"},"pm":{"cleanser":"Gentle cleanser","treatment":"Retinol serum","moisturizer":"Barrier cream"}}}')"
 
 printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has story card" '.cards | any(.type=="analysis_story_v2")'
-printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has ingredient_plan" '.cards | any(.type=="ingredient_plan")'
+printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has ingredient_plan (v1/v2)" '.cards | any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")'
 printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis has routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
 printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis exposes deep-dive chip" '(.suggested_chips // [] | any(.chip_id=="chip.aurora.next_action.routine_deep_dive"))'
 printf "%s\n" "$skin_routine_json" | jq_assert "routine-fit analysis does not expose public analysis_summary" '
@@ -158,7 +158,21 @@ analysis_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }')"
 printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
-printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin assistant text exists" '((.assistant_message.content // "") | length) > 0'
+printf "%s\n" "$analysis_deep_dive_json" | jq_assert "deep_dive_skin exposes explanation content" '
+  (((.assistant_message.content // "") | length) > 0)
+  or
+  (
+    .cards
+    | any(
+        .type=="analysis_story_v2"
+        and
+        (
+          (((.payload.summary // "") | length) > 0)
+          or (((.payload.ui_card_v1.headline // "") | length) > 0)
+        )
+      )
+  )
+'
 
 analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   -H 'Content-Type: application/json' \
@@ -172,6 +186,21 @@ analysis_routine_deep_dive_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   }')"
 printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive replays routine_fit_summary" '.cards | any(.type=="routine_fit_summary")'
 printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive avoids ingredient_hub/nudge fallback" '(.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not'
+printf "%s\n" "$analysis_routine_deep_dive_json" | jq_assert "routine_deep_dive exposes explanation content" '
+  (((.assistant_message.content // "") | length) > 0)
+  or
+  (
+    .cards
+    | any(
+        .type=="analysis_story_v2"
+        and
+        (
+          (((.payload.summary // "") | length) > 0)
+          or (((.payload.ui_card_v1.headline // "") | length) > 0)
+        )
+      )
+  )
+'
 
 say "product analyze (Nivea Creme)"
 started_at_before_analyze="$(health_started_at)"

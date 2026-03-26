@@ -31,24 +31,54 @@ function createSemaphore(max) {
   function release() {
     inUse = Math.max(0, inUse - 1);
     const next = queue.shift();
-    if (next) next();
+    if (next && typeof next.grant === 'function') next.grant();
   }
 
   async function acquire() {
+    const granted = await acquireWithMeta();
+    return granted.release;
+  }
+
+  async function acquireWithMeta({ timeoutMs = 0 } = {}) {
     if (inUse < limit) {
       inUse += 1;
-      return release;
+      return { release, waitMs: 0, queued: false };
     }
-    return new Promise((resolve) => {
-      queue.push(() => {
+    return new Promise((resolve, reject) => {
+      const queuedAt = Date.now();
+      let timer = null;
+      const entry = {
+        grant: null,
+      };
+      entry.grant = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
         inUse += 1;
-        resolve(release);
-      });
+        resolve({
+          release,
+          waitMs: Math.max(0, Date.now() - queuedAt),
+          queued: true,
+        });
+      };
+      queue.push(entry);
+      const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0;
+      if (ms > 0) {
+        timer = setTimeout(() => {
+          const idx = queue.indexOf(entry);
+          if (idx >= 0) queue.splice(idx, 1);
+          const err = new GeminiGateError('GEMINI_QUEUE_TIMEOUT', `Gemini semaphore acquire timeout after ${ms}ms`);
+          err.timeout_stage = 'queue';
+          reject(err);
+        }, ms);
+      }
     });
   }
 
   return {
     acquire,
+    acquireWithMeta,
     snapshot: () => ({ max: limit, inUse, queued: queue.length }),
   };
 }
@@ -376,6 +406,78 @@ function createGeminiGlobalGate({
     }
   }
 
+  async function withGateMeta(route, fn, { bypassCircuit = false, queueTimeoutMs = 0 } = {}) {
+    const startedAt = Date.now();
+    let probe = null;
+    if (!bypassCircuit) {
+      probe = circuit.beginProbeIfAllowed();
+      if (!probe.allowed) {
+        metrics.record({ route, status: 'circuit_open', latencyMs: 0 });
+        throw new GeminiGateError('CIRCUIT_OPEN', `Gemini global circuit open (reason=${probe.reason})`);
+      }
+    }
+
+    const remainingQueueBudgetMs = () => {
+      if (!Number.isFinite(Number(queueTimeoutMs)) || Number(queueTimeoutMs) <= 0) return 0;
+      return Math.max(1, Math.trunc(Number(queueTimeoutMs) - Math.max(0, Date.now() - startedAt)));
+    };
+
+    const gotToken = bucket.take();
+    if (!gotToken) {
+      const budgetMs = remainingQueueBudgetMs();
+      const waitBudgetMs = budgetMs > 0 ? budgetMs : 3000;
+      const waited = await bucket.waitForToken(waitBudgetMs);
+      if (!waited) {
+        if (probe && probe.probe) circuit.endProbe();
+        const queueBudgetExceeded = budgetMs > 0 && Date.now() - startedAt >= Math.trunc(Number(queueTimeoutMs));
+        metrics.record({ route, status: queueBudgetExceeded ? 'timeout' : 'rate_limited', latencyMs: Date.now() - startedAt });
+        if (queueBudgetExceeded) {
+          const err = new GeminiGateError('GEMINI_QUEUE_TIMEOUT', `Gemini token wait timeout after ${Math.trunc(Number(queueTimeoutMs))}ms`);
+          err.timeout_stage = 'queue';
+          throw err;
+        }
+        throw new GeminiGateError('GLOBAL_RATE_LIMITED', 'Gemini global rate limit exceeded');
+      }
+    }
+
+    const acquired = await semaphore.acquireWithMeta({
+      timeoutMs: remainingQueueBudgetMs(),
+    });
+    const release = acquired.release;
+    const gateWaitMs = Math.max(0, Date.now() - startedAt);
+    const executionStartedAt = Date.now();
+    try {
+      const result = await fn();
+      if (!bypassCircuit) circuit.recordSuccess();
+      metrics.record({ route, status: 'success', latencyMs: Date.now() - startedAt });
+      return {
+        result,
+        meta: {
+          gate_wait_ms: gateWaitMs,
+          semaphore_wait_ms: acquired && Number.isFinite(Number(acquired.waitMs)) ? Math.max(0, Math.trunc(Number(acquired.waitMs))) : 0,
+          execution_ms: Math.max(0, Date.now() - executionStartedAt),
+          total_ms: Math.max(0, Date.now() - startedAt),
+        },
+      };
+    } catch (err) {
+      if (is429OrRateLimit(err)) {
+        if (!bypassCircuit) circuit.recordFailure();
+        metrics.record({ route, status: 'rate_limited', latencyMs: Date.now() - startedAt });
+      } else if (isTimeout(err)) {
+        metrics.record({ route, status: 'timeout', latencyMs: Date.now() - startedAt });
+      } else if (isTransientOverload(err)) {
+        metrics.record({ route, status: 'overloaded', latencyMs: Date.now() - startedAt });
+      } else {
+        if (!bypassCircuit) circuit.recordFailure();
+        metrics.record({ route, status: 'error', latencyMs: Date.now() - startedAt });
+      }
+      throw err;
+    } finally {
+      if (probe && probe.probe) circuit.endProbe();
+      release();
+    }
+  }
+
   function getApiKey() {
     return keyPool.next();
   }
@@ -397,7 +499,7 @@ function createGeminiGlobalGate({
     };
   }
 
-  return { withGate, getApiKey, snapshot, metrics };
+  return { withGate, withGateMeta, getApiKey, snapshot, metrics };
 }
 
 function getGeminiGlobalGate() {

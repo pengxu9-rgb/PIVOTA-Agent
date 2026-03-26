@@ -6,6 +6,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../../src/services/productGroundingResolver');
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
@@ -115,6 +116,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../../src/services/productGroundingResolver');
     nock.cleanAll();
     nock.enableNetConnect();
 

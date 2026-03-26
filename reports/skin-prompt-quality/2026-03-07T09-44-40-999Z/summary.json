@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-03-07T09:45:21.118Z",
+  "args": {
+    "cases": "/tmp/skin_prompt_report_zh_judge.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "",
+    "repeats": 1,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "dual",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 15000,
+    "skipJudge": false
+  },
+  "summary": [
+    {
+      "stage": "report",
+      "locale": "zh-CN",
+      "count": 1,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 1,
+      "repeat_consistency": 1,
+      "pass": false
+    }
+  ],
+  "consistency_diffs": [
+    {
+      "case_id": "report_barrier_redness_zh",
+      "stage": "report",
+      "locale": "zh-CN",
+      "dominant_signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+      "signatures": [
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    }
+  ]
+}

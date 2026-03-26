@@ -133,6 +133,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Contract-compat note:
+          # runtime smoke accepts both ingredient_plan and ingredient_plan_v2,
+          # and treats analysis_story_v2 explanation content as valid even when
+          # assistant_message is absent on deep-dive follow-ups.
           BASE="$BASE_URL" bash scripts/smoke_aurora_bff_runtime.sh
 
       - name: Travel plans route smoke
@@ -145,6 +149,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Keep these assertions aligned with the current production contract:
+          # story-first explanation content and v1/v2 ingredient plan cards are both valid.
           BASE="$BASE_URL" bash scripts/smoke_aurora_skin_reco_gates.sh
 
       - name: Photo modules smoke (usable branch)

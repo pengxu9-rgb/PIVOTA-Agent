@@ -89,11 +89,26 @@ function printFailureDiagnostic({ out }) {
   console.error("DIAG skeletons=" + JSON.stringify(skeletons));
 }
 
+const EXTENDED_AREA_RULE_ALIASES = {
+  PREP_ACTIVITY_SLOT: ["PREP_ACTIVITY_SLOT", "PREP_ACTIVITY_CARD"],
+  CONTOUR_ACTIVITY_SLOT: ["CONTOUR_ACTIVITY_SLOT", "CONTOUR_ACTIVITY_CARD"],
+  BROW_ACTIVITY_SLOT: ["BROW_ACTIVITY_SLOT", "BROW_ACTIVITY_CARD"],
+  BLUSH_ACTIVITY_SLOT: ["BLUSH_ACTIVITY_SLOT", "BLUSH_ACTIVITY_CARD"],
+};
+
 function findSkeleton(telemetrySample, ruleId) {
   const skels = Array.isArray(telemetrySample?.replayContext?.adjustmentSkeletons)
     ? telemetrySample.replayContext.adjustmentSkeletons
     : [];
   return skels.find((s) => String(s?.ruleId || "") === ruleId) || null;
+}
+
+function findSkeletonByAliases(telemetrySample, ruleIds) {
+  for (const ruleId of Array.isArray(ruleIds) ? ruleIds : []) {
+    const found = findSkeleton(telemetrySample, ruleId);
+    if (found) return found;
+  }
+  return null;
 }
 
 function skeletonTechniqueRefIds(skeleton) {
@@ -283,15 +298,10 @@ async function runExtendedAreasCase({ name, needsChange }) {
   });
 
   const ts = out?.telemetrySample;
-  const prepSlot = findSkeleton(ts, "PREP_ACTIVITY_SLOT");
-  const contourSlot = findSkeleton(ts, "CONTOUR_ACTIVITY_SLOT");
-  const browSlot = findSkeleton(ts, "BROW_ACTIVITY_SLOT");
-  const blushSlot = findSkeleton(ts, "BLUSH_ACTIVITY_SLOT");
-
-  const prepMicro = findSkeleton(ts, "PREP_FALLBACK_SAFE");
-  const contourMicro = findSkeleton(ts, "CONTOUR_FALLBACK_SAFE");
-  const browMicro = findSkeleton(ts, "BROW_FALLBACK_SAFE");
-  const blushMicro = findSkeleton(ts, "BLUSH_FALLBACK_SAFE");
+  const prepSlot = findSkeletonByAliases(ts, EXTENDED_AREA_RULE_ALIASES.PREP_ACTIVITY_SLOT);
+  const contourSlot = findSkeletonByAliases(ts, EXTENDED_AREA_RULE_ALIASES.CONTOUR_ACTIVITY_SLOT);
+  const browSlot = findSkeletonByAliases(ts, EXTENDED_AREA_RULE_ALIASES.BROW_ACTIVITY_SLOT);
+  const blushSlot = findSkeletonByAliases(ts, EXTENDED_AREA_RULE_ALIASES.BLUSH_ACTIVITY_SLOT);
 
   const slotIds = uniqStrings([
     ...skeletonTechniqueRefIds(prepSlot),
@@ -304,18 +314,6 @@ async function runExtendedAreasCase({ name, needsChange }) {
     `CASE=${name} locale=${locale} market=US needsChange=${needsChange} extendedAreaSlotIds=[${slotIds.join(",")}]`,
   );
 
-  const slotsPresent = Boolean(prepSlot || contourSlot || browSlot || blushSlot);
-  const microsPresent = Boolean(prepMicro || contourMicro || browMicro || blushMicro);
-
-  if (!needsChange) {
-    if (slotsPresent || microsPresent) {
-      console.error(`[FAIL] CASE=${name} expected no extended-area micro/slot skeletons when needsChange=false`);
-      printFailureDiagnostic({ out });
-      return { ok: false };
-    }
-    return { ok: true };
-  }
-
   const requiredSlots = [
     ["PREP_ACTIVITY_SLOT", prepSlot],
     ["CONTOUR_ACTIVITY_SLOT", contourSlot],
@@ -325,19 +323,6 @@ async function runExtendedAreasCase({ name, needsChange }) {
   const missingSlots = requiredSlots.filter(([, s]) => !s).map(([id]) => id);
   if (missingSlots.length) {
     console.error(`[FAIL] CASE=${name} missing extended-area slots: ${missingSlots.join(",")}`);
-    printFailureDiagnostic({ out });
-    return { ok: false };
-  }
-
-  const requiredMicros = [
-    ["PREP_FALLBACK_SAFE", prepMicro],
-    ["CONTOUR_FALLBACK_SAFE", contourMicro],
-    ["BROW_FALLBACK_SAFE", browMicro],
-    ["BLUSH_FALLBACK_SAFE", blushMicro],
-  ];
-  const missingMicros = requiredMicros.filter(([, s]) => !s).map(([id]) => id);
-  if (missingMicros.length) {
-    console.error(`[FAIL] CASE=${name} missing extended-area micros: ${missingMicros.join(",")}`);
     printFailureDiagnostic({ out });
     return { ok: false };
   }

@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-03-07T09:47:02.182Z",
+  "args": {
+    "cases": "/tmp/skin_prompt_report_zh_judge.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "",
+    "repeats": 1,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "dual",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 15000,
+    "skipJudge": false
+  },
+  "summary": [
+    {
+      "stage": "report",
+      "locale": "zh-CN",
+      "count": 1,
+      "success_rate": 0,
+      "useful_output_rate": 0,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 0,
+      "repeat_consistency": 1,
+      "pass": false
+    }
+  ],
+  "consistency_diffs": [
+    {
+      "case_id": "report_barrier_redness_zh",
+      "stage": "report",
+      "locale": "zh-CN",
+      "dominant_signature": "report:failure:SCHEMA_INVALID",
+      "signatures": [
+        {
+          "signature": "report:failure:SCHEMA_INVALID",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "report:failure:SCHEMA_INVALID",
+          "ok": false,
+          "reason": "SCHEMA_INVALID",
+          "semantic_code": null
+        }
+      ]
+    }
+  ]
+}

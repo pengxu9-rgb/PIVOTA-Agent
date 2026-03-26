@@ -164,6 +164,12 @@ make photo-modules-prod-smoke
 make synthetic-matrix-prod MATRIX_CASES=120 MATRIX_CONCURRENCY=4
 ```
 
+Current smoke contract notes:
+
+- `scripts/smoke_aurora_bff_runtime.sh` and `scripts/smoke_aurora_skin_reco_gates.sh` treat both `ingredient_plan` and `ingredient_plan_v2` as valid analysis outputs.
+- Deep-dive follow-up explanations may surface through `analysis_story_v2.payload.summary` or `analysis_story_v2.payload.ui_card_v1.headline`; do not hard-require `assistant_message.content` on those paths.
+- `/v1/chat` remains ChatCards v1. New chat-facing assertions should prefer `cards` payloads over legacy envelope fields.
+
 Pre-run sanity checks (to avoid local false failures):
 
 ```bash
@@ -587,6 +593,11 @@ Expected: `code=204`.
 ```bash
 BASE='https://pivota-agent-production.up.railway.app' make runtime-smoke
 ```
+
+Current expected contract:
+
+- Analysis responses may render `ingredient_plan_v2` instead of legacy `ingredient_plan`.
+- Follow-up explanation content may be card-first (`analysis_story_v2`) even when `assistant_message` is `null`.
 
 - Reco gate smoke (artifact_missing / low_confidence / medium-high / safety_block):
 

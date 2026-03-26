@@ -1,0 +1,23 @@
+[
+  {
+    "case_id": "report_barrier_redness_en",
+    "stage": "report",
+    "locale": "en-US",
+    "dominant_signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+    "signatures": [
+      {
+        "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+        "count": 1
+      }
+    ],
+    "runs": [
+      {
+        "repeat_index": 0,
+        "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+        "ok": true,
+        "reason": null,
+        "semantic_code": null
+      }
+    ]
+  }
+]

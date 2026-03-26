@@ -1,11 +1,87 @@
 const nock = require('nock');
 const request = require('supertest');
 
+const ENV_PREFIXES_TO_RESTORE = [
+  'PROXY_SEARCH_',
+  'SEARCH_',
+  'UPSTREAM_RETRY_',
+  'UPSTREAM_TIMEOUT_',
+  'AURORA_BFF_',
+];
+
+const EXPLICIT_ENV_KEYS_TO_RESTORE = [
+  'API_MODE',
+  'DATABASE_URL',
+  'PIVOTA_API_BASE',
+  'PIVOTA_API_KEY',
+  'PIVOTA_BACKEND_BASE_URL',
+  'PROMOTIONS_BACKEND_BASE_URL',
+];
+
+function loadServerApp() {
+  let app;
+  jest.isolateModules(() => {
+    app = require('../../src/server');
+  });
+  return app;
+}
+
+function captureRelevantEnv() {
+  const snapshot = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
+}
+
+function restoreRelevantEnv(snapshot) {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      if (snapshot[key] === undefined) delete process.env[key];
+      else process.env[key] = snapshot[key];
+    }
+  }
+
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+function clearRelevantEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete process.env[key];
+    }
+  }
+}
+
 describe('POST /agent/v1/products/resolve', () => {
   let prevEnv;
 
   beforeEach(() => {
     jest.resetModules();
+    jest.dontMock('../../src/auroraBff/routes');
+    jest.dontMock('../../src/db');
+    jest.dontMock('../../src/bootstrapGatewaySupportSurface');
+    jest.dontMock('../../src/registerProductResolveRoute');
+    jest.dontMock('axios');
+    if (typeof nock.isActive === 'function' && !nock.isActive()) {
+      nock.activate();
+    }
+    if (typeof nock.abortPendingRequests === 'function') {
+      nock.abortPendingRequests();
+    }
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
@@ -13,18 +89,8 @@ describe('POST /agent/v1/products/resolve', () => {
       return h.includes('127.0.0.1') || h.includes('localhost') || h === '::1';
     });
 
-    prevEnv = {
-      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
-      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
-      API_MODE: process.env.API_MODE,
-      DATABASE_URL: process.env.DATABASE_URL,
-      PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED:
-        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED,
-      PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY:
-        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY,
-      PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS:
-        process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS,
-    };
+    prevEnv = captureRelevantEnv();
+    clearRelevantEnv();
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
     process.env.PIVOTA_API_KEY = 'test_key';
@@ -36,36 +102,23 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../../src/auroraBff/routes');
+    jest.dontMock('../../src/db');
+    jest.dontMock('../../src/bootstrapGatewaySupportSurface');
+    jest.dontMock('../../src/registerProductResolveRoute');
+    jest.dontMock('axios');
+    if (typeof nock.isActive === 'function' && !nock.isActive()) {
+      nock.activate();
+    }
+    if (typeof nock.abortPendingRequests === 'function') {
+      nock.abortPendingRequests();
+    }
     nock.cleanAll();
     nock.enableNetConnect();
+    jest.resetModules();
 
     if (!prevEnv) return;
-    if (prevEnv.PIVOTA_API_BASE === undefined) delete process.env.PIVOTA_API_BASE;
-    else process.env.PIVOTA_API_BASE = prevEnv.PIVOTA_API_BASE;
-    if (prevEnv.PIVOTA_API_KEY === undefined) delete process.env.PIVOTA_API_KEY;
-    else process.env.PIVOTA_API_KEY = prevEnv.PIVOTA_API_KEY;
-    if (prevEnv.API_MODE === undefined) delete process.env.API_MODE;
-    else process.env.API_MODE = prevEnv.API_MODE;
-    if (prevEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = prevEnv.DATABASE_URL;
-    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED === undefined) {
-      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED;
-    } else {
-      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED =
-        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED;
-    }
-    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY === undefined) {
-      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY;
-    } else {
-      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY =
-        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY;
-    }
-    if (prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS === undefined) {
-      delete process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS;
-    } else {
-      process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS =
-        prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS;
-    }
+    restoreRelevantEnv(prevEnv);
   });
 
   test('returns grounded product_ref (prefers prefer_merchants)', async () => {
@@ -95,7 +148,7 @@ describe('POST /agent/v1/products/resolve', () => {
         ],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -142,7 +195,7 @@ describe('POST /agent/v1/products/resolve', () => {
         ],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -209,7 +262,7 @@ describe('POST /agent/v1/products/resolve', () => {
         ],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -270,7 +323,7 @@ describe('POST /agent/v1/products/resolve', () => {
         ],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -316,7 +369,7 @@ describe('POST /agent/v1/products/resolve', () => {
         products: [],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -382,7 +435,7 @@ describe('POST /agent/v1/products/resolve', () => {
         products: [],
       });
 
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
       .send({
@@ -407,7 +460,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('resolves known stable products without hints (The Ordinary + Winona + IPSA)', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
 
     const ordinaryResp = await request(app)
       .post('/agent/v1/products/resolve')
@@ -541,7 +594,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('resolves stable alias when hints.product_ref is opaque uuid and alias is known', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
     const hintedMerchantId = 'merch_efbc46b4619cfbdf';
 
@@ -596,7 +649,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('accepts hints.product_ref with non-opaque product_id only', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const hintedProductId = '9886499864904';
     const hintedAlias = 'Paula Choice 2 percent BHA Liquid';
 
@@ -635,7 +688,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('resolves known alias even when opaque hints.product_ref has no merchant_id', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
 
     const resp = await request(app)
@@ -669,7 +722,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('resolves known alias with prefer_merchant even when hints.product_ref is opaque', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const hintedProductId = 'c231aaaa-8b00-4145-a704-684931049303';
     const preferMerchant = 'merch_efbc46b4619cfbdf';
 
@@ -716,7 +769,7 @@ describe('POST /agent/v1/products/resolve', () => {
 
   test('normalizes uuid query from hint alias when provided', async () => {
     const hintedAlias = 'The Ordinary Niacinamide 10% + Zinc 1%';
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const resp = await request(app)
       .post('/agent/v1/products/resolve')
       .send({
@@ -745,7 +798,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('forwards stable alias resolve options from body.options', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const uuidQuery = 'c231aaaa-8b00-4145-a704-684931049303';
 
     const resp = await request(app)
@@ -779,7 +832,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('defaults aurora caller to uuid-stable-alias resolution without explicit options', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const uuidQuery = 'c231aaaa-8b00-4145-a704-684931049303';
 
     const resp = await request(app)
@@ -800,7 +853,7 @@ describe('POST /agent/v1/products/resolve', () => {
   });
 
   test('rejects missing query', async () => {
-    const app = require('../../src/server');
+    const app = loadServerApp();
     const resp = await request(app).post('/agent/v1/products/resolve').send({ lang: 'en' });
     expect(resp.status).toBe(400);
     expect(resp.body.error).toBe('MISSING_PARAMETERS');

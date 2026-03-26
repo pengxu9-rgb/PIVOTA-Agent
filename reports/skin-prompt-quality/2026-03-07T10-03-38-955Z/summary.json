@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-03-07T10:04:20.544Z",
+  "args": {
+    "cases": "/tmp/skin_prompt_report_en_judge_fixcheck.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "",
+    "repeats": 5,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "dual",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 15000,
+    "skipJudge": false
+  },
+  "judge_runtime": {
+    "requested_mode": "dual",
+    "requested_single_provider": "gemini",
+    "allow_openai_fallback": false,
+    "provider_availability": {
+      "gemini": true,
+      "openai": true
+    },
+    "ignore_runtime_force_gemini": true,
+    "selected_providers": [
+      "gemini",
+      "openai"
+    ]
+  },
+  "summary": [
+    {
+      "stage": "report",
+      "locale": "en-US",
+      "count": 1,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 1,
+      "repeat_consistency": 1,
+      "pass": false
+    }
+  ],
+  "consistency_diffs": [
+    {
+      "case_id": "report_barrier_redness_en",
+      "stage": "report",
+      "locale": "en-US",
+      "dominant_signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+      "signatures": [
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"barrier\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:monitor:texture:as_needed\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    }
+  ]
+}

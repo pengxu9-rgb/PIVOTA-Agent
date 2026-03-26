@@ -2,10 +2,18 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-function writeTempJpeg() {
-  const p = path.join(os.tmpdir(), `pivota-lookrep-e2e-${process.pid}-${Date.now()}.jpg`);
-  fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9])); // minimal JPEG markers
-  return p;
+let sharedTempJpegPath = null;
+
+function getSharedTempJpeg() {
+  if (sharedTempJpegPath) return sharedTempJpegPath;
+  const dir = path.join(os.tmpdir(), "pivota-lookrep-e2e-shared");
+  fs.mkdirSync(dir, { recursive: true });
+  const p = path.join(dir, `minimal-${process.pid}.jpg`);
+  if (!fs.existsSync(p)) {
+    fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9])); // minimal JPEG markers
+  }
+  sharedTempJpegPath = p;
+  return sharedTempJpegPath;
 }
 
 function readJson(relPathFromRepoRoot) {
@@ -125,7 +133,7 @@ async function runPipelineWithFixture({
   preferenceMode,
   throwOnSelfieExtract,
 }) {
-  const referenceImagePath = writeTempJpeg();
+  const referenceImagePath = getSharedTempJpeg();
   const envBackup = { ...process.env };
 
   try {
@@ -201,11 +209,17 @@ async function runPipelineWithFixture({
     return { ...out, __selfieExtractCalls: selfieExtractCalls };
   } finally {
     process.env = envBackup;
-    fs.rmSync(referenceImagePath, { force: true });
   }
 }
 
 describe("look-replicator activity cards reachability (production path)", () => {
+  afterAll(() => {
+    if (sharedTempJpegPath) {
+      fs.rmSync(sharedTempJpegPath, { force: true });
+      sharedTempJpegPath = null;
+    }
+  });
+
   test("EN: eye-liner micro steps stay sequence; macro slot is NOT emitted when matching is OFF", async () => {
     const out = await runPipelineWithFixture({
       locale: "en-US",

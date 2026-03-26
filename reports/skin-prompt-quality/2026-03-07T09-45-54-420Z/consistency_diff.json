@@ -1,0 +1,23 @@
+[
+  {
+    "case_id": "report_barrier_redness_zh",
+    "stage": "report",
+    "locale": "zh-CN",
+    "dominant_signature": "report:failure:SCHEMA_INVALID",
+    "signatures": [
+      {
+        "signature": "report:failure:SCHEMA_INVALID",
+        "count": 1
+      }
+    ],
+    "runs": [
+      {
+        "repeat_index": 0,
+        "signature": "report:failure:SCHEMA_INVALID",
+        "ok": false,
+        "reason": "SCHEMA_INVALID",
+        "semantic_code": null
+      }
+    ]
+  }
+]

@@ -32,15 +32,16 @@ function extractNeedsChange(similarityReport) {
   };
 }
 
-const SLOT_RULE_IDS = [
-  "EYE_LINER_ACTIVITY_SLOT",
-  "BASE_ACTIVITY_SLOT",
-  "LIP_ACTIVITY_SLOT",
-  "PREP_ACTIVITY_SLOT",
-  "CONTOUR_ACTIVITY_SLOT",
-  "BROW_ACTIVITY_SLOT",
-  "BLUSH_ACTIVITY_SLOT",
-];
+const SLOT_RULE_ALIASES = {
+  EYE_LINER_ACTIVITY_SLOT: ["EYE_LINER_ACTIVITY_SLOT"],
+  BASE_ACTIVITY_SLOT: ["BASE_ACTIVITY_SLOT"],
+  LIP_ACTIVITY_SLOT: ["LIP_ACTIVITY_SLOT"],
+  PREP_ACTIVITY_SLOT: ["PREP_ACTIVITY_SLOT", "PREP_ACTIVITY_CARD"],
+  CONTOUR_ACTIVITY_SLOT: ["CONTOUR_ACTIVITY_SLOT", "CONTOUR_ACTIVITY_CARD"],
+  BROW_ACTIVITY_SLOT: ["BROW_ACTIVITY_SLOT", "BROW_ACTIVITY_CARD"],
+  BLUSH_ACTIVITY_SLOT: ["BLUSH_ACTIVITY_SLOT", "BLUSH_ACTIVITY_CARD"],
+};
+const SLOT_RULE_IDS = Object.keys(SLOT_RULE_ALIASES);
 
 function extractSlotEmits(skeletons) {
   const list = Array.isArray(skeletons) ? skeletons : [];
@@ -50,7 +51,7 @@ function extractSlotEmits(skeletons) {
       .filter(Boolean),
   );
   const out = {};
-  for (const id of SLOT_RULE_IDS) out[id] = seen.has(id);
+  for (const id of SLOT_RULE_IDS) out[id] = SLOT_RULE_ALIASES[id].some((alias) => seen.has(alias));
   return out;
 }
 

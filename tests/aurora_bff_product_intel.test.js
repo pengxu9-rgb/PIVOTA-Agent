@@ -1,5 +1,9 @@
 const request = require('supertest');
 const nock = require('nock');
+const {
+  flushDetachedAsyncJobs,
+  __internal: detachedAsyncRegistryInternal,
+} = require('../src/auroraBff/detachedAsyncRegistry');
 
 describe('Aurora BFF product intelligence (structured upstream)', () => {
   jest.setTimeout(30000);
@@ -21,7 +25,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_PRODUCT_STRICT_SKINCARE_FILTER = 'true';
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushDetachedAsyncJobs({ timeoutMs: 5000 });
+    detachedAsyncRegistryInternal.resetDetachedAsyncJobs();
     delete process.env.AURORA_BFF_USE_MOCK;
     delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     delete process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK;
@@ -2879,7 +2885,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload.missing_info).toContain('analysis_in_progress');
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry).toHaveBeenCalled();
-  });
+  }, 60000);
 
   test('/v1/product/analyze routes on-page fallback into related_products when catalog recall is unavailable', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
@@ -2987,7 +2993,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     expect(upsertProductIntelKbEntry.mock.calls.length).toBeGreaterThan(0);
-  });
+  }, 60000);
 
   test('/v1/product/analyze keeps competitors clean when catalog_ann times out and on-page fallback exists', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';

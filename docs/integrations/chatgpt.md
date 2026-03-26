@@ -138,11 +138,16 @@ async function runAgent(userMessage) {
         "type": "string",
         "enum": [
           "find_products",
+          "find_products_multi",
           "get_product_detail",
+          "offers.resolve",
+          "preview_quote",
           "create_order",
+          "confirm_payment",
           "submit_payment",
           "get_order_status",
-          "request_after_sales"
+          "request_after_sales",
+          "track_product_click"
         ]
       },
       "payload": {
@@ -150,8 +155,10 @@ async function runAgent(userMessage) {
         "properties": {
           "acp_state": { /* pass through */ },
           "ap2_state": { /* pass through */ },
-          "search": { /* for find_products */ },
+          "search": { /* for find_products / find_products_multi */ },
           "product": { /* for get_product_detail */ },
+          "offers": { /* for offers.resolve */ },
+          "quote": { /* for preview_quote */ },
           "order": { /* for create_order */ },
           "payment": { /* for submit_payment */ },
           "status": { /* for get_order_status, request_after_sales */ }
@@ -167,9 +174,10 @@ async function runAgent(userMessage) {
 Use a concise version of the system prompt:
 ```
 You are the Pivota Shopping Agent. Use the `pivota_shopping_tool` for all shopping tasks:
-- Product discovery: find_products
-- Order creation: create_order  
-- Payment processing: submit_payment
+- Product discovery: find_products / find_products_multi
+- Quote preview: preview_quote
+- Order creation: create_order
+- Payment processing: submit_payment / confirm_payment
 - Order tracking: get_order_status
 - After-sales: request_after_sales
 
@@ -186,10 +194,11 @@ You are the Pivota Shopping Agent, helping users with their shopping needs throu
 
 Use the pivota_shopping_tool for:
 - Finding products based on user preferences
+- Previewing quotes before checkout
 - Creating orders with proper shipping details
-- Processing payments securely
+- Processing and confirming payments securely
 - Tracking order status
-- Handling refunds and after-sales requests
+- Handling refund / cancel after-sales requests
 
 Always maintain conversation state by passing acp_state and ap2_state between operations.
 ```
@@ -230,7 +239,7 @@ components:
       properties:
         operation:
           type: string
-          enum: [find_products, get_product_detail, create_order, submit_payment, get_order_status, request_after_sales]
+          enum: [find_products, find_products_multi, get_product_detail, offers.resolve, preview_quote, create_order, confirm_payment, submit_payment, get_order_status, request_after_sales, track_product_click]
         payload:
           type: object
 ```

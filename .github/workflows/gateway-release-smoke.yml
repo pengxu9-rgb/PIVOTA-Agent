@@ -1,0 +1,33 @@
+name: Gateway Release Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Gateway base URL to smoke test
+        required: true
+        type: string
+
+concurrency:
+  group: gateway-release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway_release_smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Gateway release smoke
+        run: BASE="${{ inputs.base_url }}" npm run test:gate:release-smoke

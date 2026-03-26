@@ -57,11 +57,16 @@ const functionDefinition = {
         description: "操作类型",
         enum: [
           "find_products",    // 搜索商品
+          "find_products_multi", // 跨商家搜索
           "get_product_detail", // 获取商品详情
+          "offers.resolve",   // 解析商品 offer
+          "preview_quote",    // 预览报价
           "create_order",     // 创建订单
+          "confirm_payment",  // 确认支付结果
           "submit_payment",   // 提交支付
           "get_order_status", // 查询订单状态
-          "request_after_sales" // 申请售后
+          "request_after_sales", // 申请售后（refund/cancel）
+          "track_product_click" // 上报商品点击
         ]
       },
       payload: {

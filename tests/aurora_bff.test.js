@@ -1,4 +1,8 @@
 const request = require('supertest');
+const {
+  flushDetachedAsyncJobs,
+  __internal: detachedAsyncRegistryInternal,
+} = require('../src/auroraBff/detachedAsyncRegistry');
 
 function getAssistantContent(body) {
   return String(body?.assistant_text || body?.assistant_message?.content || '');
@@ -22,7 +26,9 @@ describe('Aurora BFF (/v1)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'true';
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushDetachedAsyncJobs({ timeoutMs: 5000 });
+    detachedAsyncRegistryInternal.resetDetachedAsyncJobs();
     delete process.env.AURORA_BFF_USE_MOCK;
   });
 
@@ -127,15 +133,16 @@ describe('Aurora BFF (/v1)', () => {
       .set('X-Lang', 'EN')
       .send({
         action: {
-          action_id: 'chip.start.reco_products',
+          action_id: 'chip.start.routine',
           kind: 'chip',
           data: {
-            reply_text: 'Recommend a few products',
+            reply_text: 'Build AM PM routine',
             include_alternatives: true,
             profile_patch: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy', goals: ['pores'], budgetTier: '¥500' },
           },
         },
         session: { state: 'S2_DIAGNOSIS' },
+        language: 'EN',
       })
       .expect(200);
 
@@ -143,6 +150,9 @@ describe('Aurora BFF (/v1)', () => {
     expect(reco).toBeTruthy();
     expect(Array.isArray(reco?.payload?.recommendations)).toBe(true);
     expect(reco.payload.recommendations.length).toBeGreaterThan(0);
+    expect(
+      reco.payload.recommendations.some((item) => Array.isArray(item?.alternatives) && item.alternatives.length > 0),
+    ).toBe(true);
   });
 
   test('Diagnosis: profile chip patch continues with next missing fields', async () => {
@@ -433,7 +443,7 @@ describe('Aurora BFF (/v1)', () => {
     expect(card).toBeTruthy();
     expect(card.payload).toHaveProperty('priority_findings');
     expect(Array.isArray(card.payload.priority_findings)).toBe(true);
-    expect(res.body.cards.some((c) => c.type === 'ingredient_plan')).toBe(true);
+    expect(res.body.cards.some((c) => c.type === 'ingredient_plan' || c.type === 'ingredient_plan_v2')).toBe(true);
     expect(Array.isArray(card.field_missing) ? card.field_missing : []).toEqual(
       expect.not.arrayContaining([expect.objectContaining({ field: 'profile.currentRoutine' })]),
     );

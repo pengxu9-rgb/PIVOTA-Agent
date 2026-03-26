@@ -1,18 +1,105 @@
 const request = require('supertest');
 
+const ENV_PREFIXES_TO_RESTORE = [
+  'AURORA_BFF_',
+  'PROXY_SEARCH_',
+  'SEARCH_',
+];
+
+const EXPLICIT_ENV_KEYS_TO_RESTORE = [
+  'API_MODE',
+  'DATABASE_URL',
+  'PIVOTA_API_BASE',
+  'PIVOTA_API_KEY',
+  'PIVOTA_BACKEND_BASE_URL',
+  'PROMOTIONS_BACKEND_BASE_URL',
+];
+
+function loadServerRuntime() {
+  let app;
+  let auroraRoutes;
+  jest.isolateModules(() => {
+    app = require('../src/server');
+    auroraRoutes = require('../src/auroraBff/routes');
+  });
+  return { app, auroraRoutes };
+}
+
+function captureRelevantEnv() {
+  const snapshot = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
+}
+
+function restoreRelevantEnv(snapshot) {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      if (snapshot[key] === undefined) delete process.env[key];
+      else process.env[key] = snapshot[key];
+    }
+  }
+
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+function clearRelevantEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete process.env[key];
+    }
+  }
+}
+
 describe('aurora reco dogfood feedback/interleave/async routes', () => {
   jest.setTimeout(15000);
+  let prevEnv;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../src/auroraBff/routes');
+    jest.dontMock('../src/server');
+    jest.dontMock('axios');
+
+    prevEnv = captureRelevantEnv();
+    clearRelevantEnv();
+  });
 
   afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../src/auroraBff/routes');
+    jest.dontMock('../src/server');
+    jest.dontMock('axios');
     delete process.env.AURORA_BFF_RECO_DOGFOOD_MODE;
     delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
+    delete global.__auroraPrelabelFeedbackStats;
     jest.resetModules();
+
+    if (!prevEnv) return;
+    restoreRelevantEnv(prevEnv);
   });
 
   test('dogfood disabled returns 404 for employee endpoints', async () => {
     process.env.AURORA_BFF_RECO_DOGFOOD_MODE = 'false';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
-    const app = require('../src/server');
+    const { app } = loadServerRuntime();
     await request(app)
       .post('/v1/reco/employee-feedback')
       .send({})
@@ -30,7 +117,7 @@ describe('aurora reco dogfood feedback/interleave/async routes', () => {
   test('dogfood enabled accepts employee feedback payload', async () => {
     process.env.AURORA_BFF_RECO_DOGFOOD_MODE = 'true';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
-    const app = require('../src/server');
+    const { app } = loadServerRuntime();
     const res = await request(app)
       .post('/v1/reco/employee-feedback')
       .set('X-Aurora-UID', 'uid_reco_feedback')
@@ -61,8 +148,8 @@ describe('aurora reco dogfood feedback/interleave/async routes', () => {
   test('interleave click resolves attribution from tracking snapshot', async () => {
     process.env.AURORA_BFF_RECO_DOGFOOD_MODE = 'true';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
-    const app = require('../src/server');
-    const { __internal } = require('../src/auroraBff/routes');
+    const { app, auroraRoutes } = loadServerRuntime();
+    const { __internal } = auroraRoutes;
     __internal.registerRecoTrackingSnapshot({
       requestId: 'req_i1',
       sessionId: 'sess_i1',
@@ -104,8 +191,8 @@ describe('aurora reco dogfood feedback/interleave/async routes', () => {
   test('async updates returns ticket patch when version advances', async () => {
     process.env.AURORA_BFF_RECO_DOGFOOD_MODE = 'true';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
-    const app = require('../src/server');
-    const { __internal } = require('../src/auroraBff/routes');
+    const { app, auroraRoutes } = loadServerRuntime();
+    const { __internal } = auroraRoutes;
     const ticket = __internal.createAsyncTicket({
       requestId: 'req_async_1',
       cardId: 'card_async_1',

@@ -502,6 +502,19 @@ function resolveTravelPlansState(profile, options = {}) {
   };
 }
 
+function resolvePreferredLegacyTravelPlan(profile, options = {}) {
+  const state = resolveTravelPlansState(profile, options);
+  if (state.legacy_travel_plan && isPlainObject(state.legacy_travel_plan)) {
+    return state.legacy_travel_plan;
+  }
+  const candidates = Array.isArray(state.travel_plans)
+    ? state.travel_plans.filter((plan) => isPlainObject(plan) && !coerceBoolean(plan.is_archived, false))
+    : [];
+  if (!candidates.length) return null;
+  const sorted = candidates.slice().sort(compareTravelPlansForDisplay);
+  return toLegacyTravelPlan(sorted[0]);
+}
+
 function normalizeTravelProfilePatch({ baseProfile, patch, options = {} } = {}) {
   const rawPatch = isPlainObject(patch) ? patch : {};
   const hasTravelPlansMutation = Object.prototype.hasOwnProperty.call(rawPatch, 'travel_plans');
@@ -586,6 +599,7 @@ module.exports = {
   normalizeTravelPlans,
   normalizeTravelProfilePatch,
   resolveTravelPlansState,
+  resolvePreferredLegacyTravelPlan,
   selectActiveTrip,
   computeTravelPlanStatus,
   buildPrepChecklist,

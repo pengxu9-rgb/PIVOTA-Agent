@@ -137,7 +137,7 @@ run_case_low_confidence() {
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false}')"
 
   jq_assert_json "analysis_story_v2 exists" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_assert_json "ingredient_plan exists on low confidence path" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
+  jq_assert_json "ingredient_plan exists on low confidence path (v1/v2)" '.cards | any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")' "$analysis_json"
   jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
   jq_assert_json "no routine_fit_summary on low confidence path" '(.cards | any(.type=="routine_fit_summary")) | not' "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists" '
@@ -184,7 +184,7 @@ run_case_medium_confidence() {
   analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":"AM: cleanser + moisturizer + sunscreen; PM: cleanser + moisturizer + niacinamide serum"}')"
 
   jq_warn_json "analysis_story_v2 exists (medium case)" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_warn_json "ingredient_plan exists (medium case)" '.cards | any(.type=="ingredient_plan")' "$analysis_json"
+  jq_warn_json "ingredient_plan exists (medium case, v1/v2)" '.cards | any(.type=="ingredient_plan" or .type=="ingredient_plan_v2")' "$analysis_json"
   jq_warn_json "routine_fit_summary exists (medium case)" '.cards | any(.type=="routine_fit_summary")' "$analysis_json"
   jq_warn_json "routine deep-dive chip exists when routine_fit_summary exists" '
     if (.cards | any(.type=="routine_fit_summary"))
@@ -212,7 +212,21 @@ run_case_medium_confidence() {
   jq_warn_json "deep_dive_skin does not fall back to ingredient_hub or nudge" '
     (.cards | any(.type=="ingredient_hub" or .type=="nudge")) | not
   ' "$deep_dive_json"
-  jq_warn_json "deep_dive_skin returns non-empty assistant message" '((.assistant_message.content // "") | length) > 0' "$deep_dive_json"
+  jq_warn_json "deep_dive_skin exposes explanation content" '
+    (((.assistant_message.content // "") | length) > 0)
+    or
+    (
+      .cards
+      | any(
+          .type=="analysis_story_v2"
+          and
+          (
+            (((.payload.summary // "") | length) > 0)
+            or (((.payload.ui_card_v1.headline // "") | length) > 0)
+          )
+        )
+    )
+  ' "$deep_dive_json"
 
   if printf "%s\n" "$analysis_json" | jq -e '.cards | any(.type=="routine_fit_summary")' >/dev/null; then
     local routine_follow_json

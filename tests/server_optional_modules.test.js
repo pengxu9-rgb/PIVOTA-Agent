@@ -9,6 +9,16 @@ describe('server boot with optional modules missing', () => {
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
+  afterEach(() => {
+    jest.dontMock('../src/lookReplicator');
+    jest.dontMock('../src/auroraBff/routes');
+    jest.resetModules();
+    delete process.env.API_MODE;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
+  });
+
   test('keeps shopping health routes up when aurora/look modules fail to load', async () => {
     jest.doMock('../src/lookReplicator', () => {
       throw new Error("Cannot find module './lookReplicatePipeline'");

@@ -1,0 +1,99 @@
+{
+  "generated_at": "2026-03-07T03:10:33.024Z",
+  "args": {
+    "cases": "/tmp/skin_prompt_one_report.jsonl",
+    "rubric": "tests/fixtures/skin/skin_prompt_judge_rubric.json",
+    "outDir": "",
+    "repeats": 1,
+    "promptVersion": "skin_v3",
+    "deepeningPromptVersion": "skin_deepening_v2_canonical",
+    "qaMode": "off",
+    "singleProvider": "gemini",
+    "allowOpenAiFallback": false,
+    "timeoutMs": 15000,
+    "skipJudge": true
+  },
+  "summary": [
+    {
+      "stage": "report",
+      "locale": "en-US",
+      "count": 5,
+      "success_rate": 1,
+      "useful_output_rate": 1,
+      "semantic_empty_rate": 0,
+      "avg_score": 0,
+      "hard_fail_rate": 1,
+      "below8_rate": 1,
+      "judge_failed_rate": 0,
+      "repeat_consistency": 0.2,
+      "pass": true
+    }
+  ],
+  "consistency_diffs": [
+    {
+      "case_id": "report_barrier_redness_en",
+      "stage": "report",
+      "locale": "en-US",
+      "dominant_signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"flaking:full_face:mild\",\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"pm:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+      "signatures": [
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"flaking:full_face:mild\",\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"pm:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "count": 1
+        },
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"pm:moisturize:barrier:daily\",\"pm:treat:texture:every_other_night\"]}",
+          "count": 1
+        },
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "count": 1
+        },
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "count": 1
+        },
+        {
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:protect:barrier:daily\",\"either:cleanse:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:every_other_night\"]}",
+          "count": 1
+        }
+      ],
+      "runs": [
+        {
+          "repeat_index": 0,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"flaking:full_face:mild\",\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"pm:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        },
+        {
+          "repeat_index": 1,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"pm:moisturize:barrier:daily\",\"pm:treat:texture:every_other_night\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        },
+        {
+          "repeat_index": 2,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:moderate\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        },
+        {
+          "repeat_index": 3,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:cleanse:barrier:daily\",\"am:protect:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:two_nights_weekly\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        },
+        {
+          "repeat_index": 4,
+          "signature": "{\"follow_up\":\"reaction_check\",\"insights\":[\"redness:cheeks:moderate\",\"texture:chin:mild\"],\"priority\":\"redness\",\"routine_steps\":[\"am:protect:barrier:daily\",\"either:cleanse:barrier:daily\",\"either:moisturize:barrier:daily\",\"pm:treat:texture:every_other_night\"]}",
+          "ok": true,
+          "reason": null,
+          "semantic_code": null
+        }
+      ]
+    }
+  ]
+}

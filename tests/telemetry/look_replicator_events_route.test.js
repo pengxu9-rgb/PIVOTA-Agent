@@ -3,10 +3,105 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const app = require('../../src/server');
+const ENV_PREFIXES_TO_RESTORE = [
+  'AURORA_BFF_',
+  'PROXY_SEARCH_',
+  'SEARCH_',
+  'LR_',
+  'POSTHOG_',
+];
+
+const EXPLICIT_ENV_KEYS_TO_RESTORE = [
+  'API_MODE',
+  'DATABASE_URL',
+  'PIVOTA_API_BASE',
+  'PIVOTA_API_KEY',
+  'PIVOTA_BACKEND_BASE_URL',
+  'PROMOTIONS_BACKEND_BASE_URL',
+];
+
+function loadServerApp() {
+  let app;
+  jest.isolateModules(() => {
+    app = require('../../src/server');
+  });
+  return app;
+}
+
+function captureRelevantEnv() {
+  const snapshot = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
+}
+
+function restoreRelevantEnv(snapshot) {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      if (snapshot[key] === undefined) delete process.env[key];
+      else process.env[key] = snapshot[key];
+    }
+  }
+
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+function clearRelevantEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (
+      EXPLICIT_ENV_KEYS_TO_RESTORE.includes(key) ||
+      ENV_PREFIXES_TO_RESTORE.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete process.env[key];
+    }
+  }
+}
 
 describe('look-replicator event ingestion', () => {
+  let prevEnv;
+  let originalFetch;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../../src/lookReplicator');
+    jest.dontMock('../../src/auroraBff/routes');
+    jest.dontMock('../../src/server');
+    jest.dontMock('axios');
+
+    prevEnv = captureRelevantEnv();
+    clearRelevantEnv();
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.dontMock('../../src/lookReplicator');
+    jest.dontMock('../../src/auroraBff/routes');
+    jest.dontMock('../../src/server');
+    jest.dontMock('axios');
+    global.fetch = originalFetch;
+    jest.resetModules();
+
+    if (!prevEnv) return;
+    restoreRelevantEnv(prevEnv);
+  });
+
   test('OPTIONS /v1/events/look-replicator returns credentialed CORS for look-replicator UI', async () => {
+    const app = loadServerApp();
     const res = await request(app)
       .options('/v1/events/look-replicator')
       .set('Origin', 'https://look-replicator.pivota.cc')
@@ -19,6 +114,7 @@ describe('look-replicator event ingestion', () => {
   });
 
   test('POST /v1/events/look-replicator accepts valid payload and returns 204', async () => {
+    const app = loadServerApp();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-events-'));
     process.env.LR_EVENTS_JSONL_SINK_DIR = tmpDir;
 
@@ -48,12 +144,14 @@ describe('look-replicator event ingestion', () => {
   });
 
   test('POST /v1/events/look-replicator rejects invalid payload', async () => {
+    const app = loadServerApp();
     const res = await request(app).post('/v1/events/look-replicator').send({ properties: {} });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('INVALID_REQUEST');
   });
 
   test('missing exposureId is accepted but flagged', async () => {
+    const app = loadServerApp();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-events-'));
     process.env.LR_EVENTS_JSONL_SINK_DIR = tmpDir;
 
@@ -81,6 +179,7 @@ describe('look-replicator event ingestion', () => {
   });
 
   test('missing experiment is accepted but flagged', async () => {
+    const app = loadServerApp();
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-events-'));
     process.env.LR_EVENTS_JSONL_SINK_DIR = tmpDir;
 
@@ -103,11 +202,10 @@ describe('look-replicator event ingestion', () => {
   test('posthog forwarding failures do not block ingestion', async () => {
     process.env.POSTHOG_API_KEY = 'test_key';
     process.env.POSTHOG_HOST = 'https://example.com';
-
-    const originalFetch = global.fetch;
     global.fetch = jest.fn(async () => {
       throw new Error('posthog down');
     });
+    const app = loadServerApp();
 
     const res = await request(app).post('/v1/events/look-replicator').send({
       event: 'lr_adjustments_exposed',
@@ -128,9 +226,5 @@ describe('look-replicator event ingestion', () => {
     expect(body.event).toBe('lr_adjustments_exposed');
     expect(body.properties.serverReceivedAt).toBeTruthy();
     expect(body.properties.requestId).toBeTruthy();
-
-    global.fetch = originalFetch;
-    delete process.env.POSTHOG_API_KEY;
-    delete process.env.POSTHOG_HOST;
   });
 });

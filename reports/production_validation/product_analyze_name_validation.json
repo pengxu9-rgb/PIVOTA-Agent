@@ -1,0 +1,490 @@
+{
+  "request_id": "d94090a5-c33b-4b90-b193-04958dc10c8e",
+  "trace_id": "t_prod_validate_1773928947",
+  "assistant_message": null,
+  "suggested_chips": [],
+  "cards": [
+    {
+      "card_id": "analyze_d94090a5-c33b-4b90-b193-04958dc10c8e",
+      "type": "product_analysis",
+      "payload": {
+        "assessment": {
+          "verdict": "Unknown",
+          "reasons": [
+            "Current evidence is insufficient for a high-confidence product verdict.",
+            "Treat this result as provisional until more complete evidence is available."
+          ],
+          "summary": "Current evidence is insufficient for a high-confidence product verdict.",
+          "best_for": [
+            "If your goal is steady maintenance and low-irritation iteration, this profile is usually easier to start with."
+          ],
+          "if_not_ideal": [
+            "Start low-frequency (2-3x/week) and monitor for 10-14 days before increasing usage."
+          ],
+          "better_pairing": [
+            "Pairing idea: keep consistent daytime SPF and single-variable PM iteration to judge fit reliably."
+          ],
+          "follow_up_question": "Do you prefer \u201cgentler\u201d or \u201cfaster-visible results\u201d? I can tune the next-step options based on that.",
+          "how_to_use": {
+            "timing": "AM/PM; prefer PM first during reactive phases.",
+            "frequency": "Start 2-3x/week; only increase after 10-14 days of stable tolerance.",
+            "steps": [
+              "Layer from thinnest to thickest; keep hydration before occlusive steps.",
+              "Use daytime SPF as the final AM step."
+            ],
+            "observation_window": "Monitor for 10-14 days before increasing frequency.",
+            "stop_signs": [
+              "Persistent stinging beyond 30-60 seconds",
+              "Worsening redness/dry itch",
+              "Noticeable breakout or barrier instability signals"
+            ],
+            "pairing_rules": []
+          },
+          "verdict_level": "needs_verification",
+          "top_takeaways": [
+            "Current evidence is insufficient for a high-confidence product verdict."
+          ]
+        },
+        "evidence": {
+          "science": {
+            "key_ingredients": [],
+            "mechanisms": [],
+            "fit_notes": [],
+            "risk_notes": []
+          },
+          "social_signals": {
+            "typical_positive": [],
+            "typical_negative": [],
+            "risk_for_groups": []
+          },
+          "expert_notes": [],
+          "confidence": null,
+          "missing_info": [
+            "evidence_missing"
+          ],
+          "product_type_reasoning": "Product type classified as other based on name/URL/ingredient signals.",
+          "sources": [],
+          "key_ingredients_by_function": []
+        },
+        "confidence": null,
+        "missing_info": [
+          "analysis_limited",
+          "evidence_limited",
+          "social_signals_low_confidence",
+          "anchor_soft_blocked_ambiguous",
+          "anchor_filtered_client_payload_anchor_soft_blocked_ambiguous"
+        ],
+        "user_facing_gaps": [
+          "analysis_limited",
+          "evidence_limited",
+          "social_signals_low_confidence",
+          "anchor_soft_blocked_ambiguous",
+          "anchor_filtered_client_payload_anchor_soft_blocked_ambiguous"
+        ],
+        "ingredient_intel": {
+          "inci_normalized": [],
+          "actives": [],
+          "red_flags": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 336,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.404,
+              "level": "med",
+              "reasons": [
+                "evidence_first=science",
+                "coverage=0%",
+                "source_quality=55%",
+                "freshness=90%",
+                "consistency=76%",
+                "missing_fields=evidence.science.key_ingredients"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "evidence.science.key_ingredients"
+            ],
+            "warnings": [
+              "science_mechanisms_missing",
+              "risk_notes_missing"
+            ]
+          }
+        },
+        "skin_fit": {
+          "suitable_for": [],
+          "not_recommended_for": [],
+          "contraindications": [],
+          "routine_tips": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 336,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.42,
+              "level": "med",
+              "reasons": [
+                "rules_first=skin_fit",
+                "evidence_gate=science_sparse",
+                "coverage=36%",
+                "source_quality=50%",
+                "freshness=92%",
+                "consistency=55%",
+                "missing_fields=profile.skinType,profile.sensitivity,profile.barrierStatus",
+                "confidence_ceiling=42%"
+              ]
+            },
+            "evidence": [
+              {
+                "source_type": "expert_kb",
+                "source_name": "aurora_assessment",
+                "captured_at": "2026-03-19T14:03:07.722Z",
+                "excerpt": "Current evidence is insufficient for a high-confidence product verdict.",
+                "data": {
+                  "assessment_reasons": [
+                    "Current evidence is insufficient for a high-confidence product verdict."
+                  ],
+                  "verdict": "Unknown"
+                }
+              }
+            ],
+            "missing_fields": [
+              "profile.skinType",
+              "profile.sensitivity",
+              "profile.barrierStatus"
+            ],
+            "warnings": [
+              "profile.goals_missing",
+              "skin_fit_evidence_gate_applied"
+            ]
+          }
+        },
+        "social_signals": {
+          "platforms": [],
+          "overall_summary": {
+            "top_pos_themes": [],
+            "top_neg_themes": [],
+            "watchouts": []
+          },
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 48,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.331,
+              "level": "low",
+              "reasons": [
+                "social_aggregation=partial",
+                "coverage=0%",
+                "source_quality=46%",
+                "freshness=70%",
+                "consistency=66%",
+                "missing_fields=evidence.social_signals.platform_scores,evidence.social_signals.topics,evidence.social_signals.risk_for_groups"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "evidence.social_signals.platform_scores",
+              "evidence.social_signals.topics",
+              "evidence.social_signals.risk_for_groups"
+            ],
+            "warnings": [
+              "social_time_window_missing"
+            ]
+          }
+        },
+        "competitors": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.466,
+              "level": "med",
+              "reasons": [
+                "competitor_recall=reco_blocks_router",
+                "coverage=20%",
+                "source_quality=48%",
+                "freshness=86%",
+                "consistency=72%",
+                "missing_fields=competitors.candidates"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "competitors.candidates"
+            ]
+          },
+          "block_type": "competitors"
+        },
+        "related_products": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.458,
+              "level": "med",
+              "reasons": [
+                "related_products=upstream_or_router",
+                "coverage=20%",
+                "source_quality=44%",
+                "freshness=86%",
+                "consistency=72%",
+                "missing_fields=related_products.candidates"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "related_products.candidates"
+            ]
+          },
+          "block_type": "related_products"
+        },
+        "dupes": {
+          "candidates": [],
+          "_meta": {
+            "generated_at": "2026-03-19T14:03:07.722Z",
+            "freshness_ttl_hours": 168,
+            "version": "aurora.product_intel.block.v1",
+            "confidence": {
+              "score": 0.462,
+              "level": "med",
+              "reasons": [
+                "dupes=upstream_or_router",
+                "coverage=20%",
+                "source_quality=46%",
+                "freshness=86%",
+                "consistency=72%",
+                "missing_fields=dupes.candidates"
+              ]
+            },
+            "evidence": [],
+            "missing_fields": [
+              "dupes.candidates"
+            ]
+          },
+          "block_type": "dupes"
+        },
+        "confidence_by_block": {
+          "ingredient_intel": {
+            "score": 0.404,
+            "level": "med",
+            "reasons": [
+              "evidence_first=science",
+              "coverage=0%",
+              "source_quality=55%",
+              "freshness=90%",
+              "consistency=76%",
+              "missing_fields=evidence.science.key_ingredients"
+            ]
+          },
+          "skin_fit": {
+            "score": 0.42,
+            "level": "med",
+            "reasons": [
+              "rules_first=skin_fit",
+              "evidence_gate=science_sparse",
+              "coverage=36%",
+              "source_quality=50%",
+              "freshness=92%",
+              "consistency=55%",
+              "missing_fields=profile.skinType,profile.sensitivity,profile.barrierStatus",
+              "confidence_ceiling=42%"
+            ]
+          },
+          "social_signals": {
+            "score": 0.331,
+            "level": "low",
+            "reasons": [
+              "social_aggregation=partial",
+              "coverage=0%",
+              "source_quality=46%",
+              "freshness=70%",
+              "consistency=66%",
+              "missing_fields=evidence.social_signals.platform_scores,evidence.social_signals.topics,evidence.social_signals.risk_for_groups"
+            ]
+          },
+          "competitors": {
+            "score": 0.466,
+            "level": "med",
+            "reasons": [
+              "competitor_recall=reco_blocks_router",
+              "coverage=20%",
+              "source_quality=48%",
+              "freshness=86%",
+              "consistency=72%",
+              "missing_fields=competitors.candidates"
+            ]
+          },
+          "related_products": {
+            "score": 0.458,
+            "level": "med",
+            "reasons": [
+              "related_products=upstream_or_router",
+              "coverage=20%",
+              "source_quality=44%",
+              "freshness=86%",
+              "consistency=72%",
+              "missing_fields=related_products.candidates"
+            ]
+          },
+          "dupes": {
+            "score": 0.462,
+            "level": "med",
+            "reasons": [
+              "dupes=upstream_or_router",
+              "coverage=20%",
+              "source_quality=46%",
+              "freshness=86%",
+              "consistency=72%",
+              "missing_fields=dupes.candidates"
+            ]
+          }
+        },
+        "provenance": {
+          "generated_at": "2026-03-19T14:03:07.722Z",
+          "contract_version": "aurora.product_intel.contract.v2",
+          "pipeline": "aurora_product_intel_main_path",
+          "source": "aurora_bff_normalize",
+          "validation_mode": "soft_fail",
+          "retrieval_degradation": {
+            "transient_failure_count": 0,
+            "attempted_sources": [],
+            "resolver_first_applied": false,
+            "resolver_first_skipped_for_aurora": false,
+            "source_temporarily_deprioritized": false,
+            "degraded": false
+          },
+          "gate_relax_mode": "aggressive",
+          "kb_write_policy": "allow_all",
+          "kb_serve_policy": "serve_with_labels",
+          "quality_band": "low",
+          "confidence_band": "low",
+          "guardrail_flags": [],
+          "anchor_trust": {
+            "level": "none",
+            "usable_for_anchor_id": false,
+            "reasons": [
+              "anchor_soft_blocked_ambiguous"
+            ],
+            "source": "none",
+            "candidate_quality": "none",
+            "url_consistency": 0
+          },
+          "source_chain": [
+            "llm_extraction"
+          ],
+          "guardrail_applied": false,
+          "guardrail_mode": "telemetry_only",
+          "guardrail_violations": [],
+          "guardrail_circuit_open": false,
+          "guardrail_circuit_until_ms": 0,
+          "auto_rollback_flag": false,
+          "llm_route": {
+            "stage": "stage_1",
+            "provider": "gemini",
+            "model": "gemini-3-pro-preview",
+            "trigger_reason": "primary"
+          },
+          "kb_write": {
+            "attempted": true,
+            "persisted": true,
+            "blocked_reason": "authoritative_source_missing",
+            "audit_blocked_reason": "authoritative_source_missing",
+            "policy": "allow_all"
+          },
+          "dogfood_mode": false,
+          "dogfood_features_effective": {
+            "interleave": false,
+            "exploration": false,
+            "async_rerank": false,
+            "show_employee_feedback_controls": false
+          },
+          "interleave": {
+            "enabled": false,
+            "rankerA": "ranker_v1",
+            "rankerB": "ranker_v2"
+          },
+          "lock_top_n_on_first_paint": 3
+        },
+        "product_intel_contract_version": "aurora.product_intel.contract.v2",
+        "profile_prompt": {
+          "needed": true,
+          "missing_fields": [
+            "skinType",
+            "sensitivity",
+            "barrierStatus"
+          ],
+          "cta_action": "open_profile",
+          "cta_target": "profile_sheet"
+        },
+        "low_confidence": true,
+        "low_relevance": true
+      },
+      "field_missing": [
+        {
+          "field": "assessment",
+          "reason": "upstream_missing_or_unstructured"
+        },
+        {
+          "field": "evidence",
+          "reason": "upstream_missing_or_invalid"
+        }
+      ]
+    }
+  ],
+  "session_patch": {
+    "next_state": "PRODUCT_LINK_EVAL",
+    "meta": {
+      "retrieval_path_version": "aurora_retrieval_v2",
+      "profile_context_source": "db_only_profile",
+      "request_profile_overlay_applied": false,
+      "analysis_context_usage": {
+        "snapshot_present": true,
+        "context_source_mode": "artifact",
+        "analysis_context_available": true,
+        "snapshot_id": "acs_07944acb4ed1216130",
+        "source_mix_summary": [
+          "system_heuristic"
+        ],
+        "derived_from_artifact_signature": "20340bd34d80d6d0",
+        "snapshot_fields_used": [
+          "goals",
+          "skin_type_tendency",
+          "sensitivity_tendency",
+          "barrier_status_tendency",
+          "ingredient_targets",
+          "ingredient_avoid",
+          "risk_axes"
+        ],
+        "hard_context_fields_used": [],
+        "soft_context_fields_used": [
+          "ingredient_targets",
+          "ingredient_avoid"
+        ],
+        "explicit_override_applied": false,
+        "adapter_version": "analysis_context_adapter_v1",
+        "context_mode": "snapshot_soft_only"
+      }
+    }
+  },
+  "events": [
+    {
+      "event_name": "value_moment",
+      "timestamp": 1773928987728,
+      "request_id": "d94090a5-c33b-4b90-b193-04958dc10c8e",
+      "trace_id": "t_prod_validate_1773928947",
+      "aurora_uid": "uid_prod_validate_1773928947",
+      "brief_id": "b_prod_validate_1773928947",
+      "lang": "EN",
+      "trigger_source": "text",
+      "state": null,
+      "data": {
+        "kind": "product_analyze"
+      }
+    }
+  ]
+}

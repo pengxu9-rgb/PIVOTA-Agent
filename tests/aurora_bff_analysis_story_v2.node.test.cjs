@@ -195,6 +195,28 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });
 
+test('analysis_story_v2: review patch ops accept value_json payloads', () => {
+  const internal = loadInternalWithFlags({});
+  const patched = internal.applyAnalysisStoryReviewPatchOps({
+    story: {
+      ui_card_v1: {
+        headline: 'Old headline',
+        key_points: [],
+        actions_now: [],
+        avoid_now: [],
+        confidence_label: 'low',
+        next_checkin: 'Later',
+      },
+    },
+    patchOps: [
+      { op: 'replace', path: '/ui_card_v1/headline', value_json: '\"Barrier support first.\"' },
+      { op: 'replace', path: 'ui_card_v1.key_points', value_json: '[\"Calm redness\",\"Keep routine gentle\"]' },
+    ],
+  });
+  assert.equal(patched.ui_card_v1.headline, 'Barrier support first.');
+  assert.deepEqual(patched.ui_card_v1.key_points, ['Calm redness', 'Keep routine gentle']);
+});
+
 test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
   const internal = loadInternalWithFlags({});
   const prompt = internal.buildRoutineFitSummaryPrompt({
@@ -464,7 +486,10 @@ test('analysis follow-up helpers: use lastAnalysis context and emit deterministi
     language: 'EN',
     requestId: 'req_2',
   });
-  assert.equal(ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan'), true);
+  assert.equal(
+    ingredientFollowup.cards.some((card) => card.type === 'ingredient_plan' || card.type === 'ingredient_plan_v2'),
+    true,
+  );
 
   const safetyFollowup = internal.buildAnalysisFollowupContent({
     actionId: 'chip.aurora.next_action.safety_concerns',

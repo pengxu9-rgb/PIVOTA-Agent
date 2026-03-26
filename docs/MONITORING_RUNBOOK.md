@@ -193,6 +193,12 @@ make release-gate
 BASE=https://pivota-agent-production.up.railway.app bash scripts/smoke_aurora_skin_reco_gates.sh
 ```
 
+Current Aurora smoke expectations:
+
+- Analysis smoke accepts either `ingredient_plan` or `ingredient_plan_v2`.
+- Deep-dive explanation checks are card-first: `analysis_story_v2.payload.summary` or `ui_card_v1.headline` is sufficient even if `assistant_message` is empty.
+- `/v1/chat` contract checks should prefer ChatCards v1 payloads instead of legacy envelope fields.
+
 ## Chat Follow-up Canary (post-env rollout)
 
 Use this probe to validate the high-risk chat regressions after env changes:

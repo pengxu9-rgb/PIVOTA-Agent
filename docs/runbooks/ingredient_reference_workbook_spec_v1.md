@@ -1,0 +1,957 @@
+# Ingredient Reference Workbook Spec v1
+
+## Goal
+
+Define a stable workbook contract for the ingredient reference seed.
+
+This workbook is intended to feed:
+
+- parser normalization
+- alias resolution
+- ingredient taxonomy tagging
+- downstream SKU ingredient evidence matching
+
+This workbook is not intended to be the final runtime SKU KB.
+
+## Workbook Role
+
+Canonical role:
+
+- `ingredient_reference_seed`
+
+Recommended landing table:
+
+- `seed_ingest.ingredient_reference_seed`
+
+Runtime usage:
+
+- parser and normalization layer
+- ingredient evidence matching support
+
+Not for direct runtime ranking by itself:
+
+- it does not contain SKU-level proof
+- it does not replace `pci_kb.sku_ingredients`
+
+## Column Groups
+
+### 1. Identity
+
+Required:
+
+- `record_id`
+- `canonical_inci_name`
+- `normalized_key`
+
+Recommended:
+
+- `canonical_display_name`
+- `ingredient_family`
+
+Rules:
+
+- `record_id` must be immutable once published
+- `canonical_inci_name` should be the single canonical reference name
+- `normalized_key` must be deterministic and unique
+
+### 2. Market Label Variants
+
+Required:
+
+- `us_label_name`
+- `eu_label_name`
+
+Recommended:
+
+- `us_label_variants`
+- `eu_label_variants`
+- `cross_market_notes`
+
+Rules:
+
+- `us_label_name` and `eu_label_name` are the primary display variants
+- multi-value variant columns should use semicolon-delimited values
+
+### 3. Alias And Parser Inputs
+
+Required:
+
+- `aliases_common`
+- `parser_variants`
+
+Recommended:
+
+- `deprecated_aliases`
+- `alias_quality`
+- `notes_for_parser`
+
+Rules:
+
+- `aliases_common` is for human/common-language aliases
+- `parser_variants` is for normalization and parse matching
+- all variant fields should be semicolon-delimited
+- values should be trimmed, deduplicated, and case-preserving
+- `parser_variants` should include the canonical name itself
+
+### 4. Taxonomy
+
+Required:
+
+- `primary_bucket`
+- `all_buckets`
+- `function_tags`
+- `benefit_tags`
+- `risk_flags`
+
+Recommended:
+
+- `mechanism_tags`
+- `contraindication_tags`
+
+Rules:
+
+- these fields should move toward controlled vocabularies
+- multi-value fields should be semicolon-delimited
+- `primary_bucket` must be a single value
+
+### 5. Boolean Signals
+
+Current columns:
+
+- `is_humectant`
+- `is_barrier_support`
+- `is_retinoid`
+- `is_exfoliant`
+- `is_uv_filter`
+- `is_preservative`
+- `is_surfactant`
+- `is_fragrance_or_eo`
+
+Rules:
+
+- values should be limited to `yes` or `no`
+- boolean flags must remain consistent with taxonomy fields
+
+Consistency examples:
+
+- `is_barrier_support=yes` should imply a matching repair/barrier-oriented tag
+- `is_uv_filter=yes` should imply sunscreen-related taxonomy
+- `is_fragrance_or_eo=yes` should imply fragrance or essential-oil risk/taxonomy
+
+### 6. Regulatory And Provenance
+
+Required:
+
+- `regulatory_bucket`
+- `source_urls`
+- `kb_version`
+
+Recommended:
+
+- `source_authorities`
+- `source_types`
+- `review_status`
+- `confidence`
+- `last_reviewed_at`
+- `review_notes`
+
+Rules:
+
+- `source_urls` should remain semicolon-delimited if stored in workbook form
+- `review_status` should be controlled:
+  - `draft`
+  - `reviewed`
+  - `approved`
+  - `deprecated`
+- `confidence` should be controlled:
+  - `high`
+  - `medium`
+  - `low`
+
+## Recommended Column Set
+
+### Keep
+
+- `record_id`
+- `canonical_inci_name`
+- `us_label_name`
+- `eu_label_name`
+- `normalized_key`
+- `aliases_common`
+- `parser_variants`
+- `primary_bucket`
+- `all_buckets`
+- `function_tags`
+- `benefit_tags`
+- `risk_flags`
+- all current `is_*` columns
+- `regulatory_bucket`
+- `source_urls`
+- `notes`
+- `kb_version`
+
+### Add
+
+- `canonical_display_name`
+- `ingredient_family`
+- `us_label_variants`
+- `eu_label_variants`
+- `deprecated_aliases`
+- `alias_quality`
+- `notes_for_parser`
+- `source_authorities`
+- `source_types`
+- `review_status`
+- `confidence`
+- `last_reviewed_at`
+- `review_notes`
+
+### Optional Later
+
+- `mechanism_tags`
+- `contraindication_tags`
+- `example_claims`
+- `synonym_locale_map`
+
+## Controlled Vocabulary Recommendations
+
+### `primary_bucket`
+
+Suggested controlled values:
+
+- `hydration`
+- `repair`
+- `anti-aging`
+- `anti-acne`
+- `exfoliant`
+- `sunscreen`
+- `preservative`
+- `surfactant`
+- `fragrance/essential oil`
+
+### `alias_quality`
+
+Suggested controlled values:
+
+- `exact_label_alias`
+- `common_alias`
+- `marketing_alias`
+- `legacy_alias`
+
+### `ingredient_family`
+
+Suggested controlled values:
+
+- `humectant`
+- `emollient`
+- `occlusive`
+- `ceramide`
+- `peptide`
+- `retinoid`
+- `acid_exfoliant`
+- `uv_filter`
+- `preservative`
+- `surfactant`
+- `fragrance`
+- `plant_extract`
+- `solvent`
+- `vitamin`
+- `other`
+
+## Normalized Key Rule
+
+`normalized_key` should be deterministic.
+
+Recommended rule:
+
+1. lowercase
+2. Unicode normalize
+3. strip punctuation and separators
+4. remove spaces
+5. keep alphanumeric only
+
+Examples:
+
+- `1,2-Hexanediol` -> `12hexanediol`
+- `Aloe Barbadensis Leaf Juice` -> `aloebarbadensisleafjuice`
+- `Ceramide NP` -> `ceramidenp`
+
+Constraints:
+
+- unique across workbook
+- never edited manually unless canonical naming changed
+- regenerated by importer/linter and compared against workbook value
+
+## Alias Rules
+
+### `aliases_common`
+
+Use for:
+
+- consumer-facing common names
+- common shorthand
+- common ingredient nicknames
+
+Do not use for:
+
+- vague claims like `skin-soothing ingredients`
+- category words like `hydrator`
+- marketing slogans
+
+### `parser_variants`
+
+Must include:
+
+- canonical name
+- lowercase variant
+- common punctuation variants
+- established cross-market label variants
+
+Should not include:
+
+- ambiguous category phrases
+- benefit claims
+- non-ingredient marketing copy
+
+## Quality Gates
+
+The workbook should fail import if:
+
+- required columns are missing
+- `record_id` duplicates exist
+- `normalized_key` duplicates exist
+- `canonical_inci_name` is empty
+- `parser_variants` is empty
+- `source_urls` is empty
+
+The workbook should warn, but not hard-fail, if:
+
+- `aliases_common` is empty
+- `review_status` is missing on draft rows
+- boolean flags do not align with taxonomy fields
+
+## Promotion Path
+
+1. Validate workbook schema.
+2. Normalize and lint `normalized_key`.
+3. Deduplicate aliases and parser variants.
+4. Checkpoint confirmed workbook changes into a new candidate baseline workbook.
+5. Export the candidate baseline into a `seed_ingest.ingredient_reference_seed` import bundle.
+6. Import that bundle into `seed_ingest.ingredient_reference_seed`.
+7. Use as parser/reference support.
+8. Join reviewed SKU ingredient evidence against this dictionary during harvest and KB ingest.
+
+Checkpoint guidance:
+
+- do not wait for the long-tail queue to hit zero before checkpointing confirmed work
+- do not promote directly from ad hoc preview workbooks into runtime consumers
+- first freeze the latest confirmed preview as a candidate baseline, then keep tail work relative to that baseline
+
+Runtime projection guidance:
+
+- do not let runtime or parser code read `seed_ingest.ingredient_reference_seed` directly
+- publish a runtime-facing projection such as `pci_kb.ingredient_reference_dictionary_v1`
+- keep that projection filtered to reviewed rows and reshape semicolon-delimited fields into runtime-readable arrays/booleans
+
+To export a confirmed baseline workbook into a `seed_ingest` import bundle:
+
+```bash
+python3 scripts/export_ingredient_reference_seed_ingest_bundle.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --out-csv artifacts/ingredient_reference_seed_ingest.csv \
+  --out-manifest-json artifacts/ingredient_reference_seed_ingest_manifest.json \
+  --out-copy-sql artifacts/ingredient_reference_seed_ingest_copy.sql
+```
+
+This export step is still conservative:
+
+- it does not write to the database
+- it preserves the workbook row payload plus import metadata such as `source_file`, `source_sheet`, `source_row_number`, and `ingested_at`
+- it emits a manifest with recommended keys and target table metadata for the import operator
+
+To verify that the target staging table matches the exported bundle before import:
+
+```bash
+node scripts/check_ingredient_reference_seed_ingest_target.js \
+  --bundle-manifest-json artifacts/ingredient_reference_seed_ingest_manifest.json \
+  --out-json artifacts/ingredient_reference_seed_ingest_target_check.json
+```
+
+This target check is read-only:
+
+- it inspects `seed_ingest.ingredient_reference_seed` via `information_schema`
+- it compares exported bundle columns against the live table columns
+- it reports missing DB columns, extra DB columns, and whether the table is `COPY`-ready
+
+If the staging table does not exist yet, generate a conservative DDL template from the bundle manifest:
+
+```bash
+python3 scripts/generate_ingredient_reference_seed_ingest_ddl.py \
+  --bundle-manifest-json artifacts/ingredient_reference_seed_ingest_manifest.json \
+  --out-sql artifacts/ingredient_reference_seed_ingest_create.sql
+```
+
+This DDL generator is conservative:
+
+- it keeps workbook payload columns as staging-friendly types, mostly `TEXT`
+- it uses `record_id` as the primary key
+- it adds unique indexes for `normalized_key` and `canonical_inci_name`
+
+After import, run a read-only live audit against the staging table:
+
+```bash
+node scripts/audit_ingredient_reference_seed_ingest_live.js \
+  --table seed_ingest.ingredient_reference_seed \
+  --out-json artifacts/ingredient_reference_seed_ingest_live_audit.json
+```
+
+This live audit is read-only:
+
+- it checks row count, duplicate keys, and missing required fields in the database table
+- it checks controlled values such as `review_status`, `confidence`, `primary_bucket`, and `ingredient_family`
+- it checks that boolean flag columns stay within `yes` / `no`
+- it surfaces a small set of taxonomy consistency warnings without mutating staging data
+
+After the staging table is healthy, publish a runtime-facing projection:
+
+```sql
+SELECT *
+FROM pci_kb.ingredient_reference_dictionary_v1
+LIMIT 20;
+```
+
+Projection intent:
+
+- this is the runtime-readable ingredient reference layer
+- it should expose reviewed seed rows only
+- it should cast `is_*` columns into booleans for consumers
+- it should expose semicolon-delimited workbook fields as arrays for parser/normalization lookups
+
+Parser/normalization code should read the projection through:
+
+- [ingredientReferenceStore.js](/Users/pengchydan/dev/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/src/services/ingredientReferenceStore.js)
+
+Current runtime integration guidance:
+
+- Aurora BFF ingredient lookup should first preserve existing deterministic entity matches, then use `ingredientReferenceStore` as the reviewed alias/canonical fallback layer
+- runtime ingredient-report payloads may overlay reviewed reference metadata such as canonical name, aliases, family, and taxonomy-derived fallback context
+
+To dry-run a deterministic sync from the runtime projection into an ingredient dictionary consumer table:
+
+```bash
+node scripts/sync_ingredient_reference_dictionary_to_ingredients_master.js \
+  --source-view pci_kb.ingredient_reference_dictionary_v1 \
+  --target-table public.ingredients_master \
+  --out-json artifacts/ingredient_reference_dictionary_to_ingredients_master_sync.json
+```
+
+This sync stays conservative by default:
+
+- it runs in dry-run mode unless `--apply` is passed
+- it maps `normalized_key -> ingredient_id`
+- it only updates deterministic dictionary-style fields such as `inci_name`, `synonyms`, `categories`, `primary_benefits`, `evidence_grade`, and `market_presence_notes`
+- it leaves enrichment fields such as `zh_name`, `social_buzz_notes`, and `representative_products` untouched on update
+
+To run a read-only production live smoke against the target staging table before import:
+
+```bash
+bash scripts/smoke_ingredient_reference_seed_ingest_target.sh \
+  /path/to/ingredient_reference.xlsx
+```
+
+This live smoke is still conservative:
+
+- it requires `DATABASE_URL` and only reads `information_schema` / `pg_indexes`
+- it exports a fresh local bundle first, then checks whether the live `seed_ingest.ingredient_reference_seed` table is `COPY`-ready
+- if the live table is not ready, it emits a conservative DDL template into the smoke artifact folder and exits non-zero
+
+## Review Queue Tool
+
+Use:
+
+```bash
+python3 scripts/build_ingredient_reference_review_queue.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --out-json artifacts/ingredient_reference_review_queue.json \
+  --out-csv artifacts/ingredient_reference_review_queue.csv
+```
+
+The tool is read-only. It highlights:
+
+- thin-fill columns such as `aliases_common` and `notes_for_parser`
+- rows still stuck in `draft`
+- rows whose display name implies alias work is still missing
+- rows with boolean/taxonomy consistency warnings
+
+To split the queue into focused CSV packets:
+
+```bash
+python3 scripts/split_ingredient_reference_work_packets.py \
+  --queue-json artifacts/ingredient_reference_review_queue.json \
+  --out-dir artifacts/ingredient_reference_work_packets
+```
+
+See the controlled vocabulary reference:
+
+- [ingredient_reference_controlled_vocabulary_v1.md](/Users/pengchydan/dev/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/docs/runbooks/ingredient_reference_controlled_vocabulary_v1.md)
+
+To generate deterministic alias backfill proposals:
+
+```bash
+python3 scripts/propose_ingredient_alias_backfill.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --out-json artifacts/ingredient_alias_backfill_proposals.json \
+  --out-csv artifacts/ingredient_alias_backfill_proposals.csv
+```
+
+This proposal step is conservative:
+
+- it proposes only safe aliases from display names and label variants
+- it distinguishes `common_alias` from `exact_label_alias`
+- it leaves ambiguous rows marked for manual review
+
+To export apply-ready workbook patches from those proposals:
+
+```bash
+python3 scripts/export_ingredient_alias_writeback_patch.py \
+  --proposal-json artifacts/ingredient_alias_backfill_proposals.json \
+  --out-apply-csv artifacts/ingredient_alias_backfill_writeback_patch.csv \
+  --out-manual-csv artifacts/ingredient_alias_backfill_manual_review.csv
+```
+
+This export step keeps the workflow conservative:
+
+- only `high` confidence proposals are included in the writeback patch
+- only `exact_label_alias` and `common_alias` are auto-promoted
+- everything else is preserved in a manual-review remainder file
+
+To apply that patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_alias_writeback_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_alias_backfill_writeback_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_alias_patched.xlsx \
+  --out-report-json artifacts/ingredient_reference_alias_patch_report.json
+```
+
+This apply step is still conservative:
+
+- it never overwrites the source workbook
+- it matches rows by `record_id`
+- it skips rows if current workbook values no longer match the expected pre-patch values
+
+To compare pre-patch and post-patch review queues:
+
+```bash
+python3 scripts/compare_ingredient_review_queue_runs.py \
+  --before-json artifacts/ingredient_reference_review_queue_before.json \
+  --after-json artifacts/ingredient_reference_review_queue_after.json \
+  --out-json artifacts/ingredient_reference_review_queue_delta.json
+```
+
+This comparison step helps quantify the patch effect:
+
+- column fill improvement before vs after
+- review reason reduction, such as `missing_aliases_common`
+- priority bucket shrinkage after deterministic backfill
+
+To generate deterministic parser note proposals:
+
+```bash
+python3 scripts/propose_ingredient_parser_notes_backfill.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --out-json artifacts/ingredient_parser_notes_backfill_proposals.json \
+  --out-csv artifacts/ingredient_parser_notes_backfill_proposals.csv
+```
+
+This parser note proposal step is conservative:
+
+- it only proposes short parser-facing notes
+- it uses strong structural cues such as botanical names, peptide numbering, or PEG/ethoxylate notation
+- rows without a safe template stay marked for manual review
+
+To export apply-ready parser note workbook patches from those proposals:
+
+```bash
+python3 scripts/export_ingredient_parser_notes_writeback_patch.py \
+  --proposal-json artifacts/ingredient_parser_notes_backfill_proposals.json \
+  --out-apply-csv artifacts/ingredient_parser_notes_backfill_writeback_patch.csv \
+  --out-manual-csv artifacts/ingredient_parser_notes_backfill_manual_review.csv
+```
+
+This export step keeps the workflow conservative:
+
+- only `high` confidence parser-note proposals are included in the writeback patch
+- rows still marked for manual review stay in the remainder CSV
+
+To apply that parser-note patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_parser_notes_writeback_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_parser_notes_backfill_writeback_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_parser_notes_patched.xlsx \
+  --out-report-json artifacts/ingredient_reference_parser_notes_patch_report.json
+```
+
+This apply step is still conservative:
+
+- it never overwrites the source workbook
+- it matches rows by `record_id`
+- it skips rows if current workbook values no longer match the expected pre-patch values
+
+To turn medium-confidence parser-note proposals into a decision-ready packet:
+
+```bash
+python3 scripts/build_ingredient_parser_notes_review_packet.py \
+  --proposal-json artifacts/ingredient_parser_notes_backfill_proposals.json \
+  --out-csv artifacts/ingredient_parser_notes_review_packet.csv \
+  --out-json artifacts/ingredient_parser_notes_review_packet.json
+```
+
+This packet step is still conservative:
+
+- it does not auto-approve medium-confidence note proposals
+- it pre-fills the suggested note into `approved_notes_for_parser`
+- the reviewer still has to set `decision`
+
+To export apply-ready parser-note patches from a reviewed packet:
+
+```bash
+python3 scripts/export_ingredient_parser_notes_review_patch.py \
+  --decision-csv artifacts/ingredient_parser_notes_review_packet.csv \
+  --out-apply-csv artifacts/ingredient_parser_notes_review_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_parser_notes_review_remainder.csv
+```
+
+Decision values are:
+
+- `approve_suggestion`
+- `approve_override`
+- `reject_no_note`
+- `needs_research`
+
+To conservatively batch-approve only selected parser-note templates:
+
+```bash
+python3 scripts/autofill_ingredient_parser_notes_review_decisions.py \
+  --decision-csv artifacts/ingredient_parser_notes_review_packet.csv \
+  --out-csv artifacts/ingredient_parser_notes_review_packet_autofilled.csv \
+  --approve-template separator_sensitive \
+  --approve-template ferment_shorthand \
+  --only-empty-decision
+```
+
+This batch step stays conservative:
+
+- it only touches rows whose `proposal_template` is explicitly named
+- it can leave subjective templates such as `marketing_shorthand` for manual review
+- it writes a new decision CSV rather than overwriting the source packet
+
+To build a workbench for the remaining alias manual-review rows:
+
+```bash
+python3 scripts/build_ingredient_alias_manual_review_workbench.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --manual-csv artifacts/ingredient_alias_backfill_manual_review.csv \
+  --out-json artifacts/ingredient_alias_manual_review_workbench.json \
+  --out-csv artifacts/ingredient_alias_manual_review_workbench.csv
+```
+
+This workbench step does not auto-apply anything:
+
+- it enriches the remaining alias rows with workbook context
+- it highlights a small set of safe candidate aliases
+- it separates likely `no_safe_common_alias` rows from the true research cases
+
+To export apply-ready patches from that alias manual-review workbench:
+
+```bash
+python3 scripts/export_ingredient_alias_manual_workbench_patch.py \
+  --workbench-json artifacts/ingredient_alias_manual_review_workbench.json \
+  --out-apply-csv artifacts/ingredient_alias_manual_workbench_apply_patch.csv \
+  --out-manual-csv artifacts/ingredient_alias_manual_workbench_manual_confirmation.csv \
+  --out-no-safe-csv artifacts/ingredient_alias_manual_workbench_no_safe_alias.csv
+```
+
+This export step stays conservative:
+
+- only `candidate_alias_high_confidence` rows are promoted into an apply-ready patch
+- `candidate_alias_manual_confirmation` rows are kept separate for review
+- likely `no_safe_common_alias` rows are split into their own triage file
+
+To turn the `candidate_alias_manual_confirmation` rows into a decision-ready packet:
+
+```bash
+python3 scripts/build_ingredient_alias_manual_confirmation_packet.py \
+  --manual-csv artifacts/ingredient_alias_manual_workbench_manual_confirmation.csv \
+  --out-csv artifacts/ingredient_alias_manual_confirmation_packet.csv \
+  --out-json artifacts/ingredient_alias_manual_confirmation_packet.json
+```
+
+This packet step is still conservative:
+
+- it does not auto-approve any alias
+- it pre-fills the suggested alias into `approved_*` columns for faster review
+- the reviewer still has to set `decision`
+
+To export apply-ready patches from a reviewed manual-confirmation packet:
+
+```bash
+python3 scripts/export_ingredient_alias_manual_confirmation_patch.py \
+  --decision-csv artifacts/ingredient_alias_manual_confirmation_packet.csv \
+  --out-apply-csv artifacts/ingredient_alias_manual_confirmation_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_alias_manual_confirmation_remainder.csv
+```
+
+Decision values are:
+
+- `approve_suggestion`
+- `approve_override`
+- `reject_no_alias`
+- `needs_research`
+
+To overlay a tiny curated set of exact or well-established ingredient synonyms onto the remaining alias gaps:
+
+```bash
+python3 scripts/propose_ingredient_curated_alias_overlay.py \
+  --alias-gap-csv artifacts/ingredient_reference_work_packets/alias_backfill.csv \
+  --out-apply-csv artifacts/ingredient_curated_alias_overlay_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_curated_alias_overlay_remainder.csv \
+  --out-json artifacts/ingredient_curated_alias_overlay_summary.json
+```
+
+This curated overlay stays narrow:
+
+- it only matches a small hand-curated map of stable synonym cases
+- it does not invent marketing aliases
+- it leaves the unmatched tail in a remainder CSV
+
+To overlay a tiny curated set of parser-note cases onto the remaining note gaps:
+
+```bash
+python3 scripts/propose_ingredient_curated_parser_notes_overlay.py \
+  --parser-gap-csv artifacts/ingredient_reference_work_packets/parser_notes_backfill.csv \
+  --out-apply-csv artifacts/ingredient_curated_parser_notes_overlay_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_curated_parser_notes_overlay_remainder.csv \
+  --out-json artifacts/ingredient_curated_parser_notes_overlay_summary.json
+```
+
+This curated parser-note overlay stays narrow:
+
+- it only matches a small hand-curated set of stable shorthand or prefix-sensitive cases
+- it does not try to generate generic notes for the long tail
+- it leaves unmatched rows in a remainder CSV
+
+To overlay a narrow set of ingredient-family promotions onto obvious `other` rows:
+
+```bash
+python3 scripts/propose_ingredient_curated_family_overlay.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --family-review-csv artifacts/ingredient_reference_work_packets/ingredient_family_review.csv \
+  --out-apply-csv artifacts/ingredient_curated_family_overlay_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_curated_family_overlay_remainder.csv \
+  --out-json artifacts/ingredient_curated_family_overlay_summary.json
+```
+
+This family overlay stays narrow:
+
+- it only promotes obvious `emollient`, explicit `surfactant`, a small curated botanical subset, and a tiny set of exact vitamin/exfoliant cases
+- it does not try to resolve every `other` row automatically
+- it leaves the remainder for explicit review
+
+To apply that family patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_family_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_curated_family_overlay_apply_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_family_patched.xlsx \
+  --out-report-json artifacts/ingredient_reference_family_patch_report.json
+```
+
+To turn the remaining `ingredient_family=other` rows into a decision-ready confirmation packet:
+
+```bash
+python3 scripts/build_ingredient_family_other_confirmation_packet.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --family-review-csv artifacts/ingredient_reference_work_packets/ingredient_family_review.csv \
+  --out-csv artifacts/ingredient_family_other_confirmation_packet.csv \
+  --out-json artifacts/ingredient_family_other_confirmation_packet.json
+```
+
+This packet step is for the true family tail:
+
+- it is meant for rows that still do not fit a stronger controlled family after the curated overlay
+- it records a confirmed `other` outcome explicitly instead of keeping those rows permanently open
+
+To export review-note patches from that reviewed family-other packet:
+
+```bash
+python3 scripts/export_ingredient_family_other_confirmation_patch.py \
+  --decision-csv artifacts/ingredient_family_other_confirmation_packet.csv \
+  --out-apply-csv artifacts/ingredient_family_other_confirmation_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_family_other_confirmation_remainder.csv
+```
+
+Decision values are:
+
+- `confirm_ingredient_family_other`
+- `keep_open`
+- `needs_research`
+
+To apply that family-other review-note patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_review_notes_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_family_other_confirmation_apply_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_family_other_reviewed.xlsx \
+  --out-report-json artifacts/ingredient_reference_family_other_reviewed_report.json
+```
+
+This family-other review-note patch step is still conservative:
+
+- it never overwrites the source workbook
+- it matches rows by `record_id`
+- it skips rows if current `review_notes` no longer match the expected pre-patch value
+- the review queue suppresses `ingredient_family_other_review` only when `review_notes` explicitly contains `confirmed_ingredient_family_other`
+
+To batch-promote rows from `draft` to `reviewed` once only status/confidence reasons remain:
+
+```bash
+python3 scripts/export_ingredient_review_status_writeback_patch.py \
+  --queue-json artifacts/ingredient_reference_review_queue.json \
+  --out-apply-csv artifacts/ingredient_review_status_writeback_patch.csv \
+  --out-remainder-csv artifacts/ingredient_review_status_writeback_remainder.csv
+```
+
+This review-status export step is conservative:
+
+- it only promotes rows whose remaining queue reasons are limited to `review_status_still_draft` and optional confidence warnings
+- it does not touch rows that still have alias, parser, family, or taxonomy reasons
+
+To apply that review-status patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_review_status_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_review_status_writeback_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_review_status_patched.xlsx \
+  --out-report-json artifacts/ingredient_reference_review_status_patch_report.json
+```
+
+To turn remaining confidence-only rows into a decision-ready packet:
+
+```bash
+python3 scripts/build_ingredient_confidence_confirmation_packet.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --status-confidence-csv artifacts/ingredient_reference_work_packets/status_confidence_review.csv \
+  --out-csv artifacts/ingredient_confidence_confirmation_packet.csv \
+  --out-json artifacts/ingredient_confidence_confirmation_packet.json
+```
+
+This confidence packet stays conservative:
+
+- it defaults to confirming the current confidence rather than auto-promoting to `high`
+- it leaves room for explicit `set_high` or `set_low` overrides on selected rows
+
+To export patch rows from that reviewed confidence packet:
+
+```bash
+python3 scripts/export_ingredient_confidence_confirmation_patch.py \
+  --decision-csv artifacts/ingredient_confidence_confirmation_packet.csv \
+  --out-confidence-apply-csv artifacts/ingredient_confidence_apply_patch.csv \
+  --out-review-notes-apply-csv artifacts/ingredient_confidence_review_notes_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_confidence_confirmation_remainder.csv
+```
+
+Decision values are:
+
+- `confirm_current_confidence`
+- `set_high`
+- `set_low`
+- `needs_research`
+
+To apply any confidence-value overrides into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_confidence_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_confidence_apply_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_confidence_patched.xlsx \
+  --out-report-json artifacts/ingredient_reference_confidence_patch_report.json
+```
+
+For confirmed medium/low rows, apply the companion review-notes patch with:
+
+```bash
+python3 scripts/apply_ingredient_review_notes_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_confidence_review_notes_apply_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_confidence_confirmed.xlsx \
+  --out-report-json artifacts/ingredient_reference_confidence_confirmed_report.json
+```
+
+This confidence confirmation workflow stays conservative:
+
+- it preserves `medium` or `low` when that is the intended reviewed state
+- the review queue suppresses confidence warnings only when `review_notes` explicitly contains `confirmed_confidence_medium` or `confirmed_confidence_low`
+
+To turn the remaining alias-gap rows into a decision-ready packet for `no safe common alias` confirmation:
+
+```bash
+python3 scripts/build_ingredient_alias_no_safe_confirmation_packet.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --alias-gap-csv artifacts/ingredient_reference_work_packets/alias_backfill.csv \
+  --out-csv artifacts/ingredient_alias_no_safe_confirmation_packet.csv \
+  --out-json artifacts/ingredient_alias_no_safe_confirmation_packet.json
+```
+
+This packet step is for the true tail:
+
+- it is meant for rows where no reliable consumer/common alias should be added
+- it records review as an explicit outcome instead of leaving the row in perpetual alias-gap state
+
+To export review-note patches from that reviewed no-safe packet:
+
+```bash
+python3 scripts/export_ingredient_alias_no_safe_confirmation_patch.py \
+  --decision-csv artifacts/ingredient_alias_no_safe_confirmation_packet.csv \
+  --out-apply-csv artifacts/ingredient_alias_no_safe_confirmation_apply_patch.csv \
+  --out-remainder-csv artifacts/ingredient_alias_no_safe_confirmation_remainder.csv
+```
+
+Decision values are:
+
+- `confirm_no_safe_common_alias`
+- `keep_open`
+- `needs_research`
+
+To apply that review-note patch into a new workbook copy:
+
+```bash
+python3 scripts/apply_ingredient_review_notes_patch.py \
+  --ingredient-xlsx /path/to/ingredient_reference.xlsx \
+  --patch-csv artifacts/ingredient_alias_no_safe_confirmation_apply_patch.csv \
+  --out-xlsx artifacts/ingredient_reference_no_safe_alias_reviewed.xlsx \
+  --out-report-json artifacts/ingredient_reference_no_safe_alias_reviewed_report.json
+```
+
+This review-note patch step is still conservative:
+
+- it never overwrites the source workbook
+- it matches rows by `record_id`
+- it skips rows if current `review_notes` no longer match the expected pre-patch value
+- the review queue suppresses `missing_aliases_common` only when `review_notes` explicitly contains `confirmed_no_safe_common_alias`
+
+## Current Priority
+
+For the current workbook, the most useful next improvements are:
+
+1. fill `aliases_common`
+2. lock `parser_variants` formatting
+3. lock `normalized_key` generation rule
+4. convert taxonomy columns toward controlled vocabularies
+5. add `review_status` and `confidence`

@@ -18,6 +18,7 @@ describe('GET /api/admin/catalog-cache-diagnostics', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../src/auroraBff/routes');
     jest.dontMock('../src/db');
     jest.resetModules();
     if (prevEnv.ADMIN_API_KEY === undefined) delete process.env.ADMIN_API_KEY;

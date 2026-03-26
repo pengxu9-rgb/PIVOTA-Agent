@@ -20,10 +20,10 @@ crontab -e
 
 # 添加以下行：
 # 每5分钟检查健康状态
-*/5 * * * * /Users/pengchydan/Desktop/Pivota\ Agent/monitor-pivota.sh >> /tmp/pivota-monitor.log 2>&1
+*/5 * * * * $HOME/dev/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/monitor-pivota.sh >> /tmp/pivota-monitor.log 2>&1
 
 # 每小时检查后端修复状态
-0 * * * * /Users/pengchydan/Desktop/Pivota\ Agent/check-backend-fixes.sh >> /tmp/pivota-fixes.log 2>&1
+0 * * * * $HOME/dev/Pivota-cursor-create-project-directory-structure-8344/pivota-agent-backend/check-backend-fixes.sh >> /tmp/pivota-fixes.log 2>&1
 ```
 
 ## 3. 日志查看
