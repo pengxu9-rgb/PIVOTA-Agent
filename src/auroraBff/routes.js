@@ -13,6 +13,12 @@ const {
   sanitizeCandidates: sanitizeDupeCandidatesV2,
 } = require('./skills/dupe_utils');
 const { buildRequestContext } = require('./requestContext');
+const { createSkinDeepeningRuntime } = require('./skinDeepeningRuntime');
+const { createProductIntelBackfillRuntime } = require('./productIntelBackfillRuntime');
+const { createProductIntelUpstreamRuntime } = require('./productIntelUpstreamRuntime');
+const { createSkinAnalysisBackfillRuntime } = require('./skinAnalysisBackfillRuntime');
+const { createPhotoFallbackRuntime } = require('./photoFallbackRuntime');
+const { createRecoDogfoodEnvelopeRuntime } = require('./recoDogfoodEnvelopeRuntime');
 const { buildEnvelope, makeAssistantMessage, makeEvent } = require('./envelope');
 const { createStageProfiler } = require('./skinAnalysisProfiling');
 const { runSkinDiagnosisV1, summarizeDiagnosisForPolicy, buildSkinAnalysisFromDiagnosisV1 } = require('./skinDiagnosisV1');
@@ -244,110 +250,15 @@ const AURORA_BFF_RECO_STEP_AWARE_SHADOW_COMPARE_ENABLED = (() => {
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
-function resolveSkinDeepeningPromptVersion(promptVersion) {
-  const token = String(promptVersion || '').trim().toLowerCase();
-  if (!token) return 'skin_deepening_v2_canonical';
-  if (token === 'skin_v3' || token === 'skin_v3_canonical' || token.includes('v3_canonical')) return 'skin_deepening_v2_canonical';
-  if (token === 'skin_deepening_v2_canonical' || token.includes('deepening_v2')) return token;
-  return 'skin_deepening_v2_canonical';
-}
-
-function extractSkinDeepeningSymptoms(recentLogsSummary) {
-  const logs = Array.isArray(recentLogsSummary) ? recentLogsSummary : [];
-  const out = [];
-  const pushToken = (raw) => {
-    if (typeof raw !== 'string') return;
-    const text = raw.trim();
-    if (!text) return;
-    out.push(text);
-  };
-  for (const item of logs.slice(0, 7)) {
-    if (!item || typeof item !== 'object') continue;
-    pushToken(item.reaction);
-    pushToken(item.symptom);
-    pushToken(item.note);
-    pushToken(item.notes);
-    pushToken(item.message);
-    if (Array.isArray(item.reactions)) {
-      for (const reaction of item.reactions) pushToken(reaction);
-    }
-    if (Array.isArray(item.symptoms)) {
-      for (const symptom of item.symptoms) pushToken(symptom);
-    }
-  }
-  return Array.from(new Set(out)).slice(0, 6);
-}
-
-function resolveSkinDeepeningPhase({
-  userRequestedPhoto,
-  photosProvided,
-  hasRoutine,
-  qualityObject,
-  observations,
-  userReportedSymptoms,
-} = {}) {
-  if (!userRequestedPhoto || !photosProvided) {
-    return { phase: 'photo_optin', question_intent: 'photo_upload', reason: 'photo_missing' };
-  }
-  if (!hasRoutine) {
-    return { phase: 'products', question_intent: 'routine_share', reason: 'routine_missing' };
-  }
-  const gate = shouldFireDeepening({
-    qualityObject,
-    observations,
-    userReportedSymptoms,
-  });
-  if (gate.fire) {
-    return { phase: 'reactions', question_intent: 'reaction_check', reason: gate.reason || 'needs_deepening' };
-  }
-  return { phase: 'refined', question_intent: 'confirm_plan', reason: 'stable_plan' };
-}
-
-function buildMainlineDeepeningDto({
-  language,
-  promptVersion,
-  userRequestedPhoto,
-  photosProvided,
-  hasRoutine,
-  routineCandidate,
-  profileSummary,
-  recentLogsSummary,
-  qualityObject,
-  reportCanonical,
-  visionCanonical,
-} = {}) {
-  const observations =
-    reportCanonical && Array.isArray(reportCanonical.insights) && reportCanonical.insights.length
-      ? reportCanonical.insights
-      : visionCanonical && Array.isArray(visionCanonical.observations)
-        ? visionCanonical.observations
-        : [];
-  const reactions = extractSkinDeepeningSymptoms(recentLogsSummary);
-  const phasePlan = resolveSkinDeepeningPhase({
-    userRequestedPhoto,
-    photosProvided,
-    hasRoutine,
-    qualityObject,
-    observations,
-    userReportedSymptoms: reactions,
-  });
-  return {
-    dto: buildDeepeningSignalsDto({
-      phase: phasePlan.phase,
-      questionIntent: phasePlan.question_intent,
-      photoChoice: userRequestedPhoto && photosProvided ? 'uploaded' : 'unknown',
-      productsSubmitted: hasRoutine,
-      routineCandidate,
-      reactions,
-      summaryPriority: reportCanonical && reportCanonical.summary_focus ? reportCanonical.summary_focus.priority : 'mixed',
-      watchouts: reportCanonical && Array.isArray(reportCanonical.watchouts) ? reportCanonical.watchouts : [],
-      twoWeekFocus: reportCanonical && Array.isArray(reportCanonical.two_week_focus) ? reportCanonical.two_week_focus : [],
-      qualityObject,
-    }),
-    promptVersion: resolveSkinDeepeningPromptVersion(promptVersion),
-    phasePlan,
-  };
-}
+const {
+  resolveSkinDeepeningPromptVersion,
+  extractSkinDeepeningSymptoms,
+  resolveSkinDeepeningPhase,
+  buildMainlineDeepeningDto,
+} = createSkinDeepeningRuntime({
+  shouldFireDeepening,
+  buildDeepeningSignalsDto,
+});
 const { runGeminiShadowVerify } = require('./diagVerify');
 const { getDiagRolloutDecision } = require('./diagRollout');
 const { assignExperiments } = require('./experiments');
@@ -9508,116 +9419,30 @@ function annotateProductIntelKbWriteDecision(payload, decision) {
   return p;
 }
 
-function scheduleProductIntelKbBackfill({
-  productUrl,
-  parsedProduct = null,
-  productHint = '',
-  payload = null,
-  lang = 'EN',
-  source = 'url_realtime_product_intel',
-  sourceMeta = null,
-  logger,
-} = {}) {
-  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) {
-    annotateProductIntelKbWriteDecision(payload, {
-      attempted: false,
-      persisted: false,
-      blocked_reason: 'kb_backfill_disabled',
+const {
+  scheduleProductIntelKbBackfill,
+} = createProductIntelBackfillRuntime({
+  PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED,
+  annotateProductIntelKbWriteDecision,
+  buildProductIntelKbKey,
+  annotateProductIntelRelaxedProvenance,
+  shouldPersistProductIntelKb,
+  resolveProductIntelKbKeyQuality,
+  collectProductGuardrailFlags,
+  resolveProductAnalysisConfidenceBand,
+  resolveProductAnalysisQualityBand,
+  AURORA_KB_WRITE_POLICY,
+  AURORA_KB_SERVE_POLICY,
+  AURORA_RULE_RELAX_MODE,
+  scheduleDetachedAsyncJob(job) {
+    setImmediate(() => {
+      Promise.resolve()
+        .then(job)
+        .catch(() => null);
     });
-    return { attempted: false, persisted: false, blocked_reason: 'kb_backfill_disabled' };
-  }
-  const kbKey = buildProductIntelKbKey({ productUrl, parsedProduct, lang, productHint });
-  if (!kbKey) {
-    annotateProductIntelKbWriteDecision(payload, {
-      attempted: false,
-      persisted: false,
-      blocked_reason: 'kb_key_missing',
-    });
-    return { attempted: false, persisted: false, blocked_reason: 'kb_key_missing' };
-  }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return { attempted: false, persisted: false, blocked_reason: 'payload_missing' };
-  }
-  annotateProductIntelRelaxedProvenance(payload);
-
-  let analysisSnapshot = null;
-  try {
-    analysisSnapshot = JSON.parse(JSON.stringify(payload));
-  } catch {
-    analysisSnapshot = null;
-  }
-  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) {
-    annotateProductIntelKbWriteDecision(payload, {
-      attempted: false,
-      persisted: false,
-      blocked_reason: 'payload_snapshot_failed',
-    });
-    return { attempted: false, persisted: false, blocked_reason: 'payload_snapshot_failed' };
-  }
-
-  const sourceMetaObj = sourceMeta && typeof sourceMeta === 'object' && !Array.isArray(sourceMeta) ? sourceMeta : null;
-  const persistDecision = shouldPersistProductIntelKb(payload, sourceMetaObj);
-  annotateProductIntelKbWriteDecision(payload, persistDecision);
-  if (!persistDecision.persisted) {
-    logger?.debug?.(
-      {
-        kb_key: kbKey,
-        blocked_reason: persistDecision.blocked_reason || 'kb_write_blocked',
-      },
-      'aurora bff: skipped product-intel kb backfill by strict gate',
-    );
-    return persistDecision;
-  }
-  try {
-    analysisSnapshot = JSON.parse(JSON.stringify(payload));
-  } catch {
-    analysisSnapshot = null;
-  }
-  if (!analysisSnapshot || typeof analysisSnapshot !== 'object' || Array.isArray(analysisSnapshot)) {
-    return { attempted: false, persisted: false, blocked_reason: 'payload_snapshot_failed' };
-  }
-  annotateProductIntelRelaxedProvenance(analysisSnapshot);
-  const keyQuality = resolveProductIntelKbKeyQuality({ productUrl, parsedProduct, productHint, lang });
-  const guardrailFlags = collectProductGuardrailFlags(analysisSnapshot);
-  const confidenceBand = resolveProductAnalysisConfidenceBand(analysisSnapshot);
-  const qualityBand = resolveProductAnalysisQualityBand(analysisSnapshot);
-  const mergedSourceMeta = {
-    ...(sourceMetaObj || {}),
-    key_quality:
-      sourceMetaObj && typeof sourceMetaObj.key_quality === 'string' && sourceMetaObj.key_quality.trim()
-        ? sourceMetaObj.key_quality.trim()
-        : keyQuality,
-    kb_write: {
-      attempted: persistDecision.attempted === true,
-      persisted: persistDecision.persisted === true,
-      blocked_reason: persistDecision.blocked_reason ? String(persistDecision.blocked_reason) : null,
-      audit_blocked_reason: persistDecision.audit_blocked_reason ? String(persistDecision.audit_blocked_reason) : null,
-      policy: persistDecision.policy ? String(persistDecision.policy) : AURORA_KB_WRITE_POLICY,
-    },
-    kb_write_policy: AURORA_KB_WRITE_POLICY,
-    kb_serve_policy: AURORA_KB_SERVE_POLICY,
-    gate_relax_mode: AURORA_RULE_RELAX_MODE,
-    confidence_band: confidenceBand,
-    quality_grade: qualityBand,
-    guardrail_flags: guardrailFlags,
-  };
-  setImmediate(() => {
-    upsertProductIntelKbEntry({
-      kb_key: kbKey,
-      analysis: analysisSnapshot,
-      source,
-      source_meta: mergedSourceMeta,
-      last_success_at: new Date().toISOString(),
-      last_error: null,
-    }).catch((err) => {
-      logger?.warn(
-        { err: err?.message || String(err), kb_key: kbKey },
-        'aurora bff: async product-intel kb backfill failed',
-      );
-    });
-  });
-  return persistDecision;
-}
+  },
+  upsertProductIntelKbEntry,
+});
 
 function isLikelyNoiseCompetitorName(name) {
   const text = String(name || '').trim().toLowerCase();
@@ -10617,306 +10442,6 @@ function buildRecoBlocksRouterCtx() {
     allow_same_brand_competitors: false,
     allow_same_brand_dupes: false,
   };
-}
-
-function getRecoDogfoodSessionId(req, ctx, explicitSessionId = '') {
-  const fromBody = pickFirstTrimmed(explicitSessionId);
-  if (fromBody) return fromBody;
-  const fromHeader = pickFirstTrimmed(
-    req?.get?.('X-Session-ID'),
-    req?.get?.('x-session-id'),
-    req?.headers?.['x-session-id'],
-  );
-  if (fromHeader) return fromHeader;
-  return pickFirstTrimmed(ctx?.aurora_uid, ctx?.trace_id, ctx?.request_id, 'anonymous');
-}
-
-function normalizeDogfoodFeaturesEffective(raw = null, { autoRollback = false } = {}) {
-  const src = isPlainObject(raw) ? raw : {};
-  const baseline = {
-    interleave: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.interleave.enabled),
-    exploration: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.exploration.enabled),
-    async_rerank: Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.ui.allow_block_internal_rerank_on_async),
-    show_employee_feedback_controls: Boolean(
-      RECO_DOGFOOD_CONFIG.dogfood_mode && RECO_DOGFOOD_CONFIG.ui.show_employee_feedback_controls,
-    ),
-  };
-  const merged = {
-    interleave: src.interleave == null ? baseline.interleave : Boolean(src.interleave),
-    exploration: src.exploration == null ? baseline.exploration : Boolean(src.exploration),
-    async_rerank: src.async_rerank == null ? baseline.async_rerank : Boolean(src.async_rerank),
-    show_employee_feedback_controls:
-      src.show_employee_feedback_controls == null
-        ? baseline.show_employee_feedback_controls
-        : Boolean(src.show_employee_feedback_controls),
-  };
-  if (!autoRollback) return merged;
-  return {
-    ...merged,
-    interleave: false,
-    exploration: false,
-    async_rerank: false,
-    show_employee_feedback_controls: false,
-  };
-}
-
-function getRecoBlockCandidates(payload, block) {
-  const obj = isPlainObject(payload?.[block]) ? payload[block] : {};
-  return Array.isArray(obj.candidates) ? obj.candidates : [];
-}
-
-function scheduleDogfoodAsyncBlockPatches({
-  ticketId,
-  payload,
-  mode = 'main_path',
-  logger,
-  allowAsyncRerank = false,
-  lang = 'EN',
-} = {}) {
-  if (!RECO_DOGFOOD_CONFIG.dogfood_mode) return;
-  if (!allowAsyncRerank) return;
-  const ticket = String(ticketId || '').trim();
-  if (!ticket) return;
-  const sourcePayload = isPlainObject(payload) ? payload : {};
-  setTimeout(() => {
-    social_enrich_async({
-      logger,
-      mode,
-      lang,
-      payload: sourcePayload,
-      skip_kb_write: true,
-      apply_async_patch: ({ block, next_candidates }) =>
-        applyAsyncBlockPatch({
-          ticketId: ticket,
-          block,
-          nextCandidates: Array.isArray(next_candidates) ? next_candidates : [],
-        }),
-      on_async_update: ({ block, result, changed_count }) => {
-        const changedCount = Number.isFinite(Number(changed_count)) ? Math.max(0, Math.trunc(Number(changed_count))) : 0;
-        const normalizedResult = String(result || '').trim().toLowerCase() || 'skipped';
-        recordRecoAsyncUpdate({
-          block,
-          result: normalizedResult,
-          mode,
-          changedCount,
-        });
-        logger?.info?.(
-          {
-            event_name: 'reco_async_update',
-            ticket_id: ticket,
-            block,
-            mode,
-            result: normalizedResult,
-            changed_count: changedCount,
-          },
-          'aurora bff: reco async update',
-        );
-      },
-    });
-  }, 180);
-}
-
-function augmentProductAnalysisPayloadForDogfood({
-  payload,
-  req,
-  ctx,
-  mode = 'main_path',
-  cardId = '',
-  sessionId = '',
-  logger,
-} = {}) {
-  const p = isPlainObject(payload) ? payload : null;
-  if (!p) return payload;
-
-  const provenance = isPlainObject(p.provenance) ? { ...p.provenance } : {};
-  const autoRollback = provenance.auto_rollback_flag === true || provenance.guardrail_circuit_open === true;
-  const featuresEffective = normalizeDogfoodFeaturesEffective(provenance.dogfood_features_effective, {
-    autoRollback,
-  });
-  provenance.dogfood_mode = Boolean(RECO_DOGFOOD_CONFIG.dogfood_mode);
-  provenance.dogfood_features_effective = featuresEffective;
-  provenance.interleave = isPlainObject(provenance.interleave)
-    ? provenance.interleave
-    : {
-      enabled: featuresEffective.interleave,
-      rankerA: RECO_DOGFOOD_CONFIG.interleave.rankerA,
-      rankerB: RECO_DOGFOOD_CONFIG.interleave.rankerB,
-    };
-  provenance.lock_top_n_on_first_paint = RECO_DOGFOOD_CONFIG.ui.lock_top_n_on_first_paint;
-
-  const anchorProductId = pickFirstTrimmed(
-    p?.assessment?.anchor_product?.product_id,
-    p?.assessment?.anchor_product?.sku_id,
-    p?.assessment?.anchor_product?.name,
-  );
-  const blocks = {
-    competitors: getRecoBlockCandidates(p, 'competitors'),
-    related_products: getRecoBlockCandidates(p, 'related_products'),
-    dupes: getRecoBlockCandidates(p, 'dupes'),
-  };
-
-  const trackingPayload = isPlainObject(p.candidate_tracking)
-    ? p.candidate_tracking
-    : isPlainObject(p.tracking)
-      ? p.tracking
-      : null;
-  const trackingByBlock = isPlainObject(trackingPayload?.by_block) ? trackingPayload.by_block : null;
-  const interleaveAttributionByBlock = isPlainObject(trackingPayload?.interleave_attribution_by_block)
-    ? trackingPayload.interleave_attribution_by_block
-    : null;
-  const explorationKeysByBlock = isPlainObject(trackingPayload?.exploration_keys_by_block)
-    ? trackingPayload.exploration_keys_by_block
-    : null;
-
-  if (RECO_DOGFOOD_CONFIG.dogfood_mode) {
-    registerRecoTrackingSnapshot({
-      requestId: ctx?.request_id,
-      sessionId: getRecoDogfoodSessionId(req, ctx, sessionId),
-      anchorProductId,
-      blocks,
-      trackingByBlock,
-      interleaveAttribution: interleaveAttributionByBlock,
-      explorationKeys: explorationKeysByBlock,
-      ttlMs: RECO_DOGFOOD_CONFIG.async.poll_ttl_ms,
-    });
-
-    const ticket = createAsyncTicket({
-      requestId: ctx?.request_id,
-      cardId,
-      lockTopN: RECO_DOGFOOD_CONFIG.ui.lock_top_n_on_first_paint,
-      initialPayload: {
-        competitors: p.competitors,
-        related_products: p.related_products,
-        dupes: p.dupes,
-        provenance,
-      },
-      ttlMs: RECO_DOGFOOD_CONFIG.async.poll_ttl_ms,
-    });
-    provenance.async_ticket_id = ticket.ticketId;
-    scheduleDogfoodAsyncBlockPatches({
-      ticketId: ticket.ticketId,
-      payload: p,
-      mode,
-      logger,
-      allowAsyncRerank: featuresEffective.async_rerank === true,
-      lang: ctx?.lang,
-    });
-  }
-
-  for (const block of ['competitors', 'related_products', 'dupes']) {
-    const map = isPlainObject(trackingByBlock?.[block]) ? trackingByBlock[block] : null;
-    if (!map) continue;
-    const explorationCount = Object.values(map).reduce(
-      (sum, entry) => sum + (isPlainObject(entry) && entry.was_exploration_slot === true ? 1 : 0),
-      0,
-    );
-    if (explorationCount > 0) {
-      recordRecoExplorationSlot({
-        block,
-        mode,
-        delta: explorationCount,
-      });
-    }
-  }
-
-  const nextPayload = {
-    ...p,
-    provenance,
-  };
-  delete nextPayload.candidate_tracking;
-  delete nextPayload.candidate_tracking_internal;
-  delete nextPayload.internal_attribution;
-  delete nextPayload.tracking;
-  if (isPlainObject(nextPayload.provenance)) {
-    nextPayload.provenance = { ...nextPayload.provenance };
-    delete nextPayload.provenance.candidate_tracking;
-    delete nextPayload.provenance.candidate_tracking_internal;
-    delete nextPayload.provenance.internal_attribution;
-    delete nextPayload.provenance.internal_reason_codes;
-  }
-  return nextPayload;
-}
-
-function augmentEnvelopeProductAnalysisCardsForDogfood({
-  envelope,
-  req,
-  ctx,
-  mode = 'main_path',
-  sessionId = '',
-  logger,
-} = {}) {
-  const env = isPlainObject(envelope) ? { ...envelope } : envelope;
-  if (!isPlainObject(env)) return envelope;
-  const cards = Array.isArray(env.cards) ? env.cards : [];
-  env.cards = cards.map((card) => {
-    if (!isPlainObject(card)) return card;
-    const type = String(card.type || '').trim().toLowerCase();
-    if (type !== 'product_analysis') return card;
-    return {
-      ...card,
-      payload: augmentProductAnalysisPayloadForDogfood({
-        payload: card.payload,
-        req,
-        ctx,
-        mode,
-        cardId: card.card_id,
-        sessionId,
-        logger,
-      }),
-    };
-  });
-  return env;
-}
-
-async function augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions({
-  envelope,
-  logger,
-} = {}) {
-  if (!RECO_DOGFOOD_CONFIG.dogfood_mode || !RECO_DOGFOOD_CONFIG.prelabel?.enabled) return envelope;
-  const env = isPlainObject(envelope) ? { ...envelope } : envelope;
-  if (!isPlainObject(env)) return envelope;
-  const cards = Array.isArray(env.cards) ? env.cards : [];
-  if (!cards.length) return env;
-
-  env.cards = await Promise.all(
-    cards.map(async (card) => {
-      if (!isPlainObject(card)) return card;
-      const type = String(card.type || '').trim().toLowerCase();
-      if (type !== 'product_analysis') return card;
-      const payload = isPlainObject(card.payload) ? card.payload : null;
-      if (!payload) return card;
-
-      const anchorProductId = pickFirstTrimmed(
-        payload?.assessment?.anchor_product?.product_id,
-        payload?.assessment?.anchor_product?.sku_id,
-        payload?.assessment?.anchorProduct?.product_id,
-        payload?.assessment?.anchorProduct?.sku_id,
-      );
-      if (!anchorProductId) return card;
-
-      try {
-        const suggestions = await loadSuggestionsForAnchor({
-          anchor_product_id: anchorProductId,
-          limit: 220,
-        });
-        if (!Array.isArray(suggestions) || !suggestions.length) return card;
-        return {
-          ...card,
-          payload: attachPrelabelSuggestionsToPayload(payload, suggestions),
-        };
-      } catch (err) {
-        logger?.warn?.(
-          {
-            err: err?.message || String(err),
-            anchor_product_id: anchorProductId,
-          },
-          'aurora bff: attach prelabel suggestions failed',
-        );
-        return card;
-      }
-    }),
-  );
-  return env;
 }
 
 const URL_FETCH_RETRYABLE_STATUSES = new Set([403, 406, 429]);
@@ -19004,224 +18529,21 @@ function renderPlanAsStrategy({ plan, language, photoNotice } = {}) {
   return lines.join('\n').slice(0, 1200);
 }
 
-function normalizePhotoFailureCodeForFallback(code) {
-  const normalized = String(code || '').trim().toUpperCase();
-  if (!normalized) return '';
-  if (
-    normalized === 'DOWNLOAD_URL_GENERATE_FAILED' ||
-    normalized === 'DOWNLOAD_URL_FETCH_4XX' ||
-    normalized === 'DOWNLOAD_URL_FETCH_5XX' ||
-    normalized === 'DOWNLOAD_URL_TIMEOUT' ||
-    normalized === 'DOWNLOAD_URL_EXPIRED' ||
-    normalized === 'DOWNLOAD_URL_DNS' ||
-    normalized === 'MISSING_PRIMARY_INPUT'
-  ) {
-    return normalized;
-  }
-  return '';
-}
+const {
+  normalizePhotoFailureCodeForFallback,
+  buildPhotoFallbackActionCard,
+  renderPhotoFallbackStrategy,
+} = createPhotoFallbackRuntime();
 
-function buildPhotoFallbackActionCard({
-  language,
-  qualityFail,
-  failureCode,
-  photosProvided,
-} = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const normalizedFailure = normalizePhotoFailureCodeForFallback(failureCode);
-  const reasonByCodeEn = {
-    DOWNLOAD_URL_GENERATE_FAILED: "We couldn't generate a secure photo download link.",
-    DOWNLOAD_URL_FETCH_4XX: "Photo access was rejected while fetching bytes (4xx).",
-    DOWNLOAD_URL_FETCH_5XX: 'Photo storage returned a server error while fetching bytes (5xx).',
-    DOWNLOAD_URL_TIMEOUT: 'Photo download timed out before bytes were received.',
-    DOWNLOAD_URL_EXPIRED: 'The signed photo link expired before analysis could start.',
-    DOWNLOAD_URL_DNS: 'Photo storage host lookup failed (DNS/network resolution).',
-    MISSING_PRIMARY_INPUT:
-      'Routine/recent logs are missing, so this run starts from a conservative photo-first baseline before deeper personalization.',
-  };
-  const reasonByCodeZh = {
-    DOWNLOAD_URL_GENERATE_FAILED: '系统未能生成可用的照片下载链接。',
-    DOWNLOAD_URL_FETCH_4XX: '下载照片时访问被拒绝（4xx）。',
-    DOWNLOAD_URL_FETCH_5XX: '下载照片时存储服务返回服务器错误（5xx）。',
-    DOWNLOAD_URL_TIMEOUT: '下载照片超时，未能及时拿到图像字节。',
-    DOWNLOAD_URL_EXPIRED: '签名照片链接已过期，分析前无法继续读取。',
-    DOWNLOAD_URL_DNS: '照片存储域名解析失败（DNS/网络异常）。',
-    MISSING_PRIMARY_INPUT: '缺少 routine/recent logs，本次先走“照片优先 + 保守基线”，再逐步个性化。',
-  };
-
-  let primaryReason = '';
-  if (qualityFail) {
-    primaryReason =
-      lang === 'CN'
-        ? '照片质量未通过（光线/清晰度/覆盖不足），本次无法做可靠的图像分析。'
-        : 'Photo quality failed (lighting/focus/coverage), so image-based analysis is unavailable for this run.';
-  } else if (normalizedFailure) {
-    primaryReason = lang === 'CN' ? reasonByCodeZh[normalizedFailure] || '' : reasonByCodeEn[normalizedFailure] || '';
-  } else if (photosProvided === false) {
-    primaryReason = lang === 'CN' ? '本次没有可用照片，因此无法进行图像分析。' : 'No photo was provided in this run, so image-based analysis is unavailable.';
-  } else {
-    primaryReason =
-      lang === 'CN'
-        ? '本次未能成功读取照片字节，因此无法进行图像分析。'
-        : "We couldn't read photo bytes for this run, so image-based analysis is unavailable.";
-  }
-
-  const guardrailReason =
-    lang === 'CN'
-      ? '为避免误导，本次结果仅基于问卷/历史信息，不会输出照片结论。'
-      : 'To avoid misleading conclusions, this run is questionnaire/history-only.';
-
-  const retakeGuide =
-    lang === 'CN'
-      ? [
-          '自然光拍摄：正对窗户，避免背光与强阴影。',
-          '距离 30–50cm，正脸平视，按引导框对齐：额头和下巴都在框内，鼻子尽量在中心线附近。',
-          '关闭美颜/滤镜，确保对焦清晰且无遮挡（头发/口罩/手）。',
-        ]
-      : [
-          'Use daylight facing a window; avoid backlight and strong shadows.',
-          'Keep 30–50cm distance and align with the guide frame: forehead/chin inside the frame and nose near center line.',
-          'Turn off beauty filters, keep sharp focus, and remove obstructions (hair/mask/hand).',
-        ];
-
-  const meanwhilePlan =
-    lang === 'CN'
-      ? [
-          '如果有刺痛或泛红：暂停潜在刺激活性 5–7 天，仅保留温和洁面 + 保湿 + 白天防晒。',
-          '如果出油但同时紧绷：减少清洁强度/次数，补一层轻薄保湿。',
-          '如果连续 3 天稳定：仅恢复 1 个产品，每周 1–2 次，出现不适立即停用。',
-        ]
-      : [
-          'If stinging or redness appears: pause potentially irritating actives for 5–7 days; keep gentle cleanser + moisturizer + daytime SPF only.',
-          'If skin feels oily but tight: reduce cleansing intensity/frequency and add a light moisturizer layer.',
-          'If stable for 3 straight days: re-introduce only one product at 1–2 nights/week; stop immediately if irritation returns.',
-        ];
-
-  const ask3 =
-    lang === 'CN'
-      ? [
-          '最近 72 小时是否有刺痛/灼热？通常发生在第几步之后？',
-          '你当前 AM/PM 每一步具体用了什么产品？各自频率是多少？',
-          '最近是否有环境变化（出差/气候/作息/压力）影响皮肤状态？',
-        ]
-      : [
-          'Any stinging or burning in the last 72 hours, and after which routine step?',
-          'What exact products are you using in AM/PM, and how often for each?',
-          'Any recent environment/lifestyle shift (travel, climate, sleep, stress) affecting your skin?',
-        ];
-
-  return {
-    why_i_cant_analyze: [primaryReason, guardrailReason].filter(Boolean).slice(0, 2),
-    retake_guide: retakeGuide.slice(0, 3),
-    meanwhile_plan: meanwhilePlan.slice(0, 3),
-    ask_3_questions: ask3.slice(0, 3),
-  };
-}
-
-function renderPhotoFallbackStrategy({ language, photoNotice, actionCard } = {}) {
-  const lang = language === 'CN' ? 'CN' : 'EN';
-  const card = actionCard && typeof actionCard === 'object' ? actionCard : null;
-  if (!card) return '';
-  const lines = [];
-  if (photoNotice) lines.push(photoNotice);
-  lines.push(lang === 'CN' ? '为何暂时无法分析' : "Why I can't analyze");
-  for (const item of Array.isArray(card.why_i_cant_analyze) ? card.why_i_cant_analyze.slice(0, 2) : []) lines.push(`- ${item}`);
-  lines.push(lang === 'CN' ? '重拍指引' : 'Retake guide');
-  for (const item of Array.isArray(card.retake_guide) ? card.retake_guide.slice(0, 3) : []) lines.push(`- ${item}`);
-  lines.push(lang === 'CN' ? '7 天临时方案' : 'Meanwhile plan (7 days)');
-  for (const item of Array.isArray(card.meanwhile_plan) ? card.meanwhile_plan.slice(0, 3) : []) lines.push(`- ${item}`);
-  lines.push(lang === 'CN' ? '补充 3 个问题' : 'Ask-3 questions');
-  for (const item of Array.isArray(card.ask_3_questions) ? card.ask_3_questions.slice(0, 3) : []) lines.push(`- ${item}`);
-  return lines.join('\n').slice(0, 1200);
-}
-
-function scheduleSkinAnalysisKbBackfill({
-  ctx,
-  identity,
-  analysisSummaryPayload,
-  analysisMeta = null,
-  logger,
-} = {}) {
-  if (!PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED) return;
-  const payload = analysisSummaryPayload && typeof analysisSummaryPayload === 'object' && !Array.isArray(analysisSummaryPayload)
-    ? analysisSummaryPayload
-    : null;
-  if (!payload || !payload.analysis || typeof payload.analysis !== 'object') return;
-  const identityObj = identity && typeof identity === 'object' ? identity : {};
-  const confidenceScoreRaw = Number(
-    payload.analysis?.overall_confidence?.score ??
-      payload.analysis?.confidence?.score ??
-      (payload.low_confidence === true ? 0.35 : NaN),
-  );
-  const confidenceScore = Number.isFinite(confidenceScoreRaw)
-    ? Math.max(0, Math.min(1, confidenceScoreRaw))
-    : null;
-  const confidenceLevel =
-    confidenceScore == null
-      ? null
-      : confidenceScore >= 0.75
-        ? 'high'
-        : confidenceScore >= 0.45
-          ? 'medium'
-          : 'low';
-  const qualityGrade = String(payload?.quality_report?.photo_quality?.grade || 'unknown').trim().toLowerCase() || 'unknown';
-  const guardrailFlags = uniqCaseInsensitiveStrings(
-    [
-      ...(Array.isArray(payload?.quality_report?.llm?.vision?.reasons) ? payload.quality_report.llm.vision.reasons : []),
-      ...(Array.isArray(payload?.quality_report?.llm?.report?.reasons) ? payload.quality_report.llm.report.reasons : []),
-    ],
-    16,
-  );
-  let snapshot = null;
-  try {
-    snapshot = JSON.parse(JSON.stringify(payload));
-  } catch {
-    snapshot = null;
-  }
-  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
-
-  const artifact = {
-    artifact_id: createArtifactId(),
-    created_at: new Date().toISOString(),
-    artifact_use: 'kb_backfill',
-    artifact_type: 'skin_analysis_kb_snapshot_v1',
-    analysis_summary: snapshot,
-    overall_confidence: {
-      score: confidenceScore,
-      level: confidenceLevel,
-    },
-    provenance: {
-      source_chain: ['skin_analysis', 'analysis_summary'],
-      confidence_band: confidenceLevel || 'unknown',
-      quality_grade: qualityGrade,
-      guardrail_flags: guardrailFlags,
-      gate_relax_mode: AURORA_RULE_RELAX_MODE,
-      model_provenance:
-        analysisMeta && typeof analysisMeta === 'object' && !Array.isArray(analysisMeta)
-          ? analysisMeta
-          : {},
-    },
-  };
-
-  setImmediate(() => {
-    saveDiagnosisArtifact({
-      auroraUid: identityObj.auroraUid || ctx?.aurora_uid || null,
-      userId: identityObj.userId || null,
-      sessionId: ctx?.brief_id || null,
-      artifact,
-      artifactId: artifact.artifact_id,
-    }).catch((err) => {
-      logger?.warn(
-        {
-          err: err?.message || String(err),
-          request_id: ctx?.request_id || null,
-          trace_id: ctx?.trace_id || null,
-        },
-        'aurora bff: skin analysis async kb backfill failed',
-      );
-    });
-  });
-}
+const {
+  scheduleSkinAnalysisKbBackfill,
+} = createSkinAnalysisBackfillRuntime({
+  PRODUCT_INTEL_KB_ASYNC_BACKFILL_ENABLED,
+  AURORA_RULE_RELAX_MODE,
+  uniqCaseInsensitiveStrings,
+  createArtifactId,
+  saveDiagnosisArtifact,
+});
 
 function clampGeometry01(value) {
   const numeric = Number(value);
@@ -26894,46 +26216,6 @@ function summarizeProfileForContext(profile, options = {}) {
   };
 }
 
-function deepHasKey(obj, predicate, depth = 0) {
-  if (depth > 6) return false;
-  if (!obj) return false;
-  if (Array.isArray(obj)) return obj.some((v) => deepHasKey(v, predicate, depth + 1));
-  if (typeof obj !== 'object') return false;
-  for (const [k, v] of Object.entries(obj)) {
-    if (predicate(k)) return true;
-    if (deepHasKey(v, predicate, depth + 1)) return true;
-  }
-  return false;
-}
-
-function structuredContainsCommerceLikeFields(structured) {
-  const commerceKeys = new Set([
-    'recommendations',
-    'reco',
-    'offers',
-    'offer',
-    'checkout',
-    'purchase_route',
-    'purchaseroute',
-    'affiliate_url',
-    'affiliateurl',
-    'internal_checkout',
-    'internalcheckout',
-  ]);
-  return deepHasKey(structured, (k) => commerceKeys.has(String(k || '').trim().toLowerCase()));
-}
-
-const PRODUCT_PARSE_ANSWER_JSON_KEYS = [
-  'product',
-  'parse',
-  'anchor_product',
-  'anchorProduct',
-  'product_entity',
-  'productEntity',
-  'parsed_product',
-  'parsedProduct',
-];
-
 const PRODUCT_ANALYSIS_ANSWER_JSON_KEYS = [
   'assessment',
   'evidence',
@@ -26953,6 +26235,18 @@ const PRODUCT_ANALYSIS_ANSWER_JSON_KEYS = [
   'expert_notes',
   'expertNotes',
 ];
+
+const {
+  PRODUCT_PARSE_ANSWER_JSON_KEYS,
+  getUpstreamStructuredOrJson,
+  normalizeProductAnalysisFromUpstream,
+  structuredContainsCommerceLikeFields,
+} = createProductIntelUpstreamRuntime({
+  extractJsonObject,
+  extractJsonObjectByKeys,
+  mapAuroraProductAnalysis,
+  normalizeProductAnalysis,
+});
 
 function buildProductDeepScanPromptV2({
   prefix = '',
@@ -28013,84 +27307,6 @@ function collectNarrativeRetryCodes(beforePayload, afterPayload) {
     out.push('how_to_use_retry_used');
   }
   return out;
-}
-
-function getUpstreamStructuredOrJson(upstream, { answerRequiredKeys = null } = {}) {
-  if (upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)) {
-    return upstream.structured;
-  }
-  if (upstream && typeof upstream.answer === 'string') {
-    const keyed = Array.isArray(answerRequiredKeys) && answerRequiredKeys.length
-      ? extractJsonObjectByKeys(upstream.answer, answerRequiredKeys)
-      : null;
-    if (keyed && typeof keyed === 'object' && !Array.isArray(keyed)) return keyed;
-    return extractJsonObject(upstream.answer);
-  }
-  return null;
-}
-
-function getProductAnalysisStructuredOrJson(upstream) {
-  const upstreamStructured = upstream && upstream.structured && typeof upstream.structured === 'object' && !Array.isArray(upstream.structured)
-    ? upstream.structured
-    : null;
-  const upstreamAnswerJson =
-    upstream && typeof upstream.answer === 'string'
-      ? extractJsonObjectByKeys(upstream.answer, PRODUCT_ANALYSIS_ANSWER_JSON_KEYS)
-      : null;
-  const upstreamAnswerObj =
-    upstreamAnswerJson && typeof upstreamAnswerJson === 'object' && !Array.isArray(upstreamAnswerJson)
-      ? upstreamAnswerJson
-      : null;
-  const answerLooksLikeProductAnalysis =
-    upstreamAnswerObj &&
-    (upstreamAnswerObj.assessment != null ||
-      upstreamAnswerObj.evidence != null ||
-      upstreamAnswerObj.analyze != null ||
-      upstreamAnswerObj.analysis != null ||
-      upstreamAnswerObj.product_analysis != null ||
-      upstreamAnswerObj.productAnalysis != null ||
-      upstreamAnswerObj.confidence != null ||
-      upstreamAnswerObj.missing_info != null ||
-      upstreamAnswerObj.missingInfo != null ||
-      upstreamAnswerObj.verdict != null ||
-      upstreamAnswerObj.reasons != null ||
-      upstreamAnswerObj.science_evidence != null ||
-      upstreamAnswerObj.scienceEvidence != null ||
-      upstreamAnswerObj.social_signals != null ||
-      upstreamAnswerObj.socialSignals != null ||
-      upstreamAnswerObj.expert_notes != null ||
-      upstreamAnswerObj.expertNotes != null);
-
-  return upstreamStructured && upstreamStructured.analyze && typeof upstreamStructured.analyze === 'object'
-    ? upstreamStructured
-    : answerLooksLikeProductAnalysis
-      ? upstreamAnswerObj
-      : upstreamStructured || upstreamAnswerObj;
-}
-
-function normalizeProductAnalysisFromUpstream(upstream) {
-  const structuredOrJson = getProductAnalysisStructuredOrJson(upstream);
-  const direct =
-    structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
-      ? structuredOrJson
-      : null;
-  if (direct) {
-    const directPayload =
-      direct.product_analysis && typeof direct.product_analysis === 'object' && !Array.isArray(direct.product_analysis)
-        ? direct.product_analysis
-        : direct;
-    const hasDirectShape =
-      (directPayload.assessment && typeof directPayload.assessment === 'object' && !Array.isArray(directPayload.assessment)) ||
-      (directPayload.evidence && typeof directPayload.evidence === 'object' && !Array.isArray(directPayload.evidence)) ||
-      Array.isArray(directPayload.missing_info) ||
-      Array.isArray(directPayload.missingInfo);
-    if (hasDirectShape) return normalizeProductAnalysis(directPayload);
-  }
-  const mapped =
-    structuredOrJson && typeof structuredOrJson === 'object' && !Array.isArray(structuredOrJson)
-      ? mapAuroraProductAnalysis(structuredOrJson)
-      : structuredOrJson;
-  return normalizeProductAnalysis(mapped);
 }
 
 function decodeUrlTokenSafe(value) {
@@ -49966,6 +49182,28 @@ function sanitizeProductAnalysisPayloadForPrelabel(payload) {
   }
   return nextPayload;
 }
+
+const {
+  getRecoDogfoodSessionId,
+  normalizeDogfoodFeaturesEffective,
+  getRecoBlockCandidates,
+  scheduleDogfoodAsyncBlockPatches,
+  augmentProductAnalysisPayloadForDogfood,
+  augmentEnvelopeProductAnalysisCardsForDogfood,
+  augmentEnvelopeProductAnalysisCardsWithPrelabelSuggestions,
+} = createRecoDogfoodEnvelopeRuntime({
+  pickFirstTrimmed,
+  isPlainObject,
+  RECO_DOGFOOD_CONFIG,
+  social_enrich_async,
+  applyAsyncBlockPatch,
+  recordRecoAsyncUpdate,
+  registerRecoTrackingSnapshot,
+  createAsyncTicket,
+  recordRecoExplorationSlot,
+  loadSuggestionsForAnchor,
+  attachPrelabelSuggestionsToPayload,
+});
 
 const PRODUCT_ANALYSIS_V4_VERDICT_LEVELS = new Set([
   'recommended',
