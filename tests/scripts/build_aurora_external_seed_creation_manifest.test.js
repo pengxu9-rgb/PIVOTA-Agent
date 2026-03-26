@@ -145,4 +145,42 @@ describe('build_aurora_external_seed_creation_manifest', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('does not block on footer country selector tokens without priced INR signals', async () => {
+    const { server, url } = await startServer(`
+      <html>
+        <body>
+          <footer>
+            <label
+              class="flex items-center justify-between cursor-pointer order-2"
+              for="FooterFormIN"
+              data-country-name="India"
+            >
+              India
+            </label>
+            <input type="radio" class="hidden" value="IN" id="FooterFormIN" />
+            <div>Preferred currency: INR</div>
+            <div>Symbol: ₹</div>
+          </footer>
+          <div>Regular price $39.00</div>
+        </body>
+      </html>
+    `);
+
+    try {
+      const item = {
+        ingredient_id: null,
+        ingredient_name: null,
+        target_brand: 'Peach & Lily',
+        target_url: url,
+        extract_status: 'usable_partial',
+      };
+      const extractDoc = makeExtractDoc(url, { price: '39.00', currency: 'USD' });
+      const seedRow = buildSeedRow(item, extractDoc);
+      const guardrail = await buildMarketGuardrailDecision(item, extractDoc, seedRow);
+      expect(guardrail.blocked).toBe(false);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

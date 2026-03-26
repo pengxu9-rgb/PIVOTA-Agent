@@ -9,7 +9,7 @@ const path = require('node:path');
 const MARKET_GUARDRAIL = Object.freeze({
   US: {
     countryPatterns: [/\bindia\b/i, /\bnoida\b/i, /\buttar pradesh\b/i],
-    currencyPatterns: [/₹/i, /\bINR\b/i, /\bRs\.?\s*\d/gi],
+    currencyPatterns: [/₹\s*\d/i, /\bINR\s*\d/i, /\bRs\.?\s*\d/gi],
     phonePatterns: [/\+91[-\s]?\d{6,}/i],
   },
 });
