@@ -438,10 +438,75 @@ function buildDeterministicSeedQueryLimit({ ingredientCount = 1, maxProducts = 3
   return Math.max(24, Math.min(480, maxProductsN * 16 * ingredientCountN));
 }
 
+function buildStructuredDeterministicSeedPatterns(ingredientInputs = []) {
+  const out = [];
+  const seen = new Set();
+  for (const input of asArray(ingredientInputs)) {
+    const normalizedIngredientId = normalizeIngredientCanonicalId(
+      pickFirstString(input && input.ingredientId, input && input.ingredient_id),
+    );
+    if (!normalizedIngredientId) continue;
+    for (const token of [normalizedIngredientId, normalizedIngredientId.replace(/_/g, ' ')]) {
+      const normalized = String(token || '').trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(`%${normalized}%`);
+    }
+  }
+  return out;
+}
+
+async function fetchStructuredDeterministicExternalSeedRows({
+  normalizedMarket,
+  ingredientPatterns,
+  safeLimit,
+} = {}) {
+  if (!Array.isArray(ingredientPatterns) || ingredientPatterns.length === 0) return [];
+  const res = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        market,
+        tool,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        attached_product_key,
+        created_at,
+        updated_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (
+          lower(coalesce((seed_data->'reviewed_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'canonical_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'reviewed_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'canonical_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'ingredient_ids')::text, '')) LIKE ANY($3::text[])
+        )
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT $2
+    `,
+    [normalizedMarket, safeLimit, ingredientPatterns],
+  );
+  return Array.isArray(res && res.rows) ? res.rows : [];
+}
+
 async function fetchDeterministicExternalSeedRows({
   normalizedMarket,
   queryTokens,
   safeLimit,
+  allowWideFallback = true,
 } = {}) {
   async function fetchRows(whereSql, params) {
     const res = await query(
@@ -487,9 +552,9 @@ async function fetchDeterministicExternalSeedRows({
   if (likeClauses.clauses.length > 0) {
     focusedRows = await fetchRows(`AND (${likeClauses.clauses.join(' OR ')})`, likeClauses.params);
   }
-  return focusedRows.length > 0
-    ? focusedRows
-    : fetchRows('', []);
+  if (focusedRows.length > 0) return focusedRows;
+  if (!allowWideFallback) return [];
+  return fetchRows('', []);
 }
 
 function compareDeterministicExternalSeedProducts(normalizedIngredientId) {
@@ -523,6 +588,7 @@ async function loadDeterministicExternalSeedCandidatesBatch({
   ingredientInputs,
   market,
   maxProducts = 3,
+  allowWideFallback = true,
 } = {}) {
   const normalizedEntries = [];
   const seen = new Set();
@@ -543,17 +609,26 @@ async function loadDeterministicExternalSeedCandidatesBatch({
 
   const normalizedMarket = normalizeMarket(market);
   const queryTokens = normalizedEntries.flatMap((entry) => buildDeterministicSeedQueryTokens(entry));
+  const ingredientPatterns = buildStructuredDeterministicSeedPatterns(normalizedEntries);
   const safeLimit = buildDeterministicSeedQueryLimit({
     ingredientCount: normalizedEntries.length,
     maxProducts,
   });
 
   try {
-    const rows = await fetchDeterministicExternalSeedRows({
+    const structuredRows = await fetchStructuredDeterministicExternalSeedRows({
       normalizedMarket,
-      queryTokens,
+      ingredientPatterns,
       safeLimit,
     });
+    const rows = structuredRows.length > 0
+      ? structuredRows
+      : await fetchDeterministicExternalSeedRows({
+          normalizedMarket,
+          queryTokens,
+          safeLimit,
+          allowWideFallback,
+        });
     const seenByIngredient = new Map(normalizedEntries.map((entry) => [entry.ingredientId, new Set()]));
     const productCache = new Map();
 
