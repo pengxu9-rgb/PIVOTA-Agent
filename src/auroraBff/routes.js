@@ -17229,6 +17229,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
                 allowBundledCatalogSeed: false,
                 maxProducts: 6,
+                fallbackQueryLimit: 3,
                 fallbackCandidateBuilder: allowNetworkFallbackForAction ? fallbackCandidateBuilder : null,
                 llmFallbackRecoverFn: allowNetworkFallbackForAction ? llmFallbackRecoverFn : null,
                 externalSearchCtaBuilder: buildExternalSearchCta,
@@ -30352,7 +30353,15 @@ async function evaluateIngredientCandidateWithQaMode(
 }
 
 function buildExternalSearchCta(candidate, reason = 'search_fallback') {
-  const row = isPlainObject(candidate) ? candidate : {};
+  const row = isPlainObject(candidate)
+    ? candidate
+    : typeof candidate === 'string'
+      ? {
+          name: String(candidate || '').trim(),
+          title: String(candidate || '').trim(),
+          display_name: String(candidate || '').trim(),
+        }
+      : {};
   const title = pickFirstString(row.name, row.title, row.display_name, row.displayName, row.product_id, 'Open search result');
   const directUrl = extractCandidateOpenUrl(row);
   const query = pickFirstString(title, row.ingredient_name, row.category, row.brand);
@@ -67998,6 +68007,7 @@ const __internal = {
   buildProductLookupLlmFallbackPrompt,
   recoverPurchasableProductsFromQueries,
   recoverProductsWithLlmFallbackFromQueries,
+  buildExternalSearchCta,
   normalizeIngredientRecoContextValue,
   mergeIngredientRecoContextValue,
   buildIngredientRecoUpstreamPrompt,
