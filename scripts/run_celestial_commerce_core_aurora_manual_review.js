@@ -150,6 +150,12 @@ function summarizeCase(testCase, response) {
           ? body.clarification.question
           : '',
     source_breakdown: sourceBreakdown,
+    guidance_direct_external_seed_applied: metadata.guidance_direct_external_seed_applied === true,
+    guidance_direct_external_seed_valid_hit: metadata.guidance_direct_external_seed_valid_hit === true,
+    search_stage_b:
+      metadata.search_stage_b && typeof metadata.search_stage_b === 'object'
+        ? metadata.search_stage_b
+        : {},
     cache_stage: cacheStage,
     gateway_governance: gatewayGovernance,
     request_id:
@@ -208,16 +214,28 @@ function classifyResult(result) {
 
   if (result.id === 'aurora_guidance_only_direct_supplement_manual') {
     const supplement =
-      result.cache_stage && typeof result.cache_stage.supplement === 'object'
-        ? result.cache_stage.supplement
+      result.cache_stage && typeof result.cache_stage === 'object'
+        ? result.cache_stage
         : {};
+    const searchStageB =
+      result.search_stage_b && typeof result.search_stage_b === 'object'
+        ? result.search_stage_b
+        : {};
+    const boundedQuerySources = new Set([
+      'agent_products_search_guidance_supplemented',
+      'cache_cross_merchant_search_supplemented',
+    ]);
     if (
       result.status === 200 &&
-      result.query_source === 'cache_cross_merchant_search_supplemented' &&
-      result.final_decision === 'cache_returned' &&
+      boundedQuerySources.has(String(result.query_source || '')) &&
+      ['products_returned', 'cache_returned'].includes(String(result.final_decision || '')) &&
+      result.guidance_direct_external_seed_applied === true &&
+      result.guidance_direct_external_seed_valid_hit === true &&
       Number(result.source_breakdown.internal_count || 0) > 0 &&
       Number(result.source_breakdown.external_seed_count || 0) > 0 &&
-      supplement.applied === true
+      searchStageB.applied === true &&
+      String(searchStageB.reason || '') === 'guidance_direct_external_seed_supplemented' &&
+      supplement.stage_timeout !== true
     ) {
       return {
         verdict: 'pass',
@@ -232,6 +250,9 @@ function classifyResult(result) {
         `status=${result.status}`,
         `query_source=${result.query_source || 'missing'}`,
         `final_decision=${result.final_decision || 'missing'}`,
+        `guidance_direct_external_seed_applied=${result.guidance_direct_external_seed_applied === true}`,
+        `guidance_direct_external_seed_valid_hit=${result.guidance_direct_external_seed_valid_hit === true}`,
+        `stage_timeout=${supplement.stage_timeout === true}`,
       ],
     };
   }
@@ -280,6 +301,12 @@ function renderMarkdown(payload) {
       lines.push(`- Clarification question: \`${item.clarification_question}\``);
     }
     if (item.request_id) lines.push(`- Gateway request id: \`${item.request_id}\``);
+    if (item.guidance_direct_external_seed_applied) {
+      lines.push(`- Guidance direct supplement applied: \`${item.guidance_direct_external_seed_applied}\``);
+    }
+    if (item.guidance_direct_external_seed_valid_hit) {
+      lines.push(`- Guidance direct supplement valid hit: \`${item.guidance_direct_external_seed_valid_hit}\``);
+    }
     lines.push(`- Notes: ${item.notes}`);
     if (Array.isArray(item.blocking_signals) && item.blocking_signals.length > 0) {
       lines.push('- Blocking signals:');

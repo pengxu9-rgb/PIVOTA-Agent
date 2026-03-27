@@ -4355,6 +4355,7 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   queryClass = null,
   beautyBucket = null,
   strictConstraintQuery = false,
+  guidanceOnlyDiscovery = false,
 } = {}) {
   const queryText = String(rawQuery || '').trim();
   const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
@@ -4368,13 +4369,18 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
   const genericQueryClass =
     !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const guidanceOnlySerumDiscovery =
+    guidanceOnlyDiscovery === true &&
+    hasSerumSignal &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery);
   const genericSkincareSerumCategoryQuery =
     hasSerumSignal &&
     genericQueryClass &&
     effectiveBeautyBucket === 'skincare' &&
     !Boolean(strictConstraintQuery);
 
-  if (!genericSkincareSerumCategoryQuery) {
+  if (!genericSkincareSerumCategoryQuery && !guidanceOnlySerumDiscovery) {
     return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
   }
 
@@ -19605,11 +19611,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
+          const cacheUiSurface = normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              search?.ui_surface ||
+              search?.uiSurface ||
+              null,
+          );
           cacheStageBudgetMs = resolveFindProductsMultiCacheStageBudgetMs({
             rawQuery: cacheQueryText,
             queryClass: cachePolicyQueryClass,
             beautyBucket: cacheBeautyQueryProfile?.bucket || null,
             strictConstraintQuery: strictCommerceFindProductsMulti,
+            guidanceOnlyDiscovery: cacheUiSurface === 'ingredient_plan_guidance_only',
           });
           const baseCacheSearchQueryText =
             preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
@@ -19698,16 +19715,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Let generic skincare category queries mix internal cache hits with
           // relevant external seed supplement instead of forcing an internal-only lane.
           const preferInternalSpecificBeautyCache = false;
-          const cacheUiSurface = normalizeSearchUiSurface(
-            metadata?.ui_surface ||
-              effectivePayload?.metadata?.ui_surface ||
-              effectivePayload?.context?.ui_surface ||
-              payload?.metadata?.ui_surface ||
-              payload?.context?.ui_surface ||
-              search?.ui_surface ||
-              search?.uiSurface ||
-              null,
-          );
           const guidanceOnlyDiscovery = cacheUiSurface === 'ingredient_plan_guidance_only';
           const guidanceCachePlan = await buildGuidanceOnlyCacheSearchPlan({
             uiSurface: cacheUiSurface,

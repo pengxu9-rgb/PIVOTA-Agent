@@ -1767,6 +1767,20 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(budgetMs).toBe(app._debug.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS);
   });
 
+  test('guidance-only serum discovery gets the raised cache stage budget', async () => {
+    const app = require('../../src/server');
+    const budgetMs = app._debug.resolveFindProductsMultiCacheStageBudgetMs({
+      rawQuery: 'soothing barrier serum sensitive skin',
+      queryClass: 'attribute',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+      guidanceOnlyDiscovery: true,
+    });
+
+    expect(budgetMs).toBe(app._debug.FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS);
+    expect(budgetMs).toBeGreaterThan(app._debug.FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS);
+  });
+
   test('foundation brush query keeps beauty tools results after bucket backstop', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
