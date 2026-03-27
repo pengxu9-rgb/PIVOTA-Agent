@@ -183,6 +183,14 @@ function inferOutcomeKind(body = {}) {
 }
 
 function normalizeCase(rawCase = {}, kind) {
+  const hasExplicitTimeout =
+    rawCase && typeof rawCase === 'object'
+      ? Object.prototype.hasOwnProperty.call(rawCase, 'timeout_ms') ||
+        Object.prototype.hasOwnProperty.call(rawCase, 'timeoutMs')
+      : false;
+  const normalizedTimeoutMs = hasExplicitTimeout
+    ? Math.max(500, Number(rawCase.timeout_ms ?? rawCase.timeoutMs) || 0)
+    : null;
   return {
     kind,
     id: String(rawCase.id || '').trim(),
@@ -193,6 +201,7 @@ function normalizeCase(rawCase = {}, kind) {
     endpoint: String(rawCase.endpoint || '').trim() || (kind === 'governance' ? '/agent/shop/v1/invoke' : '/api/gateway'),
     requires_auth: rawCase.requires_auth === true,
     auth_profile: String(rawCase.auth_profile || 'default').trim() || 'default',
+    timeout_ms: normalizedTimeoutMs || null,
     headers:
       rawCase.headers && typeof rawCase.headers === 'object' && !Array.isArray(rawCase.headers)
         ? { ...rawCase.headers }
@@ -443,6 +452,10 @@ function detectStagingInfraBlock(response = {}) {
   return null;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function executeLiveCase(baseUrl, testCase, timeoutMs) {
   const url = `${baseUrl.replace(/\/+$/, '')}${String(testCase.endpoint || '').trim()}`;
   try {
@@ -482,7 +495,150 @@ async function executeLiveCase(baseUrl, testCase, timeoutMs) {
   }
 }
 
+function buildLiveFailureResult(testCase, authProfile, execution) {
+  return {
+    id: testCase.id,
+    title: testCase.title,
+    family: testCase.family,
+    kind: testCase.kind,
+    blocking: testCase.blocking,
+    execution_mode: 'live',
+    auth_profile: authProfile,
+    correctness: { status: 'fail', reasons: [`request_error:${execution.error}`] },
+    ownership: { status: 'fail', reasons: ['request_error_prevented_ownership_check'] },
+    observability: { status: 'fail', reasons: ['request_error_prevented_observability_check'] },
+    overall_status: 'fail',
+    url: execution.url,
+    http_status: 0,
+    outcome_kind: 'request_error',
+    reason_codes: [],
+    response_excerpt: {},
+    request: testCase.request,
+    error: execution.error,
+  };
+}
+
+function buildLiveCaseResult(testCase, authProfile, execution) {
+  if (!execution.ok) {
+    return buildLiveFailureResult(testCase, authProfile, execution);
+  }
+
+  const body = execution.response.body;
+  const headers = execution.response.headers;
+  const infraBlock = detectStagingInfraBlock(execution.response);
+  if (infraBlock) {
+    return {
+      id: testCase.id,
+      title: testCase.title,
+      family: testCase.family,
+      kind: testCase.kind,
+      blocking: testCase.blocking,
+      execution_mode: 'live',
+      auth_profile: authProfile,
+      correctness: { status: 'review_required', reasons: [infraBlock.reason] },
+      ownership: {
+        status: 'review_required',
+        reasons: ['staging_infra_blocked_prevented_ownership_check'],
+      },
+      observability: {
+        status: 'review_required',
+        reasons: ['staging_infra_blocked_prevented_observability_check'],
+      },
+      overall_status: 'review_required',
+      url: execution.url,
+      http_status: execution.response.status,
+      outcome_kind: infraBlock.outcome_kind,
+      reason_codes: [],
+      response_excerpt: {
+        error: String(body.error || '').trim() || null,
+        message: String(body.message || '').trim() || null,
+      },
+      response_headers: {
+        invocation_surface: headers['x-gateway-invocation-surface'] || null,
+        governance_mode: headers['x-gateway-governance-mode'] || null,
+        governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
+        governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+        auth_degraded: headers['x-invoke-auth-degraded'] || null,
+        auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
+        introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
+      },
+      manual_review: infraBlock.manual_review,
+      request: testCase.request,
+    };
+  }
+
+  const reasonCodes = collectReasonCodes(body);
+  const context = {
+    response: execution.response,
+    body,
+    headers,
+    reasonCodes,
+  };
+  const correctness = evaluateCorrectness(testCase.correctness, context);
+  const ownership = evaluateRuleSet(testCase.ownership, context);
+  const observability = evaluateRuleSet(testCase.observability, context);
+  const overall_status = computeOverallStatus([correctness, ownership, observability]);
+
+  return {
+    id: testCase.id,
+    title: testCase.title,
+    family: testCase.family,
+    kind: testCase.kind,
+    blocking: testCase.blocking,
+    execution_mode: 'live',
+    auth_profile: authProfile,
+    correctness,
+    ownership,
+    observability,
+    overall_status,
+    url: execution.url,
+    http_status: execution.response.status,
+    outcome_kind: inferOutcomeKind(body),
+    reason_codes: reasonCodes,
+    response_excerpt: {
+      query_source: getPath(body, 'metadata.query_source') || null,
+      final_decision:
+        getPath(body, 'metadata.search_trace.final_decision') ||
+        getPath(body, 'metadata.search_decision.final_decision') ||
+        null,
+      invocation_surface: getPath(body, 'metadata.gateway_invocation.surface') || null,
+      governance_mode: getPath(body, 'metadata.gateway_governance.mode') || null,
+      governance_observed_action:
+        getPath(body, 'metadata.gateway_governance.observed_action') || null,
+      contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
+      strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
+      auth_degraded: getPath(body, 'metadata.gateway_invocation.auth_degraded') === true,
+      auth_degraded_reason:
+        getPath(body, 'metadata.gateway_invocation.auth_degraded_reason') || null,
+      introspect_auth_source:
+        getPath(body, 'metadata.gateway_invocation.introspect_auth_source') || null,
+      product_count: Array.isArray(body?.products) ? body.products.length : 0,
+      clarification_question: getPath(body, 'clarification.question') || null,
+    },
+    response_headers: {
+      invocation_surface: headers['x-gateway-invocation-surface'] || null,
+      governance_mode: headers['x-gateway-governance-mode'] || null,
+      governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
+      governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+      auth_degraded: headers['x-invoke-auth-degraded'] || null,
+      auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
+      introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
+    },
+    request: testCase.request,
+  };
+}
+
 async function runCase(baseUrl, testCase, timeoutMs) {
+  const effectiveTimeoutMs = Math.max(
+    500,
+    Number(testCase.timeout_ms || 0) || Number(timeoutMs || 15000) || 15000,
+  );
+  const retryCount = Math.max(
+    0,
+    Number(
+      testCase.retry_count == null ? (testCase.blocking ? 1 : 0) : testCase.retry_count,
+    ) || 0,
+  );
   if (testCase.execution_mode === 'manual') {
     return {
       id: testCase.id,
@@ -547,132 +703,33 @@ async function runCase(baseUrl, testCase, timeoutMs) {
     };
   }
 
-  const execution = await executeLiveCase(baseUrl, testCase, timeoutMs);
-  if (!execution.ok) {
-    return {
-      id: testCase.id,
-      title: testCase.title,
-      family: testCase.family,
-      kind: testCase.kind,
-      blocking: testCase.blocking,
-      execution_mode: 'live',
-      auth_profile: auth.profile,
-      correctness: { status: 'fail', reasons: [`request_error:${execution.error}`] },
-      ownership: { status: 'fail', reasons: ['request_error_prevented_ownership_check'] },
-      observability: { status: 'fail', reasons: ['request_error_prevented_observability_check'] },
-      overall_status: 'fail',
-      url: execution.url,
-      http_status: 0,
-      outcome_kind: 'request_error',
-      reason_codes: [],
-      response_excerpt: {},
-      request: testCase.request,
-      error: execution.error,
-    };
+  let execution = await executeLiveCase(baseUrl, testCase, effectiveTimeoutMs);
+  let result = buildLiveCaseResult(testCase, auth.profile, execution);
+  const attemptHistory = [];
+
+  for (let attempt = 1; attempt <= retryCount && result.overall_status === 'fail'; attempt += 1) {
+    attemptHistory.push({
+      attempt,
+      overall_status: result.overall_status,
+      outcome_kind: result.outcome_kind,
+      http_status: result.http_status,
+      correctness_reasons: result.correctness?.reasons || [],
+      ownership_reasons: result.ownership?.reasons || [],
+      observability_reasons: result.observability?.reasons || [],
+      error: result.error || null,
+    });
+    await sleep(250);
+    execution = await executeLiveCase(baseUrl, testCase, effectiveTimeoutMs);
+    result = buildLiveCaseResult(testCase, auth.profile, execution);
   }
 
-  const body = execution.response.body;
-  const headers = execution.response.headers;
-  const infraBlock = detectStagingInfraBlock(execution.response);
-  if (infraBlock) {
-    return {
-      id: testCase.id,
-      title: testCase.title,
-      family: testCase.family,
-      kind: testCase.kind,
-      blocking: testCase.blocking,
-      execution_mode: 'live',
-      auth_profile: auth.profile,
-      correctness: { status: 'review_required', reasons: [infraBlock.reason] },
-      ownership: {
-        status: 'review_required',
-        reasons: ['staging_infra_blocked_prevented_ownership_check'],
-      },
-      observability: {
-        status: 'review_required',
-        reasons: ['staging_infra_blocked_prevented_observability_check'],
-      },
-      overall_status: 'review_required',
-      url: execution.url,
-      http_status: execution.response.status,
-      outcome_kind: infraBlock.outcome_kind,
-      reason_codes: [],
-      response_excerpt: {
-        error: String(body.error || '').trim() || null,
-        message: String(body.message || '').trim() || null,
-      },
-      response_headers: {
-        invocation_surface: headers['x-gateway-invocation-surface'] || null,
-        governance_mode: headers['x-gateway-governance-mode'] || null,
-        governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
-        governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
-        auth_degraded: headers['x-invoke-auth-degraded'] || null,
-        auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
-        introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
-      },
-      manual_review: infraBlock.manual_review,
-      request: testCase.request,
-    };
+  result.attempt_count = 1 + attemptHistory.length;
+  if (attemptHistory.length > 0) result.attempt_history = attemptHistory;
+  if (attemptHistory.length > 0 && result.overall_status !== 'fail') {
+    result.retry_recovered = true;
   }
-  const reasonCodes = collectReasonCodes(body);
-  const context = {
-    response: execution.response,
-    body,
-    headers,
-    reasonCodes,
-  };
-  const correctness = evaluateCorrectness(testCase.correctness, context);
-  const ownership = evaluateRuleSet(testCase.ownership, context);
-  const observability = evaluateRuleSet(testCase.observability, context);
-  const overall_status = computeOverallStatus([correctness, ownership, observability]);
 
-  return {
-    id: testCase.id,
-    title: testCase.title,
-    family: testCase.family,
-    kind: testCase.kind,
-    blocking: testCase.blocking,
-    execution_mode: 'live',
-    auth_profile: auth.profile,
-    correctness,
-    ownership,
-    observability,
-    overall_status,
-    url: execution.url,
-    http_status: execution.response.status,
-    outcome_kind: inferOutcomeKind(body),
-    reason_codes: reasonCodes,
-    response_excerpt: {
-      query_source: getPath(body, 'metadata.query_source') || null,
-      final_decision:
-        getPath(body, 'metadata.search_trace.final_decision') ||
-        getPath(body, 'metadata.search_decision.final_decision') ||
-        null,
-      invocation_surface: getPath(body, 'metadata.gateway_invocation.surface') || null,
-      governance_mode: getPath(body, 'metadata.gateway_governance.mode') || null,
-      governance_observed_action:
-        getPath(body, 'metadata.gateway_governance.observed_action') || null,
-      contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
-      strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
-      auth_degraded: getPath(body, 'metadata.gateway_invocation.auth_degraded') === true,
-      auth_degraded_reason:
-        getPath(body, 'metadata.gateway_invocation.auth_degraded_reason') || null,
-      introspect_auth_source:
-        getPath(body, 'metadata.gateway_invocation.introspect_auth_source') || null,
-      product_count: Array.isArray(body?.products) ? body.products.length : 0,
-      clarification_question: getPath(body, 'clarification.question') || null,
-    },
-    response_headers: {
-      invocation_surface: headers['x-gateway-invocation-surface'] || null,
-      governance_mode: headers['x-gateway-governance-mode'] || null,
-      governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
-      governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
-      auth_degraded: headers['x-invoke-auth-degraded'] || null,
-      auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
-      introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
-    },
-    request: testCase.request,
-  };
+  return result;
 }
 
 function buildSummary(results = [], args = {}, matrixPath = '') {
@@ -698,6 +755,7 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
         item.response_headers?.auth_degraded === 'true' ||
         item.response_excerpt?.auth_degraded === true,
     ).length,
+    retry_recovered_count: results.filter((item) => item.retry_recovered === true).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
     correctness: {
       pass: results.filter((item) => item.correctness.status === 'pass').length,
@@ -766,6 +824,7 @@ function writeArtifacts(outDir, summary, results) {
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
     `- Auth degraded: ${summary.auth_degraded_count || 0}`,
+    `- Retry recovered: ${summary.retry_recovered_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',
     '## Section Summary',
@@ -797,6 +856,8 @@ function writeArtifacts(outDir, summary, results) {
     lines.push(`- Overall: ${item.overall_status}`);
     if (item.http_status != null) lines.push(`- HTTP status: ${item.http_status}`);
     if (item.url) lines.push(`- URL: \`${item.url}\``);
+    if (item.attempt_count != null) lines.push(`- Attempts: ${item.attempt_count}`);
+    if (item.retry_recovered === true) lines.push(`- Retry recovered: true`);
     if (item.response_excerpt && Object.keys(item.response_excerpt).length > 0) {
       lines.push(`- Response excerpt: \`${JSON.stringify(item.response_excerpt)}\``);
     }

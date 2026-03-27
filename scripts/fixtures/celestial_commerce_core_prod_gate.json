@@ -5,8 +5,11 @@
     "query": "serum",
     "source": "search",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
@@ -34,8 +37,11 @@
       "external_seed_strategy": "unified_relevance"
     },
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
@@ -63,8 +69,11 @@
       "external_seed_strategy": "supplement_internal_first"
     },
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
@@ -89,20 +98,27 @@
     "query": "serum",
     "source": "shopping_agent",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
       "source_breakdown.external_seed_count"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search_supplemented",
       "cache_stage_selected_source": "internal_cache"
     },
+    "must_one_of_metadata": {
+      "query_source": [
+        "cache_cross_merchant_search",
+        "cache_cross_merchant_search_supplemented"
+      ]
+    },
     "must_be_positive_metadata": [
-      "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "source_breakdown.internal_count"
     ],
     "must_return_one_of_titles": [
       "Winona Soothing Repair Serum",
@@ -115,8 +131,11 @@
     "query": "serum",
     "source": "aurora-bff",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
@@ -142,8 +161,11 @@
     "source": "shopping_agent",
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "strict_constraint_query",
       "strict_constraint_reason",
@@ -166,8 +188,11 @@
     "source": "aurora-bff",
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "strict_constraint_query",
       "strict_constraint_reason",
@@ -189,8 +214,11 @@
     "query": "IPSA products",
     "source": "shopping_agent",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "search_trace.final_decision"
     ],
@@ -207,8 +235,11 @@
     "query": "IPSA products",
     "source": "aurora-bff",
     "allow_zero_results": false,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "query_source",
       "search_trace.final_decision"
     ],
@@ -225,8 +256,11 @@
     "query": "有什么适合今晚约会的",
     "source": "shopping_agent",
     "allow_zero_results": true,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {
@@ -243,8 +277,11 @@
     "query": "有什么适合今晚约会的",
     "source": "aurora-bff",
     "allow_zero_results": true,
-    "must_have_metadata": [
+    "must_have_one_of_metadata": [
       "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {

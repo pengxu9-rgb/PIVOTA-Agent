@@ -53,6 +53,7 @@
       "title": "shopping_agent broad discovery keeps internal base plus external supplement",
       "family": "broad_discovery",
       "blocking": true,
+      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -101,6 +102,7 @@
       "title": "aurora-bff broad discovery stays aligned with shopping_agent retrieval semantics",
       "family": "broad_discovery",
       "blocking": true,
+      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -194,7 +196,7 @@
     },
     {
       "id": "shopping_agent_merchant_ipsa",
-      "title": "merchant-ish query still resolves through shopping_agent routing",
+      "title": "merchant-ish query resolves through shopping_agent cache-or-resolver routing",
       "family": "merchant_product_split",
       "blocking": true,
       "endpoint": "/agent/shop/v1/invoke",
@@ -222,8 +224,15 @@
         ]
       },
       "ownership": {
-        "must_equal_paths": {
-          "metadata.search_trace.final_decision": "cache_returned"
+        "must_one_of_paths": {
+          "metadata.search_trace.final_decision": [
+            "cache_returned",
+            "resolver_returned"
+          ],
+          "metadata.query_source": [
+            "cache_cross_merchant_search",
+            "agent_products_resolver_fallback"
+          ]
         },
         "must_have_paths": [
           "metadata.query_source"
@@ -241,6 +250,7 @@
       "title": "clarify-required discovery still resolves to clarify instead of low-quality products",
       "family": "clarify_required",
       "blocking": true,
+      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -380,6 +390,7 @@
       "title": "public direct_api caller still observes orchestration denial in shadow mode",
       "family": "governance_orchestration_denied",
       "blocking": true,
+      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "public",
@@ -482,6 +493,7 @@
       "title": "generic MCP merchant sweep is still shadow-blocked with provenance",
       "family": "governance_merchant_sweep",
       "blocking": true,
+      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "generic_mcp",

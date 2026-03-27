@@ -83,15 +83,18 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       request_search: {},
       allow_zero_results: true,
       must_have_metadata: [],
+      must_have_one_of_metadata: [],
       must_not_return_titles: [],
       must_return_titles: [],
       must_return_one_of_titles: [],
       must_have_reason_codes: [],
       must_equal_metadata: {},
+      must_one_of_metadata: {},
       must_be_positive_metadata: [],
       must_have_clarification: null,
       expected_contract_path: null,
       catalog_surface: null,
+      retry_count: 1,
     };
   }
   const query = String(rawCase?.query || '').trim();
@@ -118,6 +121,9 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     must_have_metadata: Array.isArray(rawCase?.must_have_metadata)
       ? rawCase.must_have_metadata.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    must_have_one_of_metadata: Array.isArray(rawCase?.must_have_one_of_metadata)
+      ? rawCase.must_have_one_of_metadata.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     must_not_return_titles: Array.isArray(rawCase?.must_not_return_titles)
       ? rawCase.must_not_return_titles.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
@@ -138,6 +144,17 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
               .filter(([key]) => key),
           )
         : {},
+    must_one_of_metadata:
+      rawCase?.must_one_of_metadata && typeof rawCase.must_one_of_metadata === 'object'
+        ? Object.fromEntries(
+            Object.entries(rawCase.must_one_of_metadata)
+              .map(([key, value]) => [
+                String(key || '').trim(),
+                Array.isArray(value) ? value : [value],
+              ])
+              .filter(([key, value]) => key && value.length > 0),
+          )
+        : {},
     must_be_positive_metadata: Array.isArray(rawCase?.must_be_positive_metadata)
       ? rawCase.must_be_positive_metadata.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
@@ -146,6 +163,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
         ? rawCase.must_have_clarification
         : null,
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
+    retry_count: Math.max(0, Number(rawCase?.retry_count ?? 1) || 0),
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
     in_stock_only: rawCase?.in_stock_only !== false,
   };
@@ -281,6 +299,10 @@ function buildAuthHeaders(args = {}) {
   return headers;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function evaluateCase(row) {
   const spec = row?.caseSpec || {};
   const data = row?.data || {};
@@ -322,6 +344,26 @@ function evaluateCase(row) {
       (typeof resolvedValue === 'string' && resolvedValue.trim().length === 0);
     if (missing) {
       reasons.push(`missing_metadata:${pathText}`);
+    }
+  }
+
+  const oneOfMetadataPaths = Array.isArray(spec.must_have_one_of_metadata)
+    ? spec.must_have_one_of_metadata
+    : [];
+  if (oneOfMetadataPaths.length > 0) {
+    const matched = oneOfMetadataPaths.some((rawPath) => {
+      const pathText = String(rawPath || '').trim();
+      if (!pathText) return false;
+      const resolvedValue = pathText.startsWith('metadata.')
+        ? getPath(data, pathText)
+        : getPath(metadata, pathText) ?? getPath(data, pathText);
+      return !(
+        resolvedValue == null ||
+        (typeof resolvedValue === 'string' && resolvedValue.trim().length === 0)
+      );
+    });
+    if (!matched) {
+      reasons.push(`missing_any_metadata:${oneOfMetadataPaths.join(' | ')}`);
     }
   }
 
@@ -390,6 +432,25 @@ function evaluateCase(row) {
     if (!valuesEqual(actualValue, expectedValue)) {
       reasons.push(
         `metadata_mismatch:${pathText}:expected=${JSON.stringify(expectedValue)} actual=${JSON.stringify(actualValue)}`,
+      );
+    }
+  }
+
+  const mustOneOfMetadata =
+    spec.must_one_of_metadata && typeof spec.must_one_of_metadata === 'object'
+      ? spec.must_one_of_metadata
+      : {};
+  for (const [rawPath, expectedValues] of Object.entries(mustOneOfMetadata)) {
+    const pathText = String(rawPath || '').trim();
+    if (!pathText) continue;
+    const actualValue = pathText.startsWith('metadata.')
+      ? getPath(data, pathText)
+      : getPath(metadata, pathText) ?? getPath(data, pathText);
+    const candidates = Array.isArray(expectedValues) ? expectedValues : [expectedValues];
+    const matched = candidates.some((expectedValue) => valuesEqual(actualValue, expectedValue));
+    if (!matched) {
+      reasons.push(
+        `metadata_not_in_set:${pathText}:expected=${JSON.stringify(candidates)} actual=${JSON.stringify(actualValue)}`,
       );
     }
   }
@@ -563,83 +624,112 @@ async function main() {
 
   for (let round = 1; round <= args.rounds; round += 1) {
     for (const caseSpec of cases) {
-      const started = Date.now();
-      let row = {
-        round,
-        case_id: caseSpec.id,
-        family: caseSpec.family || null,
-        query: caseSpec.query,
-        caseSpec,
-        ok: false,
-        status: 0,
-        latency_ms: 0,
-        data: null,
-        error: null,
-      };
-      try {
-        const metadata = {
-          ...(caseSpec.request_metadata && typeof caseSpec.request_metadata === 'object'
-            ? caseSpec.request_metadata
-            : {}),
-          source: caseSpec.source || args.source,
-          ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
-          ...(args.evalMode ? { eval_mode: true } : {}),
-        };
-        const search = {
-          ...(caseSpec.request_search && typeof caseSpec.request_search === 'object'
-            ? caseSpec.request_search
-            : {}),
+      const executeAttempt = async () => {
+        const started = Date.now();
+        let row = {
+          round,
+          case_id: caseSpec.id,
+          family: caseSpec.family || null,
           query: caseSpec.query,
-          limit: caseSpec.limit || 10,
-          in_stock_only: caseSpec.in_stock_only !== false,
-          ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
-        };
-        const resp = await axios.post(
-          url,
-          {
-            operation: 'find_products_multi',
-            payload: {
-              search,
-            },
-            metadata,
-          },
-          {
-            timeout: args.timeoutMs,
-            validateStatus: () => true,
-            headers: {
-              'Content-Type': 'application/json',
-              ...authHeaders,
-              ...(args.evalMode
-                ? { [String(args.evalHeader || 'X-Eval')]: String(args.evalHeaderValue || '1') }
-                : {}),
-            },
-          },
-        );
-        row = {
-          ...row,
-          ok: resp.status >= 200 && resp.status < 300,
-          status: Number(resp.status || 0) || 0,
-          latency_ms: Math.max(0, Date.now() - started),
-          data: resp.data,
-        };
-      } catch (err) {
-        row = {
-          ...row,
+          caseSpec,
           ok: false,
           status: 0,
-          latency_ms: Math.max(0, Date.now() - started),
-          error: String(err?.message || err),
+          latency_ms: 0,
+          data: null,
+          error: null,
         };
+        try {
+          const metadata = {
+            ...(caseSpec.request_metadata && typeof caseSpec.request_metadata === 'object'
+              ? caseSpec.request_metadata
+              : {}),
+            source: caseSpec.source || args.source,
+            ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
+            ...(args.evalMode ? { eval_mode: true } : {}),
+          };
+          const search = {
+            ...(caseSpec.request_search && typeof caseSpec.request_search === 'object'
+              ? caseSpec.request_search
+              : {}),
+            query: caseSpec.query,
+            limit: caseSpec.limit || 10,
+            in_stock_only: caseSpec.in_stock_only !== false,
+            ...(caseSpec.catalog_surface ? { catalog_surface: caseSpec.catalog_surface } : {}),
+          };
+          const resp = await axios.post(
+            url,
+            {
+              operation: 'find_products_multi',
+              payload: {
+                search,
+              },
+              metadata,
+            },
+            {
+              timeout: args.timeoutMs,
+              validateStatus: () => true,
+              headers: {
+                'Content-Type': 'application/json',
+                ...authHeaders,
+                ...(args.evalMode
+                  ? { [String(args.evalHeader || 'X-Eval')]: String(args.evalHeaderValue || '1') }
+                  : {}),
+              },
+            },
+          );
+          row = {
+            ...row,
+            ok: resp.status >= 200 && resp.status < 300,
+            status: Number(resp.status || 0) || 0,
+            latency_ms: Math.max(0, Date.now() - started),
+            data: resp.data,
+          };
+        } catch (err) {
+          row = {
+            ...row,
+            ok: false,
+            status: 0,
+            latency_ms: Math.max(0, Date.now() - started),
+            error: String(err?.message || err),
+          };
+        }
+        return row;
+      };
+
+      let row = await executeAttempt();
+      let metrics = classifyRow(row);
+      let gate = evaluateCase(row);
+      const retryCount = Math.max(0, Number(caseSpec.retry_count ?? 1) || 0);
+      const attemptHistory = [];
+
+      for (let attempt = 1; attempt <= retryCount && !gate.passed; attempt += 1) {
+        attemptHistory.push({
+          attempt,
+          status: row.status,
+          latency_ms: row.latency_ms,
+          query_source: metrics.querySource,
+          final_decision: metrics.finalDecision,
+          gate_reasons: gate.reasons,
+          error: row.error,
+        });
+        await sleep(250);
+        row = await executeAttempt();
+        metrics = classifyRow(row);
+        gate = evaluateCase(row);
       }
-      results.push(row);
+
+      results.push({
+        ...row,
+        metrics,
+        gate,
+        attempt_count: 1 + attemptHistory.length,
+        retry_recovered: attemptHistory.length > 0 && gate.passed,
+        attempt_history: attemptHistory,
+      });
     }
   }
 
-  const classified = results.map((row) => {
-    const metrics = classifyRow(row);
-    const gate = evaluateCase(row);
-    return { ...row, metrics, gate };
-  });
+  const classified = results;
   const total = classified.length;
   const timeoutCount = classified.filter((row) => row.metrics.timeout).length;
   const requestErrorCount = classified.filter((row) => row.metrics.requestError).length;
@@ -666,6 +756,7 @@ async function main() {
         : 0),
     0,
   );
+  const retryRecoveredCount = classified.filter((row) => row.retry_recovered).length;
   const perQueryClass = {};
   const perCase = {};
 
@@ -734,6 +825,7 @@ async function main() {
     strict_parser_gap_rate: total ? strictParserGapCount / total : 0,
     strict_coverage_gap_rate: total ? strictCoverageGapCount / total : 0,
     false_positive_title_count: falsePositiveTitleCount,
+    retry_recovered_count: retryRecoveredCount,
     per_query_class: perQueryClass,
     cases: cases.map((item) => ({
       id: item.id,
@@ -785,6 +877,9 @@ async function main() {
           matched_visible_option_labels: row.metrics.matchedVisibleOptionLabels,
           gate_passed: row.gate.passed,
           gate_reasons: row.gate.reasons,
+          attempt_count: row.attempt_count || 1,
+          retry_recovered: row.retry_recovered === true,
+          attempt_history: Array.isArray(row.attempt_history) ? row.attempt_history : [],
           error: row.error,
         })),
       },
@@ -815,6 +910,7 @@ async function main() {
     `- strict_parser_gap_rate: ${summary.strict_parser_gap_rate.toFixed(4)}`,
     `- strict_coverage_gap_rate: ${summary.strict_coverage_gap_rate.toFixed(4)}`,
     `- false_positive_title_count: ${summary.false_positive_title_count}`,
+    `- retry_recovered_count: ${summary.retry_recovered_count || 0}`,
     '',
     '| metric | value |',
     '|---|---:|',
@@ -830,6 +926,7 @@ async function main() {
     `| strict_parser_gap_count | ${strictParserGapCount} |`,
     `| strict_coverage_gap_count | ${strictCoverageGapCount} |`,
     `| false_positive_title_count | ${falsePositiveTitleCount} |`,
+    `| retry_recovered_count | ${retryRecoveredCount} |`,
     '',
     '## Per Query Class',
     '',

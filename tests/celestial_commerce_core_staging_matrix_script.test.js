@@ -358,4 +358,190 @@ describe('Celestial commerce-core staging matrix script', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('uses per-case timeout override when provided by the acceptance matrix', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-staging-timeout-'));
+    const casesPath = path.join(outDir, 'matrix.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'run_celestial_commerce_core_staging_matrix.js');
+
+    const matrix = {
+      semantic_cases: [
+        {
+          id: 'slow_case',
+          title: 'slow case',
+          family: 'broad_discovery',
+          endpoint: '/agent/shop/v1/invoke',
+          timeout_ms: 400,
+          request: {
+            operation: 'find_products_multi',
+            payload: { search: { query: 'serum', limit: 5, in_stock_only: true } },
+            metadata: { source: 'search' },
+          },
+          correctness: {
+            mode: 'auto',
+            expect_http_status: 200,
+            allow_zero_results: false,
+            must_return_one_of_titles: ['Slow Serum'],
+          },
+          ownership: {
+            must_equal_paths: {
+              'metadata.query_source': 'cache_cross_merchant_search',
+            },
+          },
+          observability: {
+            must_have_paths: ['metadata.service_version.commit'],
+          },
+        },
+      ],
+      governance_cases: [],
+    };
+    fs.writeFileSync(casesPath, JSON.stringify(matrix, null, 2));
+
+    const server = http.createServer(async (_req, res) => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'Slow Serum' }],
+          metadata: {
+            query_source: 'cache_cross_merchant_search',
+            service_version: { commit: 'slow123' },
+            search_trace: { final_decision: 'cache_returned' },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [scriptPath, '--base-url', baseUrl, '--cases', casesPath, '--out-dir', outDir, '--timeout-ms', '50'],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(json.summary.total_cases).toBe(1);
+      expect(json.summary.pass_count).toBe(1);
+      expect(json.summary.fail_count).toBe(0);
+      expect(json.results[0].overall_status).toBe('pass');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('retries blocking live cases once and records retry recovery when the second attempt passes', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-staging-retry-'));
+    const casesPath = path.join(outDir, 'matrix.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'run_celestial_commerce_core_staging_matrix.js');
+
+    const matrix = {
+      semantic_cases: [
+        {
+          id: 'retry_case',
+          title: 'retry case',
+          family: 'exactish_lookup',
+          blocking: true,
+          endpoint: '/agent/shop/v1/invoke',
+          request: {
+            operation: 'find_products_multi',
+            payload: { search: { query: 'niacinamide serum', limit: 5, in_stock_only: true } },
+            metadata: { source: 'shopping_agent' },
+          },
+          correctness: {
+            mode: 'auto',
+            expect_http_status: 200,
+            allow_zero_results: false,
+            must_return_one_of_titles: ['Recovered Serum'],
+          },
+          ownership: {
+            must_equal_paths: {
+              'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
+            },
+            must_have_paths: ['metadata.matched_ingredient_ids.0'],
+          },
+          observability: {
+            must_have_paths: ['metadata.service_version.commit'],
+          },
+        },
+      ],
+      governance_cases: [],
+    };
+    fs.writeFileSync(casesPath, JSON.stringify(matrix, null, 2));
+
+    let requestCount = 0;
+    const server = http.createServer((_req, res) => {
+      requestCount += 1;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      if (requestCount === 1) {
+        res.end(
+          JSON.stringify({
+            products: [],
+            reason_codes: ['FILTERED_TO_EMPTY'],
+            metadata: {
+              query_source: 'agent_products_error_fallback',
+              search_trace: { final_decision: 'strict_empty' },
+              service_version: { commit: 'retry123' },
+            },
+          }),
+        );
+        return;
+      }
+
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'Recovered Serum' }],
+          metadata: {
+            query_source: 'cache_multi_intent',
+            contract_bridge: { resolved_contract: 'shop_invoke_strict' },
+            matched_ingredient_ids: ['niacinamide'],
+            service_version: { commit: 'retry123' },
+            search_trace: { final_decision: 'cache_returned' },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [scriptPath, '--base-url', baseUrl, '--cases', casesPath, '--out-dir', outDir],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(json.summary.total_cases).toBe(1);
+      expect(json.summary.pass_count).toBe(1);
+      expect(json.summary.fail_count).toBe(0);
+      expect(json.summary.retry_recovered_count).toBe(1);
+      expect(json.results[0].overall_status).toBe('pass');
+      expect(json.results[0].retry_recovered).toBe(true);
+      expect(json.results[0].attempt_count).toBe(2);
+      expect(json.results[0].attempt_history[0].overall_status).toBe('fail');
+      expect(requestCount).toBe(2);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
