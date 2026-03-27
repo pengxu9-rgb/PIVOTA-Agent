@@ -771,7 +771,6 @@ test('routes helper: bounded photo module enrich annotates timeout instead of dr
       }
     },
   ));
-
 test('photo modules card: face oval clip enabled keeps module mask pixels <= disabled', () =>
   withEnv(
     {
