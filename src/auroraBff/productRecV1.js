@@ -14,6 +14,7 @@ const DEFAULT_CATALOG_PATH = path.join(
   'products',
   'product_catalog_seed.json',
 );
+const RESOLVED_DEFAULT_CATALOG_PATH = path.resolve(DEFAULT_CATALOG_PATH);
 
 const EVIDENCE_RANK = Object.freeze({
   A: 3,
@@ -367,8 +368,16 @@ function parseCatalogProduct(raw) {
   };
 }
 
-function loadCatalog(catalogPath) {
-  const targetPath = path.resolve(catalogPath || process.env.AURORA_PRODUCT_REC_CATALOG_PATH || DEFAULT_CATALOG_PATH);
+function resolveCatalogTargetPath(catalogPath, { allowBundledCatalogSeed = true } = {}) {
+  const explicitPath = pickFirstString(catalogPath, process.env.AURORA_PRODUCT_REC_CATALOG_PATH);
+  const targetPath = path.resolve(explicitPath || DEFAULT_CATALOG_PATH);
+  if (!allowBundledCatalogSeed && targetPath === RESOLVED_DEFAULT_CATALOG_PATH) return '';
+  return targetPath;
+}
+
+function loadCatalog(catalogPath, { allowBundledCatalogSeed = true } = {}) {
+  const targetPath = resolveCatalogTargetPath(catalogPath, { allowBundledCatalogSeed });
+  if (!targetPath) return [];
   if (!fs.existsSync(targetPath)) return [];
   const stat = fs.statSync(targetPath);
   if (
@@ -681,6 +690,7 @@ function buildProductRecommendations({
   internalTestMode,
   artifactPath,
   catalogPath,
+  allowBundledCatalogSeed = true,
   softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
   const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
@@ -693,9 +703,17 @@ function buildProductRecommendations({
   const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
   const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
 
-  const catalog = loadCatalog(catalogPath);
+  const catalog = loadCatalog(catalogPath, { allowBundledCatalogSeed });
   if (!catalog.length) {
-    return { products: [], suppressed_reason: 'NO_MATCH', debug: { module_id: moduleId, catalog_items: 0 } };
+    return {
+      products: [],
+      suppressed_reason: 'NO_MATCH',
+      debug: {
+        module_id: moduleId,
+        catalog_items: 0,
+        bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
+      },
+    };
   }
 
   const issueType = getTopIssueType(issues);
@@ -907,6 +925,7 @@ async function buildIngredientProductRecommendationsNeutral({
   internalTestMode,
   artifactPath,
   catalogPath,
+  allowBundledCatalogSeed = true,
   maxProducts = 3,
   fallbackCandidateBuilder = null,
   llmFallbackRecoverFn = null,
@@ -972,6 +991,7 @@ async function buildIngredientProductRecommendationsNeutral({
     internalTestMode,
     artifactPath,
     catalogPath,
+    allowBundledCatalogSeed,
     softEvidenceGateEnabled,
   });
 
@@ -1002,6 +1022,7 @@ async function buildIngredientProductRecommendationsNeutral({
         }),
         retrieval_source_counts: {},
         soft_evidence_gate_enabled: false,
+        bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
       },
     };
   }
@@ -1254,6 +1275,7 @@ async function buildIngredientProductRecommendationsNeutral({
       },
       relax_mode: AURORA_RULE_RELAX_MODE,
       soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
+      bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
     },
   };
 }

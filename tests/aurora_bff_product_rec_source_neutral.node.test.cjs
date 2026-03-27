@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { createCitationHash, assertValidIngredientKbV2 } = require('../src/auroraBff/ingredientKbV2/types');
-const { buildIngredientProductRecommendationsNeutral } = require('../src/auroraBff/productRecV1');
+const { DEFAULT_CATALOG_PATH, buildIngredientProductRecommendationsNeutral } = require('../src/auroraBff/productRecV1');
 
 function baseCitation(overrides = {}) {
   const sourceUrl = overrides.source_url || 'https://example.org/source';
@@ -184,6 +184,74 @@ test('neutral rec: higher suitability can outrank across sources and no 1:1 sour
       assert.equal(typeof row.retrieval_reason, 'string');
       assert.equal(row.retrieval_reason.length > 0, true);
     }
+  });
+});
+
+test('neutral rec: photo analysis can disable bundled demo catalog and keep only external seed candidates', async () => {
+  const dataset = buildNiacinamideDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath }) => {
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'left_cheek',
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      issueType: 'tone',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath: DEFAULT_CATALOG_PATH,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      fallbackCandidateBuilder: async () => ({
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_external_photo_1',
+            merchant_id: 'ext_photo_a',
+            name: 'External Photo Niacinamide 1',
+            brand: 'External Photo A',
+            ingredient_ids: ['niacinamide'],
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_supplement',
+            pdp_url: 'https://external-photo-a.example.com/p/niacinamide-1',
+          },
+          {
+            product_id: 'prod_external_photo_2',
+            merchant_id: 'ext_photo_b',
+            name: 'External Photo Niacinamide 2',
+            brand: 'External Photo B',
+            ingredient_ids: ['niacinamide'],
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_supplement',
+            pdp_url: 'https://external-photo-b.example.com/p/niacinamide-2',
+          },
+          {
+            product_id: 'prod_external_photo_3',
+            merchant_id: 'ext_photo_c',
+            name: 'External Photo Niacinamide 3',
+            brand: 'External Photo C',
+            ingredient_ids: ['niacinamide'],
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_supplement',
+            pdp_url: 'https://external-photo-c.example.com/p/niacinamide-3',
+          },
+        ],
+        external_search_ctas: [],
+      }),
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(result.products.length, 3);
+    assert.equal(result.products.every((row) => row.retrieval_source === 'external_seed'), true);
+    assert.equal(result.products.some((row) => row.brand === 'Aurora Lab'), false);
+    assert.equal(Number(result.debug.candidate_count_internal || 0), 0);
+    assert.equal(result.debug.bundled_catalog_seed_allowed, false);
   });
 });
 

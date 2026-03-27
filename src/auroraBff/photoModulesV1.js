@@ -1676,6 +1676,7 @@ function buildModuleIssues({
       internalTestMode,
       artifactPath: ingredientKbArtifactPath,
       catalogPath: productCatalogPath,
+      allowBundledCatalogSeed: false,
     });
     products = Array.isArray(productRecResult.products) ? productRecResult.products.slice(0, 3) : [];
     productSuppressedReason = productRecResult.suppressed_reason || null;
