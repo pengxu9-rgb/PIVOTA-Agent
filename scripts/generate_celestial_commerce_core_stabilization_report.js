@@ -21,6 +21,8 @@ function parseArgs(argv) {
     gatewayDailyReport: '',
     stagingMatrixSummary: '',
     stagingMatrixReport: '',
+    auroraManualSummary: '',
+    auroraManualReport: '',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -36,6 +38,8 @@ function parseArgs(argv) {
     if (token === '--gateway-daily-report' && next) args.gatewayDailyReport = path.resolve(String(next));
     if (token === '--staging-matrix-summary' && next) args.stagingMatrixSummary = path.resolve(String(next));
     if (token === '--staging-matrix-report' && next) args.stagingMatrixReport = path.resolve(String(next));
+    if (token === '--aurora-manual-summary' && next) args.auroraManualSummary = path.resolve(String(next));
+    if (token === '--aurora-manual-report' && next) args.auroraManualReport = path.resolve(String(next));
   }
 
   return args;
@@ -82,7 +86,15 @@ function collectScorecardBuckets(scorecard = {}) {
   return { amber, red };
 }
 
-function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
+function hasCompletedAuroraManualReview(auroraManual = {}) {
+  return (
+    Number(auroraManual.pass_count || 0) > 0 &&
+    Number(auroraManual.fail_count || 0) === 0 &&
+    Number(auroraManual.review_required_count || 0) === 0
+  );
+}
+
+function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auroraManual }) {
   const failedSteps = (steps || []).filter((item) => item.status !== 'pass');
   const scorecardBuckets = collectScorecardBuckets(scorecard);
   const blockingFailures = [];
@@ -170,10 +182,21 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
     holdReasons.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
   }
 
+  if (auroraManual && Number(auroraManual.fail_count || 0) > 0) {
+    holdReasons.push(`aurora manual review failures: ${String(auroraManual.fail_count)}`);
+  }
+
+  if (auroraManual && Number(auroraManual.review_required_count || 0) > 0) {
+    holdReasons.push(
+      `aurora manual reviews still pending: ${String(auroraManual.review_required_count)}`,
+    );
+  }
+
   if (
     stagingMatrix &&
     stagingMatrix.summary &&
-    Number(stagingMatrix.summary.review_required_count || 0) > 0
+    Number(stagingMatrix.summary.review_required_count || 0) > 0 &&
+    !hasCompletedAuroraManualReview(auroraManual)
   ) {
     holdReasons.push(
       `staging matrix manual reviews still pending: ${String(
@@ -223,6 +246,7 @@ function writeArtifacts(args, payload) {
     `- Readiness report: \`${payload.artifacts.readiness_report || 'missing'}\``,
     `- Gateway daily report: \`${payload.artifacts.gateway_daily_report || 'missing'}\``,
     `- Staging matrix report: \`${payload.artifacts.staging_matrix_report || 'missing'}\``,
+    `- Aurora manual review report: \`${payload.artifacts.aurora_manual_report || 'missing'}\``,
     '',
     '## Candidate Snapshot',
     '',
@@ -282,6 +306,17 @@ function writeArtifacts(args, payload) {
       String(payload.staging.summary.blocking_failures || 0),
     ]),
     '',
+    '## Aurora Manual Review',
+    '',
+    markdownTableRow(['Metric', 'Value']),
+    markdownTableRow(['---', '---:']),
+    markdownTableRow(['pass_count', String(payload.aurora_manual.summary.pass_count || 0)]),
+    markdownTableRow(['fail_count', String(payload.aurora_manual.summary.fail_count || 0)]),
+    markdownTableRow([
+      'review_required_count',
+      String(payload.aurora_manual.summary.review_required_count || 0),
+    ]),
+    '',
     '## Decision',
     '',
     `- Conclusion: ${payload.decision.label}`,
@@ -321,12 +356,14 @@ function main() {
     summary: {},
     results: [],
   });
+  const auroraManual = readJsonIfExists(args.auroraManualSummary, {});
   const repo = repoTruth(args.repoRoot);
   const decision = decideConclusion({
     steps: stepsPayload.steps || [],
     scorecard: readiness.scorecard || {},
     gatewayDaily,
     stagingMatrix: staging,
+    auroraManual,
   });
 
   const payload = {
@@ -352,10 +389,16 @@ function main() {
       summary: staging.summary || {},
       results: Array.isArray(staging.results) ? staging.results : [],
     },
+    aurora_manual: {
+      summary_path: args.auroraManualSummary || null,
+      report_path: args.auroraManualReport || null,
+      summary: auroraManual || {},
+    },
     artifacts: {
       readiness_report: args.readinessReport || null,
       gateway_daily_report: args.gatewayDailyReport || null,
       staging_matrix_report: args.stagingMatrixReport || null,
+      aurora_manual_report: args.auroraManualReport || null,
     },
   };
 

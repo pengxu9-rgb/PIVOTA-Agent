@@ -63,7 +63,7 @@ describe('Celestial commerce-core staging matrix script', () => {
           endpoint: '/agent/shop/v1/invoke',
           request: {
             operation: 'find_products_multi',
-            payload: { search: { query: 'hydrating serum' } },
+            payload: { search: { query: 'panthenol repair serum' } },
             metadata: { source: 'aurora-bff', ui_surface: 'ingredient_plan_guidance_only' },
           },
           manual_review: {

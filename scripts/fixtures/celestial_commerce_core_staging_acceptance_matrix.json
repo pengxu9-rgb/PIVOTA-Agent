@@ -291,7 +291,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "hydrating serum",
+            "query": "panthenol repair serum",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
@@ -308,7 +308,7 @@
       },
       "manual_review": {
         "expected_outcome": "Confirm cache-hit products are coherent, guidance-only metadata is present, and diagnostics remain complete.",
-        "notes": "Use this case to confirm cache-hit orchestration stability without relying on brittle title assertions."
+        "notes": "Use this stable staging canary to confirm cache-returned guidance-only orchestration without relying on brittle generic-family queries."
       }
     },
     {
@@ -322,7 +322,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "repair serum",
+            "query": "centella serum",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
@@ -338,8 +338,8 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm cache miss transitions cleanly to strict-empty, clarify, or resolver fallback with complete diagnostics.",
-        "notes": "This is intentionally manual because catalog/staging data can shift while the owned orchestration path must stay inspectable."
+        "expected_outcome": "Confirm cache miss transitions cleanly to a non-cache-returned guidance-only lane, with complete diagnostics even when the owned path degrades into bounded external supplement.",
+        "notes": "This is intentionally manual because catalog/staging data can shift while the owned miss path must stay inspectable and should not silently collapse into cache-returned supplement."
       }
     },
     {
@@ -353,7 +353,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "soothing repair serum",
+            "query": "soothing barrier serum sensitive skin",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
@@ -370,7 +370,7 @@
       },
       "manual_review": {
         "expected_outcome": "Confirm direct supplement only applies when the hit is valid and does not silently widen into generic recall.",
-        "notes": "Look for guidance supplement metadata, source breakdown changes, and no low-quality drift."
+        "notes": "Use this stable staging canary to look for guidance supplement metadata, source breakdown changes, and no low-quality drift."
       }
     }
   ],

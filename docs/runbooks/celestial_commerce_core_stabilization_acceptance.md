@@ -45,6 +45,7 @@ npm run audit:stabilization:commerce-core
 If no raw gateway log path or sampled shadow file is supplied, the workflow falls back to the checked-in shadow sample fixture so the acceptance report remains runnable locally.
 
 The staging matrix uses the supported live commerce entrypoint `POST /agent/shop/v1/invoke`. Public `POST /api/gateway` should not be treated as the primary commerce acceptance rail for this workflow. If a case requires auth and the matching staging profile is not configured, the case is marked `review_required` instead of failing.
+When `STAGING_AUTH_TOKEN` or `STAGING_AGENT_API_KEY` is present, the stabilization workflow also runs the Aurora guidance-only manual review runner and links that artifact into the final report so the three manual slots are not left permanently pending.
 
 Supported auth envs:
 
@@ -109,14 +110,14 @@ STAGING_GENERIC_MCP_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
 npm run audit:stabilization:commerce-core
 ```
 
-5. After the live matrix is green, complete the three Aurora guidance-only manual cases separately:
+5. The stabilization workflow will run the Aurora guidance-only manual review automatically when staging auth is available. You can still rerun it separately when you want a fresh artifact:
 
 ```bash
 STAGING_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
 npm run audit:aurora-manual-review:commerce-core
 ```
 
-That review stays separate because the cases still require a human verdict on cache-hit quality, cache-miss lane selection, and bounded direct supplement behavior.
+The standalone rerun stays useful when you want a fresh staging snapshot for cache-hit quality, cache-miss lane selection, or bounded direct supplement behavior without rerunning the full stabilization workflow.
 
 ## What The Workflow Produces
 
@@ -129,6 +130,7 @@ Artifacts include:
 - linked readiness report
 - linked gateway governance daily summary
 - staging acceptance matrix
+- linked Aurora guidance-only manual review, when staging auth is available
 
 ## Expected Decision Outputs
 

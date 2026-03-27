@@ -62,26 +62,42 @@ function titlesFromProducts(products) {
 }
 
 async function requestJson(url, payload, headers) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let json = {};
-  try {
-    json = JSON.parse(text);
-  } catch (_error) {
-    json = { _raw: text };
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const text = await response.text();
+      let json = {};
+      try {
+        json = JSON.parse(text);
+      } catch (_error) {
+        json = { _raw: text };
+      }
+      const responseHeaders = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[String(key || '').toLowerCase()] = String(value || '').trim();
+      });
+      return {
+        httpStatus: response.status,
+        responseHeaders,
+        body: json,
+      };
+    } catch (error) {
+      lastError = error;
+    }
   }
-  const responseHeaders = {};
-  response.headers.forEach((value, key) => {
-    responseHeaders[String(key || '').toLowerCase()] = String(value || '').trim();
-  });
+
   return {
-    httpStatus: response.status,
-    responseHeaders,
-    body: json,
+    httpStatus: 0,
+    responseHeaders: {},
+    body: {
+      error: 'REQUEST_FAILED',
+      message: lastError?.message || String(lastError || 'request_failed'),
+    },
   };
 }
 
@@ -316,11 +332,18 @@ async function main() {
   const runDir = path.join(args.outDir, utcTimestamp());
   fs.mkdirSync(runDir, { recursive: true });
 
+  const passCount = results.filter((item) => item.verdict === 'pass').length;
+  const failCount = results.filter((item) => item.verdict === 'fail').length;
+  const reviewRequiredCount = results.filter((item) => item.verdict === 'review_required').length;
+
   const payload = {
     generated_at: new Date().toISOString(),
     environment: 'staging authenticated invoke',
     base_url: args.baseUrl,
     endpoint: args.endpoint,
+    pass_count: passCount,
+    fail_count: failCount,
+    review_required_count: reviewRequiredCount,
     results,
   };
 
@@ -334,9 +357,9 @@ async function main() {
       ok: true,
       markdown: markdownPath,
       json: jsonPath,
-      pass_count: results.filter((item) => item.verdict === 'pass').length,
-      fail_count: results.filter((item) => item.verdict === 'fail').length,
-      review_required_count: results.filter((item) => item.verdict === 'review_required').length,
+      pass_count: passCount,
+      fail_count: failCount,
+      review_required_count: reviewRequiredCount,
     }) + '\n',
   );
 }
