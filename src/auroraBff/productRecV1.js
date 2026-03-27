@@ -1079,6 +1079,7 @@ async function buildIngredientProductRecommendationsNeutral({
   catalogPath,
   allowBundledCatalogSeed = true,
   maxProducts = 3,
+  mainlineOnly = false,
   preferDeterministicMainline = false,
   deterministicCandidateBuilder = null,
   fallbackQueryLimit = 1,
@@ -1286,7 +1287,11 @@ async function buildIngredientProductRecommendationsNeutral({
   });
 
   const fallbackQueries = lookupQueries.slice(0, fallbackQueryLimitN);
-  if (typeof fallbackCandidateBuilder === 'function' && (!preferDeterministicMainline || mainlinePoolCount === 0)) {
+  if (
+    !mainlineOnly
+    && typeof fallbackCandidateBuilder === 'function'
+    && (!preferDeterministicMainline || mainlinePoolCount === 0)
+  ) {
     fallbackStage = 'internal_external_pool';
     for (const query of fallbackQueries) {
       try {
@@ -1305,12 +1310,14 @@ async function buildIngredientProductRecommendationsNeutral({
         // Non-blocking fallback path by design.
       }
     }
-  } else if (typeof fallbackCandidateBuilder === 'function' && preferDeterministicMainline && mainlinePoolCount > 0) {
+  } else if (!mainlineOnly && typeof fallbackCandidateBuilder === 'function' && preferDeterministicMainline && mainlinePoolCount > 0) {
     fallbackStage = 'mainline_pool_only';
     networkFallbackSkippedDueToMainline = true;
+  } else if (mainlineOnly) {
+    fallbackStage = mainlinePoolCount > 0 ? 'mainline_only_pool' : 'mainline_only_empty';
   }
 
-  if (!pool.length && typeof llmFallbackRecoverFn === 'function') {
+  if (!mainlineOnly && !pool.length && typeof llmFallbackRecoverFn === 'function') {
     fallbackStage = 'llm_fallback';
     try {
       const recovered = await llmFallbackRecoverFn({
@@ -1374,7 +1381,11 @@ async function buildIngredientProductRecommendationsNeutral({
 
   let dedupedCtas = dedupeCtas(externalSearchCtas, 6);
   if (!outputs.length && !dedupedCtas.length) {
-    fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
+    if (mainlineOnly) {
+      fallbackStage = 'mainline_only_cta';
+    } else {
+      fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
+    }
     dedupedCtas = dedupeCtas(
       [
         buildCta(
@@ -1451,6 +1462,7 @@ async function buildIngredientProductRecommendationsNeutral({
       fallback_stage: fallbackStage,
       fallback_query_limit: fallbackQueryLimitN,
       mainline_pool_count: mainlinePoolCount,
+      mainline_only: Boolean(mainlineOnly),
       prefer_deterministic_mainline: Boolean(preferDeterministicMainline),
       network_fallback_skipped_due_to_mainline: networkFallbackSkippedDueToMainline,
       products_count: outputs.length,

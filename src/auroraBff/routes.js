@@ -966,8 +966,8 @@ const PHOTO_MODULES_ACTION_RECO_NETWORK_HARD_CAP = (() => {
   return Math.max(1, Math.min(128, v));
 })();
 const PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS || 2500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
+  const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(300, Math.min(10000, v));
 })();
 const RECO_CATALOG_SEARCH_CONCURRENCY = (() => {
@@ -17229,10 +17229,11 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
                 allowBundledCatalogSeed: false,
                 maxProducts: 6,
+                mainlineOnly: true,
                 preferDeterministicMainline: true,
                 fallbackQueryLimit: 3,
-                fallbackCandidateBuilder: allowNetworkFallbackForAction ? fallbackCandidateBuilder : null,
-                llmFallbackRecoverFn: allowNetworkFallbackForAction ? llmFallbackRecoverFn : null,
+                fallbackCandidateBuilder: null,
+                llmFallbackRecoverFn: null,
                 externalSearchCtaBuilder: buildExternalSearchCta,
                 dedupeExternalSearchCtas,
               }).catch((error) => {
