@@ -17227,6 +17227,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 internalTestMode: INTERNAL_TEST_MODE,
                 artifactPath: DIAG_INGREDIENT_KB_V2_PATH,
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
+                allowBundledCatalogSeed: false,
                 maxProducts: 6,
                 fallbackCandidateBuilder: allowNetworkFallbackForAction ? fallbackCandidateBuilder : null,
                 llmFallbackRecoverFn: allowNetworkFallbackForAction ? llmFallbackRecoverFn : null,
