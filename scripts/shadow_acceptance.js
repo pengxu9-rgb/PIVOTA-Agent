@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { parsePromMetrics } = require('./report_verify_live_metrics');
 const { runShadowDaily } = require('./run_shadow_daily');
+const {
+  DEFAULT_PASS_PHOTO_PATH,
+  DEFAULT_PASS_PHOTO_URL,
+  DEFAULT_PASS_PHOTO_LABEL,
+  DEFAULT_FIXTURE_POLICY,
+} = require('./_utils/photoFixtureDefaults.cjs');
 
 const DEFAULT_BASE = 'https://pivota-agent-production.up.railway.app';
-const DEFAULT_IMAGE_URL = 'https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg';
+const DEFAULT_IMAGE_URL = DEFAULT_PASS_PHOTO_URL;
+const DEFAULT_IMAGE_LABEL = DEFAULT_PASS_PHOTO_LABEL;
+const DEFAULT_IMAGE_POLICY = DEFAULT_FIXTURE_POLICY;
 const DEFAULT_REPORTS_OUT = 'reports';
 const DEFAULT_OUTPUTS_OUT = 'outputs';
 const DEFAULT_VERIFY_IN = path.join('tmp', 'diag_pseudo_label_factory');
@@ -1064,7 +1073,9 @@ async function runShadowAcceptance(options = {}) {
   const waitAfterSec = toInt(options.waitAfterSec, 12, 1, 120);
   const guardMaxCallsPerMin = toInt(options.guardMaxCallsPerMin, 3, 0, 1000000);
   const guardMaxCallsPerDay = toInt(options.guardMaxCallsPerDay, 6, 0, 100000000);
-  const imageUrl = safeToken(options.imageUrl, DEFAULT_IMAGE_URL);
+  const defaultImagePath = fs.existsSync(DEFAULT_PASS_PHOTO_PATH) ? DEFAULT_PASS_PHOTO_PATH : '';
+  const imagePath = safeToken(options.imagePath, defaultImagePath);
+  const imageUrl = safeToken(options.imageUrl, imagePath ? '' : DEFAULT_IMAGE_URL);
   const reportsOut = path.resolve(options.reportsOut || DEFAULT_REPORTS_OUT);
   const outputsOut = path.resolve(options.outputsOut || DEFAULT_OUTPUTS_OUT);
   const verifyIn = path.resolve(options.verifyIn || DEFAULT_VERIFY_IN);
@@ -1095,7 +1106,7 @@ async function runShadowAcceptance(options = {}) {
   const startedAtIso = windowSince.effective_since_utc;
   const auroraUid = `uid_shadow_accept_${Date.now()}`;
   const imageBytes = await resolveImageBytes({
-    imagePath: options.imagePath,
+    imagePath,
     imageUrl,
   });
 
@@ -1205,7 +1216,7 @@ async function runShadowAcceptance(options = {}) {
   if (!artifactCheck.pass) failures.push(`missing artifacts: ${artifactCheck.missing.join(', ')}`);
 
   const verdict = failures.length ? 'FAIL' : 'PASS';
-  await fs.mkdir(reportsOut, { recursive: true });
+  await fsp.mkdir(reportsOut, { recursive: true });
   const reportPath = path.join(reportsOut, `shadow_acceptance_${dateKey}_${stamp}.md`);
   const jsonPath = path.join(reportsOut, `shadow_acceptance_${dateKey}_${stamp}.json`);
   const payload = {
@@ -1213,6 +1224,9 @@ async function runShadowAcceptance(options = {}) {
     generated_at_utc: new Date().toISOString(),
     verdict,
     base,
+    photo_fixture_label: DEFAULT_IMAGE_LABEL,
+    photo_fixture_policy: DEFAULT_IMAGE_POLICY,
+    photo_image_url: imageUrl,
     started_at_utc: runStartedAtIso,
     window_since_requested_utc: windowSince.requested_since_utc,
     window_since_effective_utc: windowSince.effective_since_utc,
@@ -1242,8 +1256,10 @@ async function runShadowAcceptance(options = {}) {
     artifactCheck,
     failures,
   });
-  await fs.writeFile(reportPath, markdown, 'utf8');
-  await fs.writeFile(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  payload.photo_fixture_source = imagePath ? 'repo_local_or_override' : 'remote_url';
+  payload.photo_image_path = imagePath || null;
+  await fsp.writeFile(reportPath, markdown, 'utf8');
+  await fsp.writeFile(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return { reportPath, jsonPath, verdict, failures };
 }
 

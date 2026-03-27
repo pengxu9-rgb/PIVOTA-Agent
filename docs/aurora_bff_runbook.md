@@ -85,6 +85,20 @@ Failure-code contract (for `analysis_summary.payload.photo_notice.failure_code`)
 - `DOWNLOAD_URL_EXPIRED`
 - `DOWNLOAD_URL_DNS`
 
+Photo smoke/probe fixture policy:
+- Mainline pass acceptance should use a realistic face photo fixture, not a tiny placeholder image.
+- The backend smoke/probe defaults are centralized under:
+  - `scripts/_utils/photo_fixture_defaults.sh`
+  - `scripts/_utils/photoFixtureDefaults.cjs`
+- Current default trusted pass fixture:
+  - `tests/fixtures/photo/real_face_probe.jpg`
+- Current default degraded boundary fixture:
+  - `tests/fixtures/photo/degraded_face_boundary.png`
+- Fail/degraded coverage should prefer explicit branches such as:
+  - forced `qc_status=failed`
+  - missing-photo / invalid-photo paths
+- Do not treat ad hoc tiny images or 1x1/128x128 placeholders as production-quality photo acceptance evidence.
+
 ### CORS
 
 - `ALLOWED_ORIGINS` or `CORS_ALLOWED_ORIGINS`:

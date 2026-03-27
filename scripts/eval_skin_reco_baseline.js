@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
+const {
+  DEFAULT_PASS_PHOTO_PATH,
+  DEFAULT_PASS_PHOTO_URL,
+  DEFAULT_PASS_PHOTO_LABEL,
+  DEFAULT_FIXTURE_POLICY,
+} = require('./_utils/photoFixtureDefaults.cjs');
 
 const DEFAULT_BASE = 'https://pivota-agent-production.up.railway.app';
 const DEFAULT_OUT_DIR = 'reports';
-const DEFAULT_PHOTO_URL = 'https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg';
+const DEFAULT_PHOTO_URL = DEFAULT_PASS_PHOTO_URL;
 const DEFAULT_LANG = 'EN';
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_RETRIES = 3;
@@ -97,6 +104,7 @@ function parseArgs(argv) {
     base: DEFAULT_BASE,
     outDir: DEFAULT_OUT_DIR,
     photoUrl: DEFAULT_PHOTO_URL,
+    photoPath: DEFAULT_PASS_PHOTO_PATH,
     lang: DEFAULT_LANG,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     retries: DEFAULT_RETRIES,
@@ -123,6 +131,11 @@ function parseArgs(argv) {
     }
     if (token === '--photo-url' && next) {
       out.photoUrl = next;
+      i += 1;
+      continue;
+    }
+    if (token === '--photo-path' && next) {
+      out.photoPath = next;
       i += 1;
       continue;
     }
@@ -292,7 +305,7 @@ async function loadCases(casesFile, limit) {
   let cases = DEFAULT_CASES;
   if (casesFile) {
     const abs = path.resolve(casesFile);
-    const raw = await fs.readFile(abs, 'utf8');
+    const raw = await fsp.readFile(abs, 'utf8');
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || !parsed.length) {
       throw new Error('cases file must be a non-empty JSON array');
@@ -333,6 +346,19 @@ async function downloadPhoto(photoUrl, timeoutMs) {
     throw new Error('photo download returned empty bytes');
   }
   return buffer;
+}
+
+async function loadPhotoBytes(photoPath, photoUrl, timeoutMs) {
+  const resolvedPath = String(photoPath || '').trim();
+  if (resolvedPath && fs.existsSync(resolvedPath)) {
+    const buffer = await fsp.readFile(path.resolve(resolvedPath));
+    if (!buffer.length) {
+      throw new Error('photo fixture file returned empty bytes');
+    }
+    return { buffer, source: 'repo_local', path: path.resolve(resolvedPath) };
+  }
+  const buffer = await downloadPhoto(photoUrl, timeoutMs);
+  return { buffer, source: 'remote_url', path: null };
 }
 
 function extractPhotoConfirm(uploadEnvelope) {
@@ -546,13 +572,13 @@ function csvEscape(value) {
 }
 
 async function writeReports(outDir, runId, report) {
-  await fs.mkdir(outDir, { recursive: true });
+  await fsp.mkdir(outDir, { recursive: true });
 
   const jsonPath = path.join(outDir, `skin_reco_baseline_${runId}.json`);
   const mdPath = path.join(outDir, `skin_reco_baseline_${runId}.md`);
   const csvPath = path.join(outDir, `skin_reco_baseline_${runId}.csv`);
 
-  await fs.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  await fsp.writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 
   const lines = [];
   lines.push('# Skin + Recommendation Baseline Report');
@@ -581,7 +607,7 @@ async function writeReports(outDir, runId, report) {
     );
   }
 
-  await fs.writeFile(mdPath, `${lines.join('\n')}\n`, 'utf8');
+  await fsp.writeFile(mdPath, `${lines.join('\n')}\n`, 'utf8');
 
   const csvHeader = [
     'case_id',
@@ -628,7 +654,7 @@ async function writeReports(outDir, runId, report) {
       csvEscape(row.error || ''),
     ].join(','));
   }
-  await fs.writeFile(csvPath, `${csvRows.join('\n')}\n`, 'utf8');
+  await fsp.writeFile(csvPath, `${csvRows.join('\n')}\n`, 'utf8');
 
   return { jsonPath, mdPath, csvPath };
 }
@@ -643,7 +669,8 @@ async function run() {
   const outDir = path.resolve(args.outDir || DEFAULT_OUT_DIR);
 
   const cases = await loadCases(args.casesFile, args.limit);
-  const photoBytes = await downloadPhoto(args.photoUrl, args.timeoutMs);
+  const photoFixture = await loadPhotoBytes(args.photoPath, args.photoUrl, args.timeoutMs);
+  const photoBytes = photoFixture.buffer;
 
   const runId = nowIsoCompact();
   const rows = [];
@@ -825,6 +852,10 @@ async function run() {
       timeout_ms: args.timeoutMs,
       retries: args.retries,
       photo_url: args.photoUrl,
+      photo_path: photoFixture.path,
+      photo_fixture_source: photoFixture.source,
+      photo_fixture_label: DEFAULT_PASS_PHOTO_LABEL,
+      photo_fixture_policy: DEFAULT_FIXTURE_POLICY,
       total_cases: cases.length,
       skip_resolve_check: args.skipResolveCheck,
       max_reco_resolve_check: args.maxRecoResolveCheck,

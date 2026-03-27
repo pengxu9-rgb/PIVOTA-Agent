@@ -199,7 +199,7 @@ const {
 } = require('./templateSystem');
 const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
-const { buildPhotoModulesCard } = require('./photoModulesV1');
+const { buildPhotoModulesCard, buildSummaryV1: buildPhotoModulesSummaryV1 } = require('./photoModulesV1');
 const productRecV1 = require('./productRecV1');
 const {
   loadDeterministicExternalSeedCandidates,
@@ -17098,6 +17098,20 @@ function buildPhotoModuleRecoCacheKey({
   ].join('::');
 }
 
+function refreshPhotoModulesSummaryV1(payload) {
+  if (!isPlainObject(payload)) return null;
+  return buildPhotoModulesSummaryV1(
+    Array.isArray(payload.modules) ? payload.modules : [],
+    {
+      qualityGrade: pickFirstString(payload.quality_grade),
+      qualityReasons:
+        isPlainObject(payload.quality_report) && isPlainObject(payload.quality_report.photo_quality)
+          ? asStringArray(payload.quality_report.photo_quality.reasons, 8)
+          : [],
+    },
+  );
+}
+
 async function enrichPhotoModulesCardWithIngredientProducts({
   photoModulesCard,
   profileSummary,
@@ -17194,6 +17208,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
         ingredientInputs: Array.from(deterministicBatchInputs.values()),
         market,
         maxProducts: 6,
+        allowWideFallback: false,
       });
       const normalizedMarket = String(market || '').trim().toLowerCase();
       const batchEntries =
@@ -17436,6 +17451,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   );
 
   payload.modules = nextModules;
+  payload.summary_v1 = refreshPhotoModulesSummaryV1(payload);
   return {
     ...photoModulesCard,
     payload,
@@ -17489,7 +17505,10 @@ function annotatePhotoModulesRecoEnrichFailure(photoModulesCard, {
 
   return {
     ...photoModulesCard,
-    payload,
+    payload: {
+      ...payload,
+      summary_v1: refreshPhotoModulesSummaryV1(payload),
+    },
   };
 }
 
@@ -23081,6 +23100,139 @@ function buildIngredientPlanCard(plan, requestId, profile = null) {
         ? normalizedPlan.confidence
         : null,
     },
+  };
+}
+
+const PHOTO_BASELINE_SUPPORT_INGREDIENT_IDS = new Set([
+  'sunscreen_filters',
+  'uv_filters',
+  'uvfilters',
+  'ceramide_np',
+  'panthenol',
+  'glycerin',
+  'hyaluronic_acid',
+]);
+
+function normalizePhotoIngredientKey(value) {
+  const token = String(value || '').trim().toLowerCase();
+  return token || '';
+}
+
+function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+  const index = new Map();
+  for (const moduleRow of modules) {
+    const moduleId = pickFirstString(moduleRow && moduleRow.module_id);
+    const moduleLabel = humanizePhotoStoryModuleLabel(moduleId, isCn);
+    const actions = Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [];
+    const moduleIssueTypes = Array.isArray(moduleRow && moduleRow.issues)
+      ? moduleRow.issues.map((issue) => pickFirstString(issue && issue.issue_type)).filter(Boolean)
+      : [];
+    for (const action of actions) {
+      const ingredientId = normalizePhotoIngredientKey(
+        pickFirstString(action && action.ingredient_canonical_id, action && action.ingredient_id, action && action.ingredientId),
+      );
+      if (!ingredientId) continue;
+      const existing = index.get(ingredientId) || {
+        source_module_ids: new Set(),
+        source_issue_types: new Set(),
+        strict_product_count: 0,
+        ingredient_name: pickFirstString(action && action.ingredient_name, action && action.ingredient, ingredientId),
+        why_match_short: '',
+        external_search_ctas: [],
+      };
+      if (moduleId) existing.source_module_ids.add(moduleId);
+      const issueTypes = Array.isArray(action && action.evidence_issue_types) && action.evidence_issue_types.length
+        ? action.evidence_issue_types.map((item) => pickFirstString(item)).filter(Boolean)
+        : moduleIssueTypes;
+      for (const issueType of issueTypes) existing.source_issue_types.add(issueType);
+      const strictProductCount = Array.isArray(action && action.products)
+        ? action.products.filter((product) => {
+            const productId = pickFirstString(product && product.product_id, product && product.productId);
+            const productName = pickFirstString(product && product.name, product && product.title);
+            return Boolean(productId || productName);
+          }).length
+        : 0;
+      existing.strict_product_count += strictProductCount;
+      if (Array.isArray(action && action.external_search_ctas)) {
+        existing.external_search_ctas.push(...action.external_search_ctas.filter((cta) => isPlainObject(cta)));
+      }
+      const issueLabel = issueTypes[0] ? humanizePhotoStoryIssueLabel(issueTypes[0], isCn) : (isCn ? '当前可见问题' : 'the visible concern');
+      existing.why_match_short = existing.why_match_short || (
+        isCn
+          ? `${existing.ingredient_name}直接对应${moduleLabel}的${issueLabel}。`
+          : `${existing.ingredient_name} is tied directly to the ${issueLabel} signal on the ${moduleLabel}.`
+      );
+      index.set(ingredientId, existing);
+    }
+  }
+  return index;
+}
+
+function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) {
+  if (!isPlainObject(payload)) return payload;
+  const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
+  if (!coverageIndex.size) return payload;
+  const targets = Array.isArray(payload.targets) ? payload.targets : [];
+  if (!targets.length) return payload;
+
+  const nextTargets = targets
+    .map((targetRaw) => {
+      const target = isPlainObject(targetRaw) ? { ...targetRaw } : null;
+      if (!target) return targetRaw;
+      const canonicalId = normalizePhotoIngredientKey(target.ingredient_id || target.ingredientId || target.ingredient_name || target.ingredientName);
+      const coverage = canonicalId ? coverageIndex.get(canonicalId) : null;
+      const products = isPlainObject(target.products) ? { ...target.products } : {};
+      const currentStrictCount =
+        (Array.isArray(products.competitors) ? products.competitors.length : 0)
+        + (Array.isArray(products.dupes) ? products.dupes.length : 0);
+      const strictProductCount = coverage ? coverage.strict_product_count : currentStrictCount;
+      const recommendationMode = strictProductCount > 0 ? 'strict_match' : 'cta_only';
+      const presentationBucket = coverage
+        ? 'photo_derived'
+        : PHOTO_BASELINE_SUPPORT_INGREDIENT_IDS.has(canonicalId)
+          ? 'baseline_support'
+          : 'supporting_context';
+      if (coverage && strictProductCount <= 0) {
+        const dedupedCtas = dedupeExternalSearchCtas(
+          Array.isArray(coverage.external_search_ctas) ? coverage.external_search_ctas : [],
+          4,
+        );
+        if (dedupedCtas.length) products.external_search_ctas = dedupedCtas;
+        products.products_empty_reason = products.products_empty_reason || 'strict_match_miss';
+      }
+      const why = Array.isArray(target.why) ? target.why.slice() : [];
+      if (coverage && coverage.why_match_short) {
+        why.unshift(coverage.why_match_short);
+      }
+      target.products = products;
+      target.why = Array.from(new Set(why.map((item) => String(item || '').trim()).filter(Boolean))).slice(0, 4);
+      target.source_module_ids = coverage ? Array.from(coverage.source_module_ids) : [];
+      target.source_issue_types = coverage ? Array.from(coverage.source_issue_types) : [];
+      target.recommendation_mode = recommendationMode;
+      target.strict_product_count = strictProductCount;
+      target.why_match_short = coverage ? coverage.why_match_short : null;
+      target.presentation_bucket = presentationBucket;
+      return target;
+    })
+    .sort((left, right) => {
+      const rank = (row) => {
+        const bucket = String(row && row.presentation_bucket || '').trim().toLowerCase();
+        if (bucket === 'photo_derived') return 0;
+        if (bucket === 'supporting_context') return 1;
+        if (bucket === 'baseline_support') return 2;
+        return 3;
+      };
+      const rankDiff = rank(left) - rank(right);
+      if (rankDiff !== 0) return rankDiff;
+      return Number(right && right.priority_score_0_100 || 0) - Number(left && left.priority_score_0_100 || 0);
+    });
+
+  return {
+    ...payload,
+    targets: nextTargets,
   };
 }
 
@@ -33424,9 +33576,324 @@ function applyPhotoClaimConsistency(cards) {
   });
 }
 
+function humanizeAnalysisStoryLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const spaced = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return spaced ? `${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}` : '';
+}
+
+const PHOTO_STORY_MODULE_LABELS = Object.freeze({
+  forehead: { en: 'Forehead', cn: '额头' },
+  left_cheek: { en: 'Left cheek', cn: '左脸颊' },
+  right_cheek: { en: 'Right cheek', cn: '右脸颊' },
+  nose: { en: 'Nose', cn: '鼻部' },
+  chin: { en: 'Chin', cn: '下巴' },
+  under_eye_left: { en: 'Left under-eye', cn: '左眼下' },
+  under_eye_right: { en: 'Right under-eye', cn: '右眼下' },
+});
+
+const PHOTO_STORY_ISSUE_LABELS = Object.freeze({
+  redness: { en: 'redness', cn: '泛红' },
+  shine: { en: 'oiliness', cn: '出油' },
+  texture: { en: 'texture irregularity', cn: '纹理不平整' },
+  tone: { en: 'tone unevenness', cn: '肤色不均' },
+  acne: { en: 'breakout activity', cn: '痘痘活跃度' },
+});
+
+function humanizePhotoStoryModuleLabel(moduleId, isCn) {
+  const token = String(moduleId || '').trim().toLowerCase();
+  if (PHOTO_STORY_MODULE_LABELS[token]) return isCn ? PHOTO_STORY_MODULE_LABELS[token].cn : PHOTO_STORY_MODULE_LABELS[token].en;
+  return humanizeAnalysisStoryLabel(token);
+}
+
+function humanizePhotoStoryIssueLabel(issueType, isCn) {
+  const token = String(issueType || '').trim().toLowerCase();
+  if (PHOTO_STORY_ISSUE_LABELS[token]) return isCn ? PHOTO_STORY_ISSUE_LABELS[token].cn : PHOTO_STORY_ISSUE_LABELS[token].en;
+  return humanizeAnalysisStoryLabel(token);
+}
+
+function normalizePhotoStoryConfidenceBucket(value, existingBucket = null) {
+  const token = String(existingBucket || '').trim().toLowerCase();
+  if (token === 'high' || token === 'medium' || token === 'low') return token;
+  const score = clamp01Score(Number(value));
+  if (score >= 0.75) return 'high';
+  if (score >= 0.45) return 'medium';
+  return 'low';
+}
+
+function formatPhotoSeverityLabel(severity, isCn) {
+  const level = Math.max(0, Math.min(4, Math.round(Number(severity) || 0)));
+  if (isCn) {
+    if (level >= 4) return '明显';
+    if (level >= 3) return '中高';
+    if (level >= 2) return '中等';
+    if (level >= 1) return '轻度';
+    return '轻微';
+  }
+  if (level >= 4) return 'pronounced';
+  if (level >= 3) return 'moderately high';
+  if (level >= 2) return 'moderate';
+  if (level >= 1) return 'mild';
+  return 'subtle';
+}
+
+function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons } = {}) {
+  const out = [];
+  const grade = String(qualityGrade || '').trim().toLowerCase();
+  if (grade === 'degraded') out.push('photo_quality_degraded');
+  if (grade === 'fail') out.push('photo_quality_failed');
+  for (const reason of Array.isArray(qualityReasons) ? qualityReasons : []) {
+    const token = String(reason || '').trim().toLowerCase();
+    if (token) out.push(token);
+  }
+  return Array.from(new Set(out)).slice(0, 8);
+}
+
+function renderPhotoQualityCaveatText(token, isCn) {
+  const normalized = String(token || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'photo_quality_degraded') {
+    return isCn ? '照片质量一般，结论会更保守。' : 'Photo quality is degraded, so conclusions stay conservative.';
+  }
+  if (normalized === 'photo_quality_failed') {
+    return isCn ? '照片质量不足，当前只保留低风险解读。' : 'Photo quality is too weak, so only low-risk interpretation is kept.';
+  }
+  if (normalized === 'glare_confounded') {
+    return isCn ? '反光会干扰对出油与色泽的判断。' : 'Glare can distort shine and tone readings.';
+  }
+  if (normalized === 'shadow_confounded') {
+    return isCn ? '阴影会削弱对纹理和色差的判断。' : 'Shadows reduce confidence for texture and tone reads.';
+  }
+  if (normalized === 'filter_suspected') {
+    return isCn ? '疑似滤镜会降低颜色与质地判断的可信度。' : 'Possible filtering lowers confidence in color and texture interpretation.';
+  }
+  if (normalized === 'blurred') {
+    return isCn ? '轻微模糊会削弱细节观察。' : 'Blur reduces detail-level confidence.';
+  }
+  return humanizeAnalysisStoryLabel(normalized);
+}
+
+function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, language } = {}) {
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const summaryPayload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
+  const photoCardPayload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : {};
+  const usedPhotos = summaryPayload.used_photos === true || photoCardPayload.used_photos === true;
+  const photoNotice = pickFirstString(summaryPayload.photo_notice, photoCardPayload.photo_notice);
+  const summaryQualityReport = isPlainObject(summaryPayload.quality_report) ? summaryPayload.quality_report : {};
+  const cardQualityReport = isPlainObject(photoCardPayload.quality_report) ? photoCardPayload.quality_report : {};
+  const photoQuality = isPlainObject(summaryQualityReport.photo_quality)
+    ? summaryQualityReport.photo_quality
+    : isPlainObject(cardQualityReport.photo_quality)
+      ? cardQualityReport.photo_quality
+      : {};
+  const qualityGrade = String(pickFirstString(photoCardPayload.quality_grade, photoQuality.grade) || '').trim().toLowerCase();
+  const qualityReasons = asStringArray(photoQuality.reasons, 8);
+  const modules = Array.isArray(photoCardPayload.modules)
+    ? photoCardPayload.modules.filter((item) => isPlainObject(item))
+    : [];
+  const topLevelRegions = Array.isArray(photoCardPayload.regions)
+    ? photoCardPayload.regions.filter((item) => isPlainObject(item))
+    : [];
+  const summaryV1 = isPlainObject(photoCardPayload.summary_v1) ? photoCardPayload.summary_v1 : {};
+
+  const moduleHighlights = [];
+  const actionHighlights = [];
+  const productHighlights = [];
+  const findingEvidence = [];
+  const observedSignals = [];
+  const topActionsByModule = [];
+  const strictMatchProductCountsByAction = [];
+  const confidenceOverview = { high: 0, medium: 0, low: 0 };
+  const seenObservations = new Set();
+  const rankIssues = (issues) => (Array.isArray(issues) ? issues : [])
+    .slice()
+    .sort((left, right) => {
+      const rankDiff = Number(right && right.issue_rank_score || 0) - Number(left && left.issue_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const severityDiff = Number(right && right.severity_0_4 || 0) - Number(left && left.severity_0_4 || 0);
+      if (Math.abs(severityDiff) > 1e-6) return severityDiff;
+      return clamp01Score(Number(right && right.confidence_0_1 || 0)) - clamp01Score(Number(left && left.confidence_0_1 || 0));
+    });
+
+  for (const moduleRow of modules.slice(0, 6)) {
+    const actions = Array.isArray(moduleRow.actions) ? moduleRow.actions.filter((item) => isPlainObject(item)) : [];
+    const issues = rankIssues(moduleRow.issues);
+    const directProducts = Array.isArray(moduleRow.products) ? moduleRow.products.filter((item) => isPlainObject(item)) : [];
+    const moduleLabel = humanizePhotoStoryModuleLabel(
+      pickFirstString(moduleRow.module_id, moduleRow.title, moduleRow.label),
+      isCn,
+    );
+    if (moduleLabel) moduleHighlights.push(moduleLabel);
+    const topProductName = pickFirstString(
+      directProducts[0] && directProducts[0].name,
+      directProducts[0] && directProducts[0].title,
+    );
+    if (topProductName) productHighlights.push(topProductName);
+
+    for (const issue of issues.slice(0, 2)) {
+      const confidenceBucket = normalizePhotoStoryConfidenceBucket(issue && issue.confidence_0_1, issue && issue.confidence_bucket);
+      if (confidenceBucket === 'high' || confidenceBucket === 'medium' || confidenceBucket === 'low') {
+        confidenceOverview[confidenceBucket] += 1;
+      }
+      const signal = {
+        module_id: pickFirstString(moduleRow.module_id) || null,
+        module_label: moduleLabel || null,
+        issue_type: pickFirstString(issue && issue.issue_type) || null,
+        issue_label: humanizePhotoStoryIssueLabel(issue && issue.issue_type, isCn),
+        severity_0_4: Math.max(0, Math.min(4, Number(issue && issue.severity_0_4 || 0))),
+        confidence_0_1: clamp01Score(Number(issue && issue.confidence_0_1 || 0)),
+        confidence_bucket: confidenceBucket,
+        evidence_region_ids: Array.isArray(issue && issue.evidence_region_ids)
+          ? issue.evidence_region_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 6)
+          : [],
+        explanation_short: pickFirstString(issue && issue.explanation_short) || null,
+      };
+      observedSignals.push(signal);
+      const observation = signal.explanation_short || (
+        isCn
+          ? `${signal.module_label || '该区域'}的${signal.issue_label}表现更明显。`
+          : `${signal.module_label || 'This area'} shows more visible ${signal.issue_label}.`
+      );
+      if (observation && !seenObservations.has(observation)) {
+        seenObservations.add(observation);
+        findingEvidence.push({
+          rank: findingEvidence.length + 1,
+          observation,
+          module: signal.module_label || null,
+          region: signal.module_id || null,
+          issue_type: signal.issue_type || null,
+          severity_0_4: signal.severity_0_4,
+          confidence_0_1: signal.confidence_0_1,
+          confidence_bucket: signal.confidence_bucket,
+          source: 'photo_modules_v1',
+          evidence_region_or_module: signal.module_label ? [signal.module_label] : [],
+        });
+      }
+    }
+
+    for (const action of actions.slice(0, 2)) {
+      const issueTypes = Array.isArray(action.evidence_issue_types) && action.evidence_issue_types.length
+        ? action.evidence_issue_types.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4)
+        : issues.slice(0, 2).map((issue) => pickFirstString(issue && issue.issue_type)).filter(Boolean);
+      const strictProductCount = Array.isArray(action.products)
+        ? action.products.filter((item) => {
+            const productId = pickFirstString(item && item.product_id, item && item.productId);
+            const productName = pickFirstString(item && item.name, item && item.title);
+            return Boolean(productId || productName);
+          }).length
+        : 0;
+      const actionRow = {
+        module_id: pickFirstString(moduleRow.module_id) || null,
+        module_label: moduleLabel || null,
+        ingredient_id: pickFirstString(action.ingredient_canonical_id, action.ingredient_id, action.ingredientId) || null,
+        ingredient_name: pickFirstString(action.ingredient_name, action.ingredient) || null,
+        issue_types: issueTypes,
+        why: pickFirstString(action.why, action.how_to_use && action.how_to_use.notes) || null,
+        strict_product_count: strictProductCount,
+        recommendation_mode: strictProductCount > 0 ? 'strict_match' : 'cta_only',
+        external_cta_count: Array.isArray(action.external_search_ctas) ? action.external_search_ctas.length : 0,
+      };
+      if (actionRow.ingredient_name) actionHighlights.push(actionRow.ingredient_name);
+      topActionsByModule.push(actionRow);
+      strictMatchProductCountsByAction.push({
+        module_id: actionRow.module_id,
+        ingredient_id: actionRow.ingredient_id,
+        strict_product_count: strictProductCount,
+        recommendation_mode: actionRow.recommendation_mode,
+      });
+    }
+  }
+
+  const topFindings = (Array.isArray(summaryV1.top_findings) ? summaryV1.top_findings : observedSignals)
+    .map((row) => ({
+      module_id: pickFirstString(row && row.module_id) || null,
+      module_label: humanizePhotoStoryModuleLabel(pickFirstString(row && row.module_id), isCn),
+      issue_type: pickFirstString(row && row.issue_type) || null,
+      issue_label: humanizePhotoStoryIssueLabel(row && row.issue_type, isCn),
+      severity_0_4: Math.max(0, Math.min(4, Number(row && row.severity_0_4 || 0))),
+      confidence_0_1: clamp01Score(Number(row && row.confidence_0_1 || 0)),
+      confidence_bucket: normalizePhotoStoryConfidenceBucket(row && row.confidence_0_1, row && row.confidence_bucket),
+      evidence_region_ids: Array.isArray(row && row.evidence_region_ids)
+        ? row.evidence_region_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 6)
+        : [],
+    }))
+    .filter((row) => row.module_id && row.issue_type)
+    .slice(0, 3);
+  const qualityCaveatTokens = buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons });
+  const qualityCaveatTexts = qualityCaveatTokens
+    .map((token) => renderPhotoQualityCaveatText(token, isCn))
+    .filter(Boolean)
+    .slice(0, 3);
+  const summaryCoverage = isPlainObject(summaryV1.strict_match_coverage_overview)
+    ? summaryV1.strict_match_coverage_overview
+    : {};
+  const totalActions = Number.isFinite(Number(summaryCoverage.total_actions))
+    ? Number(summaryCoverage.total_actions)
+    : topActionsByModule.length;
+  const strictMatchCoverageOverview = {
+    total_actions: totalActions,
+    actions_with_strict_matches: Number.isFinite(Number(summaryCoverage.actions_with_strict_matches))
+      ? Number(summaryCoverage.actions_with_strict_matches)
+      : strictMatchProductCountsByAction.filter((item) => item.strict_product_count > 0).length,
+    actions_cta_only: Number.isFinite(Number(summaryCoverage.actions_cta_only))
+      ? Number(summaryCoverage.actions_cta_only)
+      : strictMatchProductCountsByAction.filter((item) => item.strict_product_count <= 0 && item.recommendation_mode === 'cta_only').length,
+    actions_without_matches: Number.isFinite(Number(summaryCoverage.actions_without_matches))
+      ? Number(summaryCoverage.actions_without_matches)
+      : 0,
+    coverage_ratio: Number.isFinite(Number(summaryCoverage.coverage_ratio))
+      ? clamp01Score(Number(summaryCoverage.coverage_ratio))
+      : (totalActions > 0
+        ? clamp01Score(strictMatchProductCountsByAction.filter((item) => item.strict_product_count > 0).length / totalActions)
+        : 0),
+  };
+  const topFinding = topFindings[0] || null;
+  const headlineHint = usedPhotos
+    ? pickFirstString(
+        topFinding
+          ? (
+              qualityGrade === 'degraded' || qualityGrade === 'fail'
+                ? (isCn
+                  ? `照片提示 ${topFinding.module_label}的${topFinding.issue_label}最值得关注，但当前判断保持保守。`
+                  : `Photos still point to ${topFinding.issue_label} around the ${topFinding.module_label} as the main focus, but the read stays conservative.`)
+                : (isCn
+                  ? `照片里最值得先处理的是${topFinding.module_label}的${topFinding.issue_label}。`
+                  : `The clearest photo-led focus right now is ${topFinding.issue_label} around the ${topFinding.module_label}.`)
+            )
+          : '',
+        photoNotice,
+      )
+    : '';
+
+  return {
+    used_photos: usedPhotos,
+    photo_notice: photoNotice || null,
+    quality_grade: qualityGrade || null,
+    quality_reasons: qualityReasons,
+    quality_caveats: qualityCaveatTokens,
+    quality_caveat_texts: qualityCaveatTexts,
+    modules_count: modules.length,
+    regions_count: topLevelRegions.length,
+    module_highlights: asStringArray(moduleHighlights, 4),
+    action_highlights: asStringArray(actionHighlights, 4),
+    product_highlights: asStringArray(productHighlights, 4),
+    observed_signals: observedSignals.slice(0, 8),
+    top_findings: topFindings,
+    top_actions_by_module: topActionsByModule.slice(0, 6),
+    strict_match_product_counts_by_action: strictMatchProductCountsByAction.slice(0, 8),
+    module_confidence_overview: confidenceOverview,
+    strict_match_coverage_overview: strictMatchCoverageOverview,
+    finding_evidence: findingEvidence.slice(0, 6),
+    headline_hint: headlineHint || null,
+  };
+}
+
 function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const row = isPlainObject(story) ? story : {};
+  const photoContext = isPlainObject(evidence && evidence.photo_context) ? evidence.photo_context : {};
+  const photoUsed = photoContext.used_photos === true;
   const confidence = isPlainObject(row.confidence_overall) ? row.confidence_overall : {};
   const confidenceLevel = pickFirstString(confidence.level, isCn ? '中' : 'medium');
   const findingTitles = asStringArray(
@@ -33435,13 +33902,47 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       : [],
     3,
   );
+  const topFindings = Array.isArray(photoContext.top_findings) ? photoContext.top_findings : [];
+  const topActions = Array.isArray(photoContext.top_actions_by_module) ? photoContext.top_actions_by_module : [];
+  const photoEvidence = topFindings
+    .map((finding) => {
+      const moduleLabel = pickFirstString(finding && finding.module_label, finding && finding.module_id);
+      const issueLabel = pickFirstString(finding && finding.issue_label, finding && finding.issue_type);
+      const severityLabel = formatPhotoSeverityLabel(finding && finding.severity_0_4, isCn);
+      if (!moduleLabel || !issueLabel) return '';
+      return isCn
+        ? `${moduleLabel}的${issueLabel}是当前最明显的可见信号，强度为${severityLabel}。`
+        : `${moduleLabel} shows the clearest visible ${issueLabel} signal right now, at a ${severityLabel} level.`;
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+  const interpretationPoints = topFindings
+    .map((finding) => {
+      const moduleLabel = pickFirstString(finding && finding.module_label, finding && finding.module_id);
+      const issueLabel = pickFirstString(finding && finding.issue_label, finding && finding.issue_type);
+      if (!moduleLabel || !issueLabel) return '';
+      return isCn
+        ? `${moduleLabel}的${issueLabel}是当前最优先的处理方向，所以先围绕这个区域做定向干预，而不是同时扩展多个强活性。`
+        : `${moduleLabel} is driving the visible ${issueLabel} pattern, so treatment should stay focused there first instead of widening into multiple strong actives.`;
+    })
+    .filter(Boolean)
+    .slice(0, 3);
   const fallbackEvidence = asStringArray(
     Array.isArray(evidence && evidence.finding_evidence)
       ? evidence.finding_evidence.map((item) => pickFirstString(item && item.observation))
       : [],
     3,
   );
-  const keyPoints = findingTitles.length ? findingTitles : fallbackEvidence;
+  const keyPoints = photoUsed
+    ? asStringArray(
+        [
+          ...interpretationPoints,
+          ...(Array.isArray(photoContext.quality_caveat_texts) ? photoContext.quality_caveat_texts : []),
+          ...fallbackEvidence,
+        ],
+        3,
+      )
+    : findingTitles.length ? findingTitles : fallbackEvidence;
   const amActions = asStringArray(
     Array.isArray(row.am_plan) ? row.am_plan.map((step) => pickFirstString(step && step.step)) : [],
     2,
@@ -33451,29 +33952,73 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
     2,
   );
   const actionsNow = asStringArray(
-    [
-      ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
-      ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
-    ],
-    4,
+    photoUsed
+      ? [
+          ...topActions.slice(0, 3).map((action) => {
+            const ingredientName = pickFirstString(action && action.ingredient_name, action && action.ingredient_id);
+            const moduleLabel = pickFirstString(action && action.module_label, action && action.module_id);
+            const issueType = Array.isArray(action && action.issue_types) ? action.issue_types[0] : null;
+            const issueLabel = humanizePhotoStoryIssueLabel(issueType, isCn);
+            if (!ingredientName || !moduleLabel) return '';
+            return isCn
+              ? `优先用 ${ingredientName} 处理${moduleLabel}的${issueLabel}。`
+              : `Prioritize ${ingredientName} for the ${issueLabel} signal on the ${moduleLabel}.`;
+          }),
+          ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
+          ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
+        ]
+      : [
+          ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
+          ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
+        ],
+    3,
   );
-  const avoidNow = asStringArray(Array.isArray(row.safety_notes) ? row.safety_notes : [], 3);
+  const avoidNow = asStringArray(
+    photoUsed
+      ? [
+          ...(Array.isArray(photoContext.quality_caveat_texts) && photoContext.quality_caveat_texts.length
+            ? [
+                isCn
+                  ? '在复拍前，不要因为单次照片结果就同时加多个强活性。'
+                  : 'Do not stack multiple strong actives off a single photo pass before retaking clearer images.',
+              ]
+            : []),
+          ...(Array.isArray(row.safety_notes) ? row.safety_notes : []),
+        ]
+      : (Array.isArray(row.safety_notes) ? row.safety_notes : []),
+    3,
+  );
   const lowConfidenceNoFindings =
     String(confidenceLevel).toLowerCase() === 'low' &&
     !findingTitles.length &&
+    !photoEvidence.length &&
     !fallbackEvidence.length;
   const headline = lowConfidenceNoFindings
     ? (isCn
       ? '照片分析未能完成，请在自然光下重新拍照以获取准确结果。'
       : 'Photo analysis could not be completed. Please retake photos in natural daylight for accurate results.')
     : (pickFirstString(
+        photoUsed ? photoContext.headline_hint : '',
         Array.isArray(row.target_state) ? row.target_state[0] : '',
+        photoEvidence[0],
         isCn
           ? '先稳定，再循序推进亮肤与纹理改善。'
           : 'Stabilize first, then improve tone and texture step by step.',
       ) || (isCn ? '先稳后进。' : 'Stability first.'));
   const timeline = isPlainObject(row.timeline) ? row.timeline : {};
   const nextCheckin = pickFirstString(
+    photoUsed && topFindings[0]
+      ? (
+          String(photoContext.quality_grade || '').trim().toLowerCase() === 'degraded'
+            || String(photoContext.quality_grade || '').trim().toLowerCase() === 'fail'
+            ? (isCn
+              ? `请在更均匀的自然光下复拍同样角度，再确认${pickFirstString(topFindings[0] && topFindings[0].module_label)}的${pickFirstString(topFindings[0] && topFindings[0].issue_label)}。`
+              : `Retake the same angles in more even daylight before escalating treatment for the ${pickFirstString(topFindings[0] && topFindings[0].issue_label)} around the ${pickFirstString(topFindings[0] && topFindings[0].module_label)}.`)
+            : (isCn
+              ? `2 周后按同样角度复拍，确认${pickFirstString(topFindings[0] && topFindings[0].module_label)}的${pickFirstString(topFindings[0] && topFindings[0].issue_label)}是否减轻。`
+              : `Retake the same angles in 2 weeks to confirm whether the ${pickFirstString(topFindings[0] && topFindings[0].issue_label)} around the ${pickFirstString(topFindings[0] && topFindings[0].module_label)} is easing.`)
+        )
+      : '',
     Array.isArray(timeline.first_4_weeks) ? timeline.first_4_weeks[0] : '',
     Array.isArray(timeline.week_8_12_expectation) ? timeline.week_8_12_expectation[0] : '',
     isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
@@ -33992,6 +34537,7 @@ function buildRoutineAwareStoryFallback({
 
 function buildAnalysisStoryFallbackPayload({
   analysisSummaryPayload,
+  photoModulesCard,
   profile,
   language,
   routinePreviewPayload,
@@ -34006,7 +34552,12 @@ function buildAnalysisStoryFallbackPayload({
       ? payload.ingredient_plan
       : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
-  const findings = features
+  const photoContext = buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language });
+  const findingSource =
+    photoContext.used_photos && Array.isArray(photoContext.finding_evidence) && photoContext.finding_evidence.length
+      ? photoContext.finding_evidence
+      : features;
+  const findings = findingSource
     .map((row, idx) => {
       const observation = pickFirstString(row && row.observation, row && row.title, row && row.name);
       if (!observation) return null;
@@ -34014,7 +34565,7 @@ function buildAnalysisStoryFallbackPayload({
         priority: idx + 1,
         title: observation,
         detail: observation,
-        evidence_region_or_module: [],
+        evidence_region_or_module: Array.isArray(row && row.evidence_region_or_module) ? row.evidence_region_or_module : [],
       };
     })
     .filter(Boolean)
@@ -34051,10 +34602,19 @@ function buildAnalysisStoryFallbackPayload({
       : findings,
     target_state: routineAware
       ? routineAware.target_state
-      : [isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.'],
+      : [photoContext.used_photos && photoContext.headline_hint
+        ? photoContext.headline_hint
+        : (isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.')],
     core_principles: routineAware
       ? routineAware.core_principles
       : [
+        ...(photoContext.used_photos
+          ? [
+              isCn
+                ? '先围绕照片里最明显的区域做调整，再逐步扩大处理范围。'
+                : 'Prioritize the most visible photo-led hotspots before broadening treatment pressure.',
+            ]
+          : []),
         isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
         isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
       ],
@@ -34079,7 +34639,9 @@ function buildAnalysisStoryFallbackPayload({
       ? routineAware.timeline
       : {
         first_4_weeks: [
-          isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.',
+          photoContext.used_photos
+            ? (isCn ? '第1周：保持同样光线条件复拍一次，先观察照片里的重点区域变化。' : 'Week 1: recheck the same photographed areas under similar lighting before widening the plan.')
+            : (isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.'),
           isCn ? '第2-3周：逐步引入一个活性，隔天使用。' : 'Week 2-3: add one active gradually, every other day.',
           isCn ? '第4周：耐受稳定后再评估加强。' : 'Week 4: scale only if tolerance remains stable.',
         ],
@@ -34090,7 +34652,9 @@ function buildAnalysisStoryFallbackPayload({
     ui_card_v1: {
       headline: routineAware
         ? routineAware.target_state[0]
-        : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.'),
+        : (photoContext.used_photos && photoContext.headline_hint
+          ? photoContext.headline_hint
+          : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.')),
       key_points: routineAware
         ? routineAware.priority_findings.slice(0, 3)
         : findings.length
@@ -34123,19 +34687,23 @@ function buildAnalysisStoryFallbackPayload({
   };
 }
 
-function buildAnalysisEvidence({ analysisSummaryPayload, profile, language, fallbackStory } = {}) {
+function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profile, language, fallbackStory } = {}) {
   const payload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
   const analysis = isPlainObject(payload.analysis) ? payload.analysis : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
-  const findingEvidence = features
-    .map((row, idx) => {
+  const photoContext = buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language });
+  const basePhotoEvidence = Array.isArray(photoContext.finding_evidence) ? photoContext.finding_evidence : [];
+  const findingEvidence = [
+    ...basePhotoEvidence,
+    ...features.map((row, idx) => {
       const observation = pickFirstString(row && row.observation, row && row.title, row && row.name);
       if (!observation) return null;
       return {
-        rank: idx + 1,
+        rank: idx + 1 + basePhotoEvidence.length,
         observation,
       };
-    })
+    }),
+  ]
     .filter(Boolean)
     .slice(0, 8);
   return {
@@ -34150,6 +34718,13 @@ function buildAnalysisEvidence({ analysisSummaryPayload, profile, language, fall
     missing_routine_fields: deriveRoutineMissingFields(profile),
     analysis_source: pickFirstString(payload.analysis_source),
     low_confidence: payload.low_confidence === true,
+    photo_context: photoContext,
+    observed_signals: Array.isArray(photoContext.observed_signals) ? photoContext.observed_signals : [],
+    quality_caveats: Array.isArray(photoContext.quality_caveats) ? photoContext.quality_caveats : [],
+    top_actions_by_module: Array.isArray(photoContext.top_actions_by_module) ? photoContext.top_actions_by_module : [],
+    strict_match_product_counts_by_action: Array.isArray(photoContext.strict_match_product_counts_by_action)
+      ? photoContext.strict_match_product_counts_by_action
+      : [],
     finding_evidence: findingEvidence,
     preferred_story: isPlainObject(fallbackStory) ? fallbackStory : null,
   };
@@ -34612,6 +35187,7 @@ async function applyAnalysisStoryAndRoutineSoftGate(
   if (!list.length) return list;
 
   const analysisSummaryCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_summary');
+  const photoModulesCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'photo_modules_v1');
   if (AURORA_ANALYSIS_STORY_V2_ENABLED && analysisSummaryCard) {
     const existingStory = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'analysis_story_v2');
     const summaryPayload = isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
@@ -34619,6 +35195,7 @@ async function applyAnalysisStoryAndRoutineSoftGate(
     const ingredientPlanCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'ingredient_plan_v2');
     const fallbackStory = buildAnalysisStoryFallbackPayload({
       analysisSummaryPayload: summaryPayload,
+      photoModulesCard,
       profile,
       language,
       routinePreviewPayload: isPlainObject(routinePreviewCard && routinePreviewCard.payload) ? routinePreviewCard.payload : null,
@@ -34626,6 +35203,7 @@ async function applyAnalysisStoryAndRoutineSoftGate(
     });
     const evidence = buildAnalysisEvidence({
       analysisSummaryPayload: summaryPayload,
+      photoModulesCard,
       profile,
       language,
       fallbackStory,
@@ -34666,6 +35244,19 @@ async function applyAnalysisStoryAndRoutineSoftGate(
     const insertIndex = photoModulesIdx >= 0 ? photoModulesIdx + 1 : 0;
     list.splice(insertIndex, 0, storyCard);
     list = list.filter((c) => !(isPlainObject(c) && String(c.type || '').trim().toLowerCase() === 'analysis_summary'));
+  }
+
+  const activePhotoModulesCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'photo_modules_v1');
+  if (activePhotoModulesCard) {
+    list = list.map((card) => {
+      if (!isPlainObject(card)) return card;
+      if (String(card.type || '').trim().toLowerCase() !== 'ingredient_plan_v2') return card;
+      const payload = isPlainObject(card.payload) ? card.payload : {};
+      return {
+        ...card,
+        payload: annotateIngredientPlanForPhotoLed(payload, activePhotoModulesCard, language),
+      };
+    });
   }
 
   if (!AURORA_ROUTINE_SOFT_GATE_DELAY_RECO) return list;

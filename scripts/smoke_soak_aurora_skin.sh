@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_utils/photo_fixture_defaults.sh
+source "${SCRIPT_DIR}/_utils/photo_fixture_defaults.sh"
+
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
 DURATION_MIN="${DURATION_MIN:-10}"
 REQUESTS_PER_MIN="${REQUESTS_PER_MIN:-5}"
 LANGS="${LANGS:-EN,CN}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-30}"
-SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
+SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-$(aurora_photo_default_pass_url)}"
+DEFAULT_PASS_FIXTURE_PATH="$(aurora_photo_default_pass_path)"
+PHOTO_FIXTURE_LABEL="${PHOTO_FIXTURE_LABEL:-$(aurora_photo_default_pass_label)}"
+PHOTO_FIXTURE_POLICY="${PHOTO_FIXTURE_POLICY:-$(aurora_photo_fixture_policy)}"
 
 for required_bin in curl jq mktemp; do
   if ! command -v "$required_bin" >/dev/null 2>&1; then
@@ -29,7 +36,13 @@ if (( ${#LANG_ARRAY[@]} == 0 )); then
 fi
 
 SAMPLE_IMAGE_PATH="$TMP_DIR/sample.jpg"
-curl -fsSL "$SAMPLE_IMAGE_URL" -o "$SAMPLE_IMAGE_PATH"
+PHOTO_FIXTURE_SOURCE="remote_url"
+if [[ -f "$DEFAULT_PASS_FIXTURE_PATH" ]]; then
+  SAMPLE_IMAGE_PATH="$DEFAULT_PASS_FIXTURE_PATH"
+  PHOTO_FIXTURE_SOURCE="repo_local"
+else
+  curl -fsSL "$SAMPLE_IMAGE_URL" -o "$SAMPLE_IMAGE_PATH"
+fi
 
 total_calls=0
 http_5xx_count=0
@@ -189,6 +202,9 @@ run_case_photo_forced_fail() {
 say "Aurora skin soak start"
 printf "BASE=%s\nDURATION_MIN=%s\nREQUESTS_PER_MIN=%s\nTOTAL_REQUESTS=%s\nLANGS=%s\n" \
   "$BASE" "$DURATION_MIN" "$REQUESTS_PER_MIN" "$TOTAL_REQUESTS" "$LANGS"
+printf "SAMPLE_IMAGE_URL=%s\nPHOTO_FIXTURE_LABEL=%s\nPHOTO_FIXTURE_POLICY=%s\n" \
+  "$SAMPLE_IMAGE_URL" "$PHOTO_FIXTURE_LABEL" "$PHOTO_FIXTURE_POLICY"
+printf "PHOTO_FIXTURE_SOURCE=%s\nSAMPLE_IMAGE_PATH=%s\n" "$PHOTO_FIXTURE_SOURCE" "$SAMPLE_IMAGE_PATH"
 
 for ((i=1; i<=TOTAL_REQUESTS; i+=1)); do
   lang="${LANG_ARRAY[$(( (i - 1) % ${#LANG_ARRAY[@]} ))]}"

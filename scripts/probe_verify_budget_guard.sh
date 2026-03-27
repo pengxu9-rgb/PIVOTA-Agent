@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_utils/photo_fixture_defaults.sh
+source "${SCRIPT_DIR}/_utils/photo_fixture_defaults.sh"
+
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
 LANG_HEADER="${LANG_HEADER:-EN}"
 CALLS="${CALLS:-3}"
 WAIT_AFTER_SEC="${WAIT_AFTER_SEC:-12}"
 SLEEP_BETWEEN_SEC="${SLEEP_BETWEEN_SEC:-1}"
 EXPECT_GUARD="${EXPECT_GUARD:-0}"
-IMG_URL="${IMG_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
+IMG_URL="${IMG_URL:-$(aurora_photo_default_pass_url)}"
+DEFAULT_PASS_FIXTURE_PATH="$(aurora_photo_default_pass_path)"
+PHOTO_FIXTURE_LABEL="${PHOTO_FIXTURE_LABEL:-$(aurora_photo_default_pass_label)}"
+PHOTO_FIXTURE_POLICY="${PHOTO_FIXTURE_POLICY:-$(aurora_photo_fixture_policy)}"
 AURORA_UID="${AURORA_UID:-uid_verify_guard_$(date +%s)}"
 CURL_RETRY_MAX="${CURL_RETRY_MAX:-6}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-2}"
@@ -95,6 +102,10 @@ echo "== verify guard probe =="
 echo "BASE=$BASE"
 echo "AURORA_UID=$AURORA_UID"
 echo "CALLS=$CALLS WAIT_AFTER_SEC=$WAIT_AFTER_SEC EXPECT_GUARD=$EXPECT_GUARD"
+echo "IMG_URL=$IMG_URL"
+echo "PHOTO_FIXTURE_LABEL=$PHOTO_FIXTURE_LABEL"
+echo "PHOTO_FIXTURE_POLICY=$PHOTO_FIXTURE_POLICY"
+echo "DEFAULT_PASS_FIXTURE_PATH=$DEFAULT_PASS_FIXTURE_PATH"
 
 before_calls_total="$(metric_sum verify_calls_total)"
 before_fail_total="$(metric_sum verify_fail_total)"
@@ -106,13 +117,19 @@ echo "before: verify_calls_total=$before_calls_total verify_fail_total=$before_f
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 img_path="$tmp_dir/probe.jpg"
-
-curl_with_retry "6 7 28 35 52 56" \
-  -fsSL \
-  --connect-timeout "$CURL_CONNECT_TIMEOUT_SEC" \
-  --max-time "$CURL_MAX_TIME_SEC" \
-  "$IMG_URL" \
-  -o "$img_path"
+PHOTO_FIXTURE_SOURCE="remote_url"
+if [[ -f "$DEFAULT_PASS_FIXTURE_PATH" ]]; then
+  cp "$DEFAULT_PASS_FIXTURE_PATH" "$img_path"
+  PHOTO_FIXTURE_SOURCE="repo_local"
+else
+  curl_with_retry "6 7 28 35 52 56" \
+    -fsSL \
+    --connect-timeout "$CURL_CONNECT_TIMEOUT_SEC" \
+    --max-time "$CURL_MAX_TIME_SEC" \
+    "$IMG_URL" \
+    -o "$img_path"
+fi
+echo "PHOTO_FIXTURE_SOURCE=$PHOTO_FIXTURE_SOURCE"
 
 upload_json="$(curl_post_retry -X POST "$BASE/v1/photos/upload" \
   -H "X-Aurora-UID: $AURORA_UID" \
