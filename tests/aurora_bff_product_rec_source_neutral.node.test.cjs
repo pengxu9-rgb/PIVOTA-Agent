@@ -467,6 +467,122 @@ test('neutral rec: photo path can broaden fallback queries beyond the first weak
   });
 });
 
+test('neutral rec: photo path prefers deterministic external seed mainline and skips network fallback', async () => {
+  const dataset = buildNiacinamideDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    let fallbackCalls = 0;
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'left_cheek',
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      issueType: 'tone',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      preferDeterministicMainline: true,
+      deterministicCandidateBuilder: async () => ({
+        products: [
+          {
+            product_id: 'ext_seed_niacinamide_1',
+            merchant_id: 'external_seed',
+            title: 'Real Seed Niacinamide Serum',
+            brand: 'Real Seed Brand',
+            ingredient_ids: ['niacinamide'],
+            image_url: 'https://seed.example.com/images/niacinamide.png',
+            url: 'https://seed.example.com/p/niacinamide-serum',
+            price_amount: 24.5,
+            price_currency: 'USD',
+            in_stock: true,
+            retrieval_source: 'external_seed',
+          },
+        ],
+      }),
+      fallbackCandidateBuilder: async () => {
+        fallbackCalls += 1;
+        return { ok: true, products: [], external_search_ctas: [] };
+      },
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(result.products.length, 1);
+    assert.equal(result.products[0].retrieval_source, 'external_seed');
+    assert.equal(result.products[0].brand, 'Real Seed Brand');
+    assert.equal(
+      String(result.products[0].pdp_url || result.products[0].url || result.products[0].product_url || ''),
+      'https://seed.example.com/p/niacinamide-serum',
+    );
+    assert.equal(fallbackCalls, 0);
+    assert.equal(result.debug.mainline_pool_count >= 1, true);
+    assert.equal(result.debug.candidate_count_external_deterministic >= 1, true);
+    assert.equal(result.debug.network_fallback_skipped_due_to_mainline, true);
+    assert.equal(result.debug.fallback_stage, 'mainline_pool_only');
+  });
+});
+
+test('neutral rec: photo path still uses network fallback when deterministic mainline is empty', async () => {
+  const dataset = buildNiacinamideDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    let fallbackCalls = 0;
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'left_cheek',
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      issueType: 'tone',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      preferDeterministicMainline: true,
+      deterministicCandidateBuilder: async () => ({ products: [] }),
+      fallbackCandidateBuilder: async () => {
+        fallbackCalls += 1;
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'ext_search_niacinamide_1',
+              merchant_id: 'ext_search_a',
+              name: 'Fallback Search Niacinamide',
+              brand: 'Fallback Brand',
+              ingredient_ids: ['niacinamide'],
+              retrieval_source: 'external_seed',
+              retrieval_reason: 'external_seed_supplement',
+              pdp_url: 'https://fallback.example.com/p/niacinamide',
+            },
+          ],
+          external_search_ctas: [],
+        };
+      },
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(fallbackCalls, 1);
+    assert.equal(result.products.length, 1);
+    assert.equal(result.products[0].retrieval_source, 'external_seed');
+    assert.equal(result.debug.mainline_pool_count, 0);
+    assert.equal(result.debug.network_fallback_skipped_due_to_mainline, false);
+  });
+});
+
 test('neutral rec: canonical ingredient alias bridges template ids to catalog ingredient ids', async () => {
   const dataset = buildDataset([
     {
