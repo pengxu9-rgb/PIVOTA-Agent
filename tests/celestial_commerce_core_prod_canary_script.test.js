@@ -37,6 +37,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'public_search_contract',
         query: 'serum',
         source: 'search',
+        require_primary_path: true,
         allow_zero_results: false,
         must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
         must_have_metadata: ['query_source'],
@@ -50,6 +51,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'clarify_required',
         query: '有什么适合今晚约会的',
         source: 'shopping_agent',
+        require_primary_path: true,
         allow_zero_results: true,
         must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
         must_have_metadata: ['search_trace.final_decision'],
@@ -158,6 +160,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'broad_commerce_search',
         query: 'serum',
         source: 'shopping_agent',
+        require_primary_path: true,
         allow_zero_results: false,
         must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
         must_have_metadata: ['query_source'],
@@ -171,6 +174,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'exact_product_lookup',
         query: 'IPSA Time Reset Aqua',
         source: 'shopping_agent',
+        require_primary_path: true,
         allow_zero_results: false,
         must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
         must_have_metadata: [
@@ -180,13 +184,13 @@ describe('Celestial commerce-core production canary wrapper', () => {
         ],
         must_equal_metadata: {
           'search_trace.query_class': 'lookup',
+          'search_trace.final_decision': 'cache_returned',
         },
         must_one_of_metadata: {
           query_source: [
             'cache_cross_merchant_search',
-            'agent_products_resolver_fallback',
+            'cache_cross_merchant_search_supplemented',
           ],
-          'search_trace.final_decision': ['cache_returned', 'resolver_returned'],
         },
         must_return_one_of_titles: ['IPSA Time Reset Aqua'],
       },
@@ -370,6 +374,116 @@ describe('Celestial commerce-core production canary wrapper', () => {
       expect(report.rows[0].retry_recovered).toBe(true);
       expect(report.rows[0].attempt_count).toBe(2);
       expect(requestCount).toBe(2);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('fails the canary when exact lookup only succeeds through resolver fallback', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'probe_celestial_commerce_core_prod_canary.sh',
+    );
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prod-canary-primary-'));
+    const queryFile = path.join(outDir, 'prod-canary-primary.json');
+    const cases = [
+      {
+        id: 'exact_lookup_case',
+        family: 'exact_product_lookup',
+        query: 'IPSA Time Reset Aqua',
+        source: 'shopping_agent',
+        require_primary_path: true,
+        allow_zero_results: false,
+        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
+        must_have_metadata: [
+          'query_source',
+          'search_trace.query_class',
+          'search_trace.final_decision',
+        ],
+        must_equal_metadata: {
+          'search_trace.query_class': 'lookup',
+        },
+        must_return_one_of_titles: ['IPSA Time Reset Aqua'],
+      },
+    ];
+    fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
+
+    const server = http.createServer(async (req, res) => {
+      const body = await readJsonBody(req);
+      if (req.url !== '/agent/shop/v1/invoke') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      if (req.headers.authorization !== 'Bearer ak_live_test_prod_key') {
+        res.statusCode = 401;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing or invalid API key' }));
+        return;
+      }
+
+      expect(body?.metadata?.source).toBe('shopping_agent');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'IPSA Time Reset Aqua' }],
+          metadata: {
+            service_version: { commit: 'fallback999' },
+            query_source: 'agent_products_resolver_fallback',
+            proxy_search_fallback: {
+              applied: true,
+              reason: 'resolver_after_primary',
+            },
+            route_health: {
+              primary_path_used: 'resolver_fallback',
+              fallback_triggered: true,
+              fallback_reason: 'resolver_after_primary',
+            },
+            search_trace: {
+              query_class: 'lookup',
+              final_decision: 'resolver_returned',
+            },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync('bash', [scriptPath], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASE_URL: baseUrl,
+          AUTH_TOKEN: 'ak_live_test_prod_key',
+          OUT_DIR: outDir,
+          QUERY_FILE: queryFile,
+          VERIFY_DEPLOY: '0',
+          FAIL_ON_GATE_FAILURES: '0',
+          ROUNDS: '1',
+          TIMEOUT_MS: '5000',
+        },
+      });
+      const payload = JSON.parse(String(stdout || '').trim());
+      const report = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(report.summary.total_requests).toBe(1);
+      expect(report.summary.gate_failure_rate).toBe(1);
+      expect(report.summary.primary_path_degraded_rate).toBe(1);
+      expect(report.per_case.exact_lookup_case.fail).toBe(1);
+      expect(report.rows[0].gate_reasons).toEqual(
+        expect.arrayContaining([expect.stringContaining('primary_path_degraded:')]),
+      );
+      expect(report.rows[0].primary_path_degraded).toBe(true);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

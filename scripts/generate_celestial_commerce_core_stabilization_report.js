@@ -178,6 +178,18 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
     );
   }
 
+  if (
+    stagingMatrix &&
+    stagingMatrix.summary &&
+    Number(stagingMatrix.summary.primary_path_degraded_count || 0) > 0
+  ) {
+    holdReasons.push(
+      `staging live acceptance observed degraded primary paths: ${String(
+        stagingMatrix.summary.primary_path_degraded_count,
+      )}`,
+    );
+  }
+
   if (scorecardBuckets.amber.length > 0) {
     holdReasons.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
   }

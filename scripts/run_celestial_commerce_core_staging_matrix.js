@@ -182,6 +182,64 @@ function inferOutcomeKind(body = {}) {
   return 'unknown';
 }
 
+function assessPrimaryPath(body = {}) {
+  const metadata =
+    body && typeof body === 'object' && body.metadata && typeof body.metadata === 'object'
+      ? body.metadata
+      : {};
+  const routeHealth =
+    metadata.route_health &&
+    typeof metadata.route_health === 'object' &&
+    !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+  const proxySearchFallback =
+    metadata.proxy_search_fallback &&
+    typeof metadata.proxy_search_fallback === 'object' &&
+    !Array.isArray(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {};
+
+  const querySource = String(metadata.query_source || '').trim();
+  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim();
+  const fallbackReason = String(
+    routeHealth.fallback_reason || proxySearchFallback.reason || '',
+  ).trim();
+  const reasons = [];
+
+  if (
+    querySource === 'agent_products_error_fallback' ||
+    querySource === 'agent_products_resolver_fallback' ||
+    querySource === 'agent_products_resolver_ref_fallback'
+  ) {
+    reasons.push(`query_source=${querySource}`);
+  }
+
+  if (proxySearchFallback.applied === true) {
+    reasons.push('proxy_search_fallback.applied=true');
+  }
+
+  if (routeHealth.fallback_triggered === true) {
+    reasons.push('route_health.fallback_triggered=true');
+  }
+
+  if (primaryPathUsed && /(fallback|primary_unusable)/i.test(primaryPathUsed)) {
+    reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
+  }
+
+  if (fallbackReason) {
+    reasons.push(`fallback_reason=${fallbackReason}`);
+  }
+
+  return {
+    degraded: reasons.length > 0,
+    reasons: Array.from(new Set(reasons)),
+    querySource: querySource || null,
+    primaryPathUsed: primaryPathUsed || null,
+    fallbackReason: fallbackReason || null,
+  };
+}
+
 function normalizeCase(rawCase = {}, kind) {
   const hasExplicitTimeout =
     rawCase && typeof rawCase === 'object'
@@ -345,6 +403,7 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   const products = Array.isArray(body?.products) ? body.products : [];
   const titles = normalizeTitles(products);
   const outcomeKind = inferOutcomeKind(body);
+  const primaryPath = assessPrimaryPath(body);
 
   const expectedStatus =
     ruleSet.expect_http_status == null ? null : Number(ruleSet.expect_http_status);
@@ -377,6 +436,10 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   for (const rawCode of mustHaveReasonCodes) {
     const token = String(rawCode || '').trim();
     if (token && !reasonCodes.includes(token)) reasons.push(`missing_reason_code:${token}`);
+  }
+
+  if (ruleSet.require_primary_path === true && primaryPath.degraded) {
+    reasons.push(`primary_path_degraded:${primaryPath.reasons.join(',')}`);
   }
 
   const mustReturnOneOfTitles = Array.isArray(ruleSet.must_return_one_of_titles)
@@ -568,6 +631,7 @@ function buildLiveCaseResult(testCase, authProfile, execution) {
   }
 
   const reasonCodes = collectReasonCodes(body);
+  const primaryPath = assessPrimaryPath(body);
   const context = {
     response: execution.response,
     body,
@@ -612,6 +676,9 @@ function buildLiveCaseResult(testCase, authProfile, execution) {
         getPath(body, 'metadata.gateway_invocation.auth_degraded_reason') || null,
       introspect_auth_source:
         getPath(body, 'metadata.gateway_invocation.introspect_auth_source') || null,
+      primary_path_degraded: primaryPath.degraded,
+      primary_path_used: primaryPath.primaryPathUsed,
+      primary_path_degraded_reasons: primaryPath.reasons,
       product_count: Array.isArray(body?.products) ? body.products.length : 0,
       clarification_question: getPath(body, 'clarification.question') || null,
     },
@@ -755,6 +822,9 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
         item.response_headers?.auth_degraded === 'true' ||
         item.response_excerpt?.auth_degraded === true,
     ).length,
+    primary_path_degraded_count: results.filter(
+      (item) => item.response_excerpt?.primary_path_degraded === true,
+    ).length,
     retry_recovered_count: results.filter((item) => item.retry_recovered === true).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
     correctness: {
@@ -824,6 +894,7 @@ function writeArtifacts(outDir, summary, results) {
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
     `- Auth degraded: ${summary.auth_degraded_count || 0}`,
+    `- Primary path degraded: ${summary.primary_path_degraded_count || 0}`,
     `- Retry recovered: ${summary.retry_recovered_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',

@@ -4,6 +4,7 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -33,6 +34,7 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "require_primary_path": true,
     "request_search": {
       "external_seed_strategy": "unified_relevance"
     },
@@ -65,6 +67,7 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "require_primary_path": true,
     "request_search": {
       "external_seed_strategy": "supplement_internal_first"
     },
@@ -97,6 +100,7 @@
     "family": "broad_commerce_search",
     "query": "serum",
     "source": "shopping_agent",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -130,6 +134,7 @@
     "family": "broad_commerce_search",
     "query": "serum",
     "source": "aurora-bff",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -160,6 +165,7 @@
     "query": "niacinamide serum",
     "source": "shopping_agent",
     "expected_contract_path": "shop_invoke_strict",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -187,6 +193,7 @@
     "query": "niacinamide serum",
     "source": "aurora-bff",
     "expected_contract_path": "shop_invoke_strict",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -213,6 +220,7 @@
     "family": "merchant_query",
     "query": "IPSA products",
     "source": "shopping_agent",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -223,6 +231,7 @@
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
       "search_trace.final_decision": "cache_returned"
     },
     "must_return_one_of_titles": [
@@ -234,6 +243,7 @@
     "family": "exact_product_lookup",
     "query": "IPSA Time Reset Aqua",
     "source": "shopping_agent",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -245,18 +255,13 @@
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {
-      "search_trace.query_class": "lookup"
+      "search_trace.query_class": "lookup",
+      "search_trace.final_decision": "cache_returned"
     },
     "must_one_of_metadata": {
       "query_source": [
         "cache_cross_merchant_search",
-        "cache_cross_merchant_search_supplemented",
-        "agent_products_resolver_fallback",
-        "agent_products_resolver_ref_fallback"
-      ],
-      "search_trace.final_decision": [
-        "cache_returned",
-        "resolver_returned"
+        "cache_cross_merchant_search_supplemented"
       ]
     },
     "must_return_one_of_titles": [
@@ -289,6 +294,7 @@
     "family": "clarify_required",
     "query": "有什么适合今晚约会的",
     "source": "shopping_agent",
+    "require_primary_path": true,
     "allow_zero_results": true,
     "must_have_one_of_metadata": [
       "service_version.commit",
@@ -310,6 +316,7 @@
     "family": "clarify_required",
     "query": "有什么适合今晚约会的",
     "source": "aurora-bff",
+    "require_primary_path": true,
     "allow_zero_results": true,
     "must_have_one_of_metadata": [
       "service_version.commit",

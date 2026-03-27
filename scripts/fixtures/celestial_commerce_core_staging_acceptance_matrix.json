@@ -23,6 +23,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -72,6 +73,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -121,6 +123,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -169,6 +172,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -217,6 +221,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -224,14 +229,13 @@
         ]
       },
       "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.final_decision": "cache_returned"
+        },
         "must_one_of_paths": {
-          "metadata.search_trace.final_decision": [
-            "cache_returned",
-            "resolver_returned"
-          ],
           "metadata.query_source": [
             "cache_cross_merchant_search",
-            "agent_products_resolver_fallback"
+            "cache_cross_merchant_search_supplemented"
           ]
         },
         "must_have_paths": [
@@ -268,6 +272,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -276,18 +281,13 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.search_trace.query_class": "lookup"
+          "metadata.search_trace.query_class": "lookup",
+          "metadata.search_trace.final_decision": "cache_returned"
         },
         "must_one_of_paths": {
-          "metadata.search_trace.final_decision": [
-            "cache_returned",
-            "resolver_returned"
-          ],
           "metadata.query_source": [
             "cache_cross_merchant_search",
-            "cache_cross_merchant_search_supplemented",
-            "agent_products_resolver_fallback",
-            "agent_products_resolver_ref_fallback"
+            "cache_cross_merchant_search_supplemented"
           ]
         },
         "must_have_paths": [
@@ -326,6 +326,7 @@
       },
       "correctness": {
         "mode": "auto",
+        "require_primary_path": true,
         "expect_http_status": 200,
         "must_have_clarification": true,
         "must_have_reason_codes": [

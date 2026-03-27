@@ -503,6 +503,25 @@ if case_ids:
     print(",".join(case_ids))
 PY
 )"
+prod_smoke_primary_path_degraded_count="$(
+  python3 - "${prod_smoke_matrix_json}" <<'PY'
+import json
+import pathlib
+import sys
+
+json_path = pathlib.Path(sys.argv[1])
+if not json_path.exists():
+    raise SystemExit(0)
+try:
+    data = json.loads(json_path.read_text())
+except Exception:
+    raise SystemExit(0)
+
+summary = data.get("summary") if isinstance(data, dict) else {}
+value = summary.get("primary_path_degraded_count", 0) if isinstance(summary, dict) else 0
+print(value)
+PY
+)"
 prod_smoke_primary_commit_on_origin_main="$(git_commit_on_origin_main "${AGENT_CLEAN_REPO}" "${prod_smoke_primary_service_commit}")"
 
 if [[ "${shopping_local_status}" == "pass" ]]; then
@@ -593,6 +612,7 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "- Supported prod smoke matrix JSON: \`${prod_smoke_matrix_json:-missing}\`"
   echo "- Supported prod smoke service commit: \`${prod_smoke_primary_service_commit:-missing}\`"
   echo "- Supported prod smoke commit on \`origin/main\`: \`${prod_smoke_primary_commit_on_origin_main:-unknown}\`"
+  echo "- Supported prod smoke primary-path degraded count: \`${prod_smoke_primary_path_degraded_count:-0}\`"
   echo "- Supported prod smoke failing cases: \`${prod_smoke_failing_case_ids:-none}\`"
   if [[ -n "${agent_public_transport_error}" ]]; then
     echo "- Agent public probe transport error: \`${agent_public_transport_error}\`"
@@ -701,6 +721,7 @@ summary = {
         "matrix_json": "${prod_smoke_matrix_json}",
         "service_commit": "${prod_smoke_primary_service_commit}",
         "commit_on_origin_main": "${prod_smoke_primary_commit_on_origin_main}",
+        "primary_path_degraded_count": "${prod_smoke_primary_path_degraded_count}",
         "failing_case_ids": "${prod_smoke_failing_case_ids}"
     },
     "backend_public_version": {

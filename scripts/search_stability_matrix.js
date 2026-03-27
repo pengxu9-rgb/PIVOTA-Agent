@@ -94,6 +94,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_have_clarification: null,
       expected_contract_path: null,
       catalog_surface: null,
+      require_primary_path: false,
       retry_count: 1,
     };
   }
@@ -163,6 +164,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
         ? rawCase.must_have_clarification
         : null,
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
+    require_primary_path: rawCase?.require_primary_path === true,
     retry_count: Math.max(0, Number(rawCase?.retry_count ?? 1) || 0),
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
     in_stock_only: rawCase?.in_stock_only !== false,
@@ -299,6 +301,64 @@ function buildAuthHeaders(args = {}) {
   return headers;
 }
 
+function assessPrimaryPath(data = {}) {
+  const metadata =
+    data && typeof data === 'object' && data.metadata && typeof data.metadata === 'object'
+      ? data.metadata
+      : {};
+  const routeHealth =
+    metadata.route_health &&
+    typeof metadata.route_health === 'object' &&
+    !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+  const proxySearchFallback =
+    metadata.proxy_search_fallback &&
+    typeof metadata.proxy_search_fallback === 'object' &&
+    !Array.isArray(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {};
+
+  const querySource = String(metadata.query_source || '').trim();
+  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim();
+  const fallbackReason = String(
+    routeHealth.fallback_reason || proxySearchFallback.reason || '',
+  ).trim();
+  const reasons = [];
+
+  if (
+    querySource === 'agent_products_error_fallback' ||
+    querySource === 'agent_products_resolver_fallback' ||
+    querySource === 'agent_products_resolver_ref_fallback'
+  ) {
+    reasons.push(`query_source=${querySource}`);
+  }
+
+  if (proxySearchFallback.applied === true) {
+    reasons.push('proxy_search_fallback.applied=true');
+  }
+
+  if (routeHealth.fallback_triggered === true) {
+    reasons.push('route_health.fallback_triggered=true');
+  }
+
+  if (primaryPathUsed && /(fallback|primary_unusable)/i.test(primaryPathUsed)) {
+    reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
+  }
+
+  if (fallbackReason) {
+    reasons.push(`fallback_reason=${fallbackReason}`);
+  }
+
+  return {
+    degraded: reasons.length > 0,
+    reasons: Array.from(new Set(reasons)),
+    querySource: querySource || null,
+    primaryPathUsed: primaryPathUsed || null,
+    fallbackReason: fallbackReason || null,
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -319,6 +379,7 @@ function evaluateCase(row) {
   const reasonCodes = Array.isArray(data.reason_codes) ? data.reason_codes.map((item) => String(item || '').trim()).filter(Boolean) : [];
   const hasClarification = Boolean(data?.clarification && data.clarification.question);
   const reasons = [];
+  const primaryPath = assessPrimaryPath(data);
 
   if (spec.expected_contract_path) {
     const actualContract = String(contractBridge.resolved_contract || '').trim();
@@ -408,6 +469,10 @@ function evaluateCase(row) {
     }
   }
 
+  if (spec.require_primary_path === true && primaryPath.degraded) {
+    reasons.push(`primary_path_degraded:${primaryPath.reasons.join(',')}`);
+  }
+
   const mustHaveReasonCodes = Array.isArray(spec.must_have_reason_codes)
     ? spec.must_have_reason_codes
     : [];
@@ -484,6 +549,9 @@ function classifyRow(row) {
       timeout: requestTimeout,
       strictEmpty: false,
       fallback: false,
+      primaryPathDegraded: false,
+      primaryPathDegradedReasons: [],
+      primaryPathUsed: null,
       irrelevant: false,
       querySource: 'request_error',
       productCount: 0,
@@ -552,6 +620,7 @@ function classifyRow(row) {
       : {};
   const products = Array.isArray(data.products) ? data.products : [];
   const querySource = String(metadata.query_source || '');
+  const primaryPath = assessPrimaryPath(data);
   const upstreamCode = String(
     metadata.upstream_error_code || metadata?.proxy_search_fallback?.upstream_error_code || '',
   );
@@ -566,6 +635,9 @@ function classifyRow(row) {
     timeout,
     strictEmpty,
     fallback,
+    primaryPathDegraded: primaryPath.degraded,
+    primaryPathDegradedReasons: primaryPath.reasons,
+    primaryPathUsed: primaryPath.primaryPathUsed,
     irrelevant,
     querySource,
     productCount: products.length,
@@ -734,6 +806,7 @@ async function main() {
   const timeoutCount = classified.filter((row) => row.metrics.timeout).length;
   const requestErrorCount = classified.filter((row) => row.metrics.requestError).length;
   const fallbackCount = classified.filter((row) => row.metrics.fallback).length;
+  const primaryPathDegradedCount = classified.filter((row) => row.metrics.primaryPathDegraded).length;
   const strictEmptyCount = classified.filter((row) => row.metrics.strictEmpty).length;
   const irrelevantCount = classified.filter((row) => row.metrics.irrelevant).length;
   const nonEmptyCount = classified.filter((row) => row.metrics.productCount > 0).length;
@@ -767,6 +840,7 @@ async function main() {
         total: 0,
         timeout: 0,
         fallback: 0,
+        primary_path_degraded: 0,
         strict_empty: 0,
         irrelevant: 0,
         non_empty: 0,
@@ -777,6 +851,7 @@ async function main() {
     perQueryClass[key].total += 1;
     if (row.metrics.timeout) perQueryClass[key].timeout += 1;
     if (row.metrics.fallback) perQueryClass[key].fallback += 1;
+    if (row.metrics.primaryPathDegraded) perQueryClass[key].primary_path_degraded += 1;
     if (row.metrics.strictEmpty) perQueryClass[key].strict_empty += 1;
     if (row.metrics.irrelevant) perQueryClass[key].irrelevant += 1;
     if (row.metrics.productCount > 0) perQueryClass[key].non_empty += 1;
@@ -816,6 +891,8 @@ async function main() {
     timeout_rate: total ? timeoutCount / total : 0,
     request_error_rate: total ? requestErrorCount / total : 0,
     fallback_rate: total ? fallbackCount / total : 0,
+    primary_path_degraded_count: primaryPathDegradedCount,
+    primary_path_degraded_rate: total ? primaryPathDegradedCount / total : 0,
     strict_empty_rate: total ? strictEmptyCount / total : 0,
     irrelevant_result_rate: total ? irrelevantCount / total : 0,
     non_empty_rate: total ? nonEmptyCount / total : 0,
@@ -858,6 +935,9 @@ async function main() {
           product_count: row.metrics.productCount,
           timeout: row.metrics.timeout,
           fallback: row.metrics.fallback,
+          primary_path_degraded: row.metrics.primaryPathDegraded,
+          primary_path_degraded_reasons: row.metrics.primaryPathDegradedReasons,
+          primary_path_used: row.metrics.primaryPathUsed,
           strict_empty: row.metrics.strictEmpty,
           irrelevant: row.metrics.irrelevant,
           query_class: row.metrics.queryClass,
@@ -901,6 +981,7 @@ async function main() {
     `- timeout_rate: ${summary.timeout_rate.toFixed(4)}`,
     `- request_error_rate: ${summary.request_error_rate.toFixed(4)}`,
     `- fallback_rate: ${summary.fallback_rate.toFixed(4)}`,
+    `- primary_path_degraded_rate: ${summary.primary_path_degraded_rate.toFixed(4)}`,
     `- strict_empty_rate: ${summary.strict_empty_rate.toFixed(4)}`,
     `- irrelevant_result_rate: ${summary.irrelevant_result_rate.toFixed(4)}`,
     `- non_empty_rate: ${summary.non_empty_rate.toFixed(4)}`,
@@ -917,6 +998,7 @@ async function main() {
     `| timeout_count | ${timeoutCount} |`,
     `| request_error_count | ${requestErrorCount} |`,
     `| fallback_count | ${fallbackCount} |`,
+    `| primary_path_degraded_count | ${primaryPathDegradedCount} |`,
     `| strict_empty_count | ${strictEmptyCount} |`,
     `| irrelevant_count | ${irrelevantCount} |`,
     `| non_empty_count | ${nonEmptyCount} |`,
@@ -930,13 +1012,13 @@ async function main() {
     '',
     '## Per Query Class',
     '',
-    '| query_class | total | timeout | fallback | strict_empty | irrelevant | non_empty | clarify | gate_fail |',
-    '|---|---:|---:|---:|---:|---:|---:|---:|---:|',
+    '| query_class | total | timeout | fallback | primary_path_degraded | strict_empty | irrelevant | non_empty | clarify | gate_fail |',
+    '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
     ...Object.entries(perQueryClass)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(
         ([queryClass, metrics]) =>
-          `| ${queryClass} | ${metrics.total} | ${metrics.timeout} | ${metrics.fallback} | ${metrics.strict_empty} | ${metrics.irrelevant} | ${metrics.non_empty} | ${metrics.clarify} | ${metrics.gate_fail} |`,
+          `| ${queryClass} | ${metrics.total} | ${metrics.timeout} | ${metrics.fallback} | ${metrics.primary_path_degraded} | ${metrics.strict_empty} | ${metrics.irrelevant} | ${metrics.non_empty} | ${metrics.clarify} | ${metrics.gate_fail} |`,
       ),
     '',
     '## Per Case',

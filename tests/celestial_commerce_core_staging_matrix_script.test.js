@@ -42,6 +42,7 @@ describe('Celestial commerce-core staging matrix script', () => {
           },
           correctness: {
             mode: 'auto',
+            require_primary_path: true,
             expect_http_status: 200,
             allow_zero_results: false,
             must_return_one_of_titles: ['Test Serum'],
@@ -126,6 +127,10 @@ describe('Celestial commerce-core staging matrix script', () => {
             ],
             metadata: {
               query_source: 'cache_cross_merchant_search',
+              route_health: {
+                primary_path_used: 'cache_stage',
+                fallback_triggered: false,
+              },
               service_version: {
                 commit: 'abc123',
               },
@@ -540,6 +545,102 @@ describe('Celestial commerce-core staging matrix script', () => {
       expect(json.results[0].attempt_count).toBe(2);
       expect(json.results[0].attempt_history[0].overall_status).toBe('fail');
       expect(requestCount).toBe(2);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('fails a live case when only fallback succeeded but primary path is required', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-staging-primary-'));
+    const casesPath = path.join(outDir, 'matrix.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'run_celestial_commerce_core_staging_matrix.js');
+
+    const matrix = {
+      semantic_cases: [
+        {
+          id: 'fallback_only_case',
+          title: 'fallback only case',
+          family: 'exact_product_lookup',
+          blocking: false,
+          endpoint: '/agent/shop/v1/invoke',
+          request: {
+            operation: 'find_products_multi',
+            payload: { search: { query: 'IPSA Time Reset Aqua', limit: 5, in_stock_only: true } },
+            metadata: { source: 'shopping_agent' },
+          },
+          correctness: {
+            mode: 'auto',
+            require_primary_path: true,
+            expect_http_status: 200,
+            allow_zero_results: false,
+            must_return_one_of_titles: ['IPSA Time Reset Aqua'],
+          },
+          ownership: {
+            must_have_paths: ['metadata.query_source'],
+          },
+          observability: {
+            must_have_paths: ['metadata.service_version.commit'],
+          },
+        },
+      ],
+      governance_cases: [],
+    };
+    fs.writeFileSync(casesPath, JSON.stringify(matrix, null, 2));
+
+    const server = http.createServer((_req, res) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'IPSA Time Reset Aqua' }],
+          metadata: {
+            query_source: 'agent_products_resolver_fallback',
+            proxy_search_fallback: {
+              applied: true,
+              reason: 'resolver_after_primary',
+            },
+            route_health: {
+              primary_path_used: 'resolver_fallback',
+              fallback_triggered: true,
+              fallback_reason: 'resolver_after_primary',
+            },
+            service_version: { commit: 'fallback123' },
+            search_trace: {
+              query_class: 'lookup',
+              final_decision: 'resolver_returned',
+            },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [scriptPath, '--base-url', baseUrl, '--cases', casesPath, '--out-dir', outDir],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(json.summary.total_cases).toBe(1);
+      expect(json.summary.fail_count).toBe(1);
+      expect(json.summary.blocking_failures).toBe(0);
+      expect(json.summary.primary_path_degraded_count).toBe(1);
+      expect(json.results[0].overall_status).toBe('fail');
+      expect(json.results[0].response_excerpt.primary_path_degraded).toBe(true);
+      expect(json.results[0].correctness.reasons).toEqual(
+        expect.arrayContaining([expect.stringContaining('primary_path_degraded:')]),
+      );
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
