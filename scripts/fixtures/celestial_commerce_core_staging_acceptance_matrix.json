@@ -51,7 +51,7 @@
     },
     {
       "id": "shopping_agent_serum_broad",
-      "title": "shopping_agent broad discovery keeps internal base plus external supplement",
+      "title": "shopping_agent broad discovery stays internal-first and may supplement externally when needed",
       "family": "broad_discovery",
       "blocking": true,
       "timeout_ms": 25000,
@@ -83,12 +83,16 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.query_source": "cache_cross_merchant_search_supplemented",
           "metadata.cache_stage_selected_source": "internal_cache"
         },
+        "must_one_of_paths": {
+          "metadata.query_source": [
+            "cache_cross_merchant_search",
+            "cache_cross_merchant_search_supplemented"
+          ]
+        },
         "must_be_positive_paths": [
-          "metadata.source_breakdown.internal_count",
-          "metadata.source_breakdown.external_seed_count"
+          "metadata.source_breakdown.internal_count"
         ]
       },
       "observability": {

@@ -98,6 +98,12 @@ describe('Celestial commerce-core production canary wrapper', () => {
           reason_codes: ['AMBIGUITY_CLARIFY'],
           metadata: {
             service_version: { commit: 'abc123' },
+            query_source: 'agent_products_search',
+            route_health: {
+              primary_path_used: 'upstream_stage',
+              fallback_triggered: false,
+              fallback_reason: 'fallback_not_better',
+            },
             search_trace: { final_decision: 'clarify' },
           },
         }),

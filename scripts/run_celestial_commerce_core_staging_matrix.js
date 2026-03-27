@@ -206,6 +206,7 @@ function assessPrimaryPath(body = {}) {
     routeHealth.fallback_reason || proxySearchFallback.reason || '',
   ).trim();
   const reasons = [];
+  let degradedDetected = false;
 
   if (
     querySource === 'agent_products_error_fallback' ||
@@ -213,21 +214,25 @@ function assessPrimaryPath(body = {}) {
     querySource === 'agent_products_resolver_ref_fallback'
   ) {
     reasons.push(`query_source=${querySource}`);
+    degradedDetected = true;
   }
 
   if (proxySearchFallback.applied === true) {
     reasons.push('proxy_search_fallback.applied=true');
+    degradedDetected = true;
   }
 
   if (routeHealth.fallback_triggered === true) {
     reasons.push('route_health.fallback_triggered=true');
+    degradedDetected = true;
   }
 
   if (primaryPathUsed && /(fallback|primary_unusable)/i.test(primaryPathUsed)) {
     reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
+    degradedDetected = true;
   }
 
-  if (fallbackReason) {
+  if (degradedDetected && fallbackReason) {
     reasons.push(`fallback_reason=${fallbackReason}`);
   }
 
