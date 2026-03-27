@@ -200,7 +200,10 @@ const {
 const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
-const { buildIngredientProductRecommendationsNeutral } = require('./productRecV1');
+const {
+  buildIngredientProductRecommendationsNeutral,
+  loadDeterministicExternalSeedCandidates,
+} = require('./productRecV1');
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2, buildFallbackProductAudit } = require('./routineAnalysisV2');
 const {
@@ -17107,8 +17110,43 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   const market = derivePhotoModulesMarket({ profileSummary, language });
   const riskTier = derivePhotoModulesRiskTier(profileSummary);
   const recCache = new Map();
+  const deterministicCandidateCache = new Map();
   let networkFallbackActionsUsed = 0;
   const uniqueActionRecoKeys = new Set();
+
+  const loadCachedDeterministicCandidates = async ({
+    ingredientId,
+    ingredientName,
+    issueType,
+    lang: candidateLang,
+    riskTier: candidateRiskTier,
+    qualityGrade: candidateQualityGrade,
+    maxProducts,
+    moduleId,
+  } = {}) => {
+    const cacheKey = [
+      String(ingredientId || '').trim().toLowerCase(),
+      String(market || '').trim().toLowerCase(),
+    ].join('::');
+    if (!cacheKey || cacheKey === '::') return [];
+    if (!deterministicCandidateCache.has(cacheKey)) {
+      deterministicCandidateCache.set(
+        cacheKey,
+        loadDeterministicExternalSeedCandidates({
+          moduleId,
+          ingredientId,
+          ingredientName,
+          issueType,
+          market,
+          lang: candidateLang,
+          riskTier: candidateRiskTier,
+          qualityGrade: candidateQualityGrade,
+          maxProducts,
+        }).catch(() => []),
+      );
+    }
+    return deterministicCandidateCache.get(cacheKey);
+  };
 
   for (const moduleRowRaw of payload.modules) {
     const moduleRow = isPlainObject(moduleRowRaw) ? moduleRowRaw : {};
@@ -17231,6 +17269,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 maxProducts: 6,
                 mainlineOnly: true,
                 preferDeterministicMainline: true,
+                deterministicCandidateBuilder: loadCachedDeterministicCandidates,
                 fallbackQueryLimit: 3,
                 fallbackCandidateBuilder: null,
                 llmFallbackRecoverFn: null,
