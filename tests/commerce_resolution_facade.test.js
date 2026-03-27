@@ -1423,7 +1423,7 @@ describe('Commerce resolution facade', () => {
     ).toBe(false);
   });
 
-  test('resolver miss secondary fallback skip reason is owned by execution facade', () => {
+  test('resolver miss secondary fallback skip reason preserves lookup alias retries', () => {
     const runtime = createCommerceResolutionRuntime({
       hasPetSearchSignal() {
         return false;
@@ -1459,7 +1459,7 @@ describe('Commerce resolution facade', () => {
           queryClass: 'lookup',
         },
       ),
-    ).toBe('resolver_miss_lookup_alias');
+    ).toBe(null);
     expect(
       runtime.shouldSkipSecondaryFallbackAfterResolverMiss(
         {
@@ -1471,7 +1471,7 @@ describe('Commerce resolution facade', () => {
           queryClass: 'lookup',
         },
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test('resolver fallback allow gate is owned by execution facade', () => {

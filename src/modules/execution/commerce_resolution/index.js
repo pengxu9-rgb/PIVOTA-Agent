@@ -890,6 +890,10 @@ function createCommerceResolutionRuntime(deps = {}) {
 
     const anchorTokens = extractSearchAnchorTokensImpl(queryText);
     const lookupStyle = isLookupStyleSearchQueryImpl(queryText, anchorTokens);
+    if (isKnownLookupAliasQueryImpl(queryText)) return null;
+    if (isUuidLikeSearchQuery(queryText)) return null;
+    if (isStrongResolverFirstQuery(queryText)) return null;
+    if (lookupStyle) return null;
     if (
       getSimplifyGateEnabled() &&
       getLookupOnlyResolverEnabled() &&
@@ -898,11 +902,15 @@ function createCommerceResolutionRuntime(deps = {}) {
     ) {
       return null;
     }
-    if (isKnownLookupAliasQueryImpl(queryText)) return 'resolver_miss_lookup_alias';
-    if (isUuidLikeSearchQuery(queryText)) return 'resolver_miss_uuid_like';
-    if (isStrongResolverFirstQuery(queryText)) return 'resolver_miss_strong_resolver_query';
-    if (lookupStyle) return 'resolver_miss_lookup_style';
-    return null;
+    const reasonCode = normalizeOffersResolveReasonCodeImpl(
+      result?.resolve_reason_code || result?.resolve_reason || '',
+      '',
+    );
+    if (reasonCode === 'upstream_timeout') return 'resolver_miss_upstream_timeout';
+    if (reasonCode === 'db_timeout' || reasonCode === 'no_candidates') {
+      return 'resolver_miss_no_positive_sources';
+    }
+    return 'resolver_miss_skip_secondary';
   }
 
   function shouldSkipSecondaryFallbackAfterResolverMiss(

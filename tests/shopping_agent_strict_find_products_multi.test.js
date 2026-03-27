@@ -53,6 +53,10 @@ function createTestRuntime(overrides = {}) {
 }
 
 describe('Shopping agent strict find_products_multi runtime', () => {
+  afterEach(() => {
+    delete process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
+  });
+
   test('keeps strict agent-api surface enabled even without a raw query', () => {
     const { runtime } = createTestRuntime({ hasDatabaseUrl: false });
 
@@ -100,6 +104,37 @@ describe('Shopping agent strict find_products_multi runtime', () => {
       strictConstraintReason: 'multi_constraint',
       ingredientIntents: [],
       shadeOptionIntents: ['shade_warm_beige_under_30'],
+    });
+  });
+
+  test('can disable auto strict ingredient routing while preserving explicit strict surfaces', () => {
+    process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
+    const { runtime } = createTestRuntime({ hasDatabaseUrl: false });
+
+    expect(
+      runtime.getStrictFindProductsMultiConstraintDecision({
+        search: { query: 'niacinamide serum for oily skin' },
+        metadata: {},
+      }),
+    ).toMatchObject({
+      enabled: false,
+      catalogSurface: null,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents: ['niacinamide'],
+    });
+
+    expect(
+      runtime.getStrictFindProductsMultiConstraintDecision({
+        search: { query: 'niacinamide serum for oily skin' },
+        metadata: { catalog_surface: 'agent_api' },
+      }),
+    ).toMatchObject({
+      enabled: true,
+      catalogSurface: 'agent_api',
+      strictConstraintQuery: true,
+      strictConstraintReason: 'ingredient',
+      ingredientIntents: ['niacinamide'],
     });
   });
 
