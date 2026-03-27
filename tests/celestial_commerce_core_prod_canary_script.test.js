@@ -166,6 +166,30 @@ describe('Celestial commerce-core production canary wrapper', () => {
         },
         must_return_one_of_titles: ['Auth Serum'],
       },
+      {
+        id: 'exact_lookup_case',
+        family: 'exact_product_lookup',
+        query: 'IPSA Time Reset Aqua',
+        source: 'shopping_agent',
+        allow_zero_results: false,
+        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
+        must_have_metadata: [
+          'query_source',
+          'search_trace.query_class',
+          'search_trace.final_decision',
+        ],
+        must_equal_metadata: {
+          'search_trace.query_class': 'lookup',
+        },
+        must_one_of_metadata: {
+          query_source: [
+            'cache_cross_merchant_search',
+            'agent_products_resolver_fallback',
+          ],
+          'search_trace.final_decision': ['cache_returned', 'resolver_returned'],
+        },
+        must_return_one_of_titles: ['IPSA Time Reset Aqua'],
+      },
     ];
     fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
 
@@ -185,8 +209,26 @@ describe('Celestial commerce-core production canary wrapper', () => {
       }
 
       expect(body?.metadata?.source).toBe('shopping_agent');
+      const query = body?.payload?.search?.query;
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
+      if (query === 'IPSA Time Reset Aqua') {
+        res.end(
+          JSON.stringify({
+            products: [{ title: 'IPSA Time Reset Aqua' }],
+            metadata: {
+              service_version: { commit: 'def456' },
+              query_source: 'cache_cross_merchant_search',
+              search_trace: {
+                query_class: 'lookup',
+                final_decision: 'cache_returned',
+              },
+            },
+          }),
+        );
+        return;
+      }
+
       res.end(
         JSON.stringify({
           products: [{ title: 'Auth Serum' }],
@@ -223,11 +265,12 @@ describe('Celestial commerce-core production canary wrapper', () => {
       const report = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
 
       expect(payload.ok).toBe(true);
-      expect(report.summary.total_requests).toBe(1);
+      expect(report.summary.total_requests).toBe(2);
       expect(report.summary.auth_mode).toBe('bearer');
       expect(report.summary.endpoint).toBe('/agent/shop/v1/invoke');
       expect(report.summary.gate_failure_rate).toBe(0);
       expect(report.per_case.invoke_case.fail).toBe(0);
+      expect(report.per_case.exact_lookup_case.fail).toBe(0);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

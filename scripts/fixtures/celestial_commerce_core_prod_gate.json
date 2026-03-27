@@ -230,6 +230,40 @@
     ]
   },
   {
+    "id": "shopping_agent_exact_ipsa_time_reset_aqua",
+    "family": "exact_product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_one_of_metadata": [
+      "service_version.commit",
+      "service_version.build_id"
+    ],
+    "must_have_metadata": [
+      "query_source",
+      "search_trace.query_class",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.query_class": "lookup"
+    },
+    "must_one_of_metadata": {
+      "query_source": [
+        "cache_cross_merchant_search",
+        "cache_cross_merchant_search_supplemented",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "search_trace.final_decision": [
+        "cache_returned",
+        "resolver_returned"
+      ]
+    },
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
     "id": "aurora_bff_merchant_query_ipsa_products",
     "family": "merchant_query",
     "query": "IPSA products",

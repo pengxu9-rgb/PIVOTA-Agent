@@ -7,9 +7,9 @@
   ],
   "incomplete": [
     "Aurora top-layer clarify, conversation-progress, and source-specific early-decision ownership still spans server.js and the facade",
-    "readiness dimensions still amber for prompt intent, query decomposition, merchant/product routing, fallback resilience, and cross-layer drift",
-    "shared live acceptance corpus for merchant/product routing and exact lookup remains incomplete",
-    "exact product lookup and exact-ish fallback behavior are still not deterministic enough for a shared release-grade smoke"
+    "readiness dimensions still amber for prompt intent, query decomposition, fallback resilience, and cross-layer drift",
+    "shared live acceptance corpus for prompt fixtures and Aurora-specific guidance behavior remains incomplete",
+    "exact-ish fallback behavior beyond the stable shopping_agent lookup rail is still not deterministic enough for a shared release-grade smoke"
   ],
   "deferred": [
     "production rollout or prod release gating",

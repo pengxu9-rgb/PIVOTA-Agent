@@ -154,9 +154,10 @@ The commerce-core baseline should keep these scenario families under one shared 
 - broad `shopping_agent` / `aurora-bff` commerce search
 - strict ingredient consistency
 - merchant-style query routing
+- exact `shopping_agent` product lookup
 - clarify-required query behavior
 
-Exact product-specific lookup should stay covered, but if a source contract is still live-flaky, keep it in local contract tests until runtime routing is stabilized enough for deterministic production smoke.
+The shared authenticated smoke should keep one stable exact product lookup on `shopping_agent`. If another source contract is still live-flaky, keep that source-specific exact case in local contract tests until runtime routing is deterministic enough for shared smoke.
 
 ## Scorecard Dimensions
 

@@ -441,7 +441,11 @@ if [[ "${public_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]];
 elif [[ "${public_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" && "${supported_prod_smoke_requested}" != "true" ]]; then
   commerce_search_status="amber"
 fi
-if [[ "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
+if [[ "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" && "${supported_prod_smoke_requested}" == "true" ]]; then
+  merchant_product_status="green"
+elif [[ "${aurora_local_status}" == "pass" && "${supported_prod_smoke_requested}" == "true" ]]; then
+  merchant_product_status="red"
+elif [[ "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
   merchant_product_status="amber"
 elif [[ "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" ]]; then
   merchant_product_status="amber"
@@ -553,7 +557,7 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "| Prompt/Intent Readiness | ${prompt_intent_status} | $( if [[ "${prompt_intent_status}" == "green" ]]; then echo "none"; elif [[ "${prompt_intent_status}" == "amber" ]]; then echo "shopping-agent prompt/loop-break contract is testable locally, but not yet backed by stable live prompt fixtures"; else echo "shopping_agent helper/query-rewrite gate failing"; fi ) |"
   echo "| Query Decomposition Readiness | ${query_decomposition_status} | $( if [[ "${query_decomposition_status}" == "green" ]]; then echo "none"; elif [[ "${query_decomposition_status}" == "amber" ]]; then echo "merchant vs product decomposition still lacks a canonical live acceptance corpus"; else echo "scenario clarify/query rewrite contract incomplete"; fi ) |"
   echo "| Commerce Search Contract Readiness | ${commerce_search_status} | $( if [[ "${commerce_search_status}" == "green" ]]; then echo "none"; elif [[ "${commerce_search_status}" == "amber" ]]; then echo "supported authenticated invoke smoke was not configured in this run; public /api/gateway is auth-gated and retained only for observability"; else echo "supported authenticated invoke smoke or local contract gate failing"; fi ) |"
-  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "authenticated invoke smoke covers merchant-style live routing, but exact product lookup on shopping_agent is still live-flaky and remains local-only"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
+  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "authenticated invoke smoke is not configured, so live merchant-style and exact-lookup routing cannot both be promoted to the shared gate"; else echo "shared authenticated smoke is failing merchant-style or exact product routing on the supported invoke rail"; fi ) |"
   echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "authenticated invoke smoke covers broad and clarify-required behavior when configured, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
   echo "| Gateway Invocation/Access Governance Readiness | ${gateway_governance_status} | $( if [[ "${gateway_governance_status}" == "green" ]]; then echo "none"; elif [[ "${gateway_governance_status}" == "amber" ]]; then echo "shadow summary exists but baseline mismatches remain"; else echo "gateway governance gate/report missing or failing"; fi ) |"
   echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "authenticated invoke smoke is instrumented, but public provenance remains auth-gated and daily runtime governance export is not yet automated"; fi ) |"
@@ -565,7 +569,7 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "2. Keep \`search\`, \`shopping_agent\`, and \`aurora-bff\` contract fixtures in one shared authenticated prod smoke so future drift is visible immediately."
   echo "3. Add stable live prompt fixtures for \`/ui/chat\` so shopping-agent prompt understanding can graduate from local helper coverage to true end-to-end coverage."
   echo "4. Automate daily export of production gateway governance logs and pass the raw file via \`GATEWAY_GOVERNANCE_LOG_INPUT_PATH\` so the readiness report stays on real traffic without manual sample prep."
-  echo "5. Stabilize exact product-lookup routing for \`shopping_agent\` and only then promote product-specific lookup back into the shared live commerce-core smoke."
+  echo "5. Keep exact \`shopping_agent\` lookup in the shared authenticated smoke and close any remaining production drift before expanding that live rail to additional source contracts."
   echo "6. If Aurora guidance-only remains unstable, treat it as a dedicated hardening track instead of folding it into general commerce acceptance."
 } >"${REPORT_MD}"
 
