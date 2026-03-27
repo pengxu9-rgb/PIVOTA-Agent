@@ -93,6 +93,35 @@ function buildNiacinamideDataset() {
   ]);
 }
 
+function buildRetinolDataset() {
+  return buildDataset([
+    {
+      ingredient_id: 'retinol',
+      inci_name: 'Retinol',
+      zh_name: '视黄醇',
+      aliases: [],
+      identifiers: {},
+      functions: [],
+      restrictions: [],
+      evidence_grade: 'B',
+      market_scope: ['EU', 'US'],
+      claims: [
+        {
+          claim_id: 'retinol_claim_1',
+          claim_text: 'Supports visible texture smoothing in cosmetic routines.',
+          evidence_grade: 'B',
+          market_scope: ['EU', 'US'],
+          citations: [baseCitation({ source_url: 'https://example.org/retinol' })],
+          risk_flags: [],
+        },
+      ],
+      safety_notes: [],
+      do_not_mix: [],
+      manifest_refs: ['test_snapshot'],
+    },
+  ]);
+}
+
 test('neutral rec: higher suitability can outrank across sources and no 1:1 source quota', async () => {
   const dataset = buildNiacinamideDataset();
   const catalog = [];
@@ -379,6 +408,62 @@ test('neutral rec: returns google cta when internal/external + llm are all empty
     assert.equal(Array.isArray(result.external_search_ctas), true);
     assert.equal(result.external_search_ctas.length > 0, true);
     assert.equal(String(result.external_search_ctas[0].url || '').includes('google.com/search'), true);
+  });
+});
+
+test('neutral rec: photo path can broaden fallback queries beyond the first weak label', async () => {
+  const dataset = buildRetinolDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    const seenQueries = [];
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'forehead',
+      ingredientId: 'retinoid_later',
+      ingredientName: 'Retinoid (later stage)',
+      issueType: 'texture',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      fallbackQueryLimit: 3,
+      fallbackCandidateBuilder: async ({ query }) => {
+        seenQueries.push(query);
+        if (String(query) !== 'retinol') {
+          return { ok: true, products: [], external_search_ctas: [] };
+        }
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'prod_external_retinol_1',
+              merchant_id: 'ext_retinol_a',
+              name: 'External Retinol Serum',
+              brand: 'External Retinol A',
+              ingredient_ids: ['retinol'],
+              retrieval_source: 'external_seed',
+              retrieval_reason: 'external_seed_supplement',
+              pdp_url: 'https://external-retinol.example.com/p/retinol-serum',
+            },
+          ],
+          external_search_ctas: [],
+        };
+      },
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(result.products.length, 1);
+    assert.equal(result.products[0].retrieval_source, 'external_seed');
+    assert.deepEqual(seenQueries, ['Retinoid (later stage)', 'retinol', 'Retinoid (later stage) texture skincare']);
+    assert.equal(result.debug.fallback_query_limit, 3);
+    assert.equal(result.debug.candidate_count_external >= 1, true);
   });
 });
 

@@ -927,6 +927,7 @@ async function buildIngredientProductRecommendationsNeutral({
   catalogPath,
   allowBundledCatalogSeed = true,
   maxProducts = 3,
+  fallbackQueryLimit = 1,
   fallbackCandidateBuilder = null,
   llmFallbackRecoverFn = null,
   externalSearchCtaBuilder = null,
@@ -955,6 +956,7 @@ async function buildIngredientProductRecommendationsNeutral({
   const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
   const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
   const maxProductsN = Math.max(1, Math.min(6, Math.trunc(Number(maxProducts) || 3)));
+  const fallbackQueryLimitN = Math.max(1, Math.min(4, Math.trunc(Number(fallbackQueryLimit) || 1)));
   const buildCta = typeof externalSearchCtaBuilder === 'function' ? externalSearchCtaBuilder : defaultBuildExternalSearchCta;
   const dedupeCtas = typeof dedupeExternalSearchCtas === 'function' ? dedupeExternalSearchCtas : defaultDedupeExternalSearchCtas;
 
@@ -1095,7 +1097,7 @@ async function buildIngredientProductRecommendationsNeutral({
     lang: normalizedLang,
   });
 
-  const fallbackQueries = lookupQueries.slice(0, 1);
+  const fallbackQueries = lookupQueries.slice(0, fallbackQueryLimitN);
   if (typeof fallbackCandidateBuilder === 'function') {
     fallbackStage = 'internal_external_pool';
     for (const query of fallbackQueries) {
@@ -1121,7 +1123,7 @@ async function buildIngredientProductRecommendationsNeutral({
     fallbackStage = 'llm_fallback';
     try {
       const recovered = await llmFallbackRecoverFn({
-        queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, 1),
+        queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, fallbackQueryLimitN),
         maxProducts: maxProductsN * 2,
       });
       for (const row of asArray(recovered && recovered.products)) {
@@ -1255,6 +1257,7 @@ async function buildIngredientProductRecommendationsNeutral({
       softened_by_url: softenedByUrl,
       evidence_score: Number(evidence && evidence.evidence_score || 0),
       fallback_stage: fallbackStage,
+      fallback_query_limit: fallbackQueryLimitN,
       products_count: outputs.length,
       lookup_queries: lookupQueries,
       retrieval_source_counts: outputs.reduce((acc, item) => {

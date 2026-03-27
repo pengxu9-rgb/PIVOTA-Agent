@@ -193,6 +193,13 @@ test('purchasable fallback: llm fallback returns strict https skincare products 
   }
 });
 
+test('photo fallback cta builder: string query keeps the ingredient text instead of generic open search result', () => {
+  const out = __internal.buildExternalSearchCta('Azelaic Acid', 'strict_filter_all_dropped_fallback');
+  assert.equal(out.title, 'Azelaic Acid');
+  assert.equal(out.source, 'external');
+  assert.equal(String(out.url || '').includes('Azelaic%20Acid'), true);
+});
+
 test('purchasable fallback: query collection includes ingredient target names and missing-catalog ladder queries', () => {
   const queries = __internal.collectPurchasableFallbackQueries({
     payload: {
