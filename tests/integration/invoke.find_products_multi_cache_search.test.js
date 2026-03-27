@@ -24,6 +24,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY:
         process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY,
+      PROXY_SEARCH_AURORA_API_BASE: process.env.PROXY_SEARCH_AURORA_API_BASE,
       SEARCH_CACHE_VALIDATE: process.env.SEARCH_CACHE_VALIDATE,
       SEARCH_EXTERNAL_HARD_RULE_PRUNE: process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE,
       SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO:
@@ -104,6 +105,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY =
         prevEnv.PROXY_SEARCH_AURORA_BYPASS_CACHE_STRICT_EMPTY;
+    }
+    if (prevEnv.PROXY_SEARCH_AURORA_API_BASE === undefined) {
+      delete process.env.PROXY_SEARCH_AURORA_API_BASE;
+    } else {
+      process.env.PROXY_SEARCH_AURORA_API_BASE = prevEnv.PROXY_SEARCH_AURORA_API_BASE;
     }
     if (prevEnv.SEARCH_CACHE_VALIDATE === undefined) {
       delete process.env.SEARCH_CACHE_VALIDATE;
@@ -1547,6 +1553,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
   test('aurora-bff serum contract stays internal-first while supplementing external coverage', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora.test';
 
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -1612,6 +1619,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         ],
         total: 1,
       });
+    const auroraExternalSupplement = nock('http://aurora.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+      .reply(500, {
+        error: 'AURORA_SUPPLEMENT_SHOULD_NOT_BE_CALLED',
+      });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -1651,6 +1664,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       ]),
     );
     expect(externalSupplement.isDone()).toBe(true);
+    expect(auroraExternalSupplement.isDone()).toBe(false);
   });
 
   test('serum cache preference helper keeps upstream when internal preference is disabled', async () => {

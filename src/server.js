@@ -8359,7 +8359,10 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
         .filter(Boolean),
     ),
   ).slice(0, 8);
-  const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
+  // External seed supplement should stay on the shared catalog rail even for
+  // aurora-bff, otherwise aurora-specific upstream bases can drift away from
+  // shopping_agent retrieval semantics and suppress supplement coverage.
+  const url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
   const requestHeaders = buildInvokeUpstreamAuthHeaders({ checkoutToken });
   const seenKeys = new Set();
   const mergedProducts = [];
