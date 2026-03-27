@@ -55,6 +55,15 @@ const {
   buildGatewayShadowAudit,
 } = require('./api/gateway/access/buildGatewayShadowAudit');
 const {
+  parseBooleanEnv,
+  parseSecretList,
+  resolveInvokeEmergencyAuthFallback,
+} = require('./api/gateway/access/invokeAuthEmergencyFallback');
+const {
+  mergeInvokeGatewayAuditMetadata,
+  resolveGatewayGovernanceShadowMode,
+} = require('./api/gateway/responseMapper');
+const {
   normalizeExternalSeedStrategy,
   stripExternalSeedStrategyOverride,
   applyFindProductsMultiSourceContract,
@@ -411,26 +420,6 @@ function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTE
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
-function parseBooleanEnv(value, fallback = false) {
-  const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return fallback;
-  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
-  return fallback;
-}
-
-function parseSecretList(...values) {
-  const entries = [];
-  for (const value of values) {
-    String(value || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .forEach((item) => entries.push(item));
-  }
-  return Array.from(new Set(entries));
 }
 
 const AGENT_AXIOS_KEEPALIVE_ENABLED = (() => {
@@ -9679,22 +9668,6 @@ async function introspectInvokeApiKey(apiKey) {
   return result;
 }
 
-function resolveInvokeEmergencyAuthFallback(apiKey) {
-  if (!AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED) return null;
-  if (!AGENT_AUTH_EMERGENCY_API_KEYS.length) return null;
-  if (!AGENT_AUTH_EMERGENCY_API_KEYS.includes(String(apiKey || '').trim())) return null;
-
-  const result = {
-    valid: true,
-    agent_id: AGENT_AUTH_EMERGENCY_AGENT_ID,
-    is_active: true,
-    auth_source: 'emergency_fallback',
-    cache_hit: false,
-  };
-  putCachedInvokeAuthResult(apiKey, result);
-  return result;
-}
-
 async function requireExternalInvokeAuth(req, res, next) {
   if (shouldBypassInvokeAuthForTest()) {
     req.invokeAuth = {
@@ -9751,7 +9724,13 @@ async function requireExternalInvokeAuth(req, res, next) {
   try {
     introspection = await introspectInvokeApiKey(provided);
   } catch (err) {
-    const fallback = resolveInvokeEmergencyAuthFallback(provided);
+    const fallback = resolveInvokeEmergencyAuthFallback({
+      apiKey: provided,
+      enabled: AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
+      allowedApiKeys: AGENT_AUTH_EMERGENCY_API_KEYS,
+      agentId: AGENT_AUTH_EMERGENCY_AGENT_ID,
+      onAccept: (result) => putCachedInvokeAuthResult(provided, result),
+    });
     if (fallback) {
       logger.warn(
         {
@@ -12180,42 +12159,6 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
     ...(creatorName && { creator_name: creatorName, creatorName }),
     ...(traceId && { trace_id: traceId, traceId }),
     ...(source && { source }),
-  };
-}
-
-function shouldUseGatewayGovernanceShadowMode(routeContext = {}) {
-  if (routeContext && routeContext.gateway_governance_shadow_mode === true) return true;
-  if (routeContext && routeContext.gateway_governance_shadow_mode === false) return false;
-  return GATEWAY_GOVERNANCE_SHADOW_MODE;
-}
-
-function mergeInvokeGatewayAuditMetadata(body, audit) {
-  if (!audit || !body || typeof body !== 'object' || Array.isArray(body)) return body;
-  const existingMetadata =
-    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-      ? body.metadata
-      : {};
-
-  return {
-    ...body,
-    metadata: {
-      ...existingMetadata,
-      gateway_invocation: audit.invocation,
-      gateway_governance: {
-        mode: audit.mode,
-        source: audit.source,
-        entry_layer: audit.entry_layer,
-        task_type: audit.task_type,
-        effective_action: audit.effective_action,
-        observed_phase: audit.observed_phase,
-        observed_action: audit.observed_action,
-        would_enforce: audit.would_enforce,
-        reason_codes: audit.reason_codes,
-        access: audit.access,
-        rate_limit: audit.rate_limit,
-        query_governance: audit.query_governance,
-      },
-    },
   };
 }
 
@@ -17107,7 +17050,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }),
       );
       gatewayGovernanceAudit = buildGatewayShadowAudit(gatewayGovernanceEnvelope, {
-        shadow_mode: shouldUseGatewayGovernanceShadowMode(routeContext),
+        shadow_mode: resolveGatewayGovernanceShadowMode(
+          routeContext,
+          GATEWAY_GOVERNANCE_SHADOW_MODE,
+        ),
       });
     } catch (gatewayGovernanceErr) {
       logger.warn(
