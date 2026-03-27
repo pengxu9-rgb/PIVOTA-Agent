@@ -17229,6 +17229,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
                 catalogPath: DIAG_PRODUCT_CATALOG_PATH,
                 allowBundledCatalogSeed: false,
                 maxProducts: 6,
+                preferDeterministicMainline: true,
                 fallbackQueryLimit: 3,
                 fallbackCandidateBuilder: allowNetworkFallbackForAction ? fallbackCandidateBuilder : null,
                 llmFallbackRecoverFn: allowNetworkFallbackForAction ? llmFallbackRecoverFn : null,
