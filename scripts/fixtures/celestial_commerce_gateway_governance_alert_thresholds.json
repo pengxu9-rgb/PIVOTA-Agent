@@ -1,0 +1,32 @@
+{
+  "min_runtime_shadow_events": {
+    "min": 1,
+    "severity": "amber",
+    "description": "Runtime shadow sample is too small to trust governance trendlines."
+  },
+  "max_unknown_principal_shadow_events": {
+    "max": 0,
+    "severity": "red",
+    "description": "Unknown principals should not appear in governed runtime shadow traffic."
+  },
+  "max_unknown_surface_shadow_events": {
+    "max": 0,
+    "severity": "red",
+    "description": "Unknown invocation surfaces indicate normalization drift."
+  },
+  "max_merchant_sweep_blocked_events": {
+    "max": 25,
+    "severity": "amber",
+    "description": "Merchant-sweep probes are elevated in sampled runtime traffic."
+  },
+  "max_deep_pagination_blocked_events": {
+    "max": 10,
+    "severity": "amber",
+    "description": "Deep-pagination probing is elevated in sampled runtime traffic."
+  },
+  "max_checkout_handoff_not_allowed_events": {
+    "max": 3,
+    "severity": "red",
+    "description": "Unexpected checkout handoff attempts outside allowlist should be rare."
+  }
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "direct_api_public_search_exact",
+    "invocation_surface": "direct_api",
+    "source": "search",
+    "task_type": "exact_product",
+    "expected_entry_layer": "execution_facing",
+    "expected_action": "allow"
+  },
+  {
+    "id": "generic_mcp_aurora_denied",
+    "invocation_surface": "mcp",
+    "source": "aurora-bff",
+    "task_type": "discovery",
+    "expected_entry_layer": "orchestration",
+    "expected_action": "block",
+    "expected_reason_code": "layer_not_allowed"
+  },
+  {
+    "id": "public_api_merchant_sweep_blocked",
+    "invocation_surface": "direct_api",
+    "source": "shopping_agent",
+    "task_type": "discovery",
+    "governance_hints": {
+      "merchant_filters": ["merchant_a", "merchant_b"]
+    },
+    "expected_entry_layer": "decisioning",
+    "expected_action": "block",
+    "expected_reason_code": "merchant_sweep_blocked"
+  },
+  {
+    "id": "generic_mcp_deep_pagination_blocked",
+    "invocation_surface": "mcp",
+    "source": "search",
+    "task_type": "exact_product",
+    "governance_hints": {
+      "requested_page": 2
+    },
+    "expected_entry_layer": "execution_facing",
+    "expected_action": "block",
+    "expected_reason_code": "deep_pagination_blocked"
+  },
+  {
+    "id": "internal_deep_resolution_allowed",
+    "invocation_surface": "acp",
+    "source": "search",
+    "task_type": "exact_product",
+    "requested_result_depth": "deep_resolution",
+    "raw_auth_claims": {
+      "internal": true,
+      "principal_id": "internal:ops"
+    },
+    "expected_entry_layer": "execution_facing",
+    "expected_action": "allow"
+  }
+]

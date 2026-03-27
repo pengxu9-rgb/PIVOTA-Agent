@@ -24,15 +24,33 @@ on:
       - "package.json"
       - "docs/runbooks/celestial_commerce_core_actual_architecture.md"
       - "docs/runbooks/celestial_commerce_core_readiness.md"
+      - "docs/runbooks/celestial_commerce_core_prod_canary.md"
+      - "docs/runbooks/celestial_commerce_core_stabilization_acceptance.md"
       - "docs/runbooks/celestial_commerce_core_source_contracts.md"
+      - "docs/runbooks/pivota_gateway_invocation_access_governance.md"
       - "docs/runbooks/llm_agent_infrastructure_readiness.md"
       - "scripts/run_celestial_commerce_core_readiness_audit.sh"
+      - "scripts/run_celestial_commerce_core_stabilization_acceptance.sh"
+      - "scripts/run_celestial_commerce_core_staging_matrix.js"
+      - "scripts/probe_celestial_commerce_core_prod_canary.sh"
+      - "scripts/generate_celestial_commerce_core_stabilization_report.js"
       - "scripts/smoke_celestial_commerce_core_prod.sh"
       - "scripts/search_stability_matrix.js"
+      - "scripts/extract_gateway_governance_shadow_sample.js"
+      - "scripts/evaluate_celestial_commerce_gateway_governance_alerts.js"
+      - "scripts/run_gateway_governance_daily_summary.sh"
+      - "scripts/generate_celestial_commerce_gateway_governance_report.js"
       - "scripts/verify_celestial_commerce_core_boundaries.js"
       - "scripts/verify_deployed_commit_matches.sh"
       - "scripts/fixtures/celestial_commerce_core_prod_gate.json"
+      - "scripts/fixtures/celestial_commerce_core_prod_canary.json"
+      - "scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json"
+      - "scripts/fixtures/celestial_commerce_core_stabilization_snapshot.json"
       - "scripts/fixtures/celestial_commerce_core_milestone0_baseline.json"
+      - "scripts/fixtures/celestial_commerce_gateway_governance_alert_thresholds.json"
+      - "scripts/fixtures/celestial_commerce_gateway_governance_baseline.json"
+      - "scripts/fixtures/celestial_commerce_gateway_governance_raw_log_sample.ndjson"
+      - "scripts/fixtures/celestial_commerce_gateway_governance_shadow_runtime_sample.ndjson"
       - "src/api/gateway/**"
       - "src/modules/**"
       - "src/server.js"
@@ -42,6 +60,19 @@ on:
       - "tests/celestial_commerce_core_layer_dispatch.test.js"
       - "tests/celestial_commerce_core_shopping_context.test.js"
       - "tests/celestial_commerce_core_source_policy.test.js"
+      - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
+      - "tests/celestial_commerce_gateway_access_governance.test.js"
+      - "tests/celestial_commerce_gateway_boundary.test.js"
+      - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
+      - "tests/invoke_gateway_shadow_audit.test.js"
+      - "tests/celestial_commerce_gateway_shadow_summary.test.js"
+      - "tests/celestial_commerce_gateway_governance_report_script.test.js"
+      - "tests/celestial_commerce_gateway_shadow_sample_extract_script.test.js"
+      - "tests/celestial_commerce_gateway_governance_alerts_script.test.js"
+      - "tests/celestial_commerce_gateway_daily_summary_script.test.js"
+      - "tests/celestial_commerce_core_staging_matrix_script.test.js"
+      - "tests/celestial_commerce_core_stabilization_report_script.test.js"
+      - "tests/celestial_commerce_core_prod_canary_script.test.js"
       - "tests/shopping_agent_loop_break.test.js"
       - "tests/shopping_agent_guidance_context.test.js"
       - "tests/shopping_agent_guidance_retrieval_plan.test.js"
@@ -85,9 +116,13 @@ jobs:
           set -euo pipefail
           node --check src/server.js
           node --check scripts/search_stability_matrix.js
+          node --check scripts/run_celestial_commerce_core_staging_matrix.js
+          node --check scripts/generate_celestial_commerce_core_stabilization_report.js
           node scripts/verify_celestial_commerce_core_boundaries.js
           bash -n scripts/smoke_celestial_commerce_core_prod.sh
+          bash -n scripts/probe_celestial_commerce_core_prod_canary.sh
           bash -n scripts/run_celestial_commerce_core_readiness_audit.sh
+          bash -n scripts/run_celestial_commerce_core_stabilization_acceptance.sh
 
       - name: Commerce core gates
         run: |
@@ -97,6 +132,19 @@ jobs:
             tests/celestial_commerce_core_layer_dispatch.test.js \
             tests/celestial_commerce_core_shopping_context.test.js \
             tests/celestial_commerce_core_source_policy.test.js \
+            tests/celestial_commerce_gateway_invocation_contracts.test.js \
+            tests/celestial_commerce_gateway_access_governance.test.js \
+            tests/celestial_commerce_gateway_boundary.test.js \
+            tests/celestial_commerce_gateway_ingress_invocation.test.js \
+            tests/invoke_gateway_shadow_audit.test.js \
+            tests/celestial_commerce_gateway_shadow_summary.test.js \
+            tests/celestial_commerce_gateway_governance_report_script.test.js \
+            tests/celestial_commerce_gateway_shadow_sample_extract_script.test.js \
+            tests/celestial_commerce_gateway_governance_alerts_script.test.js \
+            tests/celestial_commerce_gateway_daily_summary_script.test.js \
+            tests/celestial_commerce_core_staging_matrix_script.test.js \
+            tests/celestial_commerce_core_stabilization_report_script.test.js \
+            tests/celestial_commerce_core_prod_canary_script.test.js \
             tests/shopping_agent_loop_break.test.js \
             tests/shopping_agent_guidance_context.test.js \
             tests/shopping_agent_guidance_retrieval_plan.test.js \

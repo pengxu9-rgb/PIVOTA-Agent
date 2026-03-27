@@ -36,6 +36,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER,
       SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION:
         process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION,
+      PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
+      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
+        process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
+      PROXY_SEARCH_INVOKE_FALLBACK_ENABLED:
+        process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
@@ -56,6 +62,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
+    delete process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+    delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -133,6 +142,24 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
         prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    }
+    if (prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
+        prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+    }
+    if (prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED === undefined) {
+      delete process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
+    } else {
+      process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED =
+        prevEnv.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -2503,6 +2530,62 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
 
+  test('primary unusable nonempty upstream results collapse to strict empty when fallback rails are disabled', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'blue tote bag')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            title: 'Blue Tote Bag',
+            description: 'Canvas carryall with no merchant binding',
+            price: 29,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'blue tote bag',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata?.strict_empty).toBe(true);
+    expect(resp.body.metadata?.strict_empty_reason).toBe('primary_unusable_no_fallback');
+    expect(resp.body.metadata?.proxy_search_fallback?.reason).toBe('primary_unusable_no_fallback');
+  });
+
   test('fashion multi-constraint query returns visible intent metadata on generic upstream lane', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -2584,6 +2667,125 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.matched_visible_categories).toEqual(['sweater']);
     expect(resp.body.metadata?.matched_visible_attribute_labels).toEqual(['striped']);
     expect(resp.body.metadata?.matched_visible_option_labels).toEqual(['color_blue']);
+  });
+
+  test('second-stage supplement skips risky broadened fashion expansion instead of appending drifted products', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const externalSupplement = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.merchant_id || '') === 'external_seed')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === 'blue striped sweater' && !String(q.merchant_id || ''))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_sweater_blue_striped_1',
+            product_id: 'prod_sweater_blue_striped_1',
+            merchant_id: 'merch_live_1',
+            title: 'Blue Striped Knitted Sweater',
+            description: 'Classic striped knit sweater for women.',
+            status: 'active',
+            inventory_quantity: 6,
+            price: 27.65,
+            currency: 'EUR',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const riskySecondStage = nock('http://pivota.test')
+      .get('/agent/v2/products/search')
+      .query((q) => {
+        const query = String(q.query || '');
+        return (
+          query.includes('blue striped sweater') &&
+          query.includes('dress') &&
+          query.includes('skirt') &&
+          query.includes('outfit')
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_dress_blue_striped_1',
+            product_id: 'prod_dress_blue_striped_1',
+            merchant_id: 'merch_live_2',
+            title: 'Blue Striped Summer Dress',
+            description: 'Blue striped dress for women.',
+            status: 'active',
+            inventory_quantity: 8,
+            price: 31.99,
+            currency: 'EUR',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'blue striped sweater',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(externalSupplement.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(riskySecondStage.isDone()).toBe(false);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'prod_sweater_blue_striped_1',
+      }),
+    );
+    expect(resp.body.metadata?.search_stage_b).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        applied: false,
+        reason: 'disabled_for_risky_broadening',
+        query_class: 'category',
+      }),
+    );
+    expect(resp.body.metadata?.search_stage_b?.added_tokens || []).toEqual(
+      expect.arrayContaining(['dress', 'skirt', 'outfit']),
+    );
   });
 
   test('fashion multi-constraint query filters generic upstream results to strict visible matches', async () => {
