@@ -96,7 +96,6 @@ const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
   1,
   Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
 );
-
 function defaultNormalizeSearchTextForMatch(value) {
   return String(value || '')
     .trim()
@@ -157,6 +156,14 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     typeof deps.pruneEmptyFields === 'function' ? deps.pruneEmptyFields : (value) => value;
   const hasDatabaseUrl =
     typeof deps.hasDatabaseUrl === 'boolean' ? deps.hasDatabaseUrl : Boolean(process.env.DATABASE_URL);
+
+  function isAutoStrictConstraintEnabled() {
+    return (
+      String(process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED || 'true')
+        .trim()
+        .toLowerCase() !== 'false'
+    );
+  }
 
   const strictIngredientAliases = Object.freeze(
     Object.fromEntries(
@@ -231,8 +238,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
 
   function getStrictFindProductsMultiConstraintDecision({ search = {}, metadata = {} } = {}) {
     const requestedCatalogSurface = getRequestedCatalogSurface({ search, metadata });
+    const explicitStrictSurface = isStrictCommerceCatalogSurface(requestedCatalogSurface);
     const rawQuery = String(search?.query || '').trim();
-    if (!rawQuery && isStrictCommerceCatalogSurface(requestedCatalogSurface)) {
+    if (!rawQuery && explicitStrictSurface) {
       return {
         enabled: true,
         catalogSurface: requestedCatalogSurface,
@@ -268,6 +276,16 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
         shadeOptionIntents,
       };
     }
+    if (!isAutoStrictConstraintEnabled() && !explicitStrictSurface) {
+      return {
+        enabled: false,
+        catalogSurface: null,
+        strictConstraintQuery: false,
+        strictConstraintReason: null,
+        ingredientIntents,
+        shadeOptionIntents,
+      };
+    }
 
     const visibleAttributeIntents = extractStrictFindProductsMultiVisibleAttributeIntents(rawQuery);
     const hasBudgetConstraint = hasStrictFindProductsMultiBudgetConstraint(rawQuery);
@@ -282,13 +300,8 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
         : 'shade';
 
     return {
-      enabled:
-        isStrictCommerceCatalogSurface(requestedCatalogSurface) ||
-        hasIngredientConstraint ||
-        hasShadeConstraint,
-      catalogSurface: isStrictCommerceCatalogSurface(requestedCatalogSurface)
-        ? requestedCatalogSurface
-        : 'agent_api',
+      enabled: explicitStrictSurface || hasIngredientConstraint || hasShadeConstraint,
+      catalogSurface: explicitStrictSurface ? requestedCatalogSurface : 'agent_api',
       strictConstraintQuery: hasIngredientConstraint || hasShadeConstraint,
       strictConstraintReason,
       ingredientIntents,

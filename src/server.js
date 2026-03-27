@@ -22183,11 +22183,43 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
               fallbackNotBetterReason: fallbackReason,
             });
+            const currentUpstreamMeta =
+              upstreamData &&
+              typeof upstreamData === 'object' &&
+              !Array.isArray(upstreamData) &&
+              upstreamData.metadata &&
+              typeof upstreamData.metadata === 'object' &&
+              !Array.isArray(upstreamData.metadata)
+                ? upstreamData.metadata
+                : {};
+            const primaryFallbackUpstreamStatus =
+              Number(
+                currentUpstreamMeta?.upstream_status ??
+                  currentUpstreamMeta?.proxy_search_fallback?.upstream_status ??
+                  response.status ??
+                  0,
+              ) ||
+              Number(response.status || 0) ||
+              null;
+            const primaryFallbackUpstreamCode =
+              String(
+                currentUpstreamMeta?.upstream_error_code ||
+                  currentUpstreamMeta?.proxy_search_fallback?.upstream_error_code ||
+                  '',
+              ).trim() || null;
+            const primaryFallbackUpstreamMessage =
+              String(
+                currentUpstreamMeta?.upstream_error_message ||
+                  currentUpstreamMeta?.proxy_search_fallback?.upstream_error_message ||
+                  '',
+              ).trim() || null;
             if (primaryOutcomeDecision.decision === 'clarify') {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
                 reason: primaryOutcomeDecision.reason,
-                upstreamStatus: response.status,
+                upstreamStatus: primaryFallbackUpstreamStatus,
+                upstreamCode: primaryFallbackUpstreamCode,
+                upstreamMessage: primaryFallbackUpstreamMessage,
                 route:
                   primaryIrrelevant
                     ? 'invoke_primary_irrelevant'
@@ -22212,7 +22244,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 body: upstreamData,
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
                 reason: primaryOutcomeDecision.reason,
-                upstreamStatus: response.status,
+                upstreamStatus: primaryFallbackUpstreamStatus,
+                upstreamCode: primaryFallbackUpstreamCode,
+                upstreamMessage: primaryFallbackUpstreamMessage,
                 route: primaryUnusable
                   ? 'invoke_primary_unusable'
                   : 'invoke_fallback_strict_empty',
