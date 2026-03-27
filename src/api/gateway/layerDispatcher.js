@@ -70,6 +70,8 @@ function prepareGatewayGovernanceEnvelope(input = {}) {
   });
   const accessScope = resolveAccessScope({
     ...input,
+    normalized_request: normalizedRequest,
+    invocation_context: normalizedRequest.invocation_context,
     agent_identity: agentIdentity,
     source_profile: sourceProfile,
     requested_layer: requestedLayer,

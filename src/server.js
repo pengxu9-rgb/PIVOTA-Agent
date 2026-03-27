@@ -8360,14 +8360,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     ),
   ).slice(0, 8);
   const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
-  const requestHeaders = {
-    ...(checkoutToken
-      ? { 'X-Checkout-Token': checkoutToken }
-      : {
-          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
-          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
-        }),
-  };
+  const requestHeaders = buildInvokeUpstreamAuthHeaders({ checkoutToken });
   const seenKeys = new Set();
   const mergedProducts = [];
   let upstreamStatus = 0;
