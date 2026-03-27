@@ -13,6 +13,10 @@ It is narrower than the full LLM/agent infrastructure readiness audit.
 
 Pair this runbook with [Celestial Commerce Core Actual Architecture](./celestial_commerce_core_actual_architecture.md) when checking implementation drift against the long-term Celestial plan.
 
+When the branch has already accumulated multiple facade-ownership migrations and you want a bounded freeze-and-validate cycle before more refactor, use [Celestial Commerce Core Stabilization Acceptance](./celestial_commerce_core_stabilization_acceptance.md).
+
+For a narrow read-only confirmation on real production data after staging acceptance is in place, use [Celestial Commerce Core Production Canary](./celestial_commerce_core_prod_canary.md).
+
 ## Execution Rules
 
 - Use only repos under `~/dev` as execution sources.
@@ -46,7 +50,66 @@ Run:
 npm run audit:readiness:commerce-core
 ```
 
+The supported commerce contract is the authenticated invoke surface:
+
+```bash
+POST /agent/shop/v1/invoke
+```
+
+The legacy public `POST /api/gateway` probe is still recorded in the report for public-surface observability, but it should no longer be treated as the primary commerce acceptance gate.
+
+Run the shared production smoke against the supported invoke surface:
+
+```bash
+COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke \
+COMMERCE_CORE_PROD_AUTH_TOKEN=ak_live_your_prod_key \
+npm run audit:readiness:commerce-core
+```
+
+When `BASE_URL` stays on the public default and `COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke`, the production smoke auto-switches to `https://pivota-agent-production.up.railway.app` for the authenticated invoke run. The report still keeps the separate public probe on `https://agent.pivota.cc`.
+
+You can also provide:
+
+```bash
+COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke \
+COMMERCE_CORE_PROD_AGENT_API_KEY=ak_live_your_prod_key \
+npm run audit:readiness:commerce-core
+```
+
 The audit writes a timestamped report under `reports/celestial-commerce-core-readiness/`.
+
+To enrich the gateway governance section with sampled runtime shadow traffic, provide:
+
+```bash
+GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH=/path/to/gateway_governance_shadow.ndjson \
+npm run audit:readiness:commerce-core
+```
+
+If you only have raw gateway logs, provide the log path instead and let the audit extract a bounded shadow sample automatically:
+
+```bash
+GATEWAY_GOVERNANCE_LOG_INPUT_PATH=/path/to/gateway.log.ndjson \
+npm run audit:readiness:commerce-core
+```
+
+For a lighter daily governance-only report, use:
+
+```bash
+GATEWAY_GOVERNANCE_LOG_INPUT_PATH=/path/to/gateway.log.ndjson \
+npm run audit:gateway-governance:daily
+```
+
+For the bounded stabilization pass that combines local gates, readiness, daily governance, and a staging matrix, use:
+
+```bash
+npm run audit:stabilization:commerce-core
+```
+
+For a narrower non-gating production confirmation pass, use:
+
+```bash
+npm run probe:commerce-core:prod-canary
+```
 
 ## Gates
 
@@ -54,6 +117,7 @@ The audit writes a timestamped report under `reports/celestial-commerce-core-rea
 - Public search contract gate
 - Shopping-agent commerce gate
 - Aurora commerce orchestration gate
+- Gateway invocation/access governance gate
 - Production commerce-core smoke
 
 ## Milestone 0 Rule
@@ -97,6 +161,7 @@ Exact product-specific lookup should stay covered, but if a source contract is s
 - Commerce Search Contract Readiness
 - Merchant/Product Routing Readiness
 - Fallback/Resilience Readiness
+- Gateway Invocation/Access Governance Readiness
 - Observability/Provenance Readiness
 - Cross-layer Contract Drift Risk
 

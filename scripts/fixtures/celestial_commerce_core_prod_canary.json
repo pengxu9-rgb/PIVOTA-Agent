@@ -1,0 +1,140 @@
+[
+  {
+    "id": "public_search_serum_default",
+    "family": "public_search_contract",
+    "query": "serum",
+    "source": "search",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "source_breakdown.external_seed_count": 0
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "shopping_agent_serum_broad",
+    "family": "broad_commerce_search",
+    "query": "serum",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search_supplemented",
+      "cache_stage_selected_source": "internal_cache"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "aurora_bff_serum_broad",
+    "family": "broad_commerce_search",
+    "query": "serum",
+    "source": "aurora-bff",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "cache_stage_selected_source",
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "query_source": "cache_cross_merchant_search_supplemented",
+      "cache_stage_selected_source": "internal_cache"
+    },
+    "must_be_positive_metadata": [
+      "source_breakdown.internal_count",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum",
+      "The Ordinary Niacinamide 10% + Zinc 1%"
+    ]
+  },
+  {
+    "id": "shopping_agent_strict_niacinamide_serum",
+    "family": "strict_consistency",
+    "query": "niacinamide serum",
+    "source": "shopping_agent",
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
+    "id": "shopping_agent_merchant_query_ipsa_products",
+    "family": "merchant_query",
+    "query": "IPSA products",
+    "source": "shopping_agent",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "cache_returned"
+    },
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
+    "id": "shopping_agent_clarify_date_makeup",
+    "family": "clarify_required",
+    "query": "有什么适合今晚约会的",
+    "source": "shopping_agent",
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "service_version.commit",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "clarify"
+    },
+    "must_have_clarification": true,
+    "must_have_reason_codes": [
+      "AMBIGUITY_CLARIFY"
+    ]
+  }
+]

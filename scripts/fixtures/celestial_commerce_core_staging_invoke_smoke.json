@@ -1,0 +1,36 @@
+{
+  "semantic_cases": [
+    {
+      "id": "staging_invoke_auth_smoke",
+      "title": "staging invoke auth smoke",
+      "family": "broad_discovery",
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "niacinamide serum",
+            "limit": 5,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "shopping_agent"
+        }
+      },
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": true
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit"
+        ]
+      }
+    }
+  ],
+  "governance_cases": []
+}
