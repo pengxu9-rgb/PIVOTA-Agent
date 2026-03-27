@@ -12,6 +12,9 @@ BACKEND_PUBLIC_BASE_URL="${BACKEND_PUBLIC_BASE_URL:-https://web-production-fedb.
 GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH:-}"
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH:-}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/celestial-commerce-core-readiness}"
+COMMERCE_CORE_PROD_SMOKE_ENDPOINT="${COMMERCE_CORE_PROD_SMOKE_ENDPOINT:-}"
+COMMERCE_CORE_PROD_AUTH_TOKEN="${COMMERCE_CORE_PROD_AUTH_TOKEN:-}"
+COMMERCE_CORE_PROD_AGENT_API_KEY="${COMMERCE_CORE_PROD_AGENT_API_KEY:-}"
 
 timestamp() {
   date -u +"%Y%m%d_%H%M%S"
@@ -404,9 +407,28 @@ gateway_governance_status="red"
 provenance_status="amber"
 drift_status="red"
 public_gateway_auth_required="false"
+supported_prod_smoke_requested="false"
+prod_smoke_auth_configured="false"
+prod_smoke_endpoint="${COMMERCE_CORE_PROD_SMOKE_ENDPOINT}"
+
+if [[ -n "${COMMERCE_CORE_PROD_AUTH_TOKEN}" || -n "${COMMERCE_CORE_PROD_AGENT_API_KEY}" ]]; then
+  prod_smoke_auth_configured="true"
+fi
+
+if [[ -z "${prod_smoke_endpoint}" ]]; then
+  if [[ "${prod_smoke_auth_configured}" == "true" ]]; then
+    prod_smoke_endpoint="/agent/shop/v1/invoke"
+  else
+    prod_smoke_endpoint="/api/gateway"
+  fi
+fi
 
 if [[ "${agent_public_contract_status}" == "401" && "${agent_public_contract_error}" == "UNAUTHORIZED" ]]; then
   public_gateway_auth_required="true"
+fi
+
+if [[ "${prod_smoke_endpoint}" == "/agent/shop/v1/invoke" && "${prod_smoke_auth_configured}" == "true" ]]; then
+  supported_prod_smoke_requested="true"
 fi
 
 if [[ "${shopping_local_status}" == "pass" ]]; then
@@ -416,6 +438,8 @@ fi
 
 if [[ "${public_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
   commerce_search_status="green"
+elif [[ "${public_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" && "${supported_prod_smoke_requested}" != "true" ]]; then
+  commerce_search_status="amber"
 fi
 if [[ "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
   merchant_product_status="amber"
@@ -425,8 +449,9 @@ fi
 if [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
   fallback_resilience_status="amber"
   drift_status="amber"
-elif [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" ]]; then
+elif [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" && "${supported_prod_smoke_requested}" != "true" ]]; then
   fallback_resilience_status="amber"
+  drift_status="amber"
 fi
 if [[ "${gateway_governance_local_status}" == "pass" && "${gateway_governance_report_status}" == "pass" ]]; then
   gateway_governance_status="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "readiness_status")"
@@ -481,6 +506,9 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "- Agent public probe \`error\`: \`${agent_public_contract_error:-missing}\`"
   echo "- Agent public probe \`message\`: \`${agent_public_contract_message:-missing}\`"
   echo "- Agent public probe \`content_type\`: \`${agent_public_contract_content_type:-missing}\`"
+  echo "- Supported prod smoke endpoint: \`${prod_smoke_endpoint}\`"
+  echo "- Supported prod smoke auth configured: \`${prod_smoke_auth_configured}\`"
+  echo "- Supported invoke smoke requested: \`${supported_prod_smoke_requested}\`"
   if [[ -n "${agent_public_transport_error}" ]]; then
     echo "- Agent public probe transport error: \`${agent_public_transport_error}\`"
   fi
@@ -524,12 +552,12 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "| --- | --- | --- |"
   echo "| Prompt/Intent Readiness | ${prompt_intent_status} | $( if [[ "${prompt_intent_status}" == "green" ]]; then echo "none"; elif [[ "${prompt_intent_status}" == "amber" ]]; then echo "shopping-agent prompt/loop-break contract is testable locally, but not yet backed by stable live prompt fixtures"; else echo "shopping_agent helper/query-rewrite gate failing"; fi ) |"
   echo "| Query Decomposition Readiness | ${query_decomposition_status} | $( if [[ "${query_decomposition_status}" == "green" ]]; then echo "none"; elif [[ "${query_decomposition_status}" == "amber" ]]; then echo "merchant vs product decomposition still lacks a canonical live acceptance corpus"; else echo "scenario clarify/query rewrite contract incomplete"; fi ) |"
-  echo "| Commerce Search Contract Readiness | ${commerce_search_status} | $( if [[ "${commerce_search_status}" == "green" ]]; then echo "none"; else echo "supported authenticated invoke smoke or local contract gate failing"; fi ) |"
+  echo "| Commerce Search Contract Readiness | ${commerce_search_status} | $( if [[ "${commerce_search_status}" == "green" ]]; then echo "none"; elif [[ "${commerce_search_status}" == "amber" ]]; then echo "supported authenticated invoke smoke was not configured in this run; public /api/gateway is auth-gated and retained only for observability"; else echo "supported authenticated invoke smoke or local contract gate failing"; fi ) |"
   echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "authenticated invoke smoke covers merchant-style live routing, but exact product lookup on shopping_agent is still live-flaky and remains local-only"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
-  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "authenticated invoke smoke covers broad and clarify-required behavior, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
+  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "authenticated invoke smoke covers broad and clarify-required behavior when configured, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
   echo "| Gateway Invocation/Access Governance Readiness | ${gateway_governance_status} | $( if [[ "${gateway_governance_status}" == "green" ]]; then echo "none"; elif [[ "${gateway_governance_status}" == "amber" ]]; then echo "shadow summary exists but baseline mismatches remain"; else echo "gateway governance gate/report missing or failing"; fi ) |"
   echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "authenticated invoke smoke is instrumented, but public provenance remains auth-gated and daily runtime governance export is not yet automated"; fi ) |"
-  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "L1/L2 semantics are aligned by contract and authenticated smoke today, but still coordinated across multiple modules"; else echo "source contracts and prod semantics still diverge"; fi ) |"
+  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "supported invoke semantics are the primary contract; public probe remains separately observable and cross-layer ownership is still coordinated across multiple modules"; else echo "source contracts and supported invoke semantics still diverge"; fi ) |"
   echo
   echo "## Next Fixes"
   echo
@@ -579,6 +607,11 @@ summary = {
         "message": "${agent_public_contract_message}",
         "content_type": "${agent_public_contract_content_type}",
         "transport_error": "${agent_public_transport_error}",
+    },
+    "supported_prod_smoke": {
+        "endpoint": "${prod_smoke_endpoint}",
+        "auth_configured": "${prod_smoke_auth_configured}",
+        "requested": "${supported_prod_smoke_requested}"
     },
     "backend_public_version": {
         "commit": "${backend_prod_commit}",

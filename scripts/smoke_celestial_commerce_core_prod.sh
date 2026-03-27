@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
-ENDPOINT="${ENDPOINT:-${COMMERCE_CORE_PROD_SMOKE_ENDPOINT:-/api/gateway}}"
 DEFAULT_INVOKE_BASE_URL="https://pivota-agent-production.up.railway.app"
 SMOKE_BASE_URL="${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-${BASE_URL}}"
 ROUNDS="${ROUNDS:-1}"
@@ -15,6 +14,15 @@ QUERY_FILE="${QUERY_FILE:-${SCRIPT_DIR}/fixtures/celestial_commerce_core_prod_ga
 VERIFY_DEPLOY="${VERIFY_DEPLOY:-1}"
 AUTH_TOKEN="${AUTH_TOKEN:-${COMMERCE_CORE_PROD_AUTH_TOKEN:-}}"
 AGENT_API_KEY="${AGENT_API_KEY:-${COMMERCE_CORE_PROD_AGENT_API_KEY:-}}"
+ENDPOINT="${ENDPOINT:-${COMMERCE_CORE_PROD_SMOKE_ENDPOINT:-}}"
+
+if [[ -z "${ENDPOINT}" ]]; then
+  if [[ -n "${AUTH_TOKEN}" || -n "${AGENT_API_KEY}" ]]; then
+    ENDPOINT="/agent/shop/v1/invoke"
+  else
+    ENDPOINT="/api/gateway"
+  fi
+fi
 
 if [[ -z "${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-}" && "${BASE_URL}" == "https://agent.pivota.cc" && "${ENDPOINT}" == "/agent/shop/v1/invoke" ]]; then
   SMOKE_BASE_URL="${DEFAULT_INVOKE_BASE_URL}"

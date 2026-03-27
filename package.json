@@ -31,6 +31,7 @@
     "probe:search:stability": "node scripts/search_stability_matrix.js",
     "probe:commerce-core:prod-canary": "bash scripts/probe_celestial_commerce_core_prod_canary.sh",
     "smoke:commerce-core:staging-invoke": "bash scripts/smoke_celestial_commerce_core_staging_invoke.sh",
+    "audit:aurora-manual-review:commerce-core": "node scripts/run_celestial_commerce_core_aurora_manual_review.js",
     "verify:budget-fx:prod": "node scripts/check_budget_fx_freshness.js",
     "smoke:search:skincare:prod": "bash scripts/smoke_find_products_multi_skincare_prod.sh",
     "smoke:commerce-core:prod": "bash scripts/smoke_celestial_commerce_core_prod.sh",

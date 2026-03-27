@@ -58,6 +58,8 @@ POST /agent/shop/v1/invoke
 
 The legacy public `POST /api/gateway` probe is still recorded in the report for public-surface observability, but it should no longer be treated as the primary commerce acceptance gate.
 
+When a production auth token or API key is present, the shared prod smoke wrappers now auto-select the authenticated invoke endpoint even if you do not set `COMMERCE_CORE_PROD_SMOKE_ENDPOINT` explicitly.
+
 Run the shared production smoke against the supported invoke surface:
 
 ```bash
@@ -75,6 +77,8 @@ COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke \
 COMMERCE_CORE_PROD_AGENT_API_KEY=ak_live_your_prod_key \
 npm run audit:readiness:commerce-core
 ```
+
+If you do not provide authenticated production smoke credentials, the readiness report should stay `amber` on commerce-contract readiness rather than misreporting a `red` gate purely because the legacy public probe is auth-gated.
 
 The audit writes a timestamped report under `reports/celestial-commerce-core-readiness/`.
 

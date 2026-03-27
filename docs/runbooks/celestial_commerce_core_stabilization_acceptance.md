@@ -109,6 +109,15 @@ STAGING_GENERIC_MCP_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
 npm run audit:stabilization:commerce-core
 ```
 
+5. After the live matrix is green, complete the three Aurora guidance-only manual cases separately:
+
+```bash
+STAGING_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
+npm run audit:aurora-manual-review:commerce-core
+```
+
+That review stays separate because the cases still require a human verdict on cache-hit quality, cache-miss lane selection, and bounded direct supplement behavior.
+
 ## What The Workflow Produces
 
 The workflow writes a timestamped report under `reports/celestial-commerce-core-stabilization/`.

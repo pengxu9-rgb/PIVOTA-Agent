@@ -135,7 +135,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
     }
   });
 
-  test('supports authenticated invoke canary runs', async () => {
+  test('auto-selects authenticated invoke when canary auth is configured', async () => {
     const repoRoot = path.join(__dirname, '..');
     const scriptPath = path.join(
       repoRoot,
@@ -201,7 +201,6 @@ describe('Celestial commerce-core production canary wrapper', () => {
         env: {
           ...process.env,
           BASE_URL: baseUrl,
-          ENDPOINT: '/agent/shop/v1/invoke',
           AUTH_TOKEN: 'ak_live_test_prod_key',
           OUT_DIR: outDir,
           QUERY_FILE: queryFile,
