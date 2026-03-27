@@ -422,24 +422,27 @@ function buildSeedLikeClauses(columnSql, values, params, startIndex) {
   return { clauses, nextIndex: index, params };
 }
 
-async function loadDeterministicExternalSeedCandidates({
-  ingredientId,
-  ingredientName,
-  market,
-  maxProducts = 3,
-} = {}) {
+function buildDeterministicSeedQueryTokens({ ingredientId, ingredientName } = {}) {
   const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
   if (!normalizedIngredientId) return [];
-  if (!process.env.DATABASE_URL) return [];
-
-  const normalizedMarket = normalizeMarket(market);
-  const queryTokens = [
+  return [
     normalizedIngredientId,
     normalizedIngredientId.replace(/_/g, ' '),
     ingredientName,
   ];
-  const safeLimit = Math.max(24, Math.min(240, Math.max(1, Math.trunc(Number(maxProducts) || 3)) * 16));
+}
 
+function buildDeterministicSeedQueryLimit({ ingredientCount = 1, maxProducts = 3 } = {}) {
+  const ingredientCountN = Math.max(1, Math.trunc(Number(ingredientCount) || 1));
+  const maxProductsN = Math.max(1, Math.trunc(Number(maxProducts) || 3));
+  return Math.max(24, Math.min(480, maxProductsN * 16 * ingredientCountN));
+}
+
+async function fetchDeterministicExternalSeedRows({
+  normalizedMarket,
+  queryTokens,
+  safeLimit,
+} = {}) {
   async function fetchRows(whereSql, params) {
     const res = await query(
       `
@@ -474,78 +477,160 @@ async function loadDeterministicExternalSeedCandidates({
     return Array.isArray(res && res.rows) ? res.rows : [];
   }
 
-  try {
-    let focusedRows = [];
-    const likeClauses = buildSeedLikeClauses(
-      `LOWER(CAST(COALESCE(seed_data, '{}'::jsonb) AS TEXT))`,
-      queryTokens,
-      [],
-      3,
-    );
-    if (likeClauses.clauses.length > 0) {
-      focusedRows = await fetchRows(`AND (${likeClauses.clauses.join(' OR ')})`, likeClauses.params);
-    }
-    const rows = focusedRows.length > 0
-      ? focusedRows
-      : await fetchRows('', []);
+  let focusedRows = [];
+  const likeClauses = buildSeedLikeClauses(
+    `LOWER(CAST(COALESCE(seed_data, '{}'::jsonb) AS TEXT))`,
+    queryTokens,
+    [],
+    3,
+  );
+  if (likeClauses.clauses.length > 0) {
+    focusedRows = await fetchRows(`AND (${likeClauses.clauses.join(' OR ')})`, likeClauses.params);
+  }
+  return focusedRows.length > 0
+    ? focusedRows
+    : fetchRows('', []);
+}
 
-    const seen = new Set();
-    const out = [];
+function compareDeterministicExternalSeedProducts(normalizedIngredientId) {
+  return (left, right) => {
+    const leftIds = asArray(left && left.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
+    const rightIds = asArray(right && right.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
+    const leftExact = leftIds.includes(normalizedIngredientId) ? 1 : 0;
+    const rightExact = rightIds.includes(normalizedIngredientId) ? 1 : 0;
+    if (rightExact !== leftExact) return rightExact - leftExact;
+    const leftInStock = left && left.in_stock === true ? 1 : left && left.in_stock === false ? -1 : 0;
+    const rightInStock = right && right.in_stock === true ? 1 : right && right.in_stock === false ? -1 : 0;
+    if (rightInStock !== leftInStock) return rightInStock - leftInStock;
+    const leftRich =
+      (pickFirstString(left && left.image_url) ? 1 : 0) +
+      (Number.isFinite(Number(left && left.price)) ? 1 : 0) +
+      (pickFirstString(left && left.url, left && left.canonical_url, left && left.destination_url) ? 1 : 0) +
+      (pickFirstString(left && left.brand, left && left.vendor) ? 1 : 0);
+    const rightRich =
+      (pickFirstString(right && right.image_url) ? 1 : 0) +
+      (Number.isFinite(Number(right && right.price)) ? 1 : 0) +
+      (pickFirstString(right && right.url, right && right.canonical_url, right && right.destination_url) ? 1 : 0) +
+      (pickFirstString(right && right.brand, right && right.vendor) ? 1 : 0);
+    if (rightRich !== leftRich) return rightRich - leftRich;
+    return String(left && left.title || left && left.name || '').localeCompare(
+      String(right && right.title || right && right.name || ''),
+    );
+  };
+}
+
+async function loadDeterministicExternalSeedCandidatesBatch({
+  ingredientInputs,
+  market,
+  maxProducts = 3,
+} = {}) {
+  const normalizedEntries = [];
+  const seen = new Set();
+  for (const input of asArray(ingredientInputs)) {
+    const normalizedIngredientId = normalizeIngredientCanonicalId(
+      pickFirstString(input && input.ingredientId, input && input.ingredient_id),
+    );
+    if (!normalizedIngredientId || seen.has(normalizedIngredientId)) continue;
+    seen.add(normalizedIngredientId);
+    normalizedEntries.push({
+      ingredientId: normalizedIngredientId,
+      ingredientName: pickFirstString(input && input.ingredientName, input && input.ingredient_name),
+    });
+  }
+  const buckets = new Map(normalizedEntries.map((entry) => [entry.ingredientId, []]));
+  if (!normalizedEntries.length) return buckets;
+  if (!process.env.DATABASE_URL) return buckets;
+
+  const normalizedMarket = normalizeMarket(market);
+  const queryTokens = normalizedEntries.flatMap((entry) => buildDeterministicSeedQueryTokens(entry));
+  const safeLimit = buildDeterministicSeedQueryLimit({
+    ingredientCount: normalizedEntries.length,
+    maxProducts,
+  });
+
+  try {
+    const rows = await fetchDeterministicExternalSeedRows({
+      normalizedMarket,
+      queryTokens,
+      safeLimit,
+    });
+    const seenByIngredient = new Map(normalizedEntries.map((entry) => [entry.ingredientId, new Set()]));
+    const productCache = new Map();
+
     for (const row of rows) {
-      const product = buildExternalSeedProduct(row);
+      const rowKey = String(
+        row && (
+          row.id
+          || row.external_product_id
+          || row.canonical_url
+          || row.destination_url
+          || row.title
+        ) || '',
+      );
+      if (!productCache.has(rowKey)) {
+        productCache.set(rowKey, buildExternalSeedProduct(row));
+      }
+      const product = productCache.get(rowKey);
       if (!product) continue;
-      const ingredientIds = asArray(product.ingredient_ids)
+
+      const productIngredientIds = asArray(product.ingredient_ids)
         .map((value) => normalizeIngredientCanonicalId(value))
         .filter(Boolean);
-      if (!ingredientIds.includes(normalizedIngredientId)) continue;
-      const productId = pickFirstString(product.product_id, product.id);
-      const merchantId = pickFirstString(product.merchant_id, product.merchantId);
-      const key = `${productId.toLowerCase()}::${merchantId.toLowerCase()}`;
-      if (!productId || !merchantId || seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        ...product,
-        retrieval_source: 'external_seed',
-        retrieval_reason: 'external_seed_deterministic_ingredient_match',
-      });
+      if (!productIngredientIds.length) continue;
+
+      for (const entry of normalizedEntries) {
+        if (!productIngredientIds.includes(entry.ingredientId)) continue;
+        const bucket = buckets.get(entry.ingredientId) || [];
+        const bucketSeen = seenByIngredient.get(entry.ingredientId) || new Set();
+        const productId = pickFirstString(product.product_id, product.id);
+        const merchantId = pickFirstString(product.merchant_id, product.merchantId);
+        const key = `${productId.toLowerCase()}::${merchantId.toLowerCase()}`;
+        if (!productId || !merchantId || bucketSeen.has(key)) continue;
+        bucketSeen.add(key);
+        bucket.push({
+          ...product,
+          retrieval_source: 'external_seed',
+          retrieval_reason: 'external_seed_deterministic_ingredient_match',
+        });
+        buckets.set(entry.ingredientId, bucket);
+      }
     }
 
-    out.sort((left, right) => {
-      const leftIds = asArray(left && left.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
-      const rightIds = asArray(right && right.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
-      const leftExact = leftIds.includes(normalizedIngredientId) ? 1 : 0;
-      const rightExact = rightIds.includes(normalizedIngredientId) ? 1 : 0;
-      if (rightExact !== leftExact) return rightExact - leftExact;
-      const leftInStock = left && left.in_stock === true ? 1 : left && left.in_stock === false ? -1 : 0;
-      const rightInStock = right && right.in_stock === true ? 1 : right && right.in_stock === false ? -1 : 0;
-      if (rightInStock !== leftInStock) return rightInStock - leftInStock;
-      const leftRich =
-        (pickFirstString(left && left.image_url) ? 1 : 0) +
-        (Number.isFinite(Number(left && left.price)) ? 1 : 0) +
-        (pickFirstString(left && left.url, left && left.canonical_url, left && left.destination_url) ? 1 : 0) +
-        (pickFirstString(left && left.brand, left && left.vendor) ? 1 : 0);
-      const rightRich =
-        (pickFirstString(right && right.image_url) ? 1 : 0) +
-        (Number.isFinite(Number(right && right.price)) ? 1 : 0) +
-        (pickFirstString(right && right.url, right && right.canonical_url, right && right.destination_url) ? 1 : 0) +
-        (pickFirstString(right && right.brand, right && right.vendor) ? 1 : 0);
-      if (rightRich !== leftRich) return rightRich - leftRich;
-      return String(left && left.title || left && left.name || '').localeCompare(
-        String(right && right.title || right && right.name || ''),
-      );
-    });
+    for (const entry of normalizedEntries) {
+      const bucket = buckets.get(entry.ingredientId) || [];
+      bucket.sort(compareDeterministicExternalSeedProducts(entry.ingredientId));
+      buckets.set(entry.ingredientId, bucket.slice(0, Math.max(Number(maxProducts) * 3, 12)));
+    }
 
-    return out.slice(0, Math.max(maxProducts * 3, 12));
+    return buckets;
   } catch (error) {
     const message = String(error && error.message ? error.message : error || '');
     if (
       message.includes('DATABASE_URL not configured')
       || (message.includes('external_product_seeds') && message.includes('does not exist'))
     ) {
-      return [];
+      return buckets;
     }
-    return [];
+    return buckets;
   }
+}
+
+async function loadDeterministicExternalSeedCandidates({
+  ingredientId,
+  ingredientName,
+  market,
+  maxProducts = 3,
+} = {}) {
+  const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
+  if (!normalizedIngredientId) return [];
+  const batch = await loadDeterministicExternalSeedCandidatesBatch({
+    ingredientInputs: [{ ingredientId: normalizedIngredientId, ingredientName }],
+    market,
+    maxProducts,
+  });
+  return Array.isArray(batch && batch.get(normalizedIngredientId))
+    ? batch.get(normalizedIngredientId)
+    : [];
 }
 
 function getTopIssueType(issues) {
@@ -1496,6 +1581,7 @@ module.exports = {
   normalizeEvidenceGrade,
   loadCatalog,
   loadDeterministicExternalSeedCandidates,
+  loadDeterministicExternalSeedCandidatesBatch,
   buildProductRecommendations,
   buildIngredientProductRecommendationsNeutral,
 };
