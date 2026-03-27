@@ -537,6 +537,65 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
     },
   ));
 
+test('routes helper: photo module product enrichment reuses shared ingredient rec results across actions', async () => {
+  const loaded = loadRoutesInternal();
+  const { internal } = loaded;
+  let callCount = 0;
+  internal.__setBuildIngredientProductRecommendationsNeutralForTest(async ({ ingredientId }) => {
+    callCount += 1;
+    return {
+      products: [],
+      products_empty_reason: `no_match_${ingredientId}`,
+      external_search_ctas: [],
+      debug: { ingredient_id: ingredientId, mocked: true },
+    };
+  });
+
+  try {
+    const card = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'pass',
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [{ issue_type: 'texture' }],
+            actions: [
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+            ],
+          },
+          {
+            module_id: 'left_cheek',
+            issues: [{ issue_type: 'tone' }],
+            actions: [
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const enriched = await internal.enrichPhotoModulesCardWithIngredientProducts({
+      photoModulesCard: card,
+      profileSummary: { market: 'US' },
+      language: 'EN',
+      logger: null,
+    });
+
+    assert.equal(callCount, 2, 'builder should run once per unique shared ingredient');
+    const actions = enriched.payload.modules.flatMap((moduleRow) => moduleRow.actions || []);
+    assert.equal(actions.length, 5);
+    assert.equal(actions.every((action) => action.rec_debug && action.rec_debug.mocked === true), true);
+    assert.equal(actions.every((action) => typeof action.products_empty_reason === 'string' && action.products_empty_reason.length > 0), true);
+  } finally {
+    internal.__resetBuildIngredientProductRecommendationsNeutralForTest();
+    unloadRoutes(loaded.moduleId);
+  }
+});
+
 test('photo modules card: face oval clip enabled keeps module mask pixels <= disabled', () =>
   withEnv(
     {

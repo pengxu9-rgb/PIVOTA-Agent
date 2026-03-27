@@ -200,10 +200,9 @@ const {
 const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
-const {
-  buildIngredientProductRecommendationsNeutral,
-  loadDeterministicExternalSeedCandidates,
-} = require('./productRecV1');
+const productRecV1 = require('./productRecV1');
+const { loadDeterministicExternalSeedCandidates } = productRecV1;
+let buildIngredientProductRecommendationsNeutralImpl = productRecV1.buildIngredientProductRecommendationsNeutral;
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2, buildFallbackProductAudit } = require('./routineAnalysisV2');
 const {
@@ -17082,10 +17081,11 @@ function buildPhotoModuleRecoCacheKey({
   lang,
   riskTier,
   qualityGrade,
+  shareAcrossIssueTypes = false,
 } = {}) {
   return [
     String(ingredientId || '').trim().toLowerCase(),
-    String(issueType || '').trim().toLowerCase(),
+    shareAcrossIssueTypes ? '__shared__' : String(issueType || '').trim().toLowerCase(),
     String(market || '').trim().toLowerCase(),
     String(lang || '').trim().toLowerCase(),
     String(riskTier || '').trim().toLowerCase(),
@@ -17243,6 +17243,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
             lang,
             riskTier,
             qualityGrade,
+            shareAcrossIssueTypes: true,
           });
           if (!recCache.has(cacheKey)) {
             const allowNetworkFallbackForAction =
@@ -17250,7 +17251,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
             if (allowNetworkFallbackForAction) networkFallbackActionsUsed += 1;
             recCache.set(
               cacheKey,
-              buildIngredientProductRecommendationsNeutral({
+              buildIngredientProductRecommendationsNeutralImpl({
                 moduleId,
                 ingredientId,
                 ingredientName,
@@ -68275,6 +68276,13 @@ const __internal = {
   },
   __resetGetBestIngredientSignalMatchForTest() {
     getBestIngredientSignalMatchImpl = getBestIngredientSignalMatch;
+  },
+  __setBuildIngredientProductRecommendationsNeutralForTest(fn) {
+    buildIngredientProductRecommendationsNeutralImpl =
+      typeof fn === 'function' ? fn : productRecV1.buildIngredientProductRecommendationsNeutral;
+  },
+  __resetBuildIngredientProductRecommendationsNeutralForTest() {
+    buildIngredientProductRecommendationsNeutralImpl = productRecV1.buildIngredientProductRecommendationsNeutral;
   },
 };
 
