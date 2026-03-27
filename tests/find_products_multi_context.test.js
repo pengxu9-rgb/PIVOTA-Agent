@@ -230,6 +230,22 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('mascara');
   });
 
+  test('exact stable-alias product title uses lookup class instead of exploratory', async () => {
+    const { adjustedPayload, expansion_meta, intent } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'IPSA Time Reset Aqua' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'IPSA Time Reset Aqua' }],
+      },
+      metadata: {},
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).toBe('IPSA Time Reset Aqua');
+    expect(expansion_meta?.query_class).toBe('lookup');
+    expect(intent?.query_class).toBe('exploratory');
+    expect(expansion_meta?.brand_query_detected).toBe(false);
+  });
+
   test('generic sunscreen query routes to beauty attribute instead of lookup', () => {
     const intent = extractIntentRuleBased('Face SPF50+ PA++++ sunscreen', [], []);
     expect(intent.primary_domain).toBe('beauty');

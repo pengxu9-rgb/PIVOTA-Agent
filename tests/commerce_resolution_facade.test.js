@@ -1627,6 +1627,68 @@ describe('Commerce resolution facade', () => {
     ).toBe(false);
   });
 
+  test('resolver-first strong alias query is not blocked only because it is brand-like', () => {
+    const runtime = createCommerceResolutionRuntime({
+      resolverFirstEnabled: true,
+      resolverFirstStrongOnly: true,
+      simplifyGateEnabled: true,
+      lookupOnlyResolverEnabled: true,
+      normalizeAgentSource(value) {
+        return String(value || '').trim().toLowerCase();
+      },
+      isCreatorUiSource() {
+        return false;
+      },
+      isResolverFirstCatalogSource(source) {
+        return source === 'shopping_agent';
+      },
+      isAuroraSource() {
+        return false;
+      },
+      extractGuidanceRetrievalContext() {
+        return {};
+      },
+      hasGuidanceLookupStyleQuery() {
+        return false;
+      },
+      buildResolverQueryCandidates(query) {
+        return [query];
+      },
+      normalizeResolverText(value) {
+        return String(value || '').trim().toLowerCase();
+      },
+      tokenizeResolverQuery(value) {
+        return String(value || '').trim().split(/\s+/).filter(Boolean);
+      },
+      resolveStableAliasByQuery({ normalizedQuery }) {
+        if (normalizedQuery === 'the ordinary niacinamide 10 zinc 1') {
+          return {
+            product_ref: {
+              merchant_id: 'ordinary',
+              product_id: 'sku-ordinary-1',
+            },
+          };
+        }
+        return null;
+      },
+      isLookupStyleSearchQuery() {
+        return false;
+      },
+      resolverMinRemainingBudgetMs: 200,
+    });
+
+    expect(
+      runtime.shouldUseResolverFirstSearch({
+        operation: 'find_products_multi',
+        metadata: { source: 'shopping_agent' },
+        queryText: 'The Ordinary Niacinamide 10 Zinc 1',
+        remainingBudgetMs: 500,
+        queryClass: 'exploratory',
+        brandLike: true,
+      }),
+    ).toBe(true);
+  });
+
   test('find_products_multi fallback selection returns null when payload cannot be built', async () => {
     const runtime = createCommerceResolutionRuntime({
       buildFindProductsMultiPayloadFromQuery() {

@@ -968,7 +968,6 @@ function createCommerceResolutionRuntime(deps = {}) {
     if (!getResolverFirstEnabled()) return false;
     if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
     if (!String(queryText || '').trim()) return false;
-    if (brandLike) return false;
     if (
       Number.isFinite(Number(remainingBudgetMs)) &&
       Number(remainingBudgetMs) < getResolverMinRemainingBudgetMs()
@@ -987,7 +986,11 @@ function createCommerceResolutionRuntime(deps = {}) {
       return false;
     }
 
+    const source = normalizeAgentSourceImpl(metadata?.source);
+    const auroraSource = isAuroraSourceImpl(source);
+    const isCatalogSource = isResolverFirstCatalogSourceImpl(source);
     const strongResolverQuery = isStrongResolverFirstQuery(queryText);
+    if (brandLike && !(strongResolverQuery && isCatalogSource && !auroraSource)) return false;
     const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
     const forceSearchFirstClasses = new Set([
       'category',
@@ -1019,11 +1022,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return false;
     }
 
-    const source = normalizeAgentSourceImpl(metadata?.source);
     if (isCreatorUiSourceImpl(source)) return false;
-    const auroraSource = isAuroraSourceImpl(source);
     if (!source) return true;
-    const isCatalogSource = isResolverFirstCatalogSourceImpl(source);
     if (getResolverFirstStrongOnly() && (isCatalogSource || auroraSource)) {
       return strongResolverQuery || lookupStyle;
     }
