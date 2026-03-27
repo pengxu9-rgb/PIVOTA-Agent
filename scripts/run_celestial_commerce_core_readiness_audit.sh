@@ -278,6 +278,25 @@ elif isinstance(value, str) and value.strip():
 PY
 }
 
+git_commit_on_origin_main() {
+  local repo="$1"
+  local commit="$2"
+  if [[ -z "${commit}" ]]; then
+    echo "unknown"
+    return
+  fi
+  if ! git -C "$repo" rev-parse --verify "${commit}^{commit}" >/dev/null 2>&1; then
+    echo "unknown"
+    return
+  fi
+  if git -C "$repo" rev-parse --verify origin/main >/dev/null 2>&1 && \
+     git -C "$repo" merge-base --is-ancestor "${commit}" origin/main >/dev/null 2>&1; then
+    echo "true"
+    return
+  fi
+  echo "false"
+}
+
 STEP_NAMES=()
 STEP_STATUSES=()
 STEP_LOGS=()
@@ -431,6 +450,61 @@ if [[ "${prod_smoke_endpoint}" == "/agent/shop/v1/invoke" && "${prod_smoke_auth_
   supported_prod_smoke_requested="true"
 fi
 
+prod_smoke_matrix_json="$(json_file_field "${RUN_DIR}/commerce_core_production_smoke.log" "json")"
+prod_smoke_primary_service_commit="$(
+  python3 - "${prod_smoke_matrix_json}" <<'PY'
+import json
+import pathlib
+import sys
+
+json_path = pathlib.Path(sys.argv[1])
+if not json_path.exists():
+    raise SystemExit(0)
+try:
+    data = json.loads(json_path.read_text())
+except Exception:
+    raise SystemExit(0)
+
+values = []
+for row in data.get("rows", []):
+    if not isinstance(row, dict):
+        continue
+    value = str(row.get("service_commit") or "").strip()
+    if value and value not in values:
+        values.append(value)
+if values:
+    print(values[0])
+PY
+)"
+prod_smoke_failing_case_ids="$(
+  python3 - "${prod_smoke_matrix_json}" <<'PY'
+import json
+import pathlib
+import sys
+
+json_path = pathlib.Path(sys.argv[1])
+if not json_path.exists():
+    raise SystemExit(0)
+try:
+    data = json.loads(json_path.read_text())
+except Exception:
+    raise SystemExit(0)
+
+case_ids = []
+for row in data.get("rows", []):
+    if not isinstance(row, dict):
+        continue
+    if row.get("gate_passed") is True:
+        continue
+    case_id = str(row.get("case_id") or "").strip()
+    if case_id and case_id not in case_ids:
+        case_ids.append(case_id)
+if case_ids:
+    print(",".join(case_ids))
+PY
+)"
+prod_smoke_primary_commit_on_origin_main="$(git_commit_on_origin_main "${AGENT_CLEAN_REPO}" "${prod_smoke_primary_service_commit}")"
+
 if [[ "${shopping_local_status}" == "pass" ]]; then
   prompt_intent_status="amber"
   query_decomposition_status="amber"
@@ -456,6 +530,9 @@ if [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass"
 elif [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" && "${supported_prod_smoke_requested}" != "true" ]]; then
   fallback_resilience_status="amber"
   drift_status="amber"
+fi
+if [[ "${supported_prod_smoke_requested}" == "true" && "${prod_smoke_primary_commit_on_origin_main}" == "false" ]]; then
+  drift_status="red"
 fi
 if [[ "${gateway_governance_local_status}" == "pass" && "${gateway_governance_report_status}" == "pass" ]]; then
   gateway_governance_status="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "readiness_status")"
@@ -513,6 +590,10 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "- Supported prod smoke endpoint: \`${prod_smoke_endpoint}\`"
   echo "- Supported prod smoke auth configured: \`${prod_smoke_auth_configured}\`"
   echo "- Supported invoke smoke requested: \`${supported_prod_smoke_requested}\`"
+  echo "- Supported prod smoke matrix JSON: \`${prod_smoke_matrix_json:-missing}\`"
+  echo "- Supported prod smoke service commit: \`${prod_smoke_primary_service_commit:-missing}\`"
+  echo "- Supported prod smoke commit on \`origin/main\`: \`${prod_smoke_primary_commit_on_origin_main:-unknown}\`"
+  echo "- Supported prod smoke failing cases: \`${prod_smoke_failing_case_ids:-none}\`"
   if [[ -n "${agent_public_transport_error}" ]]; then
     echo "- Agent public probe transport error: \`${agent_public_transport_error}\`"
   fi
@@ -561,7 +642,7 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "authenticated invoke smoke covers broad and clarify-required behavior when configured, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
   echo "| Gateway Invocation/Access Governance Readiness | ${gateway_governance_status} | $( if [[ "${gateway_governance_status}" == "green" ]]; then echo "none"; elif [[ "${gateway_governance_status}" == "amber" ]]; then echo "shadow summary exists but baseline mismatches remain"; else echo "gateway governance gate/report missing or failing"; fi ) |"
   echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "authenticated invoke smoke is instrumented, but public provenance remains auth-gated and daily runtime governance export is not yet automated"; fi ) |"
-  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "supported invoke semantics are the primary contract; public probe remains separately observable and cross-layer ownership is still coordinated across multiple modules"; else echo "source contracts and supported invoke semantics still diverge"; fi ) |"
+  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "supported invoke semantics are the primary contract; public probe remains separately observable and cross-layer ownership is still coordinated across multiple modules"; elif [[ "${prod_smoke_primary_commit_on_origin_main}" == "false" ]]; then echo "supported invoke smoke is hitting a deployed commit that is not traceable to origin/main"; else echo "source contracts and supported invoke semantics still diverge"; fi ) |"
   echo
   echo "## Next Fixes"
   echo
@@ -570,7 +651,8 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "3. Add stable live prompt fixtures for \`/ui/chat\` so shopping-agent prompt understanding can graduate from local helper coverage to true end-to-end coverage."
   echo "4. Automate daily export of production gateway governance logs and pass the raw file via \`GATEWAY_GOVERNANCE_LOG_INPUT_PATH\` so the readiness report stays on real traffic without manual sample prep."
   echo "5. Keep exact \`shopping_agent\` lookup in the shared authenticated smoke and close any remaining production drift before expanding that live rail to additional source contracts."
-  echo "6. If Aurora guidance-only remains unstable, treat it as a dedicated hardening track instead of folding it into general commerce acceptance."
+  echo "6. Restore GitHub \`main\` as the production source-of-truth before treating supported invoke smoke drift as an ordinary contract regression."
+  echo "7. If Aurora guidance-only remains unstable, treat it as a dedicated hardening track instead of folding it into general commerce acceptance."
 } >"${REPORT_MD}"
 
 STEPS_JSONL="${RUN_DIR}/steps.jsonl"
@@ -615,7 +697,11 @@ summary = {
     "supported_prod_smoke": {
         "endpoint": "${prod_smoke_endpoint}",
         "auth_configured": "${prod_smoke_auth_configured}",
-        "requested": "${supported_prod_smoke_requested}"
+        "requested": "${supported_prod_smoke_requested}",
+        "matrix_json": "${prod_smoke_matrix_json}",
+        "service_commit": "${prod_smoke_primary_service_commit}",
+        "commit_on_origin_main": "${prod_smoke_primary_commit_on_origin_main}",
+        "failing_case_ids": "${prod_smoke_failing_case_ids}"
     },
     "backend_public_version": {
         "commit": "${backend_prod_commit}",
