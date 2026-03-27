@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/_utils/photo_fixture_defaults.sh
+source "${SCRIPT_DIR}/_utils/photo_fixture_defaults.sh"
+
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
 LANG_HEADER="${LANG_HEADER:-EN}"
 PHOTO_PATH="${PHOTO_PATH:-}"
@@ -13,7 +17,11 @@ CURL_RETRY_MAX="${CURL_RETRY_MAX:-4}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-2}"
 CURL_CONNECT_TIMEOUT_SEC="${CURL_CONNECT_TIMEOUT_SEC:-8}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-45}"
-SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
+SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-$(aurora_photo_default_pass_url)}"
+DEFAULT_PASS_FIXTURE_PATH="$(aurora_photo_default_pass_path)"
+PHOTO_FIXTURE_LABEL="${PHOTO_FIXTURE_LABEL:-$(aurora_photo_default_pass_label)}"
+PHOTO_FAIL_FIXTURE_MODE="${PHOTO_FAIL_FIXTURE_MODE:-$(aurora_photo_default_fail_mode)}"
+PHOTO_FIXTURE_POLICY="${PHOTO_FIXTURE_POLICY:-$(aurora_photo_fixture_policy)}"
 HEATMAP_LOW_SIGNAL_MAX_THRESHOLD="${HEATMAP_LOW_SIGNAL_MAX_THRESHOLD:-0.20}"
 HEATMAP_LOW_SIGNAL_P90_THRESHOLD="${HEATMAP_LOW_SIGNAL_P90_THRESHOLD:-0.12}"
 HEATMAP_PROXY_VISIBILITY_MAX_FLOOR="${HEATMAP_PROXY_VISIBILITY_MAX_FLOOR:-0.55}"
@@ -127,9 +135,16 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$(dirname "$REPORT_OUT")"
 
 IMAGE_FILE="$PHOTO_PATH"
+PHOTO_FIXTURE_SOURCE="explicit_photo_path"
 if [[ -z "$IMAGE_FILE" ]]; then
-  IMAGE_FILE="$TMP_DIR/sample.jpg"
-  curl_get_retry "$SAMPLE_IMAGE_URL" -o "$IMAGE_FILE"
+  if [[ -f "$DEFAULT_PASS_FIXTURE_PATH" ]]; then
+    IMAGE_FILE="$DEFAULT_PASS_FIXTURE_PATH"
+    PHOTO_FIXTURE_SOURCE="repo_local"
+  else
+    IMAGE_FILE="$TMP_DIR/sample.jpg"
+    PHOTO_FIXTURE_SOURCE="remote_url"
+    curl_get_retry "$SAMPLE_IMAGE_URL" -o "$IMAGE_FILE"
+  fi
 fi
 if [[ ! -f "$IMAGE_FILE" ]]; then
   echo "photo file not found: $IMAGE_FILE" >&2
@@ -223,7 +238,15 @@ modules_card = next((card for card in cards if card.get("type") == "photo_module
 
 analysis_payload = analysis_card.get("payload") or {}
 quality_report = analysis_payload.get("quality_report") or {}
-quality_grade = ((quality_report.get("photo_quality") or {}).get("grade")) or "unknown"
+modules_payload = (modules_card or {}).get("payload") or {}
+analysis_used_photos = analysis_payload.get("used_photos")
+if analysis_used_photos is None and modules_card is not None:
+    analysis_used_photos = True
+quality_grade = (
+    ((quality_report.get("photo_quality") or {}).get("grade"))
+    or modules_payload.get("quality_grade")
+    or "unknown"
+)
 
 if expect_branch == "fail":
     if analysis_payload.get("used_photos") is True:
@@ -248,8 +271,7 @@ if expect_branch == "fail":
 else:
     if modules_card is None:
         raise AssertionError("photo_modules_v1 card missing")
-    modules_payload = modules_card.get("payload") or {}
-    if analysis_payload.get("used_photos") is not True:
+    if analysis_used_photos is not True:
         raise AssertionError("expected used_photos=true")
     modules_quality_grade = modules_payload.get("quality_grade")
     if modules_quality_grade not in {"pass", "degraded"}:
@@ -416,6 +438,11 @@ FINISHED_AT="$(timestamp_utc)"
   echo "- base: $BASE"
   echo "- aurora_uid: $AURORA_UID"
   echo "- image_file: $IMAGE_FILE"
+  echo "- photo_fixture_source: $PHOTO_FIXTURE_SOURCE"
+  echo "- sample_image_url: $SAMPLE_IMAGE_URL"
+  echo "- photo_fixture_label: $PHOTO_FIXTURE_LABEL"
+  echo "- photo_fixture_policy: $PHOTO_FIXTURE_POLICY"
+  echo "- fail_fixture_mode: $PHOTO_FAIL_FIXTURE_MODE"
   echo "- expect_branch: $EXPECT_BRANCH"
   echo "- upload_qc_status: $QC_STATUS"
   echo "- analysis_qc_status: $QC_FOR_ANALYSIS"
