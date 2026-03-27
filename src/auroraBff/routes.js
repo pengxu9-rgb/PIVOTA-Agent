@@ -17208,6 +17208,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
         ingredientInputs: Array.from(deterministicBatchInputs.values()),
         market,
         maxProducts: 6,
+        allowWideFallback: false,
       });
       const normalizedMarket = String(market || '').trim().toLowerCase();
       const batchEntries =

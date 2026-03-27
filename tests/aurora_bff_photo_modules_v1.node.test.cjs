@@ -610,12 +610,13 @@ test('routes helper: photo module product enrichment preloads deterministic seed
   let singleCalls = 0;
   let neutralCalls = 0;
 
-  internal.__setLoadDeterministicExternalSeedCandidatesBatchForTest(async ({ ingredientInputs }) => {
+  internal.__setLoadDeterministicExternalSeedCandidatesBatchForTest(async ({ ingredientInputs, allowWideFallback }) => {
     batchCalls += 1;
     assert.deepEqual(
       ingredientInputs.map((item) => item.ingredientId).sort(),
       ['niacinamide', 'retinol'],
     );
+    assert.equal(allowWideFallback, false);
     return new Map([
       [
         'retinol',
