@@ -583,6 +583,54 @@ test('neutral rec: photo path still uses network fallback when deterministic mai
   });
 });
 
+test('neutral rec: photo mainline-only path skips network and llm fallback when deterministic mainline is empty', async () => {
+  const dataset = buildNiacinamideDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    let fallbackCalls = 0;
+    let llmCalls = 0;
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'left_cheek',
+      ingredientId: 'niacinamide',
+      ingredientName: 'Niacinamide',
+      issueType: 'tone',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      mainlineOnly: true,
+      preferDeterministicMainline: true,
+      deterministicCandidateBuilder: async () => ({ products: [] }),
+      fallbackCandidateBuilder: async () => {
+        fallbackCalls += 1;
+        return { ok: true, products: [], external_search_ctas: [] };
+      },
+      llmFallbackRecoverFn: async () => {
+        llmCalls += 1;
+        return { products: [], external_search_ctas: [] };
+      },
+    });
+
+    assert.equal(fallbackCalls, 0);
+    assert.equal(llmCalls, 0);
+    assert.equal(result.products.length, 0);
+    assert.equal(Array.isArray(result.external_search_ctas), true);
+    assert.equal(result.external_search_ctas.length > 0, true);
+    assert.equal(result.debug.mainline_only, true);
+    assert.equal(result.debug.mainline_pool_count, 0);
+    assert.equal(result.debug.fallback_stage, 'mainline_only_cta');
+    assert.equal(result.debug.network_fallback_skipped_due_to_mainline, false);
+  });
+});
+
 test('neutral rec: canonical ingredient alias bridges template ids to catalog ingredient ids', async () => {
   const dataset = buildDataset([
     {
