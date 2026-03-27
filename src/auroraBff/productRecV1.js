@@ -1495,6 +1495,7 @@ module.exports = {
   normalizeRiskTier,
   normalizeEvidenceGrade,
   loadCatalog,
+  loadDeterministicExternalSeedCandidates,
   buildProductRecommendations,
   buildIngredientProductRecommendationsNeutral,
 };
