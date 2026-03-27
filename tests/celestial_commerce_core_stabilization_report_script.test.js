@@ -83,6 +83,7 @@ describe('Celestial commerce-core stabilization report script', () => {
             fail_count: 0,
             review_required_count: 1,
             infra_blocked_count: 1,
+            auth_degraded_count: 1,
             blocking_failures: 0,
           },
           results: [],
@@ -132,6 +133,7 @@ describe('Celestial commerce-core stabilization report script', () => {
     expect(summary.decision.hold_reasons).toEqual(
       expect.arrayContaining([
         expect.stringContaining('staging infrastructure blocked live acceptance'),
+        expect.stringContaining('emergency auth fallback'),
         expect.stringContaining('readiness amber dimensions'),
         expect.stringContaining('manual reviews still pending'),
       ]),

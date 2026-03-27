@@ -392,6 +392,11 @@ const AGENT_AUTH_EMERGENCY_API_KEYS = parseSecretList(
 const AGENT_AUTH_EMERGENCY_AGENT_ID = String(
   process.env.AGENT_AUTH_EMERGENCY_AGENT_ID || '',
 ).trim() || null;
+const AGENT_AUTH_EMERGENCY_CACHE_TTL_MS = parsePositiveInt(
+  process.env.AGENT_AUTH_EMERGENCY_CACHE_TTL_MS,
+  5_000,
+  { min: 1_000, max: 60_000 },
+);
 const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
@@ -9601,7 +9606,10 @@ function putCachedInvokeAuthResult(apiKey, result) {
   const cacheKey = hashSecretForCache(apiKey);
   if (!cacheKey || !result || typeof result !== 'object') return;
   const valid = result.valid === true;
-  const ttlMs = valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS;
+  const authDegraded = result.auth_degraded === true || result.auth_source === 'emergency_fallback';
+  const ttlMs = authDegraded
+    ? AGENT_AUTH_EMERGENCY_CACHE_TTL_MS
+    : (valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS);
   invokeAuthCache.set(cacheKey, {
     expires_at_ms: Date.now() + ttlMs,
     result: {
@@ -9609,6 +9617,8 @@ function putCachedInvokeAuthResult(apiKey, result) {
       agent_id: result.agent_id || null,
       is_active: result.is_active === false ? false : true,
       auth_source: result.auth_source || null,
+      auth_degraded: authDegraded,
+      auth_degraded_reason: result.auth_degraded_reason || null,
     },
   });
   pruneInvokeAuthCache();
@@ -9726,6 +9736,7 @@ async function requireExternalInvokeAuth(req, res, next) {
   } catch (err) {
     const fallback = resolveInvokeEmergencyAuthFallback({
       apiKey: provided,
+      errorCode: err?.code || null,
       enabled: AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
       allowedApiKeys: AGENT_AUTH_EMERGENCY_API_KEYS,
       agentId: AGENT_AUTH_EMERGENCY_AGENT_ID,
@@ -9788,7 +9799,19 @@ async function requireExternalInvokeAuth(req, res, next) {
     raw_token: provided,
     cache_hit: introspection.cache_hit === true,
     introspect_auth_source: introspection.auth_source || null,
+    auth_degraded: introspection.auth_degraded === true,
+    auth_degraded_reason: introspection.auth_degraded_reason || null,
   };
+  if (req.invokeAuth.introspect_auth_source) {
+    res.setHeader('x-invoke-introspect-auth-source', req.invokeAuth.introspect_auth_source);
+  }
+  if (req.invokeAuth.auth_degraded === true) {
+    res.setHeader('x-invoke-auth-degraded', 'true');
+    res.setHeader(
+      'x-invoke-auth-degraded-reason',
+      String(req.invokeAuth.auth_degraded_reason || 'unknown'),
+    );
+  }
   return next();
 }
 
@@ -16788,6 +16811,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gateway_request_id: gatewayRequestId,
         client_channel: clientChannel,
         key_fingerprint: routeKeyFingerprint,
+        invoke_auth_mode: req?.invokeAuth?.auth_mode || null,
+        invoke_auth_source: req?.invokeAuth?.auth_source || null,
+        invoke_introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
+        invoke_auth_degraded: req?.invokeAuth?.auth_degraded === true,
+        invoke_auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),

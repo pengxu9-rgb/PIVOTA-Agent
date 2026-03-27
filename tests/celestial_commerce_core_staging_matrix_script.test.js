@@ -145,12 +145,18 @@ describe('Celestial commerce-core staging matrix script', () => {
         res.setHeader('X-Gateway-Governance-Observed-Action', 'block');
         res.setHeader('X-Gateway-Governance-Would-Enforce', 'true');
         res.setHeader('X-Gateway-Invocation-Surface', 'mcp');
+        res.setHeader('X-Invoke-Auth-Degraded', 'true');
+        res.setHeader('X-Invoke-Auth-Degraded-Reason', 'AUTH_INTROSPECT_UNAVAILABLE');
+        res.setHeader('X-Invoke-Introspect-Auth-Source', 'emergency_fallback');
         res.end(
           JSON.stringify({
             products: [],
             metadata: {
               gateway_invocation: {
                 surface: 'mcp',
+                auth_degraded: true,
+                auth_degraded_reason: 'AUTH_INTROSPECT_UNAVAILABLE',
+                introspect_auth_source: 'emergency_fallback',
               },
               gateway_governance: {
                 mode: 'shadow',
@@ -191,7 +197,9 @@ describe('Celestial commerce-core staging matrix script', () => {
       expect(json.summary.total_cases).toBe(3);
       expect(json.summary.pass_count).toBe(2);
       expect(json.summary.review_required_count).toBe(1);
+      expect(json.summary.auth_degraded_count).toBe(1);
       expect(json.summary.blocking_failures).toBe(0);
+      expect(markdown).toContain('Auth degraded: 1');
       expect(markdown).toContain('# Celestial Commerce Core Staging Acceptance Matrix');
       expect(markdown).toContain('manual_case');
       expect(markdown).toContain('mcp_case');

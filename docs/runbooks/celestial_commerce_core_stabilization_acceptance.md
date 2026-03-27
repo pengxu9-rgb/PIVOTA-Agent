@@ -63,9 +63,11 @@ If staging auth introspection is down but you still need bounded pre-prod accept
 AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED=true
 AGENT_AUTH_EMERGENCY_API_KEYS=ak_live_default_profile_key
 AGENT_AUTH_EMERGENCY_AGENT_ID=agent_staging_acceptance
+AGENT_AUTH_EMERGENCY_CACHE_TTL_MS=5000
 ```
 
 With that fallback enabled on the deployed staging service, `/agent/shop/v1/invoke` can keep accepting the configured staging key even when introspection is temporarily unavailable, so the 9 live acceptance cases can produce real results instead of `AUTH_INTROSPECT_UNAVAILABLE`.
+This does not mean the primary auth path is healthy again. The fallback is acceptance-only, activates only for `AUTH_INTROSPECT_UNAVAILABLE`, uses a short cache TTL, and emits `x-invoke-auth-degraded=true` plus gateway metadata so stabilization can stay at `HOLD` until introspection is actually restored.
 
 ## Git Push Rollout Sequence
 
@@ -77,6 +79,7 @@ Use `git push` to ship this staging-only acceptance fix. Do not use `railway up`
 AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED=true
 AGENT_AUTH_EMERGENCY_API_KEYS=ak_live_your_staging_acceptance_key
 AGENT_AUTH_EMERGENCY_AGENT_ID=agent_staging_acceptance
+AGENT_AUTH_EMERGENCY_CACHE_TTL_MS=5000
 ```
 
 2. Push the branch through the normal repo deployment path:

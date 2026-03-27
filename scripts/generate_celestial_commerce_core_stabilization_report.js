@@ -154,6 +154,18 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
     );
   }
 
+  if (
+    stagingMatrix &&
+    stagingMatrix.summary &&
+    Number(stagingMatrix.summary.auth_degraded_count || 0) > 0
+  ) {
+    holdReasons.push(
+      `staging live acceptance relied on emergency auth fallback: ${String(
+        stagingMatrix.summary.auth_degraded_count,
+      )}`,
+    );
+  }
+
   if (scorecardBuckets.amber.length > 0) {
     holdReasons.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
   }

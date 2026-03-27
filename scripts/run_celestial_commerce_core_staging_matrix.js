@@ -606,6 +606,9 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         governance_mode: headers['x-gateway-governance-mode'] || null,
         governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
         governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+        auth_degraded: headers['x-invoke-auth-degraded'] || null,
+        auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
+        introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
       },
       manual_review: infraBlock.manual_review,
       request: testCase.request,
@@ -651,6 +654,11 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         getPath(body, 'metadata.gateway_governance.observed_action') || null,
       contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
       strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
+      auth_degraded: getPath(body, 'metadata.gateway_invocation.auth_degraded') === true,
+      auth_degraded_reason:
+        getPath(body, 'metadata.gateway_invocation.auth_degraded_reason') || null,
+      introspect_auth_source:
+        getPath(body, 'metadata.gateway_invocation.introspect_auth_source') || null,
       product_count: Array.isArray(body?.products) ? body.products.length : 0,
       clarification_question: getPath(body, 'clarification.question') || null,
     },
@@ -659,6 +667,9 @@ async function runCase(baseUrl, testCase, timeoutMs) {
       governance_mode: headers['x-gateway-governance-mode'] || null,
       governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
       governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+      auth_degraded: headers['x-invoke-auth-degraded'] || null,
+      auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
+      introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
     },
     request: testCase.request,
   };
@@ -682,6 +693,11 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
     fail_count: results.filter((item) => item.overall_status === 'fail').length,
     review_required_count: results.filter((item) => item.overall_status === 'review_required').length,
     infra_blocked_count: infraBlockedResults.length,
+    auth_degraded_count: results.filter(
+      (item) =>
+        item.response_headers?.auth_degraded === 'true' ||
+        item.response_excerpt?.auth_degraded === true,
+    ).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
     correctness: {
       pass: results.filter((item) => item.correctness.status === 'pass').length,
@@ -749,6 +765,7 @@ function writeArtifacts(outDir, summary, results) {
     `- Fail: ${summary.fail_count}`,
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
+    `- Auth degraded: ${summary.auth_degraded_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',
     '## Section Summary',

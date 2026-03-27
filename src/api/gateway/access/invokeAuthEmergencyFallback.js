@@ -20,12 +20,30 @@ function parseSecretList(...values) {
 
 function resolveInvokeEmergencyAuthFallback({
   apiKey,
+  errorCode = null,
+  allowedErrorCodes = ['AUTH_INTROSPECT_UNAVAILABLE'],
   enabled = false,
   allowedApiKeys = [],
   agentId = null,
   onAccept = null,
 } = {}) {
   if (enabled !== true) return null;
+  const normalizedErrorCode = String(errorCode || '').trim() || null;
+  const normalizedAllowedErrorCodes = Array.isArray(allowedErrorCodes)
+    ? Array.from(
+        new Set(
+          allowedErrorCodes
+            .map((item) => String(item || '').trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+  if (
+    normalizedAllowedErrorCodes.length > 0 &&
+    !normalizedAllowedErrorCodes.includes(normalizedErrorCode)
+  ) {
+    return null;
+  }
   if (!Array.isArray(allowedApiKeys) || allowedApiKeys.length === 0) return null;
   if (!allowedApiKeys.includes(String(apiKey || '').trim())) return null;
 
@@ -35,6 +53,8 @@ function resolveInvokeEmergencyAuthFallback({
     is_active: true,
     auth_source: 'emergency_fallback',
     cache_hit: false,
+    auth_degraded: true,
+    auth_degraded_reason: normalizedErrorCode || 'AUTH_INTROSPECT_UNAVAILABLE',
   };
 
   if (typeof onAccept === 'function') {
