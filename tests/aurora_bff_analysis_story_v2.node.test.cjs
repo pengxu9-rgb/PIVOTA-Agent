@@ -478,6 +478,137 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });
 
+test('analysis_story_v2: buildAnalysisEvidence injects photo_context and photo module findings', () => {
+  const internal = loadInternalWithFlags({});
+  const fallback = {
+    schema_version: 'aurora.analysis_story.v2',
+    confidence_overall: { level: 'medium' },
+    skin_profile: { current_strengths: ['stable baseline'] },
+    priority_findings: [],
+    target_state: ['tone consistency'],
+    core_principles: ['stability first'],
+    am_plan: [{ step: 'Cleanse', purpose: 'baseline' }],
+    pm_plan: [{ step: 'Moisturize', purpose: 'recovery' }],
+    timeline: { first_4_weeks: [], week_8_12_expectation: [] },
+    ui_card_v1: {
+      headline: 'Tone consistency first.',
+      key_points: ['stable baseline'],
+      actions_now: ['AM: Cleanse'],
+      avoid_now: ['No over-exfoliation'],
+      confidence_label: 'medium',
+      next_checkin: 'Re-check in 2 weeks.',
+    },
+    safety_notes: [],
+    disclaimer_non_medical: true,
+  };
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      used_photos: true,
+      analysis_source: 'vision_gemini',
+      analysis: { features: [{ observation: 'mild redness around cheek' }] },
+    },
+    photoModulesCard: {
+      type: 'photo_modules_v1',
+      payload: {
+        used_photos: true,
+        quality_grade: 'pass',
+        modules: [
+          {
+            module_id: 'forehead_texture',
+            title: 'Forehead texture',
+            summary: 'Forehead texture looks uneven in the photo review.',
+            actions: [
+              {
+                ingredient_name: 'BHA/LHA',
+                why: 'BHA/LHA is the most relevant lane for the photographed texture hotspot.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    profile: {},
+    language: 'EN',
+    fallbackStory: fallback,
+  });
+  assert.equal(evidence.photo_context.used_photos, true);
+  assert.equal(Array.isArray(evidence.photo_context.finding_evidence), true);
+  assert.match(String(evidence.photo_context.headline_hint || ''), /photo review|forehead/i);
+  assert.equal(
+    evidence.finding_evidence.some((item) => /forehead texture|photo review/i.test(String(item && item.observation))),
+    true,
+  );
+
+  const generated = internal.generateAnalysisStoryV2Json({
+    evidence,
+    fallbackStory: {
+      ...fallback,
+      priority_findings: [],
+    },
+  });
+  assert.equal(
+    generated.priority_findings.some((item) => Array.isArray(item.evidence_region_or_module) && item.evidence_region_or_module.includes('Forehead texture')),
+    true,
+  );
+});
+
+test('analysis_story_v2: photo modules make fallback story ui card photo-first', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'photo_modules_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'pass',
+          modules: [
+            {
+              module_id: 'forehead_texture',
+              title: 'Forehead texture',
+              summary: 'Photo review shows a texture hotspot across the forehead.',
+              actions: [
+                {
+                  ingredient_name: 'BHA/LHA',
+                  why: 'BHA/LHA is the most relevant lane for the photographed texture hotspot.',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        card_id: 'analysis_photo',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          analysis: { features: [] },
+          low_confidence: false,
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'req_photo_story' },
+      profile: {},
+      language: 'EN',
+    },
+  );
+
+  const storyCard = out.find((card) => card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'Expected analysis_story_v2 card');
+  assert.match(String(storyCard.payload?.ui_card_v1?.headline || ''), /photo review|forehead/i);
+  assert.equal(
+    Array.isArray(storyCard.payload?.ui_card_v1?.key_points) &&
+      storyCard.payload.ui_card_v1.key_points.some((item) => /texture|forehead/i.test(String(item || ''))),
+    true,
+  );
+});
+
 test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
   const internal = loadInternalWithFlags({});
   const prompt = internal.buildRoutineFitSummaryPrompt({
