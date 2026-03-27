@@ -201,7 +201,12 @@ const { applyReplyTemplates } = require('./replyTemplates');
 const { emitAudit } = require('./qualityAudit');
 const { buildPhotoModulesCard } = require('./photoModulesV1');
 const productRecV1 = require('./productRecV1');
-const { loadDeterministicExternalSeedCandidates } = productRecV1;
+const {
+  loadDeterministicExternalSeedCandidates,
+  loadDeterministicExternalSeedCandidatesBatch,
+} = productRecV1;
+let loadDeterministicExternalSeedCandidatesImpl = loadDeterministicExternalSeedCandidates;
+let loadDeterministicExternalSeedCandidatesBatchImpl = loadDeterministicExternalSeedCandidatesBatch;
 let buildIngredientProductRecommendationsNeutralImpl = productRecV1.buildIngredientProductRecommendationsNeutral;
 const { inferSkinMaskOnFaceCrop } = require('./skinmaskOnnx');
 const { runRoutineAnalysisV2, buildFallbackProductAudit } = require('./routineAnalysisV2');
@@ -17111,6 +17116,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   const riskTier = derivePhotoModulesRiskTier(profileSummary);
   const recCache = new Map();
   const deterministicCandidateCache = new Map();
+  const deterministicBatchInputs = new Map();
   let networkFallbackActionsUsed = 0;
   const uniqueActionRecoKeys = new Set();
 
@@ -17132,7 +17138,7 @@ async function enrichPhotoModulesCardWithIngredientProducts({
     if (!deterministicCandidateCache.has(cacheKey)) {
       deterministicCandidateCache.set(
         cacheKey,
-        loadDeterministicExternalSeedCandidates({
+        loadDeterministicExternalSeedCandidatesImpl({
           moduleId,
           ingredientId,
           ingredientName,
@@ -17157,6 +17163,13 @@ async function enrichPhotoModulesCardWithIngredientProducts({
       const issueType = pickActionIssueType(action, moduleIssues);
       const ingredientId = resolvePhotoModuleCanonicalIngredientId(action);
       if (!ingredientId) continue;
+      const normalizedIngredientId = String(ingredientId || '').trim().toLowerCase();
+      if (normalizedIngredientId && !deterministicBatchInputs.has(normalizedIngredientId)) {
+        deterministicBatchInputs.set(normalizedIngredientId, {
+          ingredientId: normalizedIngredientId,
+          ingredientName: pickFirstString(action.ingredient_name, action.ingredient),
+        });
+      }
       uniqueActionRecoKeys.add(
         buildPhotoModuleRecoCacheKey({
           ingredientId,
@@ -17174,6 +17187,41 @@ async function enrichPhotoModulesCardWithIngredientProducts({
     PHOTO_MODULES_ACTION_RECO_NETWORK_HARD_CAP,
     Math.max(PHOTO_MODULES_ACTION_RECO_NETWORK_BASE_BUDGET, uniqueActionRecoKeys.size),
   );
+
+  if (deterministicBatchInputs.size > 0) {
+    try {
+      const batchOut = await loadDeterministicExternalSeedCandidatesBatchImpl({
+        ingredientInputs: Array.from(deterministicBatchInputs.values()),
+        market,
+        maxProducts: 6,
+      });
+      const normalizedMarket = String(market || '').trim().toLowerCase();
+      const batchEntries =
+        batchOut instanceof Map
+          ? Array.from(batchOut.entries())
+          : Object.entries(isPlainObject(batchOut) ? batchOut : {});
+      for (const [ingredientKeyRaw, productsRaw] of batchEntries) {
+        const ingredientKey = String(ingredientKeyRaw || '').trim().toLowerCase();
+        if (!ingredientKey) continue;
+        const cacheKey = [ingredientKey, normalizedMarket].join('::');
+        const products = Array.isArray(productsRaw)
+          ? productsRaw
+          : Array.isArray(productsRaw && productsRaw.products)
+            ? productsRaw.products
+            : [];
+        deterministicCandidateCache.set(cacheKey, Promise.resolve(products));
+      }
+    } catch (error) {
+      logger?.warn?.(
+        {
+          err: error && error.message ? error.message : String(error),
+          market,
+          ingredient_count: deterministicBatchInputs.size,
+        },
+        'aurora bff: photo module deterministic seed batch preload failed',
+      );
+    }
+  }
 
   const fallbackCandidateBuilder =
     AURORA_PURCHASABLE_FALLBACK_ENABLED === true
@@ -17394,6 +17442,57 @@ async function enrichPhotoModulesCardWithIngredientProducts({
   };
 }
 
+function annotatePhotoModulesRecoEnrichFailure(photoModulesCard, {
+  reason = 'reco_enrich_failed',
+  code = null,
+  timeoutMs = null,
+} = {}) {
+  if (!isPlainObject(photoModulesCard)) return photoModulesCard;
+  if (String(photoModulesCard.type || '').trim().toLowerCase() !== 'photo_modules_v1') return photoModulesCard;
+  const payload = isPlainObject(photoModulesCard.payload) ? { ...photoModulesCard.payload } : null;
+  if (!payload || !Array.isArray(payload.modules)) return photoModulesCard;
+
+  payload.modules = payload.modules.map((moduleRowRaw) => {
+    const moduleRow = isPlainObject(moduleRowRaw) ? { ...moduleRowRaw } : {};
+    const moduleActions = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
+    const nextActions = moduleActions.map((actionRaw) => {
+      const action = isPlainObject(actionRaw) ? { ...actionRaw } : {};
+      const ingredientId = pickFirstString(
+        action.ingredient_canonical_id,
+        resolvePhotoModuleCanonicalIngredientId(action),
+      );
+      const products = Array.isArray(action.products) ? action.products : [];
+      return {
+        ...action,
+        products,
+        ingredient_canonical_id: ingredientId || undefined,
+        ...(pickFirstString(action.products_empty_reason) ? {} : { products_empty_reason: reason }),
+        rec_debug: {
+          ...(isPlainObject(action.rec_debug) ? action.rec_debug : {}),
+          reason,
+          ...(code ? { code } : {}),
+          ...(timeoutMs != null ? { bounded_timeout_ms: Number(timeoutMs) || 0 } : {}),
+          enrichment_skipped: true,
+        },
+      };
+    });
+
+    const moduleProducts = Array.isArray(moduleRow.products) ? moduleRow.products : [];
+    const nextModule = {
+      ...moduleRow,
+      actions: nextActions,
+      products: moduleProducts,
+      ...(pickFirstString(moduleRow.products_empty_reason) ? {} : { products_empty_reason: reason }),
+    };
+    return nextModule;
+  });
+
+  return {
+    ...photoModulesCard,
+    payload,
+  };
+}
+
 async function enrichPhotoModulesCardWithIngredientProductsBounded({
   photoModulesCard,
   profileSummary,
@@ -17421,7 +17520,14 @@ async function enrichPhotoModulesCardWithIngredientProductsBounded({
       },
       'aurora bff: photo modules action-level reco enrich skipped',
     );
-    return photoModulesCard;
+    return annotatePhotoModulesRecoEnrichFailure(photoModulesCard, {
+      reason:
+        String(error && error.code || '') === 'PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT'
+          ? 'reco_enrich_timeout'
+          : 'reco_enrich_failed',
+      code: error && error.code ? String(error.code) : null,
+      timeoutMs: PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS,
+    });
   }
 }
 
@@ -68160,6 +68266,7 @@ const __internal = {
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
   enrichPhotoModulesCardWithIngredientProducts,
+  enrichPhotoModulesCardWithIngredientProductsBounded,
   isTreatmentLikeRecommendationForLowConfidence,
   applyLowConfidenceRecoGuard,
   envelopeRequiresConservativeRecoGuard,
@@ -68283,6 +68390,20 @@ const __internal = {
   },
   __resetBuildIngredientProductRecommendationsNeutralForTest() {
     buildIngredientProductRecommendationsNeutralImpl = productRecV1.buildIngredientProductRecommendationsNeutral;
+  },
+  __setLoadDeterministicExternalSeedCandidatesForTest(fn) {
+    loadDeterministicExternalSeedCandidatesImpl =
+      typeof fn === 'function' ? fn : productRecV1.loadDeterministicExternalSeedCandidates;
+  },
+  __resetLoadDeterministicExternalSeedCandidatesForTest() {
+    loadDeterministicExternalSeedCandidatesImpl = productRecV1.loadDeterministicExternalSeedCandidates;
+  },
+  __setLoadDeterministicExternalSeedCandidatesBatchForTest(fn) {
+    loadDeterministicExternalSeedCandidatesBatchImpl =
+      typeof fn === 'function' ? fn : productRecV1.loadDeterministicExternalSeedCandidatesBatch;
+  },
+  __resetLoadDeterministicExternalSeedCandidatesBatchForTest() {
+    loadDeterministicExternalSeedCandidatesBatchImpl = productRecV1.loadDeterministicExternalSeedCandidatesBatch;
   },
 };
 
