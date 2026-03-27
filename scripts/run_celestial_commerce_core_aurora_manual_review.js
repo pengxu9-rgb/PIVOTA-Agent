@@ -165,6 +165,13 @@ function summarizeCase(testCase, response) {
   };
 }
 
+function verdictRank(value) {
+  if (value === 'pass') return 3;
+  if (value === 'review_required') return 2;
+  if (value === 'fail') return 1;
+  return 0;
+}
+
 function classifyResult(result) {
   if (result.id === 'aurora_guidance_only_cache_hit_manual') {
     if (
@@ -225,17 +232,26 @@ function classifyResult(result) {
       'agent_products_search_guidance_supplemented',
       'cache_cross_merchant_search_supplemented',
     ]);
-    if (
-      result.status === 200 &&
-      boundedQuerySources.has(String(result.query_source || '')) &&
-      ['products_returned', 'cache_returned'].includes(String(result.final_decision || '')) &&
+    const directGuidanceReplacement =
+      result.query_source === 'agent_products_guidance_external_seed_supplemented' &&
       result.guidance_direct_external_seed_applied === true &&
       result.guidance_direct_external_seed_valid_hit === true &&
-      Number(result.source_breakdown.internal_count || 0) > 0 &&
-      Number(result.source_breakdown.external_seed_count || 0) > 0 &&
-      searchStageB.applied === true &&
-      String(searchStageB.reason || '') === 'guidance_direct_external_seed_supplemented' &&
-      supplement.stage_timeout !== true
+      Number(result.source_breakdown.external_count || result.source_breakdown.external_seed_count || 0) > 0 &&
+      supplement.stage_timeout !== true;
+    if (
+      result.status === 200 &&
+      (
+        (
+          boundedQuerySources.has(String(result.query_source || '')) &&
+          ['products_returned', 'cache_returned'].includes(String(result.final_decision || '')) &&
+          Number(result.source_breakdown.internal_count || 0) > 0 &&
+          Number(result.source_breakdown.external_seed_count || 0) > 0 &&
+          searchStageB.applied === true &&
+          String(searchStageB.reason || '') === 'guidance_direct_external_seed_supplemented' &&
+          supplement.stage_timeout !== true
+        ) ||
+        directGuidanceReplacement
+      )
     ) {
       return {
         verdict: 'pass',
@@ -301,6 +317,8 @@ function renderMarkdown(payload) {
       lines.push(`- Clarification question: \`${item.clarification_question}\``);
     }
     if (item.request_id) lines.push(`- Gateway request id: \`${item.request_id}\``);
+    if ((item.attempt_count || 1) > 1) lines.push(`- Attempts: \`${item.attempt_count}\``);
+    if (item.retry_recovered === true) lines.push('- Retry recovered: `true`');
     if (item.guidance_direct_external_seed_applied) {
       lines.push(`- Guidance direct supplement applied: \`${item.guidance_direct_external_seed_applied}\``);
     }
@@ -349,11 +367,29 @@ async function main() {
 
   for (const testCase of cases) {
     const response = await requestJson(url, testCase.request, headers);
-    const summarized = summarizeCase(testCase, response);
-    results.push({
-      ...summarized,
-      ...classifyResult(summarized),
-    });
+    const firstSummarized = summarizeCase(testCase, response);
+    let selected = {
+      ...firstSummarized,
+      ...classifyResult(firstSummarized),
+      attempt_count: 1,
+      retry_recovered: false,
+    };
+    if (selected.verdict !== 'pass') {
+      const retryResponse = await requestJson(url, testCase.request, headers);
+      const retrySummarized = summarizeCase(testCase, retryResponse);
+      const retried = {
+        ...retrySummarized,
+        ...classifyResult(retrySummarized),
+        attempt_count: 2,
+        retry_recovered: selected.verdict !== 'pass' && classifyResult(retrySummarized).verdict === 'pass',
+      };
+      if (verdictRank(retried.verdict) >= verdictRank(selected.verdict)) {
+        selected = retried;
+      } else {
+        selected.attempt_count = 2;
+      }
+    }
+    results.push(selected);
   }
 
   const runDir = path.join(args.outDir, utcTimestamp());

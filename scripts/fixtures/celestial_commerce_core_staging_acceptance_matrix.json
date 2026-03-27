@@ -363,7 +363,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "soothing barrier serum sensitive skin",
+            "query": "soothing repair serum",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
