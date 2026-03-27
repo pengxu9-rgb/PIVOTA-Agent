@@ -23118,6 +23118,33 @@ function normalizePhotoIngredientKey(value) {
   return token || '';
 }
 
+function dedupePhotoIngredientProducts(products, maxItems = 12) {
+  const out = [];
+  const seen = new Set();
+  for (const rowRaw of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(rowRaw)) continue;
+    const row = { ...rowRaw };
+    const productId = pickFirstString(row.product_id, row.productId).toLowerCase();
+    const merchantId = pickFirstString(row.merchant_id, row.merchantId).toLowerCase();
+    const directUrl = pickFirstString(
+      row.pdp_url,
+      row.url,
+      row.product_url,
+      row.purchase_path,
+      row.external_url,
+      row.external_redirect_url,
+    ).toLowerCase();
+    const fallbackName = pickFirstString(row.name, row.title).toLowerCase();
+    const key = `${productId}::${merchantId}::${directUrl || fallbackName}`;
+    if (!key || key === '::::') continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
@@ -23141,6 +23168,7 @@ function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
         strict_product_count: 0,
         ingredient_name: pickFirstString(action && action.ingredient_name, action && action.ingredient, ingredientId),
         why_match_short: '',
+        strict_products: [],
         external_search_ctas: [],
       };
       if (moduleId) existing.source_module_ids.add(moduleId);
@@ -23156,6 +23184,12 @@ function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
           }).length
         : 0;
       existing.strict_product_count += strictProductCount;
+      if (Array.isArray(action && action.products) && action.products.length) {
+        existing.strict_products = dedupePhotoIngredientProducts(
+          [...existing.strict_products, ...action.products],
+          12,
+        );
+      }
       if (Array.isArray(action && action.external_search_ctas)) {
         existing.external_search_ctas.push(...action.external_search_ctas.filter((cta) => isPlainObject(cta)));
       }
@@ -23195,6 +23229,17 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
         : PHOTO_BASELINE_SUPPORT_INGREDIENT_IDS.has(canonicalId)
           ? 'baseline_support'
           : 'supporting_context';
+      if (coverage && strictProductCount > 0) {
+        const currentCompetitors = Array.isArray(products.competitors) ? products.competitors : [];
+        const currentDupes = Array.isArray(products.dupes) ? products.dupes : [];
+        const hasVisibleStrictProducts = currentCompetitors.length > 0 || currentDupes.length > 0;
+        if (!hasVisibleStrictProducts && Array.isArray(coverage.strict_products) && coverage.strict_products.length) {
+          products.competitors = dedupePhotoIngredientProducts(coverage.strict_products, 6);
+        }
+        if (Object.prototype.hasOwnProperty.call(products, 'products_empty_reason')) {
+          delete products.products_empty_reason;
+        }
+      }
       if (coverage && strictProductCount <= 0) {
         const dedupedCtas = dedupeExternalSearchCtas(
           Array.isArray(coverage.external_search_ctas) ? coverage.external_search_ctas : [],

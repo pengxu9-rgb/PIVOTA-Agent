@@ -742,6 +742,115 @@ test('analysis_story_v2: photo-led ingredient plan is annotated with provenance 
   assert.equal(planCard.payload.targets[1].presentation_bucket, 'baseline_support');
 });
 
+test('analysis_story_v2: photo-led ingredient plan carries strict-match products into target payload', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'pm_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'pass',
+          modules: [
+            {
+              module_id: 'forehead',
+              issues: [
+                {
+                  issue_type: 'redness',
+                  severity_0_4: 2,
+                  confidence_0_1: 0.74,
+                  confidence_bucket: 'medium',
+                  evidence_region_ids: ['forehead_redness_bbox'],
+                  explanation_short: 'Redness is visible across the forehead.',
+                },
+              ],
+              actions: [
+                {
+                  ingredient_id: 'panthenol',
+                  ingredient_name: 'Panthenol',
+                  why: 'Supports visible redness on the forehead.',
+                  evidence_issue_types: ['redness'],
+                  products: [
+                    {
+                      product_id: 'ext_panthenol_1',
+                      merchant_id: 'external_seed',
+                      name: 'Barrier Rescue Serum',
+                      brand: 'Test Brand',
+                      pdp_url: 'https://example.com/p/barrier-rescue-serum',
+                      suitability_score: 0.91,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          summary_v1: {
+            top_findings: [
+              {
+                module_id: 'forehead',
+                issue_type: 'redness',
+                severity_0_4: 2,
+                confidence_0_1: 0.74,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['forehead_redness_bbox'],
+              },
+            ],
+            quality_caveats: [],
+          },
+        },
+      },
+      {
+        card_id: 'analysis_photo',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          analysis: { features: [] },
+          low_confidence: false,
+        },
+      },
+      {
+        card_id: 'plan_photo',
+        type: 'ingredient_plan_v2',
+        payload: {
+          targets: [
+            {
+              ingredient_id: 'panthenol',
+              ingredient_name: 'Panthenol',
+              why: ['Supports visible redness.'],
+              products: {
+                competitors: [],
+                dupes: [],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'req_photo_plan_strict_1' },
+      profile: {},
+      language: 'EN',
+    },
+  );
+
+  const planCard = out.find((card) => card.type === 'ingredient_plan_v2');
+  assert.ok(planCard, 'Expected ingredient_plan_v2 card');
+  assert.equal(planCard.payload.targets[0].ingredient_id, 'panthenol');
+  assert.equal(planCard.payload.targets[0].recommendation_mode, 'strict_match');
+  assert.equal(planCard.payload.targets[0].strict_product_count, 1);
+  assert.equal(planCard.payload.targets[0].presentation_bucket, 'photo_derived');
+  assert.equal(Array.isArray(planCard.payload.targets[0].products.competitors), true);
+  assert.equal(planCard.payload.targets[0].products.competitors.length, 1);
+  assert.equal(planCard.payload.targets[0].products.competitors[0].name, 'Barrier Rescue Serum');
+  assert.equal(planCard.payload.targets[0].products.products_empty_reason, undefined);
+});
+
 test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
   const internal = loadInternalWithFlags({});
   const prompt = internal.buildRoutineFitSummaryPrompt({
