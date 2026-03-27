@@ -527,6 +527,71 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
   });
 
+  test('keeps ambiguity-driven clarify on the primary path when upstream returns a healthy empty response', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        total: 0,
+        products: [],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有什么适合今晚约会的',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh-CN' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+      }),
+    );
+    expect(resp.body.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+      }),
+    );
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+    expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
+    expect(resp.body.metadata?.fallback_reason == null).toBe(true);
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('clarify');
+    expect(resp.body.metadata?.primary_clarify_contract).toEqual(
+      expect.objectContaining({
+        normalized: true,
+        recovery_reason: 'ambiguity_gate_primary_clarify',
+        original_query_source: 'agent_products_error_fallback',
+        original_fallback_reason: 'primary_unusable_no_fallback',
+      }),
+    );
+  });
+
   test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
