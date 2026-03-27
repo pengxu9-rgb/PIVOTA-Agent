@@ -354,7 +354,7 @@
     },
     {
       "id": "aurora_guidance_only_direct_supplement_manual",
-      "title": "Aurora guidance-only direct supplement path can still be reviewed explicitly",
+      "title": "Aurora guidance-only bounded supplement path can still be reviewed explicitly",
       "family": "aurora_guidance_only_direct_supplement",
       "blocking": false,
       "execution_mode": "manual",
@@ -379,8 +379,8 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm direct supplement only applies when the hit is valid and does not silently widen into generic recall.",
-        "notes": "Use this stable staging canary to look for guidance supplement metadata, source breakdown changes, and no low-quality drift."
+        "expected_outcome": "Confirm the guidance-only supplement stays bounded and coherent, whether it lands as direct external-seed supplement or cache-stage guidance supplement, without silently widening into generic recall.",
+        "notes": "Use this stable staging canary to inspect source breakdown, supplement metadata, serum-scoped query variants, and absence of low-quality drift."
       }
     }
   ],

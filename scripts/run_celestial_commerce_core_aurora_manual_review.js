@@ -220,14 +220,33 @@ function classifyResult(result) {
   }
 
   if (result.id === 'aurora_guidance_only_direct_supplement_manual') {
-    const supplement =
+    const cacheStage =
       result.cache_stage && typeof result.cache_stage === 'object'
         ? result.cache_stage
+        : {};
+    const supplement =
+      cacheStage.supplement && typeof cacheStage.supplement === 'object'
+        ? cacheStage.supplement
         : {};
     const searchStageB =
       result.search_stage_b && typeof result.search_stage_b === 'object'
         ? result.search_stage_b
         : {};
+    const internalCount = Number(result.source_breakdown.internal_count || 0) || 0;
+    const externalCount =
+      Number(result.source_breakdown.external_count || result.source_breakdown.external_seed_count || 0) || 0;
+    const cacheStageBoundedGuidanceSupplement =
+      result.query_source === 'cache_cross_merchant_search_supplemented' &&
+      String(result.final_decision || '') === 'cache_returned' &&
+      internalCount > 0 &&
+      externalCount > 0 &&
+      supplement.applied === true &&
+      String(supplement.reason || '').startsWith('supplemented_external_seed') &&
+      String(supplement.retrieval_mode || '') === 'guidance_recall_first' &&
+      Array.isArray(supplement.query_variants) &&
+      supplement.query_variants.length > 0 &&
+      supplement.query_variants.every((item) => /\bserum\b/i.test(String(item || ''))) &&
+      supplement.stage_timeout !== true;
     const boundedQuerySources = new Set([
       'agent_products_search_guidance_supplemented',
       'cache_cross_merchant_search_supplemented',
@@ -236,7 +255,7 @@ function classifyResult(result) {
       result.query_source === 'agent_products_guidance_external_seed_supplemented' &&
       result.guidance_direct_external_seed_applied === true &&
       result.guidance_direct_external_seed_valid_hit === true &&
-      Number(result.source_breakdown.external_count || result.source_breakdown.external_seed_count || 0) > 0 &&
+      externalCount > 0 &&
       supplement.stage_timeout !== true;
     if (
       result.status === 200 &&
@@ -244,24 +263,29 @@ function classifyResult(result) {
         (
           boundedQuerySources.has(String(result.query_source || '')) &&
           ['products_returned', 'cache_returned'].includes(String(result.final_decision || '')) &&
-          Number(result.source_breakdown.internal_count || 0) > 0 &&
-          Number(result.source_breakdown.external_seed_count || 0) > 0 &&
+          internalCount > 0 &&
+          externalCount > 0 &&
           searchStageB.applied === true &&
           String(searchStageB.reason || '') === 'guidance_direct_external_seed_supplemented' &&
           supplement.stage_timeout !== true
         ) ||
+        cacheStageBoundedGuidanceSupplement ||
         directGuidanceReplacement
       )
     ) {
+      const notes = directGuidanceReplacement
+        ? 'guidance-only supplement stayed bounded through the explicit external-seed replacement lane, with valid-hit metadata and no obvious generic drift in the top titles.'
+        : cacheStageBoundedGuidanceSupplement
+          ? 'guidance-only supplement stayed bounded inside the cache-stage guidance lane: the internal hit remained visible, guidance recall variants stayed serum-scoped, and the top titles did not drift generically.'
+          : 'guidance-only supplement stayed bounded: internal cache remained visible, supplement applied explicitly, and no obvious generic drift appeared in the top titles.';
       return {
         verdict: 'pass',
-        notes:
-          'direct supplement stayed bounded: internal cache remained visible, supplement applied explicitly, and no obvious generic drift appeared in the top titles.',
+        notes,
       };
     }
     return {
       verdict: 'fail',
-      notes: 'direct supplement did not produce the expected bounded supplemented path.',
+      notes: 'guidance-only supplement did not produce the expected bounded supplemented path.',
       blocking_signals: [
         `status=${result.status}`,
         `query_source=${result.query_source || 'missing'}`,
