@@ -227,6 +227,13 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.ok(
     payload.modules.some((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || '')),
   );
+  assert.equal(Array.isArray(payload.summary_v1.top_findings), true);
+  assert.equal(payload.summary_v1.top_findings.length > 0, true);
+  assert.equal(Array.isArray(payload.summary_v1.quality_caveats), true);
+  assert.equal(payload.summary_v1.quality_caveats.includes('blur'), true);
+  assert.ok(payload.summary_v1.module_confidence_overview && typeof payload.summary_v1.module_confidence_overview === 'object');
+  assert.ok(payload.summary_v1.strict_match_coverage_overview && typeof payload.summary_v1.strict_match_coverage_overview === 'object');
+  assert.equal(Number(payload.summary_v1.strict_match_coverage_overview.total_actions) > 0, true);
   if (payload.summary_v1.top_issue_type) {
     const targetModule =
       payload.modules.find((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || ''))

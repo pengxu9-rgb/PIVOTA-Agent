@@ -536,7 +536,27 @@ function findTopProductIdFromModule(moduleRow) {
   return null;
 }
 
-function buildSummaryV1(modules) {
+function normalizeConfidenceBucket(value) {
+  const score = clamp01(Number(value));
+  if (score >= 0.75) return 'high';
+  if (score >= 0.45) return 'medium';
+  return 'low';
+}
+
+function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons } = {}) {
+  const caveats = [];
+  const normalizedGrade = String(qualityGrade || '').trim().toLowerCase();
+  if (normalizedGrade === 'degraded') caveats.push('photo_quality_degraded');
+  if (normalizedGrade === 'fail') caveats.push('photo_quality_failed');
+  for (const reason of Array.isArray(qualityReasons) ? qualityReasons : []) {
+    const token = String(reason || '').trim().toLowerCase();
+    if (!token) continue;
+    caveats.push(token);
+  }
+  return Array.from(new Set(caveats)).slice(0, 6);
+}
+
+function buildSummaryV1(modules, { qualityGrade = null, qualityReasons = [] } = {}) {
   const safeModules = Array.isArray(modules) ? modules : [];
   if (!safeModules.length) return null;
   const rankedModules = safeModules
@@ -554,7 +574,7 @@ function buildSummaryV1(modules) {
     });
   const topModule = rankedModules[0];
   if (!topModule || !topModule.module_id) return null;
-  const topIssue = (Array.isArray(topModule.issues) ? topModule.issues : [])
+  const rankIssues = (issues) => (Array.isArray(issues) ? issues : [])
     .slice()
     .sort((left, right) => {
       const rankDiff = Number(right && right.issue_rank_score || 0) - Number(left && left.issue_rank_score || 0);
@@ -562,10 +582,55 @@ function buildSummaryV1(modules) {
       const severityDiff = normalizeSeverity0to4(right && right.severity_0_4) - normalizeSeverity0to4(left && left.severity_0_4);
       if (severityDiff !== 0) return severityDiff;
       return clamp01(Number(right && right.confidence_0_1)) - clamp01(Number(left && left.confidence_0_1));
-    })[0] || null;
+    });
+  const topIssue = rankIssues(topModule.issues)[0] || null;
   const topAction = (Array.isArray(topModule.actions) ? topModule.actions : [])
     .slice()
     .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0))[0] || null;
+
+  const topFindings = rankedModules
+    .map((moduleRow) => {
+      const issue = rankIssues(moduleRow.issues)[0] || null;
+      if (!issue || !moduleRow || !moduleRow.module_id) return null;
+      return {
+        module_id: String(moduleRow.module_id),
+        issue_type: issue && issue.issue_type ? String(issue.issue_type) : null,
+        severity_0_4: round3(normalizeSeverity0to4(issue && issue.severity_0_4)),
+        confidence_0_1: round3(clamp01(issue && issue.confidence_0_1)),
+        confidence_bucket: String(issue && issue.confidence_bucket || '').trim().toLowerCase() || normalizeConfidenceBucket(issue && issue.confidence_0_1),
+        evidence_region_ids: Array.isArray(issue && issue.evidence_region_ids)
+          ? issue.evidence_region_ids.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 6)
+          : [],
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const confidenceOverview = { high: 0, medium: 0, low: 0 };
+  let totalActions = 0;
+  let actionsWithStrictMatches = 0;
+  let actionsCtaOnly = 0;
+  let actionsWithoutMatches = 0;
+  for (const moduleRow of safeModules) {
+    const issues = Array.isArray(moduleRow && moduleRow.issues) ? moduleRow.issues : [];
+    for (const issue of issues) {
+      const bucket = String(issue && issue.confidence_bucket || '').trim().toLowerCase() || normalizeConfidenceBucket(issue && issue.confidence_0_1);
+      if (bucket === 'high' || bucket === 'medium' || bucket === 'low') confidenceOverview[bucket] += 1;
+    }
+    const actions = Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [];
+    for (const action of actions) {
+      totalActions += 1;
+      const products = Array.isArray(action && action.products) ? action.products : [];
+      const strictProductCount = products.filter((product) => {
+        const directId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '').trim();
+        return Boolean(directId);
+      }).length;
+      const hasCtas = Array.isArray(action && action.external_search_ctas) && action.external_search_ctas.length > 0;
+      if (strictProductCount > 0) actionsWithStrictMatches += 1;
+      else if (hasCtas) actionsCtaOnly += 1;
+      else actionsWithoutMatches += 1;
+    }
+  }
 
   return {
     top_module_id: String(topModule.module_id),
@@ -576,6 +641,16 @@ function buildSummaryV1(modules) {
       ? String(topAction.ingredient_canonical_id || topAction.ingredient_id || '').trim() || null
       : null,
     top_product_id: findTopProductIdFromModule(topModule),
+    top_findings: topFindings,
+    quality_caveats: buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons }),
+    module_confidence_overview: confidenceOverview,
+    strict_match_coverage_overview: {
+      total_actions: totalActions,
+      actions_with_strict_matches: actionsWithStrictMatches,
+      actions_cta_only: actionsCtaOnly,
+      actions_without_matches: actionsWithoutMatches,
+      coverage_ratio: totalActions > 0 ? round3(actionsWithStrictMatches / totalActions) : 0,
+    },
   };
 }
 
@@ -4233,7 +4308,10 @@ function buildPhotoModulesCard({
     source_confidence_bucket: sourceConfidenceBucket,
     degraded_reasons: Array.isArray(moduleMaskBuild.degraded_reasons) ? moduleMaskBuild.degraded_reasons.slice(0, 8) : [],
   };
-  const summaryV1 = buildSummaryV1(moduleMaskBuild.modules);
+  const summaryV1 = buildSummaryV1(moduleMaskBuild.modules, {
+    qualityGrade,
+    qualityReasons: Array.isArray(photoQuality && photoQuality.reasons) ? photoQuality.reasons : [],
+  });
 
   const payload = {
     used_photos: true,
@@ -4358,4 +4436,5 @@ function buildPhotoModulesCard({
 module.exports = {
   FACE_COORD_SPACE,
   buildPhotoModulesCard,
+  buildSummaryV1,
 };
