@@ -667,6 +667,108 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resolverSpy).not.toHaveBeenCalled();
   });
 
+  test('runs resolver-first for exact title query even when the query is brand-like', async () => {
+    const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886499864904';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: resolvedMerchantId,
+        product_id: resolvedProductId,
+      },
+      confidence: 1,
+      reason: 'stable_alias_ref',
+      reason_code: 'stable_alias_match',
+      candidates: [{ title: 'The Ordinary Niacinamide 10% + Zinc 1%' }],
+      metadata: { latency_ms: 11, sources: [{ source: 'stable_alias_ref', ok: true, count: 1 }] },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: resolverSpy,
+    }));
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+        },
+      });
+
+    const searchScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'wrong_product_1',
+            merchant_id: resolvedMerchantId,
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_first',
+        }),
+      }),
+    );
+    expect(resolverSpy).toHaveBeenCalled();
+    expect(searchScope.isDone()).toBe(false);
+  });
+
   test('skips secondary fallback chain when resolver miss already has no positive sources', async () => {
     const queryText = 'hydrating essence toner';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
