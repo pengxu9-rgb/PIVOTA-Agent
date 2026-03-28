@@ -180,18 +180,25 @@ function verdictRank(value) {
   return 0;
 }
 
+function isGuidanceCacheHitMainPath(result) {
+  return (
+    result.status === 200 &&
+    result.product_count > 0 &&
+    result.final_decision === 'cache_returned' &&
+    (
+      String(result.query_source || '').startsWith('cache_') ||
+      result.query_source === 'agent_products_guidance_fastpath'
+    )
+  );
+}
+
 function classifyResult(result) {
   if (result.id === 'aurora_guidance_only_cache_hit_manual') {
-    if (
-      result.status === 200 &&
-      result.product_count > 0 &&
-      result.final_decision === 'cache_returned' &&
-      String(result.query_source || '').startsWith('cache_')
-    ) {
+    if (isGuidanceCacheHitMainPath(result)) {
       return {
         verdict: 'pass',
         notes:
-          'cache-hit lane returned products and kept guidance-only retrieval diagnostics visible.',
+          'cache-hit guidance main path returned products and kept guidance-only retrieval diagnostics visible.',
       };
     }
     return {
@@ -318,14 +325,11 @@ function buildChecklist(result) {
     Boolean(result.final_decision) &&
     Boolean(result.request_id || Object.keys(result.gateway_governance || {}).length > 0);
   if (result.id === 'aurora_guidance_only_cache_hit_manual') {
-    const cacheLaneHealthy =
-      result.status === 200 &&
-      String(result.final_decision || '') === 'cache_returned' &&
-      String(result.query_source || '').startsWith('cache_');
+    const cacheLaneHealthy = isGuidanceCacheHitMainPath(result);
     return [
       checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
       checklistItem(
-        'Cache-hit guidance lane stayed on cache_returned',
+        'Cache-hit guidance lane stayed on a main-path cache_returned contract',
         cacheLaneHealthy,
         `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
       ),

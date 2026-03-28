@@ -4357,6 +4357,61 @@ function finalizeInvokeAuthoritativeResponseEnvelope({
   };
 }
 
+function normalizeInvokeGuidanceFastpathResponseContract(body) {
+  if (!isPlainRecord(body)) return body;
+  const metadata = isPlainRecord(body.metadata) ? body.metadata : {};
+  if (
+    String(metadata.execution_mode || '').trim() !== GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER ||
+    String(metadata.latency_mode || '').trim() !== GUIDANCE_FASTPATH_LATENCY_MODE
+  ) {
+    return body;
+  }
+
+  const searchDecision = isPlainRecord(metadata.search_decision) ? metadata.search_decision : {};
+  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const products = Array.isArray(body.products) ? body.products : [];
+  const hasClarification = Boolean(body?.clarification?.question);
+  const finalDecision =
+    toNonEmptyStringOrNull(
+      searchTrace.final_decision ||
+        searchDecision.final_decision ||
+        metadata.final_decision ||
+        null,
+    ) ||
+    (products.length > 0 ? 'cache_returned' : hasClarification ? 'clarify' : null);
+  const primaryPathUsed =
+    toNonEmptyStringOrNull(routeHealth.primary_path_used) || 'guidance_fastpath';
+
+  return {
+    ...body,
+    metadata: {
+      ...metadata,
+      ...(finalDecision ? { final_decision: finalDecision } : {}),
+      search_decision: {
+        ...searchDecision,
+        ...(finalDecision ? { final_decision: finalDecision } : {}),
+      },
+      search_trace: {
+        ...searchTrace,
+        ...(finalDecision ? { final_decision: finalDecision } : {}),
+        primary_path_used:
+          toNonEmptyStringOrNull(searchTrace.primary_path_used) || primaryPathUsed,
+      },
+      route_health: {
+        ...routeHealth,
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: primaryPathUsed,
+        final_returned_count: Math.max(
+          products.length,
+          Number(routeHealth.final_returned_count || 0) || 0,
+        ),
+      },
+    },
+  };
+}
+
 function buildCacheStageDiagnosticBundle(cacheStage = null, cacheRouteDebug = null) {
   const stage =
     cacheStage && typeof cacheStage === 'object' && !Array.isArray(cacheStage)
@@ -16329,12 +16384,19 @@ function recoverStrictMainPathResponseFromPrefetch({
   )
     .trim()
     .toLowerCase();
+  const recoverableStrictSoftFallback =
+    querySource === 'agent_products_error_fallback' || finalDecision === 'strict_empty';
   if (products.length > 0 || hasClarification) return responseBody;
-  if (metadata?.route_health?.fallback_triggered === true) return responseBody;
+  if (
+    metadata?.route_health?.fallback_triggered === true &&
+    !recoverableStrictSoftFallback
+  ) {
+    return responseBody;
+  }
   if (
     querySource &&
     !querySource.startsWith('cache_') &&
-    finalDecision !== 'strict_empty'
+    !recoverableStrictSoftFallback
   ) {
     return responseBody;
   }
@@ -16359,8 +16421,16 @@ function recoverStrictMainPathResponseFromPrefetch({
   const sourceBreakdown = isPlainRecord(restMetadata.source_breakdown)
     ? restMetadata.source_breakdown
     : {};
+  const contractBridge = isPlainRecord(restMetadata.contract_bridge)
+    ? restMetadata.contract_bridge
+    : {};
   const ingredientIntents = Array.isArray(restMetadata.ingredient_intents)
     ? restMetadata.ingredient_intents
+        .map((value) => toNonEmptyStringOrNull(value))
+        .filter(Boolean)
+    : [];
+  const strictIngredientIntents = Array.isArray(strictInvokeDecision?.ingredientIntents)
+    ? strictInvokeDecision.ingredientIntents
         .map((value) => toNonEmptyStringOrNull(value))
         .filter(Boolean)
     : [];
@@ -16373,14 +16443,23 @@ function recoverStrictMainPathResponseFromPrefetch({
   const nextMetadata = {
     ...restMetadata,
     ...budgetMetadata,
+    query_source:
+      querySource && querySource.startsWith('cache_')
+        ? querySource
+        : 'cache_multi_intent',
     strict_constraint_query: true,
     strict_constraint_reason:
       strictInvokeDecision.strictConstraintReason ||
       restMetadata.strict_constraint_reason ||
       null,
-    ingredient_intents: ingredientIntents,
+    ingredient_intents:
+      ingredientIntents.length > 0 ? ingredientIntents : strictIngredientIntents,
     matched_ingredient_ids:
-      matchedIngredientIds.length > 0 ? matchedIngredientIds : ingredientIntents,
+      matchedIngredientIds.length > 0
+        ? matchedIngredientIds
+        : ingredientIntents.length > 0
+          ? ingredientIntents
+          : strictIngredientIntents,
     external_seed_returned_count: supplementedProducts.length,
     external_seed_rows_fetched: Math.max(
       supplementedProducts.length,
@@ -16396,6 +16475,12 @@ function recoverStrictMainPathResponseFromPrefetch({
       external_seed_count: supplementedProducts.length,
       strategy_applied:
         toNonEmptyStringOrNull(sourceBreakdown.strategy_applied) || 'strict_ingredient_mixed_parity',
+    },
+    contract_bridge: {
+      ...contractBridge,
+      attempted_contract: 'shop_invoke_strict',
+      resolved_contract: 'shop_invoke_strict',
+      legacy_fallback: false,
     },
     search_decision: {
       ...searchDecision,
@@ -16425,9 +16510,6 @@ function recoverStrictMainPathResponseFromPrefetch({
     strict_prefetch_recovered: true,
     strict_prefetch_recovery_source: 'agent_strict_ingredient_prefetch',
   };
-  if (!toNonEmptyStringOrNull(nextMetadata.query_source)) {
-    nextMetadata.query_source = 'cache_multi_intent';
-  }
 
   const {
     strict_empty: _bodyStrictEmpty,
@@ -17851,6 +17933,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       gatewayGovernanceEnvelope = null;
       gatewayGovernanceAudit = null;
+    }
+    if (operation === 'find_products_multi') {
+      const invokeGuidanceFastpathResponse = await runGuidanceServerOwnedLadderSearch({
+        req,
+        search:
+          effectivePayload?.search &&
+          typeof effectivePayload.search === 'object' &&
+          !Array.isArray(effectivePayload.search)
+            ? effectivePayload.search
+            : {},
+        metadata,
+      });
+      if (invokeGuidanceFastpathResponse) {
+        const normalizedInvokeGuidanceFastpathResponse =
+          normalizeInvokeGuidanceFastpathResponseContract(invokeGuidanceFastpathResponse);
+        await persistGuidanceSearchSeenProducts(
+          resolveGuidanceSearchSessionId({
+            req,
+            query: effectivePayload?.search,
+            metadata,
+          }),
+          Array.isArray(normalizedInvokeGuidanceFastpathResponse?.products)
+            ? normalizedInvokeGuidanceFastpathResponse.products
+            : [],
+        );
+        return res.json(normalizedInvokeGuidanceFastpathResponse);
+      }
     }
     const fpmGateTrace = [];
     const fpmSkippedGatesDueToBudget = [];
@@ -21772,7 +21881,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
 
     let response;
-    let searchContractBridgeMeta = null;
+    let searchContractBridgeMeta =
+      operation === 'find_products_multi' && strictCommerceFindProductsMulti
+        ? {
+            attempted_contract: 'shop_invoke_strict',
+            resolved_contract: 'shop_invoke_strict',
+            legacy_fallback: false,
+          }
+        : null;
     let resolverRejectedReason = null;
     let resolverRejectedQueryUsed = null;
     const searchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();

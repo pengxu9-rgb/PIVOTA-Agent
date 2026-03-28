@@ -4921,4 +4921,121 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('invoke find_products_multi reuses guidance fastpath for aurora guidance-only cache-hit serum queries', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-fastpath-invoke-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 2 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_internal_1',
+                merchant_name: 'Internal Shop',
+                product_data: {
+                  id: 'hydrating_serum_1',
+                  product_id: 'hydrating_serum_1',
+                  merchant_id: 'merch_internal_1',
+                  title: 'Hydrating Serum with Ceramides',
+                  description: 'hydrating serum with ceramides for barrier support',
+                  product_type: 'Serum',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+              {
+                merchant_id: 'merch_internal_2',
+                merchant_name: 'Internal Shop 2',
+                product_data: {
+                  id: 'hydrating_serum_2',
+                  product_id: 'hydrating_serum_2',
+                  merchant_id: 'merch_internal_2',
+                  title: 'Barrier Repair Hydrating Serum',
+                  description: 'soothing hydrating serum for sensitive skin',
+                  product_type: 'Serum',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 7,
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hydrating serum',
+            limit: 6,
+            in_stock_only: true,
+            ui_surface: 'ingredient_plan_guidance_only',
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          ui_surface: 'ingredient_plan_guidance_only',
+          query_target_step_family: 'serum',
+          query_step_strength: 'focused',
+          decision_mode: 'guidance_only',
+          source_policy: 'guided_only',
+        },
+      })
+      .expect(200);
+
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_guidance_fastpath',
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        legacy_pipeline_bypassed: true,
+        final_decision: 'cache_returned',
+        service_version: expect.objectContaining({
+          commit: expect.any(String),
+        }),
+        search_trace: expect.objectContaining({
+          final_decision: 'cache_returned',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          primary_path_used: 'guidance_fastpath',
+        }),
+        route_trace: expect.objectContaining({
+          authoritative_endpoint: '/agent/shop/v1/invoke',
+        }),
+      }),
+    );
+    expect(resp.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        decision_mode: 'guidance_only',
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        final_decision: 'cache_returned',
+      }),
+    );
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products.map((row) => row.title)).toEqual(
+      expect.arrayContaining([
+        'Hydrating Serum with Ceramides',
+        'Barrier Repair Hydrating Serum',
+      ]),
+    );
+    expect(resp.body.metadata?.final_decision).not.toBe('governance_shadow_block');
+    expect(resp.body.metadata?.query_source).not.toBe('gateway_governance_shadow_block');
+  });
+
 });
