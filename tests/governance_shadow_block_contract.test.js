@@ -35,11 +35,19 @@ describe('governance shadow block contract', () => {
           final_decision: 'clarify',
           clarify_triggered: true,
         },
+        route_health: {
+          fallback_triggered: true,
+          fallback_reason: 'primary_irrelevant_no_fallback',
+          primary_path_used: 'invoke_primary_fallback',
+          primary_path_degraded: true,
+        },
         gateway_governance: {
           mode: 'shadow',
           observed_action: 'block',
           would_enforce: true,
-          reason_codes: ['layer_not_allowed'],
+          query_governance: {
+            reason_codes: ['layer_not_allowed'],
+          },
         },
       },
     };
@@ -56,18 +64,85 @@ describe('governance shadow block contract', () => {
         search_decision: expect.objectContaining({
           final_decision: 'governance_shadow_block',
           clarify_triggered: false,
+          primary_path_used: 'governance_shadow_block',
+        }),
+        search_trace: expect.objectContaining({
+          final_decision: 'governance_shadow_block',
+          primary_path_used: 'governance_shadow_block',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: 'governance_shadow_block',
+          primary_path_degraded: false,
         }),
         governance_shadow_contract: expect.objectContaining({
           normalized: true,
           recovery_reason: 'layer_not_allowed_shadow_block',
           original_query_source: 'agent_products_error_fallback',
           original_final_decision: 'clarify',
+          governance_reason_codes: ['layer_not_allowed'],
         }),
       }),
     );
     expect(normalized.metadata.strict_empty).toBeUndefined();
     expect(normalized.metadata.strict_empty_reason).toBeUndefined();
     expect(normalized.clarification).toBeNull();
+  });
+
+  test('normalizes resolver fallback shadow block responses while preserving returned products', () => {
+    const app = require('../src/server');
+    const input = {
+      products: [{ product_id: 'p1', title: 'IPSA Time Reset Aqua' }],
+      metadata: {
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: {
+          applied: true,
+          reason: 'resolver_after_primary',
+        },
+        search_decision: {
+          final_decision: 'resolver_returned',
+          primary_path_used: 'resolver_fallback',
+        },
+        route_health: {
+          fallback_triggered: true,
+          fallback_reason: 'resolver_after_primary',
+          primary_path_used: 'resolver_fallback',
+          primary_path_degraded: true,
+        },
+        gateway_governance: {
+          mode: 'shadow',
+          observed_action: 'block',
+          would_enforce: true,
+          query_governance: {
+            reason_codes: ['deep_pagination_blocked'],
+          },
+        },
+      },
+    };
+
+    const normalized = app._debug.normalizeGovernanceShadowBlockContract(input);
+
+    expect(normalized.products).toEqual(input.products);
+    expect(normalized.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'gateway_governance_shadow_block',
+        proxy_search_fallback: expect.objectContaining({
+          applied: false,
+          reason: null,
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: 'governance_shadow_block',
+          primary_path_degraded: false,
+        }),
+        governance_shadow_contract: expect.objectContaining({
+          recovery_reason: 'deep_pagination_blocked_shadow_block',
+          governance_reason_codes: ['deep_pagination_blocked'],
+        }),
+      }),
+    );
   });
 
   test('leaves non-governed or healthy responses unchanged', () => {
