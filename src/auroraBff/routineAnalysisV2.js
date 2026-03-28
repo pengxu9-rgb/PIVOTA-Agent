@@ -678,6 +678,20 @@ function buildFallbackProductAudit(candidate, context = {}) {
   };
 }
 
+function isDeterministicStageABypassEligible(candidate, context = {}) {
+  const inferredProductType = inferProductType(candidate);
+  const productText = asString(candidate && candidate.product_text);
+  const step = normalizeStep(candidate && candidate.step);
+  if (!inferredProductType || inferredProductType === 'other') return false;
+  if (isStrongActiveType(inferredProductType, productText)) return false;
+  if (inferredProductType === 'serum' && !isHydrationSupportType(inferredProductType, productText)) return false;
+  if (inferredProductType === 'spf moisturizer') return true;
+  if (['cleanser', 'moisturizer', 'sunscreen', 'toner', 'essence'].includes(inferredProductType)) return true;
+  if (isHydrationSupportType(inferredProductType, productText)) return true;
+  if (['cleanser', 'moisturizer', 'sunscreen', 'toner', 'essence'].includes(step)) return true;
+  return false;
+}
+
 function normalizeGoalRowsWithQualityGate(rawRows, fallbackRows) {
   const fallbackByGoal = new Map(
     asArray(fallbackRows)
@@ -2726,12 +2740,6 @@ async function runRoutineAnalysisV2({
     deferred_product_labels: prioritized.additional.map((item) => asString(item.product_text)).filter(Boolean).slice(0, 8),
     ingredient_plan_present: Boolean(ingredientPlan),
   };
-
-  const stageAChunkSize = prioritized.audited.length > 4 ? 4 : Math.max(1, stageAInputProducts.length || 1);
-  const stageAChunks = chunkArray(stageAInputProducts, stageAChunkSize);
-  const stageAChunkMetas = [];
-  const stageAChunkBudgets = [];
-  const stageAAuditOutputs = [];
   const auditContext = {
     goals: goalContext.goals,
     concerns: goalContext.goals,
@@ -2742,17 +2750,36 @@ async function runRoutineAnalysisV2({
     climate: seasonClimateContext.climate,
   };
 
-  const stageAChunkPlans = stageAChunks.map((chunkProducts, chunkIndex) => {
-    const chunkStart = chunkIndex * stageAChunkSize;
+  const stageAAuditPairs = prioritized.audited.map((candidate, index) => ({
+    candidate,
+    input: stageAInputProducts[index],
+  }));
+  let stageADeterministicPairs = [];
+  let stageALlmPairs = stageAAuditPairs;
+  if (surfaceMode === 'routine_audit_v1') {
+    stageADeterministicPairs = stageAAuditPairs.filter(({ candidate }) => isDeterministicStageABypassEligible(candidate, auditContext));
+    stageALlmPairs = stageAAuditPairs.filter(({ candidate }) => !isDeterministicStageABypassEligible(candidate, auditContext));
+    if (!stageALlmPairs.length && stageADeterministicPairs.length) {
+      stageALlmPairs = [stageADeterministicPairs[0]];
+      stageADeterministicPairs = stageADeterministicPairs.slice(1);
+    }
+  }
+  const stageAChunkSize = stageALlmPairs.length > 4 ? 4 : Math.max(1, stageALlmPairs.length || 1);
+  const stageAChunks = chunkArray(stageALlmPairs, stageAChunkSize);
+  const stageAChunkMetas = [];
+  const stageAChunkBudgets = [];
+  const stageADeterministicOutputs = stageADeterministicPairs.map(({ candidate }) => normalizeFallbackAuditOutput([candidate], null, auditContext));
+
+  const stageAChunkPlans = stageAChunks.map((chunkPairs, chunkIndex) => {
     return {
       chunkIndex,
-      chunkProducts,
-      chunkCandidates: prioritized.audited.slice(chunkStart, chunkStart + chunkProducts.length),
-      chunkBudget: computeStageOutputBudget('stage_a', chunkProducts.length),
+      chunkProducts: chunkPairs.map((row) => row.input),
+      chunkCandidates: chunkPairs.map((row) => row.candidate),
+      chunkBudget: computeStageOutputBudget('stage_a', chunkPairs.length),
       chunkSignals: {
         ...deterministicSignals,
-        product_count: chunkProducts.length,
-        selected_product_refs: chunkProducts.map((item) => item.product_ref),
+        product_count: chunkPairs.length,
+        selected_product_refs: chunkPairs.map((row) => row.input && row.input.product_ref).filter(Boolean),
         stage_a_chunk_index: chunkIndex + 1,
         stage_a_chunk_count: stageAChunks.length,
       },
@@ -2814,9 +2841,24 @@ async function runRoutineAnalysisV2({
   }));
   for (const chunkResult of stageAChunkResults) {
     stageAChunkMetas.push(chunkResult.chunkMeta);
-    stageAAuditOutputs.push(chunkResult.auditOutput);
   }
-  const audit = mergeAuditOutputs(stageAAuditOutputs);
+  const audit = mergeAuditOutputs([
+    ...stageADeterministicOutputs,
+    ...stageAChunkResults.map((row) => row.auditOutput),
+  ]);
+  const stageAOrder = new Map(prioritized.audited.map((candidate, index) => [asString(candidate.product_ref), index]));
+  audit.products = asArray(audit.products).sort((left, right) => {
+    const leftOrder = stageAOrder.has(asString(left && left.product_ref)) ? stageAOrder.get(asString(left && left.product_ref)) : Number.MAX_SAFE_INTEGER;
+    const rightOrder = stageAOrder.has(asString(right && right.product_ref)) ? stageAOrder.get(asString(right && right.product_ref)) : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
+  if (isPlainObject(audit.quality_gate_meta) && Array.isArray(audit.quality_gate_meta.product_reason_sources)) {
+    audit.quality_gate_meta.product_reason_sources = audit.quality_gate_meta.product_reason_sources.sort((left, right) => {
+      const leftOrder = stageAOrder.has(asString(left && left.product_ref)) ? stageAOrder.get(asString(left && left.product_ref)) : Number.MAX_SAFE_INTEGER;
+      const rightOrder = stageAOrder.has(asString(right && right.product_ref)) ? stageAOrder.get(asString(right && right.product_ref)) : Number.MAX_SAFE_INTEGER;
+      return leftOrder - rightOrder;
+    });
+  }
   const stageAMeta = aggregateStageChunkMeta(stageAChunkMetas, stageAChunkBudgets);
 
   const stageBBudget = computeStageOutputBudget('stage_b', audit.products.length);
@@ -2982,6 +3024,7 @@ async function runRoutineAnalysisV2({
         provider: stageAMeta.provider,
         attempt_count: stageAMeta.attempt_count,
         retry_count: stageAMeta.retry_count,
+        deterministic_product_count: stageADeterministicPairs.length,
         quality_gate_applied_count:
           isPlainObject(audit.quality_gate_meta) && Number.isFinite(Number(audit.quality_gate_meta.quality_gate_applied_count))
             ? Number(audit.quality_gate_meta.quality_gate_applied_count)

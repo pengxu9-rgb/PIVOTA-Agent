@@ -1834,6 +1834,101 @@ test('runRoutineAnalysisV2: stage A chunk calls run in parallel when routine exc
   assert.equal(maxInFlightStageA >= 2, true);
 });
 
+test('runRoutineAnalysisV2: routine audit v1 bypasses deterministic support steps and keeps active steps on stage A LLM', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmStageAInputs = [];
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId, params }) {
+      if (templateId === 'routine_product_audit_v1') {
+        const products = Array.isArray(params?.routine_products_json) ? params.routine_products_json : [];
+        llmStageAInputs.push(products.map((row) => row.input_label));
+        return {
+          parsed: buildStageAResult(products.map((product) => buildAuditProduct(product.product_ref, {
+            slot: product.slot,
+            originalStepLabel: product.original_step_label,
+            inputLabel: product.input_label,
+            inferredProductType: product.inferred_product_type_hint || 'serum',
+            likelyRole: /retinol/i.test(product.input_label) ? 'anti-aging treatment' : 'antioxidant protection',
+            likelyKeySignals: /retinol/i.test(product.input_label) ? ['retinoid signal'] : ['vitamin C signal'],
+          }))),
+          parsedCandidate: null,
+          raw: '{}',
+          provider: 'stub',
+          schemaValid: true,
+          validationErrors: [],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: buildStageBResult({
+          top_3_adjustments: [],
+          improved_am_routine: [],
+          improved_pm_routine: [],
+          rationale_for_each_adjustment: [],
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        parsedCandidate: null,
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1_selective_stage_a',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'medium',
+      barrierStatus: 'stable',
+      goals: ['texture'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'routine_am_01', slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { product_ref: 'routine_am_02', slot: 'am', step: 'treatment', product_text: 'Vitamin C serum' },
+      { product_ref: 'routine_am_03', slot: 'am', step: 'moisturizer', product_text: 'Barrier cream' },
+      { product_ref: 'routine_am_04', slot: 'am', step: 'spf', product_text: 'SPF50' },
+      { product_ref: 'routine_pm_05', slot: 'pm', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { product_ref: 'routine_pm_06', slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+      { product_ref: 'routine_pm_07', slot: 'pm', step: 'moisturizer', product_text: 'Barrier cream' },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+    surfaceMode: 'routine_audit_v1',
+  });
+
+  assert.deepEqual(llmStageAInputs, [['Vitamin C serum', 'Retinol serum']]);
+  assert.equal(result.debug_meta.stage_a.chunk_count, 1);
+  assert.equal(result.debug_meta.stage_a.attempt_count, 1);
+  assert.equal(result.debug_meta.stage_a.deterministic_product_count, 5);
+  assert.deepEqual(
+    result.cards.map((card) => card.type),
+    ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
+  );
+  assert.equal(result.cards[1].payload.products.length, 7);
+  assert.deepEqual(
+    result.debug_meta.stage_a.product_reason_sources.map((row) => row.reason_source),
+    [
+      'fallback_substituted',
+      'raw_llm_verbatim',
+      'fallback_substituted',
+      'fallback_substituted',
+      'fallback_substituted',
+      'raw_llm_verbatim',
+      'fallback_substituted',
+    ],
+  );
+});
+
 test('normalizeFallbackAuditOutput: quality gate replaces low-value cleanser reasoning with category-level fallback', () => {
   const { normalizeFallbackAuditOutput } = require('../src/auroraBff/routineAnalysisV2');
 
