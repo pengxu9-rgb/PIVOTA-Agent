@@ -916,6 +916,16 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
     });
   }
 
+  const duplicateSupportPairs = findDuplicateSupportPairs(amProducts, pmProducts);
+  for (const pair of duplicateSupportPairs.slice(0, 2)) {
+    issues.push({
+      issue_type: 'overlap',
+      title: `Using the same ${pair.stepLabel} AM and PM`,
+      evidence: [`${pair.amLabel} is currently serving the same ${pair.stepLabel} role in both routine windows.`],
+      affected_products: [pair.amProductRef, pair.pmProductRef],
+    });
+  }
+
   const moveIssues = products
     .filter((product) => ['move_to_am', 'move_to_pm'].includes(asString(product.suggested_action)))
     .slice(0, 3);
@@ -946,12 +956,45 @@ function normalizeNeedState(actionType) {
   return 'upgrade_existing';
 }
 
+function getDeterministicSupportStepKey(product) {
+  const type = asString(product && product.inferred_product_type).toLowerCase();
+  const step = asString(product && product.original_step_label).toLowerCase();
+  if (type.includes('cleanser') || step === 'cleanser') return 'cleanser';
+  if (type.includes('moisturizer') || step === 'moisturizer') return 'moisturizer';
+  return '';
+}
+
+function findDuplicateSupportPairs(amProducts, pmProducts) {
+  const pairs = [];
+  for (const amProduct of asArray(amProducts)) {
+    const stepKey = getDeterministicSupportStepKey(amProduct);
+    if (!stepKey) continue;
+    const amLabel = asString(amProduct && amProduct.input_label);
+    if (!amLabel) continue;
+    const pmMatch = asArray(pmProducts).find((pmProduct) =>
+      getDeterministicSupportStepKey(pmProduct) === stepKey
+      && asString(pmProduct && pmProduct.input_label).toLowerCase() === amLabel.toLowerCase());
+    if (!pmMatch) continue;
+    pairs.push({
+      stepKey,
+      stepLabel: stepKey,
+      amProductRef: asString(amProduct && amProduct.product_ref),
+      pmProductRef: asString(pmMatch && pmMatch.product_ref),
+      amLabel,
+      pmLabel: asString(pmMatch && pmMatch.input_label),
+    });
+  }
+  return pairs;
+}
+
 function buildDeterministicSynthesis(auditOutput, context = {}) {
   const products = asArray(auditOutput && auditOutput.products);
   const amOrder = buildDefaultOrder(products, 'am');
   const pmOrder = buildDefaultOrder(products, 'pm');
   const overlapOrGaps = buildDeterministicOverlapOrGaps(auditOutput, context);
   const adjustments = [];
+  const amProducts = products.filter((product) => product.slot === 'am');
+  const pmProducts = products.filter((product) => product.slot === 'pm');
 
   for (const product of products) {
     const action = asString(product.suggested_action);
@@ -1000,6 +1043,25 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     }
   }
 
+  const duplicateSupportPairs = findDuplicateSupportPairs(amProducts, pmProducts);
+  for (const pair of duplicateSupportPairs) {
+    const alreadyCovered = adjustments.some((item) =>
+      asArray(item && item.affected_products).includes(pair.pmProductRef));
+    if (alreadyCovered) continue;
+    adjustments.push({
+      adjustment_id: `adj_pm_${pair.stepKey}_replace`,
+      priority_rank: adjustments.length + 1,
+      title: `Consider a different ${pair.stepLabel} for PM`,
+      action_type: 'replace',
+      affected_products: [pair.pmProductRef],
+      why_this_first: `Using the same ${pair.stepLabel} AM and PM can leave the evening routine under-specialized for nighttime needs.`,
+      expected_outcome: pair.stepKey === 'cleanser'
+        ? 'More purposeful PM cleansing without overcomplicating the AM routine.'
+        : 'Better overnight barrier support without changing the daytime routine.',
+    });
+    if (adjustments.length >= 3) break;
+  }
+
   if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
     adjustments.push({
       adjustment_id: 'adj_add_spf_gap',
@@ -1043,6 +1105,12 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     adjustment_id: need.adjustment_id,
     query_en: buildRecommendationQuery(need, context),
   }));
+  const synthesizedMissingInfo = uniqStrings([
+    ...asArray(auditOutput && auditOutput.missing_info),
+    ...products
+      .filter((product) => getEvidenceModeFromProduct(product) !== 'catalog_exact')
+      .flatMap((product) => uniqStrings(product && product.missing_info, 4)),
+  ], 8);
 
   return {
     schema_version: 'aurora.routine_synthesis.v1',
@@ -1063,12 +1131,14 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
       evidence: collectAdjustmentEvidence(item, products, overlapOrGaps),
       tradeoff_or_caution: item.action_type === 'add_step'
         ? 'A new step only helps if it is consistent with the rest of the routine.'
+        : item.action_type === 'replace'
+          ? 'Change one support step at a time so you can tell whether the PM-specific swap actually improves tolerance or performance.'
         : 'Keep changes minimal at first so you can see which adjustment actually helps.',
     })),
     recommendation_needs: recommendationNeeds,
     recommendation_queries: recommendationQueries,
     confidence: clampNumber(auditOutput && auditOutput.confidence, 0, 1, 0.62),
-    missing_info: uniqStrings(auditOutput && auditOutput.missing_info, 8),
+    missing_info: synthesizedMissingInfo,
   };
 }
 

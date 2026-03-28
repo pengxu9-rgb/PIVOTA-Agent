@@ -1269,6 +1269,133 @@ test('runRoutineAnalysisV2: routine audit v1 skips stage B LLM and recommendatio
   assert.equal(result.debug_meta.stage_b.attempt_count, 0);
 });
 
+test('runRoutineAnalysisV2: routine audit v1 deterministic synthesis keeps support-step redundancies actionable', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics(args = {}) {
+      if (args.templateId !== 'routine_product_audit_v1') {
+        throw new Error(`unexpected template ${args.templateId}`);
+      }
+      return {
+        parsed: buildStageAResult([
+          buildAuditProduct('routine_am_01', {
+            slot: 'am',
+            original_step_label: 'cleanser',
+            input_label: 'Gentle cleanser',
+            inferred_product_type: 'cleanser',
+            likely_role: 'cleansing',
+          }),
+          buildAuditProduct('routine_am_02', {
+            slot: 'am',
+            original_step_label: 'serum',
+            input_label: 'Vitamin C serum',
+            inferred_product_type: 'vitamin c serum',
+            likely_role: 'antioxidant serum',
+            potential_concerns: ['potential irritation depending on formulation and concentration'],
+            fit_for_skin_type: {
+              verdict: 'unknown',
+              reason: 'Need to know skin type to assess suitability. Some vitamin C formulations can be irritating.',
+            },
+          }),
+          buildAuditProduct('routine_am_03', {
+            slot: 'am',
+            original_step_label: 'moisturizer',
+            input_label: 'Barrier cream',
+            inferred_product_type: 'moisturizer',
+            likely_role: 'barrier support',
+          }),
+          buildAuditProduct('routine_am_04', {
+            slot: 'am',
+            original_step_label: 'spf',
+            input_label: 'SPF50',
+            inferred_product_type: 'sunscreen',
+            likely_role: 'uv protection',
+          }),
+          buildAuditProduct('routine_pm_05', {
+            slot: 'pm',
+            original_step_label: 'cleanser',
+            input_label: 'Gentle cleanser',
+            inferred_product_type: 'cleanser',
+            likely_role: 'cleansing',
+          }),
+          buildAuditProduct('routine_pm_06', {
+            slot: 'pm',
+            original_step_label: 'treatment',
+            input_label: 'Retinol serum',
+            inferred_product_type: 'retinoid serum',
+            likely_role: 'anti-aging treatment',
+            potential_concerns: ['potential irritation and dryness'],
+            fit_for_skin_type: {
+              verdict: 'unknown',
+              reason: 'Need to know skin type and sensitivity to assess suitability. Retinol can be irritating, especially when starting.',
+            },
+          }),
+          buildAuditProduct('routine_pm_07', {
+            slot: 'pm',
+            original_step_label: 'moisturizer',
+            input_label: 'Barrier cream',
+            inferred_product_type: 'moisturizer',
+            likely_role: 'barrier support',
+          }),
+        ], {
+          missing_info: ['Exact SKU / ingredient detail missing for inferred products.'],
+          confidence: 0.657,
+        }),
+        parsedCandidate: null,
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1_support_redundancy',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'medium',
+      barrierStatus: 'impaired',
+      goals: ['texture', 'brightening'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'routine_am_01', slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { product_ref: 'routine_am_02', slot: 'am', step: 'serum', product_text: 'Vitamin C serum' },
+      { product_ref: 'routine_am_03', slot: 'am', step: 'moisturizer', product_text: 'Barrier cream' },
+      { product_ref: 'routine_am_04', slot: 'am', step: 'spf', product_text: 'SPF50' },
+      { product_ref: 'routine_pm_05', slot: 'pm', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { product_ref: 'routine_pm_06', slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+      { product_ref: 'routine_pm_07', slot: 'pm', step: 'moisturizer', product_text: 'Barrier cream' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  const verdictCard = result.cards.find((card) => card && card.type === 'routine_verdict_v1');
+  const auditCard = result.cards.find((card) => card && card.type === 'routine_product_audit_v1');
+  const adjustmentCard = result.cards.find((card) => card && card.type === 'routine_adjustment_plan_v1');
+
+  assert.equal(result.debug_meta.stage_b.llm_status, 'skipped');
+  assert.ok(Array.isArray(auditCard.payload.redundancies) && auditCard.payload.redundancies.length >= 2);
+  assert.ok(auditCard.payload.redundancies.some((row) => Array.isArray(row.items_involved) && row.items_involved.includes('Gentle cleanser')));
+  assert.ok(auditCard.payload.redundancies.some((row) => Array.isArray(row.items_involved) && row.items_involved.includes('Barrier cream')));
+  assert.ok(Array.isArray(adjustmentCard.payload.replace) && adjustmentCard.payload.replace.length >= 2);
+  assert.ok(adjustmentCard.payload.replace.some((row) => row.title === 'Consider a different cleanser for PM'));
+  assert.ok(adjustmentCard.payload.replace.some((row) => row.title === 'Consider a different moisturizer for PM'));
+  assert.ok(Array.isArray(adjustmentCard.payload.top_3_adjustments) && adjustmentCard.payload.top_3_adjustments.length >= 2);
+  assert.ok(Array.isArray(adjustmentCard.payload.rationale_for_each_adjustment) && adjustmentCard.payload.rationale_for_each_adjustment.length >= 2);
+  assert.ok(Array.isArray(adjustmentCard.payload.missing_info) && adjustmentCard.payload.missing_info.length >= 1);
+  assert.ok(Array.isArray(verdictCard.payload.top_3_actions) && verdictCard.payload.top_3_actions.length >= 2);
+  assert.ok(verdictCard.payload.top_3_actions.some((row) => row.title === 'Consider a different cleanser for PM'));
+});
+
 test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   const { LlmQualityError } = require('../src/auroraBff/services/llm_gateway');
