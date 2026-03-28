@@ -145,6 +145,82 @@ describe('governance shadow block contract', () => {
     );
   });
 
+  test('normalizes shadow block after gateway audit metadata is merged in the response wrapper path', () => {
+    const app = require('../src/server');
+    const input = {
+      products: [],
+      clarification: {
+        question: 'Do you have a brand preference?',
+      },
+      reason_codes: ['FILTERED_TO_EMPTY'],
+      metadata: {
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+        strict_empty_reason: 'primary_irrelevant_no_fallback',
+        proxy_search_fallback: {
+          applied: true,
+          reason: 'primary_irrelevant_no_fallback',
+        },
+        search_decision: {
+          final_decision: 'clarify',
+          clarify_triggered: true,
+        },
+        route_health: {
+          fallback_triggered: true,
+          fallback_reason: 'primary_irrelevant_no_fallback',
+          primary_path_used: 'upstream_stage',
+          primary_path_degraded: true,
+        },
+      },
+    };
+    const gatewayAudit = {
+      mode: 'shadow',
+      source: 'aurora-bff',
+      entry_layer: 'orchestration',
+      task_type: 'discovery',
+      effective_action: 'allow',
+      observed_phase: 'query_governance',
+      observed_action: 'block',
+      would_enforce: true,
+      reason_codes: ['layer_not_allowed'],
+      invocation: {
+        surface: 'direct_api',
+      },
+      access: {},
+      rate_limit: {
+        allowed: true,
+        action: 'allow',
+        reason_codes: [],
+        profile_id: 'public_api_agent',
+      },
+      query_governance: {
+        allowed: false,
+        action: 'block',
+        reason_codes: ['layer_not_allowed'],
+      },
+    };
+
+    const merged = app._debug.mergeInvokeGatewayAuditMetadata(input, gatewayAudit);
+    const normalized = app._debug.normalizeGovernanceShadowBlockContract(merged);
+
+    expect(normalized.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'gateway_governance_shadow_block',
+        governance_shadow_contract: expect.objectContaining({
+          normalized: true,
+          recovery_reason: 'layer_not_allowed_shadow_block',
+          original_query_source: 'agent_products_error_fallback',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          primary_path_degraded: false,
+          primary_path_used: 'governance_shadow_block',
+        }),
+      }),
+    );
+    expect(normalized.clarification).toBeNull();
+  });
+
   test('leaves non-governed or healthy responses unchanged', () => {
     const app = require('../src/server');
     const input = {
