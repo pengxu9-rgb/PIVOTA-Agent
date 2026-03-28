@@ -1777,7 +1777,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(auroraExternalSupplement.isDone()).toBe(false);
   });
 
-  test('serum cache preference helper keeps upstream when internal preference is disabled', async () => {
+  test('serum cache preference helper prefers internal skincare cache when upstream is external-only', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -1796,8 +1796,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(decision).toEqual(
       expect.objectContaining({
         evaluated: true,
-        decision: 'keep_upstream',
-        reason: 'internal_preference_disabled',
+        decision: 'replace_with_cache',
+        reason: 'upstream_external_only_prefers_internal_cache',
       }),
     );
   });

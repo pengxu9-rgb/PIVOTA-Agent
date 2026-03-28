@@ -4529,8 +4529,8 @@ function decideGenericSkincareCachePreference({
 
   return {
     evaluated,
-    decision: 'keep_upstream',
-    reason: 'internal_preference_disabled',
+    decision: 'replace_with_cache',
+    reason: 'upstream_external_only_prefers_internal_cache',
     beauty_bucket: effectiveBeautyBucket || null,
     cache_internal_count: cacheInternalProducts.length,
     upstream_external_only: upstreamExternalOnly,
