@@ -144,12 +144,23 @@ describe('Celestial commerce-core aurora manual review runner', () => {
       expect(summary.pass_count).toBe(1);
       expect(summary.fail_count).toBe(0);
       expect(summary.review_required_count).toBe(0);
+      expect(summary.case_count).toBe(1);
+      expect(summary.all_cases_resolved).toBe(true);
       expect(summary.results[0]).toEqual(
         expect.objectContaining({
           verdict: 'pass',
           query_source: 'cache_cross_merchant_search_supplemented',
           final_decision: 'cache_returned',
         }),
+      );
+      expect(Array.isArray(summary.results[0].checklist)).toBe(true);
+      expect(summary.results[0].checklist).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: expect.stringContaining('HTTP 200'),
+            status: 'pass',
+          }),
+        ]),
       );
     } finally {
       await new Promise((resolve) => server.close(resolve));
