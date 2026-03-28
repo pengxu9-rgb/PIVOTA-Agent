@@ -1,0 +1,19 @@
+{
+  "completed": [
+    "gateway normalization plus access governance boundary is explicit and audited",
+    "shopping_agent owns strict, policy, and cache ambiguity decisioning for commerce search",
+    "commerce_resolution owns primary quality, resolver adoption, fallback allowance, and result shaping",
+    "aurora_beauty owns guidance-only, cache-stage, and direct-supplement orchestration wrappers"
+  ],
+  "incomplete": [
+    "Aurora top-layer clarify, conversation-progress, and source-specific early-decision ownership still spans server.js and the facade",
+    "readiness dimensions still amber for prompt intent, query decomposition, merchant/product routing, fallback resilience, and cross-layer drift",
+    "shared live acceptance corpus for merchant/product routing and exact lookup remains incomplete",
+    "exact product lookup and exact-ish fallback behavior are still not deterministic enough for a shared release-grade smoke"
+  ],
+  "deferred": [
+    "production rollout or prod release gating",
+    "deep protocol adapter implementation beyond current gateway governance skeleton",
+    "another broad facade migration outside blocker fixes discovered during this acceptance cycle"
+  ]
+}

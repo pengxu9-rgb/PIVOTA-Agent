@@ -22,6 +22,8 @@ function parseArgs(argv) {
       String(process.env.SEARCH_MATRIX_EVAL_MODE || '').trim().toLowerCase() === 'true',
     evalHeader: process.env.SEARCH_MATRIX_EVAL_HEADER || 'X-Eval',
     evalHeaderValue: process.env.SEARCH_MATRIX_EVAL_HEADER_VALUE || '1',
+    authToken: process.env.SEARCH_MATRIX_AUTH_TOKEN || '',
+    agentApiKey: process.env.SEARCH_MATRIX_AGENT_API_KEY || '',
     failOnGateFailures:
       String(process.env.SEARCH_MATRIX_FAIL_ON_GATE_FAILURES || '').trim().toLowerCase() === 'true',
   };
@@ -39,6 +41,8 @@ function parseArgs(argv) {
     if (token === '--eval-mode') args.evalMode = true;
     if (token === '--eval-header' && next) args.evalHeader = String(next);
     if (token === '--eval-header-value' && next) args.evalHeaderValue = String(next);
+    if (token === '--auth-token' && next) args.authToken = String(next);
+    if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--fail-on-gate-failures') args.failOnGateFailures = true;
   }
   return args;
@@ -260,6 +264,21 @@ function valuesEqual(left, right) {
     return Boolean(left) === Boolean(right);
   }
   return String(left) === String(right);
+}
+
+function buildAuthHeaders(args = {}) {
+  const headers = {};
+  const authToken = String(args.authToken || '').trim();
+  const agentApiKey = String(args.agentApiKey || '').trim();
+  if (authToken) {
+    headers.Authorization = /^Bearer\s+/i.test(authToken)
+      ? authToken
+      : `Bearer ${authToken}`;
+  }
+  if (agentApiKey) {
+    headers['X-Agent-API-Key'] = agentApiKey;
+  }
+  return headers;
 }
 
 function evaluateCase(row) {
@@ -533,6 +552,14 @@ async function main() {
   const url = `${baseUrl}${endpoint}`;
   const results = [];
   const startedAt = Date.now();
+  const authHeaders = buildAuthHeaders(args);
+  const authMode = authHeaders.Authorization && authHeaders['X-Agent-API-Key']
+    ? 'bearer_and_agent_api_key'
+    : authHeaders.Authorization
+      ? 'bearer'
+      : authHeaders['X-Agent-API-Key']
+        ? 'x-agent-api-key'
+        : 'none';
 
   for (let round = 1; round <= args.rounds; round += 1) {
     for (const caseSpec of cases) {
@@ -581,6 +608,7 @@ async function main() {
             validateStatus: () => true,
             headers: {
               'Content-Type': 'application/json',
+              ...authHeaders,
               ...(args.evalMode
                 ? { [String(args.evalHeader || 'X-Eval')]: String(args.evalHeaderValue || '1') }
                 : {}),
@@ -689,6 +717,7 @@ async function main() {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
     endpoint,
+    auth_mode: authMode,
     eval_mode: Boolean(args.evalMode),
     rounds: args.rounds,
     total_requests: total,

@@ -14,6 +14,27 @@ const {
   classifyBeautyBucketFromText,
   isBeautyBucketCompatibleForQuery,
 } = require('./beautyQueryProfile');
+const {
+  _internals: productGroundingResolverInternals = {},
+} = require('../services/productGroundingResolver');
+
+const normalizeResolverLookupText =
+  typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
+    ? productGroundingResolverInternals.normalizeTextForResolver
+    : (value) => String(value || '').trim().toLowerCase();
+const tokenizeResolverLookupQuery =
+  typeof productGroundingResolverInternals.tokenizeNormalizedResolverQuery === 'function'
+    ? productGroundingResolverInternals.tokenizeNormalizedResolverQuery
+    : (value) =>
+        String(value || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+const resolveKnownStableLookupAlias =
+  typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
+    ? productGroundingResolverInternals.resolveKnownStableProductRef
+    : null;
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v40';
@@ -1040,7 +1061,25 @@ function normalizeQueryClass(value, options = {}) {
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
+  const normalizedResolverQuery = normalizeResolverLookupText(rawQuery);
+  const resolverQueryTokens = tokenizeResolverLookupQuery(normalizedResolverQuery);
+  const stableAliasLookupMatch =
+    resolveKnownStableLookupAlias && normalizedResolverQuery && resolverQueryTokens.length >= 3
+      ? resolveKnownStableLookupAlias({
+          query: rawQuery,
+          normalizedQuery: normalizedResolverQuery,
+          queryTokens: resolverQueryTokens,
+        })
+      : null;
+  const stableAliasLookupClassified =
+    stableAliasLookupMatch &&
+    stableAliasLookupMatch.product_ref &&
+    String(stableAliasLookupMatch.product_ref.product_id || '').trim() &&
+    String(stableAliasLookupMatch.product_ref.merchant_id || '').trim();
   const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
+  if (stableAliasLookupClassified && (!explicit || explicit === 'exploratory' || explicit === 'category')) {
+    return 'lookup';
+  }
   if (explicit) return explicit;
 
   const scenarioName = String(intent?.scenario?.name || '').toLowerCase();
@@ -1067,6 +1106,9 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   }
   if (/约会|通勤|面试|露营|登山|徒步|出差|旅行|date|commute|interview|camping|hiking|travel/.test(query)) {
     return 'scenario';
+  }
+  if (stableAliasLookupClassified) {
+    return 'lookup';
   }
   if (
     detectBrandEntities(rawQuery, { candidateProducts: [] }).brand_like &&

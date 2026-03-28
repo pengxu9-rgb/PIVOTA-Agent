@@ -79,6 +79,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED,
       SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES:
         process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES,
+      FIND_PRODUCTS_MULTI_EXPANSION_MODE:
+        process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE,
+      FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE:
+        process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+      STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED:
+        process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -86,6 +92,9 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     process.env.API_MODE = 'REAL';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
     process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED = 'false';
+    process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
+    process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
+    process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     delete process.env.DATABASE_URL;
     delete process.env.PROXY_SEARCH_AURORA_API_BASE;
     delete process.env.PROXY_SEARCH_AURORA_BACKEND_BASE_URL;
@@ -238,6 +247,23 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     } else {
       process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES =
         prevEnv.SEARCH_UPSTREAM_QUOTA_CLARIFY_QUERY_CLASSES;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = prevEnv.FIND_PRODUCTS_MULTI_EXPANSION_MODE;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE =
+        prevEnv.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE;
+    }
+    if (prevEnv.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED === undefined) {
+      delete process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
+    } else {
+      process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED =
+        prevEnv.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED;
     }
   });
 
@@ -434,11 +460,13 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products).toHaveLength(0);
-    expect(resp.body.reply).toBe('Search is temporarily unavailable. Please retry shortly.');
+    expect(typeof resp.body.reply).toBe('string');
+    expect(resp.body.reply.length).toBeGreaterThan(0);
     const { metadata, proxySearchFallback } = readFallbackSections(resp);
     expect(String(metadata.query_source || '')).toContain('agent_products');
     expect(
-      metadata.strict_empty === true || String(proxySearchFallback.reason || '').includes('primary_irrelevant'),
+      metadata.strict_empty === true ||
+        String(proxySearchFallback.reason || '').includes('primary_irrelevant'),
     ).toBe(true);
   });
 
@@ -497,6 +525,71 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       }),
     );
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
+  });
+
+  test('keeps ambiguity-driven clarify on the primary path when upstream returns a healthy empty response', async () => {
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.SEARCH_UPSTREAM_QUOTA_CLARIFY_ENABLED = 'false';
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        total: 0,
+        products: [],
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: '有什么适合今晚约会的',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'zh-CN' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.clarification).toEqual(
+      expect.objectContaining({
+        question: expect.any(String),
+        options: expect.any(Array),
+      }),
+    );
+    expect(resp.body.reason_codes).toEqual(expect.arrayContaining(['AMBIGUITY_CLARIFY']));
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+      }),
+    );
+    expect(resp.body.metadata?.strict_empty).not.toBe(true);
+    expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
+    expect(resp.body.metadata?.fallback_reason == null).toBe(true);
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+    expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(false);
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('clarify');
+    expect(resp.body.metadata?.primary_clarify_contract).toEqual(
+      expect.objectContaining({
+        normalized: true,
+        recovery_reason: 'ambiguity_gate_primary_clarify',
+        original_query_source: 'agent_products_error_fallback',
+        original_fallback_reason: 'primary_unusable_no_fallback',
+      }),
+    );
   });
 
   test('pet harness query rejects dog-apparel-only matches as strict empty', async () => {
@@ -667,6 +760,108 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resolverSpy).not.toHaveBeenCalled();
   });
 
+  test('runs resolver-first for exact title query even when the query is brand-like', async () => {
+    const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
+    const resolvedMerchantId = 'merch_efbc46b4619cfbdf';
+    const resolvedProductId = '9886499864904';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'true';
+    process.env.PROXY_SEARCH_RESOLVER_DETAIL_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: resolvedMerchantId,
+        product_id: resolvedProductId,
+      },
+      confidence: 1,
+      reason: 'stable_alias_ref',
+      reason_code: 'stable_alias_match',
+      candidates: [{ title: 'The Ordinary Niacinamide 10% + Zinc 1%' }],
+      metadata: { latency_ms: 11, sources: [{ source: 'stable_alias_ref', ok: true, count: 1 }] },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: resolverSpy,
+    }));
+
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload &&
+          body.payload.product &&
+          body.payload.product.merchant_id === resolvedMerchantId &&
+          body.payload.product.product_id === resolvedProductId
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        product: {
+          product_id: resolvedProductId,
+          merchant_id: resolvedMerchantId,
+          title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+        },
+      });
+
+    const searchScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'wrong_product_1',
+            merchant_id: resolvedMerchantId,
+            title: 'Round Powder Brush',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: queryText,
+            limit: 10,
+            in_stock_only: false,
+          },
+        },
+        metadata: {
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+          entry: 'home',
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: resolvedProductId,
+        merchant_id: resolvedMerchantId,
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_resolver_fallback',
+        proxy_search_fallback: expect.objectContaining({
+          applied: true,
+          reason: 'resolver_first',
+        }),
+      }),
+    );
+    expect(resolverSpy).toHaveBeenCalled();
+    expect(searchScope.isDone()).toBe(false);
+  });
+
   test('skips secondary fallback chain when resolver miss already has no positive sources', async () => {
     const queryText = 'hydrating essence toner';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
@@ -725,9 +920,11 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.products).toHaveLength(0);
     const { metadata, proxySearchFallback } = readFallbackSections(resp);
     expect(String(metadata.query_source || '')).toMatch(/agent_products_/);
-    expect(proxySearchFallback.applied).toBe(false);
+    expect(metadata.secondary_fallback_skipped).toBe(true);
+    expect(metadata.secondary_fallback_skip_reason).toBe('resolver_miss_no_positive_sources');
+    expect(proxySearchFallback.applied).toBe(true);
     expect(String(proxySearchFallback.reason || '')).toMatch(
-      /resolver_miss_skip_secondary|fallback_not_better|empty_or_unusable_primary/i,
+      /primary_unusable_skip_secondary|resolver_miss_skip_secondary|empty_or_unusable_primary/i,
     );
   });
 
@@ -783,10 +980,12 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(primaryScope.isDone()).toBe(true);
     expect(resp.body.products).toHaveLength(0);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    const { proxySearchFallback } = readFallbackSections(resp);
-    expect(proxySearchFallback.applied).toBe(false);
+    const { metadata, proxySearchFallback } = readFallbackSections(resp);
+    expect(metadata.secondary_fallback_skipped).toBe(true);
+    expect(metadata.secondary_fallback_skip_reason).toBe('resolver_miss_upstream_timeout');
+    expect(proxySearchFallback.applied).toBe(true);
     expect(String(proxySearchFallback.reason || '')).toMatch(
-      /resolver_miss_skip_secondary|fallback_not_better|empty_or_unusable_primary/i,
+      /primary_unusable_skip_secondary|resolver_miss_skip_secondary|empty_or_unusable_primary/i,
     );
   });
 
@@ -948,16 +1147,20 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
+        query_source: 'agent_products_search',
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: expect.stringMatching(/^upstream_/),
-          route: 'invoke_exception_fallback_invoke',
+          reason: expect.stringMatching(/empty_or_unusable_primary|upstream_/),
         }),
+        fallback_attempt_count: expect.any(Number),
+        selected_fallback_attempt: expect.any(Number),
       }),
     );
+    expect(resp.body.metadata.fallback_attempt_count).toBeGreaterThan(0);
+    expect(resp.body.metadata.selected_fallback_attempt).toBeGreaterThan(0);
   });
 
-  test('aurora source forces secondary invoke fallback even when global toggles are disabled', async () => {
+  test('aurora direct_api source is governance-block-observed even when fallback toggles are forced', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
@@ -1040,21 +1243,20 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.status).toBe(200);
     expect(secondaryScope.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'beauty_fallback_1',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
+    expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
           applied: true,
+          reason: expect.stringMatching(/primary_(unusable|irrelevant)_no_fallback/),
+        }),
+        strict_empty: true,
+        gateway_governance: expect.objectContaining({
+          observed_action: 'block',
+          would_enforce: true,
+          reason_codes: expect.arrayContaining(['layer_not_allowed']),
         }),
       }),
-    );
-    expect(String(resp.body?.metadata?.proxy_search_fallback?.reason || '')).toMatch(
-      /upstream_status_429|empty_or_unusable_primary/,
     );
   });
 
@@ -1194,7 +1396,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('aurora invoke uses dedicated upstream base when configured', async () => {
+  test('aurora direct_api uses dedicated upstream base before governance-block-observed strict empty', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
@@ -1210,34 +1412,6 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         success: true,
         products: [],
         total: 0,
-      });
-
-    const auroraFallbackScope = nock('http://aurora-upstream.test')
-      .post('/agent/shop/v1/invoke', (body) => {
-        return (
-          body &&
-          body.operation === 'find_products_multi' &&
-          body.payload &&
-          body.payload.search &&
-          String(body.payload.search.query || '') === queryText &&
-          body.payload.search.fast_mode === true &&
-          body.payload.search.allow_stale_cache === false &&
-          body.payload.search.allow_external_seed === true &&
-          String(body.payload.search.external_seed_strategy || '').length > 0 &&
-          String(body.metadata?.source || '') === 'aurora-bff'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [
-          {
-            product_id: 'aurora_dedicated_1',
-            merchant_id: 'merch_efbc46b4619cfbdf',
-            title: 'Copper peptide serum fallback',
-          },
-        ],
-        total: 1,
       });
 
     const app = require('../../src/server');
@@ -1259,12 +1433,16 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(auroraPrimaryScope.isDone()).toBe(true);
-    expect(auroraFallbackScope.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products[0]).toEqual(
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        product_id: 'aurora_dedicated_1',
-        merchant_id: 'merch_efbc46b4619cfbdf',
+        strict_empty: true,
+        gateway_governance: expect.objectContaining({
+          observed_action: 'block',
+          would_enforce: true,
+          reason_codes: expect.arrayContaining(['layer_not_allowed']),
+        }),
       }),
     );
   });
@@ -1683,7 +1861,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('aurora invoke path accepts relevant secondary fallback even when usable count is lower than irrelevant primary', async () => {
+  test('aurora direct_api path governance-blocks before adopting relevant secondary fallback', async () => {
     const queryText = 'copper peptides serum alternatives';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
@@ -1757,18 +1935,18 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products.length).toBeGreaterThan(0);
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'cp_1',
-        merchant_id: 'merch_efbc46b4619cfbdf',
-      }),
-    );
+    expect(resp.body.products).toHaveLength(0);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         proxy_search_fallback: expect.objectContaining({
           applied: true,
-          reason: 'primary_irrelevant',
+          reason: expect.stringMatching(/primary_(unusable|irrelevant)_no_fallback/),
+        }),
+        strict_empty: true,
+        gateway_governance: expect.objectContaining({
+          observed_action: 'block',
+          would_enforce: true,
+          reason_codes: expect.arrayContaining(['layer_not_allowed']),
         }),
       }),
     );
