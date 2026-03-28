@@ -515,6 +515,7 @@ test('enrichSkillRequestForCompat does not fall back to reco alternatives when d
 
   assert.equal(Array.isArray(enriched.params._candidate_pool), false);
   assert.equal(Object.prototype.hasOwnProperty.call(enriched.params, '_candidate_pool'), false);
+  assert.equal(enriched.params.product_anchor.url, anchorUrl);
 });
 
 test('buildSkillRequest preserves same_as_am routine semantics in current routine context', () => {

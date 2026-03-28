@@ -938,11 +938,9 @@ async function resolveGroundedProductAnchorForCompat({
           source: 'chat_compat_search',
           strictFilter: true,
         });
-        const mappedAnchor = trust && trust.usable_for_anchor_id === true
+        const candidateAnchor = trust && trust.usable_for_anchor_id === true
           ? mapCatalogProductToAnchorProduct(row, { fallbackName: baseIdentity.name || query })
           : null;
-        const displayAnchor = isPlainObject(trust && trust.display_anchor) ? trust.display_anchor : null;
-        const candidateAnchor = mappedAnchor || displayAnchor;
         if (!candidateAnchor) continue;
         const score = scoreAnchorTrustCandidate(trust);
         if (score > bestScore) {
