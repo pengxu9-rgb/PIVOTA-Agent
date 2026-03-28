@@ -56,7 +56,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_REPO_NAME: PIVOTA-Agent
-          ALLOWED_BRANCH_REGEX: "^main$"
+          ALLOWED_BRANCH_REGEX: "^main$|^wt/s2-domain-condenser$"
         run: |
           bash scripts/verify_release_source.sh
 
