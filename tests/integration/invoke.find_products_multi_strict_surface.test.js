@@ -562,6 +562,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         strict_constraint_reason: 'multi_constraint',
         strict_prefetch_recovered: true,
         strict_prefetch_recovery_source: 'agent_strict_ingredient_prefetch',
+        ingredient_intents: ['ascorbic_acid'],
+        matched_ingredient_ids: ['ascorbic_acid'],
         budget_fx_applied: true,
         budget_fx_source: expect.any(String),
         budget_fx_candidate_currency: 'USD',
