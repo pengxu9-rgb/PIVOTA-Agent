@@ -12514,6 +12514,7 @@ function normalizeGovernanceShadowBlockContract(body) {
   return {
     ...body,
     clarification: null,
+    reason_codes: governanceReasonCodes,
     metadata: nextMetadata,
   };
 }

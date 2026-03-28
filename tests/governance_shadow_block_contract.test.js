@@ -85,6 +85,7 @@ describe('governance shadow block contract', () => {
         }),
       }),
     );
+    expect(normalized.reason_codes).toEqual(['layer_not_allowed']);
     expect(normalized.metadata.strict_empty).toBeUndefined();
     expect(normalized.metadata.strict_empty_reason).toBeUndefined();
     expect(normalized.clarification).toBeNull();
@@ -124,6 +125,7 @@ describe('governance shadow block contract', () => {
     const normalized = app._debug.normalizeGovernanceShadowBlockContract(input);
 
     expect(normalized.products).toEqual(input.products);
+    expect(normalized.reason_codes).toEqual(['deep_pagination_blocked']);
     expect(normalized.metadata).toEqual(
       expect.objectContaining({
         query_source: 'gateway_governance_shadow_block',
@@ -203,6 +205,7 @@ describe('governance shadow block contract', () => {
     const merged = app._debug.mergeInvokeGatewayAuditMetadata(input, gatewayAudit);
     const normalized = app._debug.normalizeGovernanceShadowBlockContract(merged);
 
+    expect(normalized.reason_codes).toEqual(['layer_not_allowed']);
     expect(normalized.metadata).toEqual(
       expect.objectContaining({
         query_source: 'gateway_governance_shadow_block',
