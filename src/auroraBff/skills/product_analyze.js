@@ -79,6 +79,9 @@ class ProductAnalyzeSkill extends BaseSkill {
           action_type: 'navigate_skill',
           target_skill_id: 'dupe.suggest',
           label: { en: 'Find alternatives', zh: '寻找替代品' },
+          params: {
+            product_anchor: params.product_anchor,
+          },
         },
         {
           action_type: 'navigate_skill',
