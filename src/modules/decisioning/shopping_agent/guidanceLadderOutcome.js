@@ -127,6 +127,7 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
     const responseProducts = stabilizedDisplayProducts
       .slice(0, requestedLimit)
       .map((product) => normalizeGuidanceDiscoveryProductPdpContract(product));
+    const finalDecision = responseProducts.length > 0 ? 'cache_returned' : null;
     const remainingBudgetMs = getGuidanceFastpathRemainingBudgetMs(startedAt);
 
     const selectedMergedProducts = Array.isArray(selectedAttempt?.mergedProducts)
@@ -154,6 +155,7 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
         attempts?.[0]?.intent_strength ||
         guidanceContext?.query_step_strength ||
         null,
+      ...(finalDecision ? { final_decision: finalDecision } : {}),
       decision_mode: GUIDANCE_ONLY_DECISION_MODE,
       execution_mode: GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER,
       latency_mode: GUIDANCE_FASTPATH_LATENCY_MODE,
@@ -197,6 +199,7 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
         selected_attempt_query: selectedAttemptQuery || null,
         attempt_trace: Array.isArray(attemptTrace) ? attemptTrace : [],
         phase_trace: Array.isArray(phaseTrace) ? phaseTrace : [],
+        ...(finalDecision ? { final_decision: finalDecision } : {}),
         server_budget_ms: GUIDANCE_FASTPATH_TOTAL_BUDGET_MS,
         remaining_budget_ms: remainingBudgetMs,
         client_timeout_recommended_ms: GUIDANCE_FASTPATH_CLIENT_TIMEOUT_RECOMMENDED_MS,
@@ -217,6 +220,21 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
         query_step_strength: searchDecision.query_step_strength,
         query_target_step_family: guidanceContext?.target_step_family || null,
         target_relevance_class_counts: searchDecision.target_relevance_class_counts,
+        search_trace: {
+          ...(selectedDecision?.search_trace && typeof selectedDecision.search_trace === 'object'
+            ? selectedDecision.search_trace
+            : {}),
+          ...(finalDecision ? { final_decision: finalDecision } : {}),
+          primary_path_used: 'guidance_fastpath',
+        },
+        route_health: {
+          ...(selectedDecision?.route_health && typeof selectedDecision.route_health === 'object'
+            ? selectedDecision.route_health
+            : {}),
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: 'guidance_fastpath',
+        },
         search_decision: searchDecision,
         query_exhausted: true,
       },
