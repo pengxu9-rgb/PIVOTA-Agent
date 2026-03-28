@@ -4,6 +4,19 @@
       "id": "staging_invoke_auth_smoke",
       "title": "staging invoke auth smoke",
       "family": "broad_discovery",
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search",
+        "cache_cross_merchant_search_supplemented",
+        "agent_products_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",

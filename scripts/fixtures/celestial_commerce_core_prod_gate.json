@@ -4,6 +4,17 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -30,6 +41,17 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "request_search": {
       "external_seed_strategy": "unified_relevance"
     },
@@ -59,6 +81,17 @@
     "family": "public_search_contract",
     "query": "serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "request_search": {
       "external_seed_strategy": "supplement_internal_first"
     },
@@ -88,6 +121,17 @@
     "family": "broad_commerce_search",
     "query": "serum",
     "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search_supplemented"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -114,6 +158,17 @@
     "family": "broad_commerce_search",
     "query": "serum",
     "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search_supplemented"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -140,6 +195,9 @@
     "family": "strict_consistency",
     "query": "niacinamide serum",
     "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -164,6 +222,9 @@
     "family": "strict_consistency",
     "query": "niacinamide serum",
     "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -184,10 +245,52 @@
     ]
   },
   {
+    "id": "shopping_agent_exact_ipsa_time_reset_aqua",
+    "family": "exact_product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "search_trace.query_class",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.query_class": "lookup",
+      "search_trace.final_decision": "cache_returned"
+    },
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
     "id": "shopping_agent_merchant_query_ipsa_products",
     "family": "merchant_query",
     "query": "IPSA products",
     "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -206,6 +309,17 @@
     "family": "merchant_query",
     "query": "IPSA products",
     "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
@@ -224,6 +338,17 @@
     "family": "clarify_required",
     "query": "有什么适合今晚约会的",
     "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "agent_products_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": true,
     "must_have_metadata": [
       "service_version.commit",
@@ -242,6 +367,17 @@
     "family": "clarify_required",
     "query": "有什么适合今晚约会的",
     "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "agent_products_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
     "allow_zero_results": true,
     "must_have_metadata": [
       "service_version.commit",

@@ -27,6 +27,8 @@ on:
       - "docs/runbooks/celestial_commerce_core_prod_canary.md"
       - "docs/runbooks/celestial_commerce_core_stabilization_acceptance.md"
       - "docs/runbooks/celestial_commerce_core_source_contracts.md"
+      - "docs/runbooks/commerce_prod_invoke_contract_audit.md"
+      - "docs/runbooks/commerce_invoke_rail_matrix.md"
       - "docs/runbooks/pivota_gateway_invocation_access_governance.md"
       - "docs/runbooks/llm_agent_infrastructure_readiness.md"
       - "scripts/run_celestial_commerce_core_readiness_audit.sh"
@@ -42,9 +44,12 @@ on:
       - "scripts/generate_celestial_commerce_gateway_governance_report.js"
       - "scripts/verify_celestial_commerce_core_boundaries.js"
       - "scripts/verify_deployed_commit_matches.sh"
+      - "scripts/verify_commerce_invoke_rails.js"
+      - "scripts/lib/**"
       - "scripts/fixtures/celestial_commerce_core_prod_gate.json"
       - "scripts/fixtures/celestial_commerce_core_prod_canary.json"
       - "scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json"
+      - "scripts/fixtures/commerce_invoke_rail_inventory.json"
       - "scripts/fixtures/celestial_commerce_core_stabilization_snapshot.json"
       - "scripts/fixtures/celestial_commerce_core_milestone0_baseline.json"
       - "scripts/fixtures/celestial_commerce_gateway_governance_alert_thresholds.json"
@@ -73,6 +78,8 @@ on:
       - "tests/celestial_commerce_core_staging_matrix_script.test.js"
       - "tests/celestial_commerce_core_stabilization_report_script.test.js"
       - "tests/celestial_commerce_core_prod_canary_script.test.js"
+      - "tests/commerce_invoke_rail_inventory.test.js"
+      - "tests/commerce_primary_path_contract.test.js"
       - "tests/shopping_agent_loop_break.test.js"
       - "tests/shopping_agent_guidance_context.test.js"
       - "tests/shopping_agent_guidance_retrieval_plan.test.js"
@@ -118,6 +125,7 @@ jobs:
           node --check scripts/search_stability_matrix.js
           node --check scripts/run_celestial_commerce_core_staging_matrix.js
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
+          node scripts/verify_commerce_invoke_rails.js
           node scripts/verify_celestial_commerce_core_boundaries.js
           bash -n scripts/smoke_celestial_commerce_core_prod.sh
           bash -n scripts/probe_celestial_commerce_core_prod_canary.sh
@@ -145,6 +153,8 @@ jobs:
             tests/celestial_commerce_core_staging_matrix_script.test.js \
             tests/celestial_commerce_core_stabilization_report_script.test.js \
             tests/celestial_commerce_core_prod_canary_script.test.js \
+            tests/commerce_invoke_rail_inventory.test.js \
+            tests/commerce_primary_path_contract.test.js \
             tests/shopping_agent_loop_break.test.js \
             tests/shopping_agent_guidance_context.test.js \
             tests/shopping_agent_guidance_retrieval_plan.test.js \

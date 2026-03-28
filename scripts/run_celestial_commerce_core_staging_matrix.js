@@ -2,6 +2,13 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const {
+  AUTHORITATIVE_COMMERCE,
+  normalizeRailMode,
+  normalizeEndpoint,
+  resolveBaseUrl,
+} = require('./lib/commerce_invoke_contract');
+const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
 
 function parseArgs(argv) {
   const args = {
@@ -20,6 +27,9 @@ function parseArgs(argv) {
       process.env.CELESTIAL_COMMERCE_STAGING_MATRIX_OUT_DIR ||
       path.join(__dirname, '..', 'reports', 'celestial-commerce-staging-matrix'),
     timeoutMs: Number(process.env.CELESTIAL_COMMERCE_STAGING_TIMEOUT_MS || 15000),
+    railMode: normalizeRailMode(
+      process.env.CELESTIAL_COMMERCE_STAGING_RAIL_MODE || process.env.SEARCH_MATRIX_RAIL_MODE || '',
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -28,6 +38,7 @@ function parseArgs(argv) {
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--cases' && next) args.cases = String(next);
     if (token === '--out-dir' && next) args.outDir = String(next);
+    if (token === '--rail-mode' && next) args.railMode = normalizeRailMode(next);
     if (token === '--timeout-ms' && next) {
       args.timeoutMs = Math.max(500, Number(next) || 15000);
     }
@@ -81,7 +92,9 @@ function toEnvKey(input) {
 }
 
 function resolveCaseAuth(testCase = {}) {
-  const requiresAuth = testCase.requires_auth === true;
+  const requiresAuth =
+    testCase.requires_auth === true ||
+    normalizeRailMode(testCase.rail_mode || AUTHORITATIVE_COMMERCE) === AUTHORITATIVE_COMMERCE;
   const profile = String(testCase.auth_profile || 'default').trim() || 'default';
   if (!requiresAuth) {
     return {
@@ -190,9 +203,24 @@ function normalizeCase(rawCase = {}, kind) {
     family: String(rawCase.family || '').trim() || 'uncategorized',
     blocking: rawCase.blocking !== false,
     execution_mode: String(rawCase.execution_mode || 'live').trim() || 'live',
-    endpoint: String(rawCase.endpoint || '').trim() || (kind === 'governance' ? '/agent/shop/v1/invoke' : '/api/gateway'),
+    endpoint:
+      normalizeEndpoint(
+        String(rawCase.endpoint || '').trim(),
+        normalizeRailMode(rawCase.rail_mode || AUTHORITATIVE_COMMERCE),
+      ) || '/agent/shop/v1/invoke',
+    rail_mode: normalizeRailMode(rawCase.rail_mode || AUTHORITATIVE_COMMERCE),
     requires_auth: rawCase.requires_auth === true,
     auth_profile: String(rawCase.auth_profile || 'default').trim() || 'default',
+    require_primary_path: rawCase.require_primary_path !== false,
+    allow_strict_empty: rawCase.allow_strict_empty === true,
+    allowed_query_sources: Array.isArray(rawCase.allowed_query_sources)
+      ? rawCase.allowed_query_sources.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    must_not_match_fallback_sources: Array.isArray(rawCase.must_not_match_fallback_sources)
+      ? rawCase.must_not_match_fallback_sources
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      : [],
     headers:
       rawCase.headers && typeof rawCase.headers === 'object' && !Array.isArray(rawCase.headers)
         ? { ...rawCase.headers }
@@ -336,6 +364,13 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   const products = Array.isArray(body?.products) ? body.products : [];
   const titles = normalizeTitles(products);
   const outcomeKind = inferOutcomeKind(body);
+  const testCase = context.testCase || {};
+  const primaryPath = evaluatePrimaryPathContract(body, {
+    require_primary_path: testCase.require_primary_path !== false,
+    allow_strict_empty: testCase.allow_strict_empty === true,
+    allowed_query_sources: testCase.allowed_query_sources,
+    must_not_match_fallback_sources: testCase.must_not_match_fallback_sources,
+  });
 
   const expectedStatus =
     ruleSet.expect_http_status == null ? null : Number(ruleSet.expect_http_status);
@@ -400,6 +435,7 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   };
   const nested = evaluateRuleSet(nestedRuleSet, context);
   reasons.push(...nested.reasons);
+  reasons.push(...primaryPath.reasons);
 
   if (reasons.length > 0) {
     return { status: 'fail', reasons };
@@ -617,6 +653,7 @@ async function runCase(baseUrl, testCase, timeoutMs) {
     body,
     headers,
     reasonCodes,
+    testCase,
   };
   const correctness = evaluateCorrectness(testCase.correctness, context);
   const ownership = evaluateRuleSet(testCase.ownership, context);
@@ -651,6 +688,7 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         getPath(body, 'metadata.gateway_governance.observed_action') || null,
       contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
       strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
+      primary_path_degraded: primaryPathDegraded(body),
       product_count: Array.isArray(body?.products) ? body.products.length : 0,
       clarification_question: getPath(body, 'clarification.question') || null,
     },
@@ -662,6 +700,13 @@ async function runCase(baseUrl, testCase, timeoutMs) {
     },
     request: testCase.request,
   };
+}
+
+function primaryPathDegraded(body = {}) {
+  return evaluatePrimaryPathContract(body, {
+    require_primary_path: true,
+    allow_strict_empty: true,
+  }).assessment.degraded;
 }
 
 function buildSummary(results = [], args = {}, matrixPath = '') {
@@ -682,7 +727,12 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
     fail_count: results.filter((item) => item.overall_status === 'fail').length,
     review_required_count: results.filter((item) => item.overall_status === 'review_required').length,
     infra_blocked_count: infraBlockedResults.length,
+    primary_path_degraded_count: results.filter((item) => item.response_excerpt.primary_path_degraded === true).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
+    authoritative_endpoint:
+      args.railMode === AUTHORITATIVE_COMMERCE ? `${args.baseUrl.replace(/\/+$/, '')}/agent/shop/v1/invoke` : null,
+    authoritative_mode: args.railMode,
+    public_probe_non_authoritative: args.railMode !== AUTHORITATIVE_COMMERCE,
     correctness: {
       pass: results.filter((item) => item.correctness.status === 'pass').length,
       fail: results.filter((item) => item.correctness.status === 'fail').length,
@@ -749,6 +799,7 @@ function writeArtifacts(outDir, summary, results) {
     `- Fail: ${summary.fail_count}`,
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
+    `- Primary-path degraded: ${summary.primary_path_degraded_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',
     '## Section Summary',

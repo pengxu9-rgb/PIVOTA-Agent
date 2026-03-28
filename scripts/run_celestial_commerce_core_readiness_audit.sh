@@ -9,6 +9,10 @@ BACKEND_REPO="${PIVOTA_BACKEND_REPO:-/Users/pengchydan/dev/Pivota-cursor-create-
 ACP_REPO="${PIVOTA_ACP_REPO:-/Users/pengchydan/dev/pivota-acp-revert}"
 BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
 BACKEND_PUBLIC_BASE_URL="${BACKEND_PUBLIC_BASE_URL:-https://web-production-fedb.up.railway.app}"
+COMMERCE_CORE_PROD_SMOKE_BASE_URL="${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-https://pivota-agent-production.up.railway.app}"
+COMMERCE_CORE_PROD_SMOKE_ENDPOINT="${COMMERCE_CORE_PROD_SMOKE_ENDPOINT:-/agent/shop/v1/invoke}"
+COMMERCE_CORE_PROD_AUTH_TOKEN="${COMMERCE_CORE_PROD_AUTH_TOKEN:-}"
+COMMERCE_CORE_PROD_AGENT_API_KEY="${COMMERCE_CORE_PROD_AGENT_API_KEY:-}"
 GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH:-}"
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH:-}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/celestial-commerce-core-readiness}"
@@ -275,6 +279,11 @@ elif isinstance(value, str) and value.strip():
 PY
 }
 
+latest_report_json() {
+  local dir_path="$1"
+  find "${dir_path}" -maxdepth 1 -type f -name '*.json' 2>/dev/null | sort | tail -n 1
+}
+
 STEP_NAMES=()
 STEP_STATUSES=()
 STEP_LOGS=()
@@ -333,7 +342,7 @@ run_step \
 
 run_step \
   "commerce_core_production_smoke" \
-  bash -lc "cd '${AGENT_CLEAN_REPO}' && VERIFY_DEPLOY=0 BASE_URL='${BASE_URL}' bash scripts/smoke_celestial_commerce_core_prod.sh"
+  bash -lc "cd '${AGENT_CLEAN_REPO}' && VERIFY_DEPLOY=0 RAIL_MODE=authoritative_commerce BASE_URL='${COMMERCE_CORE_PROD_SMOKE_BASE_URL}' ENDPOINT='${COMMERCE_CORE_PROD_SMOKE_ENDPOINT}' AUTH_TOKEN='${COMMERCE_CORE_PROD_AUTH_TOKEN}' AGENT_API_KEY='${COMMERCE_CORE_PROD_AGENT_API_KEY}' OUT_DIR='${RUN_DIR}/commerce_core_production_smoke' bash scripts/smoke_celestial_commerce_core_prod.sh"
 
 gateway_governance_runtime_input_path="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH}"
 if [[ -n "${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}" ]]; then
@@ -359,6 +368,12 @@ agent_public_contract_message="$(json_field "${agent_public_contract_json}" "mes
 agent_public_contract_content_type="$(json_field "${agent_public_contract_json}" "content_type")"
 agent_public_transport_error="$(json_field "${agent_public_contract_json}" "transport_error")"
 agent_prod_commit="$(json_field "${agent_public_contract_json}" "service_version_commit")"
+prod_smoke_json="$(latest_report_json "${RUN_DIR}/commerce_core_production_smoke")"
+prod_smoke_commit="$(json_file_field "${prod_smoke_json}" "rows.0.service_commit")"
+prod_smoke_authoritative_endpoint="$(json_file_field "${prod_smoke_json}" "summary.authoritative_endpoint")"
+prod_smoke_authoritative_mode="$(json_file_field "${prod_smoke_json}" "summary.authoritative_mode")"
+prod_smoke_primary_path_degraded_count="$(json_file_field "${prod_smoke_json}" "summary.primary_path_degraded_count")"
+prod_smoke_public_probe_non_authoritative="$(json_file_field "${prod_smoke_json}" "summary.public_probe_non_authoritative")"
 backend_public_version_json="$(probe_backend_public_version)"
 backend_prod_commit="$(json_field "${backend_public_version_json}" "commit")"
 backend_prod_build_id="$(json_field "${backend_public_version_json}" "build_id")"
@@ -437,7 +452,6 @@ fi
 if [[ -n "${agent_prod_commit}" && -n "${backend_prod_commit}" && "${backend_prod_service}" == "pivota-backend" && "${gateway_governance_report_status}" == "pass" ]]; then
   provenance_status="green"
 fi
-
 gateway_governance_total_scenarios="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "total_scenarios")"
 gateway_governance_matched_scenarios="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "matched_scenarios")"
 gateway_governance_would_enforce="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "coverage.would_enforce_count")"
@@ -476,6 +490,11 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo
   echo "## Production Truth"
   echo
+  echo "- Authoritative endpoint: \`${prod_smoke_authoritative_endpoint:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL}${COMMERCE_CORE_PROD_SMOKE_ENDPOINT}}\`"
+  echo "- Authoritative mode: \`${prod_smoke_authoritative_mode:-authoritative_commerce}\`"
+  echo "- Authoritative production smoke \`service_version.commit\`: \`${prod_smoke_commit:-missing}\`"
+  echo "- Authoritative production smoke primary-path degraded count: \`${prod_smoke_primary_path_degraded_count:-missing}\`"
+  echo "- Public probe non-authoritative: \`${prod_smoke_public_probe_non_authoritative:-true}\`"
   echo "- Agent public \`service_version.commit\`: \`${agent_prod_commit:-missing}\`"
   echo "- Agent public probe \`http_status\`: \`${agent_public_contract_status:-missing}\`"
   echo "- Agent public probe \`error\`: \`${agent_public_contract_error:-missing}\`"
@@ -573,6 +592,11 @@ summary = {
     "backend_public_base_url": "${BACKEND_PUBLIC_BASE_URL}",
     "agent_clean_repo": "${AGENT_CLEAN_REPO}",
     "agent_public_service_version_commit": "${agent_prod_commit}",
+    "authoritative_endpoint": "${prod_smoke_authoritative_endpoint}",
+    "authoritative_mode": "${prod_smoke_authoritative_mode}",
+    "authoritative_production_smoke_commit": "${prod_smoke_commit}",
+    "primary_path_degraded_count": "${prod_smoke_primary_path_degraded_count}",
+    "public_probe_non_authoritative": "${prod_smoke_public_probe_non_authoritative}",
     "agent_public_probe": {
         "http_status": "${agent_public_contract_status}",
         "error": "${agent_public_contract_error}",

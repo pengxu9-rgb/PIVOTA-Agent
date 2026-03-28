@@ -5,6 +5,17 @@
       "title": "Public search broad discovery stays on the stable search contract",
       "family": "broad_discovery",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -53,6 +64,17 @@
       "title": "shopping_agent broad discovery keeps internal base plus external supplement",
       "family": "broad_discovery",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search_supplemented"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -101,6 +123,17 @@
       "title": "aurora-bff broad discovery stays aligned with shopping_agent retrieval semantics",
       "family": "broad_discovery",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search_supplemented"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -149,6 +182,9 @@
       "title": "shopping_agent exact-ish ingredient lookup stays on the strict contract",
       "family": "exactish_lookup",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -193,10 +229,75 @@
       }
     },
     {
+      "id": "shopping_agent_exact_ipsa_time_reset_aqua",
+      "title": "exact IPSA lookup stays on the lookup-grade cache contract",
+      "family": "exact_product_lookup",
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "IPSA Time Reset Aqua",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "shopping_agent"
+        }
+      },
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "IPSA Time Reset Aqua"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.query_class": "lookup",
+          "metadata.search_trace.final_decision": "cache_returned"
+        }
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.query_source",
+          "metadata.search_trace.query_class"
+        ]
+      }
+    },
+    {
       "id": "shopping_agent_merchant_ipsa",
       "title": "merchant-ish query still resolves through shopping_agent routing",
       "family": "merchant_product_split",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -241,6 +342,17 @@
       "title": "clarify-required discovery still resolves to clarify instead of low-quality products",
       "family": "clarify_required",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "agent_products_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",

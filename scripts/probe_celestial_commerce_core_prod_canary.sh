@@ -4,9 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
-ENDPOINT="${ENDPOINT:-${COMMERCE_CORE_PROD_CANARY_ENDPOINT:-/api/gateway}}"
+RAIL_MODE="${RAIL_MODE:-authoritative_commerce}"
 DEFAULT_INVOKE_BASE_URL="https://pivota-agent-production.up.railway.app"
+BASE_URL="${BASE_URL:-${DEFAULT_INVOKE_BASE_URL}}"
+ENDPOINT="${ENDPOINT:-${COMMERCE_CORE_PROD_CANARY_ENDPOINT:-/agent/shop/v1/invoke}}"
 CANARY_BASE_URL="${COMMERCE_CORE_PROD_CANARY_BASE_URL:-${BASE_URL}}"
 ROUNDS="${ROUNDS:-1}"
 TIMEOUT_MS="${TIMEOUT_MS:-15000}"
@@ -19,32 +20,27 @@ EVAL_MODE="${EVAL_MODE:-0}"
 AUTH_TOKEN="${AUTH_TOKEN:-${COMMERCE_CORE_PROD_AUTH_TOKEN:-}}"
 AGENT_API_KEY="${AGENT_API_KEY:-${COMMERCE_CORE_PROD_AGENT_API_KEY:-}}"
 
-if [[ -z "${COMMERCE_CORE_PROD_CANARY_BASE_URL:-}" && "${BASE_URL}" == "https://agent.pivota.cc" && "${ENDPOINT}" == "/agent/shop/v1/invoke" ]]; then
-  CANARY_BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
+if [[ "${RAIL_MODE}" == "authoritative_commerce" && -z "${AUTH_TOKEN}" && -z "${AGENT_API_KEY}" ]]; then
+  echo "probe_celestial_commerce_core_prod_canary.sh requires AUTH_TOKEN or AGENT_API_KEY for authoritative_commerce" >&2
+  exit 2
 fi
 
 cd "${REPO_ROOT}"
 
 if [[ "${VERIFY_DEPLOY}" == "1" ]]; then
-  VERIFY_GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT:-/api/gateway}"
-  VERIFY_ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-1}"
-  if [[ "${ENDPOINT}" == "/agent/shop/v1/invoke" && ( -n "${AUTH_TOKEN}" || -n "${AGENT_API_KEY}" ) ]]; then
-    VERIFY_GATEWAY_ENDPOINT=""
-    VERIFY_ALLOW_HEADER_FALLBACK="0"
-  fi
   BASE_URL="${BASE_URL}" \
   INVOKE_BASE_URL="${CANARY_BASE_URL}" \
   AUTH_TOKEN="${AUTH_TOKEN}" \
   AGENT_API_KEY="${AGENT_API_KEY}" \
-  GATEWAY_ENDPOINT="${VERIFY_GATEWAY_ENDPOINT}" \
   ALT_GATEWAY_ENDPOINT="${ENDPOINT}" \
-  ALLOW_HEADER_FALLBACK="${VERIFY_ALLOW_HEADER_FALLBACK}" \
+  RAIL_MODE="${RAIL_MODE}" \
   bash "${SCRIPT_DIR}/verify_deployed_commit_matches.sh"
 fi
 
 args=(
   --base-url "${CANARY_BASE_URL}"
   --endpoint "${ENDPOINT}"
+  --rail-mode "${RAIL_MODE}"
   --rounds "${ROUNDS}"
   --timeout-ms "${TIMEOUT_MS}"
   --out-dir "${OUT_DIR}"

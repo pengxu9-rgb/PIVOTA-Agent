@@ -1,21 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
+RAIL_MODE="${RAIL_MODE:-authoritative_commerce}"
+DEFAULT_PUBLIC_BASE_URL="${DEFAULT_PUBLIC_BASE_URL:-https://agent.pivota.cc}"
 DEFAULT_INVOKE_BASE_URL="${DEFAULT_INVOKE_BASE_URL:-https://pivota-agent-production.up.railway.app}"
-INVOKE_BASE_URL="${INVOKE_BASE_URL:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-}}"
+BASE_URL="${BASE_URL:-}"
+INVOKE_BASE_URL="${INVOKE_BASE_URL:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-${DEFAULT_INVOKE_BASE_URL}}}"
 TARGET_COMMIT="${TARGET_COMMIT:-$(git rev-parse --short=12 HEAD)}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-80}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-10}"
-GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT-/api/gateway}"
+GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT-}"
 ALT_GATEWAY_ENDPOINT="${ALT_GATEWAY_ENDPOINT-/agent/shop/v1/invoke}"
 VERIFY_QUERY="${VERIFY_QUERY:-serum}"
 AUTH_TOKEN="${AUTH_TOKEN:-${COMMERCE_CORE_PROD_AUTH_TOKEN:-}}"
 AGENT_API_KEY="${AGENT_API_KEY:-${COMMERCE_CORE_PROD_AGENT_API_KEY:-}}"
-ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-1}"
+ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-0}"
 
-if [[ -z "${INVOKE_BASE_URL}" && "${BASE_URL}" == "https://agent.pivota.cc" ]]; then
-  INVOKE_BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
+if [[ "${RAIL_MODE}" == "public_observability" ]]; then
+  if [[ -z "${BASE_URL}" ]]; then
+    BASE_URL="${DEFAULT_PUBLIC_BASE_URL}"
+  fi
+  if [[ -z "${GATEWAY_ENDPOINT}" ]]; then
+    GATEWAY_ENDPOINT="/api/gateway"
+  fi
+  if [[ "${ALLOW_HEADER_FALLBACK}" == "0" ]]; then
+    ALLOW_HEADER_FALLBACK="1"
+  fi
+else
+  if [[ -z "${BASE_URL}" ]]; then
+    BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
+  fi
+  GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT:-}"
+  ALT_GATEWAY_ENDPOINT="${ALT_GATEWAY_ENDPOINT:-/agent/shop/v1/invoke}"
+  ALLOW_HEADER_FALLBACK="0"
+  if [[ -z "${AUTH_TOKEN}" && -z "${AGENT_API_KEY}" ]]; then
+    echo "authoritative_commerce verify requires AUTH_TOKEN or AGENT_API_KEY" >&2
+    exit 2
+  fi
 fi
 
 if ! [[ "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]] || [ "$MAX_ATTEMPTS" -le 0 ]; then
@@ -30,6 +51,7 @@ fi
 
 echo "BASE_URL=$BASE_URL"
 echo "INVOKE_BASE_URL=${INVOKE_BASE_URL:-$BASE_URL}"
+echo "RAIL_MODE=$RAIL_MODE"
 echo "TARGET_COMMIT=$TARGET_COMMIT"
 echo "GATEWAY_ENDPOINT=$GATEWAY_ENDPOINT"
 echo "ALT_GATEWAY_ENDPOINT=$ALT_GATEWAY_ENDPOINT"

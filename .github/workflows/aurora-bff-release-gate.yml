@@ -132,13 +132,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" \
+          BASE_URL="$COMMERCE_CORE_PROD_SMOKE_BASE_URL" \
           INVOKE_BASE_URL="$COMMERCE_CORE_PROD_SMOKE_BASE_URL" \
           AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
           AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
-          GATEWAY_ENDPOINT="" \
           ALT_GATEWAY_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
-          ALLOW_HEADER_FALLBACK=0 \
+          RAIL_MODE=authoritative_commerce \
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
           bash scripts/verify_deployed_commit_matches.sh
 

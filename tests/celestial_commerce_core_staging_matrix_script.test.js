@@ -34,7 +34,11 @@ describe('Celestial commerce-core staging matrix script', () => {
           id: 'search_case',
           title: 'search case',
           family: 'broad_discovery',
-          endpoint: '/api/gateway',
+          rail_mode: 'authoritative_commerce',
+          require_primary_path: true,
+          allow_strict_empty: false,
+          allowed_query_sources: ['cache_cross_merchant_search'],
+          endpoint: '/agent/shop/v1/invoke',
           request: {
             operation: 'find_products_multi',
             payload: { search: { query: 'serum', limit: 5, in_stock_only: true } },
@@ -60,6 +64,7 @@ describe('Celestial commerce-core staging matrix script', () => {
           title: 'manual case',
           family: 'aurora_guidance_only_cache_hit',
           execution_mode: 'manual',
+          rail_mode: 'authoritative_commerce',
           endpoint: '/agent/shop/v1/invoke',
           request: {
             operation: 'find_products_multi',
@@ -76,6 +81,9 @@ describe('Celestial commerce-core staging matrix script', () => {
           id: 'mcp_case',
           title: 'mcp governance case',
           family: 'governance_merchant_sweep',
+          rail_mode: 'authoritative_commerce',
+          require_primary_path: true,
+          allow_strict_empty: false,
           endpoint: '/agent/shop/v1/invoke',
           headers: {
             'X-Pivota-Invocation-Surface': 'mcp',
@@ -115,36 +123,40 @@ describe('Celestial commerce-core staging matrix script', () => {
 
     const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
-      if (req.url === '/api/gateway') {
-        res.setHeader('Content-Type', 'application/json');
-        res.end(
-          JSON.stringify({
-            products: [
-              {
-                title: 'Test Serum',
-              },
-            ],
-            metadata: {
-              query_source: 'cache_cross_merchant_search',
-              service_version: {
-                commit: 'abc123',
-              },
-              search_trace: {
-                final_decision: 'cache_returned',
-              },
-            },
-          }),
-        );
-        return;
-      }
-
       if (req.url === '/agent/shop/v1/invoke') {
+        if (req.headers.authorization !== 'Bearer ak_live_stage_key') {
+          res.statusCode = 401;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'UNAUTHORIZED' }));
+          return;
+        }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('X-Gateway-Governance-Mode', 'shadow');
         res.setHeader('X-Gateway-Governance-Observed-Action', 'block');
         res.setHeader('X-Gateway-Governance-Would-Enforce', 'true');
         res.setHeader('X-Gateway-Invocation-Surface', 'mcp');
+        if (body?.metadata?.source === 'search') {
+          res.end(
+            JSON.stringify({
+              products: [{ title: 'Test Serum' }],
+              metadata: {
+                query_source: 'cache_cross_merchant_search',
+                service_version: {
+                  commit: 'abc123',
+                },
+                route_health: {
+                  fallback_triggered: false,
+                  primary_path_used: 'cache_stage',
+                },
+                search_trace: {
+                  final_decision: 'cache_returned',
+                },
+              },
+            }),
+          );
+          return;
+        }
         res.end(
           JSON.stringify({
             products: [],
@@ -181,6 +193,10 @@ describe('Celestial commerce-core staging matrix script', () => {
         {
           cwd: repoRoot,
           encoding: 'utf8',
+          env: {
+            ...process.env,
+            STAGING_AUTH_TOKEN: 'ak_live_stage_key',
+          },
         },
       );
       const payload = JSON.parse(String(stdout || '').trim());
@@ -212,6 +228,9 @@ describe('Celestial commerce-core staging matrix script', () => {
           id: 'auth_required_case',
           title: 'auth required live case',
           family: 'broad_discovery',
+          rail_mode: 'authoritative_commerce',
+          require_primary_path: true,
+          allow_strict_empty: false,
           endpoint: '/agent/shop/v1/invoke',
           requires_auth: true,
           auth_profile: 'public',
@@ -286,6 +305,9 @@ describe('Celestial commerce-core staging matrix script', () => {
           id: 'auth_introspect_unavailable_case',
           title: 'staging auth infra unavailable',
           family: 'broad_discovery',
+          rail_mode: 'authoritative_commerce',
+          require_primary_path: true,
+          allow_strict_empty: false,
           endpoint: '/agent/shop/v1/invoke',
           requires_auth: true,
           auth_profile: 'default',
