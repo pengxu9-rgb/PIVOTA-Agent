@@ -65,6 +65,23 @@ describe('Celestial commerce-core production canary wrapper', () => {
         must_have_clarification: true,
         must_have_reason_codes: ['AMBIGUITY_CLARIFY'],
       },
+      {
+        id: 'aurora_shadow_case',
+        family: 'clarify_required',
+        query: '有什么适合今晚约会的',
+        source: 'aurora-bff',
+        rail_mode: 'authoritative_commerce',
+        require_primary_path: true,
+        allow_strict_empty: false,
+        allowed_query_sources: ['gateway_governance_shadow_block'],
+        allow_zero_results: true,
+        must_have_metadata: ['service_version.commit', 'search_trace.final_decision'],
+        must_equal_metadata: {
+          'search_trace.final_decision': 'governance_shadow_block',
+        },
+        must_have_clarification: false,
+        must_have_reason_codes: ['layer_not_allowed'],
+      },
     ];
     fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
 
@@ -86,6 +103,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
       const query = body?.payload?.search?.query;
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
+      const source = body?.metadata?.source;
       if (query === 'serum') {
         res.end(
           JSON.stringify({
@@ -98,6 +116,25 @@ describe('Celestial commerce-core production canary wrapper', () => {
                 primary_path_used: 'cache_stage',
               },
               search_trace: { final_decision: 'cache_returned' },
+            },
+          }),
+        );
+        return;
+      }
+
+      if (source === 'aurora-bff') {
+        res.end(
+          JSON.stringify({
+            products: [],
+            reason_codes: ['layer_not_allowed'],
+            metadata: {
+              service_version: { commit: 'abc123' },
+              query_source: 'gateway_governance_shadow_block',
+              route_health: {
+                fallback_triggered: false,
+                primary_path_used: 'governance_shadow_block',
+              },
+              search_trace: { final_decision: 'governance_shadow_block' },
             },
           }),
         );
@@ -149,14 +186,16 @@ describe('Celestial commerce-core production canary wrapper', () => {
       const markdown = fs.readFileSync(payload.markdown, 'utf8');
 
       expect(payload.ok).toBe(true);
-      expect(report.summary.total_requests).toBe(2);
+      expect(report.summary.total_requests).toBe(3);
       expect(report.summary.endpoint).toBe('/agent/shop/v1/invoke');
       expect(report.summary.rail_mode).toBe('authoritative_commerce');
       expect(report.summary.gate_failure_rate).toBe(0);
       expect(report.per_case.search_case.fail).toBe(0);
       expect(report.per_case.clarify_case.fail).toBe(0);
+      expect(report.per_case.aurora_shadow_case.fail).toBe(0);
       expect(markdown).toContain('# Search Stability Matrix');
       expect(markdown).toContain('clarify_case');
+      expect(markdown).toContain('aurora_shadow_case');
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

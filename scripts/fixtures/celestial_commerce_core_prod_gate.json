@@ -371,7 +371,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "agent_products_search"
+      "gateway_governance_shadow_block"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
@@ -384,11 +384,11 @@
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {
-      "search_trace.final_decision": "clarify"
+      "search_trace.final_decision": "governance_shadow_block"
     },
-    "must_have_clarification": true,
+    "must_have_clarification": false,
     "must_have_reason_codes": [
-      "AMBIGUITY_CLARIFY"
+      "layer_not_allowed"
     ]
   }
 ]
