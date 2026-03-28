@@ -5,6 +5,17 @@
       "title": "Public search broad discovery stays on the stable search contract",
       "family": "broad_discovery",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -23,7 +34,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -51,10 +61,20 @@
     },
     {
       "id": "shopping_agent_serum_broad",
-      "title": "shopping_agent broad discovery stays internal-first and may supplement externally when needed",
+      "title": "shopping_agent broad discovery keeps internal base plus external supplement",
       "family": "broad_discovery",
       "blocking": true,
-      "timeout_ms": 25000,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search_supplemented"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -73,7 +93,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -83,16 +102,12 @@
       },
       "ownership": {
         "must_equal_paths": {
+          "metadata.query_source": "cache_cross_merchant_search_supplemented",
           "metadata.cache_stage_selected_source": "internal_cache"
         },
-        "must_one_of_paths": {
-          "metadata.query_source": [
-            "cache_cross_merchant_search",
-            "cache_cross_merchant_search_supplemented"
-          ]
-        },
         "must_be_positive_paths": [
-          "metadata.source_breakdown.internal_count"
+          "metadata.source_breakdown.internal_count",
+          "metadata.source_breakdown.external_seed_count"
         ]
       },
       "observability": {
@@ -108,7 +123,17 @@
       "title": "aurora-bff broad discovery stays aligned with shopping_agent retrieval semantics",
       "family": "broad_discovery",
       "blocking": true,
-      "timeout_ms": 25000,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search_supplemented"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -127,7 +152,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -158,6 +182,9 @@
       "title": "shopping_agent exact-ish ingredient lookup stays on the strict contract",
       "family": "exactish_lookup",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -176,7 +203,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -203,61 +229,21 @@
       }
     },
     {
-      "id": "shopping_agent_merchant_ipsa",
-      "title": "merchant-ish query resolves through shopping_agent cache-or-resolver routing",
-      "family": "merchant_product_split",
-      "blocking": true,
-      "endpoint": "/agent/shop/v1/invoke",
-      "requires_auth": true,
-      "auth_profile": "default",
-      "request": {
-        "operation": "find_products_multi",
-        "payload": {
-          "search": {
-            "query": "IPSA products",
-            "limit": 10,
-            "in_stock_only": true
-          }
-        },
-        "metadata": {
-          "source": "shopping_agent"
-        }
-      },
-      "correctness": {
-        "mode": "auto",
-        "require_primary_path": true,
-        "expect_http_status": 200,
-        "allow_zero_results": false,
-        "must_return_one_of_titles": [
-          "IPSA Time Reset Aqua"
-        ]
-      },
-      "ownership": {
-        "must_equal_paths": {
-          "metadata.search_trace.final_decision": "cache_returned"
-        },
-        "must_one_of_paths": {
-          "metadata.query_source": [
-            "cache_cross_merchant_search",
-            "cache_cross_merchant_search_supplemented"
-          ]
-        },
-        "must_have_paths": [
-          "metadata.query_source"
-        ]
-      },
-      "observability": {
-        "must_have_paths": [
-          "metadata.service_version.commit",
-          "metadata.search_trace"
-        ]
-      }
-    },
-    {
       "id": "shopping_agent_exact_ipsa_time_reset_aqua",
-      "title": "shopping_agent exact product lookup stays on the live lookup contract",
+      "title": "exact IPSA lookup stays on the lookup-grade cache contract",
       "family": "exact_product_lookup",
       "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -276,7 +262,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
@@ -287,12 +272,59 @@
         "must_equal_paths": {
           "metadata.search_trace.query_class": "lookup",
           "metadata.search_trace.final_decision": "cache_returned"
+        }
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.query_source",
+          "metadata.search_trace.query_class"
+        ]
+      }
+    },
+    {
+      "id": "shopping_agent_merchant_ipsa",
+      "title": "merchant-ish query still resolves through shopping_agent routing",
+      "family": "merchant_product_split",
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "IPSA products",
+            "limit": 10,
+            "in_stock_only": true
+          }
         },
-        "must_one_of_paths": {
-          "metadata.query_source": [
-            "cache_cross_merchant_search",
-            "cache_cross_merchant_search_supplemented"
-          ]
+        "metadata": {
+          "source": "shopping_agent"
+        }
+      },
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "IPSA Time Reset Aqua"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.final_decision": "cache_returned"
         },
         "must_have_paths": [
           "metadata.query_source"
@@ -301,8 +333,7 @@
       "observability": {
         "must_have_paths": [
           "metadata.service_version.commit",
-          "metadata.search_trace.query_class",
-          "metadata.search_trace.final_decision"
+          "metadata.search_trace"
         ]
       }
     },
@@ -311,7 +342,17 @@
       "title": "clarify-required discovery still resolves to clarify instead of low-quality products",
       "family": "clarify_required",
       "blocking": true,
-      "timeout_ms": 25000,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "agent_products_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "default",
@@ -330,7 +371,6 @@
       },
       "correctness": {
         "mode": "auto",
-        "require_primary_path": true,
         "expect_http_status": 200,
         "must_have_clarification": true,
         "must_have_reason_codes": [
@@ -363,7 +403,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "panthenol repair serum",
+            "query": "hydrating serum",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
@@ -380,7 +420,7 @@
       },
       "manual_review": {
         "expected_outcome": "Confirm cache-hit products are coherent, guidance-only metadata is present, and diagnostics remain complete.",
-        "notes": "Use this stable staging canary to confirm cache-returned guidance-only orchestration without relying on brittle generic-family queries."
+        "notes": "Use this case to confirm cache-hit orchestration stability without relying on brittle title assertions."
       }
     },
     {
@@ -394,7 +434,7 @@
         "operation": "find_products_multi",
         "payload": {
           "search": {
-            "query": "centella serum",
+            "query": "repair serum",
             "limit": 6,
             "in_stock_only": true,
             "ui_surface": "ingredient_plan_guidance_only"
@@ -410,13 +450,13 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm cache miss transitions cleanly to a non-cache-returned guidance-only lane, with complete diagnostics even when the owned path degrades into bounded external supplement.",
-        "notes": "This is intentionally manual because catalog/staging data can shift while the owned miss path must stay inspectable and should not silently collapse into cache-returned supplement."
+        "expected_outcome": "Confirm cache miss transitions cleanly to strict-empty, clarify, or resolver fallback with complete diagnostics.",
+        "notes": "This is intentionally manual because catalog/staging data can shift while the owned orchestration path must stay inspectable."
       }
     },
     {
       "id": "aurora_guidance_only_direct_supplement_manual",
-      "title": "Aurora guidance-only bounded supplement path can still be reviewed explicitly",
+      "title": "Aurora guidance-only direct supplement path can still be reviewed explicitly",
       "family": "aurora_guidance_only_direct_supplement",
       "blocking": false,
       "execution_mode": "manual",
@@ -441,8 +481,8 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm the guidance-only supplement stays bounded and coherent, whether it lands as direct external-seed supplement or cache-stage guidance supplement, without silently widening into generic recall.",
-        "notes": "Use this stable staging canary to inspect source breakdown, supplement metadata, serum-scoped query variants, and absence of low-quality drift."
+        "expected_outcome": "Confirm direct supplement only applies when the hit is valid and does not silently widen into generic recall.",
+        "notes": "Look for guidance supplement metadata, source breakdown changes, and no low-quality drift."
       }
     }
   ],
@@ -452,7 +492,6 @@
       "title": "public direct_api caller still observes orchestration denial in shadow mode",
       "family": "governance_orchestration_denied",
       "blocking": true,
-      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "public",
@@ -555,7 +594,6 @@
       "title": "generic MCP merchant sweep is still shadow-blocked with provenance",
       "family": "governance_merchant_sweep",
       "blocking": true,
-      "timeout_ms": 25000,
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "generic_mcp",

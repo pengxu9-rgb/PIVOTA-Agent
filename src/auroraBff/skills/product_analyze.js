@@ -1,5 +1,53 @@
 const BaseSkill = require('./BaseSkill');
 
+function pickFirstTrimmed(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function stripLeadingBrand(name = '', brand = '') {
+  const rawName = String(name || '').trim();
+  const rawBrand = String(brand || '').trim();
+  if (!rawName || !rawBrand) return rawName;
+  const lowerName = rawName.toLowerCase();
+  const lowerBrand = rawBrand.toLowerCase();
+  if (lowerName === lowerBrand) return rawName;
+  if (lowerName.startsWith(`${lowerBrand} `)) return rawName.slice(rawBrand.length).trim() || rawName;
+  return rawName;
+}
+
+function buildFollowupProductAnchor(params = {}, analysis = {}) {
+  const baseAnchor =
+    params && params.product_anchor && typeof params.product_anchor === 'object'
+      ? { ...params.product_anchor }
+      : {};
+  const inferredBrand = pickFirstTrimmed(analysis.brand, baseAnchor.brand);
+  const inferredDisplayName = pickFirstTrimmed(
+    analysis.product_name,
+    baseAnchor.display_name,
+    baseAnchor.displayName,
+    [baseAnchor.brand, baseAnchor.name].filter(Boolean).join(' '),
+    baseAnchor.name,
+  );
+  const inferredName = pickFirstTrimmed(
+    stripLeadingBrand(analysis.product_name, inferredBrand),
+    baseAnchor.name,
+    stripLeadingBrand(baseAnchor.display_name || baseAnchor.displayName, baseAnchor.brand),
+  );
+
+  return {
+    ...baseAnchor,
+    ...(inferredBrand ? { brand: inferredBrand } : {}),
+    ...(inferredName ? { name: inferredName } : {}),
+    ...(inferredDisplayName ? { display_name: inferredDisplayName } : {}),
+    ...(analysis.product_type && !pickFirstTrimmed(baseAnchor.product_type) ? { product_type: analysis.product_type } : {}),
+  };
+}
+
 class ProductAnalyzeSkill extends BaseSkill {
   constructor() {
     super('product.analyze', '1.0.0');
@@ -43,6 +91,7 @@ class ProductAnalyzeSkill extends BaseSkill {
 
     const analysis = llmResult.parsed;
     const deterministicFixes = this._applyDeterministicRules(analysis, safetyFlags, params);
+    const followupProductAnchor = buildFollowupProductAnchor(params, analysis);
 
     const sections = [
       {
@@ -72,13 +121,16 @@ class ProductAnalyzeSkill extends BaseSkill {
           target_skill_id: 'explore.add_to_routine',
           label: { en: 'Add to my routine', zh: '加入我的护肤流程' },
           params: {
-            product_anchor: params.product_anchor,
+            product_anchor: followupProductAnchor,
           },
         },
         {
           action_type: 'navigate_skill',
           target_skill_id: 'dupe.suggest',
           label: { en: 'Find alternatives', zh: '寻找替代品' },
+          params: {
+            product_anchor: followupProductAnchor,
+          },
         },
         {
           action_type: 'navigate_skill',

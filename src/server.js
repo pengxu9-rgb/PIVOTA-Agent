@@ -55,15 +55,6 @@ const {
   buildGatewayShadowAudit,
 } = require('./api/gateway/access/buildGatewayShadowAudit');
 const {
-  parseBooleanEnv,
-  parseSecretList,
-  resolveInvokeEmergencyAuthFallback,
-} = require('./api/gateway/access/invokeAuthEmergencyFallback');
-const {
-  mergeInvokeGatewayAuditMetadata,
-  resolveGatewayGovernanceShadowMode,
-} = require('./api/gateway/responseMapper');
-const {
   normalizeExternalSeedStrategy,
   stripExternalSeedStrategyOverride,
   applyFindProductsMultiSourceContract,
@@ -392,11 +383,6 @@ const AGENT_AUTH_EMERGENCY_API_KEYS = parseSecretList(
 const AGENT_AUTH_EMERGENCY_AGENT_ID = String(
   process.env.AGENT_AUTH_EMERGENCY_AGENT_ID || '',
 ).trim() || null;
-const AGENT_AUTH_EMERGENCY_CACHE_TTL_MS = parsePositiveInt(
-  process.env.AGENT_AUTH_EMERGENCY_CACHE_TTL_MS,
-  5_000,
-  { min: 1_000, max: 60_000 },
-);
 const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
@@ -425,6 +411,26 @@ function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTE
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return fallback;
   return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function parseBooleanEnv(value, fallback = false) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
+function parseSecretList(...values) {
+  const entries = [];
+  for (const value of values) {
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((item) => entries.push(item));
+  }
+  return Array.from(new Set(entries));
 }
 
 const AGENT_AXIOS_KEEPALIVE_ENABLED = (() => {
@@ -4356,7 +4362,6 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   queryClass = null,
   beautyBucket = null,
   strictConstraintQuery = false,
-  guidanceOnlyDiscovery = false,
 } = {}) {
   const queryText = String(rawQuery || '').trim();
   const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
@@ -4370,18 +4375,13 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
   const genericQueryClass =
     !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
-  const guidanceOnlySerumDiscovery =
-    guidanceOnlyDiscovery === true &&
-    hasSerumSignal &&
-    effectiveBeautyBucket === 'skincare' &&
-    !Boolean(strictConstraintQuery);
   const genericSkincareSerumCategoryQuery =
     hasSerumSignal &&
     genericQueryClass &&
     effectiveBeautyBucket === 'skincare' &&
     !Boolean(strictConstraintQuery);
 
-  if (!genericSkincareSerumCategoryQuery && !guidanceOnlySerumDiscovery) {
+  if (!genericSkincareSerumCategoryQuery) {
     return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
   }
 
@@ -6390,6 +6390,17 @@ const LOOKUP_EQUIVALENCE_FAMILIES = [
   ['sk ii', 'skii', '神仙水'],
 ];
 
+const LOOKUP_GENERIC_BRAND_TERMS = new Set([
+  'winona',
+  '薇诺娜',
+  'ipsa',
+  '茵芙莎',
+  'the ordinary',
+  'ordinary',
+  'sk ii',
+  'skii',
+]);
+
 const BEAUTY_FORM_FACTOR_TOKENS = new Set([
   'serum',
   'essence',
@@ -6525,6 +6536,99 @@ function expandLookupAnchorTokens(queryText, anchorTokens) {
   return Array.from(expanded);
 }
 
+function collectMatchedLookupFamilyTerms(queryText, anchorTokens = null) {
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return [];
+  const normalizedAnchors = Array.isArray(anchorTokens)
+    ? anchorTokens
+        .map((token) => normalizeSearchTextForMatch(token))
+        .filter(Boolean)
+    : extractSearchAnchorTokens(queryText);
+  const anchorSet = new Set(normalizedAnchors);
+  const queryTokens = new Set(tokenizeSearchTextForMatch(normalizedQuery));
+  const matched = new Set();
+
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    for (const term of normalizedFamilyTerms) {
+      if (!term) continue;
+      if (anchorSet.has(term) || normalizedQuery.includes(term) || (!term.includes(' ') && queryTokens.has(term))) {
+        matched.add(term);
+      }
+    }
+  }
+
+  return Array.from(matched);
+}
+
+function buildLookupSpecificAliasTerms(queryText, anchorTokens = null) {
+  const matchedTerms = collectMatchedLookupFamilyTerms(queryText, anchorTokens);
+  if (!matchedTerms.length) return [];
+  const specificTerms = matchedTerms.filter((term) => !LOOKUP_GENERIC_BRAND_TERMS.has(term));
+  if (!specificTerms.length) return [];
+
+  const expanded = new Set();
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    if (!normalizedFamilyTerms.some((term) => specificTerms.includes(term))) continue;
+    for (const term of normalizedFamilyTerms) {
+      if (!LOOKUP_GENERIC_BRAND_TERMS.has(term)) expanded.add(term);
+    }
+  }
+
+  return Array.from(expanded);
+}
+
+function escapeSearchRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isPureLookupBrandQuery(queryText, matchedBrandTerms = []) {
+  if (!matchedBrandTerms.length) return false;
+  let strippedQuery = String(queryText || '');
+  for (const term of matchedBrandTerms.slice().sort((a, b) => b.length - a.length)) {
+    const normalizedTerm = normalizeSearchTextForMatch(term);
+    if (!normalizedTerm) continue;
+    strippedQuery = strippedQuery.replace(new RegExp(escapeSearchRegex(normalizedTerm), 'giu'), ' ');
+  }
+  const normalizedRemainder = normalizeSearchTextForMatch(strippedQuery)
+    .replace(SEARCH_QUERY_NOISE_RE, ' ')
+    .replace(/有什麼|有什么|有沒有|有没有|有無|有没|什麼|什么|請問|请问/gu, ' ')
+    .replace(/[有的吗嗎呢呀啊吧嘛]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return !normalizedRemainder;
+}
+
+function shouldRequireStrictLookupCacheMatch(queryText, anchorTokens = null) {
+  if (!isLookupStyleSearchQuery(queryText, anchorTokens)) return false;
+  const matchedLookupFamilyTerms = collectMatchedLookupFamilyTerms(queryText, anchorTokens);
+  if (!matchedLookupFamilyTerms.length) return false;
+  const matchedGenericBrandTerms = matchedLookupFamilyTerms.filter((term) =>
+    LOOKUP_GENERIC_BRAND_TERMS.has(term),
+  );
+  if (
+    matchedGenericBrandTerms.length > 0 &&
+    isPureLookupBrandQuery(queryText, matchedGenericBrandTerms)
+  ) {
+    return false;
+  }
+  if (buildLookupSpecificAliasTerms(queryText, anchorTokens).length > 0) return true;
+  const sanitizedTokens = Array.from(
+    new Set(tokenizeSearchTextForMatch(sanitizeSearchQueryForRelevance(queryText))),
+  ).filter(Boolean);
+  const informativeTokens = sanitizedTokens.filter(
+    (token) => !LOOKUP_GENERIC_BRAND_TERMS.has(token) && !SEARCH_QUERY_STOP_TOKENS.has(token),
+  );
+  if (!informativeTokens.length) return false;
+  if (informativeTokens.length > 1) return true;
+  return /[%+x×]|\b\d+(?:\.\d+)?\b/u.test(String(queryText || ''));
+}
+
 function hasFragranceSearchSignal(queryText) {
   if (hasFragranceFreeSkincareSignal(queryText)) return false;
   return /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i.test(
@@ -6640,6 +6744,32 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : extractSearchAnchorTokens(queryText);
   const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
   if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
+    const strictLookupRelevanceRequired = shouldRequireStrictLookupCacheMatch(queryText, anchorTokens);
+    if (!strictLookupRelevanceRequired) {
+      return lookupTokens.some((token) => candidateText.includes(token));
+    }
+
+    const compactCandidateText = candidateText.replace(/\s+/g, '');
+    const compactNormalizedQuery = normalizedQuery.replace(/\s+/g, '');
+    if (compactNormalizedQuery && compactCandidateText.includes(compactNormalizedQuery)) return true;
+
+    const specificLookupAliasTerms = buildLookupSpecificAliasTerms(queryText, anchorTokens);
+    if (specificLookupAliasTerms.length > 0) {
+      return specificLookupAliasTerms.some((term) => {
+        const normalizedTerm = normalizeSearchTextForMatch(term);
+        if (!normalizedTerm) return false;
+        if (candidateText.includes(normalizedTerm)) return true;
+        return compactCandidateText.includes(normalizedTerm.replace(/\s+/g, ''));
+      });
+    }
+
+    const meaningfulLookupTokens = Array.from(
+      new Set(tokenizeSearchTextForMatch(sanitizeSearchQueryForRelevance(queryText))),
+    ).filter(Boolean);
+    if (meaningfulLookupTokens.length > 1) {
+      return meaningfulLookupTokens.every((token) => candidateText.includes(token));
+    }
+
     return lookupTokens.some((token) => candidateText.includes(token));
   }
 
@@ -8366,11 +8496,15 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
         .filter(Boolean),
     ),
   ).slice(0, 8);
-  // External seed supplement should stay on the shared catalog rail even for
-  // aurora-bff, otherwise aurora-specific upstream bases can drift away from
-  // shopping_agent retrieval semantics and suppress supplement coverage.
-  const url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
-  const requestHeaders = buildInvokeUpstreamAuthHeaders({ checkoutToken });
+  const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
+  const requestHeaders = {
+    ...(checkoutToken
+      ? { 'X-Checkout-Token': checkoutToken }
+      : {
+          ...(PIVOTA_API_KEY && { 'X-API-Key': PIVOTA_API_KEY }),
+          ...(PIVOTA_API_KEY && { Authorization: `Bearer ${PIVOTA_API_KEY}` }),
+        }),
+  };
   const seenKeys = new Set();
   const mergedProducts = [];
   let upstreamStatus = 0;
@@ -9609,10 +9743,7 @@ function putCachedInvokeAuthResult(apiKey, result) {
   const cacheKey = hashSecretForCache(apiKey);
   if (!cacheKey || !result || typeof result !== 'object') return;
   const valid = result.valid === true;
-  const authDegraded = result.auth_degraded === true || result.auth_source === 'emergency_fallback';
-  const ttlMs = authDegraded
-    ? AGENT_AUTH_EMERGENCY_CACHE_TTL_MS
-    : (valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS);
+  const ttlMs = valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS;
   invokeAuthCache.set(cacheKey, {
     expires_at_ms: Date.now() + ttlMs,
     result: {
@@ -9620,8 +9751,6 @@ function putCachedInvokeAuthResult(apiKey, result) {
       agent_id: result.agent_id || null,
       is_active: result.is_active === false ? false : true,
       auth_source: result.auth_source || null,
-      auth_degraded: authDegraded,
-      auth_degraded_reason: result.auth_degraded_reason || null,
     },
   });
   pruneInvokeAuthCache();
@@ -9675,6 +9804,22 @@ async function introspectInvokeApiKey(apiKey) {
     agent_id: String(data.agent_id || '').trim() || null,
     is_active: data.is_active === false ? false : true,
     auth_source: String(data.auth_source || '').trim() || null,
+    cache_hit: false,
+  };
+  putCachedInvokeAuthResult(apiKey, result);
+  return result;
+}
+
+function resolveInvokeEmergencyAuthFallback(apiKey) {
+  if (!AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED) return null;
+  if (!AGENT_AUTH_EMERGENCY_API_KEYS.length) return null;
+  if (!AGENT_AUTH_EMERGENCY_API_KEYS.includes(String(apiKey || '').trim())) return null;
+
+  const result = {
+    valid: true,
+    agent_id: AGENT_AUTH_EMERGENCY_AGENT_ID,
+    is_active: true,
+    auth_source: 'emergency_fallback',
     cache_hit: false,
   };
   putCachedInvokeAuthResult(apiKey, result);
@@ -9737,14 +9882,7 @@ async function requireExternalInvokeAuth(req, res, next) {
   try {
     introspection = await introspectInvokeApiKey(provided);
   } catch (err) {
-    const fallback = resolveInvokeEmergencyAuthFallback({
-      apiKey: provided,
-      errorCode: err?.code || null,
-      enabled: AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
-      allowedApiKeys: AGENT_AUTH_EMERGENCY_API_KEYS,
-      agentId: AGENT_AUTH_EMERGENCY_AGENT_ID,
-      onAccept: (result) => putCachedInvokeAuthResult(provided, result),
-    });
+    const fallback = resolveInvokeEmergencyAuthFallback(provided);
     if (fallback) {
       logger.warn(
         {
@@ -9802,19 +9940,7 @@ async function requireExternalInvokeAuth(req, res, next) {
     raw_token: provided,
     cache_hit: introspection.cache_hit === true,
     introspect_auth_source: introspection.auth_source || null,
-    auth_degraded: introspection.auth_degraded === true,
-    auth_degraded_reason: introspection.auth_degraded_reason || null,
   };
-  if (req.invokeAuth.introspect_auth_source) {
-    res.setHeader('x-invoke-introspect-auth-source', req.invokeAuth.introspect_auth_source);
-  }
-  if (req.invokeAuth.auth_degraded === true) {
-    res.setHeader('x-invoke-auth-degraded', 'true');
-    res.setHeader(
-      'x-invoke-auth-degraded-reason',
-      String(req.invokeAuth.auth_degraded_reason || 'unknown'),
-    );
-  }
   return next();
 }
 
@@ -12185,6 +12311,42 @@ function normalizeMetadata(rawMetadata = {}, payload = {}) {
     ...(creatorName && { creator_name: creatorName, creatorName }),
     ...(traceId && { trace_id: traceId, traceId }),
     ...(source && { source }),
+  };
+}
+
+function shouldUseGatewayGovernanceShadowMode(routeContext = {}) {
+  if (routeContext && routeContext.gateway_governance_shadow_mode === true) return true;
+  if (routeContext && routeContext.gateway_governance_shadow_mode === false) return false;
+  return GATEWAY_GOVERNANCE_SHADOW_MODE;
+}
+
+function mergeInvokeGatewayAuditMetadata(body, audit) {
+  if (!audit || !body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const existingMetadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? body.metadata
+      : {};
+
+  return {
+    ...body,
+    metadata: {
+      ...existingMetadata,
+      gateway_invocation: audit.invocation,
+      gateway_governance: {
+        mode: audit.mode,
+        source: audit.source,
+        entry_layer: audit.entry_layer,
+        task_type: audit.task_type,
+        effective_action: audit.effective_action,
+        observed_phase: audit.observed_phase,
+        observed_action: audit.observed_action,
+        would_enforce: audit.would_enforce,
+        reason_codes: audit.reason_codes,
+        access: audit.access,
+        rate_limit: audit.rate_limit,
+        query_governance: audit.query_governance,
+      },
+    },
   };
 }
 
@@ -15630,8 +15792,14 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)
       ? { ...responseBody }
       : {};
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? body.metadata
+      : {};
   const rawProducts = Array.isArray(body.products) ? body.products : [];
   const filteredProducts = [];
+  const normalizedCommerceSurface = normalizeCommerceSurface(commerceSurface, 'agent_api');
+  const preserveExternalSeedProducts = metadata.strict_constraint_query === true;
 
   for (const rawProduct of rawProducts) {
     const product =
@@ -15639,11 +15807,18 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
         ? { ...rawProduct }
         : null;
     if (!product) continue;
-    if (
+    const externalSeedLike =
       String(product.merchant_id || '').trim() === 'external_seed' ||
       String(product.source || '').trim().toLowerCase() === 'external_seed' ||
-      String(product.platform || '').trim().toLowerCase() === 'external'
-    ) {
+      String(product.platform || '').trim().toLowerCase() === 'external';
+    if (externalSeedLike && preserveExternalSeedProducts) {
+      filteredProducts.push({
+        ...product,
+        commerce_surface: normalizedCommerceSurface,
+      });
+      continue;
+    }
+    if (externalSeedLike) {
       continue;
     }
     const eligible = pickFirstEligibleVariantFromProductContract(product, commerceSurface);
@@ -15663,7 +15838,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     ) || null;
     filteredProducts.push({
       ...product,
-      commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+      commerce_surface: normalizedCommerceSurface,
       top_offer_summary: {
         purchase_route: 'internal_checkout',
         merchant_id: product.merchant_id || null,
@@ -15672,7 +15847,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
         ...(skuId ? { sku_id: skuId } : {}),
         price: eligible.price,
         currency: eligible.currency,
-        commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+        commerce_surface: normalizedCommerceSurface,
       },
       exact_resolution_identifiers: {
         merchant_id: product.merchant_id || null,
@@ -15683,10 +15858,6 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     });
   }
 
-  const metadata =
-    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-      ? body.metadata
-      : {};
   return {
     ...body,
     products: filteredProducts,
@@ -15694,7 +15865,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     page_size: filteredProducts.length,
     metadata: {
       ...metadata,
-      commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+      commerce_surface: normalizedCommerceSurface,
       serving_mode: 'eligible_only',
     },
   };
@@ -16814,11 +16985,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gateway_request_id: gatewayRequestId,
         client_channel: clientChannel,
         key_fingerprint: routeKeyFingerprint,
-        invoke_auth_mode: req?.invokeAuth?.auth_mode || null,
-        invoke_auth_source: req?.invokeAuth?.auth_source || null,
-        invoke_introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
-        invoke_auth_degraded: req?.invokeAuth?.auth_degraded === true,
-        invoke_auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
         operation: debugRuntime.operation,
         status: res.statusCode,
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
@@ -17081,10 +17247,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }),
       );
       gatewayGovernanceAudit = buildGatewayShadowAudit(gatewayGovernanceEnvelope, {
-        shadow_mode: resolveGatewayGovernanceShadowMode(
-          routeContext,
-          GATEWAY_GOVERNANCE_SHADOW_MODE,
-        ),
+        shadow_mode: shouldUseGatewayGovernanceShadowMode(routeContext),
       });
     } catch (gatewayGovernanceErr) {
       logger.warn(
@@ -19612,22 +19775,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
-          const cacheUiSurface = normalizeSearchUiSurface(
-            metadata?.ui_surface ||
-              effectivePayload?.metadata?.ui_surface ||
-              effectivePayload?.context?.ui_surface ||
-              payload?.metadata?.ui_surface ||
-              payload?.context?.ui_surface ||
-              search?.ui_surface ||
-              search?.uiSurface ||
-              null,
-          );
           cacheStageBudgetMs = resolveFindProductsMultiCacheStageBudgetMs({
             rawQuery: cacheQueryText,
             queryClass: cachePolicyQueryClass,
             beautyBucket: cacheBeautyQueryProfile?.bucket || null,
             strictConstraintQuery: strictCommerceFindProductsMulti,
-            guidanceOnlyDiscovery: cacheUiSurface === 'ingredient_plan_guidance_only',
           });
           const baseCacheSearchQueryText =
             preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
@@ -19702,10 +19854,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 }),
               )
             : internalProducts;
+          const strictLookupCacheMatchRequired =
+            isLookupQuery && shouldRequireStrictLookupCacheMatch(cacheQueryText, lookupAnchorTokens);
           const internalProductsForRecall =
-            isLookupQuery && lookupRelevantInternalProducts.length > 0
-              ? lookupRelevantInternalProducts
-              : internalProducts;
+            strictLookupCacheMatchRequired && lookupRelevantInternalProducts.length === 0
+              ? []
+              : strictLookupCacheMatchRequired
+                ? lookupRelevantInternalProducts
+                : internalProducts;
           const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
           const leashAnchoredInternalProducts = leashAnchoredQuery
             ? internalProductsForRecall.filter((product) =>
@@ -19716,6 +19872,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Let generic skincare category queries mix internal cache hits with
           // relevant external seed supplement instead of forcing an internal-only lane.
           const preferInternalSpecificBeautyCache = false;
+          const cacheUiSurface = normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              search?.ui_surface ||
+              search?.uiSurface ||
+              null,
+          );
           const guidanceOnlyDiscovery = cacheUiSurface === 'ingredient_plan_guidance_only';
           const guidanceCachePlan = await buildGuidanceOnlyCacheSearchPlan({
             uiSurface: cacheUiSurface,

@@ -37,10 +37,12 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'public_search_contract',
         query: 'serum',
         source: 'search',
+        rail_mode: 'authoritative_commerce',
         require_primary_path: true,
+        allow_strict_empty: false,
+        allowed_query_sources: ['cache_cross_merchant_search'],
         allow_zero_results: false,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: ['query_source'],
+        must_have_metadata: ['service_version.commit', 'query_source'],
         must_equal_metadata: {
           query_source: 'cache_cross_merchant_search',
         },
@@ -51,10 +53,12 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'clarify_required',
         query: '有什么适合今晚约会的',
         source: 'shopping_agent',
+        rail_mode: 'authoritative_commerce',
         require_primary_path: true,
+        allow_strict_empty: false,
+        allowed_query_sources: ['agent_products_search'],
         allow_zero_results: true,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: ['search_trace.final_decision'],
+        must_have_metadata: ['service_version.commit', 'search_trace.final_decision'],
         must_equal_metadata: {
           'search_trace.final_decision': 'clarify',
         },
@@ -66,9 +70,16 @@ describe('Celestial commerce-core production canary wrapper', () => {
 
     const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
-      if (req.url !== '/api/gateway') {
+      if (req.url !== '/agent/shop/v1/invoke') {
         res.statusCode = 404;
         res.end('not found');
+        return;
+      }
+
+      if (req.headers.authorization !== 'Bearer ak_live_test_prod_key') {
+        res.statusCode = 401;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing auth' }));
         return;
       }
 
@@ -82,6 +93,10 @@ describe('Celestial commerce-core production canary wrapper', () => {
             metadata: {
               service_version: { commit: 'abc123' },
               query_source: 'cache_cross_merchant_search',
+              route_health: {
+                fallback_triggered: false,
+                primary_path_used: 'cache_stage',
+              },
               search_trace: { final_decision: 'cache_returned' },
             },
           }),
@@ -100,9 +115,8 @@ describe('Celestial commerce-core production canary wrapper', () => {
             service_version: { commit: 'abc123' },
             query_source: 'agent_products_search',
             route_health: {
-              primary_path_used: 'upstream_stage',
               fallback_triggered: false,
-              fallback_reason: 'fallback_not_better',
+              primary_path_used: 'agent_products_search',
             },
             search_trace: { final_decision: 'clarify' },
           },
@@ -121,12 +135,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         env: {
           ...process.env,
           BASE_URL: baseUrl,
-          AUTH_TOKEN: '',
-          AGENT_API_KEY: '',
-          COMMERCE_CORE_PROD_AUTH_TOKEN: '',
-          COMMERCE_CORE_PROD_AGENT_API_KEY: '',
-          ENDPOINT: '',
-          COMMERCE_CORE_PROD_SMOKE_ENDPOINT: '',
+          AUTH_TOKEN: 'ak_live_test_prod_key',
           OUT_DIR: outDir,
           QUERY_FILE: queryFile,
           VERIFY_DEPLOY: '0',
@@ -141,6 +150,8 @@ describe('Celestial commerce-core production canary wrapper', () => {
 
       expect(payload.ok).toBe(true);
       expect(report.summary.total_requests).toBe(2);
+      expect(report.summary.endpoint).toBe('/agent/shop/v1/invoke');
+      expect(report.summary.rail_mode).toBe('authoritative_commerce');
       expect(report.summary.gate_failure_rate).toBe(0);
       expect(report.per_case.search_case.fail).toBe(0);
       expect(report.per_case.clarify_case.fail).toBe(0);
@@ -151,7 +162,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
     }
   });
 
-  test('auto-selects authenticated invoke when canary auth is configured', async () => {
+  test('supports authenticated invoke canary runs', async () => {
     const repoRoot = path.join(__dirname, '..');
     const scriptPath = path.join(
       repoRoot,
@@ -166,39 +177,16 @@ describe('Celestial commerce-core production canary wrapper', () => {
         family: 'broad_commerce_search',
         query: 'serum',
         source: 'shopping_agent',
+        rail_mode: 'authoritative_commerce',
         require_primary_path: true,
+        allow_strict_empty: false,
+        allowed_query_sources: ['cache_cross_merchant_search_supplemented'],
         allow_zero_results: false,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: ['query_source'],
+        must_have_metadata: ['service_version.commit', 'query_source'],
         must_equal_metadata: {
           query_source: 'cache_cross_merchant_search_supplemented',
         },
         must_return_one_of_titles: ['Auth Serum'],
-      },
-      {
-        id: 'exact_lookup_case',
-        family: 'exact_product_lookup',
-        query: 'IPSA Time Reset Aqua',
-        source: 'shopping_agent',
-        require_primary_path: true,
-        allow_zero_results: false,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: [
-          'query_source',
-          'search_trace.query_class',
-          'search_trace.final_decision',
-        ],
-        must_equal_metadata: {
-          'search_trace.query_class': 'lookup',
-          'search_trace.final_decision': 'cache_returned',
-        },
-        must_one_of_metadata: {
-          query_source: [
-            'cache_cross_merchant_search',
-            'cache_cross_merchant_search_supplemented',
-          ],
-        },
-        must_return_one_of_titles: ['IPSA Time Reset Aqua'],
       },
     ];
     fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
@@ -219,32 +207,18 @@ describe('Celestial commerce-core production canary wrapper', () => {
       }
 
       expect(body?.metadata?.source).toBe('shopping_agent');
-      const query = body?.payload?.search?.query;
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
-      if (query === 'IPSA Time Reset Aqua') {
-        res.end(
-          JSON.stringify({
-            products: [{ title: 'IPSA Time Reset Aqua' }],
-            metadata: {
-              service_version: { commit: 'def456' },
-              query_source: 'cache_cross_merchant_search',
-              search_trace: {
-                query_class: 'lookup',
-                final_decision: 'cache_returned',
-              },
-            },
-          }),
-        );
-        return;
-      }
-
       res.end(
         JSON.stringify({
           products: [{ title: 'Auth Serum' }],
           metadata: {
             service_version: { commit: 'def456' },
             query_source: 'cache_cross_merchant_search_supplemented',
+            route_health: {
+              fallback_triggered: false,
+              primary_path_used: 'cache_stage',
+            },
             search_trace: { final_decision: 'cache_returned' },
           },
         }),
@@ -262,6 +236,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
         env: {
           ...process.env,
           BASE_URL: baseUrl,
+          ENDPOINT: '/agent/shop/v1/invoke',
           AUTH_TOKEN: 'ak_live_test_prod_key',
           OUT_DIR: outDir,
           QUERY_FILE: queryFile,
@@ -275,221 +250,11 @@ describe('Celestial commerce-core production canary wrapper', () => {
       const report = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
 
       expect(payload.ok).toBe(true);
-      expect(report.summary.total_requests).toBe(2);
+      expect(report.summary.total_requests).toBe(1);
       expect(report.summary.auth_mode).toBe('bearer');
       expect(report.summary.endpoint).toBe('/agent/shop/v1/invoke');
       expect(report.summary.gate_failure_rate).toBe(0);
       expect(report.per_case.invoke_case.fail).toBe(0);
-      expect(report.per_case.exact_lookup_case.fail).toBe(0);
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-
-  test('recovers a flaky production canary case on retry and records the recovery', async () => {
-    const repoRoot = path.join(__dirname, '..');
-    const scriptPath = path.join(
-      repoRoot,
-      'scripts',
-      'probe_celestial_commerce_core_prod_canary.sh',
-    );
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prod-canary-retry-'));
-    const queryFile = path.join(outDir, 'prod-canary-retry.json');
-    const cases = [
-      {
-        id: 'retry_case',
-        family: 'merchant_query',
-        query: 'IPSA products',
-        source: 'aurora-bff',
-        allow_zero_results: false,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: ['query_source', 'search_trace.final_decision'],
-        must_equal_metadata: {
-          'search_trace.final_decision': 'cache_returned',
-        },
-        must_return_one_of_titles: ['IPSA Time Reset Aqua'],
-      },
-    ];
-    fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
-
-    let requestCount = 0;
-    const server = http.createServer(async (req, res) => {
-      const body = await readJsonBody(req);
-      if (req.url !== '/agent/shop/v1/invoke') {
-        res.statusCode = 404;
-        res.end('not found');
-        return;
-      }
-
-      if (req.headers.authorization !== 'Bearer ak_live_test_prod_key') {
-        res.statusCode = 401;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing or invalid API key' }));
-        return;
-      }
-
-      expect(body?.metadata?.source).toBe('aurora-bff');
-      requestCount += 1;
-      res.statusCode = requestCount === 1 ? 500 : 200;
-      res.setHeader('Content-Type', 'application/json');
-      if (requestCount === 1) {
-        res.end(JSON.stringify({ error: 'INTERNAL_ERROR', message: 'transient failure' }));
-        return;
-      }
-
-      res.end(
-        JSON.stringify({
-          products: [{ title: 'IPSA Time Reset Aqua' }],
-          metadata: {
-            service_version: { build_id: 'retry-build' },
-            query_source: 'cache_cross_merchant_search',
-            search_trace: { final_decision: 'cache_returned' },
-          },
-        }),
-      );
-    });
-
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-    const baseUrl = `http://127.0.0.1:${address.port}`;
-
-    try {
-      const { stdout } = await execFileAsync('bash', [scriptPath], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          BASE_URL: baseUrl,
-          AUTH_TOKEN: 'ak_live_test_prod_key',
-          OUT_DIR: outDir,
-          QUERY_FILE: queryFile,
-          VERIFY_DEPLOY: '0',
-          FAIL_ON_GATE_FAILURES: '0',
-          ROUNDS: '1',
-          TIMEOUT_MS: '5000',
-        },
-      });
-      const payload = JSON.parse(String(stdout || '').trim());
-      const report = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
-
-      expect(payload.ok).toBe(true);
-      expect(report.summary.total_requests).toBe(1);
-      expect(report.summary.gate_failure_rate).toBe(0);
-      expect(report.summary.retry_recovered_count).toBe(1);
-      expect(report.per_case.retry_case.fail).toBe(0);
-      expect(report.rows[0].retry_recovered).toBe(true);
-      expect(report.rows[0].attempt_count).toBe(2);
-      expect(requestCount).toBe(2);
-    } finally {
-      await new Promise((resolve) => server.close(resolve));
-    }
-  });
-
-  test('fails the canary when exact lookup only succeeds through resolver fallback', async () => {
-    const repoRoot = path.join(__dirname, '..');
-    const scriptPath = path.join(
-      repoRoot,
-      'scripts',
-      'probe_celestial_commerce_core_prod_canary.sh',
-    );
-    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prod-canary-primary-'));
-    const queryFile = path.join(outDir, 'prod-canary-primary.json');
-    const cases = [
-      {
-        id: 'exact_lookup_case',
-        family: 'exact_product_lookup',
-        query: 'IPSA Time Reset Aqua',
-        source: 'shopping_agent',
-        require_primary_path: true,
-        allow_zero_results: false,
-        must_have_one_of_metadata: ['service_version.commit', 'service_version.build_id'],
-        must_have_metadata: [
-          'query_source',
-          'search_trace.query_class',
-          'search_trace.final_decision',
-        ],
-        must_equal_metadata: {
-          'search_trace.query_class': 'lookup',
-        },
-        must_return_one_of_titles: ['IPSA Time Reset Aqua'],
-      },
-    ];
-    fs.writeFileSync(queryFile, JSON.stringify(cases, null, 2));
-
-    const server = http.createServer(async (req, res) => {
-      const body = await readJsonBody(req);
-      if (req.url !== '/agent/shop/v1/invoke') {
-        res.statusCode = 404;
-        res.end('not found');
-        return;
-      }
-
-      if (req.headers.authorization !== 'Bearer ak_live_test_prod_key') {
-        res.statusCode = 401;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'UNAUTHORIZED', message: 'Missing or invalid API key' }));
-        return;
-      }
-
-      expect(body?.metadata?.source).toBe('shopping_agent');
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(
-        JSON.stringify({
-          products: [{ title: 'IPSA Time Reset Aqua' }],
-          metadata: {
-            service_version: { commit: 'fallback999' },
-            query_source: 'agent_products_resolver_fallback',
-            proxy_search_fallback: {
-              applied: true,
-              reason: 'resolver_after_primary',
-            },
-            route_health: {
-              primary_path_used: 'resolver_fallback',
-              fallback_triggered: true,
-              fallback_reason: 'resolver_after_primary',
-            },
-            search_trace: {
-              query_class: 'lookup',
-              final_decision: 'resolver_returned',
-            },
-          },
-        }),
-      );
-    });
-
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-    const baseUrl = `http://127.0.0.1:${address.port}`;
-
-    try {
-      const { stdout } = await execFileAsync('bash', [scriptPath], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          BASE_URL: baseUrl,
-          AUTH_TOKEN: 'ak_live_test_prod_key',
-          OUT_DIR: outDir,
-          QUERY_FILE: queryFile,
-          VERIFY_DEPLOY: '0',
-          FAIL_ON_GATE_FAILURES: '0',
-          ROUNDS: '1',
-          TIMEOUT_MS: '5000',
-        },
-      });
-      const payload = JSON.parse(String(stdout || '').trim());
-      const report = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
-
-      expect(payload.ok).toBe(true);
-      expect(report.summary.total_requests).toBe(1);
-      expect(report.summary.gate_failure_rate).toBe(1);
-      expect(report.summary.primary_path_degraded_rate).toBe(1);
-      expect(report.per_case.exact_lookup_case.fail).toBe(1);
-      expect(report.rows[0].gate_reasons).toEqual(
-        expect.arrayContaining([expect.stringContaining('primary_path_degraded:')]),
-      );
-      expect(report.rows[0].primary_path_degraded).toBe(true);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

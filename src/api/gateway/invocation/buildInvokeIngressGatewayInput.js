@@ -229,19 +229,6 @@ function buildCategoryFilters(payload = {}, metadata = {}) {
   );
 }
 
-function hasExplicitInvocationSurfaceDeclaration(req = {}, metadata = {}) {
-  const declared = firstNonEmptyString(
-    metadata.invocation_surface,
-    metadata.invocationSurface,
-    metadata.protocol_family,
-    metadata.protocolFamily,
-    readHeader(req?.headers, 'x-pivota-invocation-surface'),
-    readHeader(req?.headers, 'x-invocation-surface'),
-    readHeader(req?.headers, 'x-mcp-surface'),
-  );
-  return Boolean(declared);
-}
-
 function buildRawAuthClaims(req = {}, routeContext = {}, metadata = {}) {
   const partnerTier = normalizePartnerTier(
     firstNonEmptyString(
@@ -286,16 +273,6 @@ function buildRawAuthClaims(req = {}, routeContext = {}, metadata = {}) {
     ...(authMode ? { auth_mode: authMode } : {}),
     ...(resolveAuthStrength(req, routeContext) ? { auth_strength: resolveAuthStrength(req, routeContext) } : {}),
     ...(req?.invokeAuth?.key_fingerprint ? { key_fingerprint: req.invokeAuth.key_fingerprint } : {}),
-    ...(req?.invokeAuth?.introspect_auth_source
-      ? { introspect_auth_source: req.invokeAuth.introspect_auth_source }
-      : {}),
-    ...(req?.invokeAuth?.auth_degraded === true ? { auth_degraded: true } : {}),
-    ...(req?.invokeAuth?.auth_degraded_reason
-      ? { auth_degraded_reason: req.invokeAuth.auth_degraded_reason }
-      : {}),
-    ...(hasExplicitInvocationSurfaceDeclaration(req, metadata)
-      ? { invocation_surface_declared: true }
-      : {}),
     environment:
       String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test' ? 'staging' : 'prod',
   };

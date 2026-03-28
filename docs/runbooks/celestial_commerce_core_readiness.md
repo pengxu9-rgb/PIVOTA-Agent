@@ -58,8 +58,6 @@ POST /agent/shop/v1/invoke
 
 The legacy public `POST /api/gateway` probe is still recorded in the report for public-surface observability, but it should no longer be treated as the primary commerce acceptance gate.
 
-When a production auth token or API key is present, the shared prod smoke wrappers now auto-select the authenticated invoke endpoint even if you do not set `COMMERCE_CORE_PROD_SMOKE_ENDPOINT` explicitly.
-
 Run the shared production smoke against the supported invoke surface:
 
 ```bash
@@ -68,7 +66,7 @@ COMMERCE_CORE_PROD_AUTH_TOKEN=ak_live_your_prod_key \
 npm run audit:readiness:commerce-core
 ```
 
-When `BASE_URL` stays on the public default and `COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke`, the production smoke auto-switches to `https://pivota-agent-production.up.railway.app` for the authenticated invoke run. The report still keeps the separate public probe on `https://agent.pivota.cc`.
+The production smoke defaults to `https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke`. The report still keeps the separate public probe on `https://agent.pivota.cc`, but marks it as non-authoritative.
 
 You can also provide:
 
@@ -77,8 +75,6 @@ COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke \
 COMMERCE_CORE_PROD_AGENT_API_KEY=ak_live_your_prod_key \
 npm run audit:readiness:commerce-core
 ```
-
-If you do not provide authenticated production smoke credentials, the readiness report should stay `amber` on commerce-contract readiness rather than misreporting a `red` gate purely because the legacy public probe is auth-gated.
 
 The audit writes a timestamped report under `reports/celestial-commerce-core-readiness/`.
 
@@ -154,10 +150,17 @@ The commerce-core baseline should keep these scenario families under one shared 
 - broad `shopping_agent` / `aurora-bff` commerce search
 - strict ingredient consistency
 - merchant-style query routing
-- exact `shopping_agent` product lookup
 - clarify-required query behavior
 
-The shared authenticated smoke should keep one stable exact product lookup on `shopping_agent`. If another source contract is still live-flaky, keep that source-specific exact case in local contract tests until runtime routing is deterministic enough for shared smoke.
+Exact product-specific lookup should stay covered, but if a source contract is still live-flaky, keep it in local contract tests until runtime routing is stabilized enough for deterministic production smoke.
+
+Current shared live corpus should include:
+
+- `serum`
+- `vitamin c serum under €30`
+- `IPSA Time Reset Aqua`
+- `IPSA products`
+- the current clarify-required makeup/date case
 
 ## Scorecard Dimensions
 

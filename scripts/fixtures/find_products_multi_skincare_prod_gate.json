@@ -4,6 +4,12 @@
     "family": "generic_skincare_category",
     "query": "serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
     "allow_zero_results": false,
     "must_have_metadata": [
       "query_source",
@@ -24,6 +30,9 @@
     "family": "strict_ingredient",
     "query": "niacinamide serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -53,6 +62,9 @@
     "family": "strict_ingredient",
     "query": "vitamin c serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -80,7 +92,10 @@
     "query": "vitamin c serum under €30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
     "allow_zero_results": false,
+    "allow_strict_empty": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "service_version.commit",
@@ -109,7 +124,10 @@
     "query": "vitamin c serum under $30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
     "allow_zero_results": false,
+    "allow_strict_empty": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "service_version.commit",

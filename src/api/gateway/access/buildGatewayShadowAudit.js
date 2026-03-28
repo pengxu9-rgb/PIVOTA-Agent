@@ -8,12 +8,6 @@ function buildGatewayShadowAudit(envelope = {}, options = {}) {
   const shadowMode = options.shadow_mode !== false;
   const rateLimit = envelope.rate_limit_decision || {};
   const queryGovernance = envelope.query_governance_decision || {};
-  const rawAuthClaims =
-    envelope.invocation_context &&
-    envelope.invocation_context.raw_auth_claims &&
-    typeof envelope.invocation_context.raw_auth_claims === 'object'
-      ? envelope.invocation_context.raw_auth_claims
-      : {};
   const observedPhase =
     rateLimit.allowed === false
       ? 'rate_limit'
@@ -46,11 +40,6 @@ function buildGatewayShadowAudit(envelope = {}, options = {}) {
       protocol_version: envelope.invocation_context?.invocation_profile?.protocol_version || null,
       response_mode: envelope.invocation_context?.invocation_profile?.response_mode || null,
       continuation_mode: envelope.invocation_context?.invocation_profile?.continuation_mode || null,
-      auth_source: rawAuthClaims.auth_source || null,
-      auth_mode: rawAuthClaims.auth_mode || null,
-      introspect_auth_source: rawAuthClaims.introspect_auth_source || null,
-      auth_degraded: rawAuthClaims.auth_degraded === true,
-      auth_degraded_reason: rawAuthClaims.auth_degraded_reason || null,
     },
     access: {
       principal_type: envelope.agent_identity?.principal_type || null,

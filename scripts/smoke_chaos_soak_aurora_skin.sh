@@ -13,7 +13,6 @@ SPIKE_OFFSET_MIN="${SPIKE_OFFSET_MIN:-30}"
 SPIKE_DURATION_SEC="${SPIKE_DURATION_SEC:-30}"
 CN_PERCENT="${CN_PERCENT:-50}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-20}"
-SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-https://raw.githubusercontent.com/ageitgey/face_recognition/master/examples/obama.jpg}"
 OUTPUT_DIR="${OUTPUT_DIR:-tmp/chaos_soak_run_$(date +%Y%m%d_%H%M%S)}"
 STARTUP_HEALTH_MAX_WAIT_SEC="${STARTUP_HEALTH_MAX_WAIT_SEC:-45}"
 STARTUP_HEALTH_POLL_SEC="${STARTUP_HEALTH_POLL_SEC:-2}"
@@ -117,6 +116,12 @@ VALIDATOR="${ROOT_DIR}/tools/validate_envelope.js"
 TOXIPROXY_SETUP="${SCRIPT_DIR}/toxiproxy_setup.sh"
 TOXIPROXY_ON="${SCRIPT_DIR}/toxiproxy_chaos_on.sh"
 TOXIPROXY_OFF="${SCRIPT_DIR}/toxiproxy_chaos_off.sh"
+# shellcheck source=scripts/_utils/photo_fixture_defaults.sh
+source "${SCRIPT_DIR}/_utils/photo_fixture_defaults.sh"
+SAMPLE_IMAGE_URL="${SAMPLE_IMAGE_URL:-$(aurora_photo_default_pass_url)}"
+DEFAULT_PASS_FIXTURE_PATH="$(aurora_photo_default_pass_path)"
+PHOTO_FIXTURE_LABEL="${PHOTO_FIXTURE_LABEL:-$(aurora_photo_default_pass_label)}"
+PHOTO_FIXTURE_POLICY="${PHOTO_FIXTURE_POLICY:-$(aurora_photo_fixture_policy)}"
 
 for bin in curl jq node python3; do
   if ! command -v "$bin" >/dev/null 2>&1; then
@@ -149,7 +154,14 @@ SAMPLE_IMAGE_PATH="$OUTPUT_DIR/sample_photo.jpg"
 
 touch "$EVENTS_FILE" "$FAIL_INDEX_FILE" "$RUN_LOG"
 
-curl -fsSL "$SAMPLE_IMAGE_URL" -o "$SAMPLE_IMAGE_PATH"
+PHOTO_FIXTURE_SOURCE="remote_url"
+if [[ -f "$DEFAULT_PASS_FIXTURE_PATH" ]]; then
+  SAMPLE_IMAGE_PATH="$DEFAULT_PASS_FIXTURE_PATH"
+  PHOTO_FIXTURE_SOURCE="repo_local"
+else
+  curl -fsSL "$SAMPLE_IMAGE_URL" -o "$SAMPLE_IMAGE_PATH"
+fi
+log_line "photo fixture label=${PHOTO_FIXTURE_LABEL} policy=${PHOTO_FIXTURE_POLICY} source=${PHOTO_FIXTURE_SOURCE} sample_image_path=${SAMPLE_IMAGE_PATH} sample_image_url=${SAMPLE_IMAGE_URL}"
 
 if [[ -n "$DURATION_SECONDS" ]]; then
   TOTAL_SECONDS="$DURATION_SECONDS"

@@ -170,9 +170,79 @@ test('product_analyze carries product_anchor into add_to_routine next action par
   );
 
   const addToRoutine = response.next_actions.find((action) => action.target_skill_id === 'explore.add_to_routine');
+  const findAlternatives = response.next_actions.find((action) => action.target_skill_id === 'dupe.suggest');
 
   assert.ok(addToRoutine);
-  assert.deepEqual(addToRoutine.params?.product_anchor, productAnchor);
+  assert.deepEqual(addToRoutine.params?.product_anchor, {
+    ...productAnchor,
+    display_name: 'Defense Lotion SPF 35',
+  });
+  assert.ok(findAlternatives);
+  assert.deepEqual(findAlternatives.params?.product_anchor, {
+    ...productAnchor,
+    display_name: 'Defense Lotion SPF 35',
+  });
+});
+
+test('product_analyze enriches follow-up anchors with parsed brand and display name', async () => {
+  const skill = new ProductAnalyzeSkill();
+  const gateway = {
+    async call() {
+      return {
+        parsed: {
+          product_name: 'Nivea Creme',
+          brand: 'Nivea',
+          product_type: 'moisturizer',
+          suitability: {
+            verdict_en: 'Rich classic moisturizer.',
+            verdict_zh: '经典滋润面霜。',
+          },
+          usage: {
+            time_of_day: 'both',
+            frequency: 'daily',
+          },
+          key_ingredients: [],
+          risk_flags: [],
+        },
+        promptHash: 'stub_prompt_hash',
+      };
+    },
+  };
+
+  const response = await skill.run(
+    {
+      skill_id: 'product.analyze',
+      context: {
+        profile: {},
+        recent_logs: [],
+        travel_plan: null,
+        current_routine: null,
+        inventory: [],
+        locale: 'en',
+        safety_flags: [],
+      },
+      params: {
+        product_anchor: {
+          name: 'Nivea Creme',
+        },
+      },
+      thread_state: {},
+    },
+    gateway
+  );
+
+  const addToRoutine = response.next_actions.find((action) => action.target_skill_id === 'explore.add_to_routine');
+  const findAlternatives = response.next_actions.find((action) => action.target_skill_id === 'dupe.suggest');
+
+  assert.ok(addToRoutine);
+  assert.equal(addToRoutine.params?.product_anchor?.brand, 'Nivea');
+  assert.equal(addToRoutine.params?.product_anchor?.name, 'Creme');
+  assert.equal(addToRoutine.params?.product_anchor?.display_name, 'Nivea Creme');
+  assert.equal(addToRoutine.params?.product_anchor?.product_type, 'moisturizer');
+  assert.ok(findAlternatives);
+  assert.equal(findAlternatives.params?.product_anchor?.brand, 'Nivea');
+  assert.equal(findAlternatives.params?.product_anchor?.name, 'Creme');
+  assert.equal(findAlternatives.params?.product_anchor?.display_name, 'Nivea Creme');
 });
 
 test('skill_router derives target_step from a freeform mask request', () => {

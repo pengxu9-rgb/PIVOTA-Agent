@@ -643,6 +643,49 @@ function joinBrandAndName(brandRaw, nameRaw) {
   return `${brand} ${name}`.trim();
 }
 
+function stripLeadingBrandFromName(nameRaw, brandRaw) {
+  const name = String(nameRaw || '').trim();
+  const brand = String(brandRaw || '').trim();
+  if (!name || !brand) return name;
+  const nameLower = name.toLowerCase();
+  const brandLower = brand.toLowerCase();
+  if (nameLower === brandLower) return name;
+  if (nameLower.startsWith(`${brandLower} `)) {
+    return name.slice(brand.length).trim() || name;
+  }
+  return name;
+}
+
+function buildCompatNameVariants(nameRaw, productTypeRaw) {
+  const base = String(nameRaw || '').trim();
+  const productType = String(productTypeRaw || '').trim().toLowerCase();
+  if (!base) return [];
+
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  add(base);
+  if (/\bcreme\b/i.test(base)) add(base.replace(/\bcreme\b/gi, 'cream'));
+
+  if (productType === 'moisturizer' || productType === 'moisturiser') {
+    if (/\bcreme\b/i.test(base) || /\bcream\b/i.test(base)) {
+      add('moisturizing cream');
+    } else if (!/\bmoisturizer\b/i.test(base)) {
+      add(`${base} moisturizer`);
+    }
+  }
+
+  return out;
+}
+
 function normalizeProductCatalogQuery(raw) {
   let text = String(raw || '').trim();
   if (!text) return '';
@@ -726,7 +769,32 @@ function buildCompatProductCatalogQueries({ inputText, inputUrl, productAnchor }
   };
 
   const productIdentity = readProductIdentity(productAnchor);
-  add(joinBrandAndName(productIdentity.brand, productIdentity.name));
+  const product = isPlainObject(productAnchor) ? productAnchor : {};
+  const productType = pickFirstTrimmed(
+    product.product_type,
+    product.productType,
+    product.category,
+    product.category_name,
+    product.type,
+  );
+  const shortName = pickFirstTrimmed(
+    stripLeadingBrandFromName(product.display_name, productIdentity.brand),
+    stripLeadingBrandFromName(product.displayName, productIdentity.brand),
+    stripLeadingBrandFromName(product.name, productIdentity.brand),
+    stripLeadingBrandFromName(product.title, productIdentity.brand),
+    stripLeadingBrandFromName(product.product_name, productIdentity.brand),
+    stripLeadingBrandFromName(product.productName, productIdentity.brand),
+  );
+  const nameVariants = buildCompatNameVariants(shortName || productIdentity.name, productType);
+  const canonicalName = joinBrandAndName(productIdentity.brand, nameVariants[0] || productIdentity.name);
+
+  add(canonicalName);
+  for (const variant of nameVariants.slice(1)) {
+    add(joinBrandAndName(productIdentity.brand, variant));
+  }
+  if (productType) add(joinBrandAndName(productIdentity.brand, `${nameVariants[0] || productIdentity.name} ${productType}`.trim()));
+  if (productType && productIdentity.brand) add(`${productIdentity.brand} ${productType}`);
+  if (productType && nameVariants[0]) add(`${nameVariants[0]} ${productType}`);
   add(productIdentity.name);
   add(productIdentity.productId);
 
@@ -776,6 +844,140 @@ function mapRecoAlternativeToCompatCandidate(value) {
     ...(Array.isArray(alternative.tradeoffs) ? { compare_highlights: alternative.tradeoffs.slice(0, 2) } : {}),
     ...(alternative.kind ? { recommendation_kind: String(alternative.kind) } : {}),
   };
+}
+
+function mergeProductAnchor(baseValue, nextValue) {
+  const base = isPlainObject(baseValue) ? { ...baseValue } : {};
+  const next = isPlainObject(nextValue) ? nextValue : null;
+  if (!next) return base;
+
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(next)) {
+    if (value == null) continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    merged[key] = value;
+  }
+  return merged;
+}
+
+function scoreAnchorTrustCandidate(trust) {
+  if (!isPlainObject(trust)) return Number.NEGATIVE_INFINITY;
+  const trustLevel = String(trust.trust_level || '').trim().toLowerCase();
+  const candidateQuality = String(trust.candidate_quality || '').trim().toLowerCase();
+  const reasonsCount = Array.isArray(trust.reason_codes) ? trust.reason_codes.length : 0;
+  const trustWeight =
+    trustLevel === 'trusted' ? 1000
+      : trustLevel === 'soft_blocked' ? 400
+        : 0;
+  const usableWeight = trust.usable_for_anchor_id === true ? 250 : 0;
+  const qualityWeight =
+    candidateQuality === 'strong' ? 120
+      : candidateQuality === 'medium' ? 70
+        : candidateQuality === 'weak' ? 30
+          : 0;
+  const urlConsistency = Number.isFinite(Number(trust.url_consistency)) ? Number(trust.url_consistency) : 0;
+  return trustWeight + usableWeight + qualityWeight + Math.round(urlConsistency * 100) - (reasonsCount * 5);
+}
+
+async function resolveGroundedProductAnchorForCompat({
+  internal = {},
+  productAnchor = null,
+  inputText = '',
+  inputUrl = '',
+  maxQueries = 5,
+} = {}) {
+  const baseAnchor = isPlainObject(productAnchor) ? productAnchor : null;
+  if (!baseAnchor) return null;
+
+  const searchPivotaBackendProducts = typeof internal.searchPivotaBackendProducts === 'function'
+    ? internal.searchPivotaBackendProducts
+    : null;
+  const evaluateAnchorTrustForProductIntel = typeof internal.evaluateAnchorTrustForProductIntel === 'function'
+    ? internal.evaluateAnchorTrustForProductIntel
+    : null;
+  const mapCatalogProductToAnchorProduct = typeof internal.mapCatalogProductToAnchorProduct === 'function'
+    ? internal.mapCatalogProductToAnchorProduct
+    : null;
+
+  if (!searchPivotaBackendProducts || !evaluateAnchorTrustForProductIntel || !mapCatalogProductToAnchorProduct) {
+    return baseAnchor;
+  }
+
+  const baseIdentity = readProductIdentity(baseAnchor);
+  if (baseIdentity.productId && baseIdentity.brand && baseIdentity.name) {
+    return baseAnchor;
+  }
+
+  const queries = buildCompatProductCatalogQueries({
+    inputText,
+    inputUrl,
+    productAnchor: baseAnchor,
+  });
+  if (!queries.length) return baseAnchor;
+
+  let bestAnchor = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const query of queries.slice(0, Math.max(1, Math.min(6, Number(maxQueries) || 5)))) {
+    try {
+      const response = await searchPivotaBackendProducts({
+        query,
+        limit: 4,
+        logger: null,
+        timeoutMs: 3000,
+        mode: 'main_path',
+        searchAllMerchants: true,
+        fastMode: true,
+      });
+      const products = Array.isArray(response && response.products) ? response.products : [];
+      for (const row of products) {
+        const trust = evaluateAnchorTrustForProductIntel({
+          candidate: row,
+          inputText,
+          inputUrl,
+          source: 'chat_compat_search',
+          strictFilter: true,
+        });
+        const candidateAnchor = trust && trust.usable_for_anchor_id === true
+          ? mapCatalogProductToAnchorProduct(row, { fallbackName: baseIdentity.name || query })
+          : null;
+        if (!candidateAnchor) continue;
+        const score = scoreAnchorTrustCandidate(trust);
+        if (score > bestScore) {
+          bestScore = score;
+          bestAnchor = candidateAnchor;
+        }
+      }
+    } catch {
+      // Preserve original anchor on compat enrichment failure.
+    }
+  }
+
+  return bestAnchor ? mergeProductAnchor(baseAnchor, bestAnchor) : baseAnchor;
+}
+
+function shouldEnrichProductAnalyzeRequest(skillRequest) {
+  const skillId = pickFirstTrimmed(skillRequest && skillRequest.skill_id);
+  const intent = pickFirstTrimmed(skillRequest && skillRequest.intent);
+  const entrySource = pickFirstTrimmed(skillRequest && skillRequest.params && skillRequest.params.entry_source);
+  return (
+    skillId === 'product.analyze' ||
+    intent === 'evaluate_product' ||
+    intent === 'product_analysis' ||
+    entrySource === 'chip.action.analyze_product'
+  );
+}
+
+function shouldEnrichDupeCompareRequest(skillRequest) {
+  const skillId = pickFirstTrimmed(skillRequest && skillRequest.skill_id);
+  const entrySource = pickFirstTrimmed(skillRequest && skillRequest.params && skillRequest.params.entry_source);
+  return skillId === 'dupe.compare' || entrySource === 'chip.action.dupe_compare';
+}
+
+function shouldEnrichDupeSuggestRequest(skillRequest) {
+  const skillId = pickFirstTrimmed(skillRequest && skillRequest.skill_id);
+  const entrySource = pickFirstTrimmed(skillRequest && skillRequest.params && skillRequest.params.entry_source);
+  return skillId === 'dupe.suggest' || entrySource === 'chip.start.dupes' || entrySource === 'chip.action.dupe_suggest';
 }
 
 async function buildDupeSuggestCompatFallbackCandidates({ req, internal, productAnchor, inputText, anchorId, anchorUrl } = {}) {
@@ -922,37 +1124,101 @@ async function buildDupeSuggestCandidatePoolCompat(req, skillRequest, internal =
     }
   }
 
-  if (out.length === 0) {
-    const recoFallbackCandidates = await buildDupeSuggestCompatFallbackCandidates({
-      req,
-      internal,
-      productAnchor,
-      inputText,
-      anchorId,
-      anchorUrl,
-    });
-    for (const row of recoFallbackCandidates) {
-      maybePush(row);
-      if (out.length >= 12) return out.slice(0, 12);
-    }
-  }
-
   return out.slice(0, 12);
 }
 
 async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
   const fitCheckCompatRequest = enrichProductAnalyzeRequestForCompat(skillRequest, internal);
-  if (!shouldEnrichDupeSuggestRequest(fitCheckCompatRequest)) return fitCheckCompatRequest;
   const params = isPlainObject(fitCheckCompatRequest && fitCheckCompatRequest.params) ? fitCheckCompatRequest.params : {};
-  if (Array.isArray(params._candidate_pool) && params._candidate_pool.length > 0) return fitCheckCompatRequest;
+  const buildProductInputText = typeof internal.buildProductInputText === 'function'
+    ? internal.buildProductInputText
+    : null;
+  let nextParams = { ...params };
+  let changed = false;
 
-  const candidatePool = await buildDupeSuggestCandidatePoolCompat(req, fitCheckCompatRequest, internal);
-  if (!candidatePool.length) return fitCheckCompatRequest;
+  const resolveAnchorInputText = (anchor, fallbackUrl = '', fallbackText = '') => {
+    if (buildProductInputText) {
+      return pickFirstTrimmed(buildProductInputText(anchor, fallbackUrl), fallbackText, fallbackUrl);
+    }
+    return pickFirstTrimmed(
+      joinBrandAndName(readProductIdentity(anchor).brand, readProductIdentity(anchor).name),
+      fallbackText,
+      fallbackUrl,
+    );
+  };
+
+  if (
+    shouldEnrichProductAnalyzeRequest(fitCheckCompatRequest) ||
+    shouldEnrichDupeSuggestRequest(fitCheckCompatRequest) ||
+    shouldEnrichDupeCompareRequest(fitCheckCompatRequest)
+  ) {
+    const productAnchor = isPlainObject(nextParams.product_anchor) ? nextParams.product_anchor : null;
+    if (productAnchor) {
+      const anchorUrl = pickFirstTrimmed(nextParams.anchor_product_url, readProductIdentity(productAnchor).url);
+      const anchorInputText = resolveAnchorInputText(
+        productAnchor,
+        anchorUrl,
+        pickFirstTrimmed(nextParams.user_message, nextParams.message, nextParams.text),
+      );
+      const enrichedAnchor = await resolveGroundedProductAnchorForCompat({
+        internal,
+        productAnchor,
+        inputText: anchorInputText,
+        inputUrl: anchorUrl,
+      });
+      if (enrichedAnchor && buildCandidateIdentityKey(enrichedAnchor) !== buildCandidateIdentityKey(productAnchor)) {
+        nextParams.product_anchor = enrichedAnchor;
+        const enrichedIdentity = readProductIdentity(enrichedAnchor);
+        if (enrichedIdentity.productId && !pickFirstTrimmed(nextParams.anchor_product_id)) {
+          nextParams.anchor_product_id = enrichedIdentity.productId;
+        }
+        if (enrichedIdentity.url && !pickFirstTrimmed(nextParams.anchor_product_url)) {
+          nextParams.anchor_product_url = enrichedIdentity.url;
+        }
+        changed = true;
+      }
+    }
+  }
+
+  if (shouldEnrichDupeCompareRequest(fitCheckCompatRequest) && Array.isArray(nextParams.comparison_targets) && nextParams.comparison_targets.length > 0) {
+    const nextTargets = [];
+    for (const target of nextParams.comparison_targets) {
+      if (!isPlainObject(target)) {
+        nextTargets.push(target);
+        continue;
+      }
+      const targetIdentity = readProductIdentity(target);
+      const enrichedTarget = await resolveGroundedProductAnchorForCompat({
+        internal,
+        productAnchor: target,
+        inputText: resolveAnchorInputText(target, targetIdentity.url),
+        inputUrl: targetIdentity.url,
+        maxQueries: 3,
+      });
+      nextTargets.push(enrichedTarget || target);
+      if (buildCandidateIdentityKey(enrichedTarget) !== buildCandidateIdentityKey(target)) changed = true;
+    }
+    nextParams.comparison_targets = nextTargets;
+  }
+
+  let nextSkillRequest = changed
+    ? {
+      ...fitCheckCompatRequest,
+      params: nextParams,
+    }
+    : fitCheckCompatRequest;
+
+  if (!shouldEnrichDupeSuggestRequest(nextSkillRequest)) return nextSkillRequest;
+  const dupeParams = isPlainObject(nextSkillRequest && nextSkillRequest.params) ? nextSkillRequest.params : {};
+  if (Array.isArray(dupeParams._candidate_pool) && dupeParams._candidate_pool.length > 0) return nextSkillRequest;
+
+  const candidatePool = await buildDupeSuggestCandidatePoolCompat(req, nextSkillRequest, internal);
+  if (!candidatePool.length) return nextSkillRequest;
 
   return {
-    ...fitCheckCompatRequest,
+    ...nextSkillRequest,
     params: {
-      ...params,
+      ...dupeParams,
       _candidate_pool: candidatePool,
     },
   };

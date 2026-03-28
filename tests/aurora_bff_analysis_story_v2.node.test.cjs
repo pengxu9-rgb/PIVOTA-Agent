@@ -478,6 +478,379 @@ test('analysis_story_v2: evidence -> generate -> review pipeline enforces routin
   assert.equal(typeof coerced.ui_card_v1.headline, 'string');
 });
 
+test('analysis_story_v2: buildAnalysisEvidence injects photo_context and photo module findings', () => {
+  const internal = loadInternalWithFlags({});
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      analysis_source: 'vision_gemini',
+      used_photos: true,
+      photo_notice: 'Photo quality passed.',
+      quality_report: {
+        photo_quality: {
+          grade: 'pass',
+          reasons: ['good_lighting'],
+        },
+      },
+      analysis: { features: [{ observation: 'mild cheek redness' }] },
+    },
+    photoModulesCard: {
+      type: 'photo_modules_v1',
+      payload: {
+        used_photos: true,
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [
+              {
+                issue_type: 'texture',
+                severity_0_4: 2,
+                confidence_0_1: 0.7,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['forehead_texture_region'],
+                explanation_short: 'Texture is visible on the forehead.',
+              },
+            ],
+            actions: [
+              {
+                ingredient_name: 'BHA/LHA',
+                why: 'Texture signals are most visible on the forehead in this photo set.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    profile: {},
+    language: 'EN',
+    fallbackStory: null,
+  });
+  assert.equal(evidence.photo_context.used_photos, true);
+  assert.equal(evidence.photo_context.quality_grade, 'pass');
+  assert.equal(evidence.photo_context.module_highlights.includes('Forehead'), true);
+  assert.equal(Array.isArray(evidence.finding_evidence), true);
+  assert.equal(
+    evidence.finding_evidence.some((item) => String(item?.source || '') === 'photo_modules_v1'),
+    true,
+  );
+  assert.equal(
+    evidence.finding_evidence.some((item) => /texture|forehead/i.test(String(item?.observation || ''))),
+    true,
+  );
+  assert.equal(Array.isArray(evidence.observed_signals), true);
+  assert.equal(evidence.observed_signals.length > 0, true);
+  assert.equal(Array.isArray(evidence.quality_caveats), true);
+  assert.equal(Array.isArray(evidence.top_actions_by_module), true);
+  assert.equal(Array.isArray(evidence.strict_match_product_counts_by_action), true);
+});
+
+test('analysis_story_v2: photo modules make fallback story ui card photo-first', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_LLM_QA_MODE: 'off',
+  });
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'pm_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          modules: [
+            {
+              module_id: 'forehead',
+              issues: [
+                {
+                  issue_type: 'texture',
+                  severity_0_4: 3,
+                  confidence_0_1: 0.82,
+                  confidence_bucket: 'high',
+                  evidence_region_ids: ['forehead_texture_region'],
+                  explanation_short: 'Visible texture clustering is most noticeable on the forehead.',
+                },
+              ],
+              summary: 'Visible texture clustering is most noticeable on the forehead.',
+              actions: [
+                {
+                  ingredient_name: 'BHA/LHA',
+                  why: 'BHA/LHA is the most relevant lane for the photographed texture hotspot.',
+                },
+              ],
+            },
+          ],
+          summary_v1: {
+            top_findings: [
+              {
+                module_id: 'forehead',
+                issue_type: 'texture',
+                severity_0_4: 3,
+                confidence_0_1: 0.82,
+                confidence_bucket: 'high',
+                evidence_region_ids: ['forehead_texture_region'],
+              },
+            ],
+            quality_caveats: [],
+            strict_match_coverage_overview: { total_actions: 1, actions_with_strict_matches: 0, coverage_ratio: 0 },
+          },
+        },
+      },
+      {
+        card_id: 'analysis_photo',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          analysis: { features: [] },
+          low_confidence: false,
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'req_photo_story' },
+      profile: {},
+      language: 'EN',
+    },
+  );
+  const storyCard = out.find((card) => card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'Expected analysis_story_v2 card');
+  assert.match(String(storyCard.payload?.ui_card_v1?.headline || ''), /forehead|texture/i);
+  assert.equal(
+    Array.isArray(storyCard.payload?.ui_card_v1?.key_points) &&
+      storyCard.payload.ui_card_v1.key_points.some((item) => /texture|forehead/i.test(String(item || ''))),
+    true,
+  );
+});
+
+test('analysis_story_v2: photo-led ingredient plan is annotated with provenance and strict-match miss', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'pm_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'degraded',
+          modules: [
+            {
+              module_id: 'left_cheek',
+              issues: [
+                {
+                  issue_type: 'redness',
+                  severity_0_4: 3,
+                  confidence_0_1: 0.82,
+                  confidence_bucket: 'high',
+                  evidence_region_ids: ['left_cheek_redness_bbox'],
+                  explanation_short: 'Redness is most visible on the left cheek.',
+                },
+              ],
+              actions: [
+                {
+                  ingredient_id: 'niacinamide',
+                  ingredient_name: 'Niacinamide',
+                  why: 'Helps reduce the look of redness from the photographed cheek.',
+                  evidence_issue_types: ['redness'],
+                  products: [],
+                  products_empty_reason: 'low_confidence_fallback_only',
+                  external_search_ctas: [
+                    {
+                      title: 'Search niacinamide',
+                      url: 'https://example.com/search/niacinamide',
+                      source: 'external',
+                      reason: 'strict_match_miss',
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          summary_v1: {
+            top_findings: [
+              {
+                module_id: 'left_cheek',
+                issue_type: 'redness',
+                severity_0_4: 3,
+                confidence_0_1: 0.82,
+                confidence_bucket: 'high',
+                evidence_region_ids: ['left_cheek_redness_bbox'],
+              },
+            ],
+            quality_caveats: ['photo_quality_degraded'],
+          },
+        },
+      },
+      {
+        card_id: 'analysis_photo',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          analysis: { features: [] },
+          low_confidence: false,
+        },
+      },
+      {
+        card_id: 'plan_photo',
+        type: 'ingredient_plan_v2',
+        payload: {
+          targets: [
+            {
+              ingredient_id: 'niacinamide',
+              ingredient_name: 'Niacinamide',
+              why: ['Supports visible redness.'],
+              products: {
+                competitors: [],
+                dupes: [],
+              },
+            },
+            {
+              ingredient_id: 'uv_filters',
+              ingredient_name: 'UV filters',
+              why: ['Daily baseline support.'],
+              products: {
+                competitors: [
+                  { name: 'Daily UV Fluid SPF 50', pdp_url: 'https://example.com/pdp/spf' },
+                ],
+                dupes: [],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'req_photo_plan_1' },
+      profile: {},
+      language: 'EN',
+    },
+  );
+
+  const planCard = out.find((card) => card.type === 'ingredient_plan_v2');
+  assert.ok(planCard, 'Expected ingredient_plan_v2 card');
+  assert.equal(planCard.payload.targets[0].ingredient_id, 'niacinamide');
+  assert.deepEqual(planCard.payload.targets[0].source_module_ids, ['left_cheek']);
+  assert.deepEqual(planCard.payload.targets[0].source_issue_types, ['redness']);
+  assert.equal(planCard.payload.targets[0].recommendation_mode, 'cta_only');
+  assert.equal(planCard.payload.targets[0].strict_product_count, 0);
+  assert.equal(planCard.payload.targets[0].presentation_bucket, 'photo_derived');
+  assert.equal(planCard.payload.targets[0].products.products_empty_reason, 'strict_match_miss');
+  assert.equal(Array.isArray(planCard.payload.targets[0].products.external_search_ctas), true);
+  assert.match(String(planCard.payload.targets[0].why[0] || ''), /left cheek|redness/i);
+  assert.equal(planCard.payload.targets[1].presentation_bucket, 'baseline_support');
+});
+
+test('analysis_story_v2: photo-led ingredient plan carries strict-match products into target payload', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'pm_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'pass',
+          modules: [
+            {
+              module_id: 'forehead',
+              issues: [
+                {
+                  issue_type: 'redness',
+                  severity_0_4: 2,
+                  confidence_0_1: 0.74,
+                  confidence_bucket: 'medium',
+                  evidence_region_ids: ['forehead_redness_bbox'],
+                  explanation_short: 'Redness is visible across the forehead.',
+                },
+              ],
+              actions: [
+                {
+                  ingredient_id: 'panthenol',
+                  ingredient_name: 'Panthenol',
+                  why: 'Supports visible redness on the forehead.',
+                  evidence_issue_types: ['redness'],
+                  products: [
+                    {
+                      product_id: 'ext_panthenol_1',
+                      merchant_id: 'external_seed',
+                      name: 'Barrier Rescue Serum',
+                      brand: 'Test Brand',
+                      pdp_url: 'https://example.com/p/barrier-rescue-serum',
+                      suitability_score: 0.91,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          summary_v1: {
+            top_findings: [
+              {
+                module_id: 'forehead',
+                issue_type: 'redness',
+                severity_0_4: 2,
+                confidence_0_1: 0.74,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['forehead_redness_bbox'],
+              },
+            ],
+            quality_caveats: [],
+          },
+        },
+      },
+      {
+        card_id: 'analysis_photo',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          analysis: { features: [] },
+          low_confidence: false,
+        },
+      },
+      {
+        card_id: 'plan_photo',
+        type: 'ingredient_plan_v2',
+        payload: {
+          targets: [
+            {
+              ingredient_id: 'panthenol',
+              ingredient_name: 'Panthenol',
+              why: ['Supports visible redness.'],
+              products: {
+                competitors: [],
+                dupes: [],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'req_photo_plan_strict_1' },
+      profile: {},
+      language: 'EN',
+    },
+  );
+
+  const planCard = out.find((card) => card.type === 'ingredient_plan_v2');
+  assert.ok(planCard, 'Expected ingredient_plan_v2 card');
+  assert.equal(planCard.payload.targets[0].ingredient_id, 'panthenol');
+  assert.equal(planCard.payload.targets[0].recommendation_mode, 'strict_match');
+  assert.equal(planCard.payload.targets[0].strict_product_count, 1);
+  assert.equal(planCard.payload.targets[0].presentation_bucket, 'photo_derived');
+  assert.equal(Array.isArray(planCard.payload.targets[0].products.competitors), true);
+  assert.equal(planCard.payload.targets[0].products.competitors.length, 1);
+  assert.equal(planCard.payload.targets[0].products.competitors[0].name, 'Barrier Rescue Serum');
+  assert.equal(planCard.payload.targets[0].products.products_empty_reason, undefined);
+});
+
 test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
   const internal = loadInternalWithFlags({});
   const prompt = internal.buildRoutineFitSummaryPrompt({

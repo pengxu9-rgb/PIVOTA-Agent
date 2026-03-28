@@ -638,6 +638,12 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   if (type === 'routine_recommendation_v1') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '补充推荐' : 'Routine recommendations' })];
   }
+  if (type === 'returning_triage') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '继续你的诊断' : 'Continue your diagnosis' })];
+  }
+  if (type === 'skin_progress') {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '皮肤进展' : 'Skin progress' })];
+  }
   if (type === 'ingredient_hub') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '成分查询入口' : 'Ingredient hub' })];
   }

@@ -1,10 +1,31 @@
 #!/usr/bin/env node
 const https = require('https');
+const { URL } = require('url');
+const {
+  normalizeRailMode,
+  normalizeEndpoint,
+  resolveBaseUrl,
+  assertRailAuth,
+} = require('./lib/commerce_invoke_contract');
+const { assessPrimaryPath: assessPrimaryPathBase } = require('./lib/commerce_primary_path');
 
 function parseArgs(argv) {
+  const railMode = normalizeRailMode(process.env.RAIL_MODE || process.env.BUDGET_FX_PREFLIGHT_RAIL_MODE || '');
+  const envAuthToken = process.env.AUTH_TOKEN || process.env.COMMERCE_CORE_PROD_AUTH_TOKEN || '';
+  const envAgentApiKey =
+    process.env.AGENT_API_KEY || process.env.COMMERCE_CORE_PROD_AGENT_API_KEY || '';
   const args = {
-    baseUrl: process.env.BASE_URL || 'https://agent.pivota.cc',
-    endpoint: process.env.ENDPOINT || '/api/gateway',
+    railMode,
+    baseUrl: resolveBaseUrl(
+      process.env.BASE_URL || process.env.COMMERCE_CORE_PROD_SMOKE_BASE_URL || '',
+      railMode,
+    ),
+    endpoint: normalizeEndpoint(
+      process.env.ENDPOINT || process.env.COMMERCE_CORE_PROD_SMOKE_ENDPOINT || '',
+      railMode,
+    ),
+    authToken: envAuthToken,
+    agentApiKey: envAgentApiKey,
     source: process.env.SEARCH_MATRIX_SOURCE || 'search',
     query: process.env.BUDGET_FX_PREFLIGHT_QUERY || 'vitamin c serum under €30',
     timeoutMs: Number(process.env.BUDGET_FX_PREFLIGHT_TIMEOUT_MS || 15000),
@@ -15,23 +36,37 @@ function parseArgs(argv) {
     const next = argv[i + 1];
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--endpoint' && next) args.endpoint = String(next);
+    if (token === '--rail-mode' && next) args.railMode = normalizeRailMode(next);
+    if (token === '--auth-token' && next) args.authToken = String(next);
+    if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--source' && next) args.source = String(next);
     if (token === '--query' && next) args.query = String(next);
     if (token === '--timeout-ms' && next) args.timeoutMs = Math.max(1000, Number(next) || 15000);
   }
+  args.baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
+  args.endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   return args;
 }
 
-function requestJson(url, payload, timeoutMs) {
+function assessPrimaryPath(metadata) {
+  return assessPrimaryPathBase(metadata);
+}
+
+function requestJson(url, payload, timeoutMs, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
+    const parsed = new URL(url);
     const req = https.request(
-      url,
       {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || undefined,
+        path: `${parsed.pathname}${parsed.search}`,
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'content-length': Buffer.byteLength(body),
+          ...extraHeaders,
         },
         timeout: timeoutMs,
       },
@@ -61,10 +96,14 @@ function requestJson(url, payload, timeoutMs) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertRailAuth({
+    railMode: args.railMode,
+    authToken: args.authToken,
+    agentApiKey: args.agentApiKey,
+    context: 'check_budget_fx_freshness',
+  });
   const baseUrl = String(args.baseUrl || '').replace(/\/$/, '');
-  const endpoint = String(args.endpoint || '').startsWith('/')
-    ? String(args.endpoint)
-    : `/${args.endpoint}`;
+  const endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   const response = await requestJson(
     `${baseUrl}${endpoint}`,
     {
@@ -81,6 +120,16 @@ async function main() {
       },
     },
     args.timeoutMs,
+    {
+      ...(args.authToken
+        ? {
+            Authorization: /^Bearer\s+/i.test(args.authToken)
+              ? args.authToken
+              : `Bearer ${args.authToken}`,
+          }
+        : {}),
+      ...(args.agentApiKey ? { 'X-Agent-API-Key': args.agentApiKey } : {}),
+    },
   );
 
   const metadata =
@@ -88,6 +137,7 @@ async function main() {
       ? response.data.metadata
       : {};
   const products = Array.isArray(response.data?.products) ? response.data.products : [];
+  const primaryPath = assessPrimaryPath(metadata);
   const result = {
     ok: false,
     status: response.status,
@@ -95,6 +145,11 @@ async function main() {
     source: args.source,
     total: Number(response.data?.total || 0),
     titles: products.map((item) => item?.title).filter(Boolean).slice(0, 5),
+    query_source: metadata.query_source || null,
+    final_decision:
+      metadata.search_decision && typeof metadata.search_decision === 'object'
+        ? metadata.search_decision.final_decision || null
+        : metadata.final_decision || null,
     strict_constraint_reason: metadata.strict_constraint_reason || null,
     budget_currency: metadata.budget_currency || null,
     budget_fx_applied: metadata.budget_fx_applied === true,
@@ -102,13 +157,25 @@ async function main() {
     budget_fx_source: metadata.budget_fx_source ?? null,
     budget_fx_candidate_currency: metadata.budget_fx_candidate_currency ?? null,
     budget_fx_unresolved: metadata.budget_fx_unresolved === true,
+    rail_mode: args.railMode,
+    authoritative_endpoint: args.railMode === 'authoritative_commerce' ? `${baseUrl}${endpoint}` : null,
+    primary_path_degraded: primaryPath.degraded,
+    primary_path_degraded_reasons: primaryPath.reasons,
+    primary_path_used: primaryPath.primaryPathUsed,
     matched_ingredient_ids: Array.isArray(metadata.matched_ingredient_ids)
       ? metadata.matched_ingredient_ids
       : [],
     service_version: metadata.service_version || null,
   };
 
-  result.ok = response.status === 200 && result.budget_fx_unresolved !== true;
+  result.ok =
+    response.status === 200 &&
+    products.length > 0 &&
+    result.budget_fx_applied === true &&
+    result.budget_fx_rate != null &&
+    result.budget_fx_source != null &&
+    result.budget_fx_unresolved !== true &&
+    primaryPath.degraded !== true;
   console.log(JSON.stringify(result, null, 2));
 
   if (!result.ok) {

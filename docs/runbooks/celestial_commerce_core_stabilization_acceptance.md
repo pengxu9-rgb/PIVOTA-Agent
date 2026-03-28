@@ -12,6 +12,16 @@ Use it when:
 
 This is a **staging/pre-prod hardening** workflow, not a production rollout workflow.
 
+## GitHub Dispatch
+
+For current `main` validation with repo-managed staging credentials, use the GitHub workflow `Celestial Commerce Core Staging Stabilization`.
+
+It performs the same invoke-first sequence documented here:
+
+1. wait for the staging deployment to serve the target `main` commit over authenticated `POST /agent/shop/v1/invoke`
+2. run the narrow staging invoke smoke
+3. run the bounded stabilization acceptance and upload timestamped artifacts
+
 ## What This Cycle Freezes
 
 - No new large ownership migrations
@@ -45,7 +55,6 @@ npm run audit:stabilization:commerce-core
 If no raw gateway log path or sampled shadow file is supplied, the workflow falls back to the checked-in shadow sample fixture so the acceptance report remains runnable locally.
 
 The staging matrix uses the supported live commerce entrypoint `POST /agent/shop/v1/invoke`. Public `POST /api/gateway` should not be treated as the primary commerce acceptance rail for this workflow. If a case requires auth and the matching staging profile is not configured, the case is marked `review_required` instead of failing.
-When `STAGING_AUTH_TOKEN` or `STAGING_AGENT_API_KEY` is present, the stabilization workflow also runs the Aurora guidance-only manual review runner and links that artifact into the final report so the three manual slots are not left permanently pending.
 
 Supported auth envs:
 
@@ -64,11 +73,9 @@ If staging auth introspection is down but you still need bounded pre-prod accept
 AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED=true
 AGENT_AUTH_EMERGENCY_API_KEYS=ak_live_default_profile_key
 AGENT_AUTH_EMERGENCY_AGENT_ID=agent_staging_acceptance
-AGENT_AUTH_EMERGENCY_CACHE_TTL_MS=5000
 ```
 
 With that fallback enabled on the deployed staging service, `/agent/shop/v1/invoke` can keep accepting the configured staging key even when introspection is temporarily unavailable, so the 9 live acceptance cases can produce real results instead of `AUTH_INTROSPECT_UNAVAILABLE`.
-This does not mean the primary auth path is healthy again. The fallback is acceptance-only, activates only for `AUTH_INTROSPECT_UNAVAILABLE`, uses a short cache TTL, and emits `x-invoke-auth-degraded=true` plus gateway metadata so stabilization can stay at `HOLD` until introspection is actually restored.
 
 ## Git Push Rollout Sequence
 
@@ -80,7 +87,6 @@ Use `git push` to ship this staging-only acceptance fix. Do not use `railway up`
 AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED=true
 AGENT_AUTH_EMERGENCY_API_KEYS=ak_live_your_staging_acceptance_key
 AGENT_AUTH_EMERGENCY_AGENT_ID=agent_staging_acceptance
-AGENT_AUTH_EMERGENCY_CACHE_TTL_MS=5000
 ```
 
 2. Push the branch through the normal repo deployment path:
@@ -110,15 +116,6 @@ STAGING_GENERIC_MCP_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
 npm run audit:stabilization:commerce-core
 ```
 
-5. The stabilization workflow will run the Aurora guidance-only manual review automatically when staging auth is available. You can still rerun it separately when you want a fresh artifact:
-
-```bash
-STAGING_AUTH_TOKEN=ak_live_your_staging_acceptance_key \
-npm run audit:aurora-manual-review:commerce-core
-```
-
-The standalone rerun stays useful when you want a fresh staging snapshot for cache-hit quality, cache-miss lane selection, or bounded direct supplement behavior without rerunning the full stabilization workflow.
-
 ## What The Workflow Produces
 
 The workflow writes a timestamped report under `reports/celestial-commerce-core-stabilization/`.
@@ -130,7 +127,6 @@ Artifacts include:
 - linked readiness report
 - linked gateway governance daily summary
 - staging acceptance matrix
-- linked Aurora guidance-only manual review, when staging auth is available
 
 ## Expected Decision Outputs
 

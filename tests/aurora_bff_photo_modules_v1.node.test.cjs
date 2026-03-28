@@ -227,6 +227,13 @@ test('photo modules card: emits face_crop_norm regions and sanitized heatmap/bou
   assert.ok(
     payload.modules.some((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || '')),
   );
+  assert.equal(Array.isArray(payload.summary_v1.top_findings), true);
+  assert.equal(payload.summary_v1.top_findings.length > 0, true);
+  assert.equal(Array.isArray(payload.summary_v1.quality_caveats), true);
+  assert.equal(payload.summary_v1.quality_caveats.includes('blur'), true);
+  assert.ok(payload.summary_v1.module_confidence_overview && typeof payload.summary_v1.module_confidence_overview === 'object');
+  assert.ok(payload.summary_v1.strict_match_coverage_overview && typeof payload.summary_v1.strict_match_coverage_overview === 'object');
+  assert.equal(Number(payload.summary_v1.strict_match_coverage_overview.total_actions) > 0, true);
   if (payload.summary_v1.top_issue_type) {
     const targetModule =
       payload.modules.find((module) => String(module.module_id || '') === String(payload.summary_v1.top_module_id || ''))
@@ -537,6 +544,234 @@ test('routes helper: flag off does not emit card, flag on emits and records metr
     },
   ));
 
+test('routes helper: photo module product enrichment reuses shared ingredient rec results across actions', async () => {
+  const loaded = loadRoutesInternal();
+  const { internal } = loaded;
+  let callCount = 0;
+  internal.__setBuildIngredientProductRecommendationsNeutralForTest(async ({ ingredientId }) => {
+    callCount += 1;
+    return {
+      products: [],
+      products_empty_reason: `no_match_${ingredientId}`,
+      external_search_ctas: [],
+      debug: { ingredient_id: ingredientId, mocked: true },
+    };
+  });
+
+  try {
+    const card = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'pass',
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [{ issue_type: 'texture' }],
+            actions: [
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+            ],
+          },
+          {
+            module_id: 'left_cheek',
+            issues: [{ issue_type: 'tone' }],
+            actions: [
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const enriched = await internal.enrichPhotoModulesCardWithIngredientProducts({
+      photoModulesCard: card,
+      profileSummary: { market: 'US' },
+      language: 'EN',
+      logger: null,
+    });
+
+    assert.equal(callCount, 2, 'builder should run once per unique shared ingredient');
+    const actions = enriched.payload.modules.flatMap((moduleRow) => moduleRow.actions || []);
+    assert.equal(actions.length, 5);
+    assert.equal(actions.every((action) => action.rec_debug && action.rec_debug.mocked === true), true);
+    assert.equal(actions.every((action) => typeof action.products_empty_reason === 'string' && action.products_empty_reason.length > 0), true);
+  } finally {
+    internal.__resetBuildIngredientProductRecommendationsNeutralForTest();
+    unloadRoutes(loaded.moduleId);
+  }
+});
+
+test('routes helper: photo module product enrichment preloads deterministic seed candidates in one batch', async () => {
+  const loaded = loadRoutesInternal();
+  const { internal } = loaded;
+  let batchCalls = 0;
+  let singleCalls = 0;
+  let neutralCalls = 0;
+
+  internal.__setLoadDeterministicExternalSeedCandidatesBatchForTest(async ({ ingredientInputs, allowWideFallback }) => {
+    batchCalls += 1;
+    assert.deepEqual(
+      ingredientInputs.map((item) => item.ingredientId).sort(),
+      ['niacinamide', 'retinol'],
+    );
+    assert.equal(allowWideFallback, false);
+    return new Map([
+      [
+        'retinol',
+        [
+          {
+            product_id: 'ext_retinol_1',
+            merchant_id: 'external_seed',
+            title: 'Seed Retinol Serum',
+            brand: 'Real Seed Brand',
+            ingredient_ids: ['retinol'],
+            pdp_url: 'https://seed.example.com/p/retinol',
+            retrieval_source: 'external_seed',
+          },
+        ],
+      ],
+      [
+        'niacinamide',
+        [
+          {
+            product_id: 'ext_niacinamide_1',
+            merchant_id: 'external_seed',
+            title: 'Seed Niacinamide Serum',
+            brand: 'Real Seed Brand',
+            ingredient_ids: ['niacinamide'],
+            pdp_url: 'https://seed.example.com/p/niacinamide',
+            retrieval_source: 'external_seed',
+          },
+        ],
+      ],
+    ]);
+  });
+  internal.__setLoadDeterministicExternalSeedCandidatesForTest(async () => {
+    singleCalls += 1;
+    return [];
+  });
+  internal.__setBuildIngredientProductRecommendationsNeutralForTest(async ({ ingredientId, deterministicCandidateBuilder }) => {
+    neutralCalls += 1;
+    const products = await deterministicCandidateBuilder({
+      ingredientId,
+      market: 'US',
+      maxProducts: 6,
+    });
+    return {
+      products,
+      external_search_ctas: [],
+      debug: { ingredient_id: ingredientId, from_batch_preload: true },
+    };
+  });
+
+  try {
+    const card = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'pass',
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [{ issue_type: 'texture' }],
+            actions: [
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+            ],
+          },
+          {
+            module_id: 'left_cheek',
+            issues: [{ issue_type: 'tone' }],
+            actions: [
+              { ingredient_canonical_id: 'niacinamide', ingredient_name: 'Niacinamide' },
+              { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const enriched = await internal.enrichPhotoModulesCardWithIngredientProducts({
+      photoModulesCard: card,
+      profileSummary: { market: 'US' },
+      language: 'EN',
+      logger: null,
+    });
+
+    assert.equal(batchCalls, 1);
+    assert.equal(singleCalls, 0);
+    assert.equal(neutralCalls, 2);
+    const actions = enriched.payload.modules.flatMap((moduleRow) => moduleRow.actions || []);
+    assert.equal(actions.length, 5);
+    assert.equal(actions.every((action) => Array.isArray(action.products) && action.products.length === 1), true);
+    assert.equal(actions.every((action) => action.rec_debug && action.rec_debug.from_batch_preload === true), true);
+    assert.equal(
+      actions.filter((action) => String(action.ingredient_canonical_id) === 'retinol').every((action) => action.products[0].product_id === 'ext_retinol_1'),
+      true,
+    );
+  } finally {
+    internal.__resetBuildIngredientProductRecommendationsNeutralForTest();
+    internal.__resetLoadDeterministicExternalSeedCandidatesForTest();
+    internal.__resetLoadDeterministicExternalSeedCandidatesBatchForTest();
+    unloadRoutes(loaded.moduleId);
+  }
+});
+
+test('routes helper: bounded photo module enrich annotates timeout instead of dropping product rec state', async () =>
+  withEnv(
+    {
+      AURORA_PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT_MS: '1',
+    },
+    async () => {
+      const loaded = loadRoutesInternal();
+      const { internal } = loaded;
+      internal.__setLoadDeterministicExternalSeedCandidatesBatchForTest(async () => new Map([['retinol', []]]));
+      internal.__setLoadDeterministicExternalSeedCandidatesForTest(async () => []);
+      internal.__setBuildIngredientProductRecommendationsNeutralForTest(async () => {
+        return new Promise(() => {});
+      });
+
+      try {
+        const card = {
+          type: 'photo_modules_v1',
+          payload: {
+            quality_grade: 'pass',
+            modules: [
+              {
+                module_id: 'forehead',
+                issues: [{ issue_type: 'texture' }],
+                actions: [
+                  { ingredient_canonical_id: 'retinol', ingredient_name: 'Retinoid (later stage)' },
+                ],
+              },
+            ],
+          },
+        };
+
+        const enriched = await internal.enrichPhotoModulesCardWithIngredientProductsBounded({
+          photoModulesCard: card,
+          profileSummary: { market: 'US' },
+          language: 'EN',
+          logger: null,
+        });
+
+        const action = enriched.payload.modules[0].actions[0];
+        assert.deepEqual(action.products, []);
+        assert.equal(action.products_empty_reason, 'reco_enrich_timeout');
+        assert.equal(action.rec_debug && action.rec_debug.reason, 'reco_enrich_timeout');
+        assert.equal(action.rec_debug && action.rec_debug.enrichment_skipped, true);
+        assert.equal(action.rec_debug && action.rec_debug.code, 'PHOTO_MODULES_ACTION_RECO_ENRICH_TIMEOUT');
+        assert.equal(enriched.payload.modules[0].products_empty_reason, 'reco_enrich_timeout');
+      } finally {
+        internal.__resetBuildIngredientProductRecommendationsNeutralForTest();
+        internal.__resetLoadDeterministicExternalSeedCandidatesForTest();
+        internal.__resetLoadDeterministicExternalSeedCandidatesBatchForTest();
+        unloadRoutes(loaded.moduleId);
+      }
+    },
+  ));
 test('photo modules card: face oval clip enabled keeps module mask pixels <= disabled', () =>
   withEnv(
     {

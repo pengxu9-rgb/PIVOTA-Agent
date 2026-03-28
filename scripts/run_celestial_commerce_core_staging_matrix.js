@@ -2,6 +2,13 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const {
+  AUTHORITATIVE_COMMERCE,
+  normalizeRailMode,
+  normalizeEndpoint,
+  resolveBaseUrl,
+} = require('./lib/commerce_invoke_contract');
+const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
 
 function parseArgs(argv) {
   const args = {
@@ -20,6 +27,9 @@ function parseArgs(argv) {
       process.env.CELESTIAL_COMMERCE_STAGING_MATRIX_OUT_DIR ||
       path.join(__dirname, '..', 'reports', 'celestial-commerce-staging-matrix'),
     timeoutMs: Number(process.env.CELESTIAL_COMMERCE_STAGING_TIMEOUT_MS || 15000),
+    railMode: normalizeRailMode(
+      process.env.CELESTIAL_COMMERCE_STAGING_RAIL_MODE || process.env.SEARCH_MATRIX_RAIL_MODE || '',
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -28,6 +38,7 @@ function parseArgs(argv) {
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--cases' && next) args.cases = String(next);
     if (token === '--out-dir' && next) args.outDir = String(next);
+    if (token === '--rail-mode' && next) args.railMode = normalizeRailMode(next);
     if (token === '--timeout-ms' && next) {
       args.timeoutMs = Math.max(500, Number(next) || 15000);
     }
@@ -81,7 +92,9 @@ function toEnvKey(input) {
 }
 
 function resolveCaseAuth(testCase = {}) {
-  const requiresAuth = testCase.requires_auth === true;
+  const requiresAuth =
+    testCase.requires_auth === true ||
+    normalizeRailMode(testCase.rail_mode || AUTHORITATIVE_COMMERCE) === AUTHORITATIVE_COMMERCE;
   const profile = String(testCase.auth_profile || 'default').trim() || 'default';
   if (!requiresAuth) {
     return {
@@ -182,78 +195,7 @@ function inferOutcomeKind(body = {}) {
   return 'unknown';
 }
 
-function assessPrimaryPath(body = {}) {
-  const metadata =
-    body && typeof body === 'object' && body.metadata && typeof body.metadata === 'object'
-      ? body.metadata
-      : {};
-  const routeHealth =
-    metadata.route_health &&
-    typeof metadata.route_health === 'object' &&
-    !Array.isArray(metadata.route_health)
-      ? metadata.route_health
-      : {};
-  const proxySearchFallback =
-    metadata.proxy_search_fallback &&
-    typeof metadata.proxy_search_fallback === 'object' &&
-    !Array.isArray(metadata.proxy_search_fallback)
-      ? metadata.proxy_search_fallback
-      : {};
-
-  const querySource = String(metadata.query_source || '').trim();
-  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim();
-  const fallbackReason = String(
-    routeHealth.fallback_reason || proxySearchFallback.reason || '',
-  ).trim();
-  const reasons = [];
-  let degradedDetected = false;
-
-  if (
-    querySource === 'agent_products_error_fallback' ||
-    querySource === 'agent_products_resolver_fallback' ||
-    querySource === 'agent_products_resolver_ref_fallback'
-  ) {
-    reasons.push(`query_source=${querySource}`);
-    degradedDetected = true;
-  }
-
-  if (proxySearchFallback.applied === true) {
-    reasons.push('proxy_search_fallback.applied=true');
-    degradedDetected = true;
-  }
-
-  if (routeHealth.fallback_triggered === true) {
-    reasons.push('route_health.fallback_triggered=true');
-    degradedDetected = true;
-  }
-
-  if (primaryPathUsed && /(fallback|primary_unusable)/i.test(primaryPathUsed)) {
-    reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
-    degradedDetected = true;
-  }
-
-  if (degradedDetected && fallbackReason) {
-    reasons.push(`fallback_reason=${fallbackReason}`);
-  }
-
-  return {
-    degraded: reasons.length > 0,
-    reasons: Array.from(new Set(reasons)),
-    querySource: querySource || null,
-    primaryPathUsed: primaryPathUsed || null,
-    fallbackReason: fallbackReason || null,
-  };
-}
-
 function normalizeCase(rawCase = {}, kind) {
-  const hasExplicitTimeout =
-    rawCase && typeof rawCase === 'object'
-      ? Object.prototype.hasOwnProperty.call(rawCase, 'timeout_ms') ||
-        Object.prototype.hasOwnProperty.call(rawCase, 'timeoutMs')
-      : false;
-  const normalizedTimeoutMs = hasExplicitTimeout
-    ? Math.max(500, Number(rawCase.timeout_ms ?? rawCase.timeoutMs) || 0)
-    : null;
   return {
     kind,
     id: String(rawCase.id || '').trim(),
@@ -261,10 +203,24 @@ function normalizeCase(rawCase = {}, kind) {
     family: String(rawCase.family || '').trim() || 'uncategorized',
     blocking: rawCase.blocking !== false,
     execution_mode: String(rawCase.execution_mode || 'live').trim() || 'live',
-    endpoint: String(rawCase.endpoint || '').trim() || (kind === 'governance' ? '/agent/shop/v1/invoke' : '/api/gateway'),
+    endpoint:
+      normalizeEndpoint(
+        String(rawCase.endpoint || '').trim(),
+        normalizeRailMode(rawCase.rail_mode || AUTHORITATIVE_COMMERCE),
+      ) || '/agent/shop/v1/invoke',
+    rail_mode: normalizeRailMode(rawCase.rail_mode || AUTHORITATIVE_COMMERCE),
     requires_auth: rawCase.requires_auth === true,
     auth_profile: String(rawCase.auth_profile || 'default').trim() || 'default',
-    timeout_ms: normalizedTimeoutMs || null,
+    require_primary_path: rawCase.require_primary_path !== false,
+    allow_strict_empty: rawCase.allow_strict_empty === true,
+    allowed_query_sources: Array.isArray(rawCase.allowed_query_sources)
+      ? rawCase.allowed_query_sources.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    must_not_match_fallback_sources: Array.isArray(rawCase.must_not_match_fallback_sources)
+      ? rawCase.must_not_match_fallback_sources
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      : [],
     headers:
       rawCase.headers && typeof rawCase.headers === 'object' && !Array.isArray(rawCase.headers)
         ? { ...rawCase.headers }
@@ -408,7 +364,13 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   const products = Array.isArray(body?.products) ? body.products : [];
   const titles = normalizeTitles(products);
   const outcomeKind = inferOutcomeKind(body);
-  const primaryPath = assessPrimaryPath(body);
+  const testCase = context.testCase || {};
+  const primaryPath = evaluatePrimaryPathContract(body, {
+    require_primary_path: testCase.require_primary_path !== false,
+    allow_strict_empty: testCase.allow_strict_empty === true,
+    allowed_query_sources: testCase.allowed_query_sources,
+    must_not_match_fallback_sources: testCase.must_not_match_fallback_sources,
+  });
 
   const expectedStatus =
     ruleSet.expect_http_status == null ? null : Number(ruleSet.expect_http_status);
@@ -443,10 +405,6 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
     if (token && !reasonCodes.includes(token)) reasons.push(`missing_reason_code:${token}`);
   }
 
-  if (ruleSet.require_primary_path === true && primaryPath.degraded) {
-    reasons.push(`primary_path_degraded:${primaryPath.reasons.join(',')}`);
-  }
-
   const mustReturnOneOfTitles = Array.isArray(ruleSet.must_return_one_of_titles)
     ? ruleSet.must_return_one_of_titles
     : [];
@@ -477,6 +435,7 @@ function evaluateCorrectness(ruleSet = {}, context = {}) {
   };
   const nested = evaluateRuleSet(nestedRuleSet, context);
   reasons.push(...nested.reasons);
+  reasons.push(...primaryPath.reasons);
 
   if (reasons.length > 0) {
     return { status: 'fail', reasons };
@@ -520,10 +479,6 @@ function detectStagingInfraBlock(response = {}) {
   return null;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function executeLiveCase(baseUrl, testCase, timeoutMs) {
   const url = `${baseUrl.replace(/\/+$/, '')}${String(testCase.endpoint || '').trim()}`;
   try {
@@ -563,154 +518,7 @@ async function executeLiveCase(baseUrl, testCase, timeoutMs) {
   }
 }
 
-function buildLiveFailureResult(testCase, authProfile, execution) {
-  return {
-    id: testCase.id,
-    title: testCase.title,
-    family: testCase.family,
-    kind: testCase.kind,
-    blocking: testCase.blocking,
-    execution_mode: 'live',
-    auth_profile: authProfile,
-    correctness: { status: 'fail', reasons: [`request_error:${execution.error}`] },
-    ownership: { status: 'fail', reasons: ['request_error_prevented_ownership_check'] },
-    observability: { status: 'fail', reasons: ['request_error_prevented_observability_check'] },
-    overall_status: 'fail',
-    url: execution.url,
-    http_status: 0,
-    outcome_kind: 'request_error',
-    reason_codes: [],
-    response_excerpt: {},
-    request: testCase.request,
-    error: execution.error,
-  };
-}
-
-function buildLiveCaseResult(testCase, authProfile, execution) {
-  if (!execution.ok) {
-    return buildLiveFailureResult(testCase, authProfile, execution);
-  }
-
-  const body = execution.response.body;
-  const headers = execution.response.headers;
-  const infraBlock = detectStagingInfraBlock(execution.response);
-  if (infraBlock) {
-    return {
-      id: testCase.id,
-      title: testCase.title,
-      family: testCase.family,
-      kind: testCase.kind,
-      blocking: testCase.blocking,
-      execution_mode: 'live',
-      auth_profile: authProfile,
-      correctness: { status: 'review_required', reasons: [infraBlock.reason] },
-      ownership: {
-        status: 'review_required',
-        reasons: ['staging_infra_blocked_prevented_ownership_check'],
-      },
-      observability: {
-        status: 'review_required',
-        reasons: ['staging_infra_blocked_prevented_observability_check'],
-      },
-      overall_status: 'review_required',
-      url: execution.url,
-      http_status: execution.response.status,
-      outcome_kind: infraBlock.outcome_kind,
-      reason_codes: [],
-      response_excerpt: {
-        error: String(body.error || '').trim() || null,
-        message: String(body.message || '').trim() || null,
-      },
-      response_headers: {
-        invocation_surface: headers['x-gateway-invocation-surface'] || null,
-        governance_mode: headers['x-gateway-governance-mode'] || null,
-        governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
-        governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
-        auth_degraded: headers['x-invoke-auth-degraded'] || null,
-        auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
-        introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
-      },
-      manual_review: infraBlock.manual_review,
-      request: testCase.request,
-    };
-  }
-
-  const reasonCodes = collectReasonCodes(body);
-  const primaryPath = assessPrimaryPath(body);
-  const context = {
-    response: execution.response,
-    body,
-    headers,
-    reasonCodes,
-  };
-  const correctness = evaluateCorrectness(testCase.correctness, context);
-  const ownership = evaluateRuleSet(testCase.ownership, context);
-  const observability = evaluateRuleSet(testCase.observability, context);
-  const overall_status = computeOverallStatus([correctness, ownership, observability]);
-
-  return {
-    id: testCase.id,
-    title: testCase.title,
-    family: testCase.family,
-    kind: testCase.kind,
-    blocking: testCase.blocking,
-    execution_mode: 'live',
-    auth_profile: authProfile,
-    correctness,
-    ownership,
-    observability,
-    overall_status,
-    url: execution.url,
-    http_status: execution.response.status,
-    outcome_kind: inferOutcomeKind(body),
-    reason_codes: reasonCodes,
-    response_excerpt: {
-      query_source: getPath(body, 'metadata.query_source') || null,
-      final_decision:
-        getPath(body, 'metadata.search_trace.final_decision') ||
-        getPath(body, 'metadata.search_decision.final_decision') ||
-        null,
-      invocation_surface: getPath(body, 'metadata.gateway_invocation.surface') || null,
-      governance_mode: getPath(body, 'metadata.gateway_governance.mode') || null,
-      governance_observed_action:
-        getPath(body, 'metadata.gateway_governance.observed_action') || null,
-      contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
-      strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
-      auth_degraded: getPath(body, 'metadata.gateway_invocation.auth_degraded') === true,
-      auth_degraded_reason:
-        getPath(body, 'metadata.gateway_invocation.auth_degraded_reason') || null,
-      introspect_auth_source:
-        getPath(body, 'metadata.gateway_invocation.introspect_auth_source') || null,
-      primary_path_degraded: primaryPath.degraded,
-      primary_path_used: primaryPath.primaryPathUsed,
-      primary_path_degraded_reasons: primaryPath.reasons,
-      product_count: Array.isArray(body?.products) ? body.products.length : 0,
-      clarification_question: getPath(body, 'clarification.question') || null,
-    },
-    response_headers: {
-      invocation_surface: headers['x-gateway-invocation-surface'] || null,
-      governance_mode: headers['x-gateway-governance-mode'] || null,
-      governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
-      governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
-      auth_degraded: headers['x-invoke-auth-degraded'] || null,
-      auth_degraded_reason: headers['x-invoke-auth-degraded-reason'] || null,
-      introspect_auth_source: headers['x-invoke-introspect-auth-source'] || null,
-    },
-    request: testCase.request,
-  };
-}
-
 async function runCase(baseUrl, testCase, timeoutMs) {
-  const effectiveTimeoutMs = Math.max(
-    500,
-    Number(testCase.timeout_ms || 0) || Number(timeoutMs || 15000) || 15000,
-  );
-  const retryCount = Math.max(
-    0,
-    Number(
-      testCase.retry_count == null ? (testCase.blocking ? 1 : 0) : testCase.retry_count,
-    ) || 0,
-  );
   if (testCase.execution_mode === 'manual') {
     return {
       id: testCase.id,
@@ -775,33 +583,130 @@ async function runCase(baseUrl, testCase, timeoutMs) {
     };
   }
 
-  let execution = await executeLiveCase(baseUrl, testCase, effectiveTimeoutMs);
-  let result = buildLiveCaseResult(testCase, auth.profile, execution);
-  const attemptHistory = [];
-
-  for (let attempt = 1; attempt <= retryCount && result.overall_status === 'fail'; attempt += 1) {
-    attemptHistory.push({
-      attempt,
-      overall_status: result.overall_status,
-      outcome_kind: result.outcome_kind,
-      http_status: result.http_status,
-      correctness_reasons: result.correctness?.reasons || [],
-      ownership_reasons: result.ownership?.reasons || [],
-      observability_reasons: result.observability?.reasons || [],
-      error: result.error || null,
-    });
-    await sleep(250);
-    execution = await executeLiveCase(baseUrl, testCase, effectiveTimeoutMs);
-    result = buildLiveCaseResult(testCase, auth.profile, execution);
+  const execution = await executeLiveCase(baseUrl, testCase, timeoutMs);
+  if (!execution.ok) {
+    return {
+      id: testCase.id,
+      title: testCase.title,
+      family: testCase.family,
+      kind: testCase.kind,
+      blocking: testCase.blocking,
+      execution_mode: 'live',
+      auth_profile: auth.profile,
+      correctness: { status: 'fail', reasons: [`request_error:${execution.error}`] },
+      ownership: { status: 'fail', reasons: ['request_error_prevented_ownership_check'] },
+      observability: { status: 'fail', reasons: ['request_error_prevented_observability_check'] },
+      overall_status: 'fail',
+      url: execution.url,
+      http_status: 0,
+      outcome_kind: 'request_error',
+      reason_codes: [],
+      response_excerpt: {},
+      request: testCase.request,
+      error: execution.error,
+    };
   }
 
-  result.attempt_count = 1 + attemptHistory.length;
-  if (attemptHistory.length > 0) result.attempt_history = attemptHistory;
-  if (attemptHistory.length > 0 && result.overall_status !== 'fail') {
-    result.retry_recovered = true;
+  const body = execution.response.body;
+  const headers = execution.response.headers;
+  const infraBlock = detectStagingInfraBlock(execution.response);
+  if (infraBlock) {
+    return {
+      id: testCase.id,
+      title: testCase.title,
+      family: testCase.family,
+      kind: testCase.kind,
+      blocking: testCase.blocking,
+      execution_mode: 'live',
+      auth_profile: auth.profile,
+      correctness: { status: 'review_required', reasons: [infraBlock.reason] },
+      ownership: {
+        status: 'review_required',
+        reasons: ['staging_infra_blocked_prevented_ownership_check'],
+      },
+      observability: {
+        status: 'review_required',
+        reasons: ['staging_infra_blocked_prevented_observability_check'],
+      },
+      overall_status: 'review_required',
+      url: execution.url,
+      http_status: execution.response.status,
+      outcome_kind: infraBlock.outcome_kind,
+      reason_codes: [],
+      response_excerpt: {
+        error: String(body.error || '').trim() || null,
+        message: String(body.message || '').trim() || null,
+      },
+      response_headers: {
+        invocation_surface: headers['x-gateway-invocation-surface'] || null,
+        governance_mode: headers['x-gateway-governance-mode'] || null,
+        governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
+        governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+      },
+      manual_review: infraBlock.manual_review,
+      request: testCase.request,
+    };
   }
+  const reasonCodes = collectReasonCodes(body);
+  const context = {
+    response: execution.response,
+    body,
+    headers,
+    reasonCodes,
+    testCase,
+  };
+  const correctness = evaluateCorrectness(testCase.correctness, context);
+  const ownership = evaluateRuleSet(testCase.ownership, context);
+  const observability = evaluateRuleSet(testCase.observability, context);
+  const overall_status = computeOverallStatus([correctness, ownership, observability]);
 
-  return result;
+  return {
+    id: testCase.id,
+    title: testCase.title,
+    family: testCase.family,
+    kind: testCase.kind,
+    blocking: testCase.blocking,
+    execution_mode: 'live',
+    auth_profile: auth.profile,
+    correctness,
+    ownership,
+    observability,
+    overall_status,
+    url: execution.url,
+    http_status: execution.response.status,
+    outcome_kind: inferOutcomeKind(body),
+    reason_codes: reasonCodes,
+    response_excerpt: {
+      query_source: getPath(body, 'metadata.query_source') || null,
+      final_decision:
+        getPath(body, 'metadata.search_trace.final_decision') ||
+        getPath(body, 'metadata.search_decision.final_decision') ||
+        null,
+      invocation_surface: getPath(body, 'metadata.gateway_invocation.surface') || null,
+      governance_mode: getPath(body, 'metadata.gateway_governance.mode') || null,
+      governance_observed_action:
+        getPath(body, 'metadata.gateway_governance.observed_action') || null,
+      contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
+      strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
+      primary_path_degraded: primaryPathDegraded(body),
+      product_count: Array.isArray(body?.products) ? body.products.length : 0,
+      clarification_question: getPath(body, 'clarification.question') || null,
+    },
+    response_headers: {
+      invocation_surface: headers['x-gateway-invocation-surface'] || null,
+      governance_mode: headers['x-gateway-governance-mode'] || null,
+      governance_observed_action: headers['x-gateway-governance-observed-action'] || null,
+      governance_would_enforce: headers['x-gateway-governance-would-enforce'] || null,
+    },
+    request: testCase.request,
+  };
+}
+
+function primaryPathDegraded(body = {}) {
+  return evaluatePrimaryPathContract(body, {
+    require_primary_path: true,
+    allow_strict_empty: true,
+  }).assessment.degraded;
 }
 
 function buildSummary(results = [], args = {}, matrixPath = '') {
@@ -822,16 +727,12 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
     fail_count: results.filter((item) => item.overall_status === 'fail').length,
     review_required_count: results.filter((item) => item.overall_status === 'review_required').length,
     infra_blocked_count: infraBlockedResults.length,
-    auth_degraded_count: results.filter(
-      (item) =>
-        item.response_headers?.auth_degraded === 'true' ||
-        item.response_excerpt?.auth_degraded === true,
-    ).length,
-    primary_path_degraded_count: results.filter(
-      (item) => item.response_excerpt?.primary_path_degraded === true,
-    ).length,
-    retry_recovered_count: results.filter((item) => item.retry_recovered === true).length,
+    primary_path_degraded_count: results.filter((item) => item.response_excerpt.primary_path_degraded === true).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
+    authoritative_endpoint:
+      args.railMode === AUTHORITATIVE_COMMERCE ? `${args.baseUrl.replace(/\/+$/, '')}/agent/shop/v1/invoke` : null,
+    authoritative_mode: args.railMode,
+    public_probe_non_authoritative: args.railMode !== AUTHORITATIVE_COMMERCE,
     correctness: {
       pass: results.filter((item) => item.correctness.status === 'pass').length,
       fail: results.filter((item) => item.correctness.status === 'fail').length,
@@ -898,9 +799,7 @@ function writeArtifacts(outDir, summary, results) {
     `- Fail: ${summary.fail_count}`,
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
-    `- Auth degraded: ${summary.auth_degraded_count || 0}`,
-    `- Primary path degraded: ${summary.primary_path_degraded_count || 0}`,
-    `- Retry recovered: ${summary.retry_recovered_count || 0}`,
+    `- Primary-path degraded: ${summary.primary_path_degraded_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',
     '## Section Summary',
@@ -932,8 +831,6 @@ function writeArtifacts(outDir, summary, results) {
     lines.push(`- Overall: ${item.overall_status}`);
     if (item.http_status != null) lines.push(`- HTTP status: ${item.http_status}`);
     if (item.url) lines.push(`- URL: \`${item.url}\``);
-    if (item.attempt_count != null) lines.push(`- Attempts: ${item.attempt_count}`);
-    if (item.retry_recovered === true) lines.push(`- Retry recovered: true`);
     if (item.response_excerpt && Object.keys(item.response_excerpt).length > 0) {
       lines.push(`- Response excerpt: \`${JSON.stringify(item.response_excerpt)}\``);
     }

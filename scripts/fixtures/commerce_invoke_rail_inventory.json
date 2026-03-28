@@ -1,0 +1,65 @@
+{
+  "scan_roots": [
+    ".github/workflows",
+    "scripts",
+    "docs/runbooks",
+    "tests"
+  ],
+  "excluded_scan_files": [
+    "scripts/fixtures/commerce_invoke_rail_inventory.json",
+    "scripts/verify_commerce_invoke_rails.js",
+    "tests/commerce_invoke_rail_inventory.test.js",
+    "scripts/lib/commerce_invoke_contract.js"
+  ],
+  "public_observability_allowlist": [
+    "scripts/run_celestial_commerce_core_readiness_audit.sh",
+    "scripts/run_llm_agent_readiness_audit.sh",
+    "scripts/run_frontend_live_regression_winona_ipsa.js",
+    "scripts/verify_deployed_commit_matches.sh",
+    "docs/runbooks/celestial_commerce_core_readiness.md",
+    "docs/runbooks/celestial_commerce_core_prod_canary.md",
+    "docs/runbooks/celestial_commerce_core_stabilization_acceptance.md",
+    "docs/runbooks/commerce_prod_invoke_contract_audit.md",
+    "docs/runbooks/commerce_invoke_rail_matrix.md",
+    "docs/runbooks/pivota_gateway_invocation_access_governance.md"
+  ],
+  "forbidden_path_allowlist": [
+    "docs/runbooks/commerce_invoke_rail_matrix.md",
+    "docs/runbooks/commerce_prod_invoke_contract_audit.md"
+  ],
+  "authoritative_files": [
+    ".github/workflows/celestial-commerce-core-staging-stabilization.yml",
+    ".github/workflows/celestial-commerce-core-readiness.yml",
+    ".github/workflows/shopping-search-release-gate.yml",
+    ".github/workflows/aurora-bff-release-gate.yml",
+    "scripts/smoke_celestial_commerce_core_prod.sh",
+    "scripts/probe_celestial_commerce_core_prod_canary.sh",
+    "scripts/search_stability_matrix.js",
+    "scripts/check_budget_fx_freshness.js",
+    "scripts/warm_find_products_multi_runtime.js",
+    "scripts/smoke_find_products_multi_skincare_prod.sh",
+    "scripts/audit_find_products_multi_external_seed_ingredient_validity.sh",
+    "scripts/run_celestial_commerce_core_staging_matrix.js",
+    "scripts/smoke_celestial_commerce_core_staging_invoke.sh",
+    "tests/celestial_commerce_core_prod_canary_script.test.js",
+    "tests/celestial_commerce_core_staging_matrix_script.test.js",
+    "tests/celestial_commerce_core_staging_invoke_smoke_script.test.js"
+  ],
+  "invoke_literal_required_files": [
+    ".github/workflows/celestial-commerce-core-staging-stabilization.yml",
+    ".github/workflows/celestial-commerce-core-readiness.yml",
+    ".github/workflows/shopping-search-release-gate.yml",
+    ".github/workflows/aurora-bff-release-gate.yml",
+    "scripts/verify_deployed_commit_matches.sh",
+    "scripts/smoke_celestial_commerce_core_prod.sh",
+    "scripts/probe_celestial_commerce_core_prod_canary.sh",
+    "scripts/run_celestial_commerce_core_staging_matrix.js",
+    "scripts/smoke_celestial_commerce_core_staging_invoke.sh",
+    "tests/celestial_commerce_core_prod_canary_script.test.js",
+    "tests/celestial_commerce_core_staging_matrix_script.test.js",
+    "tests/celestial_commerce_core_staging_invoke_smoke_script.test.js"
+  ],
+  "public_literal": "/api/gateway",
+  "invoke_literal": "/agent/shop/v1/invoke",
+  "forbidden_literal": "/agent/gateway"
+}

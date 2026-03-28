@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const { query } = require('../db');
+const { buildExternalSeedProduct } = require('../services/externalSeedProducts');
 const { resolveIngredientRecommendation, normalizeMarket } = require('./ingredientKbV2/resolve');
 const { renderAllowedTemplate } = require('./claimsTemplates/render');
 
@@ -14,6 +16,7 @@ const DEFAULT_CATALOG_PATH = path.join(
   'products',
   'product_catalog_seed.json',
 );
+const RESOLVED_DEFAULT_CATALOG_PATH = path.resolve(DEFAULT_CATALOG_PATH);
 
 const EVIDENCE_RANK = Object.freeze({
   A: 3,
@@ -137,6 +140,7 @@ function normalizeRetrievalReason(value, retrievalSource) {
 
 function extractDirectUrl(candidate) {
   return pickFirstString(
+    candidate && candidate.direct_url,
     candidate && candidate.pdp_url,
     candidate && candidate.url,
     candidate && candidate.product_url,
@@ -367,8 +371,16 @@ function parseCatalogProduct(raw) {
   };
 }
 
-function loadCatalog(catalogPath) {
-  const targetPath = path.resolve(catalogPath || process.env.AURORA_PRODUCT_REC_CATALOG_PATH || DEFAULT_CATALOG_PATH);
+function resolveCatalogTargetPath(catalogPath, { allowBundledCatalogSeed = true } = {}) {
+  const explicitPath = pickFirstString(catalogPath, process.env.AURORA_PRODUCT_REC_CATALOG_PATH);
+  const targetPath = path.resolve(explicitPath || DEFAULT_CATALOG_PATH);
+  if (!allowBundledCatalogSeed && targetPath === RESOLVED_DEFAULT_CATALOG_PATH) return '';
+  return targetPath;
+}
+
+function loadCatalog(catalogPath, { allowBundledCatalogSeed = true } = {}) {
+  const targetPath = resolveCatalogTargetPath(catalogPath, { allowBundledCatalogSeed });
+  if (!targetPath) return [];
   if (!fs.existsSync(targetPath)) return [];
   const stat = fs.statSync(targetPath);
   if (
@@ -385,6 +397,315 @@ function loadCatalog(catalogPath) {
   catalogCache.mtimeMs = Number(stat.mtimeMs);
   catalogCache.items = items;
   return items;
+}
+
+function normalizeSearchTextForSeedMatch(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildSeedLikeClauses(columnSql, values, params, startIndex) {
+  const clauses = [];
+  let index = startIndex;
+  for (const value of asArray(values)) {
+    const normalized = normalizeSearchTextForSeedMatch(value);
+    if (!normalized) continue;
+    params.push(`%${normalized}%`);
+    clauses.push(`${columnSql} LIKE $${index}`);
+    index += 1;
+  }
+  return { clauses, nextIndex: index, params };
+}
+
+function buildDeterministicSeedQueryTokens({ ingredientId, ingredientName } = {}) {
+  const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
+  if (!normalizedIngredientId) return [];
+  return [
+    normalizedIngredientId,
+    normalizedIngredientId.replace(/_/g, ' '),
+    ingredientName,
+  ];
+}
+
+function buildDeterministicSeedQueryLimit({ ingredientCount = 1, maxProducts = 3 } = {}) {
+  const ingredientCountN = Math.max(1, Math.trunc(Number(ingredientCount) || 1));
+  const maxProductsN = Math.max(1, Math.trunc(Number(maxProducts) || 3));
+  return Math.max(24, Math.min(480, maxProductsN * 16 * ingredientCountN));
+}
+
+function buildStructuredDeterministicSeedPatterns(ingredientInputs = []) {
+  const out = [];
+  const seen = new Set();
+  for (const input of asArray(ingredientInputs)) {
+    const normalizedIngredientId = normalizeIngredientCanonicalId(
+      pickFirstString(input && input.ingredientId, input && input.ingredient_id),
+    );
+    if (!normalizedIngredientId) continue;
+    for (const token of [normalizedIngredientId, normalizedIngredientId.replace(/_/g, ' ')]) {
+      const normalized = String(token || '').trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      out.push(`%${normalized}%`);
+    }
+  }
+  return out;
+}
+
+async function fetchStructuredDeterministicExternalSeedRows({
+  normalizedMarket,
+  ingredientPatterns,
+  safeLimit,
+} = {}) {
+  if (!Array.isArray(ingredientPatterns) || ingredientPatterns.length === 0) return [];
+  const res = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        market,
+        tool,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        attached_product_key,
+        created_at,
+        updated_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (
+          lower(coalesce((seed_data->'reviewed_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'canonical_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'reviewed_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'canonical_ingredient_ids')::text, '')) LIKE ANY($3::text[])
+          OR lower(coalesce((seed_data->'snapshot'->'ingredient_ids')::text, '')) LIKE ANY($3::text[])
+        )
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT $2
+    `,
+    [normalizedMarket, safeLimit, ingredientPatterns],
+  );
+  return Array.isArray(res && res.rows) ? res.rows : [];
+}
+
+async function fetchDeterministicExternalSeedRows({
+  normalizedMarket,
+  queryTokens,
+  safeLimit,
+  allowWideFallback = true,
+} = {}) {
+  async function fetchRows(whereSql, params) {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          status,
+          attached_product_key,
+          created_at,
+          updated_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          ${whereSql}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $2
+      `,
+      [normalizedMarket, safeLimit, ...params],
+    );
+    return Array.isArray(res && res.rows) ? res.rows : [];
+  }
+
+  let focusedRows = [];
+  const likeClauses = buildSeedLikeClauses(
+    `LOWER(CAST(COALESCE(seed_data, '{}'::jsonb) AS TEXT))`,
+    queryTokens,
+    [],
+    3,
+  );
+  if (likeClauses.clauses.length > 0) {
+    focusedRows = await fetchRows(`AND (${likeClauses.clauses.join(' OR ')})`, likeClauses.params);
+  }
+  if (focusedRows.length > 0) return focusedRows;
+  if (!allowWideFallback) return [];
+  return fetchRows('', []);
+}
+
+function compareDeterministicExternalSeedProducts(normalizedIngredientId) {
+  return (left, right) => {
+    const leftIds = asArray(left && left.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
+    const rightIds = asArray(right && right.ingredient_ids).map((value) => normalizeIngredientCanonicalId(value));
+    const leftExact = leftIds.includes(normalizedIngredientId) ? 1 : 0;
+    const rightExact = rightIds.includes(normalizedIngredientId) ? 1 : 0;
+    if (rightExact !== leftExact) return rightExact - leftExact;
+    const leftInStock = left && left.in_stock === true ? 1 : left && left.in_stock === false ? -1 : 0;
+    const rightInStock = right && right.in_stock === true ? 1 : right && right.in_stock === false ? -1 : 0;
+    if (rightInStock !== leftInStock) return rightInStock - leftInStock;
+    const leftRich =
+      (pickFirstString(left && left.image_url) ? 1 : 0) +
+      (Number.isFinite(Number(left && left.price)) ? 1 : 0) +
+      (pickFirstString(left && left.url, left && left.canonical_url, left && left.destination_url) ? 1 : 0) +
+      (pickFirstString(left && left.brand, left && left.vendor) ? 1 : 0);
+    const rightRich =
+      (pickFirstString(right && right.image_url) ? 1 : 0) +
+      (Number.isFinite(Number(right && right.price)) ? 1 : 0) +
+      (pickFirstString(right && right.url, right && right.canonical_url, right && right.destination_url) ? 1 : 0) +
+      (pickFirstString(right && right.brand, right && right.vendor) ? 1 : 0);
+    if (rightRich !== leftRich) return rightRich - leftRich;
+    return String(left && left.title || left && left.name || '').localeCompare(
+      String(right && right.title || right && right.name || ''),
+    );
+  };
+}
+
+async function loadDeterministicExternalSeedCandidatesBatch({
+  ingredientInputs,
+  market,
+  maxProducts = 3,
+  allowWideFallback = true,
+} = {}) {
+  const normalizedEntries = [];
+  const seen = new Set();
+  for (const input of asArray(ingredientInputs)) {
+    const normalizedIngredientId = normalizeIngredientCanonicalId(
+      pickFirstString(input && input.ingredientId, input && input.ingredient_id),
+    );
+    if (!normalizedIngredientId || seen.has(normalizedIngredientId)) continue;
+    seen.add(normalizedIngredientId);
+    normalizedEntries.push({
+      ingredientId: normalizedIngredientId,
+      ingredientName: pickFirstString(input && input.ingredientName, input && input.ingredient_name),
+    });
+  }
+  const buckets = new Map(normalizedEntries.map((entry) => [entry.ingredientId, []]));
+  if (!normalizedEntries.length) return buckets;
+  if (!process.env.DATABASE_URL) return buckets;
+
+  const normalizedMarket = normalizeMarket(market);
+  const queryTokens = normalizedEntries.flatMap((entry) => buildDeterministicSeedQueryTokens(entry));
+  const ingredientPatterns = buildStructuredDeterministicSeedPatterns(normalizedEntries);
+  const safeLimit = buildDeterministicSeedQueryLimit({
+    ingredientCount: normalizedEntries.length,
+    maxProducts,
+  });
+
+  try {
+    const structuredRows = await fetchStructuredDeterministicExternalSeedRows({
+      normalizedMarket,
+      ingredientPatterns,
+      safeLimit,
+    });
+    const rows = structuredRows.length > 0
+      ? structuredRows
+      : await fetchDeterministicExternalSeedRows({
+          normalizedMarket,
+          queryTokens,
+          safeLimit,
+          allowWideFallback,
+        });
+    const seenByIngredient = new Map(normalizedEntries.map((entry) => [entry.ingredientId, new Set()]));
+    const productCache = new Map();
+
+    for (const row of rows) {
+      const rowKey = String(
+        row && (
+          row.id
+          || row.external_product_id
+          || row.canonical_url
+          || row.destination_url
+          || row.title
+        ) || '',
+      );
+      if (!productCache.has(rowKey)) {
+        productCache.set(rowKey, buildExternalSeedProduct(row));
+      }
+      const product = productCache.get(rowKey);
+      if (!product) continue;
+
+      const productIngredientIds = asArray(product.ingredient_ids)
+        .map((value) => normalizeIngredientCanonicalId(value))
+        .filter(Boolean);
+      if (!productIngredientIds.length) continue;
+
+      for (const entry of normalizedEntries) {
+        if (!productIngredientIds.includes(entry.ingredientId)) continue;
+        const bucket = buckets.get(entry.ingredientId) || [];
+        const bucketSeen = seenByIngredient.get(entry.ingredientId) || new Set();
+        const productId = pickFirstString(product.product_id, product.id);
+        const merchantId = pickFirstString(product.merchant_id, product.merchantId);
+        const key = `${productId.toLowerCase()}::${merchantId.toLowerCase()}`;
+        if (!productId || !merchantId || bucketSeen.has(key)) continue;
+        bucketSeen.add(key);
+        bucket.push({
+          ...product,
+          retrieval_source: 'external_seed',
+          retrieval_reason: 'external_seed_deterministic_ingredient_match',
+        });
+        buckets.set(entry.ingredientId, bucket);
+      }
+    }
+
+    for (const entry of normalizedEntries) {
+      const bucket = buckets.get(entry.ingredientId) || [];
+      bucket.sort(compareDeterministicExternalSeedProducts(entry.ingredientId));
+      buckets.set(entry.ingredientId, bucket.slice(0, Math.max(Number(maxProducts) * 3, 12)));
+    }
+
+    return buckets;
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error || '');
+    if (
+      message.includes('DATABASE_URL not configured')
+      || (message.includes('external_product_seeds') && message.includes('does not exist'))
+    ) {
+      return buckets;
+    }
+    return buckets;
+  }
+}
+
+async function loadDeterministicExternalSeedCandidates({
+  ingredientId,
+  ingredientName,
+  market,
+  maxProducts = 3,
+} = {}) {
+  const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
+  if (!normalizedIngredientId) return [];
+  const batch = await loadDeterministicExternalSeedCandidatesBatch({
+    ingredientInputs: [{ ingredientId: normalizedIngredientId, ingredientName }],
+    market,
+    maxProducts,
+  });
+  return Array.isArray(batch && batch.get(normalizedIngredientId))
+    ? batch.get(normalizedIngredientId)
+    : [];
 }
 
 function getTopIssueType(issues) {
@@ -681,6 +1002,7 @@ function buildProductRecommendations({
   internalTestMode,
   artifactPath,
   catalogPath,
+  allowBundledCatalogSeed = true,
   softEvidenceGateEnabled = PHOTO_ACTION_SOFT_EVIDENCE_GATE_ENABLED,
 } = {}) {
   const options = arguments[0] && typeof arguments[0] === 'object' ? arguments[0] : {};
@@ -693,9 +1015,17 @@ function buildProductRecommendations({
   const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
   const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
 
-  const catalog = loadCatalog(catalogPath);
+  const catalog = loadCatalog(catalogPath, { allowBundledCatalogSeed });
   if (!catalog.length) {
-    return { products: [], suppressed_reason: 'NO_MATCH', debug: { module_id: moduleId, catalog_items: 0 } };
+    return {
+      products: [],
+      suppressed_reason: 'NO_MATCH',
+      debug: {
+        module_id: moduleId,
+        catalog_items: 0,
+        bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
+      },
+    };
   }
 
   const issueType = getTopIssueType(issues);
@@ -907,7 +1237,12 @@ async function buildIngredientProductRecommendationsNeutral({
   internalTestMode,
   artifactPath,
   catalogPath,
+  allowBundledCatalogSeed = true,
   maxProducts = 3,
+  mainlineOnly = false,
+  preferDeterministicMainline = false,
+  deterministicCandidateBuilder = null,
+  fallbackQueryLimit = 1,
   fallbackCandidateBuilder = null,
   llmFallbackRecoverFn = null,
   externalSearchCtaBuilder = null,
@@ -936,6 +1271,7 @@ async function buildIngredientProductRecommendationsNeutral({
   const minCitationsN = Number.isFinite(Number(minCitations)) ? Math.max(0, Math.trunc(Number(minCitations))) : 1;
   const minEvidence = normalizeEvidenceGrade(minEvidenceGrade, 'B');
   const maxProductsN = Math.max(1, Math.min(6, Math.trunc(Number(maxProducts) || 3)));
+  const fallbackQueryLimitN = Math.max(1, Math.min(4, Math.trunc(Number(fallbackQueryLimit) || 1)));
   const buildCta = typeof externalSearchCtaBuilder === 'function' ? externalSearchCtaBuilder : defaultBuildExternalSearchCta;
   const dedupeCtas = typeof dedupeExternalSearchCtas === 'function' ? dedupeExternalSearchCtas : defaultDedupeExternalSearchCtas;
 
@@ -972,6 +1308,7 @@ async function buildIngredientProductRecommendationsNeutral({
     internalTestMode,
     artifactPath,
     catalogPath,
+    allowBundledCatalogSeed,
     softEvidenceGateEnabled,
   });
 
@@ -1002,6 +1339,7 @@ async function buildIngredientProductRecommendationsNeutral({
         }),
         retrieval_source_counts: {},
         soft_evidence_gate_enabled: false,
+        bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
       },
     };
   }
@@ -1010,11 +1348,15 @@ async function buildIngredientProductRecommendationsNeutral({
   const seen = new Set();
   const externalSearchCtas = [];
   const sourceCounter = { catalog: 0, external_seed: 0, llm_fallback: 0 };
+  let deterministicExternalCount = 0;
   let filteredBySafety = 0;
   let filteredByUrl = 0;
   let softenedBySafety = 0;
   let softenedByUrl = 0;
   let fallbackStage = 'internal_external_pool';
+  let mainlineResolutionStage = null;
+  let mainlinePoolCount = 0;
+  let networkFallbackSkippedDueToMainline = false;
   const isSearchLikeUrl = (value) => {
     const token = String(value || '').trim().toLowerCase();
     return token.includes('google.com/search') || token.includes('/search?');
@@ -1067,6 +1409,37 @@ async function buildIngredientProductRecommendationsNeutral({
     mergeCandidate(product, { defaultSource: 'catalog', defaultReason: 'catalog_evidence_match' });
   }
 
+  const loadDeterministicCandidates =
+    typeof deterministicCandidateBuilder === 'function'
+      ? deterministicCandidateBuilder
+      : loadDeterministicExternalSeedCandidates;
+  try {
+    const deterministicOut = await loadDeterministicCandidates({
+      moduleId,
+      ingredientId: normalizedIngredientId,
+      ingredientName,
+      issueType: normalizedIssueType,
+      market: normalizedMarket,
+      lang: normalizedLang,
+      riskTier: normalizedRiskTier,
+      qualityGrade,
+      maxProducts: maxProductsN,
+    });
+    const deterministicProducts = Array.isArray(deterministicOut)
+      ? deterministicOut
+      : asArray(deterministicOut && deterministicOut.products);
+    for (const row of deterministicProducts) {
+      mergeCandidate(row, {
+        defaultSource: 'external_seed',
+        defaultReason: 'external_seed_deterministic_ingredient_match',
+      });
+    }
+  } catch {
+    // Non-blocking deterministic enrichment path by design.
+  }
+  deterministicExternalCount = Number(sourceCounter.external_seed || 0);
+  mainlinePoolCount = pool.length;
+
   const lookupQueries = normalizeSearchQueries({
     ingredientId: normalizedIngredientId,
     ingredientName,
@@ -1074,8 +1447,12 @@ async function buildIngredientProductRecommendationsNeutral({
     lang: normalizedLang,
   });
 
-  const fallbackQueries = lookupQueries.slice(0, 1);
-  if (typeof fallbackCandidateBuilder === 'function') {
+  const fallbackQueries = lookupQueries.slice(0, fallbackQueryLimitN);
+  if (
+    !mainlineOnly
+    && typeof fallbackCandidateBuilder === 'function'
+    && (!preferDeterministicMainline || mainlinePoolCount === 0)
+  ) {
     fallbackStage = 'internal_external_pool';
     for (const query of fallbackQueries) {
       try {
@@ -1094,13 +1471,19 @@ async function buildIngredientProductRecommendationsNeutral({
         // Non-blocking fallback path by design.
       }
     }
+  } else if (!mainlineOnly && typeof fallbackCandidateBuilder === 'function' && preferDeterministicMainline && mainlinePoolCount > 0) {
+    fallbackStage = 'mainline_pool_only';
+    networkFallbackSkippedDueToMainline = true;
+  } else if (mainlineOnly) {
+    fallbackStage = '';
+    mainlineResolutionStage = mainlinePoolCount > 0 ? 'deterministic_pool' : 'deterministic_empty';
   }
 
-  if (!pool.length && typeof llmFallbackRecoverFn === 'function') {
+  if (!mainlineOnly && !pool.length && typeof llmFallbackRecoverFn === 'function') {
     fallbackStage = 'llm_fallback';
     try {
       const recovered = await llmFallbackRecoverFn({
-        queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, 1),
+        queries: fallbackQueries.length > 0 ? fallbackQueries : lookupQueries.slice(0, fallbackQueryLimitN),
         maxProducts: maxProductsN * 2,
       });
       for (const row of asArray(recovered && recovered.products)) {
@@ -1160,7 +1543,11 @@ async function buildIngredientProductRecommendationsNeutral({
 
   let dedupedCtas = dedupeCtas(externalSearchCtas, 6);
   if (!outputs.length && !dedupedCtas.length) {
-    fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
+    if (mainlineOnly) {
+      mainlineResolutionStage = 'strict_match_miss_cta';
+    } else {
+      fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
+    }
     dedupedCtas = dedupeCtas(
       [
         buildCta(
@@ -1218,6 +1605,7 @@ async function buildIngredientProductRecommendationsNeutral({
 
   return {
     products: outputs,
+    recommendation_mode: outputs.length > 0 ? 'strict_match' : dedupedCtas.length > 0 ? 'cta_only' : null,
     suppressed_reason: suppressedReason,
     products_empty_reason: productsEmptyReason,
     external_search_ctas: dedupedCtas,
@@ -1228,12 +1616,19 @@ async function buildIngredientProductRecommendationsNeutral({
       candidate_count: pool.length,
       candidate_count_internal: Number(sourceCounter.catalog || 0),
       candidate_count_external: Number(sourceCounter.external_seed || 0),
+      candidate_count_external_deterministic: deterministicExternalCount,
       filtered_by_safety: filteredBySafety,
       filtered_by_url: filteredByUrl,
       softened_by_safety: softenedBySafety,
       softened_by_url: softenedByUrl,
       evidence_score: Number(evidence && evidence.evidence_score || 0),
-      fallback_stage: fallbackStage,
+      ...(fallbackStage ? { fallback_stage: fallbackStage } : {}),
+      ...(mainlineResolutionStage ? { mainline_resolution_stage: mainlineResolutionStage } : {}),
+      fallback_query_limit: fallbackQueryLimitN,
+      mainline_pool_count: mainlinePoolCount,
+      mainline_only: Boolean(mainlineOnly),
+      prefer_deterministic_mainline: Boolean(preferDeterministicMainline),
+      network_fallback_skipped_due_to_mainline: networkFallbackSkippedDueToMainline,
       products_count: outputs.length,
       lookup_queries: lookupQueries,
       retrieval_source_counts: outputs.reduce((acc, item) => {
@@ -1254,6 +1649,7 @@ async function buildIngredientProductRecommendationsNeutral({
       },
       relax_mode: AURORA_RULE_RELAX_MODE,
       soft_evidence_gate_enabled: Boolean(softEvidenceGateEnabled),
+      bundled_catalog_seed_allowed: Boolean(allowBundledCatalogSeed),
     },
   };
 }
@@ -1263,6 +1659,8 @@ module.exports = {
   normalizeRiskTier,
   normalizeEvidenceGrade,
   loadCatalog,
+  loadDeterministicExternalSeedCandidates,
+  loadDeterministicExternalSeedCandidatesBatch,
   buildProductRecommendations,
   buildIngredientProductRecommendationsNeutral,
 };

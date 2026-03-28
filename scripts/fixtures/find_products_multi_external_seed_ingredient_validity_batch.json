@@ -4,6 +4,9 @@
     "family": "external_strict_positive",
     "query": "niacinamide serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -35,6 +38,9 @@
     "family": "external_strict_positive",
     "query": "vitamin c serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -63,7 +69,10 @@
     "query": "vitamin c serum under €30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
     "allow_zero_results": false,
+    "allow_strict_empty": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
       "strict_constraint_query",
@@ -77,7 +86,9 @@
     "must_equal_metadata": {
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint",
-      "budget_fx_applied": true
+      "budget_fx_applied": true,
+      "budget_fx_candidate_currency": "USD",
+      "budget_fx_unresolved": false
     },
     "must_be_positive_metadata": [
       "source_breakdown.external_seed_count"
@@ -91,6 +102,9 @@
     "family": "external_false_positive_sentinel",
     "query": "hyaluronic acid serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -115,6 +129,9 @@
     "family": "external_false_positive_sentinel",
     "query": "retinol serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -139,6 +156,9 @@
     "family": "external_coverage_gap",
     "query": "salicylic acid serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -157,6 +177,9 @@
     "family": "external_coverage_gap",
     "query": "ceramide serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -175,6 +198,9 @@
     "family": "query_parse_gap",
     "query": "hyaluronic serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -193,6 +219,9 @@
     "family": "query_parse_gap",
     "query": "peptide serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
@@ -211,6 +240,9 @@
     "family": "query_parse_gap",
     "query": "salicylic serum",
     "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": true,
     "expected_contract_path": "shop_invoke_strict",
     "allow_zero_results": true,
     "must_have_metadata": [
