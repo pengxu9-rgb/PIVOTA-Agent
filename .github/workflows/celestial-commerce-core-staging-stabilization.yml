@@ -102,6 +102,35 @@ jobs:
           RAIL_MODE="authoritative_commerce" \
           bash scripts/smoke_celestial_commerce_core_staging_invoke.sh
 
+      - name: Warm staging broad commerce runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_TOKEN="$STAGING_AUTH_TOKEN" \
+          AGENT_API_KEY="$STAGING_AGENT_API_KEY" \
+          node scripts/warm_find_products_multi_runtime.js \
+            --base-url "$STAGING_BASE_URL" \
+            --endpoint "/agent/shop/v1/invoke" \
+            --auth-token "$STAGING_AUTH_TOKEN" \
+            --agent-api-key "$STAGING_AGENT_API_KEY" \
+            --query serum \
+            --source shopping_agent \
+            --attempts 2 \
+            --delay-ms 3000 \
+            --timeout-ms 25000
+          AUTH_TOKEN="$STAGING_AUTH_TOKEN" \
+          AGENT_API_KEY="$STAGING_AGENT_API_KEY" \
+          node scripts/warm_find_products_multi_runtime.js \
+            --base-url "$STAGING_BASE_URL" \
+            --endpoint "/agent/shop/v1/invoke" \
+            --auth-token "$STAGING_AUTH_TOKEN" \
+            --agent-api-key "$STAGING_AGENT_API_KEY" \
+            --query serum \
+            --source aurora-bff \
+            --attempts 2 \
+            --delay-ms 3000 \
+            --timeout-ms 25000
+
       - name: Run full staging stabilization acceptance
         shell: bash
         run: |
