@@ -456,6 +456,45 @@ test('applyRecoContractToRecoRequestedEvents: contract canonical fields override
   }
 });
 
+test('applyRecoContractToRecoRequestedEvents: reco_mainline_empty contract stays explicit and does not collapse to artifact_missing', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.applyRecoContractToRecoRequestedEvents([], {
+      primary_failure_reason: 'reco_mainline_empty',
+      telemetry_failure_reason: 'reco_mainline_empty',
+      failure_class: null,
+      source_mode: 'catalog_grounded',
+      source: 'catalog_grounded_v1',
+      mainline_status: 'reco_mainline_empty',
+      catalog_skip_reason: null,
+      upstream_status: 'ok',
+      products_empty_reason: 'reco_mainline_empty',
+      surface_reason: 'reco_mainline_empty',
+    }, {
+      ctx: { request_id: 'req_reco_mainline_empty_evt', trace_id: 'trace_reco_mainline_empty_evt' },
+      emitIfMissing: true,
+      eventData: {
+        explicit: true,
+        source: 'catalog_grounded_v1',
+        source_mode: 'catalog_grounded',
+      },
+    });
+
+    const recoEvent = Array.isArray(out?.events)
+      ? out.events.find((evt) => evt && evt.event_name === 'recos_requested')
+      : null;
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.reason, 'reco_mainline_empty');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'reco_mainline_empty');
+    assert.equal(recoEvent?.data?.mainline_status, 'reco_mainline_empty');
+    assert.equal(recoEvent?.data?.upstream_status, 'ok');
+    assert.equal(recoEvent?.data?.products_empty_reason, 'reco_mainline_empty');
+    assert.equal(recoEvent?.data?.surface_reason, 'reco_mainline_empty');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('applyRecoCardContractInvariant: explicit ingredient no-candidate empty mode is preserved', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

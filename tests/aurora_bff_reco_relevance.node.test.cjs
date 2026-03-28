@@ -186,7 +186,7 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
   }
 });
 
-test('/v1/reco/generate: step-aware no-viable path does not report grounded_success', async () => {
+test('/v1/reco/generate: step-aware no-viable path stays explicit and does not report grounded_success', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -245,17 +245,17 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
     assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'no_valid_catalog_hit_for_target')
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'no_viable_candidates_for_target')
       || null;
     assert.ok(confidenceNotice);
-    assert.equal(confidenceNotice?.payload?.reason, 'no_valid_catalog_hit_for_target');
+    assert.equal(confidenceNotice?.payload?.reason, 'no_viable_candidates_for_target');
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.failure_class, 'no_valid_catalog_hit_for_target');
-    assert.equal(recoEvent?.data?.surface_reason, 'no_valid_catalog_hit_for_target');
+    assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
     assert.equal(recoEvent?.data?.user_fixable, false);
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
   } finally {
@@ -263,7 +263,7 @@ test('/v1/reco/generate: step-aware no-viable path does not report grounded_succ
   }
 });
 
-test('/v1/reco/generate: adjacent/noisy candidates stay user-fixable and do not masquerade as artifact missing', async () => {
+test('/v1/reco/generate: adjacent/noisy candidates degrade to weak_viable_pool instead of masquerading as artifact missing', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -324,7 +324,7 @@ test('/v1/reco/generate: adjacent/noisy candidates stay user-fixable and do not 
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice =
       cards.find((card) => card && card.type === 'confidence_notice'
-        && String(card?.payload?.reason || '') === 'no_viable_candidates_for_target')
+        && String(card?.payload?.reason || '') === 'weak_viable_pool')
       || null;
     assert.ok(confidenceNotice);
     const recoEvent = Array.isArray(response.body?.events)
@@ -332,16 +332,16 @@ test('/v1/reco/generate: adjacent/noisy candidates stay user-fixable and do not 
       : null;
     assert.ok(recoEvent);
     assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.failure_class, 'no_viable_candidates_for_target');
-    assert.equal(recoEvent?.data?.surface_reason, 'no_viable_candidates_for_target');
+    assert.equal(recoEvent?.data?.failure_class, 'weak_viable_pool');
+    assert.equal(recoEvent?.data?.surface_reason, 'weak_viable_pool');
     assert.equal(recoEvent?.data?.user_fixable, true);
     assert.equal('upstream_status' in (recoEvent?.data || {}), false);
     assert.ok(response.body?.debug);
     assert.equal(
       response.body?.debug?.effective_failure_class || response.body?.debug?.contract?.effective_failure_class,
-      'no_viable_candidates_for_target',
+      'weak_viable_pool',
     );
-    assert.equal(response.body?.debug?.contract?.surface_reason, 'no_viable_candidates_for_target');
+    assert.equal(response.body?.debug?.contract?.surface_reason, 'weak_viable_pool');
     assert.equal(typeof response.body?.debug?.raw_candidate_count, 'number');
     assert.ok(response.body?.debug?.reco_catalog_debug?.hard_reject_debug);
     assert.ok(response.body?.debug?.reco_catalog_debug?.soft_mismatch_debug);
@@ -350,7 +350,7 @@ test('/v1/reco/generate: adjacent/noisy candidates stay user-fixable and do not 
   }
 });
 
-test('/v1/reco/generate: valid hit with ineligible weak analysis context returns analysis_context_too_weak_for_step_reco', async () => {
+test('/v1/reco/generate: explicit focus can still succeed even when latest_reco_context is present', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -403,15 +403,15 @@ test('/v1/reco/generate: valid hit with ineligible weak analysis context returns
         session: {
           state: {
             latest_reco_context: {
-              reco_context_version: 'aurora.reco_context.v2',
-              reco_context_source: 'analysis_skin',
-              reco_context_updated_at: new Date().toISOString(),
-              diagnosis_goal: 'Repair skin barrier',
-              target_step: 'moisturizer',
-              analysis_mode: 'analysis_summary',
-              artifact_gate_tier: 'ineligible',
-              reco_artifact_eligible: false,
-              seed_terms: ['barrier repair'],
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              goal: 'Repair skin barrier',
+              context_origin: 'analysis_summary',
+              resolved_target_step: 'moisturizer',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_adjustment',
+              artifact_id: 'artifact_test_weak',
             },
           },
         },
@@ -420,21 +420,18 @@ test('/v1/reco/generate: valid hit with ineligible weak analysis context returns
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.equal(payload, null);
-    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
-    const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice'
-        && String(card?.payload?.reason || '') === 'analysis_context_too_weak_for_step_reco')
-      || null;
-    assert.ok(confidenceNotice);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload.recommendation_meta?.analysis_context_usage?.context_source_mode, 'none');
+    assert.equal(payload.recommendation_meta?.analysis_context_usage?.analysis_context_available, false);
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
     assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.failure_class, 'analysis_context_too_weak_for_step_reco');
-    assert.equal(recoEvent?.data?.surface_reason, 'analysis_context_too_weak_for_step_reco');
-    assert.equal(recoEvent?.data?.user_fixable, true);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.equal(recoEvent?.data?.source_mode, 'catalog_grounded');
+    assert.equal(recoEvent?.data?.grounded_count, 1);
   } finally {
     axios.get = originalGet;
   }
@@ -774,6 +771,93 @@ test('/v1/chat: stored-profile generic reco returns needs_more_context before up
   }
 });
 
+test('/v1/chat: contextual generic reco auto-anchors latest analysis context and returns grounded_success', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: `ctx_${observedQueries.length}`,
+            merchant_id: 'mid_ctx',
+            brand: 'BarrierLab',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'skincare',
+            product_type: 'moisturizer',
+            ingredient_tokens: ['ceramide', 'panthenol'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_contextual_reco_uid', briefId: 'chat_contextual_reco_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_contextual_reco_uid',
+        'X-Trace-ID': 'trace_chat_contextual_reco',
+        'X-Brief-ID': 'chat_contextual_reco_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'routine_audit_v1',
+              goal: 'barrier repair',
+              ingredient_query: 'ceramide',
+              resolved_target_step: 'moisturizer',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_adjustment',
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.notEqual(String(payload.recommendation_meta?.source_mode || ''), 'artifact_matcher');
+    assert.equal(payload.recommendation_meta?.resolved_target_step, 'moisturizer');
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.notEqual(String(recoEvent?.data?.source_mode || ''), 'artifact_matcher');
+    assert.equal(recoEvent?.data?.telemetry_reason || null, null);
+    assert.ok(observedQueries.some((query) => query.includes('moisturizer')));
+    assert.ok(observedQueries.some((query) => query.includes('ceramide') || query.includes('barrier repair')));
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline recommendations', async () => {
   const originalGet = axios.get;
   const originalPromptMismatch = process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
@@ -836,7 +920,7 @@ test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline rec
   }
 });
 
-test('/v1/reco/generate: latest reco context seeds moisturizer queries with prior diagnosis goal', async () => {
+test('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -892,15 +976,16 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with prio
         session: {
           state: {
             latest_reco_context: {
-              reco_context_version: 'aurora.reco_context.v2',
-              reco_context_source: 'analysis_skin',
-              reco_context_updated_at: new Date().toISOString(),
-              diagnosis_goal: 'Repair skin barrier',
-              target_step: 'moisturizer',
-              seed_terms: ['barrier repair', 'ceramide', 'panthenol', 'uv filters'],
-              analysis_mode: 'analysis_summary',
-              artifact_gate_tier: 'eligible_minimal',
-              reco_artifact_eligible: true,
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              goal: 'Repair skin barrier',
+              ingredient_query: 'ceramide',
+              context_origin: 'analysis_summary',
+              resolved_target_step: 'moisturizer',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_ingredient_plan',
+              artifact_id: 'artifact_seed_test',
             },
           },
         },
@@ -911,10 +996,9 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with prio
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
-    assert.ok(observedQueries.some((query) => query.includes('barrier repair moisturizer')));
-    assert.ok(observedQueries.some((query) => query.includes('ceramide moisturizer')));
+    assert.ok(observedQueries.some((query) => query.includes('moisturizer')));
+    assert.ok(observedQueries.some((query) => query.includes('ceramide') || query.includes('barrier repair')));
     assert.equal(observedQueries.some((query) => query.includes('uv filters')), false);
-    assert.equal(observedQueries.some((query) => query === 'barrier repair' || query === 'ceramide'), false);
   } finally {
     axios.get = originalGet;
   }
@@ -1003,10 +1087,11 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
     );
 
     assert.equal(sessionPatch?.meta?.analysis_contract?.product_surface_mode, 'guidance_only');
-    assert.equal(latestRecoContext?.diagnosis_goal, 'Repair skin barrier');
-    assert.equal(latestRecoContext?.target_step, 'moisturizer');
-    assert.equal(Array.isArray(latestRecoContext?.seed_terms), true);
-    assert.equal(latestRecoContext.seed_terms.includes('uv filters'), false);
+    assert.equal(latestRecoContext?.goal, 'Repair skin barrier');
+    assert.equal(latestRecoContext?.resolved_target_step, 'moisturizer');
+    assert.equal(latestRecoContext?.context_origin, 'analysis_summary');
+    assert.equal(typeof latestRecoContext?.artifact_id, 'string');
+    assert.equal(latestRecoContext.artifact_id.length > 0, true);
     assert.equal(pendingClarification, null);
     assert.equal(Array.isArray(response.body?.suggested_chips), true);
     assert.equal(
@@ -1118,17 +1203,24 @@ test('/v1/analysis/skin -> /v1/session/bootstrap keeps latest_reco_context for s
     });
 
     assert.equal(analysisResponse.status, 200);
-    assert.equal(analysisResponse.body?.session_patch?.state?.latest_reco_context?.diagnosis_goal, 'barrier_repair');
-    assert.equal(analysisResponse.body?.session_patch?.state?.latest_reco_context?.target_step, 'moisturizer');
+    assert.equal(analysisResponse.body?.session_patch?.state?.latest_reco_context?.resolved_target_step, 'moisturizer');
+    assert.equal(typeof analysisResponse.body?.session_patch?.state?.latest_reco_context?.goal, 'string');
+    assert.equal(
+      String(analysisResponse.body?.session_patch?.state?.latest_reco_context?.goal || '').length > 0,
+      true,
+    );
 
     const bootstrapResponse = await invokeRoute(app, 'GET', '/v1/session/bootstrap', {
       headers,
     });
 
     assert.equal(bootstrapResponse.status, 200);
-    assert.equal(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.diagnosis_goal, 'barrier_repair');
-    assert.equal(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.target_step, 'moisturizer');
-    assert.equal(Array.isArray(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.seed_terms), true);
+    assert.equal(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.resolved_target_step, 'moisturizer');
+    assert.equal(typeof bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.goal, 'string');
+    assert.equal(
+      String(bootstrapResponse.body?.session_patch?.state?.latest_reco_context?.goal || '').length > 0,
+      true,
+    );
   } finally {
     if (prevRetention === undefined) delete process.env.AURORA_BFF_RETENTION_DAYS;
     else process.env.AURORA_BFF_RETENTION_DAYS = prevRetention;

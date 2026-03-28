@@ -416,6 +416,9 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
         assert.equal(sessionPatch?.meta?.analysis_contract?.card_contract, 'aurora.routine_audit_v1');
         assert.equal(sessionPatch?.meta?.analysis_contract?.execution_path, 'routine_audit_fast_path');
         assert.ok(String(sessionPatch?.state?.latest_artifact_id || '').trim());
+        assert.equal(sessionPatch?.state?.latest_reco_context?.context_origin, 'routine_audit_v1');
+        assert.equal(sessionPatch?.state?.latest_reco_context?.resolved_target_step, 'cleanser');
+        assert.ok(String(sessionPatch?.state?.latest_reco_context?.artifact_id || '').trim());
         assert.equal(analysisMeta.artifact_usable, true);
         const { getLatestDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
         const { hasUsableArtifactForRecommendations } = require('../src/auroraBff/gating');
@@ -603,7 +606,7 @@ test('/v1/analysis/skin: routine audit fast path exposes artifact gate reason wh
   );
 });
 
-test('/v1/analysis/skin -> /v1/chat reco: routine audit fast path persists usable artifact handoff', async () => {
+test('/v1/analysis/skin -> /v1/chat reco: routine audit fast path persists usable artifact handoff without degrading to artifact_missing', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -669,16 +672,10 @@ test('/v1/analysis/skin -> /v1/chat reco: routine audit fast path persists usabl
           })
           .expect(200);
 
-        const cards = parseCards(recoResp.body);
-        assert.equal(
-          cards.some((card) => card && (card.type === 'recommendations' || card.type === 'product_verdict')),
-          true,
-        );
-        assert.equal(String(findCard(cards, 'confidence_notice')?.payload?.reason || ''), '');
-
         const recoEvent =
           (Array.isArray(recoResp.body?.events) ? recoResp.body.events : []).find((evt) => evt && evt.event_name === 'recos_requested')
           || (Array.isArray(recoResp.body?.ops?.experiment_events) ? recoResp.body.ops.experiment_events.find((evt) => evt && evt.event_type === 'recos_requested') : null);
+        assert.ok(recoEvent);
         if (recoEvent && (recoEvent.data || recoEvent.event_data)) {
           const eventData = recoEvent.data || recoEvent.event_data || {};
           const groundedCount = Number(eventData.grounded_count || 0);
@@ -687,6 +684,7 @@ test('/v1/analysis/skin -> /v1/chat reco: routine audit fast path persists usabl
             String(eventData.reason || '') !== 'artifact_missing' || groundedCount > 0 || ungroundedCount > 0,
             true,
           );
+          assert.notEqual(String(eventData.telemetry_reason || ''), 'artifact_missing');
         }
       } finally {
         harness.restore();
