@@ -273,6 +273,89 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 
+  test('returning_triage card remains schema-compatible instead of degrading to nudge', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'returning_triage',
+        card_id: 'returning_triage_1',
+        payload: {
+          title: 'Continue your diagnosis',
+          sections: [
+            {
+              kind: 'previous_diagnosis_summary',
+              summary_text: 'Your previous diagnosis points to oily, acne-prone skin.',
+            },
+            {
+              kind: 'returning_action_selection',
+              actions: [{ action_id: 'chip.action.reassess', label: 'Re-assess my skin' }],
+            },
+          ],
+          actions: [{ type: 'chip.action.reassess', label: 'Re-assess my skin' }],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('returning_triage');
+    expect(cards[0].title).toBe('Continue your diagnosis');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+    expect(() => ChatCardsResponseSchema.parse({
+      version: '1.0',
+      request_id: 'req_card_factory',
+      trace_id: 'trace_card_factory',
+      assistant_text: 'Welcome back.',
+      cards,
+      follow_up_questions: [],
+      suggested_quick_replies: [],
+      ops: {
+        thread_ops: [],
+        profile_patch: [],
+        routine_patch: [],
+        experiment_events: [],
+      },
+      safety: {
+        risk_level: 'none',
+        red_flags: [],
+        disclaimer: 'none',
+      },
+      telemetry: {
+        intent: 'skin_diagnosis',
+        intent_confidence: 0.9,
+        entities: [],
+        ui_language: 'EN',
+        matching_language: 'EN',
+        language_mismatch: false,
+        language_resolution_source: 'header',
+      },
+    })).not.toThrow();
+  });
+
+  test('skin_progress card remains schema-compatible instead of degrading to nudge', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'skin_progress',
+        card_id: 'skin_progress_1',
+        payload: {
+          title: 'Skin progress',
+          sections: [
+            { kind: 'progress_baseline', text_en: 'Baseline captured two weeks ago.' },
+            { kind: 'progress_delta', concern_deltas: [{ concern: 'acne', trend: 'improved', note_en: 'Breakouts eased.' }] },
+            { kind: 'progress_highlights', improvements: ['Less redness'], regressions: [], stable: [] },
+            { kind: 'progress_recommendation', text_en: 'Keep the routine stable for one more week.' },
+          ],
+          actions: [{ type: 'chip.action.reassess', label: 'Re-assess my skin now' }],
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].type).toBe('skin_progress');
+    expect(cards[0].title).toBe('Skin progress');
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
   test('aurora_debug card stays visible in chatcards mode for live debug triage', () => {
     const cards = mapLegacyCardToSpecCards(
       {

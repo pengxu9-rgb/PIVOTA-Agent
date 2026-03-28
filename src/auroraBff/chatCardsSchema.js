@@ -24,6 +24,8 @@ const CHAT_CARD_TYPES = [
   'routine_adjustment_plan_v1',
   'routine_recommendation_v1',
   'routine_verdict_v1',
+  'returning_triage',
+  'skin_progress',
   'confidence_notice',
   'aurora_debug',
   'aurora_alt_debug',
