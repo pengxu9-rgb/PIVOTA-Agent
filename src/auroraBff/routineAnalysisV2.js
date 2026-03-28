@@ -2727,11 +2727,7 @@ async function runRoutineAnalysisV2({
     ingredient_plan_present: Boolean(ingredientPlan),
   };
 
-  const stageAChunkSize = surfaceMode === 'routine_audit_v1'
-    ? Math.max(1, stageAInputProducts.length || 1)
-    : prioritized.audited.length > 4
-      ? 4
-      : Math.max(1, stageAInputProducts.length || 1);
+  const stageAChunkSize = prioritized.audited.length > 4 ? 4 : Math.max(1, stageAInputProducts.length || 1);
   const stageAChunks = chunkArray(stageAInputProducts, stageAChunkSize);
   const stageAChunkMetas = [];
   const stageAChunkBudgets = [];
