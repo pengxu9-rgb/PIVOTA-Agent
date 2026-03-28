@@ -59775,6 +59775,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(qualityProfileTimedOut ? { quality_profile_timed_out: true } : {}),
           ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
           artifact_usable: Boolean(artifactGate && artifactGate.ok),
+          artifact_gate: buildArtifactGateMeta(artifactGate),
+          reco_artifact_eligible: Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low'),
           ...(reportModelCalled || reportStageOutcome !== 'not_requested' || reportStageAttempts > 0
             ? {
                 report_stage_budget_ms: Math.max(0, Math.trunc(Number(reportStageBudgetMs) || 0)),
@@ -59849,6 +59851,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(!routineAnalysisV2Attempted
               ? { routine_product_enrichment_deferred: routineProductCandidates.length > 0 }
               : {}),
+            artifact_usable: Boolean(artifactGate && artifactGate.ok),
+            artifact_gate: buildArtifactGateMeta(artifactGate),
+            reco_artifact_eligible: Boolean(artifactGate && artifactGate.ok && artifactGate.confidence_level !== 'low'),
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(
               AURORA_RULE_RELAX_AGGRESSIVE &&

@@ -231,10 +231,22 @@ run_case_medium_confidence() {
     end
   " "$analysis_json"
   jq_assert_json "analysis source is not baseline fallback" '(.analysis_meta.detector_source // "") != "baseline_low_confidence"' "$analysis_json"
-  jq_assert_json "artifact usable signal is valid on medium/high" '
+  jq_assert_json "artifact gate is profile-backed and eligible on medium/high" '
     if ((.analysis_meta.analysis_mode // "") == "routine_audit_v1") or ((.session_patch.meta.analysis_contract.card_contract // "") == "aurora.routine_audit_v1")
-    then ((.analysis_meta.artifact_usable | type) == "boolean")
-    else ((.analysis_meta.artifact_usable // false) == true)
+    then (
+      ((.analysis_meta.artifact_usable // false) == true)
+      and (((.analysis_meta.artifact_gate.reason // "") | tostring | test("^eligible_")))
+      and ((.analysis_meta.reco_artifact_eligible // false) == true)
+    )
+    else (
+      ((.analysis_meta.artifact_usable // false) == true)
+      and (
+        if ((.analysis_meta.artifact_gate.reason // "") | length) > 0
+        then (((.analysis_meta.artifact_gate.reason // "") | tostring | test("^eligible_")))
+        else true
+        end
+      )
+    )
     end
   ' "$analysis_json"
   jq_assert_json "analysis confidence medium/high" '
