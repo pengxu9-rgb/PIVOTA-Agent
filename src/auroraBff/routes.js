@@ -24732,8 +24732,7 @@ function resolveRecoFailureReasonContract({ payload, contract, fallback = 'artif
       productsEmptyReason,
     };
   }
-  const fallbackReason = primaryReason || sanitizeRecoClientVisibleToken(fallback);
-  if (!fallbackReason && allowEmpty) {
+  if (allowEmpty) {
     return {
       userFacingReason: '',
       primaryReason: '',
@@ -24742,6 +24741,7 @@ function resolveRecoFailureReasonContract({ payload, contract, fallback = 'artif
       productsEmptyReason: '',
     };
   }
+  const fallbackReason = primaryReason || sanitizeRecoClientVisibleToken(fallback);
   const canonicalFallbackReason = fallbackReason || 'artifact_missing';
   return {
     userFacingReason: canonicalFallbackReason,
@@ -42145,6 +42145,23 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
       fallback_applied: fallbackApplied,
     }),
   );
+  if (fallbackApplied) {
+    for (let index = 0; index < nextEvents.length; index += 1) {
+      const evt = nextEvents[index];
+      if (!isPlainObject(evt) || String(evt.event_name || '').trim() !== 'recos_requested') continue;
+      const data = isPlainObject(evt.data) ? { ...evt.data } : {};
+      delete data.failure_class;
+      delete data.effective_failure_class;
+      delete data.failure_origin;
+      data.low_confidence = true;
+      data.confidence_level = 'low';
+      data.reason = 'low_confidence';
+      data.telemetry_reason = 'low_confidence_treatment_filtered';
+      data.products_empty_reason = 'low_confidence_treatment_filtered';
+      data.surface_reason = 'low_confidence';
+      nextEvents[index] = { ...evt, data };
+    }
+  }
 
   return {
     envelope: {
@@ -50327,7 +50344,10 @@ async function generateProductRecommendations({
     llmTrace = llmPrimary.llmTrace;
     llmInvoked = llmPrimary.llmInvoked;
     initialLlmOutcome = llmPrimary.initialLlmOutcome;
-    if (!llmStructured) {
+    const normalizedNonStepAwareLlmFailure = normalizeRecoFailureClass(llmFailureClass || '');
+    const shouldAttemptCatalogRecovery = !llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid';
+    const shouldAllowCatalogTransientFallback = !llmStructured;
+    if (shouldAttemptCatalogRecovery) {
       const catalogOut = await buildRecoGenerateFromCatalog({
         ctx,
         profileSummary,
@@ -50355,23 +50375,42 @@ async function generateProductRecommendations({
           : null;
       pdpFastFallbackReasonCode = deriveRecoPdpFastFallbackReasonCode(catalogDebug);
       pdpFastExternalFallbackReasonCode = RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED ? pdpFastFallbackReasonCode : null;
-      const useCatalogTransientFallback = shouldUseRecoCatalogTransientFallback(catalogDebug);
+      const useCatalogTransientFallback = shouldAllowCatalogTransientFallback && shouldUseRecoCatalogTransientFallback(catalogDebug);
       catalogTransientFallbackStructured = useCatalogTransientFallback && !(targetContext && targetContext.step_aware_intent)
         ? buildRecoCatalogTransientFallbackStructured({ ctx })
         : null;
     }
-    structured = llmStructured || catalogStructured || catalogTransientFallbackStructured;
-    structuredSource = llmStructured
+    const catalogRecoveredFromInvalidLlm =
+      normalizedNonStepAwareLlmFailure === 'schema_invalid'
+      && catalogStructured
+      && Array.isArray(catalogStructured.recommendations)
+      && catalogStructured.recommendations.length > 0;
+    structured = catalogRecoveredFromInvalidLlm
+      ? catalogStructured
+      : llmStructured || catalogStructured || catalogTransientFallbackStructured;
+    structuredSource = catalogRecoveredFromInvalidLlm
+      ? 'catalog_grounded'
+      : llmStructured
       ? 'llm_primary'
       : catalogStructured
         ? 'catalog_grounded'
         : catalogTransientFallbackStructured
           ? 'catalog_transient_fallback'
           : null;
-  if (!stepAwareCatalogFirstEnabled && promptContract.ok && catalogStructured && Array.isArray(catalogStructured.recommendations) && catalogStructured.recommendations.length > 0 && !llmStructured) {
-    if (llmFailureClass === 'empty_structured' && isPlainObject(llmTrace)) {
+  if (
+    !stepAwareCatalogFirstEnabled
+    && promptContract.ok
+    && catalogStructured
+    && Array.isArray(catalogStructured.recommendations)
+    && catalogStructured.recommendations.length > 0
+    && (!llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid')
+  ) {
+    if ((llmFailureClass === 'empty_structured' || llmFailureClass === 'schema_invalid') && isPlainObject(llmTrace)) {
       const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
       llmTrace = nextTrace;
+    }
+    if (normalizedNonStepAwareLlmFailure === 'schema_invalid') {
+      initialLlmOutcome = 'catalog_recovered_schema_invalid';
     }
     llmFailureClass = '';
     recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
@@ -50938,8 +50977,12 @@ async function generateProductRecommendations({
       catalog_skip_reason: catalogSkipReason,
       upstream_failure_code: upstreamFailureCode || null,
       mainline_status: mainlineStatus,
-      ...(pickFirstTrimmed(norm.payload?.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(norm.payload?.products_empty_reason) } : {}),
-      ...(stepAwareMainlineFailure?.productsEmptyReason ? { step_aware_mainline_blocked_reason: stepAwareMainlineFailure.productsEmptyReason } : {}),
+      ...(!finalRecommendations.length && pickFirstTrimmed(norm.payload?.products_empty_reason)
+        ? { products_empty_reason: pickFirstTrimmed(norm.payload?.products_empty_reason) }
+        : {}),
+      ...(!finalRecommendations.length && stepAwareMainlineFailure?.productsEmptyReason
+        ? { step_aware_mainline_blocked_reason: stepAwareMainlineFailure.productsEmptyReason }
+        : {}),
       grounding_status: effectiveGroundingStatus || null,
       grounded_count: effectiveGroundedCount,
       ungrounded_count: effectiveUngroundedCount,
@@ -50994,6 +51037,10 @@ async function generateProductRecommendations({
       candidate_pool_signature: viablePoolState.candidate_pool_signature,
     },
   };
+  if (finalRecommendations.length > 0) {
+    delete nextPayload.products_empty_reason;
+    delete nextPayload.telemetry_reason;
+  }
   const recoContract = buildRecoMainlineContract({
     recommendations: nextPayload.recommendations,
     sourceMode,

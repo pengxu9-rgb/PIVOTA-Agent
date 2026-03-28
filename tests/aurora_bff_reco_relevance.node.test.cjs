@@ -19,9 +19,16 @@ process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 
 const axios = require('axios');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
+const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
+const {
+  createAppWithPatchedAuroraChat,
+  headersFor,
+  seedCompleteProfile,
+} = require('./aurora_bff_test_harness.cjs');
 
 function loadRoutesFresh() {
+  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
   delete require.cache[ROUTES_MODULE_PATH];
   // eslint-disable-next-line global-require, import/no-dynamic-require
   return require('../src/auroraBff/routes');
@@ -103,6 +110,11 @@ function getRecommendationsPayload(responseBody) {
   const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];
   const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
   return recoCard && recoCard.payload && typeof recoCard.payload === 'object' ? recoCard.payload : null;
+}
+
+function getRecoRequestedEvent(responseBody) {
+  const events = Array.isArray(responseBody?.events) ? responseBody.events : [];
+  return events.find((event) => event && event.event_name === 'recos_requested') || null;
 }
 
 test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects brush candidates', async () => {
@@ -665,6 +677,110 @@ test('/v1/chat: profile-driven reco without explicit focus seeds goal-driven cat
     );
   } finally {
     axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: stored-profile reco recovers from schema-invalid upstream via catalog mainline', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    const isGoalDriven =
+      query.includes('salicylic')
+      || query.includes('acne')
+      || query.includes('niacinamide')
+      || query.includes('vitamin c')
+      || query.includes('dark spots');
+    return {
+      status: 200,
+      data: {
+        products: isGoalDriven
+          ? [
+              {
+                product_id: `goal_recovery_${observedQueries.length}`,
+                merchant_id: 'mid_goal_recovery',
+                brand: 'GoalSkin',
+                name: query.includes('salicylic') ? 'Clarifying BHA Serum' : 'Brightening Niacinamide Serum',
+                display_name: query.includes('salicylic') ? 'Clarifying BHA Serum' : 'Brightening Niacinamide Serum',
+                category: 'skincare',
+                product_type: 'serum',
+                ingredient_tokens: query.includes('salicylic')
+                  ? ['salicylic acid', 'niacinamide']
+                  : ['niacinamide', 'vitamin c'],
+              },
+            ]
+          : [],
+      },
+    };
+  };
+
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"invalid reco envelope"}',
+      structured: { summary: 'invalid reco envelope' },
+      context: {},
+    }),
+  });
+  try {
+    await seedCompleteProfile(harness.request, 'chat_goal_profile_only_uid', 'EN', {
+      goals: ['acne', 'dark_spots'],
+      budgetTier: '$50',
+      region: 'US',
+    });
+
+    const response = await harness.request
+      .post('/v1/chat')
+      .set(headersFor('chat_goal_profile_only_uid', 'EN'))
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+            include_alternatives: false,
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'S2_DIAGNOSIS' },
+        language: 'EN',
+      })
+      .expect(200);
+
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(Array.isArray(payload?.recommendations), true);
+    assert.equal(payload.recommendations.length, 3);
+    assert.equal(payload.mainline_status, 'grounded_success');
+    assert.equal(payload?.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload?.recommendation_meta?.primary_failure_reason ?? null, null);
+    assert.equal(payload?.recommendation_meta?.products_empty_reason ?? null, null);
+    assert.equal(payload?.recommendation_meta?.surface_reason ?? null, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceNotice =
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'low_confidence')
+      || null;
+    assert.equal(confidenceNotice, null);
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.equal(recoEvent?.data?.source_mode, 'catalog_grounded');
+    assert.equal(recoEvent?.data?.failure_class ?? null, null);
+    assert.equal(recoEvent?.data?.reason ?? null, null);
+    assert.equal(recoEvent?.data?.telemetry_reason ?? null, null);
+    assert.equal(recoEvent?.data?.products_empty_reason ?? null, null);
+    assert.equal(recoEvent?.data?.surface_reason ?? null, null);
+    assert.ok(observedQueries.some((query) => query.includes('salicylic') || query.includes('acne')));
+    assert.ok(
+      observedQueries.some((query) =>
+        query.includes('niacinamide') || query.includes('vitamin c') || query.includes('dark spots')),
+    );
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
   }
 });
 
