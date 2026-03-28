@@ -160,7 +160,11 @@ Current shared live corpus should include:
 - `vitamin c serum under €30`
 - `IPSA Time Reset Aqua`
 - `IPSA products`
-- the current clarify-required makeup/date case
+- the current shopping_agent-owned clarify-required makeup/date case
+
+For direct `aurora-bff` invoke traffic, the same makeup/date ambiguity case is currently governed by
+`layer_not_allowed` shadow-block normalization. Keep that contract in the governance/cross-layer smoke,
+not in the shared clarify-required live gate.
 
 ## Scorecard Dimensions
 
