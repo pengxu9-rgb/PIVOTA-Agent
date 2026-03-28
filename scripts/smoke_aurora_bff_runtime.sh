@@ -446,7 +446,7 @@ followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }")"
 
-printf "%s\n" "$followup_json" | jq_assert "follow-up returns product_verdict only" '.cards | any(.type=="product_verdict") and ((.cards | any(.type=="product_analysis")) | not)'
+printf "%s\n" "$followup_json" | jq_assert "follow-up returns product_verdict only" '(.cards | any(.type=="product_verdict")) and ((.cards | any(.type=="product_analysis")) | not)'
 printf "%s\n" "$followup_json" | jq_assert "follow-up carries goal signal (provenance or ops event)" '
   (
     [(.cards[]? | select(.type=="product_analysis") | (.payload.provenance.followup_goal // ""))] | any(. == "acne_focus")
