@@ -12185,6 +12185,264 @@ test('/v1/analysis/skin: stringified empty routine does not block photo-first ru
   );
 });
 
+test('/v1/analysis/skin: fresh photo readiness retries transient download-url 4xx and still uses photos', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '1500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '500',
+      AURORA_PHOTO_FRESH_READINESS_RETRIES: '1',
+      AURORA_PHOTO_FRESH_READINESS_RETRY_BASE_MS: '1',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinDiagnosisModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinDiagnosisModuleId];
+
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 218, g: 192, b: 176 } },
+      })
+        .png()
+        .toBuffer();
+
+      let downloadUrlCalls = 0;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          issues: [
+            {
+              issue_type: 'dryness',
+              severity: 'mild',
+              severity_level: 2,
+              severity_score: 0.66,
+              confidence: 0.92,
+              confidence_label: 'pretty_sure',
+              summary: 'Mild dryness around the cheeks.',
+            },
+          ],
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          photo_findings: [
+            {
+              finding_id: 'fresh_retry_dryness',
+              issue_type: 'dryness',
+              confidence: 0.92,
+              evidence: 'Dryness visible on cheek area.',
+            },
+          ],
+        },
+        internal: { source: 'test_retry' },
+      });
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            downloadUrlCalls += 1;
+            if (downloadUrlCalls === 1) {
+              return { status: 404, data: { detail: 'not ready yet' } };
+            }
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/fresh-ready',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/fresh-ready') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_readiness_fetch',
+            'X-Trace-ID': 'trace_photo_readiness_fetch',
+            'X-Brief-ID': 'brief_photo_readiness_fetch',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'PM moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_readiness_fetch', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const valueMoment =
+          (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+        assert.ok(valueMoment);
+        assert.equal(Boolean(valueMoment?.data?.used_photos), true);
+        assert.equal(downloadUrlCalls >= 2, true);
+        assert.ok(findCardByType(Array.isArray(resp.body?.cards) ? resp.body.cards : [], 'analysis_story_v2'));
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinDiagnosisModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: fresh photo readiness retries transient diagnosis throw and still uses photos', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '1500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '500',
+      AURORA_PHOTO_FRESH_READINESS_RETRIES: '1',
+      AURORA_PHOTO_FRESH_READINESS_RETRY_BASE_MS: '1',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinDiagnosisModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinDiagnosisModuleId];
+
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 220, g: 190, b: 170 } },
+      })
+        .png()
+        .toBuffer();
+
+      let diagnosisCalls = 0;
+      skinDiagnosis.runSkinDiagnosisV1 = async () => {
+        diagnosisCalls += 1;
+        if (diagnosisCalls === 1) {
+          throw new Error('Input buffer contains unsupported image format');
+        }
+        return {
+          ok: true,
+          diagnosis: {
+            issues: [
+              {
+                issue_type: 'redness',
+                severity: 'mild',
+                severity_level: 2,
+                severity_score: 0.61,
+                confidence: 0.9,
+                confidence_label: 'pretty_sure',
+                summary: 'Mild redness on the cheeks.',
+              },
+            ],
+            quality: { grade: 'pass', reasons: ['qc_passed'] },
+            photo_findings: [
+              {
+                finding_id: 'fresh_retry_redness',
+                issue_type: 'redness',
+                confidence: 0.9,
+                evidence: 'Redness visible on cheek area.',
+              },
+            ],
+          },
+          internal: { source: 'test_retry_diagnosis' },
+        };
+      };
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/fresh-diagnosis-retry',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/fresh-diagnosis-retry') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_photo_readiness_diag',
+            'X-Trace-ID': 'trace_photo_readiness_diag',
+            'X-Brief-ID': 'brief_photo_readiness_diag',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: 'PM moisturizer',
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_readiness_diag', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const valueMoment =
+          (Array.isArray(resp.body?.events) ? resp.body.events : []).find((e) => e && e.event_name === 'value_moment') || null;
+        assert.ok(valueMoment);
+        assert.equal(Boolean(valueMoment?.data?.used_photos), true);
+        assert.equal(diagnosisCalls, 2);
+        assert.ok(findCardByType(Array.isArray(resp.body?.cards) ? resp.body.cards : [], 'analysis_story_v2'));
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinDiagnosisModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice', async () => {
   await withEnv(
     {

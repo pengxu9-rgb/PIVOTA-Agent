@@ -1974,6 +1974,18 @@ const PHOTO_FETCH_RETRY_BASE_MS = Math.max(
   100,
   Math.min(2000, Number(process.env.AURORA_PHOTO_FETCH_RETRY_BASE_MS || 250)),
 );
+const PHOTO_FRESH_READINESS_WINDOW_MS = Math.max(
+  1000,
+  Math.min(2 * 60 * 1000, Number(process.env.AURORA_PHOTO_FRESH_READINESS_WINDOW_MS || 45 * 1000)),
+);
+const PHOTO_FRESH_READINESS_RETRIES = Math.max(
+  0,
+  Math.min(5, Number(process.env.AURORA_PHOTO_FRESH_READINESS_RETRIES || 3)),
+);
+const PHOTO_FRESH_READINESS_RETRY_BASE_MS = Math.max(
+  50,
+  Math.min(5000, Number(process.env.AURORA_PHOTO_FRESH_READINESS_RETRY_BASE_MS || 350)),
+);
 const PHOTO_BYTES_CACHE_MAX_ITEMS = Math.max(
   0,
   Math.min(500, Number(process.env.AURORA_PHOTO_CACHE_MAX_ITEMS || 40)),
@@ -2613,6 +2625,7 @@ const dupeDeepscanCache = new Map();
 const recoAlternativesRefreshCache = new Map();
 const recoAlternativesRefreshInFlight = new Set();
 const photoBytesCache = new Map();
+const recentConfirmedPhotoCache = new Map();
 const pdpPrefetchRecentMap = new Map();
 const recoRecentExposureState = new Map();
 const ingredientResearchWriteInFlight = new Set();
@@ -2737,6 +2750,36 @@ function getPhotoBytesCache({ photoId, auroraUid } = {}) {
   }
   photoBytesCache.delete(key);
   photoBytesCache.set(key, entry);
+  return entry;
+}
+
+function setRecentConfirmedPhoto({ photoId, auroraUid, slotId, qcStatus, confirmedAtMs } = {}) {
+  const key = makePhotoCacheKey({ photoId, auroraUid });
+  if (!key) return;
+  recentConfirmedPhotoCache.set(key, {
+    photoId: String(photoId || '').trim(),
+    auroraUid: String(auroraUid || '').trim(),
+    slotId: String(slotId || '').trim() || null,
+    qcStatus: String(qcStatus || '').trim().toLowerCase() || null,
+    confirmedAtMs: Number.isFinite(Number(confirmedAtMs)) ? Math.trunc(Number(confirmedAtMs)) : Date.now(),
+    expiresAt: Date.now() + PHOTO_FRESH_READINESS_WINDOW_MS,
+  });
+  while (recentConfirmedPhotoCache.size > 500) {
+    const oldestKey = recentConfirmedPhotoCache.keys().next().value;
+    if (!oldestKey) break;
+    recentConfirmedPhotoCache.delete(oldestKey);
+  }
+}
+
+function getRecentConfirmedPhoto({ photoId, auroraUid } = {}) {
+  const key = makePhotoCacheKey({ photoId, auroraUid });
+  if (!key) return null;
+  const entry = recentConfirmedPhotoCache.get(key);
+  if (!entry) return null;
+  if (!entry.expiresAt || entry.expiresAt <= Date.now()) {
+    recentConfirmedPhotoCache.delete(key);
+    return null;
+  }
   return entry;
 }
 
@@ -16032,6 +16075,134 @@ async function fetchPhotoBytesFromPivotaBackend({ req, photoId } = {}) {
   };
 }
 
+function isRetryablePhotoReadinessFailure({ failureCode, status, detail, error } = {}) {
+  const code = String(failureCode || (error && error.code) || '')
+    .trim()
+    .toUpperCase();
+  const statusNum = Number(status || 0);
+  const text = `${detail || ''} ${error && error.message ? error.message : ''}`.toLowerCase();
+  if (
+    [
+      'DOWNLOAD_URL_GENERATE_FAILED',
+      'DOWNLOAD_URL_FETCH_4XX',
+      'DOWNLOAD_URL_FETCH_5XX',
+      'DOWNLOAD_URL_TIMEOUT',
+      'DOWNLOAD_URL_DNS',
+      'DOWNLOAD_URL_EXPIRED',
+      'PHOTO_DIAGNOSIS_THROWN',
+    ].includes(code)
+  ) {
+    return true;
+  }
+  if ([404, 409, 423, 425].includes(statusNum)) return true;
+  return /(input buffer contains|unsupported image|invalid image|corrupt|no such object|not found|not ready|still processing|not yet available)/i.test(text);
+}
+
+function resolvePhotoReadinessRetryPlan({ req, photoId, freshnessHint } = {}) {
+  const auroraUid = getAuroraUidFromReq(req);
+  const recent = getRecentConfirmedPhoto({ photoId, auroraUid });
+  const hintEnabled = freshnessHint && freshnessHint.enabled === true;
+  return {
+    enabled: hintEnabled || Boolean(recent),
+    retries: hintEnabled || recent ? PHOTO_FRESH_READINESS_RETRIES : 0,
+    recent,
+  };
+}
+
+function computePhotoReadinessBackoffMs(attempt, retryPlan = {}) {
+  const baseMs = retryPlan && retryPlan.recent ? PHOTO_FRESH_READINESS_RETRY_BASE_MS : PHOTO_FRESH_READINESS_RETRY_BASE_MS;
+  return Math.min(baseMs * (2 ** Math.max(0, attempt)), PHOTO_FRESH_READINESS_WINDOW_MS);
+}
+
+async function runPhotoDiagnosisWithReadinessRetry({
+  req,
+  photoId,
+  language,
+  profileSummary,
+  recentLogsSummary,
+  profiler,
+  qualityGateConfig,
+  severityThresholdsOverrides,
+  freshnessHint,
+} = {}) {
+  const retryPlan = resolvePhotoReadinessRetryPlan({ req, photoId, freshnessHint });
+  const totalAttempts = Math.max(1, Number(retryPlan.retries || 0) + 1);
+  let lastFailure = null;
+
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    const photoResp = await fetchPhotoBytesFromPivotaBackend({ req, photoId });
+    if (!(photoResp && photoResp.ok && Buffer.isBuffer(photoResp.buffer) && photoResp.buffer.length > 0)) {
+      lastFailure = {
+        ok: false,
+        kind: 'fetch',
+        failure_code:
+          String(photoResp && (photoResp.failure_code || photoResp.reason) ? photoResp.failure_code || photoResp.reason : 'DOWNLOAD_URL_GENERATE_FAILED')
+            .trim()
+            .toUpperCase() || 'DOWNLOAD_URL_GENERATE_FAILED',
+        status: photoResp && photoResp.status != null ? photoResp.status : null,
+        detail: photoResp && photoResp.detail ? String(photoResp.detail) : null,
+        attempt_count: attempt + 1,
+      };
+    } else {
+      try {
+        const diag = await runSkinDiagnosisV1({
+          imageBuffer: photoResp.buffer,
+          language,
+          profileSummary,
+          recentLogsSummary,
+          profiler,
+          qualityGateConfig,
+          severityThresholdsOverrides,
+        });
+        return {
+          ok: true,
+          photoBytes: photoResp.buffer,
+          photoResp,
+          diagResult: diag,
+          attempt_count: attempt + 1,
+          readiness_retry_used: attempt > 0,
+          readiness_recent_confirm: Boolean(retryPlan.recent),
+        };
+      } catch (error) {
+        lastFailure = {
+          ok: false,
+          kind: 'diagnosis_throw',
+          failure_code: 'PHOTO_DIAGNOSIS_THROWN',
+          status: null,
+          detail: error && error.message ? String(error.message) : null,
+          error,
+          attempt_count: attempt + 1,
+        };
+      }
+    }
+
+    const shouldRetry =
+      retryPlan.enabled &&
+      attempt < totalAttempts - 1 &&
+      isRetryablePhotoReadinessFailure({
+        failureCode: lastFailure && lastFailure.failure_code,
+        status: lastFailure && lastFailure.status,
+        detail: lastFailure && lastFailure.detail,
+        error: lastFailure && lastFailure.error,
+      });
+    if (!shouldRetry) return lastFailure;
+
+    const backoffMs = computePhotoReadinessBackoffMs(attempt, retryPlan);
+    if (backoffMs > 0) await sleep(backoffMs);
+  }
+
+  return (
+    lastFailure || {
+      ok: false,
+      kind: 'fetch',
+      failure_code: 'DOWNLOAD_URL_GENERATE_FAILED',
+      status: null,
+      detail: null,
+      attempt_count: totalAttempts,
+    }
+  );
+}
+
 function isPassedPhotoQcStatus(qcStatus) {
   return normalizePhotoQcStatus(qcStatus) === 'passed';
 }
@@ -17839,17 +18010,19 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
   let photoNotice = null;
 
   try {
-    const photoResp = await fetchPhotoBytesFromPivotaBackend({ req, photoId });
-    if (photoResp && photoResp.ok && photoResp.buffer && Buffer.isBuffer(photoResp.buffer) && photoResp.buffer.length > 0) {
-      diagnosisPhotoBytes = photoResp.buffer;
-      const profiler = createStageProfiler();
-      const diag = await runSkinDiagnosisV1({
-        imageBuffer: diagnosisPhotoBytes,
-        language,
-        profileSummary,
-        recentLogsSummary,
-        profiler,
-      });
+    const profiler = createStageProfiler();
+    const diagnosisAttempt = await runPhotoDiagnosisWithReadinessRetry({
+      req,
+      photoId,
+      language,
+      profileSummary,
+      recentLogsSummary,
+      profiler,
+      freshnessHint: { enabled: true, source: 'photo_auto_confirm' },
+    });
+    if (diagnosisAttempt && diagnosisAttempt.ok) {
+      diagnosisPhotoBytes = diagnosisAttempt.photoBytes;
+      const diag = diagnosisAttempt.diagResult;
       if (diag && diag.ok && diag.diagnosis) {
         diagnosisV1 = diag.diagnosis;
         diagnosisV1Internal = diag.internal || null;
@@ -17890,7 +18063,11 @@ async function buildAutoAnalysisFromConfirmedPhoto({ req, ctx, photoId, slotId, 
         );
       }
     } else {
-      const failureCode = String(photoResp && (photoResp.failure_code || photoResp.reason) ? photoResp.failure_code || photoResp.reason : 'DOWNLOAD_URL_GENERATE_FAILED')
+      const failureCode = String(
+        diagnosisAttempt && (diagnosisAttempt.failure_code || diagnosisAttempt.reason)
+          ? diagnosisAttempt.failure_code || diagnosisAttempt.reason
+          : 'DOWNLOAD_URL_GENERATE_FAILED',
+      )
         .trim()
         .toUpperCase();
       fieldMissing.push({ field: 'analysis.used_photos', reason: failureCode });
@@ -57822,6 +57999,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         payload,
         ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
       };
+      if (isPassedPhotoQcStatus(qcStatus)) {
+        setRecentConfirmedPhoto({
+          photoId: uploadId,
+          auroraUid: ctx.aurora_uid,
+          slotId,
+          qcStatus,
+        });
+      }
       const autoAnalysis = await safeBuildAutoAnalysisFromConfirmedPhoto({
         req,
         ctx,
@@ -58023,6 +58208,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         payload,
         ...(fieldMissing.length ? { field_missing: fieldMissing } : {}),
       };
+      if (isPassedPhotoQcStatus(qcStatus)) {
+        setRecentConfirmedPhoto({
+          photoId: uploadId,
+          auroraUid: ctx.aurora_uid,
+          slotId: parsed.data.slot_id || null,
+          qcStatus,
+        });
+      }
       const autoAnalysis = await safeBuildAutoAnalysisFromConfirmedPhoto({
         req,
         ctx,
@@ -58825,12 +59018,58 @@ function mountAuroraBffRoutes(app, { logger }) {
             };
             try {
               profiler.start('decode', { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
-              const resp = await fetchPhotoBytesFromPivotaBackend({ req, photoId: diagnosisPhoto.photo_id });
-              if (resp && resp.ok) {
-                diagnosisPhotoBytes = resp.buffer;
+              const diagnosisAttempt = await runPhotoDiagnosisWithReadinessRetry({
+                req,
+                photoId: diagnosisPhoto.photo_id,
+                language: ctx.lang,
+                profileSummary,
+                recentLogsSummary,
+                profiler,
+                qualityGateConfig,
+                severityThresholdsOverrides,
+                freshnessHint: { enabled: true, source: 'analysis_skin_photo' },
+              });
+              if (diagnosisAttempt && diagnosisAttempt.ok) {
+                diagnosisPhotoBytes = diagnosisAttempt.photoBytes;
                 shadowVerifyPhotoBytes = diagnosisPhotoBytes;
+                const diag = diagnosisAttempt.diagResult;
+                if (diag && diag.ok && diag.diagnosis) {
+                  diagnosisV1 = diag.diagnosis;
+                  diagnosisV1Internal = diag.internal || null;
+                  diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
+                  usedPhotos = true;
+                  shadowVerifyPhotoBytes = diagnosisPhotoBytes;
+                  const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
+                  if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
+                  if (dq && dq.grade === 'fail') {
+                    if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
+                    else {
+                      qualityReportReasons.push(
+                        'Pixel-level photo quality did not pass (blur/lighting/WB/coverage); recommending a retake to avoid wrong guesses.',
+                      );
+                    }
+                  } else if (dq && dq.grade === 'degraded') {
+                    if (ctx.lang === 'CN') qualityReportReasons.push('照片质量一般：我会更保守，并减少/避免无效模型调用。');
+                    else {
+                      qualityReportReasons.push('Photo quality is degraded: keeping conclusions conservative and reducing unnecessary model calls.');
+                    }
+                  }
+                } else if (diag && !diag.ok) {
+                  const reason = String(diag.reason || 'diagnosis_failed');
+                  photoQuality = mergePhotoQuality(photoQuality, { grade: 'fail', reasons: [reason] }, { extraPrefix: 'pixel_' });
+                  if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
+                  else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
+                  if (!analysisFieldMissing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed')) {
+                    analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'diagnosis_failed' });
+                  }
+                } else {
+                  recordPhotoFailure('PHOTO_DIAGNOSIS_THROWN', null);
+                }
               } else {
-                recordPhotoFailure(resp && (resp.failure_code || resp.reason), resp && resp.detail);
+                recordPhotoFailure(
+                  diagnosisAttempt && (diagnosisAttempt.failure_code || diagnosisAttempt.reason),
+                  diagnosisAttempt && diagnosisAttempt.detail,
+                );
               }
               profiler.end('decode', {
                 kind: 'photo_fetch',
@@ -58843,45 +59082,6 @@ function mountAuroraBffRoutes(app, { logger }) {
               recordPhotoFailure('DOWNLOAD_URL_FETCH_5XX', err && err.message ? err.message : null);
               profiler.fail('decode', err, { kind: 'photo_fetch', slot: diagnosisPhoto.slot_id, purpose: 'diagnosis_v1' });
               logger?.warn({ err: err.message }, 'aurora bff: failed to fetch photo bytes for diagnosis');
-            }
-
-            if (diagnosisPhotoBytes) {
-              const diag = await runSkinDiagnosisV1({
-                imageBuffer: diagnosisPhotoBytes,
-                language: ctx.lang,
-                profileSummary,
-                recentLogsSummary,
-                profiler,
-                qualityGateConfig,
-                severityThresholdsOverrides,
-              });
-              if (diag && diag.ok && diag.diagnosis) {
-                diagnosisV1 = diag.diagnosis;
-                diagnosisV1Internal = diag.internal || null;
-                diagnosisPolicy = summarizeDiagnosisForPolicy(diagnosisV1);
-                usedPhotos = true;
-                shadowVerifyPhotoBytes = diagnosisPhotoBytes;
-                const dq = diagnosisV1 && diagnosisV1.quality && typeof diagnosisV1.quality === 'object' ? diagnosisV1.quality : null;
-                if (dq && typeof dq.grade === 'string') photoQuality = mergePhotoQuality(photoQuality, dq, { extraPrefix: 'pixel_' });
-                if (dq && dq.grade === 'fail') {
-                  if (ctx.lang === 'CN') qualityReportReasons.push('照片像素质量未通过（模糊/光照/白平衡/覆盖不足等）；为避免误判我会建议重拍。');
-                  else
-                    qualityReportReasons.push(
-                      'Pixel-level photo quality did not pass (blur/lighting/WB/coverage); recommending a retake to avoid wrong guesses.',
-                    );
-                } else if (dq && dq.grade === 'degraded') {
-                  if (ctx.lang === 'CN') qualityReportReasons.push('照片质量一般：我会更保守，并减少/避免无效模型调用。');
-                  else qualityReportReasons.push('Photo quality is degraded: keeping conclusions conservative and reducing unnecessary model calls.');
-                }
-              } else if (diag && !diag.ok) {
-                const reason = String(diag.reason || 'diagnosis_failed');
-                photoQuality = mergePhotoQuality(photoQuality, { grade: 'fail', reasons: [reason] }, { extraPrefix: 'pixel_' });
-                if (ctx.lang === 'CN') qualityReportReasons.push(`照片检测未能稳定完成（${reason}）；为避免误判建议重拍。`);
-                else qualityReportReasons.push(`Photo checks could not complete reliably (${reason}); recommending a retake to avoid wrong guesses.`);
-                if (!analysisFieldMissing.some((f) => f && f.field === 'analysis.used_photos' && f.reason === 'diagnosis_failed')) {
-                  analysisFieldMissing.push({ field: 'analysis.used_photos', reason: 'diagnosis_failed' });
-                }
-              }
             }
           }
         }
@@ -60738,7 +60938,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
           }),
         );
-
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
           suggested_chips: analysisChips,
