@@ -71,6 +71,10 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Assert staging auth profiles configured
+        run: |
+          node scripts/assert_celestial_staging_auth_profiles.js
+
       - name: Verify staging deployed commit via service_version
         if: inputs.wait_for_commit == true
         shell: bash
@@ -113,6 +117,13 @@ jobs:
           COMMERCE_CORE_PROD_AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
           OUT_DIR="reports/celestial-commerce-core-staging-stabilization-ci" \
           bash scripts/run_celestial_commerce_core_stabilization_acceptance.sh
+
+      - name: Fail when stabilization decision is NO-GO
+        if: always()
+        run: |
+          node scripts/assert_celestial_stabilization_decision.js \
+            --report-root reports/celestial-commerce-core-staging-stabilization-ci \
+            --fail-on no-go
 
       - name: Upload staging stabilization artifacts
         if: always()
