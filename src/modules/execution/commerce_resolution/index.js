@@ -1286,6 +1286,110 @@ function createCommerceResolutionRuntime(deps = {}) {
     };
   }
 
+  function normalizePrimaryClarifyContract(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+    const metadata =
+      body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+        ? { ...body.metadata }
+        : null;
+    if (!metadata) return body;
+
+    const querySource = String(metadata.query_source || '').trim().toLowerCase();
+    if (querySource !== 'agent_products_error_fallback') return body;
+
+    const clarification =
+      body.clarification && typeof body.clarification === 'object' && !Array.isArray(body.clarification)
+        ? body.clarification
+        : null;
+    if (!clarification?.question) return body;
+
+    const searchDecision =
+      metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
+        ? metadata.search_decision
+        : null;
+    if (String(searchDecision?.final_decision || '').trim().toLowerCase() !== 'clarify') return body;
+
+    const fallbackMeta =
+      metadata.proxy_search_fallback &&
+      typeof metadata.proxy_search_fallback === 'object' &&
+      !Array.isArray(metadata.proxy_search_fallback)
+        ? { ...metadata.proxy_search_fallback }
+        : null;
+    const fallbackReason = String(
+      fallbackMeta?.reason || metadata.fallback_reason || '',
+    )
+      .trim()
+      .toLowerCase();
+    const recoverableFallbackReasons = new Set([
+      'primary_unusable_no_fallback',
+      'primary_irrelevant_no_fallback',
+      'primary_monoculture_no_fallback',
+      'primary_low_quality_no_fallback',
+      'fallback_not_better',
+    ]);
+    if (!recoverableFallbackReasons.has(fallbackReason)) return body;
+
+    const policyAmbiguity =
+      metadata.route_debug &&
+      typeof metadata.route_debug === 'object' &&
+      metadata.route_debug.policy &&
+      typeof metadata.route_debug.policy === 'object' &&
+      metadata.route_debug.policy.ambiguity &&
+      typeof metadata.route_debug.policy.ambiguity === 'object'
+        ? metadata.route_debug.policy.ambiguity
+        : null;
+    const ambiguityTriggered =
+      Boolean(searchDecision?.clarify_triggered) || Boolean(policyAmbiguity?.clarify_triggered);
+    if (!ambiguityTriggered) return body;
+
+    const upstreamStatus = Number(
+      metadata.upstream_status ?? fallbackMeta?.upstream_status ?? 0,
+    );
+    const upstreamErrorCode = String(
+      metadata.upstream_error_code || fallbackMeta?.upstream_error_code || '',
+    ).trim();
+    const upstreamErrorMessage = String(
+      metadata.upstream_error_message || fallbackMeta?.upstream_error_message || '',
+    ).trim();
+    const upstreamHealthy =
+      upstreamStatus >= 200 &&
+      upstreamStatus < 300 &&
+      !upstreamErrorCode &&
+      !upstreamErrorMessage &&
+      metadata.upstream_quota_guarded !== true;
+    if (!upstreamHealthy) return body;
+
+    const nextMetadata = {
+      ...metadata,
+      query_source: 'agent_products_search',
+      proxy_search_fallback: fallbackMeta
+        ? {
+            ...fallbackMeta,
+            applied: false,
+            reason: null,
+          }
+        : {
+            applied: false,
+            reason: null,
+          },
+      primary_clarify_contract: {
+        normalized: true,
+        recovery_reason: 'ambiguity_gate_primary_clarify',
+        original_query_source: querySource,
+        original_fallback_reason: fallbackReason,
+      },
+    };
+    delete nextMetadata.strict_empty;
+    delete nextMetadata.strict_empty_reason;
+    delete nextMetadata.fallback_reason;
+    delete nextMetadata.fallback_route;
+
+    return {
+      ...body,
+      metadata: nextMetadata,
+    };
+  }
+
   function buildInvokeResolverFallbackResponse({
     result,
     fallbackReason = 'resolver_after_exception',
@@ -2772,6 +2876,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     buildCacheMissResolverFallbackDiagnosedResponse,
     buildProxySearchResolverFallbackResponse,
     buildDirectResolverFallbackResponse,
+    normalizePrimaryClarifyContract,
     buildInvokeResolverFallbackResponse,
     applyProxySearchFallbackMetadata,
     buildProxySearchFallbackMetadataResponse,
