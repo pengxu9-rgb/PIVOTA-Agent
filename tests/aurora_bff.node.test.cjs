@@ -12144,6 +12144,7 @@ test('/v1/analysis/skin: routine fit retries after clarify-like output, emits ro
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -12268,6 +12269,7 @@ test('/v1/analysis/skin: routine fit falls back locally after upstream errors an
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
     },
     async () => {
       const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -12360,6 +12362,7 @@ test('/v1/analysis/skin: routine fit uses dedicated timeout/model and classifies
       AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
       AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
       AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'false',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
       AURORA_ROUTINE_PRODUCT_AUTOSCAN_TIMEOUT_MS: '3800',
       AURORA_ROUTINE_FIT_TIMEOUT_MS: '12000',
       AURORA_ROUTINE_FIT_MODEL_GEMINI: 'gemini-routine-fit-test',

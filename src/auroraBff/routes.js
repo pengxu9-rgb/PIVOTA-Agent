@@ -36566,7 +36566,10 @@ async function applyProductIntelGuardrailsToEnvelope({
     isPlainObject(base.session_patch.meta.routine_analysis_v2)
       ? base.session_patch.meta.routine_analysis_v2
       : null;
-  if (routineAnalysisV2Meta && routineAnalysisV2Meta.enabled === true) {
+  if (
+    routineAnalysisV2Meta &&
+    (routineAnalysisV2Meta.enabled === true || routineAnalysisV2Meta.guardrail_bypass === true)
+  ) {
     const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
     const guardrailElapsedMs = computeElapsedMs(guardrailStartedAt);
     const nextAnalysisMeta = appendAnalysisMetaStageTiming(
@@ -58050,7 +58053,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const forceVisionCall = Boolean(SKIN_VISION_FORCE_CALL && userRequestedPhoto && photosProvided && hasLlmPrimaryInput);
         const explicitPhotoFirstRequested = parsed.data.use_photo === true;
         const routineAuditFastPathEligible =
-          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
           AURORA_ROUTINE_AUDIT_V1_ENABLED &&
           AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
           hasRoutine &&
@@ -59725,11 +59727,18 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         const degradeReason = degradeMeta.degradeReason;
         let routineAnalysisV2Result = null;
+        let routineAnalysisV2Attempted = false;
+        let routineAnalysisV2FailureClass = null;
         const analysisMeta = {
           detector_source: String(renderedAnalysisSource || '').trim() || 'unknown',
           llm_vision_called: visionModelCalled,
           llm_report_called: reportModelCalled,
-          routine_analysis_version: routineAnalysisV2Result ? 'v2' : 'legacy',
+          routine_analysis_version:
+            AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
+            hasRoutine &&
+            routineProductCandidates.length > 0
+              ? 'v2_attempted'
+              : 'legacy',
           routine_payload_shape: routinePayloadShape,
           routine_preview_items_count: routineProductCandidates.length,
           routine_product_enrichment_deferred: routineProductCandidates.length > 0,
@@ -59899,12 +59908,8 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           );
         }
-        if (
-          !AURORA_ROUTINE_SUMMARY_FIRST_ENABLED &&
-          AURORA_ROUTINE_ANALYSIS_V2_ENABLED &&
-          hasRoutine &&
-          routineProductCandidates.length > 0
-        ) {
+        if (AURORA_ROUTINE_ANALYSIS_V2_ENABLED && hasRoutine && routineProductCandidates.length > 0) {
+          routineAnalysisV2Attempted = true;
           try {
             routineAnalysisV2Result = await runRoutineAnalysisV2({
               requestId: ctx.request_id,
@@ -59946,9 +59951,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               }),
             );
           } catch (err) {
+            const failureMeta = classifyRoutineFitUpstreamFailure(err);
+            routineAnalysisV2FailureClass = failureMeta.failure_class || 'substage_error';
             recordAnalysisSubstageFailure('routine_analysis_v2', err, {
               candidate_count: routineProductCandidates.length,
             });
+            analysisMeta.routine_analysis_version = 'v2_failed';
+            analysisMeta.routine_analysis_v2_failure_class = routineAnalysisV2FailureClass;
             routineAnalysisV2Result = null;
           }
         }
@@ -59977,6 +59986,23 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...(routineExpert ? { routine_expert: routineExpert } : {}),
             ...(routineLifecycleContext ? { routine_lifecycle_context: routineLifecycleContext } : {}),
           };
+        } else if (routineAnalysisV2Attempted) {
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            ...(analysisContextSnapshot ? { analysis_context_snapshot: analysisContextSnapshot } : {}),
+            routine_analysis_v2: {
+              attempted: true,
+              enabled: false,
+              failed: true,
+              guardrail_bypass: true,
+              failure_class: routineAnalysisV2FailureClass || 'substage_error',
+              profile_context_source: requestProfileContextSource,
+              request_profile_overlay_applied: requestProfileOverlayKeys.length > 0,
+              ...(requestProfileOverlayKeys.length ? { request_profile_overlay_keys: requestProfileOverlayKeys } : {}),
+            },
+            ...(routineExpert ? { routine_expert: routineExpert } : {}),
+            ...(routineLifecycleContext ? { routine_lifecycle_context: routineLifecycleContext } : {}),
+          };
         } else if (analysisContextSnapshot) {
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
@@ -59998,7 +60024,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let routineFitPartialDimensions = [];
         let routineFitFallbackUsed = false;
         let routineFitFallbackReason = null;
-        if (!routineAnalysisV2Result && routineFitEvaluationMode !== 'off') {
+        if (!routineAnalysisV2Result && !routineAnalysisV2Attempted && routineFitEvaluationMode !== 'off') {
           try {
             routineProductEvents.push(
               makeEvent(ctx, 'routine_fit_evaluation_started', {
