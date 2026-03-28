@@ -58188,9 +58188,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               llm_report_called: false,
               artifact_usable: Boolean(artifactGate && artifactGate.ok),
               routine_analysis_version: 'v2',
-              routine_payload_shape: routinePayloadShape,
               routine_preview_items_count: routineProductCandidates.length,
-              routine_product_enrichment_deferred: routineProductCandidates.length > 0,
               analysis_mode: 'routine_audit_v1',
               execution_path: 'routine_audit_fast_path',
               profile_context_source: requestProfileContextSource,
@@ -59821,9 +59819,11 @@ function mountAuroraBffRoutes(app, { logger }) {
           photo_pipeline_enabled: AURORA_AURORAAPP_PHOTO_PIPELINE_ENABLED,
           analysis_meta: {
             analysis_mode: 'analysis_summary',
-            routine_payload_shape: routinePayloadShape,
             routine_preview_items_count: routineProductCandidates.length,
-            routine_product_enrichment_deferred: routineProductCandidates.length > 0,
+            ...(!routineAnalysisV2Attempted ? { routine_payload_shape: routinePayloadShape } : {}),
+            ...(!routineAnalysisV2Attempted
+              ? { routine_product_enrichment_deferred: routineProductCandidates.length > 0 }
+              : {}),
             gate_relax_mode: AURORA_RULE_RELAX_MODE,
             low_quality_tolerated: Boolean(
               AURORA_RULE_RELAX_AGGRESSIVE &&
@@ -59960,6 +59960,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             analysisMeta.routine_analysis_v2_failure_class = routineAnalysisV2FailureClass;
             routineAnalysisV2Result = null;
           }
+        }
+        if (routineAnalysisV2Attempted) {
+          delete analysisMeta.routine_payload_shape;
+          delete analysisMeta.routine_product_enrichment_deferred;
         }
 
         if (!routineAnalysisV2Result && ingredientPlan) {

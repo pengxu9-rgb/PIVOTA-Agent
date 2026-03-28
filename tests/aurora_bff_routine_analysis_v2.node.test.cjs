@@ -189,6 +189,8 @@ test('/v1/analysis/skin: routine analysis v2 emits product-first cards with comp
           : {};
         assert.equal(analysisMeta.analysis_mode, 'routine_v2');
         assert.equal(typeof analysisMeta.reco_artifact_eligible, 'boolean');
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
         assert.equal(Boolean(meta.routine_analysis_v2 && meta.routine_analysis_v2.enabled), true);
         assert.equal(meta.routine_analysis_legacy_compat && meta.routine_analysis_legacy_compat.source, 'routine_analysis_v2');
         assert.equal(meta.analysis_contract && meta.analysis_contract.analysis_mode, 'routine_v2');
@@ -306,6 +308,8 @@ test('/v1/analysis/skin: routine analysis v2 failure stays explicit and does not
           : {};
         assert.equal(analysisMeta.routine_analysis_version, 'v2_failed');
         assert.equal(analysisMeta.routine_analysis_v2_failure_class, 'upstream_error');
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
 
         const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
           ? resp.body.session_patch
@@ -401,6 +405,8 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
           : {};
         assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
         assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
 
         const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
           ? resp.body.session_patch
@@ -499,6 +505,8 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
         assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
         assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
         assert.equal(analysisMeta.detector_source, 'rule_based');
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
 
         const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
           ? resp.body.session_patch
