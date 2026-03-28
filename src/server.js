@@ -12329,6 +12329,115 @@ function shouldUseGatewayGovernanceShadowMode(routeContext = {}) {
   return GATEWAY_GOVERNANCE_SHADOW_MODE;
 }
 
+function normalizeGovernanceShadowBlockContract(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : null;
+  if (!metadata) return body;
+
+  const governance =
+    metadata.gateway_governance &&
+    typeof metadata.gateway_governance === 'object' &&
+    !Array.isArray(metadata.gateway_governance)
+      ? metadata.gateway_governance
+      : null;
+  if (!governance) return body;
+
+  const querySource = String(metadata.query_source || '').trim().toLowerCase();
+
+  const mode = String(governance.mode || '').trim().toLowerCase();
+  const observedAction = String(governance.observed_action || '').trim().toLowerCase();
+  const reasonCodes = Array.isArray(governance.reason_codes)
+    ? governance.reason_codes.map((item) => String(item || '').trim().toLowerCase())
+    : [];
+  if (
+    mode !== 'shadow' ||
+    observedAction !== 'block' ||
+    governance.would_enforce !== true ||
+    !reasonCodes.includes('layer_not_allowed')
+  ) {
+    return body;
+  }
+
+  const products = Array.isArray(body.products) ? body.products : [];
+  if (products.length > 0) return body;
+
+  const searchDecision =
+    metadata.search_decision &&
+    typeof metadata.search_decision === 'object' &&
+    !Array.isArray(metadata.search_decision)
+      ? metadata.search_decision
+      : null;
+  const finalDecision = String(searchDecision?.final_decision || '').trim().toLowerCase();
+  const hasClarification = Boolean(
+    body.clarification &&
+      typeof body.clarification === 'object' &&
+      !Array.isArray(body.clarification) &&
+      body.clarification.question,
+  );
+  const hasSoftFallback =
+    querySource === 'agent_products_error_fallback' ||
+    Boolean(
+      metadata.proxy_search_fallback &&
+        typeof metadata.proxy_search_fallback === 'object' &&
+        !Array.isArray(metadata.proxy_search_fallback) &&
+        metadata.proxy_search_fallback.applied === true,
+    ) ||
+    metadata.strict_empty === true ||
+    hasClarification ||
+    finalDecision === 'clarify' ||
+    finalDecision === 'strict_empty';
+  if (!hasSoftFallback) return body;
+
+  const nextSearchDecision = searchDecision
+    ? {
+        ...searchDecision,
+        final_decision: 'governance_shadow_block',
+        clarify_triggered: false,
+      }
+    : {
+        final_decision: 'governance_shadow_block',
+        clarify_triggered: false,
+      };
+  const nextMetadata = {
+    ...metadata,
+    query_source: 'gateway_governance_shadow_block',
+    proxy_search_fallback:
+      metadata.proxy_search_fallback &&
+      typeof metadata.proxy_search_fallback === 'object' &&
+      !Array.isArray(metadata.proxy_search_fallback)
+        ? {
+            ...metadata.proxy_search_fallback,
+            applied: false,
+            reason: null,
+          }
+        : {
+            applied: false,
+            reason: null,
+          },
+    search_decision: nextSearchDecision,
+    governance_shadow_contract: {
+      normalized: true,
+      recovery_reason: 'layer_not_allowed_shadow_block',
+      original_query_source: querySource,
+      original_final_decision: finalDecision || null,
+    },
+  };
+  delete nextMetadata.strict_empty;
+  delete nextMetadata.strict_empty_reason;
+  delete nextMetadata.fallback_reason;
+  delete nextMetadata.fallback_route;
+
+  return {
+    ...body,
+    clarification: null,
+    metadata: nextMetadata,
+  };
+}
+
 function mergeInvokeGatewayAuditMetadata(body, audit) {
   if (!audit || !body || typeof body !== 'object' || Array.isArray(body)) return body;
   const existingMetadata =
@@ -23220,6 +23329,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
     enriched = normalizePrimaryClarifyContract(enriched);
+    enriched = normalizeGovernanceShadowBlockContract(enriched);
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
@@ -24086,6 +24196,7 @@ module.exports._debug = {
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
+  normalizeGovernanceShadowBlockContract,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,
