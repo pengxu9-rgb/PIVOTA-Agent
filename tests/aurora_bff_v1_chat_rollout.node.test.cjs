@@ -400,7 +400,12 @@ test('enrichSkillRequestForCompat builds category-aware dupe candidate queries w
       searchPivotaBackendProducts: async ({ query }) => {
         seenQueries.push(query);
         const normalized = String(query || '').trim().toLowerCase();
-        if (normalized === 'nivea creme moisturizer' || normalized === 'nivea moisturizer') {
+        if (
+          normalized === 'nivea cream' ||
+          normalized === 'nivea moisturizing cream' ||
+          normalized === 'nivea creme moisturizer' ||
+          normalized === 'nivea moisturizer'
+        ) {
           return {
             ok: true,
             products: [
@@ -427,6 +432,14 @@ test('enrichSkillRequestForCompat builds category-aware dupe candidate queries w
   );
   assert.equal(
     seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea moisturizer'),
+    true,
+  );
+  assert.equal(
+    seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea cream'),
+    true,
+  );
+  assert.equal(
+    seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea moisturizing cream'),
     true,
   );
   assert.equal(

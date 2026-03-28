@@ -656,6 +656,36 @@ function stripLeadingBrandFromName(nameRaw, brandRaw) {
   return name;
 }
 
+function buildCompatNameVariants(nameRaw, productTypeRaw) {
+  const base = String(nameRaw || '').trim();
+  const productType = String(productTypeRaw || '').trim().toLowerCase();
+  if (!base) return [];
+
+  const out = [];
+  const seen = new Set();
+  const add = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  add(base);
+  if (/\bcreme\b/i.test(base)) add(base.replace(/\bcreme\b/gi, 'cream'));
+
+  if (productType === 'moisturizer' || productType === 'moisturiser') {
+    if (/\bcreme\b/i.test(base) || /\bcream\b/i.test(base)) {
+      add('moisturizing cream');
+    } else if (!/\bmoisturizer\b/i.test(base)) {
+      add(`${base} moisturizer`);
+    }
+  }
+
+  return out;
+}
+
 function normalizeProductCatalogQuery(raw) {
   let text = String(raw || '').trim();
   if (!text) return '';
@@ -755,12 +785,16 @@ function buildCompatProductCatalogQueries({ inputText, inputUrl, productAnchor }
     stripLeadingBrandFromName(product.product_name, productIdentity.brand),
     stripLeadingBrandFromName(product.productName, productIdentity.brand),
   );
-  const canonicalName = joinBrandAndName(productIdentity.brand, shortName || productIdentity.name);
+  const nameVariants = buildCompatNameVariants(shortName || productIdentity.name, productType);
+  const canonicalName = joinBrandAndName(productIdentity.brand, nameVariants[0] || productIdentity.name);
 
   add(canonicalName);
-  if (productType) add(joinBrandAndName(productIdentity.brand, `${shortName || productIdentity.name} ${productType}`.trim()));
+  for (const variant of nameVariants.slice(1)) {
+    add(joinBrandAndName(productIdentity.brand, variant));
+  }
+  if (productType) add(joinBrandAndName(productIdentity.brand, `${nameVariants[0] || productIdentity.name} ${productType}`.trim()));
   if (productType && productIdentity.brand) add(`${productIdentity.brand} ${productType}`);
-  if (productType && shortName) add(`${shortName} ${productType}`);
+  if (productType && nameVariants[0]) add(`${nameVariants[0]} ${productType}`);
   add(productIdentity.name);
   add(productIdentity.productId);
 
