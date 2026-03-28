@@ -1354,6 +1354,7 @@ async function buildIngredientProductRecommendationsNeutral({
   let softenedBySafety = 0;
   let softenedByUrl = 0;
   let fallbackStage = 'internal_external_pool';
+  let mainlineResolutionStage = null;
   let mainlinePoolCount = 0;
   let networkFallbackSkippedDueToMainline = false;
   const isSearchLikeUrl = (value) => {
@@ -1474,7 +1475,8 @@ async function buildIngredientProductRecommendationsNeutral({
     fallbackStage = 'mainline_pool_only';
     networkFallbackSkippedDueToMainline = true;
   } else if (mainlineOnly) {
-    fallbackStage = mainlinePoolCount > 0 ? 'mainline_only_pool' : 'mainline_only_empty';
+    fallbackStage = '';
+    mainlineResolutionStage = mainlinePoolCount > 0 ? 'deterministic_pool' : 'deterministic_empty';
   }
 
   if (!mainlineOnly && !pool.length && typeof llmFallbackRecoverFn === 'function') {
@@ -1542,7 +1544,7 @@ async function buildIngredientProductRecommendationsNeutral({
   let dedupedCtas = dedupeCtas(externalSearchCtas, 6);
   if (!outputs.length && !dedupedCtas.length) {
     if (mainlineOnly) {
-      fallbackStage = 'mainline_only_cta';
+      mainlineResolutionStage = 'strict_match_miss_cta';
     } else {
       fallbackStage = fallbackStage === 'llm_fallback' ? 'google_cta_after_llm' : 'google_cta';
     }
@@ -1603,6 +1605,7 @@ async function buildIngredientProductRecommendationsNeutral({
 
   return {
     products: outputs,
+    recommendation_mode: outputs.length > 0 ? 'strict_match' : dedupedCtas.length > 0 ? 'cta_only' : null,
     suppressed_reason: suppressedReason,
     products_empty_reason: productsEmptyReason,
     external_search_ctas: dedupedCtas,
@@ -1619,7 +1622,8 @@ async function buildIngredientProductRecommendationsNeutral({
       softened_by_safety: softenedBySafety,
       softened_by_url: softenedByUrl,
       evidence_score: Number(evidence && evidence.evidence_score || 0),
-      fallback_stage: fallbackStage,
+      ...(fallbackStage ? { fallback_stage: fallbackStage } : {}),
+      ...(mainlineResolutionStage ? { mainline_resolution_stage: mainlineResolutionStage } : {}),
       fallback_query_limit: fallbackQueryLimitN,
       mainline_pool_count: mainlinePoolCount,
       mainline_only: Boolean(mainlineOnly),

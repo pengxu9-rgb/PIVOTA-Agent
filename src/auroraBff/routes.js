@@ -13437,6 +13437,115 @@ function mergeIngredientRecoContextValue(base, patch) {
   };
 }
 
+function normalizeRecoGoalFamilyToken(raw) {
+  const token = String(raw || '').trim().toLowerCase();
+  if (!token) return '';
+  if (/(acne|breakout|pore|oil|blemish|控痘|痘|闭口|粉刺|毛孔|出油)/.test(token)) return 'acne';
+  if (/(dark[_\s-]*spots?|bright|tone|pigment|dull|提亮|淡斑|暗沉|色沉|美白)/.test(token)) return 'brightening';
+  if (/(barrier|repair|repairing|修护|屏障)/.test(token)) return 'barrier';
+  if (/(hydrate|hydration|moist|dehydra|dry|保湿|补水|干燥|紧绷)/.test(token)) return 'hydration';
+  if (/(anti[-\s]?aging|aging|wrinkle|firm|fine line|抗老|抗衰|细纹)/.test(token)) return 'antiaging';
+  return '';
+}
+
+function buildRecoGoalDrivenQueryItems({ profileSummary, lang } = {}) {
+  const isCn = String(lang || '').toUpperCase() === 'CN';
+  const goals = uniqCaseInsensitiveStrings(
+    [
+      pickFirstTrimmed(profileSummary && profileSummary.goal_primary),
+      ...(Array.isArray(profileSummary && profileSummary.goals) ? profileSummary.goals : []),
+    ]
+      .map((item) => normalizeRecoGoalFamilyToken(item))
+      .filter(Boolean),
+    4,
+  );
+  if (!goals.length) return [];
+
+  const skinType = String(profileSummary && profileSummary.skinType || '').trim().toLowerCase();
+  const prefersLightweight = skinType === 'oily' || skinType === 'combination';
+  const items = [];
+  const pushItem = (query, step, slot) => {
+    const normalizedQuery = String(query || '').trim();
+    if (!normalizedQuery) return;
+    items.push({
+      query: normalizedQuery,
+      step,
+      slot: String(slot || 'other').trim().toLowerCase() || 'other',
+    });
+  };
+
+  for (const goal of goals) {
+    if (goal === 'acne') {
+      pushItem(
+        isCn ? '水杨酸精华 痘痘 毛孔' : 'salicylic acid serum for acne and pores',
+        isCn ? '功效' : 'Treatment',
+        'pm',
+      );
+      pushItem(
+        isCn
+          ? (prefersLightweight ? '清爽保湿乳 痘痘肌' : '屏障修护保湿霜 痘痘肌')
+          : (prefersLightweight ? 'lightweight gel moisturizer for acne-prone skin' : 'barrier-support moisturizer for acne-prone skin'),
+        isCn ? '保湿' : 'Moisturizer',
+        'other',
+      );
+      continue;
+    }
+    if (goal === 'brightening') {
+      pushItem(
+        isCn ? '烟酰胺精华 提亮 淡斑' : 'niacinamide serum for uneven tone',
+        isCn ? '功效' : 'Treatment',
+        'am',
+      );
+      pushItem(
+        isCn ? '维C精华 淡斑 暗沉' : 'vitamin c serum for dark spots',
+        isCn ? '功效' : 'Treatment',
+        'am',
+      );
+      continue;
+    }
+    if (goal === 'barrier') {
+      pushItem(
+        isCn ? '神经酰胺屏障修护面霜 无香' : 'ceramide barrier repair moisturizer fragrance free',
+        isCn ? '保湿' : 'Moisturizer',
+        'pm',
+      );
+      pushItem(
+        isCn ? '屏障修护精华 泛红 刺激' : 'barrier repair serum for redness and irritation',
+        isCn ? '功效' : 'Treatment',
+        'pm',
+      );
+      continue;
+    }
+    if (goal === 'hydration') {
+      pushItem(
+        isCn ? '玻尿酸保湿精华' : 'hyaluronic acid hydrating serum',
+        isCn ? '功效' : 'Treatment',
+        'am',
+      );
+      pushItem(
+        isCn ? '保湿修护面霜 无香' : 'hydrating barrier moisturizer fragrance free',
+        isCn ? '保湿' : 'Moisturizer',
+        'pm',
+      );
+      continue;
+    }
+    if (goal === 'antiaging') {
+      pushItem(
+        isCn ? '维A醇精华 细纹 抗老' : 'retinol serum for fine lines',
+        isCn ? '功效' : 'Treatment',
+        'pm',
+      );
+      pushItem(
+        isCn ? '肽类精华 抗老' : 'peptide serum anti-aging',
+        isCn ? '功效' : 'Treatment',
+        'am',
+      );
+    }
+  }
+
+  return items.slice(0, 6);
+}
+
 function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {}) {
   const raw = RECO_CATALOG_GROUNDED_QUERIES;
   const fromEnv = raw
@@ -13462,13 +13571,16 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     treatment: isCn ? '功效' : 'Treatment',
   };
 
-  const items = base.map((q, idx) => {
+  const items = [
+    ...buildRecoGoalDrivenQueryItems({ profileSummary, lang }),
+    ...base.map((q, idx) => {
     const key = String(q || '').trim().toLowerCase();
     const step = stepLabels[key] || (isCn ? `推荐 ${idx + 1}` : `Recommendation ${idx + 1}`);
     const slot = idx === 0 ? 'am' : idx === 1 ? 'pm' : 'other';
     const query = hasAcne && key === 'cleanser' ? 'acne cleanser' : q;
     return { query: String(query || '').trim(), step, slot };
-  });
+    }),
+  ];
 
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const ingredientCandidates = normalizeIngredientCandidateList(

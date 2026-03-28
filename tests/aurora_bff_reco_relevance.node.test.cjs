@@ -584,6 +584,90 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
   }
 });
 
+test('/v1/chat: profile-driven reco without explicit focus seeds goal-driven catalog queries and stays grounded', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    const isGoalDriven =
+      query.includes('salicylic')
+      || query.includes('acne')
+      || query.includes('niacinamide')
+      || query.includes('vitamin c')
+      || query.includes('dark spots');
+    return {
+      status: 200,
+      data: {
+        products: isGoalDriven
+          ? [
+              {
+                product_id: `goal_${observedQueries.length}`,
+                merchant_id: 'mid_goal',
+                brand: 'GoalSkin',
+                name: query.includes('salicylic') ? 'Clarifying BHA Serum' : 'Brightening Niacinamide Serum',
+                display_name: query.includes('salicylic') ? 'Clarifying BHA Serum' : 'Brightening Niacinamide Serum',
+                category: 'skincare',
+                product_type: 'serum',
+                ingredient_tokens: query.includes('salicylic')
+                  ? ['salicylic acid', 'niacinamide']
+                  : ['niacinamide', 'vitamin c'],
+              },
+            ]
+          : [],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_goal_driven_uid',
+        'X-Trace-ID': 'trace_chat_goal_driven',
+        'X-Brief-ID': 'chat_goal_driven_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products for my goals',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'healthy',
+              goals: ['acne', 'dark_spots'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(observedQueries.some((query) => query.includes('salicylic') || query.includes('acne')));
+    assert.ok(
+      observedQueries.some((query) =>
+        query.includes('niacinamide') || query.includes('vitamin c') || query.includes('dark spots')),
+    );
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline recommendations', async () => {
   const originalGet = axios.get;
   const originalPromptMismatch = process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;

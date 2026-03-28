@@ -626,7 +626,9 @@ test('neutral rec: photo mainline-only path skips network and llm fallback when 
     assert.equal(result.external_search_ctas.length > 0, true);
     assert.equal(result.debug.mainline_only, true);
     assert.equal(result.debug.mainline_pool_count, 0);
-    assert.equal(result.debug.fallback_stage, 'mainline_only_cta');
+    assert.equal(result.recommendation_mode, 'cta_only');
+    assert.equal(result.debug.mainline_resolution_stage, 'strict_match_miss_cta');
+    assert.equal('fallback_stage' in result.debug, false);
     assert.equal(result.debug.network_fallback_skipped_due_to_mainline, false);
   });
 });
