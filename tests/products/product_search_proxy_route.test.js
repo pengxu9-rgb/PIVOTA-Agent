@@ -4987,7 +4987,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
           },
         },
         metadata: {
-          source: 'aurora-bff',
+          source: 'shopping_agent',
           ui_surface: 'ingredient_plan_guidance_only',
           query_target_step_family: 'serum',
           query_step_strength: 'focused',
@@ -5036,6 +5036,94 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
     expect(resp.body.metadata?.final_decision).not.toBe('governance_shadow_block');
     expect(resp.body.metadata?.query_source).not.toBe('gateway_governance_shadow_block');
+  });
+
+  test('invoke find_products_multi does not early-return an empty guidance fastpath response', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-fastpath-empty-fallthrough-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 0 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const upstreamInvokeScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return body && body.operation === 'find_products_multi';
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'upstream_guidance_1',
+            merchant_id: 'external_seed',
+            title: 'Soothing Repair Serum',
+            category: 'skincare',
+            product_type: 'serum',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_guidance_external_seed_supplemented',
+          final_decision: 'products_returned',
+          guidance_direct_external_seed_applied: true,
+          guidance_direct_external_seed_valid_hit: true,
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: 1,
+            stale_cache_used: false,
+            strategy_applied: 'guidance_direct_external_seed_supplement',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'soothing repair serum',
+            limit: 6,
+            in_stock_only: true,
+            ui_surface: 'ingredient_plan_guidance_only',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          ui_surface: 'ingredient_plan_guidance_only',
+          query_target_step_family: 'serum',
+          query_step_strength: 'focused',
+          decision_mode: 'guidance_only',
+          source_policy: 'guided_only',
+        },
+      })
+      .expect(200);
+
+    expect(upstreamInvokeScope.isDone()).toBe(true);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_guidance_external_seed_supplemented');
+    expect(resp.body.metadata?.guidance_direct_external_seed_applied).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'upstream_guidance_1',
+          title: 'Soothing Repair Serum',
+        }),
+      ]),
+    );
   });
 
 });

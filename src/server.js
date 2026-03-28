@@ -4357,61 +4357,6 @@ function finalizeInvokeAuthoritativeResponseEnvelope({
   };
 }
 
-function normalizeInvokeGuidanceFastpathResponseContract(body) {
-  if (!isPlainRecord(body)) return body;
-  const metadata = isPlainRecord(body.metadata) ? body.metadata : {};
-  if (
-    String(metadata.execution_mode || '').trim() !== GUIDANCE_EXECUTION_MODE_SERVER_OWNED_LADDER ||
-    String(metadata.latency_mode || '').trim() !== GUIDANCE_FASTPATH_LATENCY_MODE
-  ) {
-    return body;
-  }
-
-  const searchDecision = isPlainRecord(metadata.search_decision) ? metadata.search_decision : {};
-  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
-  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
-  const products = Array.isArray(body.products) ? body.products : [];
-  const hasClarification = Boolean(body?.clarification?.question);
-  const finalDecision =
-    toNonEmptyStringOrNull(
-      searchTrace.final_decision ||
-        searchDecision.final_decision ||
-        metadata.final_decision ||
-        null,
-    ) ||
-    (products.length > 0 ? 'cache_returned' : hasClarification ? 'clarify' : null);
-  const primaryPathUsed =
-    toNonEmptyStringOrNull(routeHealth.primary_path_used) || 'guidance_fastpath';
-
-  return {
-    ...body,
-    metadata: {
-      ...metadata,
-      ...(finalDecision ? { final_decision: finalDecision } : {}),
-      search_decision: {
-        ...searchDecision,
-        ...(finalDecision ? { final_decision: finalDecision } : {}),
-      },
-      search_trace: {
-        ...searchTrace,
-        ...(finalDecision ? { final_decision: finalDecision } : {}),
-        primary_path_used:
-          toNonEmptyStringOrNull(searchTrace.primary_path_used) || primaryPathUsed,
-      },
-      route_health: {
-        ...routeHealth,
-        fallback_triggered: false,
-        fallback_reason: null,
-        primary_path_used: primaryPathUsed,
-        final_returned_count: Math.max(
-          products.length,
-          Number(routeHealth.final_returned_count || 0) || 0,
-        ),
-      },
-    },
-  };
-}
-
 function buildCacheStageDiagnosticBundle(cacheStage = null, cacheRouteDebug = null) {
   const stage =
     cacheStage && typeof cacheStage === 'object' && !Array.isArray(cacheStage)
@@ -7265,8 +7210,9 @@ async function runGuidanceServerOwnedLadderSearch({
   req = null,
   search = {},
   metadata = {},
+  rawQueryText = '',
 } = {}) {
-  const queryText = extractSearchQueryText(search);
+  const queryText = String(rawQueryText || extractSearchQueryText(search) || '').trim();
   const guidanceContext = extractGuidanceRetrievalContext(search, { queryText });
   if (
     !guidanceContext.is_server_owned_ladder ||
@@ -7585,6 +7531,10 @@ async function runGuidanceServerOwnedLadderSearch({
     externalSeedRowsAppended,
     beautySearchDecisionContractVersion: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   });
+
+  if (!Array.isArray(finalized.responseProducts) || finalized.responseProducts.length === 0) {
+    return null;
+  }
 
   return {
     status: 'success',
@@ -17944,21 +17894,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? effectivePayload.search
             : {},
         metadata,
+        rawQueryText: rawUserQuery,
       });
       if (invokeGuidanceFastpathResponse) {
-        const normalizedInvokeGuidanceFastpathResponse =
-          normalizeInvokeGuidanceFastpathResponseContract(invokeGuidanceFastpathResponse);
         await persistGuidanceSearchSeenProducts(
           resolveGuidanceSearchSessionId({
             req,
             query: effectivePayload?.search,
             metadata,
           }),
-          Array.isArray(normalizedInvokeGuidanceFastpathResponse?.products)
-            ? normalizedInvokeGuidanceFastpathResponse.products
+          Array.isArray(invokeGuidanceFastpathResponse?.products)
+            ? invokeGuidanceFastpathResponse.products
             : [],
         );
-        return res.json(normalizedInvokeGuidanceFastpathResponse);
+        return res.json(invokeGuidanceFastpathResponse);
       }
     }
     const fpmGateTrace = [];

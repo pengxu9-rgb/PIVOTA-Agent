@@ -168,18 +168,29 @@ describe('Shopping agent guidance ladder outcome module', () => {
       expect.objectContaining({
         contract_version: 'v-test',
         hit_quality: 'valid_hit',
+        final_decision: 'cache_returned',
         query_target_step_family: 'serum',
         products_returned_count: 1,
       }),
     );
     expect(finalized.metadata).toEqual(
       expect.objectContaining({
+        final_decision: 'cache_returned',
         selected_attempt_query: 'repair serum',
         attempt_count: 1,
         external_seed_rows_fetched: 12,
         external_seed_rows_relevant: 4,
         external_seed_rows_appended: 1,
         query_target_step_family: 'serum',
+        search_trace: expect.objectContaining({
+          final_decision: 'cache_returned',
+          primary_path_used: 'guidance_fastpath',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: 'guidance_fastpath',
+        }),
       }),
     );
   });
