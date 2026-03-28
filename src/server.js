@@ -15662,8 +15662,14 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     responseBody && typeof responseBody === 'object' && !Array.isArray(responseBody)
       ? { ...responseBody }
       : {};
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? body.metadata
+      : {};
   const rawProducts = Array.isArray(body.products) ? body.products : [];
   const filteredProducts = [];
+  const normalizedCommerceSurface = normalizeCommerceSurface(commerceSurface, 'agent_api');
+  const preserveExternalSeedProducts = metadata.strict_constraint_query === true;
 
   for (const rawProduct of rawProducts) {
     const product =
@@ -15671,11 +15677,18 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
         ? { ...rawProduct }
         : null;
     if (!product) continue;
-    if (
+    const externalSeedLike =
       String(product.merchant_id || '').trim() === 'external_seed' ||
       String(product.source || '').trim().toLowerCase() === 'external_seed' ||
-      String(product.platform || '').trim().toLowerCase() === 'external'
-    ) {
+      String(product.platform || '').trim().toLowerCase() === 'external';
+    if (externalSeedLike && preserveExternalSeedProducts) {
+      filteredProducts.push({
+        ...product,
+        commerce_surface: normalizedCommerceSurface,
+      });
+      continue;
+    }
+    if (externalSeedLike) {
       continue;
     }
     const eligible = pickFirstEligibleVariantFromProductContract(product, commerceSurface);
@@ -15695,7 +15708,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     ) || null;
     filteredProducts.push({
       ...product,
-      commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+      commerce_surface: normalizedCommerceSurface,
       top_offer_summary: {
         purchase_route: 'internal_checkout',
         merchant_id: product.merchant_id || null,
@@ -15704,7 +15717,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
         ...(skuId ? { sku_id: skuId } : {}),
         price: eligible.price,
         currency: eligible.currency,
-        commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+        commerce_surface: normalizedCommerceSurface,
       },
       exact_resolution_identifiers: {
         merchant_id: product.merchant_id || null,
@@ -15715,10 +15728,6 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     });
   }
 
-  const metadata =
-    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-      ? body.metadata
-      : {};
   return {
     ...body,
     products: filteredProducts,
@@ -15726,7 +15735,7 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
     page_size: filteredProducts.length,
     metadata: {
       ...metadata,
-      commerce_surface: normalizeCommerceSurface(commerceSurface, 'agent_api'),
+      commerce_surface: normalizedCommerceSurface,
       serving_mode: 'eligible_only',
     },
   };
