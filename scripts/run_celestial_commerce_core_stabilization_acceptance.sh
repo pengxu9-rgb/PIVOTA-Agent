@@ -9,6 +9,8 @@ STAGING_BASE_URL="${STAGING_BASE_URL:-https://pivota-agent-staging.up.railway.ap
 STAGING_MATRIX_CASES_PATH="${STAGING_MATRIX_CASES_PATH:-${REPO_ROOT}/scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json}"
 STAGING_TIMEOUT_MS="${STAGING_TIMEOUT_MS:-15000}"
 RUN_STAGING_MATRIX="${RUN_STAGING_MATRIX:-1}"
+STAGING_AUTH_TOKEN="${STAGING_AUTH_TOKEN:-}"
+STAGING_AGENT_API_KEY="${STAGING_AGENT_API_KEY:-}"
 
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH:-}"
 GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH:-}"
@@ -103,6 +105,22 @@ else
   printf 'staging matrix skipped (RUN_STAGING_MATRIX=%s)\n' "${RUN_STAGING_MATRIX}" >"${RUN_DIR}/staging_matrix_skipped.log"
 fi
 
+AURORA_MANUAL_REVIEW_ROOT="${RUN_DIR}/aurora_manual_review"
+aurora_manual_review_report_path=""
+aurora_manual_review_summary_path=""
+if [[ -n "${STAGING_AUTH_TOKEN}" || -n "${STAGING_AGENT_API_KEY}" ]]; then
+  run_step \
+    "aurora_manual_review" \
+    bash -lc "cd '${REPO_ROOT}' && AUTH_TOKEN='${STAGING_AUTH_TOKEN}' AGENT_API_KEY='${STAGING_AGENT_API_KEY}' OUT_DIR='${AURORA_MANUAL_REVIEW_ROOT}' '${node_bin}' scripts/run_celestial_commerce_core_aurora_manual_review.js --base-url '${STAGING_BASE_URL}' --endpoint '/agent/shop/v1/invoke' --out-dir '${AURORA_MANUAL_REVIEW_ROOT}'"
+  aurora_manual_review_report_path="$(latest_match "${AURORA_MANUAL_REVIEW_ROOT}" 'README.md')"
+  aurora_manual_review_summary_path="$(latest_match "${AURORA_MANUAL_REVIEW_ROOT}" 'summary.json')"
+else
+  STEP_NAMES+=("aurora_manual_review")
+  STEP_STATUSES+=("skipped")
+  STEP_LOGS+=("${RUN_DIR}/aurora_manual_review_skipped.log")
+  printf 'aurora manual review skipped (missing STAGING_AUTH_TOKEN/STAGING_AGENT_API_KEY)\n' >"${RUN_DIR}/aurora_manual_review_skipped.log"
+fi
+
 STEP_NAMES_PATH="${RUN_DIR}/step_names.txt"
 STEP_STATUSES_PATH="${RUN_DIR}/step_statuses.txt"
 STEP_LOGS_PATH="${RUN_DIR}/step_logs.txt"
@@ -133,6 +151,8 @@ PY
   --gateway-daily-summary "${gateway_daily_summary_path}" \
   --gateway-daily-report "${gateway_daily_report_path}" \
   --staging-matrix-summary "${staging_matrix_summary_path}" \
-  --staging-matrix-report "${staging_matrix_report_path}" >"${RUN_DIR}/stabilization_report.log"
+  --staging-matrix-report "${staging_matrix_report_path}" \
+  --aurora-manual-review-summary "${aurora_manual_review_summary_path}" \
+  --aurora-manual-review-report "${aurora_manual_review_report_path}" >"${RUN_DIR}/stabilization_report.log"
 
 echo "Commerce core stabilization report: ${RUN_DIR}/README.md"

@@ -127,6 +127,7 @@ Artifacts include:
 - linked readiness report
 - linked gateway governance daily summary
 - staging acceptance matrix
+- Aurora guidance-only manual-review report with per-case checklist and verdict
 
 ## Expected Decision Outputs
 
@@ -136,7 +137,7 @@ Only three decision labels are valid:
 - `HOLD for architecture stabilization`
 - `NO-GO`
 
-The default expectation for the current branch shape is usually `HOLD` until the amber readiness items and manual staging review items are reduced.
+The default expectation for the current branch shape is usually `HOLD` until the amber readiness items and any unresolved Aurora manual-review items are reduced.
 
 ## Staging Matrix Scope
 
@@ -145,6 +146,8 @@ The acceptance matrix is intentionally split into:
 - semantic cases that can be auto-checked against stable search/invoke contracts
 - governance smoke cases that confirm shadow block/downgrade provenance
 - manual Aurora guidance-only cases where live data shape is too unstable for brittle title assertions
+
+Those Aurora manual cases are now emitted as a separate report under the stabilization artifact root. The staging matrix still records them as `review_required`, but the stabilization decision consumes the dedicated Aurora report so a fully-passed manual review no longer looks like an unresolved staging blocker.
 
 ## Exit Rule
 

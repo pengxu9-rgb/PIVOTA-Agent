@@ -21,6 +21,8 @@ function parseArgs(argv) {
     gatewayDailyReport: '',
     stagingMatrixSummary: '',
     stagingMatrixReport: '',
+    auroraManualReviewSummary: '',
+    auroraManualReviewReport: '',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -36,6 +38,8 @@ function parseArgs(argv) {
     if (token === '--gateway-daily-report' && next) args.gatewayDailyReport = path.resolve(String(next));
     if (token === '--staging-matrix-summary' && next) args.stagingMatrixSummary = path.resolve(String(next));
     if (token === '--staging-matrix-report' && next) args.stagingMatrixReport = path.resolve(String(next));
+    if (token === '--aurora-manual-review-summary' && next) args.auroraManualReviewSummary = path.resolve(String(next));
+    if (token === '--aurora-manual-review-report' && next) args.auroraManualReviewReport = path.resolve(String(next));
   }
 
   return args;
@@ -82,9 +86,28 @@ function collectScorecardBuckets(scorecard = {}) {
   return { amber, red };
 }
 
-function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
+function collectStagingReviewBuckets(stagingMatrix = {}) {
+  const results = Array.isArray(stagingMatrix.results) ? stagingMatrix.results : [];
+  if (results.length === 0) {
+    return {
+      manual_review_required: 0,
+      non_manual_review_required: Number(stagingMatrix?.summary?.review_required_count || 0),
+    };
+  }
+  return {
+    manual_review_required: results.filter(
+      (item) => item.overall_status === 'review_required' && item.execution_mode === 'manual',
+    ).length,
+    non_manual_review_required: results.filter(
+      (item) => item.overall_status === 'review_required' && item.execution_mode !== 'manual',
+    ).length,
+  };
+}
+
+function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auroraManualReview }) {
   const failedSteps = (steps || []).filter((item) => item.status !== 'pass');
   const scorecardBuckets = collectScorecardBuckets(scorecard);
+  const stagingReviewBuckets = collectStagingReviewBuckets(stagingMatrix);
   const blockingFailures = [];
   const holdReasons = [];
 
@@ -132,6 +155,15 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
     );
   }
 
+  if (
+    auroraManualReview &&
+    Number(auroraManualReview.fail_count || 0) > 0
+  ) {
+    blockingFailures.push(
+      `aurora manual review failures: ${String(auroraManualReview.fail_count)}`,
+    );
+  }
+
   if (blockingFailures.length > 0) {
     return {
       decision: 'NO-GO',
@@ -158,20 +190,32 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix }) {
     holdReasons.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
   }
 
-  if (
-    stagingMatrix &&
-    stagingMatrix.summary &&
-    Number(stagingMatrix.summary.review_required_count || 0) > 0
-  ) {
+  if (stagingReviewBuckets.non_manual_review_required > 0) {
     holdReasons.push(
-      `staging matrix manual reviews still pending: ${String(
-        stagingMatrix.summary.review_required_count,
+      `staging matrix non-manual reviews still pending: ${String(
+        stagingReviewBuckets.non_manual_review_required,
       )}`,
     );
   }
 
   if (!stagingMatrix || !stagingMatrix.summary) {
     holdReasons.push('staging matrix artifact missing');
+  }
+
+  if (stagingReviewBuckets.manual_review_required > 0) {
+    if (!auroraManualReview || Object.keys(auroraManualReview).length === 0) {
+      holdReasons.push(
+        `aurora manual review artifact missing for ${String(
+          stagingReviewBuckets.manual_review_required,
+        )} staging cases`,
+      );
+    } else if (Number(auroraManualReview.review_required_count || 0) > 0) {
+      holdReasons.push(
+        `aurora manual reviews still pending: ${String(
+          auroraManualReview.review_required_count,
+        )}`,
+      );
+    }
   }
 
   if (holdReasons.length > 0) {
@@ -211,6 +255,7 @@ function writeArtifacts(args, payload) {
     `- Readiness report: \`${payload.artifacts.readiness_report || 'missing'}\``,
     `- Gateway daily report: \`${payload.artifacts.gateway_daily_report || 'missing'}\``,
     `- Staging matrix report: \`${payload.artifacts.staging_matrix_report || 'missing'}\``,
+    `- Aurora manual review report: \`${payload.artifacts.aurora_manual_review_report || 'missing'}\``,
     '',
     '## Candidate Snapshot',
     '',
@@ -286,6 +331,22 @@ function writeArtifacts(args, payload) {
       String(payload.readiness.public_probe_non_authoritative || 'false'),
     ]),
     '',
+    '## Aurora Manual Review Summary',
+    '',
+    markdownTableRow(['Metric', 'Value']),
+    markdownTableRow(['---', '---:']),
+    markdownTableRow(['case_count', String(payload.aurora_manual_review.case_count || 0)]),
+    markdownTableRow(['pass_count', String(payload.aurora_manual_review.pass_count || 0)]),
+    markdownTableRow(['fail_count', String(payload.aurora_manual_review.fail_count || 0)]),
+    markdownTableRow([
+      'review_required_count',
+      String(payload.aurora_manual_review.review_required_count || 0),
+    ]),
+    markdownTableRow([
+      'all_cases_resolved',
+      String(payload.aurora_manual_review.all_cases_resolved || false),
+    ]),
+    '',
     '## Decision',
     '',
     `- Conclusion: ${payload.decision.label}`,
@@ -325,12 +386,14 @@ function main() {
     summary: {},
     results: [],
   });
+  const auroraManualReview = readJsonIfExists(args.auroraManualReviewSummary, {});
   const repo = repoTruth(args.repoRoot);
   const decision = decideConclusion({
     steps: stepsPayload.steps || [],
     scorecard: readiness.scorecard || {},
     gatewayDaily,
     stagingMatrix: staging,
+    auroraManualReview,
   });
 
   const payload = {
@@ -359,10 +422,20 @@ function main() {
       summary: staging.summary || {},
       results: Array.isArray(staging.results) ? staging.results : [],
     },
+    aurora_manual_review: {
+      summary_path: args.auroraManualReviewSummary || null,
+      report_path: args.auroraManualReviewReport || null,
+      case_count: auroraManualReview.case_count || 0,
+      pass_count: auroraManualReview.pass_count || 0,
+      fail_count: auroraManualReview.fail_count || 0,
+      review_required_count: auroraManualReview.review_required_count || 0,
+      all_cases_resolved: auroraManualReview.all_cases_resolved === true,
+    },
     artifacts: {
       readiness_report: args.readinessReport || null,
       gateway_daily_report: args.gatewayDailyReport || null,
       staging_matrix_report: args.stagingMatrixReport || null,
+      aurora_manual_review_report: args.auroraManualReviewReport || null,
     },
   };
 

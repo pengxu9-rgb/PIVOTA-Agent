@@ -61,6 +61,14 @@ function titlesFromProducts(products) {
     .slice(0, 6);
 }
 
+function checklistItem(label, ok, observed, reviewRequired = false) {
+  return {
+    label,
+    status: reviewRequired ? 'review_required' : ok ? 'pass' : 'fail',
+    observed,
+  };
+}
+
 async function requestJson(url, payload, headers) {
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -303,6 +311,122 @@ function classifyResult(result) {
   };
 }
 
+function buildChecklist(result) {
+  const titles = Array.isArray(result.titles) ? result.titles : [];
+  const diagnosticsVisible =
+    Boolean(result.query_source) &&
+    Boolean(result.final_decision) &&
+    Boolean(result.request_id || Object.keys(result.gateway_governance || {}).length > 0);
+  if (result.id === 'aurora_guidance_only_cache_hit_manual') {
+    const cacheLaneHealthy =
+      result.status === 200 &&
+      String(result.final_decision || '') === 'cache_returned' &&
+      String(result.query_source || '').startsWith('cache_');
+    return [
+      checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
+      checklistItem(
+        'Cache-hit guidance lane stayed on cache_returned',
+        cacheLaneHealthy,
+        `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
+      ),
+      checklistItem(
+        'Products were returned for manual coherence review',
+        result.product_count > 0,
+        `product_count=${result.product_count}`,
+      ),
+      checklistItem(
+        'Diagnostics remained visible for operator review',
+        diagnosticsVisible,
+        `request_id=${result.request_id || 'missing'}`,
+      ),
+    ];
+  }
+
+  if (result.id === 'aurora_guidance_only_cache_miss_manual') {
+    const nonCacheLane =
+      result.status === 200 &&
+      Boolean(result.final_decision) &&
+      result.final_decision !== 'cache_returned' &&
+      !String(result.query_source || '').startsWith('cache_cross_merchant_search_supplemented');
+    const reviewRequired = result.verdict === 'review_required';
+    return [
+      checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
+      checklistItem(
+        'Case reproduced a non-cache-returned guidance path',
+        nonCacheLane,
+        `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
+        reviewRequired,
+      ),
+      checklistItem(
+        'Supplemented cache lane did not replace the intended miss scenario',
+        !String(result.query_source || '').startsWith('cache_cross_merchant_search_supplemented'),
+        `query_source=${result.query_source || 'missing'}`,
+        reviewRequired,
+      ),
+      checklistItem(
+        'Diagnostics remained visible for operator review',
+        diagnosticsVisible,
+        `request_id=${result.request_id || 'missing'}`,
+        reviewRequired && !diagnosticsVisible,
+      ),
+    ];
+  }
+
+  if (result.id === 'aurora_guidance_only_direct_supplement_manual') {
+    const cacheStage =
+      result.cache_stage && typeof result.cache_stage === 'object' ? result.cache_stage : {};
+    const supplement =
+      cacheStage.supplement && typeof cacheStage.supplement === 'object'
+        ? cacheStage.supplement
+        : {};
+    const searchStageB =
+      result.search_stage_b && typeof result.search_stage_b === 'object'
+        ? result.search_stage_b
+        : {};
+    const internalCount = Number(result.source_breakdown.internal_count || 0) || 0;
+    const externalCount =
+      Number(result.source_breakdown.external_count || result.source_breakdown.external_seed_count || 0) || 0;
+    const boundedLane =
+      [
+        'agent_products_guidance_external_seed_supplemented',
+        'agent_products_search_guidance_supplemented',
+        'cache_cross_merchant_search_supplemented',
+      ].includes(String(result.query_source || '')) &&
+      ['products_returned', 'cache_returned'].includes(String(result.final_decision || ''));
+    const validSupplementSignal =
+      supplement.applied === true ||
+      searchStageB.applied === true ||
+      result.guidance_direct_external_seed_applied === true;
+    return [
+      checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
+      checklistItem(
+        'Bounded supplement lane stayed explicit',
+        boundedLane,
+        `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
+      ),
+      checklistItem(
+        'Internal hit stayed visible while supplement metadata appeared',
+        internalCount > 0 && externalCount > 0 && validSupplementSignal,
+        `internal=${internalCount}, external=${externalCount}, supplement=${validSupplementSignal}`,
+      ),
+      checklistItem(
+        'Top titles stayed serum-scoped for operator spot-check',
+        titles.length > 0 && titles.some((item) => /\bserum\b/i.test(String(item || ''))),
+        titles.join(' | ') || 'no_titles',
+      ),
+    ];
+  }
+
+  return [
+    checklistItem(
+      'Manual classification rule is defined',
+      false,
+      'missing_manual_classification_rule',
+      true,
+    ),
+  ];
+}
+
 function renderMarkdown(payload) {
   const lines = [
     '# Aurora Guidance-Only Manual Review',
@@ -314,6 +438,8 @@ function renderMarkdown(payload) {
     '',
     '## Summary',
     '',
+    `- Case count: \`${payload.case_count}\``,
+    `- All cases resolved: \`${payload.all_cases_resolved}\``,
     ...payload.results.map((item) => `- \`${item.id}\`: ${item.verdict}`),
     '',
     '## Findings',
@@ -350,6 +476,14 @@ function renderMarkdown(payload) {
       lines.push(`- Guidance direct supplement valid hit: \`${item.guidance_direct_external_seed_valid_hit}\``);
     }
     lines.push(`- Notes: ${item.notes}`);
+    if (Array.isArray(item.checklist) && item.checklist.length > 0) {
+      lines.push('- Checklist:');
+      for (const check of item.checklist) {
+        lines.push(
+          `  - [${check.status}] ${check.label} (${String(check.observed || 'n/a')})`,
+        );
+      }
+    }
     if (Array.isArray(item.blocking_signals) && item.blocking_signals.length > 0) {
       lines.push('- Blocking signals:');
       for (const signal of item.blocking_signals) {
@@ -413,6 +547,7 @@ async function main() {
         selected.attempt_count = 2;
       }
     }
+    selected.checklist = buildChecklist(selected);
     results.push(selected);
   }
 
@@ -428,9 +563,11 @@ async function main() {
     environment: 'staging authenticated invoke',
     base_url: args.baseUrl,
     endpoint: args.endpoint,
+    case_count: results.length,
     pass_count: passCount,
     fail_count: failCount,
     review_required_count: reviewRequiredCount,
+    all_cases_resolved: failCount === 0 && reviewRequiredCount === 0,
     results,
   };
 
