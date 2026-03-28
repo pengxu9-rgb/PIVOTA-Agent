@@ -1185,6 +1185,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     preferInternalSpecificBeautyCache = false,
     cacheBeautyQueryProfile,
   } = {}) {
+    const normalizedCacheQueryText = String(cacheQueryText || '').trim();
     const normalizedResponse =
       response && typeof response === 'object' && !Array.isArray(response) ? response : {};
     const withPolicyProducts = Array.isArray(normalizedResponse.products)
@@ -1231,6 +1232,15 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       normalizedCacheValidation.enabled &&
         (!normalizedCacheValidation.accepted || lookupRelevantCacheMiss),
     );
+    const genericSkincareSerumCacheHit =
+      !isLookupQuery &&
+      !cacheBrandLikeQuery &&
+      ['category', 'exploratory', ''].includes(String(cachePolicyQueryClass || '').trim()) &&
+      String(cacheBeautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
+      /\bserum\b/i.test(normalizedCacheQueryText) &&
+      normalizedEffectiveProducts.length > 0 &&
+      cacheRelevant &&
+      !cacheRejectedLowQuality;
     const cacheMissingExternalForUnified =
       unifiedRelevanceRequested &&
       !isShoppingSourceImpl(source) &&
@@ -1238,7 +1248,8 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       Boolean(cacheQueryText) &&
       Math.max(0, Number(externalCount || 0) || 0) <= 0 &&
       !isLookupQuery &&
-      !preferInternalSpecificBeautyCache;
+      !preferInternalSpecificBeautyCache &&
+      !genericSkincareSerumCacheHit;
     const forceSearchFirstForExpandedQuery =
       Boolean(cacheQueryText) &&
       Boolean(queryText) &&

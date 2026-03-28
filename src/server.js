@@ -12347,23 +12347,44 @@ function normalizeGovernanceShadowBlockContract(body) {
   if (!governance) return body;
 
   const querySource = String(metadata.query_source || '').trim().toLowerCase();
+  const governanceReasonCodes = Array.from(
+    new Set(
+      []
+        .concat(Array.isArray(governance.reason_codes) ? governance.reason_codes : [])
+        .concat(
+          Array.isArray(governance.query_governance?.reason_codes)
+            ? governance.query_governance.reason_codes
+            : [],
+        )
+        .map((item) => String(item || '').trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 
   const mode = String(governance.mode || '').trim().toLowerCase();
   const observedAction = String(governance.observed_action || '').trim().toLowerCase();
-  const reasonCodes = Array.isArray(governance.reason_codes)
-    ? governance.reason_codes.map((item) => String(item || '').trim().toLowerCase())
-    : [];
   if (
     mode !== 'shadow' ||
     observedAction !== 'block' ||
     governance.would_enforce !== true ||
-    !reasonCodes.includes('layer_not_allowed')
+    governanceReasonCodes.length === 0
   ) {
     return body;
   }
 
   const products = Array.isArray(body.products) ? body.products : [];
-  if (products.length > 0) return body;
+  const routeHealth =
+    metadata.route_health &&
+    typeof metadata.route_health === 'object' &&
+    !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : null;
+  const searchTrace =
+    metadata.search_trace &&
+    typeof metadata.search_trace === 'object' &&
+    !Array.isArray(metadata.search_trace)
+      ? metadata.search_trace
+      : null;
 
   const searchDecision =
     metadata.search_decision &&
@@ -12372,6 +12393,24 @@ function normalizeGovernanceShadowBlockContract(body) {
       ? metadata.search_decision
       : null;
   const finalDecision = String(searchDecision?.final_decision || '').trim().toLowerCase();
+  const primaryPathUsed = String(
+    routeHealth?.primary_path_used ||
+      searchTrace?.primary_path_used ||
+      searchDecision?.primary_path_used ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const fallbackReason = String(
+    metadata.fallback_reason ||
+      routeHealth?.fallback_reason ||
+      searchTrace?.fallback_reason ||
+      searchDecision?.fallback_reason ||
+      metadata.proxy_search_fallback?.reason ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
   const hasClarification = Boolean(
     body.clarification &&
       typeof body.clarification === 'object' &&
@@ -12380,27 +12419,65 @@ function normalizeGovernanceShadowBlockContract(body) {
   );
   const hasSoftFallback =
     querySource === 'agent_products_error_fallback' ||
+    querySource === 'agent_products_resolver_fallback' ||
+    querySource === 'agent_products_resolver_ref_fallback' ||
     Boolean(
       metadata.proxy_search_fallback &&
         typeof metadata.proxy_search_fallback === 'object' &&
         !Array.isArray(metadata.proxy_search_fallback) &&
         metadata.proxy_search_fallback.applied === true,
     ) ||
+    routeHealth?.fallback_triggered === true ||
+    /(fallback|primary_unusable)/i.test(primaryPathUsed) ||
+    /^resolver_after_primary$/i.test(fallbackReason) ||
+    /^primary_unusable_/i.test(fallbackReason) ||
+    /^secondary_after_primary_unusable$/i.test(fallbackReason) ||
     metadata.strict_empty === true ||
     hasClarification ||
     finalDecision === 'clarify' ||
     finalDecision === 'strict_empty';
   if (!hasSoftFallback) return body;
 
+  const governanceBlockReason = governanceReasonCodes[0] || 'shadow_block';
   const nextSearchDecision = searchDecision
     ? {
         ...searchDecision,
         final_decision: 'governance_shadow_block',
         clarify_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
       }
     : {
         final_decision: 'governance_shadow_block',
         clarify_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
+      };
+  const nextSearchTrace = searchTrace
+    ? {
+        ...searchTrace,
+        final_decision: 'governance_shadow_block',
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
+      }
+    : {
+        final_decision: 'governance_shadow_block',
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
+      };
+  const nextRouteHealth = routeHealth
+    ? {
+        ...routeHealth,
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
+        primary_path_degraded: false,
+      }
+    : {
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'governance_shadow_block',
+        primary_path_degraded: false,
       };
   const nextMetadata = {
     ...metadata,
@@ -12419,11 +12496,14 @@ function normalizeGovernanceShadowBlockContract(body) {
             reason: null,
           },
     search_decision: nextSearchDecision,
+    search_trace: nextSearchTrace,
+    route_health: nextRouteHealth,
     governance_shadow_contract: {
       normalized: true,
-      recovery_reason: 'layer_not_allowed_shadow_block',
+      recovery_reason: `${governanceBlockReason}_shadow_block`,
       original_query_source: querySource,
       original_final_decision: finalDecision || null,
+      governance_reason_codes: governanceReasonCodes,
     },
   };
   delete nextMetadata.strict_empty;

@@ -1353,7 +1353,7 @@ describe('Aurora beauty orchestration facade', () => {
     });
   });
 
-  test('guidance-only cache transition plan marks unified relevance external gap inside aurora orchestration facade', () => {
+  test('guidance-only cache transition plan keeps healthy generic skincare serum cache hit when external supplement is missing', () => {
     const runtime = createAuroraBeautyOrchestrationRuntime({
       evaluateCacheQualityGate() {
         return {
@@ -1387,7 +1387,61 @@ describe('Aurora beauty orchestration facade', () => {
         source: 'aurora-bff',
         hasMerchantScope: false,
         preferInternalSpecificBeautyCache: false,
-        cacheBeautyQueryProfile: { isSpecificBeautyQuery: false },
+        cacheBeautyQueryProfile: { isSpecificBeautyQuery: false, bucket: 'skincare' },
+      }),
+    ).toEqual({
+      effectiveCacheHit: true,
+      withPolicyProducts: [{ product_id: 'sku_1' }],
+      cacheClarifyOnly: false,
+      cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheValidation: {
+        enabled: false,
+        accepted: true,
+        reason: null,
+      },
+      cacheRejectedLowQuality: false,
+      cacheMissingExternalForUnified: false,
+      cacheStrictEmptyBypassReason: null,
+      forceSearchFirstForExpandedQuery: false,
+      bypassCacheStrictEmptyForUnified: false,
+    });
+  });
+
+  test('guidance-only cache transition plan still marks unified relevance external gap for non-serum generic beauty queries', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      evaluateCacheQualityGate() {
+        return {
+          enabled: false,
+          accepted: true,
+          reason: null,
+        };
+      },
+      isShoppingSource() {
+        return false;
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheTransitionPlan({
+        effectiveCacheHit: true,
+        response: {
+          products: [{ product_id: 'sku_1' }],
+        },
+        effectiveProducts: [{ product_id: 'sku_1' }],
+        cacheQueryText: 'repair moisturizer',
+        queryText: 'repair moisturizer',
+        intent: { query_class: 'category' },
+        traceQueryClass: 'category',
+        cachePolicyQueryClass: 'category',
+        cacheBrandLikeQuery: false,
+        isLookupQuery: false,
+        cacheRelevant: true,
+        unifiedRelevanceRequested: true,
+        externalCount: 0,
+        source: 'aurora-bff',
+        hasMerchantScope: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyQueryProfile: { isSpecificBeautyQuery: false, bucket: 'skincare' },
       }),
     ).toEqual({
       effectiveCacheHit: false,

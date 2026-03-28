@@ -61,13 +61,14 @@
     },
     {
       "id": "shopping_agent_serum_broad",
-      "title": "shopping_agent broad discovery keeps internal base plus external supplement",
+      "title": "shopping_agent broad discovery keeps an internal-first cache lane with optional supplement",
       "family": "broad_discovery",
       "blocking": true,
       "rail_mode": "authoritative_commerce",
       "require_primary_path": true,
       "allow_strict_empty": false,
       "allowed_query_sources": [
+        "cache_cross_merchant_search",
         "cache_cross_merchant_search_supplemented"
       ],
       "must_not_match_fallback_sources": [
@@ -102,12 +103,10 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.query_source": "cache_cross_merchant_search_supplemented",
           "metadata.cache_stage_selected_source": "internal_cache"
         },
         "must_be_positive_paths": [
-          "metadata.source_breakdown.internal_count",
-          "metadata.source_breakdown.external_seed_count"
+          "metadata.source_breakdown.internal_count"
         ]
       },
       "observability": {
@@ -120,13 +119,14 @@
     },
     {
       "id": "aurora_bff_serum_broad",
-      "title": "aurora-bff broad discovery stays aligned with shopping_agent retrieval semantics",
+      "title": "aurora-bff broad discovery keeps the owned cache lane when internal skincare hits are healthy",
       "family": "broad_discovery",
       "blocking": true,
       "rail_mode": "authoritative_commerce",
       "require_primary_path": true,
       "allow_strict_empty": false,
       "allowed_query_sources": [
+        "cache_cross_merchant_search",
         "cache_cross_merchant_search_supplemented"
       ],
       "must_not_match_fallback_sources": [
@@ -161,12 +161,10 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.query_source": "cache_cross_merchant_search_supplemented",
           "metadata.cache_stage_selected_source": "internal_cache"
         },
         "must_be_positive_paths": [
-          "metadata.source_breakdown.internal_count",
-          "metadata.source_breakdown.external_seed_count"
+          "metadata.source_breakdown.internal_count"
         ]
       },
       "observability": {
@@ -492,6 +490,11 @@
       "title": "public direct_api caller still observes orchestration denial in shadow mode",
       "family": "governance_orchestration_denied",
       "blocking": true,
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "gateway_governance_shadow_block"
+      ],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "public",
@@ -513,7 +516,8 @@
       },
       "correctness": {
         "mode": "auto",
-        "expect_http_status": 200
+        "expect_http_status": 200,
+        "must_have_clarification": false
       },
       "ownership": {
         "must_equal_headers": {
@@ -521,6 +525,9 @@
         },
         "must_have_reason_codes": [
           "layer_not_allowed"
+        ],
+        "must_have_paths": [
+          "metadata.governance_shadow_contract.normalized"
         ]
       },
       "observability": {
