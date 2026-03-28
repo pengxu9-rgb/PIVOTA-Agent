@@ -255,7 +255,7 @@ run_case_medium_confidence() {
     then (.suggested_chips // [] | any(.chip_id==\"chip.aurora.next_action.routine_deep_dive\"))
     else false
     end
-  ' "$analysis_json"
+  " "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists (medium case)" '
     if (.cards | any(.type=="analysis_story_v2"))
     then (.cards | any(.type=="analysis_summary")) | not
