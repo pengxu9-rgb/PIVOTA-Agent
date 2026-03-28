@@ -596,7 +596,7 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
   }
 });
 
-test('/v1/chat: profile-driven reco without explicit focus seeds goal-driven catalog queries and stays grounded', async () => {
+test('/v1/chat: profile-driven generic reco without explicit focus returns needs_more_context and skips catalog search', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -667,20 +667,23 @@ test('/v1/chat: profile-driven reco without explicit focus seeds goal-driven cat
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
-    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
-    assert.ok(observedQueries.some((query) => query.includes('salicylic') || query.includes('acne')));
-    assert.ok(
-      observedQueries.some((query) =>
-        query.includes('niacinamide') || query.includes('vitamin c') || query.includes('dark spots')),
-    );
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceNotice = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.ok(confidenceNotice);
+    assert.equal(confidenceNotice?.payload?.reason, 'needs_more_context');
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.ok(recoEvent);
+    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
+    assert.equal(recoEvent?.data?.reason, 'needs_more_context');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'minimum_recommendation_context_unsatisfied');
+    assert.equal(observedQueries.length, 0);
   } finally {
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: stored-profile reco recovers from schema-invalid upstream via catalog mainline', async () => {
+test('/v1/chat: stored-profile generic reco returns needs_more_context before upstream schema-invalid path', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
 
@@ -751,33 +754,20 @@ test('/v1/chat: stored-profile reco recovers from schema-invalid upstream via ca
       .expect(200);
 
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.equal(Array.isArray(payload?.recommendations), true);
-    assert.equal(payload.recommendations.length, 3);
-    assert.equal(payload.mainline_status, 'grounded_success');
-    assert.equal(payload?.recommendation_meta?.source_mode, 'catalog_grounded');
-    assert.equal(payload?.recommendation_meta?.primary_failure_reason ?? null, null);
-    assert.equal(payload?.recommendation_meta?.products_empty_reason ?? null, null);
-    assert.equal(payload?.recommendation_meta?.surface_reason ?? null, null);
+    assert.equal(payload, null);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'low_confidence')
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'needs_more_context')
       || null;
-    assert.equal(confidenceNotice, null);
+    assert.ok(confidenceNotice);
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
-    assert.equal(recoEvent?.data?.source_mode, 'catalog_grounded');
-    assert.equal(recoEvent?.data?.failure_class ?? null, null);
-    assert.equal(recoEvent?.data?.reason ?? null, null);
-    assert.equal(recoEvent?.data?.telemetry_reason ?? null, null);
-    assert.equal(recoEvent?.data?.products_empty_reason ?? null, null);
-    assert.equal(recoEvent?.data?.surface_reason ?? null, null);
-    assert.ok(observedQueries.some((query) => query.includes('salicylic') || query.includes('acne')));
-    assert.ok(
-      observedQueries.some((query) =>
-        query.includes('niacinamide') || query.includes('vitamin c') || query.includes('dark spots')),
-    );
+    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
+    assert.equal(recoEvent?.data?.reason, 'needs_more_context');
+    assert.equal(recoEvent?.data?.telemetry_reason, 'minimum_recommendation_context_unsatisfied');
+    assert.equal(recoEvent?.data?.products_empty_reason, 'needs_more_context');
+    assert.equal(recoEvent?.data?.surface_reason, 'needs_more_context');
+    assert.equal(observedQueries.length, 0);
   } finally {
     axios.get = originalGet;
     harness.restore();

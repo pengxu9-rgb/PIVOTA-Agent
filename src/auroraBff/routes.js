@@ -21139,6 +21139,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '当前置信度下，刺激性较强的方案已被过滤，先保留更保守的建议。'
         : 'Higher-irritation options were filtered at the current confidence level, so only conservative guidance is kept for now.',
+    needs_more_context:
+      lang === 'CN'
+        ? '我还需要更多与你当前护肤情境直接相关的上下文，才能稳定缩窄产品候选。补充当前 routine、明确想找的步骤，或上传照片后我再继续。'
+        : 'I still need more context tied to your current skincare situation before I can narrow products reliably. Add your current routine, name the step you want, or upload photos and I’ll continue.',
     default:
       lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
   };
@@ -67882,6 +67886,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         const latestArtifact = latestArtifactForGate;
         const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
         const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
+        const chatRecoTargetContext = resolveRecommendationTargetContext({
+          explicitStep: pickFirstTrimmed(
+            recoIngredientContext && recoIngredientContext.target_step,
+            recoIngredientContext && recoIngredientContext.step,
+          ),
+          focus: '',
+          text: recoRequestMessage || message,
+          entryType: 'chat',
+        });
 
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
@@ -67969,6 +67982,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         let matcherPayload = null;
         let matcherComputed = false;
         const hasRecoArtifact = Boolean(latestArtifact && typeof latestArtifact === 'object' && !Array.isArray(latestArtifact));
+        const hasExplicitRecoTarget = Boolean(
+          chatRecoTargetContext
+          && chatRecoTargetContext.step_aware_intent
+          && chatRecoTargetContext.resolved_target_step,
+        );
+        const chatRecoContextSourceMode = String(chatAnalysisTaskContext?.context_source_mode || '').trim().toLowerCase();
         const artifactConfidenceLevel =
           hasRecoArtifact && artifactGate && artifactGate.confidence_level
             ? artifactGate.confidence_level
@@ -67980,6 +67999,144 @@ function mountAuroraBffRoutes(app, { logger }) {
           latestArtifact.overall_confidence.score,
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
+        const genericGoalDrivenNeedsMoreContext =
+          !hasRecoArtifact
+          && !hasExplicitRecoTarget
+          && !ingredientDrivenRecommendationRequested
+          && !travelRecoHandoff
+          && chatRecoContextSourceMode === 'explicit_only';
+
+        if (genericGoalDrivenNeedsMoreContext) {
+          const recommendationContextState = {
+            satisfied: false,
+            missing_context: ['minimum_recommendation_context'],
+            request_context_signature_version: REQUEST_CONTEXT_SIGNATURE_VERSION,
+            candidate_pool_signature_version: DIRECT_RECO_CANDIDATE_POOL_SIGNATURE_VERSION,
+            strictness_source: 'chat_reco_preflight',
+            min_context_rule_version: MINIMUM_RECOMMENDATION_CONTEXT_RULE_VERSION,
+          };
+          const recommendationAnalysisContextMeta = buildTaskAnalysisContextUsageMeta(
+            chatAnalysisTaskContext,
+            {
+              strictnessSource: 'chat_reco_preflight',
+              minimumRecommendationContextSatisfied: false,
+              minContextRuleVersion: recommendationContextState.min_context_rule_version,
+            },
+          );
+          const noContextContract = {
+            ok: false,
+            contract_status: 'recommendations_empty',
+            source_mode: 'rules_only',
+            source: 'rules_only',
+            primary_failure_reason: 'needs_more_context',
+            telemetry_failure_reason: 'minimum_recommendation_context_unsatisfied',
+            failure_class: 'context_resolution_failure',
+            effective_failure_class: 'context_resolution_failure',
+            failure_origin: 'user_input',
+            upstream_status: 'artifact_missing',
+            mainline_status: 'needs_more_context',
+            surface_kind: 'clarify',
+            surface_reason: 'needs_more_context',
+            user_fixable: true,
+            products_empty_reason: 'needs_more_context',
+          };
+          const payload = attachRecoContractMeta({
+            intent: 'reco_products',
+            profile: summarizeProfileForContext(profile),
+            recommendations: [],
+            source: 'rules_only',
+            task_mode: recoTaskMode,
+            recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.32,
+            recommendation_confidence_level: 'low',
+            products_empty_reason: 'needs_more_context',
+            recommendation_meta: {
+              task_mode: recoTaskMode,
+              source_mode: 'rules_only',
+              trigger_source: normalizeRecoSourceDetail(recoEntrySourceDetail),
+              recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
+              used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+              used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
+              used_safety_flags: false,
+              analysis_context_usage: recommendationAnalysisContextMeta,
+              primary_failure_reason: 'needs_more_context',
+              telemetry_failure_reason: 'minimum_recommendation_context_unsatisfied',
+              surface_reason: 'needs_more_context',
+              products_empty_reason: 'needs_more_context',
+              mainline_status: 'needs_more_context',
+            },
+            metadata: {
+              mainline_status: 'needs_more_context',
+            },
+          }, noContextContract);
+          const sessionPatch = {};
+          appendLatestRecoContextToSessionPatch(sessionPatch, {
+            intent: 'reco_products',
+            source_detail: recoEntrySourceDetail,
+            trigger_source: ctx.trigger_source,
+            action_id: actionId || '',
+            message: recoRequestMessage,
+            include_alternatives: includeAlternatives === true,
+            ingredient_query: recoContextIngredientQuery || '',
+            goal: recoContextGoal || '',
+          });
+          attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
+          sessionPatch.meta = {
+            ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
+            recommendation_state: {
+              needs_more_context: true,
+              missing_context: recommendationContextState.missing_context,
+              mainline_status: 'needs_more_context',
+              request_context_signature_version: recommendationContextState.request_context_signature_version,
+              candidate_pool_signature_version: recommendationContextState.candidate_pool_signature_version,
+              strictness_source: recommendationContextState.strictness_source,
+            },
+          };
+          const clarificationChips = [
+            ...refinementChips,
+            ...buildRecoEntryChips(ctx.lang),
+          ].slice(0, 8);
+          const envelope = buildEnvelope(ctx, {
+            assistant_message: makeChatAssistantMessage(
+              ctx.lang === 'CN'
+                ? '我先不硬推商品。当前只有通用画像，还缺少能稳定缩窄候选的上下文。补充当前 routine、明确想找的步骤，或上传 daylight + indoor_white 后，我再继续推荐。'
+                : "I’m not forcing product picks yet. I only have your general profile, but I still need context that can narrow candidates reliably. Add your current routine, name the step you want, or upload daylight + indoor_white photos and I'll continue.",
+            ),
+            suggested_chips: clarificationChips,
+            cards: [
+              {
+                card_id: `conf_${ctx.request_id}_reco_context`,
+                type: 'confidence_notice',
+                payload: buildConfidenceNoticeCardPayload({
+                  language: ctx.lang,
+                  reason: 'needs_more_context',
+                  confidence: {
+                    score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.32,
+                    level: 'low',
+                    rationale: ['minimum_recommendation_context_unsatisfied'],
+                  },
+                  actions: ['update_current_routine', 'upload_daylight_and_indoor_white', 'retry_recommendations'],
+                  details: ['generic_goal_driven_reco_requires_artifact_or_explicit_target'],
+                }),
+              },
+            ],
+            session_patch: sessionPatch,
+            events: applyRecoContractToRecoRequestedEvents([], noContextContract, {
+              ctx,
+              emitIfMissing: true,
+              eventData: buildRecoRequestedEventData({
+                explicit: true,
+                payload,
+                source: 'rules_only',
+                sourceDetail: normalizeRecoSourceDetail(recoEntrySourceDetail),
+                recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
+                reason: 'needs_more_context',
+                telemetryReason: 'minimum_recommendation_context_unsatisfied',
+                failureClass: 'context_resolution_failure',
+              }),
+            }).events,
+          });
+          return sendChatEnvelope(envelope);
+        }
 
         const computeMatcherIfNeeded = () => {
           if (matcherComputed) {
