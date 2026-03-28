@@ -17266,6 +17266,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     if (gatewayGovernanceAudit) {
       finalBody = mergeInvokeGatewayAuditMetadata(finalBody, gatewayGovernanceAudit);
+      finalBody = normalizeGovernanceShadowBlockContract(finalBody);
       res.setHeader(
         'X-Gateway-Invocation-Surface',
         String(gatewayGovernanceAudit.invocation?.surface || 'unknown'),
@@ -24277,6 +24278,7 @@ module.exports._debug = {
   postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
   normalizeGovernanceShadowBlockContract,
+  mergeInvokeGatewayAuditMetadata,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
   isCatalogSyncRetryableError,
