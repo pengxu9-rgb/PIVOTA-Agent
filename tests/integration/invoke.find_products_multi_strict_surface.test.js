@@ -779,6 +779,137 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(capturedPrefetchSql).toContain("ingredient_ids");
   });
 
+  test('recovers strict ingredient invoke soft fallback into strict main-path results when prefetched seed candidates exist', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_fenty_watch_ya_tone',
+              market: 'US',
+              tool: '*',
+              destination_url:
+                'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+              canonical_url:
+                'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+              domain: 'fentybeauty.com',
+              title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+              image_url: 'https://cdn.example/fenty-watch-ya-tone.jpg',
+              price_amount: 22,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+                description: 'Reviewed niacinamide serum external seed.',
+                category: 'Serum',
+                brand: 'Fenty Skin',
+                reviewed_ingredient_ids: ['niacinamide'],
+                variants: [
+                  {
+                    id: 'seed_variant_default',
+                    title: 'Default Title',
+                    price: 22,
+                    availability: 'in_stock',
+                  },
+                ],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-23T00:00:00Z',
+              updated_at: '2026-03-23T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_error_fallback',
+          source_breakdown: {
+            internal_count: 0,
+            external_seed_count: 0,
+          },
+          route_health: {
+            fallback_triggered: true,
+            primary_path_used: 'upstream_stage',
+            fallback_reason: 'error_soft_fallback',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        source: 'external_seed',
+        external_seed_id: 'seed_fenty_watch_ya_tone',
+        title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+      }),
+    );
+    expect(res.body.metadata?.query_source).toBe('cache_multi_intent');
+    expect(res.body.metadata?.strict_constraint_query).toBe(true);
+    expect(res.body.metadata?.strict_constraint_reason).toBe('ingredient');
+    expect(res.body.metadata?.strict_prefetch_recovered).toBe(true);
+    expect(res.body.metadata?.strict_prefetch_recovery_source).toBe(
+      'agent_strict_ingredient_prefetch',
+    );
+    expect(res.body.metadata?.ingredient_intents).toEqual(['niacinamide']);
+    expect(res.body.metadata?.matched_ingredient_ids).toEqual(['niacinamide']);
+    expect(res.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'shop_invoke_strict',
+        legacy_fallback: false,
+      }),
+    );
+    expect(res.body.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        fallback_triggered: false,
+      }),
+    );
+    expect(res.body.metadata?.search_trace).toEqual(
+      expect.objectContaining({
+        final_decision: 'cache_returned',
+      }),
+    );
+    expect(res.body.metadata?.service_version).toEqual(
+      expect.objectContaining({
+        commit: expect.any(String),
+      }),
+    );
+    expect(res.body.metadata.strict_empty).toBeUndefined();
+    expect(res.body.metadata.strict_empty_reason).toBeUndefined();
+  });
+
   test('strict external seed prefetch SQL requires structured ingredient evidence before sampling candidate rows', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     let capturedSql = '';

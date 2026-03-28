@@ -22,6 +22,120 @@ function readJsonBody(req) {
 }
 
 describe('Celestial commerce-core aurora manual review runner', () => {
+  test('accepts invoke guidance fastpath cache hits as a main-path pass', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'run_celestial_commerce_core_aurora_manual_review.js',
+    );
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-aurora-manual-'));
+    const casesPath = path.join(outDir, 'manual-cases.json');
+
+    fs.writeFileSync(
+      casesPath,
+      JSON.stringify(
+        {
+          semantic_cases: [
+            {
+              id: 'aurora_guidance_only_cache_hit_manual',
+              title: 'guidance fastpath cache hit',
+              family: 'aurora_guidance_only_cache_hit',
+              execution_mode: 'manual',
+              request: {
+                operation: 'find_products_multi',
+                payload: {
+                  search: {
+                    query: 'hydrating serum',
+                    limit: 6,
+                    in_stock_only: true,
+                    ui_surface: 'ingredient_plan_guidance_only',
+                  },
+                },
+                metadata: {
+                  source: 'aurora-bff',
+                  ui_surface: 'ingredient_plan_guidance_only',
+                  query_target_step_family: 'serum',
+                  query_step_strength: 'focused',
+                  decision_mode: 'guidance_only',
+                  source_policy: 'guided_only',
+                },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (_req, res) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('X-Request-Id', 'aurora-manual-fastpath-test');
+      res.end(
+        JSON.stringify({
+          products: [
+            { title: 'Hydrating Serum with Ceramides' },
+            { title: 'Barrier Repair Hydrating Serum' },
+          ],
+          metadata: {
+            query_source: 'agent_products_guidance_fastpath',
+            final_decision: 'cache_returned',
+            search_trace: {
+              final_decision: 'cache_returned',
+            },
+            search_decision: {
+              final_decision: 'cache_returned',
+            },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          scriptPath,
+          '--base-url',
+          baseUrl,
+          '--endpoint',
+          '/',
+          '--cases',
+          casesPath,
+          '--out-dir',
+          outDir,
+          '--auth-token',
+          'ak_live_test_stage_key',
+        ],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const summary = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(summary.pass_count).toBe(1);
+      expect(summary.fail_count).toBe(0);
+      expect(summary.results[0]).toEqual(
+        expect.objectContaining({
+          verdict: 'pass',
+          query_source: 'agent_products_guidance_fastpath',
+          final_decision: 'cache_returned',
+        }),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   test('accepts bounded cache-stage guidance supplement as a pass', async () => {
     const repoRoot = path.join(__dirname, '..');
     const scriptPath = path.join(
