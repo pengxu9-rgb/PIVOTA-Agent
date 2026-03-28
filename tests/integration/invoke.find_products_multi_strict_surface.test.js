@@ -445,6 +445,149 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('recovers strict budget queries from prefetched external seeds on the main path', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_vitc_recover',
+              market: 'US',
+              tool: '*',
+              destination_url: 'https://example.com/products/vitamin-c-serum',
+              canonical_url: 'https://example.com/products/vitamin-c-serum',
+              domain: 'example.com',
+              title: 'Vitamin-C Serum',
+              image_url: 'https://cdn.example/vitamin-c-serum.jpg',
+              price_amount: 24.5,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              seed_data: {
+                title: 'Vitamin-C Serum',
+                description: 'Reviewed vitamin c serum external seed.',
+                category: 'Serum',
+                brand: 'Example Brand',
+                reviewed_ingredient_ids: ['ascorbic_acid'],
+                variants: [
+                  {
+                    id: 'seed_variant_default',
+                    title: 'Default Title',
+                    price: 24.5,
+                    availability: 'in_stock',
+                  },
+                ],
+              },
+              status: 'active',
+              attached_product_key: null,
+              created_at: '2026-03-25T00:00:00Z',
+              updated_at: '2026-03-25T00:00:00Z',
+            },
+          ],
+        };
+      },
+    }));
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'cache_multi_intent',
+          serving_mode: 'eligible_only',
+          ingredient_intents: ['ascorbic_acid'],
+          strict_constraint_query: true,
+          strict_constraint_reason: 'multi_constraint',
+          strict_empty: true,
+          strict_empty_reason: 'cache_miss_strict_empty',
+          route_health: {
+            fallback_triggered: false,
+            primary_path_used: 'cache_multi_intent',
+          },
+          search_trace: {
+            final_decision: 'strict_empty',
+          },
+        },
+      });
+
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .reply(200, {
+        status: 'success',
+        products: [{ id: 'legacy_1', merchant_id: 'legacy_m', title: 'Legacy Vitamin C Serum' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'vitamin c serum under €30',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(legacySearch.isDone()).toBe(false);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: expect.any(String),
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        external_seed_id: 'seed_vitc_recover',
+        title: 'Vitamin-C Serum',
+      }),
+    );
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_multi_intent',
+        strict_constraint_query: true,
+        strict_constraint_reason: 'multi_constraint',
+        strict_prefetch_recovered: true,
+        strict_prefetch_recovery_source: 'agent_strict_ingredient_prefetch',
+        budget_fx_applied: true,
+        budget_fx_source: expect.any(String),
+        budget_fx_candidate_currency: 'USD',
+        budget_fx_unresolved: false,
+        service_version: expect.objectContaining({
+          commit: expect.any(String),
+        }),
+        route_trace: expect.objectContaining({
+          authoritative_endpoint: '/agent/shop/v1/invoke',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
+        search_trace: expect.objectContaining({
+          final_decision: 'cache_returned',
+        }),
+        contract_bridge: expect.objectContaining({
+          resolved_contract: 'shop_invoke_strict',
+          legacy_fallback: false,
+        }),
+      }),
+    );
+    expect(res.body.metadata.strict_empty).toBeUndefined();
+    expect(res.body.metadata.strict_empty_reason).toBeUndefined();
+  });
+
   test('defaults beauty shade queries to strict shopping invoke without explicit surface', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')

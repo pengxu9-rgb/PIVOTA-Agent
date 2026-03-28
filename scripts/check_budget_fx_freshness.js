@@ -137,7 +137,16 @@ async function main() {
       ? response.data.metadata
       : {};
   const products = Array.isArray(response.data?.products) ? response.data.products : [];
+  const routeTrace =
+    metadata && typeof metadata.route_trace === 'object' && !Array.isArray(metadata.route_trace)
+      ? metadata.route_trace
+      : {};
+  const serviceVersion =
+    metadata && typeof metadata.service_version === 'object' && !Array.isArray(metadata.service_version)
+      ? metadata.service_version
+      : {};
   const primaryPath = assessPrimaryPath(metadata);
+  const serviceVersionCommit = String(serviceVersion.commit || '').trim();
   const result = {
     ok: false,
     status: response.status,
@@ -162,20 +171,30 @@ async function main() {
     primary_path_degraded: primaryPath.degraded,
     primary_path_degraded_reasons: primaryPath.reasons,
     primary_path_used: primaryPath.primaryPathUsed,
+    fallback_used: primaryPath.degraded === true,
+    main_path_pass: false,
     matched_ingredient_ids: Array.isArray(metadata.matched_ingredient_ids)
       ? metadata.matched_ingredient_ids
       : [],
-    service_version: metadata.service_version || null,
+    service_version: serviceVersion || null,
+    service_version_commit_present: Boolean(serviceVersionCommit),
+    failure_stage: routeTrace.failure_stage || null,
+    node_timings_ms:
+      routeTrace.node_timings_ms && typeof routeTrace.node_timings_ms === 'object'
+        ? routeTrace.node_timings_ms
+        : null,
   };
 
-  result.ok =
+  result.main_path_pass =
     response.status === 200 &&
     products.length > 0 &&
     result.budget_fx_applied === true &&
     result.budget_fx_rate != null &&
     result.budget_fx_source != null &&
     result.budget_fx_unresolved !== true &&
-    primaryPath.degraded !== true;
+    primaryPath.degraded !== true &&
+    Boolean(serviceVersionCommit);
+  result.ok = result.main_path_pass;
   console.log(JSON.stringify(result, null, 2));
 
   if (!result.ok) {
