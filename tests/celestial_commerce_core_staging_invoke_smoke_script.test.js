@@ -51,18 +51,24 @@ describe('Celestial commerce-core staging invoke smoke wrapper', () => {
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({
-          products: [],
+          products: [{ title: 'Test Niacinamide Serum' }],
           metadata: {
-            query_source: 'agent_products_search',
+            query_source: 'cache_multi_intent',
             service_version: {
               commit: 'staging123',
             },
+            contract_bridge: {
+              resolved_contract: 'shop_invoke_strict',
+            },
+            strict_constraint_query: true,
+            strict_constraint_reason: 'ingredient',
+            matched_ingredient_ids: ['ing_niacinamide'],
             search_trace: {
               final_decision: 'cache_returned',
             },
             route_health: {
               fallback_triggered: false,
-              primary_path_used: 'primary_search',
+              primary_path_used: 'cache_multi_intent',
             },
           },
         }),
