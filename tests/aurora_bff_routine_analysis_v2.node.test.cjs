@@ -249,6 +249,91 @@ test('/v1/analysis/skin: routine analysis v2 stays enabled when env flag is abse
   );
 });
 
+test('/v1/analysis/skin: routine analysis v2 failure stays explicit and does not fall back to routine_fit_summary', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'false',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const routineAnalysisModuleId = require.resolve('../src/auroraBff/routineAnalysisV2');
+      delete require.cache[routineAnalysisModuleId];
+      const routineAnalysisModule = require('../src/auroraBff/routineAnalysisV2');
+      const originalRunRoutineAnalysisV2 = routineAnalysisModule.runRoutineAnalysisV2;
+      routineAnalysisModule.runRoutineAnalysisV2 = async () => {
+        const err = new Error('routine analysis v2 upstream unavailable');
+        err.code = 'ROUTINE_V2_TEST_FAILURE';
+        throw err;
+      };
+
+      const capturedCalls = [];
+      const harness = createAppWithPatchedAuroraChat(async (args = {}) => {
+        capturedCalls.push(args);
+        return { answer: '{}', intent: 'chat', cards: [] };
+      });
+      try {
+        const uid = buildTestUid('routine_analysis_v2_failure');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'CeraVe Hydrating Cleanser',
+                treatment: 'Vitamin C serum',
+                moisturizer: 'Light gel cream',
+              },
+              pm: {
+                cleanser: 'CeraVe Hydrating Cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const cards = parseCards(resp.body);
+        assert.ok(findCard(cards, 'analysis_summary'));
+        assert.equal(Boolean(findCard(cards, 'routine_fit_summary')), false);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.routine_analysis_version, 'v2_failed');
+        assert.equal(analysisMeta.routine_analysis_v2_failure_class, 'upstream_error');
+
+        const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
+          ? resp.body.session_patch
+          : {};
+        const meta = sessionPatch.meta && typeof sessionPatch.meta === 'object' ? sessionPatch.meta : {};
+        assert.equal(meta?.routine_analysis_v2?.attempted, true);
+        assert.equal(meta?.routine_analysis_v2?.failed, true);
+        assert.equal(meta?.routine_analysis_v2?.guardrail_bypass, true);
+        assert.equal(meta?.routine_analysis_v2?.enabled, false);
+
+        const events = Array.isArray(resp.body && resp.body.events) ? resp.body.events : [];
+        const failureEvent = events.find((event) => event && event.event_name === 'analysis_substage_failed');
+        assert.ok(failureEvent);
+        assert.equal(failureEvent?.data?.stage, 'routine_analysis_v2');
+
+        const routineFitCalls = capturedCalls.filter(
+          (row) => String(row?.intent_hint || '').trim() === 'routine_fit_summary',
+        );
+        assert.equal(routineFitCalls.length, 0);
+      } finally {
+        harness.restore();
+        routineAnalysisModule.runRoutineAnalysisV2 = originalRunRoutineAnalysisV2;
+        delete require.cache[routineAnalysisModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresses preview/story cards', async () => {
   await withEnv(
     {
