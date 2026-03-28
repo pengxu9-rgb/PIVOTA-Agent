@@ -4362,6 +4362,7 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   queryClass = null,
   beautyBucket = null,
   strictConstraintQuery = false,
+  guidanceOnlyDiscovery = false,
 } = {}) {
   const queryText = String(rawQuery || '').trim();
   const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
@@ -4375,11 +4376,14 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
   const genericQueryClass =
     !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const guidanceOnlySerumDiscoveryQuery =
+    Boolean(guidanceOnlyDiscovery) &&
+    ['attribute', 'category', 'exploratory', ''].includes(normalizedQueryClass);
   const genericSkincareSerumCategoryQuery =
     hasSerumSignal &&
-    genericQueryClass &&
     effectiveBeautyBucket === 'skincare' &&
-    !Boolean(strictConstraintQuery);
+    !Boolean(strictConstraintQuery) &&
+    (genericQueryClass || guidanceOnlySerumDiscoveryQuery);
 
   if (!genericSkincareSerumCategoryQuery) {
     return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
@@ -8496,7 +8500,12 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
         .filter(Boolean),
     ),
   ).slice(0, 8);
-  const url = `${getProxySearchApiBase(source)}/agent/v1/products/search`;
+  const normalizedSource = String(source || '').trim().toLowerCase();
+  const externalSupplementApiBase =
+    normalizedSource === 'aurora-bff' || normalizedSource === 'aurora-chatbox'
+      ? PIVOTA_API_BASE
+      : getProxySearchApiBase(source);
+  const url = `${externalSupplementApiBase}/agent/v1/products/search`;
   const requestHeaders = {
     ...(checkoutToken
       ? { 'X-Checkout-Token': checkoutToken }
@@ -19775,11 +19784,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const cacheStageStartedAt = Date.now();
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
+          const cacheUiSurface = normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              search?.ui_surface ||
+              search?.uiSurface ||
+              null,
+          );
+          const guidanceOnlyCacheDiscovery = cacheUiSurface === 'ingredient_plan_guidance_only';
           cacheStageBudgetMs = resolveFindProductsMultiCacheStageBudgetMs({
             rawQuery: cacheQueryText,
             queryClass: cachePolicyQueryClass,
             beautyBucket: cacheBeautyQueryProfile?.bucket || null,
             strictConstraintQuery: strictCommerceFindProductsMulti,
+            guidanceOnlyDiscovery: guidanceOnlyCacheDiscovery,
           });
           const baseCacheSearchQueryText =
             preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
@@ -19872,17 +19893,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // Let generic skincare category queries mix internal cache hits with
           // relevant external seed supplement instead of forcing an internal-only lane.
           const preferInternalSpecificBeautyCache = false;
-          const cacheUiSurface = normalizeSearchUiSurface(
-            metadata?.ui_surface ||
-              effectivePayload?.metadata?.ui_surface ||
-              effectivePayload?.context?.ui_surface ||
-              payload?.metadata?.ui_surface ||
-              payload?.context?.ui_surface ||
-              search?.ui_surface ||
-              search?.uiSurface ||
-              null,
-          );
-          const guidanceOnlyDiscovery = cacheUiSurface === 'ingredient_plan_guidance_only';
+          const guidanceOnlyDiscovery = guidanceOnlyCacheDiscovery;
           const guidanceCachePlan = await buildGuidanceOnlyCacheSearchPlan({
             uiSurface: cacheUiSurface,
             requestedTargetStepFamily:
