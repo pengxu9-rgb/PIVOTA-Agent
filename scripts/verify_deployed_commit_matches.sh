@@ -15,6 +15,9 @@ VERIFY_QUERY="${VERIFY_QUERY:-serum}"
 AUTH_TOKEN="${AUTH_TOKEN:-${COMMERCE_CORE_PROD_AUTH_TOKEN:-}}"
 AGENT_API_KEY="${AGENT_API_KEY:-${COMMERCE_CORE_PROD_AGENT_API_KEY:-}}"
 ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-0}"
+HEADER_FALLBACK_BASE_URL="${HEADER_FALLBACK_BASE_URL:-}"
+HEADER_FALLBACK_ENDPOINT="${HEADER_FALLBACK_ENDPOINT:-}"
+HEADER_FALLBACK_METHOD="${HEADER_FALLBACK_METHOD:-}"
 
 if [[ "${RAIL_MODE}" == "public_observability" ]]; then
   if [[ -z "${BASE_URL}" ]]; then
@@ -26,16 +29,33 @@ if [[ "${RAIL_MODE}" == "public_observability" ]]; then
   if [[ "${ALLOW_HEADER_FALLBACK}" == "0" ]]; then
     ALLOW_HEADER_FALLBACK="1"
   fi
+  if [[ -z "${HEADER_FALLBACK_BASE_URL}" ]]; then
+    HEADER_FALLBACK_BASE_URL="${BASE_URL}"
+  fi
+  if [[ -z "${HEADER_FALLBACK_ENDPOINT}" ]]; then
+    HEADER_FALLBACK_ENDPOINT="/v1/session/bootstrap"
+  fi
+  if [[ -z "${HEADER_FALLBACK_METHOD}" ]]; then
+    HEADER_FALLBACK_METHOD="HEAD"
+  fi
 else
   if [[ -z "${BASE_URL}" ]]; then
     BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
   fi
   GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT:-}"
   ALT_GATEWAY_ENDPOINT="${ALT_GATEWAY_ENDPOINT:-/agent/shop/v1/invoke}"
-  ALLOW_HEADER_FALLBACK="0"
   if [[ -z "${AUTH_TOKEN}" && -z "${AGENT_API_KEY}" ]]; then
     echo "authoritative_commerce verify requires AUTH_TOKEN or AGENT_API_KEY" >&2
     exit 2
+  fi
+  if [[ -z "${HEADER_FALLBACK_BASE_URL}" ]]; then
+    HEADER_FALLBACK_BASE_URL="${INVOKE_BASE_URL:-$BASE_URL}"
+  fi
+  if [[ -z "${HEADER_FALLBACK_ENDPOINT}" ]]; then
+    HEADER_FALLBACK_ENDPOINT="${ALT_GATEWAY_ENDPOINT:-/agent/shop/v1/invoke}"
+  fi
+  if [[ -z "${HEADER_FALLBACK_METHOD}" ]]; then
+    HEADER_FALLBACK_METHOD="POST"
   fi
 fi
 
@@ -56,6 +76,9 @@ echo "TARGET_COMMIT=$TARGET_COMMIT"
 echo "GATEWAY_ENDPOINT=$GATEWAY_ENDPOINT"
 echo "ALT_GATEWAY_ENDPOINT=$ALT_GATEWAY_ENDPOINT"
 echo "ALLOW_HEADER_FALLBACK=$ALLOW_HEADER_FALLBACK"
+echo "HEADER_FALLBACK_BASE_URL=${HEADER_FALLBACK_BASE_URL:-unset}"
+echo "HEADER_FALLBACK_ENDPOINT=${HEADER_FALLBACK_ENDPOINT:-unset}"
+echo "HEADER_FALLBACK_METHOD=${HEADER_FALLBACK_METHOD:-unset}"
 if [[ -n "${AUTH_TOKEN}" ]]; then
   echo "AUTH_MODE=bearer"
 elif [[ -n "${AGENT_API_KEY}" ]]; then
@@ -123,7 +146,28 @@ PY
 }
 
 extract_header_commit() {
-  curl -sSI "${BASE_URL%/}/v1/session/bootstrap" \
+  local request_base_url="${1:-$BASE_URL}"
+  local endpoint="${2:-/v1/session/bootstrap}"
+  local method="${3:-HEAD}"
+  local -a curl_args=(
+    -sSI
+    --max-time 20
+    -X "$method"
+  )
+  if [[ "${method}" == "POST" ]]; then
+    curl_args+=(-H 'Content-Type: application/json')
+    if [ -n "${AUTH_TOKEN}" ]; then
+      if [[ "${AUTH_TOKEN}" =~ ^[Bb]earer[[:space:]]+ ]]; then
+        curl_args+=(-H "Authorization: ${AUTH_TOKEN}")
+      else
+        curl_args+=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+      fi
+    fi
+    if [ -n "${AGENT_API_KEY}" ]; then
+      curl_args+=(-H "X-Agent-API-Key: ${AGENT_API_KEY}")
+    fi
+  fi
+  curl "${curl_args[@]}" "${request_base_url%/}${endpoint}" \
     | tr -d '\r' \
     | awk -F': ' 'tolower($1)=="x-service-commit" {print $2}' \
     | head -n 1 \
@@ -147,8 +191,8 @@ for i in $(seq 1 "$MAX_ATTEMPTS"); do
   fi
 
   if [ -z "${deployed:-}" ] && [[ "${ALLOW_HEADER_FALLBACK}" != "0" ]]; then
-    deployed="$(extract_header_commit)"
-    detected_via="header:/v1/session/bootstrap"
+    deployed="$(extract_header_commit "${HEADER_FALLBACK_BASE_URL}" "${HEADER_FALLBACK_ENDPOINT}" "${HEADER_FALLBACK_METHOD}")"
+    detected_via="header:${HEADER_FALLBACK_BASE_URL%/}${HEADER_FALLBACK_ENDPOINT}"
   fi
   echo "${i}/${MAX_ATTEMPTS} deployed_commit=${deployed:-missing} via=${detected_via}"
   if [ -n "${deployed:-}" ] && [ "$deployed" = "$TARGET_COMMIT" ]; then
