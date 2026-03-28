@@ -3,14 +3,12 @@
     {
       "id": "staging_invoke_auth_smoke",
       "title": "staging invoke auth smoke",
-      "family": "broad_discovery",
+      "family": "strict_consistency",
       "rail_mode": "authoritative_commerce",
       "require_primary_path": true,
       "allow_strict_empty": false,
       "allowed_query_sources": [
-        "cache_cross_merchant_search",
-        "cache_cross_merchant_search_supplemented",
-        "agent_products_search"
+        "cache_multi_intent"
       ],
       "must_not_match_fallback_sources": [
         "agent_products_error_fallback",
@@ -36,11 +34,30 @@
       "correctness": {
         "mode": "auto",
         "expect_http_status": 200,
-        "allow_zero_results": true
+        "allow_zero_results": false,
+        "must_have_paths": [
+          "metadata.contract_bridge.resolved_contract",
+          "metadata.strict_constraint_query",
+          "metadata.strict_constraint_reason",
+          "metadata.matched_ingredient_ids.0"
+        ],
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "ingredient"
+        }
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "ingredient"
+        }
       },
       "observability": {
         "must_have_paths": [
-          "metadata.service_version.commit"
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision"
         ]
       }
     }
