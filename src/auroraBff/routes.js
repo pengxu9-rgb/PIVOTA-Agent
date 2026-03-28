@@ -21053,6 +21053,30 @@ function buildRoutineAuditFastPathArtifactAnalysis({ routineAnalysisResult } = {
   return { findings };
 }
 
+function buildArtifactGateMeta(gate) {
+  const row = isPlainObject(gate) ? gate : null;
+  if (!row) {
+    return {
+      tier: 'ineligible',
+      reason: 'artifact_missing',
+      missing_core: ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+      confidence_level: 'low',
+      durable_count: 0,
+      eligible: false,
+      ok: false,
+    };
+  }
+  return {
+    tier: pickFirstTrimmed(row.tier) || 'ineligible',
+    reason: pickFirstTrimmed(row.reason) || 'artifact_missing',
+    missing_core: Array.isArray(row.missing_core) ? row.missing_core.filter(Boolean).slice(0, 8) : [],
+    confidence_level: pickFirstTrimmed(row.confidence_level) || 'low',
+    durable_count: Number.isFinite(Number(row.durable_count)) ? Number(row.durable_count) : 0,
+    eligible: Boolean(row.eligible),
+    ok: Boolean(row.ok),
+  };
+}
+
 function buildConfidenceNoticeCardPayload({
   language,
   reason,
@@ -58187,6 +58211,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               llm_vision_called: false,
               llm_report_called: false,
               artifact_usable: Boolean(artifactGate && artifactGate.ok),
+              artifact_gate: buildArtifactGateMeta(artifactGate),
               routine_analysis_version: 'v2',
               routine_preview_items_count: routineProductCandidates.length,
               analysis_mode: 'routine_audit_v1',

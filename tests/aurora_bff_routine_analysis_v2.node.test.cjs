@@ -505,6 +505,8 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
         assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
         assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
         assert.equal(analysisMeta.detector_source, 'rule_based');
+        assert.equal(analysisMeta.artifact_gate?.tier, 'eligible_strong');
+        assert.equal(analysisMeta.artifact_gate?.reason, 'eligible_strong');
         assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
 
@@ -536,6 +538,64 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
         assert.ok(eventNames.includes('routine_audit_fast_path_started'));
         assert.ok(eventNames.includes('routine_audit_fast_path_completed'));
         assert.equal(eventNames.includes('analysis_timeout_degraded'), false);
+      } finally {
+        harness.restore();
+      }
+    },
+  );
+});
+
+test('/v1/analysis/skin: routine audit fast path exposes artifact gate reason when profile core is missing', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ROUTINE_ANALYSIS_V2_ENABLED: 'true',
+      AURORA_ROUTINE_AUDIT_V1_ENABLED: 'true',
+      AURORA_ROUTINE_SUMMARY_FIRST_ENABLED: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: 'true',
+    },
+    async () => {
+      const harness = createAppWithPatchedAuroraChat(async () => ({ answer: '{}', intent: 'chat', cards: [] }));
+      try {
+        const uid = buildTestUid('routine_audit_v1_missing_core_gate');
+        const resp = await harness.request
+          .post('/v1/analysis/skin')
+          .set(headersFor(uid, 'EN'))
+          .send({
+            use_photo: false,
+            currentRoutine: {
+              am: {
+                cleanser: 'Gentle cleanser',
+                serum: 'Vitamin C serum',
+                moisturizer: 'Barrier cream',
+                spf: 'SPF50',
+              },
+              pm: {
+                cleanser: 'Gentle cleanser',
+                treatment: 'Retinol serum',
+                moisturizer: 'Barrier cream',
+              },
+            },
+          })
+          .expect(200);
+
+        const analysisMeta = resp.body && resp.body.analysis_meta && typeof resp.body.analysis_meta === 'object'
+          ? resp.body.analysis_meta
+          : {};
+        assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
+        assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
+        assert.equal(analysisMeta.artifact_usable, false);
+        assert.equal(analysisMeta.reco_artifact_eligible, false);
+        assert.equal(analysisMeta.artifact_gate?.tier, 'ineligible');
+        assert.equal(analysisMeta.artifact_gate?.reason, 'artifact_missing_core');
+        assert.deepEqual(
+          analysisMeta.artifact_gate?.missing_core,
+          ['skinType', 'sensitivity', 'barrierStatus', 'goals'],
+        );
+        assert.equal(analysisMeta.artifact_gate?.eligible, false);
+        assert.equal(analysisMeta.artifact_gate?.ok, false);
       } finally {
         harness.restore();
       }
