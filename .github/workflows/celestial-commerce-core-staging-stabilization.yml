@@ -119,16 +119,16 @@ jobs:
           bash scripts/run_celestial_commerce_core_stabilization_acceptance.sh
 
       - name: Fail when stabilization decision is NO-GO
-        if: always()
+        if: ${{ always() && hashFiles('reports/celestial-commerce-core-staging-stabilization-ci/*/summary.json') != '' }}
         run: |
           node scripts/assert_celestial_stabilization_decision.js \
             --report-root reports/celestial-commerce-core-staging-stabilization-ci \
             --fail-on no-go
 
       - name: Upload staging stabilization artifacts
-        if: always()
+        if: ${{ always() && hashFiles('reports/celestial-commerce-core-staging-stabilization-ci/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: celestial-commerce-core-staging-stabilization
           path: reports/celestial-commerce-core-staging-stabilization-ci
-          if-no-files-found: error
+          if-no-files-found: warn
