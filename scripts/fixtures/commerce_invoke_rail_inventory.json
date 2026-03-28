@@ -28,6 +28,7 @@
     "docs/runbooks/commerce_prod_invoke_contract_audit.md"
   ],
   "authoritative_files": [
+    ".github/workflows/celestial-commerce-core-staging-stabilization.yml",
     ".github/workflows/celestial-commerce-core-readiness.yml",
     ".github/workflows/shopping-search-release-gate.yml",
     ".github/workflows/aurora-bff-release-gate.yml",
@@ -45,6 +46,7 @@
     "tests/celestial_commerce_core_staging_invoke_smoke_script.test.js"
   ],
   "invoke_literal_required_files": [
+    ".github/workflows/celestial-commerce-core-staging-stabilization.yml",
     ".github/workflows/celestial-commerce-core-readiness.yml",
     ".github/workflows/shopping-search-release-gate.yml",
     ".github/workflows/aurora-bff-release-gate.yml",

@@ -12,6 +12,16 @@ Use it when:
 
 This is a **staging/pre-prod hardening** workflow, not a production rollout workflow.
 
+## GitHub Dispatch
+
+For current `main` validation with repo-managed staging credentials, use the GitHub workflow `Celestial Commerce Core Staging Stabilization`.
+
+It performs the same invoke-first sequence documented here:
+
+1. wait for the staging deployment to serve the target `main` commit over authenticated `POST /agent/shop/v1/invoke`
+2. run the narrow staging invoke smoke
+3. run the bounded stabilization acceptance and upload timestamped artifacts
+
 ## What This Cycle Freezes
 
 - No new large ownership migrations
