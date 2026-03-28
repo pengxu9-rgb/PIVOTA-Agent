@@ -24898,17 +24898,8 @@ function resolveRecoCentralOutcome({
 function deriveRecoEmptyReason(payload, contract) {
   const payloadObj = isPlainObject(payload) ? payload : {};
   const contractObj = isPlainObject(contract) ? contract : {};
-  const groundedCount = Number.isFinite(Number(payloadObj.grounded_count))
-    ? Number(payloadObj.grounded_count)
-    : Number.isFinite(Number(contractObj.grounded_count))
-      ? Number(contractObj.grounded_count)
-      : 0;
-  const ungroundedCount = Number.isFinite(Number(payloadObj.ungrounded_count))
-    ? Number(payloadObj.ungrounded_count)
-    : Number.isFinite(Number(contractObj.ungrounded_count))
-      ? Number(contractObj.ungrounded_count)
-      : 0;
-  if (groundedCount > 0 || ungroundedCount > 0) return '';
+  const recommendations = Array.isArray(payloadObj.recommendations) ? payloadObj.recommendations : [];
+  if (recommendations.length > 0) return '';
   return resolveRecoFailureReasonContract({ payload: payloadObj, contract: contractObj }).userFacingReason || 'artifact_missing';
 }
 
@@ -24998,6 +24989,57 @@ function deriveRecoTelemetryFailureReason({
     return 'prompt_contract_mismatch';
   }
   return '';
+}
+
+function deriveRecoFailureFromStepAwareLlmFallback({
+  initialLlmOutcome,
+  llmFailureClass,
+  upstreamFailureCode,
+  promptContractOk = true,
+} = {}) {
+  const normalizedOutcome = String(initialLlmOutcome || '').trim().toLowerCase();
+  const normalizedFailure = normalizeRecoFailureClass(llmFailureClass || '');
+  if (promptContractOk === false || normalizedOutcome === 'prompt_contract_mismatch') {
+    return {
+      effectiveFailureClass: 'prompt_contract_mismatch',
+      failureOrigin: 'llm_contract',
+      productsEmptyReason: 'prompt_contract_mismatch',
+      telemetryReason: 'prompt_contract_mismatch',
+      mainlineStatus: 'severe_parse_or_prompt_failure',
+    };
+  }
+  if (
+    normalizedOutcome === 'upstream_timeout' ||
+    normalizedFailure === 'timeout' ||
+    isTransientRecoUpstreamFailureCode(upstreamFailureCode)
+  ) {
+    return {
+      effectiveFailureClass: 'upstream_timeout',
+      failureOrigin: 'llm_upstream',
+      productsEmptyReason: 'upstream_timeout',
+      telemetryReason: 'timeout_degraded',
+      mainlineStatus: 'upstream_timeout',
+    };
+  }
+  if (normalizedOutcome === 'schema_invalid' || normalizedFailure === 'schema_invalid') {
+    return {
+      effectiveFailureClass: 'schema_invalid',
+      failureOrigin: 'llm_contract',
+      productsEmptyReason: 'schema_invalid',
+      telemetryReason: 'upstream_schema_invalid',
+      mainlineStatus: 'severe_parse_or_prompt_failure',
+    };
+  }
+  if (normalizedOutcome === 'upstream_dependency_failure') {
+    return {
+      effectiveFailureClass: 'upstream_dependency_failure',
+      failureOrigin: 'llm_upstream',
+      productsEmptyReason: 'upstream_dependency_failure',
+      telemetryReason: '',
+      mainlineStatus: 'severe_parse_or_prompt_failure',
+    };
+  }
+  return null;
 }
 
 function buildRecoMainlineContract({
@@ -25195,6 +25237,8 @@ function buildRecoMainlineContract({
   }
   const primaryFailureReason = hasRecommendations
     ? null
+    : contractStatus === 'prompt_contract_mismatch'
+      ? 'prompt_contract_mismatch'
     : normalizedProductsEmptyReason === 'strict_filter_fallback_only'
       ? 'strict_filter_dropped'
       : 'artifact_missing';
@@ -25217,7 +25261,9 @@ function buildRecoMainlineContract({
     source: String(source || '').trim() || null,
     primary_failure_reason: primaryFailureReason,
     telemetry_failure_reason: normalizedTelemetryReason || null,
-    failure_class: failureClass || null,
+    failure_class: contractStatus === 'prompt_contract_mismatch'
+      ? 'prompt_contract_mismatch'
+      : failureClass || null,
     upstream_status: upstreamStatus,
     mainline_status: mainlineStatus,
     surface_reason: clientVisibleSurfaceReason,
@@ -25305,6 +25351,9 @@ function deriveRecoMainlineStatus({
   if (catalogSkip === 'disabled') return 'catalog_skipped_disabled';
   if (catalogSkip === 'fail_fast_open') return 'catalog_skipped_fail_fast';
   if (catalogSkip === 'queries_empty') return 'catalog_queries_empty';
+  if (contractStatus === 'prompt_contract_mismatch') {
+    return 'severe_parse_or_prompt_failure';
+  }
   if (normalizeRecoProductsEmptyReason(productsEmptyReason)) {
     return 'empty_structured';
   }
@@ -50323,28 +50372,57 @@ async function generateProductRecommendations({
         ? Math.max(0, Math.trunc(Number(viablePoolState.selected_candidate_count)))
         : 0;
   }
-  if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
+  const stepAwareMainlineFailure = stepAwareCatalogFirstEnabled
+    ? deriveRecoFailureFromStepAwareLlmFallback({
+        initialLlmOutcome,
+        llmFailureClass,
+        upstreamFailureCode,
+        promptContractOk: promptContract.ok,
+      })
+    : null;
+  if (stepAwareMainlineFailure) {
+    effectiveFailureClass = stepAwareMainlineFailure.effectiveFailureClass || effectiveFailureClass;
+    failureOrigin = stepAwareMainlineFailure.failureOrigin || failureOrigin;
+    presentationMode = '';
+    successMode = '';
+  }
+  if (stepAwareMainlineFailure) {
+    norm.payload.recommendations = [];
+    norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
+    norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
+    norm.payload.mainline_status = stepAwareMainlineFailure.mainlineStatus;
+  } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
+    norm.payload.products_empty_reason = 'prompt_contract_mismatch';
+  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
   }
   const effectiveGroundingStatus =
-    normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
-    || (structuredSource === 'catalog_grounded'
-      ? 'grounded'
-      : structuredSource === 'catalog_transient_fallback'
-        ? 'partially_grounded'
-        : '');
+    stepAwareMainlineFailure
+      ? ''
+      : normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
+        || (structuredSource === 'catalog_grounded'
+          ? 'grounded'
+          : structuredSource === 'catalog_transient_fallback'
+            ? 'partially_grounded'
+            : '');
   const effectiveGroundedCount =
-    Number.isFinite(Number(mapped?.grounded_count))
-      ? Math.max(0, Math.trunc(Number(mapped?.grounded_count)))
-      : (structuredSource === 'catalog_grounded' ? (Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0) : 0);
+    stepAwareMainlineFailure
+      ? 0
+      : Number.isFinite(Number(mapped?.grounded_count))
+        ? Math.max(0, Math.trunc(Number(mapped?.grounded_count)))
+        : (structuredSource === 'catalog_grounded' ? (Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0) : 0);
   const effectiveUngroundedCount =
-    Number.isFinite(Number(mapped?.ungrounded_count))
-      ? Math.max(0, Math.trunc(Number(mapped?.ungrounded_count)))
-      : 0;
+    stepAwareMainlineFailure
+      ? 0
+      : Number.isFinite(Number(mapped?.ungrounded_count))
+        ? Math.max(0, Math.trunc(Number(mapped?.ungrounded_count)))
+        : 0;
   const effectiveMainlineStatus = pickFirstTrimmed(
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
+    stepAwareMainlineFailure ? stepAwareMainlineFailure.mainlineStatus : '',
+    promptContract.ok === false ? 'severe_parse_or_prompt_failure' : '',
     targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     structuredSource === 'catalog_grounded'
       ? 'grounded_success'
@@ -50365,6 +50443,8 @@ async function generateProductRecommendations({
   const effectiveTelemetryReason = pickFirstTrimmed(
     groundingResult && groundingResult.telemetry_reason,
     mapped && mapped.telemetry_reason,
+    stepAwareMainlineFailure ? stepAwareMainlineFailure.telemetryReason : '',
+    promptContract.ok === false ? 'prompt_contract_mismatch' : '',
     llmFailureClass === 'timeout' || upstreamFailureCode === 'UPSTREAM_TIMEOUT' ? 'timeout_degraded' : '',
   ) || null;
   norm.payload = {
@@ -50612,7 +50692,7 @@ async function generateProductRecommendations({
   const finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   finalSelectedCandidateCount = finalRecommendations.length;
   postGuardrailCount = finalSelectedCandidateCount;
-  if (stepAwareCatalogFirstEnabled) {
+  if (stepAwareCatalogFirstEnabled && !stepAwareMainlineFailure) {
     const failureSignals = resolveRecoEffectiveFailure({
       targetContext,
       viablePoolState: {
@@ -50627,12 +50707,16 @@ async function generateProductRecommendations({
   }
   const sourceMode = finalRecommendations.length > 0
     ? structuredSource === 'llm_primary'
-    ? 'llm_primary'
-    : structuredSource === 'catalog_grounded'
+      ? 'llm_primary'
+      : structuredSource === 'catalog_grounded'
+        ? 'catalog_grounded'
+        : structuredSource === 'catalog_transient_fallback'
+          ? 'catalog_transient_fallback'
+          : 'llm_primary'
+    : stepAwareMainlineFailure && structuredSource === 'catalog_grounded'
       ? 'catalog_grounded'
-      : structuredSource === 'catalog_transient_fallback'
+      : stepAwareMainlineFailure && structuredSource === 'catalog_transient_fallback'
         ? 'catalog_transient_fallback'
-        : 'llm_primary'
     : 'rules_only';
   const catalogSkipReason = effectiveCatalogSkipReason || pickFirstTrimmed(catalogDebug && catalogDebug.skipped_reason) || null;
   const contractStatus = deriveRecoContractStatus({
@@ -50716,6 +50800,7 @@ async function generateProductRecommendations({
       upstream_failure_code: upstreamFailureCode || null,
       mainline_status: mainlineStatus,
       ...(pickFirstTrimmed(norm.payload?.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(norm.payload?.products_empty_reason) } : {}),
+      ...(stepAwareMainlineFailure?.productsEmptyReason ? { step_aware_mainline_blocked_reason: stepAwareMainlineFailure.productsEmptyReason } : {}),
       grounding_status: effectiveGroundingStatus || null,
       grounded_count: effectiveGroundedCount,
       ungrounded_count: effectiveUngroundedCount,

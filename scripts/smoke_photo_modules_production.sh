@@ -217,6 +217,16 @@ heatmap_proxy_visibility_max_floor = float(os.environ.get("HEATMAP_PROXY_VISIBIL
 heatmap_proxy_visibility_p90_floor = float(os.environ.get("HEATMAP_PROXY_VISIBILITY_P90_FLOOR", "0.18"))
 data = json.loads(src.read_text(encoding="utf-8"))
 cards = data.get("cards") or []
+
+def walk_objects(value):
+    if isinstance(value, dict):
+        yield value
+        for nested in value.values():
+            yield from walk_objects(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from walk_objects(nested)
+
 if any(
     (card or {}).get("type") == "confidence_notice"
     and str(((card or {}).get("payload") or {}).get("reason") or "").strip().lower() == "pregnancy_optional_profile"
@@ -276,6 +286,29 @@ else:
     modules_quality_grade = modules_payload.get("quality_grade")
     if modules_quality_grade not in {"pass", "degraded"}:
         raise AssertionError(f"expected quality_grade pass/degraded, got {modules_quality_grade!r}")
+
+    fallback_hits = []
+    aurora_lab_hits = 0
+    for obj in walk_objects(data):
+        if obj.get("reco_enrich_timeout") is True:
+            fallback_hits.append("reco_enrich_timeout=true")
+        if obj.get("llm_fallback_used") is True:
+            fallback_hits.append("llm_fallback_used=true")
+        if obj.get("network_fallback_used") is True:
+            fallback_hits.append("network_fallback_used=true")
+        recommendation_mode_final = str(obj.get("recommendation_mode_final") or "").strip().lower()
+        if recommendation_mode_final == "open_world_only":
+            fallback_hits.append("recommendation_mode_final=open_world_only")
+        fallback_stage = str(obj.get("fallback_stage") or "").strip().lower()
+        recommendation_mode = str(obj.get("recommendation_mode") or "").strip().lower()
+        if fallback_stage and recommendation_mode != "cta_only":
+            fallback_hits.append(f"fallback_stage={fallback_stage}")
+        if str(obj.get("brand") or "").strip().lower() == "aurora lab":
+            aurora_lab_hits += 1
+    if fallback_hits:
+        raise AssertionError(f"photo analysis leaked fallback markers: {sorted(set(fallback_hits))[:10]}")
+    if aurora_lab_hits > 0:
+        raise AssertionError(f"photo analysis leaked Aurora Lab placeholder brand {aurora_lab_hits} time(s)")
 
     regions = modules_payload.get("regions") or []
     if not regions:
@@ -422,6 +455,8 @@ else:
         "expect_branch": "usable",
         "forced_qc_status": qc_for_analysis or None,
         "analysis_photo_id": photo_id_for_analysis or None,
+        "fallback_marker_count": len(sorted(set(fallback_hits))),
+        "aurora_lab_hits": aurora_lab_hits,
         "issue_heatmap_low_p90_advisory_count": len(low_p90_issue_evidence),
         "issue_heatmap_low_p90_advisories": low_p90_issue_evidence[:10],
     }

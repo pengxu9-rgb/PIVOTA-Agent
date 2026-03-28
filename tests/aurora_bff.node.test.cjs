@@ -4923,7 +4923,7 @@ test('/v1/chat: ingredient reco opt-in first query already carries ingredient_co
   });
 });
 
-test('/v1/chat: prompt contract mismatch skips upstream and returns readable fallback with mismatch metric', async () => {
+test('/v1/chat: prompt contract mismatch blocks reco success and records mismatch metric', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -4967,6 +4967,14 @@ test('/v1/chat: prompt contract mismatch skips upstream and returns readable fal
         assert.equal(Boolean(out?.norm?.payload), true);
         assert.equal(out?.norm?.payload?.prompt_contract_ok, false);
         assert.equal(Array.isArray(out?.norm?.payload?.recommendations), true);
+        assert.equal(out?.norm?.payload?.recommendations?.length || 0, 0);
+        assert.equal(out?.norm?.payload?.mainline_status, 'severe_parse_or_prompt_failure');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.failure_class, 'prompt_contract_mismatch');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.mainline_status, 'severe_parse_or_prompt_failure');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.primary_failure_reason, 'prompt_contract_mismatch');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.telemetry_failure_reason, 'prompt_contract_mismatch');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.products_empty_reason, 'prompt_contract_mismatch');
+        assert.equal(out?.norm?.payload?.recommendation_meta?.surface_reason, 'prompt_contract_mismatch');
         const issues = Array.isArray(out?.norm?.payload?.prompt_contract_issues)
           ? out.norm.payload.prompt_contract_issues.map((x) => String(x || ''))
           : [];

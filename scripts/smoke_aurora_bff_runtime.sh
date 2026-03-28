@@ -10,11 +10,6 @@ CURL_RETRY_MAX="${CURL_RETRY_MAX:-30}"
 CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 CURL_RETRY_MAX_TIME_SEC="${CURL_RETRY_MAX_TIME_SEC:-240}"
 LAB_SERIES_URL="${LAB_SERIES_URL:-https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one}"
-ALL_EVENTS_JQ='(
-  ((.events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
-  +
-  ((.ops.experiment_events // []) | map({event_name: (.event_name // .event_type // ""), data: (.data // .event_data // {})}))
-)'
 
 COMMON_HEADERS=(
   -H "X-Aurora-UID: ${AURORA_UID}"
@@ -46,6 +41,28 @@ jq_assert() {
     exit 1
   fi
   printf "[PASS] %s\n" "$label"
+}
+
+jq_assert_no_mainline_fallback() {
+  local label="$1"
+  printf "%s\n" "$2" | jq_assert "$label" '
+    [
+      .. | objects | select(
+        (.fallback_used? == true)
+        or (.network_fallback_used? == true)
+        or (.llm_fallback_used? == true)
+        or (.reco_enrich_timeout? == true)
+        or ((.recommendation_mode_final? // "") == "open_world_only")
+        or ((.analysis_mode? // "") == "timeout_degraded")
+        or ((.analysis_source? // "") == "baseline_low_confidence")
+        or ((.analysis_source? // "") == "rules_only_timeout_degraded")
+        or ((.detector_source? // "") == "baseline_low_confidence")
+        or ((.mainline_status? // "") | ascii_downcase | test("timeout_degraded|plan_only_fallback|empty_structured|upstream_timeout"))
+        or ((.telemetry_reason? // "") == "timeout_degraded")
+        or ((.products_empty_reason? // "") == "timeout_degraded")
+      )
+    ] | length == 0
+  '
 }
 
 curl_do() {
@@ -110,7 +127,7 @@ printf "%s\n" "$gate_json" | jq_assert "answer-first output exists (recommendati
     or any(.type=="product_verdict")
     or any(.type=="confidence_notice")
 '
-printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$gate_json" | jq_assert "no safety require-info hard gate event on reco entry" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
 say "profile update (core + itinerary)"
 profile_json="$(curl_do -fsS -X POST "${BASE}/v1/profile/update" \
@@ -144,7 +161,7 @@ skin_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
   --data '{}')"
 
 printf "%s\n" "$skin_json" | jq_assert "analysis_story_v2 has ui_card_v1" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1|type)=="object") and ((.payload.ui_card_v1.headline//"")|length>0))'
-printf "%s\n" "$skin_json" | jq_assert "ingredient_plan card exists" ".cards | ${INGREDIENT_PLAN_CARD_JQ}"
+printf "%s\n" "$skin_json" | jq_assert "ingredient_plan_v2 card exists" '.cards | any(.type=="ingredient_plan_v2")'
 printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story exists" '
   if (.cards | any(.type=="analysis_story_v2"))
   then (.cards | any(.type=="analysis_summary")) | not
@@ -154,6 +171,7 @@ printf "%s\n" "$skin_json" | jq_assert "analysis_summary not public when story e
 printf "%s\n" "$skin_json" | jq_assert "analysis meta present" '.analysis_meta | type=="object"'
 printf "%s\n" "$skin_json" | jq_assert "analysis confidence label present" '.cards | any(.type=="analysis_story_v2" and ((.payload.ui_card_v1.confidence_label//"")|length>0))'
 printf "%s\n" "$skin_json" | jq_assert "analysis suppresses passive pregnancy confidence card" '([.cards[]? | select(.type=="confidence_notice" and .payload.reason=="pregnancy_optional_profile")] | length) == 0'
+jq_assert_no_mainline_fallback "text skin analysis stays on mainline contract" "$skin_json"
 
 say "skin analysis (routine-fit path)"
 skin_routine_json="$(curl_do -fsS -X POST "${BASE}/v1/analysis/skin" \
@@ -244,13 +262,7 @@ v1_chat_v2_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   --data '{"message":"what ingredient is best for acne?","context":{"locale":"en","profile":{}}}')"
 
 printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns cards array" '.cards | type=="array" and (length >= 1)'
-printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns ingredient-answer output" '
-  .cards | any(
-    ((.type // .card_type // "")=="text_response")
-    or ((.type // .card_type // "")=="aurora_ingredient_report")
-    or ((.type // .card_type // "")=="ingredient_goal_match")
-  )
-'
+printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns text_response" '.cards | any(.card_type=="text_response")'
 printf "%s\n" "$v1_chat_v2_json" | jq_assert "/v1/chat v2-compatible returns next_actions" '.next_actions | type=="array"'
 
 say "product analyze (Nivea Creme)"
@@ -366,9 +378,9 @@ printf "%s\n" "$chat_json" | jq_assert "chat returns compatibility guidance (leg
     ))
   )
   or any(
-    ((.type // .card_type // "")=="text_response") and
+    .card_type=="text_response" and
     ((.sections // []) | any(
-      ((.type // .kind // "")=="text_answer") and
+      .type=="text_answer" and
       (
         ((.text_en // .text_zh // "") | ascii_downcase)
         | test("retinol|glycolic|irritation|alternate|different nights|sunscreen")
@@ -377,12 +389,12 @@ printf "%s\n" "$chat_json" | jq_assert "chat returns compatibility guidance (leg
   )
 '
 printf "%s\n" "$chat_json" | jq_assert "chat v2 conflict guidance includes a mitigation suggestion when text_response is used" '
-  if (.cards | any((.type // .card_type // "")=="text_response")) then
+  if (.cards | any(.card_type=="text_response")) then
     (
       .cards | any(
-        ((.type // .card_type // "")=="text_response") and
+        .card_type=="text_response" and
         ((.sections // []) | any(
-          ((.type // .kind // "")=="text_answer") and
+          .type=="text_answer" and
           (
             ((.text_en // .text_zh // "") | ascii_downcase)
             | test("irritat|different night|few times a week|watch for|am instead|sunscreen|patch test")
@@ -398,20 +410,20 @@ printf "%s\n" "$chat_json" | jq_assert "chat passive advisory cards are suppress
   ([.cards[]? | select(.type=="confidence_notice" and (.payload.reason=="safety_optional_profile_missing" or .payload.reason=="gate_advisory" or .payload.reason=="pregnancy_optional_profile"))] | length) == 0
 '
 printf "%s\n" "$chat_json" | jq_assert "chat passive-gate meta is present when advisory events exist" '
-  if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
     ((.session_patch.meta.passive_gate_suppressed // false) == true)
   else
     true
   end
 '
 printf "%s\n" "$chat_json" | jq_assert "chat suppressed_gate_ids is present when advisory events exist" '
-  if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
+  if ((.events // []) | any(.event_name=="safety_advisory_inline" or .event_name=="gate_advisory_inline")) then
     ((.session_patch.meta.suppressed_gate_ids // []) | type=="array") and ((.session_patch.meta.suppressed_gate_ids // []) | length >= 1)
   else
     true
   end
 '
-printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '('"${ALL_EVENTS_JQ}"' | any(.event_name=="safety_gate_require_info")) | not'
+printf "%s\n" "$chat_json" | jq_assert "chat conflict path has no require-info gate event" '((.events // []) | any(.event_name=="safety_gate_require_info")) | not'
 
 say "chat follow-up alternatives (goal+anchor should stay anchored)"
 followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -434,7 +446,7 @@ followup_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
     }
   }")"
 
-printf "%s\n" "$followup_json" | jq_assert "follow-up returns analysis card (product_analysis or product_verdict)" '.cards | any(.type=="product_analysis" or .type=="product_verdict")'
+printf "%s\n" "$followup_json" | jq_assert "follow-up returns product_verdict only" '.cards | any(.type=="product_verdict") and ((.cards | any(.type=="product_analysis")) | not)'
 printf "%s\n" "$followup_json" | jq_assert "follow-up carries goal signal (provenance or ops event)" '
   (
     [(.cards[]? | select(.type=="product_analysis") | (.payload.provenance.followup_goal // ""))] | any(. == "acne_focus")
@@ -507,6 +519,7 @@ printf "%s\n" "$followup_json" | jq_assert "follow-up product_verdict keeps stru
     true
   end
 '
+jq_assert_no_mainline_fallback "chat follow-up alternatives stays off fallback paths" "$followup_json"
 
 say "chat reco (recommendations OR confidence_notice under artifact gate)"
 reco_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
@@ -586,31 +599,40 @@ if printf "%s\n" "$reco_json" | jq -e '.cards | any(.type=="recommendations")' >
     '
   fi
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes source when event stream is present" '
-    ('"${ALL_EVENTS_JQ}"') as $ev |
+    (.events // []) as $ev |
     if ($ev | length) == 0 then
       true
     else
       ($ev | any((.event_name=="recos_requested") and (((.data.source // "") | length) > 0)))
     end
   '
+  jq_assert_no_mainline_fallback "chat reco success stays on grounded mainline" "$reco_json"
 else
   printf "%s\n" "$reco_json" | jq_assert "confidence_notice card exists" '.cards | any(.type=="confidence_notice")'
   printf "%s\n" "$reco_json" | jq_assert "recommendations absent when confidence_notice path" '(.cards | any(.type=="recommendations")) | not'
   printf "%s\n" "$reco_json" | jq_assert "recos_requested event includes reco degrade reason" '
-    ('"${ALL_EVENTS_JQ}"') |
+    (.events // []) |
     any(
       (.event_name=="recos_requested") and
       (
         .data.reason=="artifact_missing" or
         .data.reason=="artifact_low_confidence" or
         .data.reason=="safety_block" or
-        .data.reason=="timeout_degraded" or
         .data.reason=="upstream_empty_recommendations" or
         .data.reason=="upstream_schema_invalid" or
         .data.reason=="ingredient_constraint_no_match" or
         .data.reason=="low_confidence_treatment_filtered"
       )
     )
+  '
+  printf "%s\n" "$reco_json" | jq_assert "confidence_notice path avoids timeout_degraded fallback" '
+    [
+      .. | objects | select(
+        ((.reason? // "") == "timeout_degraded")
+        or ((.telemetry_reason? // "") == "timeout_degraded")
+        or ((.products_empty_reason? // "") == "timeout_degraded")
+      )
+    ] | length == 0
   '
 fi
 
@@ -635,7 +657,7 @@ preg_reset_json="$(curl_do -fsS -X POST "${BASE}/v1/chat" \
   }')"
 printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy seed response has cards" '.cards | type=="array" and (length >= 1)'
 printf "%s\n" "$preg_reset_json" | jq_assert "pregnancy_status_auto_reset event (optional stream) is valid when present" '
-  ('"${ALL_EVENTS_JQ}"') as $ev |
+  (.events // []) as $ev |
   if ($ev | length) == 0 then
     true
   else

@@ -58,6 +58,29 @@ jq_warn_json() {
   printf "[PASS] %s\n" "$label"
 }
 
+jq_assert_no_mainline_fallback() {
+  local label="$1"
+  local json="$2"
+  jq_assert_json "$label" '
+    [
+      .. | objects | select(
+        (.fallback_used == true)
+        or (.network_fallback_used == true)
+        or (.llm_fallback_used == true)
+        or (.reco_enrich_timeout == true)
+        or ((.recommendation_mode_final // "") == "open_world_only")
+        or ((.analysis_mode // "") == "timeout_degraded")
+        or ((.analysis_source // "") == "baseline_low_confidence")
+        or ((.analysis_source // "") == "rules_only_timeout_degraded")
+        or ((.detector_source // "") == "baseline_low_confidence")
+        or (((.mainline_status // "") | tostring | test("timeout_degraded|plan_only_fallback|empty_structured|upstream_timeout"; "i")))
+        or ((.telemetry_reason // "") == "timeout_degraded")
+        or ((.products_empty_reason // "") == "timeout_degraded")
+      )
+    ] | length == 0
+  ' "$json"
+}
+
 warn_note() {
   local label="$1"
   printf "[WARN] %s\n" "$label"
@@ -93,11 +116,11 @@ seed_core_profile() {
 }
 
 run_case_artifact_missing() {
-  local uid="uid_gate_artifact_missing_${RUN_ID}"
-  local trace="trace_gate_artifact_missing_${RUN_ID}"
-  local brief="brief_gate_artifact_missing_${RUN_ID}"
+  local uid="uid_gate_needs_context_${RUN_ID}"
+  local trace="trace_gate_needs_context_${RUN_ID}"
+  local brief="brief_gate_needs_context_${RUN_ID}"
 
-  say "case 1: artifact_missing gate"
+  say "case 1: reco request yields explicit mainline status"
   seed_core_profile "$uid" "$trace" "$brief"
 
   local reco_json
@@ -112,45 +135,29 @@ run_case_artifact_missing() {
     }'
   )"
 
-  jq_assert_json "artifact_missing emits reco-stage output (chatcards or legacy)" '
+  jq_assert_json "reco request emits reco-stage output" '
     .cards | any(.type=="product_verdict" or .type=="recommendations" or .type=="confidence_notice")
   ' "$reco_json"
-  jq_assert_json "artifact_missing reason tagged when confidence_notice is used" '
-    if (.cards | any(.type=="recommendations" or .type=="product_verdict"))
-    then true
-    elif (.cards | any(.type=="confidence_notice"))
-    then (.cards | any((.type=="confidence_notice") and (.payload.reason=="artifact_missing")))
-    else true
-    end
-  ' "$reco_json"
-  jq_assert_json "artifact_missing event reason (optional stream)" '
+  jq_assert_no_mainline_fallback "reco request stays off timeout/baseline fallback" "$reco_json"
+  jq_assert_json "reco request exposes explicit mainline status when stream is present" '
     if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and ((((.data.reason // "")=="artifact_missing") or ((.data.grounded_count // 0) > 0) or ((.data.ungrounded_count // 0) > 0)))))
-    else true
-    end
-  ' "$reco_json"
-  jq_assert_json "artifact_missing ops mirror reason stays artifact_missing when ops stream is present" '
-    if ((.ops.experiment_events // []) | any((.event_name // .event_type // "")=="recos_requested"))
-    then ((.ops.experiment_events // []) | any(
-      ((.event_name // .event_type // "")=="recos_requested")
+    then ('"${ALL_EVENTS_JQ}"' | any(
+      (.event_name=="recos_requested")
       and (
-        (((.event_data.reason // .data.reason // "")=="artifact_missing"))
-        or ((.event_data.grounded_count // .data.grounded_count // 0) > 0)
-        or ((.event_data.ungrounded_count // .data.ungrounded_count // 0) > 0)
+        ((.data.mainline_status // "")=="needs_more_context")
+        or ((.data.mainline_status // "")=="grounded_success")
       )
     ))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "artifact_missing stream never leaks none sentinel" '
-    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | all(
-      if .event_name=="recos_requested"
+  jq_assert_json "confidence_notice is not artifact_missing/timeout when notice is shown" '
+    if (.cards | any(.type=="confidence_notice"))
+    then (.cards | all(
+      if .type=="confidence_notice"
       then (
-        ((.data.reason // "") != "none")
-        and ((.data.telemetry_reason // "") != "none")
-        and ((.data.surface_reason // "") != "none")
-        and ((.data.products_empty_reason // "") != "none")
+        ((.payload.reason // "") != "artifact_missing")
+        and ((.payload.reason // "") != "timeout_degraded")
       )
       else true
       end
@@ -161,82 +168,39 @@ run_case_artifact_missing() {
 }
 
 run_case_low_confidence() {
-  local uid="uid_gate_low_conf_${RUN_ID}"
-  local trace="trace_gate_low_conf_${RUN_ID}"
-  local brief="brief_gate_low_conf_${RUN_ID}"
+  local uid="uid_gate_text_mainline_${RUN_ID}"
+  local trace="trace_gate_text_mainline_${RUN_ID}"
+  local brief="brief_gate_text_mainline_${RUN_ID}"
 
-  say "case 2: low confidence downgrade"
+  say "case 2: text analysis stays on mainline contract"
   seed_core_profile "$uid" "$trace" "$brief"
 
   local analysis_json
-  analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false}')"
+  analysis_json="$(post_json "$uid" "$trace" "$brief" "/v1/analysis/skin" '{"use_photo":false,"currentRoutine":{"am":{"cleanser":"Gentle cleanser","serum":"Vitamin C serum","moisturizer":"Barrier cream","spf":"SPF 50 sunscreen"},"pm":{"cleanser":"Gentle cleanser","treatment":"Retinol serum","moisturizer":"Barrier cream"}}}')"
 
-  jq_assert_json "analysis_story_v2 exists" '.cards | any(.type=="analysis_story_v2")' "$analysis_json"
-  jq_assert_json "ingredient_plan exists on low confidence path" ".cards | ${INGREDIENT_PLAN_CARD_JQ}" "$analysis_json"
-  jq_assert_json "confidence_notice exists on low confidence path" '.cards | any(.type=="confidence_notice")' "$analysis_json"
-  jq_assert_json "analysis source baseline_low_confidence" '(.analysis_meta.detector_source // "") == "baseline_low_confidence"' "$analysis_json"
-  jq_assert_json "artifact usable is exposed as boolean on low confidence" '(.analysis_meta.artifact_usable | type) == "boolean"' "$analysis_json"
-  jq_assert_json "analysis confidence low" '.cards | any((.type=="analysis_story_v2") and (((.payload.confidence_overall.level // .payload.ui_card_v1.confidence_label // "") | ascii_downcase) == "low"))' "$analysis_json"
-  jq_assert_json "no routine_fit_summary on low confidence path" '(.cards | any(.type=="routine_fit_summary")) | not' "$analysis_json"
-  jq_assert_json "analysis_summary not public when story exists" '
-    if (.cards | any(.type=="analysis_story_v2"))
+  jq_assert_json "analysis stays on canonical no-photo contract" '
+    (
+      (.cards | any(.type=="analysis_story_v2"))
+      and (.cards | any(.type=="ingredient_plan_v2"))
+    )
+    or
+    (
+      (.cards | any(.type=="routine_product_audit_v1"))
+      and (.cards | any(.type=="routine_adjustment_plan_v1"))
+    )
+  ' "$analysis_json"
+  jq_assert_json "analysis source is not baseline fallback" '(.analysis_meta.detector_source // "") != "baseline_low_confidence"' "$analysis_json"
+  jq_assert_json "analysis mode is not timeout degraded" '(.analysis_meta.analysis_mode // "") != "timeout_degraded"' "$analysis_json"
+  jq_assert_no_mainline_fallback "text analysis stays off degraded fallback markers" "$analysis_json"
+  jq_assert_json "analysis_summary is not public when structured mainline cards exist" '
+    if (
+      (.cards | any(.type=="analysis_story_v2"))
+      or (.cards | any(.type=="routine_product_audit_v1"))
+    )
     then (.cards | any(.type=="analysis_summary")) | not
     else true
     end
   ' "$analysis_json"
-
-  local reco_json
-  reco_json="$(
-    post_json "$uid" "$trace" "$brief" "/v1/chat" '{
-      "action":{
-        "action_id":"chip.start.reco_products",
-        "kind":"chip",
-        "data":{"reply_text":"Recommend products now","include_alternatives":false}
-      },
-      "session":{"state":"S2_DIAGNOSIS"}
-    }'
-  )"
-
-  jq_assert_json "low confidence emits reco-stage output (product_verdict/recommendations/notice)" '
-    .cards | any(.type=="product_verdict" or .type=="recommendations")
-      or any((.type=="confidence_notice") and (.payload.reason=="artifact_missing"))
-  ' "$reco_json"
-  jq_assert_json "low confidence event keeps artifact_missing primary reason when stream is present" '
-    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and (.data.reason=="artifact_missing")))
-    else true
-    end
-  ' "$reco_json"
-  jq_assert_json "low confidence internal telemetry reason stays non-surface when present" '
-    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any(
-      (.event_name=="recos_requested")
-      and (
-        (.data.telemetry_reason // "")==""
-        or (.data.telemetry_reason // "")=="timeout_degraded"
-        or (.data.telemetry_reason // "")=="empty_structured"
-      )
-    ))
-    else true
-    end
-  ' "$reco_json"
-  jq_assert_json "low confidence stream never leaks none sentinel" '
-    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | all(
-      if .event_name=="recos_requested"
-      then (
-        ((.data.reason // "") != "none")
-        and ((.data.telemetry_reason // "") != "none")
-        and ((.data.surface_reason // "") != "none")
-        and ((.data.products_empty_reason // "") != "none")
-      )
-      else true
-      end
-    ))
-    else true
-    end
-  ' "$reco_json"
-  jq_assert_json "no safety block in low confidence case" '(.cards | any((.type=="confidence_notice") and (.payload.reason=="safety_block"))) | not' "$reco_json"
 }
 
 run_case_medium_confidence() {
@@ -291,13 +255,14 @@ run_case_medium_confidence() {
     then (.suggested_chips // [] | any(.chip_id==\"chip.aurora.next_action.routine_deep_dive\"))
     else false
     end
-  " "$analysis_json"
+  ' "$analysis_json"
   jq_assert_json "analysis_summary not public when story exists (medium case)" '
     if (.cards | any(.type=="analysis_story_v2"))
     then (.cards | any(.type=="analysis_summary")) | not
     else true
     end
   ' "$analysis_json"
+  jq_assert_no_mainline_fallback "medium analysis stays off degraded fallback markers" "$analysis_json"
 
   local deep_dive_json
   deep_dive_json="$(
@@ -362,18 +327,14 @@ run_case_medium_confidence() {
   jq_assert_json "medium/high path has at least one recommendation or verdict payload" '
     (.cards | map(select(.type=="recommendations" or .type=="product_verdict")) | length) >= 1
   ' "$reco_json"
-  jq_assert_json "recos_requested source and parity fields present (optional stream)" '
+  jq_assert_json "recos_requested grounded_success when stream is present" '
     if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) and (((.data.mainline_status // "") | length) > 0))))
+    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and ((((.data.source // "") | length) > 0) and ((.data.mainline_status // "")=="grounded_success"))))
     else true
     end
   ' "$reco_json"
-  jq_assert_json "medium/high path not marked artifact_missing when recommendations exist (optional stream)" '
-    if ('"${ALL_EVENTS_JQ}"' | any(.event_name=="recos_requested"))
-    then ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested") and (((.data.reason // "") != "artifact_missing") or (.data.grounded_count > 0) or (.data.ungrounded_count > 0))))
-    else true
-    end
-  ' "$reco_json"
+  jq_assert_json "medium/high path does not degrade into confidence_notice" '(.cards | any(.type=="confidence_notice")) | not' "$reco_json"
+  jq_assert_no_mainline_fallback "medium/high reco stays off degraded fallback markers" "$reco_json"
 }
 
 run_case_direct_reco_generate() {
@@ -399,10 +360,10 @@ run_case_direct_reco_generate() {
   jq_assert_json "direct reco event is present with stable semantics" '
     ('"${ALL_EVENTS_JQ}"' | any((.event_name=="recos_requested")
       and (((.data.source // "") | length) > 0)
-      and (((.data.mainline_status // "") | length) > 0)
-      and (((.data.reason // "") != "artifact_missing") or (.data.grounded_count > 0) or (.data.ungrounded_count > 0))
+      and ((.data.mainline_status // "") == "grounded_success")
     ))
   ' "$direct_json"
+  jq_assert_no_mainline_fallback "direct reco stays off degraded fallback markers" "$direct_json"
 }
 
 run_case_safety_block() {

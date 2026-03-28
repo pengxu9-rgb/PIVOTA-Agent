@@ -584,7 +584,7 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
   }
 });
 
-test('/v1/reco/generate: deterministic selection can succeed in degraded mode when LLM prompt contract fails', async () => {
+test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline recommendations', async () => {
   const originalGet = axios.get;
   const originalPromptMismatch = process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
   process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = 'true';
@@ -629,14 +629,16 @@ test('/v1/reco/generate: deterministic selection can succeed in degraded mode wh
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
-    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
-    assert.equal(payload.recommendation_meta?.effective_failure_class, 'none');
-    assert.equal(payload.recommendation_meta?.success_mode, 'degraded_success');
-    assert.equal(payload.recommendation_meta?.presentation_mode, 'deterministic_degraded');
-    assert.equal(payload.recommendation_meta?.initial_llm_outcome, 'prompt_contract_mismatch');
-    assert.equal(payload.recommendation_meta?.llm_invoked, false);
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.ok(confidenceCard);
+    assert.equal(confidenceCard?.payload?.reason, 'prompt_contract_mismatch');
+    const recoEvent = Array.isArray(response.body?.events)
+      ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
+      : null;
+    assert.equal(recoEvent?.data?.mainline_status, 'severe_parse_or_prompt_failure');
+    assert.equal(recoEvent?.data?.effective_failure_class, 'prompt_contract_mismatch');
   } finally {
     if (originalPromptMismatch == null) delete process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
     else process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = originalPromptMismatch;
