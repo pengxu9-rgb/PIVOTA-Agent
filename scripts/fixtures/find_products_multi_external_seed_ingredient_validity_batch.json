@@ -63,6 +63,7 @@
     "query": "vitamin c serum under €30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
@@ -77,7 +78,9 @@
     "must_equal_metadata": {
       "strict_constraint_query": true,
       "strict_constraint_reason": "multi_constraint",
-      "budget_fx_applied": true
+      "budget_fx_applied": true,
+      "budget_fx_candidate_currency": "USD",
+      "budget_fx_unresolved": false
     },
     "must_be_positive_metadata": [
       "source_breakdown.external_seed_count"

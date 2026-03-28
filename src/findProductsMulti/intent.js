@@ -823,9 +823,22 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
 
   // Normalize full-width digits and currency symbols if present.
   const normalized = q.replace(/[０-９]/g, (d) => String('０１２３４５６７８９'.indexOf(d)));
-  const hasUsd =
-    /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
-  const currency = hasUsd ? 'USD' : null;
+  const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
+  const hasEur = /(?:€|eur|euros?|欧元)/i.test(normalized);
+  const hasGbp = /(?:£|gbp|pounds?|英镑)/i.test(normalized);
+  const hasCny = /(?:￥|¥|cny|rmb|yuan|人民币|元)/i.test(normalized);
+  const hasJpy = /(?:jpy|yen|円|日元|日圆)/i.test(normalized);
+  const currency = hasUsd
+    ? 'USD'
+    : hasEur
+      ? 'EUR'
+      : hasGbp
+        ? 'GBP'
+        : hasCny
+          ? 'CNY'
+          : hasJpy
+            ? 'JPY'
+            : null;
 
   // Range forms: "30-50", "30~50", "30 to 50", "30到50"
   const rangeMatch = normalized.match(

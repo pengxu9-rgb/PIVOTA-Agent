@@ -2,9 +2,27 @@
 const axios = require('axios');
 
 function parseArgs(argv) {
+  const envAuthToken =
+    process.env.AUTH_TOKEN ||
+    process.env.WARM_RUNTIME_AUTH_TOKEN ||
+    process.env.COMMERCE_CORE_PROD_AUTH_TOKEN ||
+    '';
+  const envAgentApiKey =
+    process.env.AGENT_API_KEY ||
+    process.env.WARM_RUNTIME_AGENT_API_KEY ||
+    process.env.COMMERCE_CORE_PROD_AGENT_API_KEY ||
+    '';
   const args = {
-    baseUrl: process.env.WARM_RUNTIME_BASE_URL || 'https://agent.pivota.cc',
-    endpoint: process.env.WARM_RUNTIME_ENDPOINT || '/api/gateway',
+    baseUrl:
+      process.env.WARM_RUNTIME_BASE_URL ||
+      process.env.COMMERCE_CORE_PROD_SMOKE_BASE_URL ||
+      'https://agent.pivota.cc',
+    endpoint:
+      process.env.WARM_RUNTIME_ENDPOINT ||
+      process.env.COMMERCE_CORE_PROD_SMOKE_ENDPOINT ||
+      (envAuthToken || envAgentApiKey ? '/agent/shop/v1/invoke' : '/api/gateway'),
+    authToken: envAuthToken,
+    agentApiKey: envAgentApiKey,
     query: process.env.WARM_RUNTIME_QUERY || 'serum',
     source: process.env.WARM_RUNTIME_SOURCE || 'search',
     attempts: Math.max(1, Number(process.env.WARM_RUNTIME_ATTEMPTS || 2) || 2),
@@ -17,6 +35,8 @@ function parseArgs(argv) {
     const next = argv[i + 1];
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--endpoint' && next) args.endpoint = String(next);
+    if (token === '--auth-token' && next) args.authToken = String(next);
+    if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--query' && next) args.query = String(next);
     if (token === '--source' && next) args.source = String(next);
     if (token === '--attempts' && next) args.attempts = Math.max(1, Number(next) || 1);
@@ -59,6 +79,14 @@ async function main() {
           validateStatus: () => true,
           headers: {
             'Content-Type': 'application/json',
+            ...(args.authToken
+              ? {
+                  Authorization: /^Bearer\s+/i.test(args.authToken)
+                    ? args.authToken
+                    : `Bearer ${args.authToken}`,
+                }
+              : {}),
+            ...(args.agentApiKey ? { 'X-Agent-API-Key': args.agentApiKey } : {}),
           },
         },
       );

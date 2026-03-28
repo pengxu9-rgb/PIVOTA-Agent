@@ -243,4 +243,71 @@ describe('Shopping agent strict find_products_multi runtime', () => {
       },
     });
   });
+
+  test('builds strict invoke body with eur budget normalized to usd search constraints', async () => {
+    const { runtime } = createTestRuntime({
+      hasDatabaseUrl: false,
+      buildSearchProductsV2Body: ({ search = {}, payload = {}, metadata = {}, clientChannel, gatewayRequestId, defaultSearchAllMerchants }) => ({
+        ...search,
+        request_context: {
+          currency: search.currency,
+          user_constraints: payload?.context?.user_constraints,
+          _metadata_source: metadata?.source || null,
+          _client_channel: clientChannel || null,
+          _gateway_request_id: gatewayRequestId || null,
+          _search_all_merchants_defaulted: Boolean(defaultSearchAllMerchants),
+        },
+      }),
+    });
+    const strictInvokeDecision = runtime.getStrictFindProductsMultiConstraintDecision({
+      search: {
+        query: 'vitamin c serum under €30',
+      },
+      metadata: {},
+    });
+
+    const out = await runtime.buildFindProductsMultiInvokeBody({
+      payload: {
+        context: {
+          user_constraints: {
+            skin_type: 'oily',
+          },
+        },
+      },
+      search: { query: 'stale text' },
+      metadata: { source: 'shopping_agent' },
+      clientChannel: 'shop',
+      gatewayRequestId: 'req_budget',
+      defaultSearchAllMerchants: true,
+      strictInvokeDecision,
+      rawQueryText: 'vitamin c serum under €30',
+    });
+
+    expect(out.payload.search).toEqual(
+      expect.objectContaining({
+        query: 'vitamin c serum under €30',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+        currency: 'USD',
+      }),
+    );
+    expect(out.payload.search.price_min).toBeUndefined();
+    expect(out.payload.search.price_max).toBeCloseTo(32.7, 5);
+    expect(out.payload.search.request_context).toEqual(
+      expect.objectContaining({
+        currency: 'USD',
+        user_constraints: expect.objectContaining({
+          skin_type: 'oily',
+          price: expect.objectContaining({
+            currency: 'EUR',
+            max: 30,
+            invoke_currency: 'USD',
+            invoke_max: 32.7,
+            fx_applied: true,
+            fx_rate: 1.09,
+          }),
+        }),
+      }),
+    );
+  });
 });

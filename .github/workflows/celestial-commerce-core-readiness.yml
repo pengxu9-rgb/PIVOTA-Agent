@@ -161,6 +161,10 @@ jobs:
     env:
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       BACKEND_PUBLIC_BASE_URL: ${{ inputs.backend_public_base_url || vars.PIVOTA_BACKEND_PUBLIC_BASE_URL || 'https://web-production-fedb.up.railway.app' }}
+      COMMERCE_CORE_PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      COMMERCE_CORE_PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
+      COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
+      COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -179,7 +183,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
+          BASE_URL="$BASE_URL" \
+          INVOKE_BASE_URL="$COMMERCE_CORE_PROD_SMOKE_BASE_URL" \
+          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
+          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          GATEWAY_ENDPOINT="" \
+          ALT_GATEWAY_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
+          ALLOW_HEADER_FALLBACK=0 \
+          TARGET_COMMIT="${GITHUB_SHA:0:12}" \
+          bash scripts/verify_deployed_commit_matches.sh
 
       - name: Run commerce-core readiness audit
         shell: bash
@@ -187,6 +199,10 @@ jobs:
           set -euo pipefail
           BASE_URL="$BASE_URL" \
           BACKEND_PUBLIC_BASE_URL="$BACKEND_PUBLIC_BASE_URL" \
+          COMMERCE_CORE_PROD_SMOKE_BASE_URL="$COMMERCE_CORE_PROD_SMOKE_BASE_URL" \
+          COMMERCE_CORE_PROD_SMOKE_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
+          COMMERCE_CORE_PROD_AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
+          COMMERCE_CORE_PROD_AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
           OUT_DIR="reports/celestial-commerce-core-readiness-ci" \
           bash scripts/run_celestial_commerce_core_readiness_audit.sh
 

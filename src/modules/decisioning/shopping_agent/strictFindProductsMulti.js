@@ -1,3 +1,5 @@
+const { extractIntentRuleBased } = require('../../../findProductsMulti/intent');
+
 const STRICT_FIND_PRODUCTS_MULTI_INGREDIENT_PROFILES = Object.freeze({
   ascorbic_acid: Object.freeze({
     display_name: 'Vitamin C',
@@ -96,6 +98,14 @@ const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
   1,
   Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
 );
+const DEFAULT_STRICT_FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES = Object.freeze({
+  USD: 1,
+  EUR: 1.09,
+  GBP: 1.27,
+  CNY: 0.14,
+  JPY: 0.0067,
+});
+
 function defaultNormalizeSearchTextForMatch(value) {
   return String(value || '')
     .trim()
@@ -141,6 +151,8 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       : defaultNormalizeSearchTextForMatch;
   const buildBeautyQueryProfile =
     typeof deps.buildBeautyQueryProfile === 'function' ? deps.buildBeautyQueryProfile : () => null;
+  const extractBudgetIntentRuleBased =
+    typeof deps.extractIntentRuleBased === 'function' ? deps.extractIntentRuleBased : extractIntentRuleBased;
   const query = typeof deps.query === 'function' ? deps.query : async () => ({ rows: [] });
   const buildExternalSeedProduct =
     typeof deps.buildExternalSeedProduct === 'function' ? deps.buildExternalSeedProduct : (row) => row || null;
@@ -156,6 +168,68 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     typeof deps.pruneEmptyFields === 'function' ? deps.pruneEmptyFields : (value) => value;
   const hasDatabaseUrl =
     typeof deps.hasDatabaseUrl === 'boolean' ? deps.hasDatabaseUrl : Boolean(process.env.DATABASE_URL);
+
+  const strictBudgetFxUsdRates = (() => {
+    const raw = String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim();
+    if (!raw) return DEFAULT_STRICT_FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES;
+    try {
+      const parsed = JSON.parse(raw);
+      const normalized = Object.entries(parsed || {}).reduce((acc, [key, value]) => {
+        const currency = String(key || '').trim().toUpperCase();
+        const rate = Number(value);
+        if (currency && Number.isFinite(rate) && rate > 0) {
+          acc[currency] = rate;
+        }
+        return acc;
+      }, {});
+      return Object.freeze({
+        ...DEFAULT_STRICT_FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES,
+        ...normalized,
+      });
+    } catch (_error) {
+      return DEFAULT_STRICT_FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES;
+    }
+  })();
+
+  function normalizeBudgetCurrencyCode(value, fallback = null) {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized || fallback;
+  }
+
+  function resolveInvokeBudgetConstraint(rawQueryText) {
+    const queryText = String(rawQueryText || '').trim();
+    if (!queryText) return null;
+    const priceConstraint =
+      extractBudgetIntentRuleBased(queryText, [], [])?.hard_constraints?.price || null;
+    if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) {
+      return null;
+    }
+
+    const sourceCurrency = normalizeBudgetCurrencyCode(priceConstraint.currency, 'USD');
+    const sourceMin = priceConstraint.min == null ? null : Number(priceConstraint.min);
+    const sourceMax = priceConstraint.max == null ? null : Number(priceConstraint.max);
+    const sourceRate = strictBudgetFxUsdRates[sourceCurrency];
+    const targetCurrency = 'USD';
+    const targetRate = strictBudgetFxUsdRates[targetCurrency];
+    const canConvert =
+      Number.isFinite(sourceRate) && sourceRate > 0 && Number.isFinite(targetRate) && targetRate > 0;
+    const fxRate = canConvert ? sourceRate / targetRate : 1;
+    const convertBound = (value) =>
+      value == null || !Number.isFinite(Number(value))
+        ? null
+        : Math.round(Number(value) * fxRate * 100) / 100;
+
+    return {
+      original_currency: sourceCurrency,
+      invoke_currency: canConvert ? targetCurrency : sourceCurrency,
+      min: canConvert ? convertBound(sourceMin) : sourceMin,
+      max: canConvert ? convertBound(sourceMax) : sourceMax,
+      original_min: sourceMin,
+      original_max: sourceMax,
+      fx_applied: canConvert && sourceCurrency !== targetCurrency,
+      fx_rate: canConvert && sourceCurrency !== targetCurrency ? Math.round(fxRate * 1000000) / 1000000 : null,
+    };
+  }
 
   function isAutoStrictConstraintEnabled() {
     return (
@@ -538,6 +612,37 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     const requestedCatalogSurface =
       String(resolvedStrictInvokeDecision?.catalogSurface || '').trim().toLowerCase() ||
       getRequestedCatalogSurface({ search, metadata });
+    const resolvedBudgetConstraint = resolveInvokeBudgetConstraint(rawQueryText || search?.query || '');
+    const mergedUserConstraints =
+      resolvedBudgetConstraint
+        ? pruneEmptyFields({
+            ...(payload?.context?.user_constraints && typeof payload.context.user_constraints === 'object'
+              ? payload.context.user_constraints
+              : {}),
+            price: pruneEmptyFields({
+              currency: resolvedBudgetConstraint.original_currency,
+              min: resolvedBudgetConstraint.original_min,
+              max: resolvedBudgetConstraint.original_max,
+              invoke_currency: resolvedBudgetConstraint.invoke_currency,
+              invoke_min: resolvedBudgetConstraint.min,
+              invoke_max: resolvedBudgetConstraint.max,
+              fx_applied: resolvedBudgetConstraint.fx_applied,
+              fx_rate: resolvedBudgetConstraint.fx_rate,
+            }),
+          })
+        : (payload?.context?.user_constraints && typeof payload.context.user_constraints === 'object'
+            ? payload.context.user_constraints
+            : undefined);
+    const invokePayload =
+      resolvedBudgetConstraint
+        ? {
+            ...(payload && typeof payload === 'object' ? payload : {}),
+            context: pruneEmptyFields({
+              ...(payload?.context && typeof payload.context === 'object' ? payload.context : {}),
+              user_constraints: mergedUserConstraints,
+            }),
+          }
+        : payload;
     const normalizedSearch = {
       ...(search && typeof search === 'object' ? search : {}),
       ...(requestedCatalogSurface
@@ -551,6 +656,13 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
           ? { query: String(rawQueryText || '').trim() }
           : {}
       ),
+      ...(resolvedBudgetConstraint
+        ? pruneEmptyFields({
+            currency: resolvedBudgetConstraint.invoke_currency,
+            price_min: resolvedBudgetConstraint.min,
+            price_max: resolvedBudgetConstraint.max,
+          })
+        : {}),
     };
     const prefetchedExternalSeedCandidates = await prefetchStrictIngredientExternalSeedCandidates({
       search: normalizedSearch,
@@ -561,7 +673,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       operation: 'find_products_multi',
       payload: {
         search: buildSearchProductsV2Body({
-          payload,
+          payload: invokePayload,
           search: normalizedSearch,
           metadata,
           clientChannel,

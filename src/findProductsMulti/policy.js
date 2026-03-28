@@ -159,6 +159,41 @@ const COMPAT_CRITICAL_STRICT =
 const WEAK_QUOTA_DEFAULT = Number(
   process.env.FIND_PRODUCTS_MULTI_WEAK_QUOTA_DEFAULT || '2',
 );
+const DEFAULT_BUDGET_FX_USD_RATES = Object.freeze({
+  USD: 1,
+  EUR: 1.09,
+  GBP: 1.27,
+  CNY: 0.14,
+  JPY: 0.0067,
+});
+const FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES = (() => {
+  const raw = String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim();
+  if (!raw) {
+    return DEFAULT_BUDGET_FX_USD_RATES;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const normalized = Object.entries(parsed || {}).reduce((acc, [key, value]) => {
+      const currency = String(key || '').trim().toUpperCase();
+      const rate = Number(value);
+      if (currency && Number.isFinite(rate) && rate > 0) {
+        acc[currency] = rate;
+      }
+      return acc;
+    }, {});
+    return Object.freeze({
+      ...DEFAULT_BUDGET_FX_USD_RATES,
+      ...normalized,
+    });
+  } catch (_error) {
+    return DEFAULT_BUDGET_FX_USD_RATES;
+  }
+})();
+const FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE =
+  String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE || '').trim() ||
+  (String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim().length > 0
+    ? 'env_usd_base_rates'
+    : 'static_default');
 
 // Reason codes (atomic; safe to log/aggregate).
 const REASON_CODES = {
@@ -402,6 +437,165 @@ function getProductPriceMajor(product) {
   }
 
   return NaN;
+}
+
+function normalizePriceCurrencyCode(value, fallback = '') {
+  const text = String(value || '').trim();
+  if (!text) return String(fallback || '').trim().toUpperCase();
+  const upper = text.toUpperCase();
+  if (upper === '$' || upper === 'USD' || /USD|DOLLAR|美元|美金/.test(upper)) return 'USD';
+  if (upper === '€' || upper === 'EUR' || /EUR|EURO|欧元/.test(upper)) return 'EUR';
+  if (upper === '£' || upper === 'GBP' || /GBP|POUND|英镑/.test(upper)) return 'GBP';
+  if (
+    upper === '¥' ||
+    upper === '￥' ||
+    upper === 'CNY' ||
+    upper === 'RMB' ||
+    /人民币|元/.test(String(value || ''))
+  ) {
+    return 'CNY';
+  }
+  if (upper === 'JPY' || /YEN|円|日元|日圆/.test(String(value || ''))) return 'JPY';
+  return upper || String(fallback || '').trim().toUpperCase();
+}
+
+function getProductPriceCurrency(product, fallback = 'USD') {
+  if (!product || typeof product !== 'object') {
+    return normalizePriceCurrencyCode(fallback, 'USD') || 'USD';
+  }
+  return (
+    normalizePriceCurrencyCode(
+      product.currency ||
+        product.price_currency ||
+        product.priceCurrency ||
+        product.price?.currency ||
+        product.price?.currency_code,
+      fallback,
+    ) || normalizePriceCurrencyCode(fallback, 'USD') || 'USD'
+  );
+}
+
+function formatBudgetAmountForHint(currency, amount) {
+  if (amount == null || !Number.isFinite(Number(amount))) return '';
+  const value = Number(amount);
+  const normalizedCurrency = normalizePriceCurrencyCode(currency, '');
+  const formattedValue = Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+  if (normalizedCurrency === 'USD') return `$${formattedValue}`;
+  if (normalizedCurrency === 'EUR') return `€${formattedValue}`;
+  if (normalizedCurrency === 'GBP') return `£${formattedValue}`;
+  if (normalizedCurrency === 'CNY') return `CNY ${formattedValue}`;
+  if (normalizedCurrency === 'JPY') return `JPY ${formattedValue}`;
+  return normalizedCurrency ? `${formattedValue} ${normalizedCurrency}` : formattedValue;
+}
+
+function resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency, fallbackCurrency = 'USD') {
+  if (
+    !priceConstraint ||
+    (priceConstraint.min == null && priceConstraint.max == null)
+  ) {
+    return {
+      constraint: null,
+      metadata: null,
+    };
+  }
+
+  const targetCurrency = normalizePriceCurrencyCode(candidateCurrency, fallbackCurrency) || 'USD';
+  const sourceCurrency = normalizePriceCurrencyCode(priceConstraint.currency, '');
+  const baseConstraint = {
+    currency: sourceCurrency || null,
+    min: priceConstraint.min == null ? null : Number(priceConstraint.min),
+    max: priceConstraint.max == null ? null : Number(priceConstraint.max),
+  };
+
+  if (!sourceCurrency) {
+    return {
+      constraint: {
+        currency: targetCurrency,
+        min: baseConstraint.min,
+        max: baseConstraint.max,
+      },
+      metadata: {
+        budget_fx_applied: false,
+        budget_fx_rate: null,
+        budget_fx_source: null,
+        budget_fx_candidate_currency: targetCurrency,
+        budget_fx_unresolved: false,
+      },
+    };
+  }
+
+  if (sourceCurrency === targetCurrency) {
+    return {
+      constraint: {
+        currency: targetCurrency,
+        min: baseConstraint.min,
+        max: baseConstraint.max,
+      },
+      metadata: {
+        budget_fx_applied: true,
+        budget_fx_rate: 1,
+        budget_fx_source: 'direct_currency_match',
+        budget_fx_candidate_currency: targetCurrency,
+        budget_fx_unresolved: false,
+      },
+    };
+  }
+
+  const sourceRate = FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES[sourceCurrency];
+  const targetRate = FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES[targetCurrency];
+  if (!Number.isFinite(sourceRate) || sourceRate <= 0 || !Number.isFinite(targetRate) || targetRate <= 0) {
+    return {
+      constraint: null,
+      metadata: {
+        budget_fx_applied: false,
+        budget_fx_rate: null,
+        budget_fx_source: FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE,
+        budget_fx_candidate_currency: targetCurrency,
+        budget_fx_unresolved: true,
+      },
+    };
+  }
+
+  const fxRate = sourceRate / targetRate;
+  const convertBound = (value) =>
+    value == null || !Number.isFinite(Number(value))
+      ? null
+      : Math.round(Number(value) * fxRate * 100) / 100;
+
+  return {
+    constraint: {
+      currency: targetCurrency,
+      min: convertBound(baseConstraint.min),
+      max: convertBound(baseConstraint.max),
+    },
+    metadata: {
+      budget_fx_applied: true,
+      budget_fx_rate: Math.round(fxRate * 1000000) / 1000000,
+      budget_fx_source: FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE,
+      budget_fx_candidate_currency: targetCurrency,
+      budget_fx_unresolved: false,
+    },
+  };
+}
+
+function buildBudgetFxMetadata(priceConstraint, products = [], fallbackProducts = []) {
+  if (
+    !priceConstraint ||
+    (priceConstraint.min == null && priceConstraint.max == null)
+  ) {
+    return null;
+  }
+  const candidateProduct =
+    (Array.isArray(products) ? products : []).find((product) => getProductPriceCurrency(product, '')) ||
+    (Array.isArray(fallbackProducts) ? fallbackProducts : []).find((product) =>
+      getProductPriceCurrency(product, ''),
+    ) ||
+    null;
+  const candidateCurrency = getProductPriceCurrency(
+    candidateProduct,
+    normalizePriceCurrencyCode(priceConstraint.currency, 'USD') || 'USD',
+  );
+  return resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency).metadata;
 }
 
 function isWithinPriceConstraint(price, constraint) {
@@ -2220,6 +2414,22 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
     }
   }
 
+  const hardPrice = intent?.hard_constraints?.price || null;
+  const hasPriceConstraint = hardPrice && (hardPrice.min != null || hardPrice.max != null);
+  const priceConstraintResolution = hasPriceConstraint
+    ? resolveBudgetConstraintForCurrency(hardPrice, getProductPriceCurrency(product))
+    : { constraint: null, metadata: null };
+  if (riskLevel !== 'hard_block' && hasPriceConstraint) {
+    const price = getProductPriceMajor(product);
+    if (
+      !priceConstraintResolution.constraint ||
+      !isWithinPriceConstraint(price, priceConstraintResolution.constraint)
+    ) {
+      riskLevel = 'hard_block';
+      reasonCodes.add(REASON_CODES.CONSTRAINT_PARTIAL);
+    }
+  }
+
   return {
     risk_level: riskLevel,
     reason_codes: Array.from(reasonCodes),
@@ -2227,6 +2437,7 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
     product_object: productObject,
     target_object: target,
     target_conf: targetConf,
+    price_constraint_resolution: priceConstraintResolution,
   };
 }
 
@@ -2270,10 +2481,18 @@ function computeProductRelevance(product, intent, evalMeta) {
   let satisfied = 0;
 
   const price = getProductPriceMajor(product);
-  if (hard.price && (hard.price.min != null || hard.price.max != null)) {
+  const resolvedPriceConstraint =
+    evalMeta?.price_constraint_resolution && evalMeta.price_constraint_resolution.constraint
+      ? evalMeta.price_constraint_resolution.constraint
+      : hard.price;
+  if (resolvedPriceConstraint && (resolvedPriceConstraint.min != null || resolvedPriceConstraint.max != null)) {
     required += 1;
-    const withinMin = hard.price.min == null || (Number.isFinite(price) && price >= hard.price.min);
-    const withinMax = hard.price.max == null || (Number.isFinite(price) && price <= hard.price.max);
+    const withinMin =
+      resolvedPriceConstraint.min == null ||
+      (Number.isFinite(price) && price >= resolvedPriceConstraint.min);
+    const withinMax =
+      resolvedPriceConstraint.max == null ||
+      (Number.isFinite(price) && price <= resolvedPriceConstraint.max);
     if (withinMin && withinMax) {
       satisfied += 1;
     } else {
@@ -2582,44 +2801,46 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const rawUserQuery = String(creatorContext?.rawUserQuery || '');
   const isPet = (intent?.target_object?.type || '') === 'pet';
   const price = intent?.hard_constraints?.price || null;
+  const priceMinHint = formatBudgetAmountForHint(price?.currency, price?.min);
+  const priceMaxHint = formatBudgetAmountForHint(price?.currency, price?.max);
   const priceHintZh =
-    price && price.currency === 'USD'
-      ? price.min != null
-        ? `（优先 ≥$${price.min}）`
-        : price.max != null
-          ? `（预算 ≤$${price.max}）`
+    price && price?.currency
+      ? price.min != null && priceMinHint
+        ? `（优先 ≥${priceMinHint}）`
+        : price.max != null && priceMaxHint
+          ? `（预算 ≤${priceMaxHint}）`
           : ''
       : '';
   const priceHintEn =
-    price && price.currency === 'USD'
-      ? price.min != null
-        ? `(prioritizing $${price.min}+)`
-        : price.max != null
-          ? `(budget ≤$${price.max})`
+    price && price?.currency
+      ? price.min != null && priceMinHint
+        ? `(prioritizing ${priceMinHint}+)`
+        : price.max != null && priceMaxHint
+          ? `(budget ≤${priceMaxHint})`
           : ''
       : '';
   const priceHintJa =
-    price && price.currency === 'USD'
-      ? price.min != null
-        ? `（$${price.min}以上を優先）`
-        : price.max != null
-          ? `（予算は$${price.max}以内）`
+    price && price?.currency
+      ? price.min != null && priceMinHint
+        ? `（${priceMinHint}以上を優先）`
+        : price.max != null && priceMaxHint
+          ? `（予算は${priceMaxHint}以内）`
           : ''
       : '';
   const priceHintFr =
-    price && price.currency === 'USD'
-      ? price.min != null
-        ? `(priorité $${price.min}+)`
-        : price.max != null
-          ? `(budget ≤$${price.max})`
+    price && price?.currency
+      ? price.min != null && priceMinHint
+        ? `(priorité ${priceMinHint}+)`
+        : price.max != null && priceMaxHint
+          ? `(budget ≤${priceMaxHint})`
           : ''
       : '';
   const priceHintEs =
-    price && price.currency === 'USD'
-      ? price.min != null
-        ? `(priorizando $${price.min}+)`
-        : price.max != null
-          ? `(presupuesto ≤$${price.max})`
+    price && price?.currency
+      ? price.min != null && priceMinHint
+        ? `(priorizando ${priceMinHint}+)`
+        : price.max != null && priceMaxHint
+          ? `(presupuesto ≤${priceMaxHint})`
           : ''
       : '';
 
@@ -3940,6 +4161,37 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     existingMeta.route_debug && typeof existingMeta.route_debug === 'object'
       ? existingMeta.route_debug
       : null;
+  const computedBudgetFxMetadata = buildBudgetFxMetadata(
+    intent?.hard_constraints?.price || null,
+    filtered,
+    Array.isArray(list) ? list : [],
+  );
+  const hasBudgetFxMetadata =
+    computedBudgetFxMetadata ||
+    existingMeta.budget_fx_applied != null ||
+    existingMeta.budget_fx_rate != null ||
+    existingMeta.budget_fx_source != null ||
+    existingMeta.budget_fx_candidate_currency != null ||
+    existingMeta.budget_fx_unresolved != null;
+  const budgetFxMetadata = hasBudgetFxMetadata
+    ? {
+        budget_fx_applied:
+          computedBudgetFxMetadata?.budget_fx_applied ??
+          (existingMeta.budget_fx_applied === true),
+        budget_fx_rate:
+          computedBudgetFxMetadata?.budget_fx_rate ??
+          (existingMeta.budget_fx_rate ?? null),
+        budget_fx_source:
+          computedBudgetFxMetadata?.budget_fx_source ??
+          (existingMeta.budget_fx_source ?? null),
+        budget_fx_candidate_currency:
+          computedBudgetFxMetadata?.budget_fx_candidate_currency ??
+          (existingMeta.budget_fx_candidate_currency ?? null),
+        budget_fx_unresolved:
+          computedBudgetFxMetadata?.budget_fx_unresolved ??
+          (existingMeta.budget_fx_unresolved === true),
+      }
+    : null;
   const policyDebug = filteredResult?.debug || null;
   const shouldAttachPolicyDebug =
     DEBUG_STATS_ENABLED ||
@@ -4219,6 +4471,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+            ...(budgetFxMetadata || {}),
             gate_trace: gateTrace,
             gate_summary: {
               applied_count: gateTrace.filter((item) => item.applied).length,
@@ -4257,6 +4510,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             },
             query_semantic_class: querySemanticClass,
             domain_filter_dropped_external: Number(domainFilterResult?.dropped_external || 0),
+            ...(budgetFxMetadata || {}),
             gate_trace: gateTrace,
             gate_summary: {
               applied_count: gateTrace.filter((item) => item.applied).length,

@@ -26,7 +26,20 @@ fi
 cd "${REPO_ROOT}"
 
 if [[ "${VERIFY_DEPLOY}" == "1" ]]; then
-  BASE_URL="${CANARY_BASE_URL}" bash "${SCRIPT_DIR}/verify_deployed_commit_matches.sh"
+  VERIFY_GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT:-/api/gateway}"
+  VERIFY_ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-1}"
+  if [[ "${ENDPOINT}" == "/agent/shop/v1/invoke" && ( -n "${AUTH_TOKEN}" || -n "${AGENT_API_KEY}" ) ]]; then
+    VERIFY_GATEWAY_ENDPOINT=""
+    VERIFY_ALLOW_HEADER_FALLBACK="0"
+  fi
+  BASE_URL="${BASE_URL}" \
+  INVOKE_BASE_URL="${CANARY_BASE_URL}" \
+  AUTH_TOKEN="${AUTH_TOKEN}" \
+  AGENT_API_KEY="${AGENT_API_KEY}" \
+  GATEWAY_ENDPOINT="${VERIFY_GATEWAY_ENDPOINT}" \
+  ALT_GATEWAY_ENDPOINT="${ENDPOINT}" \
+  ALLOW_HEADER_FALLBACK="${VERIFY_ALLOW_HEADER_FALLBACK}" \
+  bash "${SCRIPT_DIR}/verify_deployed_commit_matches.sh"
 fi
 
 args=(
