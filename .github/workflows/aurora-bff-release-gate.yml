@@ -96,6 +96,10 @@ jobs:
     if: github.event_name != 'pull_request'
     env:
       BASE_URL: ${{ inputs.base_url || vars.AURORA_PUBLIC_BASE_URL || vars.AURORA_BFF_BASE_URL || 'https://aurora.pivota.cc' }}
+      COMMERCE_CORE_PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      COMMERCE_CORE_PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
+      COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
+      COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,6 +107,7 @@ jobs:
       - name: Wait for deployment to match commit (best-effort)
         if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
         shell: bash
+        continue-on-error: true
         run: |
           set -euo pipefail
           target="${GITHUB_SHA:0:12}"
@@ -127,7 +132,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_URL="$BASE_URL" TARGET_COMMIT="${GITHUB_SHA:0:12}" bash scripts/verify_deployed_commit_matches.sh
+          BASE_URL="$BASE_URL" \
+          INVOKE_BASE_URL="$COMMERCE_CORE_PROD_SMOKE_BASE_URL" \
+          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
+          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          GATEWAY_ENDPOINT="" \
+          ALT_GATEWAY_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
+          ALLOW_HEADER_FALLBACK=0 \
+          TARGET_COMMIT="${GITHUB_SHA:0:12}" \
+          bash scripts/verify_deployed_commit_matches.sh
 
       - name: Runtime smoke (hits BASE_URL)
         shell: bash

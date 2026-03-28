@@ -2,12 +2,21 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
+DEFAULT_INVOKE_BASE_URL="${DEFAULT_INVOKE_BASE_URL:-https://pivota-agent-production.up.railway.app}"
+INVOKE_BASE_URL="${INVOKE_BASE_URL:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-}}"
 TARGET_COMMIT="${TARGET_COMMIT:-$(git rev-parse --short=12 HEAD)}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-80}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-10}"
-GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT:-/api/gateway}"
-ALT_GATEWAY_ENDPOINT="${ALT_GATEWAY_ENDPOINT:-/agent/shop/v1/invoke}"
+GATEWAY_ENDPOINT="${GATEWAY_ENDPOINT-/api/gateway}"
+ALT_GATEWAY_ENDPOINT="${ALT_GATEWAY_ENDPOINT-/agent/shop/v1/invoke}"
 VERIFY_QUERY="${VERIFY_QUERY:-serum}"
+AUTH_TOKEN="${AUTH_TOKEN:-${COMMERCE_CORE_PROD_AUTH_TOKEN:-}}"
+AGENT_API_KEY="${AGENT_API_KEY:-${COMMERCE_CORE_PROD_AGENT_API_KEY:-}}"
+ALLOW_HEADER_FALLBACK="${ALLOW_HEADER_FALLBACK:-1}"
+
+if [[ -z "${INVOKE_BASE_URL}" && "${BASE_URL}" == "https://agent.pivota.cc" ]]; then
+  INVOKE_BASE_URL="${DEFAULT_INVOKE_BASE_URL}"
+fi
 
 if ! [[ "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]] || [ "$MAX_ATTEMPTS" -le 0 ]; then
   echo "MAX_ATTEMPTS must be a positive integer" >&2
@@ -20,25 +29,49 @@ if ! [[ "$SLEEP_SECONDS" =~ ^[0-9]+$ ]] || [ "$SLEEP_SECONDS" -lt 0 ]; then
 fi
 
 echo "BASE_URL=$BASE_URL"
+echo "INVOKE_BASE_URL=${INVOKE_BASE_URL:-$BASE_URL}"
 echo "TARGET_COMMIT=$TARGET_COMMIT"
 echo "GATEWAY_ENDPOINT=$GATEWAY_ENDPOINT"
 echo "ALT_GATEWAY_ENDPOINT=$ALT_GATEWAY_ENDPOINT"
+echo "ALLOW_HEADER_FALLBACK=$ALLOW_HEADER_FALLBACK"
+if [[ -n "${AUTH_TOKEN}" ]]; then
+  echo "AUTH_MODE=bearer"
+elif [[ -n "${AGENT_API_KEY}" ]]; then
+  echo "AUTH_MODE=x-agent-api-key"
+else
+  echo "AUTH_MODE=none"
+fi
 
 extract_gateway_commit() {
   local endpoint="$1"
+  local request_base_url="${2:-$BASE_URL}"
   local response=""
   if [ -z "$endpoint" ]; then
     return 0
   fi
+  local -a curl_args=(
+    -fsS
+    --max-time 20
+    -H 'Content-Type: application/json'
+    -X POST
+  )
+  if [ -n "${AUTH_TOKEN}" ]; then
+    if [[ "${AUTH_TOKEN}" =~ ^[Bb]earer[[:space:]]+ ]]; then
+      curl_args+=(-H "Authorization: ${AUTH_TOKEN}")
+    else
+      curl_args+=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+    fi
+  fi
+  if [ -n "${AGENT_API_KEY}" ]; then
+    curl_args+=(-H "X-Agent-API-Key: ${AGENT_API_KEY}")
+  fi
   response="$(
-    curl -fsS --max-time 20 \
-      -H 'Content-Type: application/json' \
-      -X POST \
+    curl "${curl_args[@]}" \
       --data "$(cat <<JSON
 {"operation":"find_products_multi","payload":{"search":{"query":"${VERIFY_QUERY}","limit":1,"in_stock_only":true}},"metadata":{"source":"search"}}
 JSON
 )" \
-      "${BASE_URL%/}${endpoint}" \
+      "${request_base_url%/}${endpoint}" \
       2>/dev/null || true
   )"
   if [ -z "${response:-}" ]; then
@@ -78,13 +111,20 @@ extract_header_commit() {
 deployed=""
 detected_via="missing"
 for i in $(seq 1 "$MAX_ATTEMPTS"); do
-  deployed="$(extract_gateway_commit "$GATEWAY_ENDPOINT")"
-  detected_via="gateway:${GATEWAY_ENDPOINT}"
-  if [ -z "${deployed:-}" ] && [ -n "${ALT_GATEWAY_ENDPOINT:-}" ]; then
-    deployed="$(extract_gateway_commit "$ALT_GATEWAY_ENDPOINT")"
-    detected_via="gateway:${ALT_GATEWAY_ENDPOINT}"
+  deployed=""
+  detected_via="missing"
+
+  if [ -n "${GATEWAY_ENDPOINT:-}" ]; then
+    deployed="$(extract_gateway_commit "$GATEWAY_ENDPOINT" "$BASE_URL")"
+    detected_via="gateway:${BASE_URL%/}${GATEWAY_ENDPOINT}"
   fi
-  if [ -z "${deployed:-}" ]; then
+
+  if [ -z "${deployed:-}" ] && [ -n "${ALT_GATEWAY_ENDPOINT:-}" ]; then
+    deployed="$(extract_gateway_commit "$ALT_GATEWAY_ENDPOINT" "${INVOKE_BASE_URL:-$BASE_URL}")"
+    detected_via="gateway:${INVOKE_BASE_URL:-$BASE_URL}${ALT_GATEWAY_ENDPOINT}"
+  fi
+
+  if [ -z "${deployed:-}" ] && [[ "${ALLOW_HEADER_FALLBACK}" != "0" ]]; then
     deployed="$(extract_header_commit)"
     detected_via="header:/v1/session/bootstrap"
   fi

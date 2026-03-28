@@ -511,6 +511,14 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBeNull();
   });
 
+  test('intent: eur budget parses with EUR max constraint', () => {
+    const intent = extractIntentRuleBased('vitamin c serum under €30', [], []);
+    expect(intent.primary_domain).toBe('beauty');
+    expect(intent.hard_constraints.price.currency).toBe('EUR');
+    expect(intent.hard_constraints.price.min).toBeNull();
+    expect(intent.hard_constraints.price.max).toBe(30);
+  });
+
   test('new chat: base makeup tools should not inherit sleepwear mission from recent_queries', () => {
     const latest = '干皮冬天用什么底妆工具不卡粉';
     const intent = extractIntentRuleBased(latest, ['绿色睡衣', '睡衣', 'pajamas'], [{ role: 'user', content: latest }]);
@@ -584,8 +592,66 @@ describe('find_products_multi intent + filtering', () => {
       requestPayload: { search: { query: '30美金以上 狗狗衣服' } },
     });
 
-    expect(resp.products.map((p) => p.id).slice(0, 2)).toEqual(['p-ok-1', 'p-ok-2']);
-    expect(resp.products.map((p) => p.id)).toEqual(expect.arrayContaining(['p-low']));
+    expect(resp.products.map((p) => p.id)).toEqual(['p-ok-1', 'p-ok-2']);
+  });
+
+  test('eur budget filters usd candidates with fx metadata on the primary path', () => {
+    withPolicyEnv(
+      {
+        FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES: JSON.stringify({
+          USD: 1,
+          EUR: 1.1,
+        }),
+        FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE: 'unit_test_fx_table',
+      },
+      ({ applyFindProductsMultiPolicy: applyWithEnv }) => {
+        const intent = extractIntentRuleBased('vitamin c serum under €30', [], []);
+        const resp = applyWithEnv({
+          response: {
+            products: [
+              makeRawProduct({
+                id: 'vitc-ok',
+                title: 'Vitamin-C Serum',
+                description: 'Vitamin C serum brightening treatment',
+                price: 25,
+                currency: 'USD',
+              }),
+              makeRawProduct({
+                id: 'vitc-over',
+                title: 'Vitamin-C Serum Premium',
+                description: 'Vitamin C serum intensive treatment',
+                price: 40,
+                currency: 'USD',
+              }),
+            ],
+            total: 2,
+            page_size: 2,
+            reply: null,
+          },
+          intent,
+          requestPayload: { search: { query: 'vitamin c serum under €30' } },
+          metadata: {
+            query_source: 'agent_products_search',
+            route_health: {
+              fallback_triggered: false,
+              primary_path_used: 'agent_products_search',
+            },
+          },
+          rawUserQuery: 'vitamin c serum under €30',
+        });
+
+        expect(resp.products.map((item) => item.id)).toEqual(['vitc-ok']);
+        expect(resp.metadata).toEqual(
+          expect.objectContaining({
+            budget_fx_applied: true,
+            budget_fx_rate: 1.1,
+            budget_fx_source: 'unit_test_fx_table',
+            budget_fx_candidate_currency: 'USD',
+            budget_fx_unresolved: false,
+          }),
+        );
+      },
+    );
   });
 
   test('pet harness is recognized and not filtered; large-dog query asks for measurements', () => {

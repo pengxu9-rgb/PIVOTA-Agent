@@ -80,6 +80,7 @@
     "query": "vitamin c serum under €30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
@@ -109,6 +110,7 @@
     "query": "vitamin c serum under $30",
     "source": "search",
     "expected_contract_path": "shop_invoke_strict",
+    "require_primary_path": true,
     "allow_zero_results": false,
     "must_have_metadata": [
       "contract_bridge.resolved_contract",
