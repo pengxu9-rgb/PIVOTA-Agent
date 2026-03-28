@@ -6390,6 +6390,17 @@ const LOOKUP_EQUIVALENCE_FAMILIES = [
   ['sk ii', 'skii', '神仙水'],
 ];
 
+const LOOKUP_GENERIC_BRAND_TERMS = new Set([
+  'winona',
+  '薇诺娜',
+  'ipsa',
+  '茵芙莎',
+  'the ordinary',
+  'ordinary',
+  'sk ii',
+  'skii',
+]);
+
 const BEAUTY_FORM_FACTOR_TOKENS = new Set([
   'serum',
   'essence',
@@ -6525,6 +6536,99 @@ function expandLookupAnchorTokens(queryText, anchorTokens) {
   return Array.from(expanded);
 }
 
+function collectMatchedLookupFamilyTerms(queryText, anchorTokens = null) {
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return [];
+  const normalizedAnchors = Array.isArray(anchorTokens)
+    ? anchorTokens
+        .map((token) => normalizeSearchTextForMatch(token))
+        .filter(Boolean)
+    : extractSearchAnchorTokens(queryText);
+  const anchorSet = new Set(normalizedAnchors);
+  const queryTokens = new Set(tokenizeSearchTextForMatch(normalizedQuery));
+  const matched = new Set();
+
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    for (const term of normalizedFamilyTerms) {
+      if (!term) continue;
+      if (anchorSet.has(term) || normalizedQuery.includes(term) || (!term.includes(' ') && queryTokens.has(term))) {
+        matched.add(term);
+      }
+    }
+  }
+
+  return Array.from(matched);
+}
+
+function buildLookupSpecificAliasTerms(queryText, anchorTokens = null) {
+  const matchedTerms = collectMatchedLookupFamilyTerms(queryText, anchorTokens);
+  if (!matchedTerms.length) return [];
+  const specificTerms = matchedTerms.filter((term) => !LOOKUP_GENERIC_BRAND_TERMS.has(term));
+  if (!specificTerms.length) return [];
+
+  const expanded = new Set();
+  for (const family of LOOKUP_EQUIVALENCE_FAMILIES) {
+    const normalizedFamilyTerms = family
+      .map((term) => normalizeSearchTextForMatch(term))
+      .filter(Boolean);
+    if (!normalizedFamilyTerms.some((term) => specificTerms.includes(term))) continue;
+    for (const term of normalizedFamilyTerms) {
+      if (!LOOKUP_GENERIC_BRAND_TERMS.has(term)) expanded.add(term);
+    }
+  }
+
+  return Array.from(expanded);
+}
+
+function escapeSearchRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isPureLookupBrandQuery(queryText, matchedBrandTerms = []) {
+  if (!matchedBrandTerms.length) return false;
+  let strippedQuery = String(queryText || '');
+  for (const term of matchedBrandTerms.slice().sort((a, b) => b.length - a.length)) {
+    const normalizedTerm = normalizeSearchTextForMatch(term);
+    if (!normalizedTerm) continue;
+    strippedQuery = strippedQuery.replace(new RegExp(escapeSearchRegex(normalizedTerm), 'giu'), ' ');
+  }
+  const normalizedRemainder = normalizeSearchTextForMatch(strippedQuery)
+    .replace(SEARCH_QUERY_NOISE_RE, ' ')
+    .replace(/有什麼|有什么|有沒有|有没有|有無|有没|什麼|什么|請問|请问/gu, ' ')
+    .replace(/[有的吗嗎呢呀啊吧嘛]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return !normalizedRemainder;
+}
+
+function shouldRequireStrictLookupCacheMatch(queryText, anchorTokens = null) {
+  if (!isLookupStyleSearchQuery(queryText, anchorTokens)) return false;
+  const matchedLookupFamilyTerms = collectMatchedLookupFamilyTerms(queryText, anchorTokens);
+  if (!matchedLookupFamilyTerms.length) return false;
+  const matchedGenericBrandTerms = matchedLookupFamilyTerms.filter((term) =>
+    LOOKUP_GENERIC_BRAND_TERMS.has(term),
+  );
+  if (
+    matchedGenericBrandTerms.length > 0 &&
+    isPureLookupBrandQuery(queryText, matchedGenericBrandTerms)
+  ) {
+    return false;
+  }
+  if (buildLookupSpecificAliasTerms(queryText, anchorTokens).length > 0) return true;
+  const sanitizedTokens = Array.from(
+    new Set(tokenizeSearchTextForMatch(sanitizeSearchQueryForRelevance(queryText))),
+  ).filter(Boolean);
+  const informativeTokens = sanitizedTokens.filter(
+    (token) => !LOOKUP_GENERIC_BRAND_TERMS.has(token) && !SEARCH_QUERY_STOP_TOKENS.has(token),
+  );
+  if (!informativeTokens.length) return false;
+  if (informativeTokens.length > 1) return true;
+  return /[%+x×]|\b\d+(?:\.\d+)?\b/u.test(String(queryText || ''));
+}
+
 function hasFragranceSearchSignal(queryText) {
   if (hasFragranceFreeSkincareSignal(queryText)) return false;
   return /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i.test(
@@ -6640,6 +6744,32 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : extractSearchAnchorTokens(queryText);
   const lookupTokens = expandLookupAnchorTokens(queryText, anchorTokens);
   if (isLookupStyleSearchQuery(queryText, anchorTokens) && lookupTokens.length > 0) {
+    const strictLookupRelevanceRequired = shouldRequireStrictLookupCacheMatch(queryText, anchorTokens);
+    if (!strictLookupRelevanceRequired) {
+      return lookupTokens.some((token) => candidateText.includes(token));
+    }
+
+    const compactCandidateText = candidateText.replace(/\s+/g, '');
+    const compactNormalizedQuery = normalizedQuery.replace(/\s+/g, '');
+    if (compactNormalizedQuery && compactCandidateText.includes(compactNormalizedQuery)) return true;
+
+    const specificLookupAliasTerms = buildLookupSpecificAliasTerms(queryText, anchorTokens);
+    if (specificLookupAliasTerms.length > 0) {
+      return specificLookupAliasTerms.some((term) => {
+        const normalizedTerm = normalizeSearchTextForMatch(term);
+        if (!normalizedTerm) return false;
+        if (candidateText.includes(normalizedTerm)) return true;
+        return compactCandidateText.includes(normalizedTerm.replace(/\s+/g, ''));
+      });
+    }
+
+    const meaningfulLookupTokens = Array.from(
+      new Set(tokenizeSearchTextForMatch(sanitizeSearchQueryForRelevance(queryText))),
+    ).filter(Boolean);
+    if (meaningfulLookupTokens.length > 1) {
+      return meaningfulLookupTokens.every((token) => candidateText.includes(token));
+    }
+
     return lookupTokens.some((token) => candidateText.includes(token));
   }
 
@@ -19724,10 +19854,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 }),
               )
             : internalProducts;
+          const strictLookupCacheMatchRequired =
+            isLookupQuery && shouldRequireStrictLookupCacheMatch(cacheQueryText, lookupAnchorTokens);
           const internalProductsForRecall =
-            isLookupQuery && lookupRelevantInternalProducts.length > 0
-              ? lookupRelevantInternalProducts
-              : internalProducts;
+            strictLookupCacheMatchRequired && lookupRelevantInternalProducts.length === 0
+              ? []
+              : strictLookupCacheMatchRequired
+                ? lookupRelevantInternalProducts
+                : internalProducts;
           const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
           const leashAnchoredInternalProducts = leashAnchoredQuery
             ? internalProductsForRecall.filter((product) =>
