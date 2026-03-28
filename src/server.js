@@ -9,6 +9,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const OpenAI = require('openai');
 const { createHash, randomUUID } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
@@ -312,6 +313,20 @@ const getAuroraRequiredRouteContractsHealth =
 
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
+
+function resolveLocalGitText(command) {
+  try {
+    return String(
+      execSync(command, {
+        cwd: path.resolve(__dirname, '..'),
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }) || '',
+    ).trim();
+  } catch (_error) {
+    return '';
+  }
+}
+
 const SERVICE_DEPLOYMENT_ID = String(
   process.env.RAILWAY_DEPLOYMENT_ID ||
   process.env.DEPLOYMENT_ID ||
@@ -322,10 +337,16 @@ const SERVICE_GIT_SHA = String(
   process.env.GIT_COMMIT_SHA ||
   process.env.SOURCE_VERSION ||
   process.env.AURORA_GIT_SHA ||
+  resolveLocalGitText('git rev-parse HEAD') ||
   ''
 ).trim();
 const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
-const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || '').trim();
+const SERVICE_GIT_BRANCH = String(
+  process.env.RAILWAY_GIT_BRANCH ||
+  process.env.GIT_BRANCH ||
+  resolveLocalGitText('git rev-parse --abbrev-ref HEAD') ||
+  '',
+).trim();
 const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
 const SERVICE_BUILD_ID = SERVICE_GIT_SHA_SHORT || `started-${SERVICE_STARTED_AT}`;
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
@@ -4173,6 +4194,166 @@ function buildServiceVersionMetadata() {
     branch: SERVICE_GIT_BRANCH || null,
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
+  };
+}
+
+function isPlainRecord(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toNonNegativeNumberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function toNonEmptyStringOrNull(value) {
+  const normalized = String(value || '').trim();
+  return normalized || null;
+}
+
+function resolveInvokeFailureStage({
+  statusCode = 200,
+  body = null,
+  metadata = null,
+  finalDecision = null,
+  hasClarification = false,
+} = {}) {
+  const data = isPlainRecord(body) ? body : {};
+  const meta = isPlainRecord(metadata) ? metadata : {};
+  const routeTrace = isPlainRecord(meta.route_trace) ? meta.route_trace : {};
+  const upstreamError = String(data.error || '').trim().toUpperCase();
+  const finalDecisionToken = String(finalDecision || '').trim().toLowerCase();
+  if (routeTrace.failure_stage) {
+    return toNonEmptyStringOrNull(routeTrace.failure_stage);
+  }
+  if (upstreamError === 'INVALID_REQUEST') return 'request_validation';
+  if (upstreamError === 'AUTH_INTROSPECT_UNAVAILABLE') return 'auth_introspection';
+  if (upstreamError === 'UNAUTHORIZED') return 'auth_rejected';
+  if (upstreamError === 'UPSTREAM_TIMEOUT') return 'upstream_timeout';
+  if (
+    upstreamError === 'UPSTREAM_UNAVAILABLE' ||
+    upstreamError === 'UPSTREAM_ERROR' ||
+    upstreamError === 'SERVICE_UNAVAILABLE'
+  ) {
+    return 'candidate_retrieval_error';
+  }
+  if (upstreamError === 'INTERNAL_ERROR') return 'gateway_internal';
+  if (meta.budget_fx_unresolved === true) return 'budget_fx_unresolved';
+  if (hasClarification || finalDecisionToken === 'clarify') return 'clarify_required';
+  if (meta.strict_empty === true || finalDecisionToken === 'strict_empty') return 'search_no_candidates';
+  if (Number(statusCode || 0) >= 500) return 'upstream_error';
+  return null;
+}
+
+function buildInvokeRouteTrace({
+  operation = '',
+  req = null,
+  routeContext = {},
+  gatewayRequestId = null,
+  debugRuntime = {},
+  body = null,
+  invokeStartedAtMs = 0,
+  upstreamElapsedMs = 0,
+} = {}) {
+  const data = isPlainRecord(body) ? body : {};
+  const metadata = isPlainRecord(data.metadata) ? data.metadata : {};
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+  const totalLatencyMs = Math.max(0, Date.now() - Number(invokeStartedAtMs || Date.now()));
+  const primaryLatencyMs =
+    toNonNegativeNumberOrNull(routeHealth.primary_latency_ms) ||
+    toNonNegativeNumberOrNull(metadata.gateway_latency_ms) ||
+    null;
+  const responseEnvelopeMs =
+    primaryLatencyMs == null ? totalLatencyMs : Math.max(0, totalLatencyMs - primaryLatencyMs);
+  const querySource = toNonEmptyStringOrNull(metadata.query_source);
+  const hasClarification = Boolean(data?.clarification && data.clarification.question);
+  const finalDecision = toNonEmptyStringOrNull(
+    searchTrace.final_decision ||
+      metadata?.search_decision?.final_decision ||
+      metadata.final_decision ||
+      null,
+  );
+  const routeTrace = isPlainRecord(metadata.route_trace) ? metadata.route_trace : {};
+  return {
+    gateway_request_id: gatewayRequestId || null,
+    authoritative_endpoint:
+      toNonEmptyStringOrNull(req?.baseUrl && req?.path ? `${req.baseUrl}${req.path}` : null) ||
+      toNonEmptyStringOrNull(req?.originalUrl) ||
+      '/agent/shop/v1/invoke',
+    client_channel: toNonEmptyStringOrNull(routeContext.client_channel) || 'shop',
+    invocation_surface:
+      toNonEmptyStringOrNull(routeContext.invocation_surface) ||
+      toNonEmptyStringOrNull(metadata?.gateway_invocation?.surface),
+    operation: toNonEmptyStringOrNull(operation),
+    query_source: querySource,
+    final_decision: finalDecision,
+    failure_stage: resolveInvokeFailureStage({
+      statusCode: Number(req?.res?.statusCode || 0) || 200,
+      body: data,
+      metadata,
+      finalDecision,
+      hasClarification,
+    }),
+    node_timings_ms: {
+      ingress_auth: null,
+      source_profile_normalization: null,
+      query_classification: toNonNegativeNumberOrNull(debugRuntime.nluLatencyMs),
+      cache_lookup:
+        querySource && querySource.startsWith('cache_') ? primaryLatencyMs : null,
+      budget_fx_resolution:
+        metadata.budget_currency != null || metadata.budget_fx_candidate_currency != null ? null : null,
+      candidate_retrieval: primaryLatencyMs,
+      ranking_shaping: toNonNegativeNumberOrNull(debugRuntime.rankLatencyMs),
+      response_envelope: responseEnvelopeMs,
+      gateway_total: totalLatencyMs,
+      upstream_total: toNonNegativeNumberOrNull(upstreamElapsedMs),
+      vector_routing: toNonNegativeNumberOrNull(debugRuntime.vectorLatencyMs),
+      behavior_routing: toNonNegativeNumberOrNull(debugRuntime.behaviorLatencyMs),
+    },
+    primary_path_used:
+      toNonEmptyStringOrNull(routeHealth.primary_path_used) ||
+      toNonEmptyStringOrNull(searchTrace.primary_path_used) ||
+      null,
+    fallback_used: Boolean(routeHealth.fallback_triggered === true),
+    primary_path_degraded: Boolean(routeHealth.fallback_triggered === true),
+    contract_path: toNonEmptyStringOrNull(metadata?.contract_bridge?.resolved_contract),
+    existing_failure_stage: toNonEmptyStringOrNull(routeTrace.failure_stage),
+  };
+}
+
+function finalizeInvokeAuthoritativeResponseEnvelope({
+  body = null,
+  operation = '',
+  req = null,
+  routeContext = {},
+  gatewayRequestId = null,
+  debugRuntime = {},
+  invokeStartedAtMs = 0,
+  upstreamElapsedMs = 0,
+} = {}) {
+  if (!isPlainRecord(body)) return body;
+  const metadata = isPlainRecord(body.metadata) ? body.metadata : {};
+  const routeTrace = buildInvokeRouteTrace({
+    operation,
+    req,
+    routeContext,
+    gatewayRequestId,
+    debugRuntime,
+    body,
+    invokeStartedAtMs,
+    upstreamElapsedMs,
+  });
+  return {
+    ...body,
+    metadata: {
+      ...metadata,
+      service_version: buildServiceVersionMetadata(),
+      route_trace: {
+        ...(isPlainRecord(metadata.route_trace) ? metadata.route_trace : {}),
+        ...routeTrace,
+      },
+    },
   };
 }
 
@@ -16070,6 +16251,186 @@ function attachEligibleOfferFieldsToSearchResponse(responseBody, commerceSurface
   };
 }
 
+function extractStrictBudgetConstraintFromInvokeRequestBody(invokeRequestBody = {}) {
+  const search = isPlainRecord(invokeRequestBody?.payload?.search) ? invokeRequestBody.payload.search : {};
+  const min = search.price_min ?? search.min_price;
+  const max = search.price_max ?? search.max_price;
+  const currency = toNonEmptyStringOrNull(search.currency)?.toUpperCase() || null;
+  const normalizedMin = Number.isFinite(Number(min)) ? Number(min) : null;
+  const normalizedMax = Number.isFinite(Number(max)) ? Number(max) : null;
+  if (normalizedMin == null && normalizedMax == null) return null;
+  return {
+    min: normalizedMin,
+    max: normalizedMax,
+    currency,
+  };
+}
+
+function extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody = {}) {
+  const search = isPlainRecord(invokeRequestBody?.payload?.search) ? invokeRequestBody.payload.search : {};
+  const requestContext = isPlainRecord(search.request_context) ? search.request_context : {};
+  const userConstraints = isPlainRecord(requestContext.user_constraints) ? requestContext.user_constraints : {};
+  const price = isPlainRecord(userConstraints.price) ? userConstraints.price : {};
+  const sourceCurrency = toNonEmptyStringOrNull(price.currency)?.toUpperCase() || null;
+  const invokeCurrency =
+    toNonEmptyStringOrNull(price.invoke_currency)?.toUpperCase() ||
+    toNonEmptyStringOrNull(search.currency)?.toUpperCase() ||
+    sourceCurrency;
+  const directCurrencyMatch = Boolean(sourceCurrency && invokeCurrency && sourceCurrency === invokeCurrency);
+  const fxRate = Number(price.fx_rate);
+  const hasFxRate = Number.isFinite(fxRate) && fxRate > 0;
+  return {
+    budget_currency: sourceCurrency,
+    budget_price_min:
+      price.min == null || !Number.isFinite(Number(price.min)) ? null : Number(price.min),
+    budget_price_max:
+      price.max == null || !Number.isFinite(Number(price.max)) ? null : Number(price.max),
+    budget_fx_applied: directCurrencyMatch || hasFxRate,
+    budget_fx_rate: directCurrencyMatch ? 1 : hasFxRate ? fxRate : null,
+    budget_fx_source: directCurrencyMatch ? 'direct_currency_match' : hasFxRate ? 'strict_request_context' : null,
+    budget_fx_candidate_currency: invokeCurrency || null,
+    budget_fx_unresolved:
+      Boolean(sourceCurrency || invokeCurrency) && !(directCurrencyMatch || hasFxRate),
+  };
+}
+
+function productMatchesStrictBudgetConstraint(product, budgetConstraint = null) {
+  if (!budgetConstraint) return true;
+  const item = isPlainRecord(product) ? product : {};
+  const price = Number(item.price);
+  const currency = toNonEmptyStringOrNull(item.currency)?.toUpperCase() || null;
+  if (!Number.isFinite(price)) return false;
+  if (budgetConstraint.currency && currency && budgetConstraint.currency !== currency) return false;
+  if (budgetConstraint.min != null && price < Number(budgetConstraint.min)) return false;
+  if (budgetConstraint.max != null && price > Number(budgetConstraint.max)) return false;
+  return true;
+}
+
+function recoverStrictMainPathResponseFromPrefetch({
+  responseBody = null,
+  invokeRequestBody = {},
+  strictInvokeDecision = null,
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!strictInvokeDecision?.strictConstraintQuery) return responseBody;
+  const prefetchedCandidates = Array.isArray(invokeRequestBody?.metadata?.external_seed_candidates)
+    ? invokeRequestBody.metadata.external_seed_candidates.filter((item) => isPlainRecord(item))
+    : [];
+  if (!prefetchedCandidates.length) return responseBody;
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
+  const products = Array.isArray(responseBody.products) ? responseBody.products : [];
+  const hasClarification = Boolean(responseBody?.clarification && responseBody.clarification.question);
+  const querySource = String(metadata.query_source || '').trim();
+  const finalDecision = String(
+    metadata?.search_trace?.final_decision ||
+      metadata?.search_decision?.final_decision ||
+      metadata.final_decision ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  if (products.length > 0 || hasClarification) return responseBody;
+  if (metadata?.route_health?.fallback_triggered === true) return responseBody;
+  if (
+    querySource &&
+    !querySource.startsWith('cache_') &&
+    finalDecision !== 'strict_empty'
+  ) {
+    return responseBody;
+  }
+  const budgetConstraint = extractStrictBudgetConstraintFromInvokeRequestBody(invokeRequestBody);
+  const limit = Math.max(
+    1,
+    Number(invokeRequestBody?.payload?.search?.limit || invokeRequestBody?.payload?.search?.page_size || 10) || 10,
+  );
+  const supplementedProducts = prefetchedCandidates
+    .filter((item) => productMatchesStrictBudgetConstraint(item, budgetConstraint))
+    .slice(0, limit);
+  if (!supplementedProducts.length) return responseBody;
+
+  const {
+    strict_empty: _ignoredStrictEmpty,
+    strict_empty_reason: _ignoredStrictEmptyReason,
+    ...restMetadata
+  } = metadata;
+  const searchDecision = isPlainRecord(restMetadata.search_decision) ? restMetadata.search_decision : {};
+  const searchTrace = isPlainRecord(restMetadata.search_trace) ? restMetadata.search_trace : {};
+  const routeHealth = isPlainRecord(restMetadata.route_health) ? restMetadata.route_health : {};
+  const sourceBreakdown = isPlainRecord(restMetadata.source_breakdown)
+    ? restMetadata.source_breakdown
+    : {};
+  const budgetMetadata = extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody);
+  const nextMetadata = {
+    ...restMetadata,
+    ...budgetMetadata,
+    strict_constraint_query: true,
+    strict_constraint_reason:
+      strictInvokeDecision.strictConstraintReason ||
+      restMetadata.strict_constraint_reason ||
+      null,
+    external_seed_returned_count: supplementedProducts.length,
+    external_seed_rows_fetched: Math.max(
+      supplementedProducts.length,
+      Number(restMetadata.external_seed_rows_fetched || 0) || 0,
+    ),
+    external_seed_rows_built: Math.max(
+      supplementedProducts.length,
+      Number(restMetadata.external_seed_rows_built || 0) || 0,
+    ),
+    source_breakdown: {
+      ...sourceBreakdown,
+      internal_count: Math.max(0, Number(sourceBreakdown.internal_count || 0) || 0),
+      external_seed_count: supplementedProducts.length,
+      strategy_applied:
+        toNonEmptyStringOrNull(sourceBreakdown.strategy_applied) || 'strict_ingredient_mixed_parity',
+    },
+    search_decision: {
+      ...searchDecision,
+      final_decision: 'cache_returned',
+    },
+    search_trace: {
+      ...searchTrace,
+      final_decision: 'cache_returned',
+    },
+    route_health: {
+      ...routeHealth,
+      fallback_triggered: false,
+      fallback_reason: null,
+      primary_path_used:
+        toNonEmptyStringOrNull(routeHealth.primary_path_used) || 'cache_stage',
+      external_seed_rows_fetched: Math.max(
+        supplementedProducts.length,
+        Number(routeHealth.external_seed_rows_fetched || 0) || 0,
+      ),
+      external_seed_rows_built: Math.max(
+        supplementedProducts.length,
+        Number(routeHealth.external_seed_rows_built || 0) || 0,
+      ),
+      external_seed_returned_count: supplementedProducts.length,
+      final_returned_count: supplementedProducts.length,
+    },
+    strict_prefetch_recovered: true,
+    strict_prefetch_recovery_source: 'agent_strict_ingredient_prefetch',
+  };
+  if (!toNonEmptyStringOrNull(nextMetadata.query_source)) {
+    nextMetadata.query_source = 'cache_multi_intent';
+  }
+
+  const {
+    strict_empty: _bodyStrictEmpty,
+    strict_empty_reason: _bodyStrictEmptyReason,
+    ...restBody
+  } = responseBody;
+  return {
+    ...restBody,
+    products: supplementedProducts,
+    total: supplementedProducts.length,
+    page_size: supplementedProducts.length,
+    reply: null,
+    metadata: nextMetadata,
+  };
+}
+
 async function handleOffersResolveOperation({
   payload,
   metadata,
@@ -17217,10 +17578,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     let finalBody = body;
+    const operation = String(debugRuntime.operation || req?.body?.operation || '')
+      .trim()
+      .toLowerCase();
     try {
-      const operation = String(debugRuntime.operation || req?.body?.operation || '')
-        .trim()
-        .toLowerCase();
       if (operation === 'find_products_multi') {
         const exposeDebugBundle = shouldExposeDebugBundle(req);
         const logDebugBundle = exposeDebugBundle || shouldLogDebugBundle(req);
@@ -17289,9 +17650,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
     try {
-      const operation = String(debugRuntime.operation || req?.body?.operation || '')
-        .trim()
-        .toLowerCase();
       if (
         operation === 'find_products_multi' &&
         finalBody &&
@@ -17324,6 +17682,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           err: metadataErr?.message || String(metadataErr),
         },
         'failed to normalize find_products_multi metadata',
+      );
+    }
+    try {
+      finalBody = finalizeInvokeAuthoritativeResponseEnvelope({
+        body: finalBody,
+        operation,
+        req,
+        routeContext,
+        gatewayRequestId,
+        debugRuntime,
+        invokeStartedAtMs,
+        upstreamElapsedMs,
+      });
+    } catch (envelopeErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: envelopeErr?.message || String(envelopeErr),
+        },
+        'failed to finalize authoritative invoke response envelope',
       );
     }
     setInvokePerfHeaders();
@@ -21941,6 +22319,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             contract_bridge: searchContractBridgeMeta,
           },
         };
+      }
+      if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
+        upstreamData = recoverStrictMainPathResponseFromPrefetch({
+          responseBody: upstreamData,
+          invokeRequestBody: requestBody,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+        });
       }
     }
 

@@ -636,6 +636,11 @@ async function runCase(baseUrl, testCase, timeoutMs) {
       response_excerpt: {
         error: String(body.error || '').trim() || null,
         message: String(body.message || '').trim() || null,
+        failure_stage: getPath(body, 'metadata.route_trace.failure_stage') || null,
+        node_timings_ms: getPath(body, 'metadata.route_trace.node_timings_ms') || null,
+        service_version_commit_present: hasServiceVersionCommit(body),
+        fallback_used: primaryPathDegraded(body),
+        main_path_pass: false,
       },
       response_headers: {
         invocation_surface: headers['x-gateway-invocation-surface'] || null,
@@ -659,6 +664,12 @@ async function runCase(baseUrl, testCase, timeoutMs) {
   const ownership = evaluateRuleSet(testCase.ownership, context);
   const observability = evaluateRuleSet(testCase.observability, context);
   const overall_status = computeOverallStatus([correctness, ownership, observability]);
+  const primaryPathIsDegraded = primaryPathDegraded(body);
+  const serviceVersionCommitPresent = hasServiceVersionCommit(body);
+  const mainPathPass =
+    execution.response.status === 200 &&
+    serviceVersionCommitPresent &&
+    !primaryPathIsDegraded;
 
   return {
     id: testCase.id,
@@ -688,7 +699,12 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         getPath(body, 'metadata.gateway_governance.observed_action') || null,
       contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
       strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
-      primary_path_degraded: primaryPathDegraded(body),
+      primary_path_degraded: primaryPathIsDegraded,
+      failure_stage: getPath(body, 'metadata.route_trace.failure_stage') || null,
+      node_timings_ms: getPath(body, 'metadata.route_trace.node_timings_ms') || null,
+      service_version_commit_present: serviceVersionCommitPresent,
+      fallback_used: primaryPathIsDegraded,
+      main_path_pass: mainPathPass,
       product_count: Array.isArray(body?.products) ? body.products.length : 0,
       clarification_question: getPath(body, 'clarification.question') || null,
     },
@@ -707,6 +723,10 @@ function primaryPathDegraded(body = {}) {
     require_primary_path: true,
     allow_strict_empty: true,
   }).assessment.degraded;
+}
+
+function hasServiceVersionCommit(body = {}) {
+  return Boolean(String(getPath(body, 'metadata.service_version.commit') || '').trim());
 }
 
 function buildSummary(results = [], args = {}, matrixPath = '') {
@@ -728,6 +748,10 @@ function buildSummary(results = [], args = {}, matrixPath = '') {
     review_required_count: results.filter((item) => item.overall_status === 'review_required').length,
     infra_blocked_count: infraBlockedResults.length,
     primary_path_degraded_count: results.filter((item) => item.response_excerpt.primary_path_degraded === true).length,
+    main_path_pass_count: results.filter((item) => item.response_excerpt.main_path_pass === true).length,
+    service_version_commit_missing_count: results.filter(
+      (item) => item.response_excerpt.service_version_commit_present === false,
+    ).length,
     blocking_failures: results.filter((item) => item.blocking && item.overall_status === 'fail').length,
     authoritative_endpoint:
       args.railMode === AUTHORITATIVE_COMMERCE ? `${args.baseUrl.replace(/\/+$/, '')}/agent/shop/v1/invoke` : null,
@@ -800,6 +824,8 @@ function writeArtifacts(outDir, summary, results) {
     `- Review required: ${summary.review_required_count}`,
     `- Infra blocked: ${summary.infra_blocked_count || 0}`,
     `- Primary-path degraded: ${summary.primary_path_degraded_count || 0}`,
+    `- Main-path pass count: ${summary.main_path_pass_count || 0}`,
+    `- service_version.commit missing: ${summary.service_version_commit_missing_count || 0}`,
     `- Blocking failures: ${summary.blocking_failures}`,
     '',
     '## Section Summary',

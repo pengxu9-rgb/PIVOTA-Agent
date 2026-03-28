@@ -86,7 +86,6 @@ jobs:
           AGENT_API_KEY="$STAGING_AGENT_API_KEY" \
           GATEWAY_ENDPOINT="" \
           ALT_GATEWAY_ENDPOINT="/agent/shop/v1/invoke" \
-          ALLOW_HEADER_FALLBACK=1 \
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
           MAX_ATTEMPTS=80 \
           SLEEP_SECONDS=10 \

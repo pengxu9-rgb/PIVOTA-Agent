@@ -527,6 +527,10 @@ function classifyRow(row) {
     metadata && typeof metadata.service_version === 'object' && !Array.isArray(metadata.service_version)
       ? metadata.service_version
       : {};
+  const routeTrace =
+    metadata && typeof metadata.route_trace === 'object' && !Array.isArray(metadata.route_trace)
+      ? metadata.route_trace
+      : {};
   const products = Array.isArray(data.products) ? data.products : [];
   const primaryPath = evaluatePrimaryPathContract(data, {
     require_primary_path: false,
@@ -584,6 +588,16 @@ function classifyRow(row) {
     matchedVisibleOptionLabels: Array.isArray(metadata.matched_visible_option_labels)
       ? metadata.matched_visible_option_labels
       : [],
+    serviceVersionCommitPresent: Boolean(String(serviceVersion.commit || '').trim()),
+    failureStage: String(routeTrace.failure_stage || '').trim() || null,
+    nodeTimingsMs:
+      routeTrace.node_timings_ms &&
+      typeof routeTrace.node_timings_ms === 'object' &&
+      !Array.isArray(routeTrace.node_timings_ms)
+        ? routeTrace.node_timings_ms
+        : null,
+    fallbackUsed: primaryPath.degraded,
+    mainPathPass: !requestError && Boolean(String(serviceVersion.commit || '').trim()) && !primaryPath.degraded,
     primaryPathDegraded: primaryPath.degraded,
     primaryPathDegradedReasons: primaryPath.reasons,
     primaryPathUsed: primaryPath.primaryPathUsed,
@@ -699,6 +713,10 @@ async function main() {
   const requestErrorCount = classified.filter((row) => row.metrics.requestError).length;
   const fallbackCount = classified.filter((row) => row.metrics.fallback).length;
   const primaryPathDegradedCount = classified.filter((row) => row.metrics.primaryPathDegraded).length;
+  const mainPathPassCount = classified.filter((row) => row.metrics.mainPathPass).length;
+  const serviceVersionCommitMissingCount = classified.filter(
+    (row) => !row.metrics.serviceVersionCommitPresent,
+  ).length;
   const strictEmptyCount = classified.filter((row) => row.metrics.strictEmpty).length;
   const irrelevantCount = classified.filter((row) => row.metrics.irrelevant).length;
   const nonEmptyCount = classified.filter((row) => row.metrics.productCount > 0).length;
@@ -786,6 +804,8 @@ async function main() {
     request_error_rate: total ? requestErrorCount / total : 0,
     fallback_rate: total ? fallbackCount / total : 0,
     primary_path_degraded_count: primaryPathDegradedCount,
+    main_path_pass_count: mainPathPassCount,
+    service_version_commit_missing_count: serviceVersionCommitMissingCount,
     strict_empty_rate: total ? strictEmptyCount / total : 0,
     irrelevant_result_rate: total ? irrelevantCount / total : 0,
     non_empty_rate: total ? nonEmptyCount / total : 0,
@@ -827,10 +847,14 @@ async function main() {
           product_count: row.metrics.productCount,
           timeout: row.metrics.timeout,
           fallback: row.metrics.fallback,
+          fallback_used: row.metrics.fallbackUsed,
+          main_path_pass: row.metrics.mainPathPass,
           primary_path_degraded: row.metrics.primaryPathDegraded,
           primary_path_degraded_reasons: row.metrics.primaryPathDegradedReasons,
           primary_path_used: row.metrics.primaryPathUsed,
           fallback_reason: row.metrics.fallbackReason,
+          failure_stage: row.metrics.failureStage,
+          node_timings_ms: row.metrics.nodeTimingsMs,
           strict_empty: row.metrics.strictEmpty,
           irrelevant: row.metrics.irrelevant,
           query_class: row.metrics.queryClass,
@@ -844,6 +868,7 @@ async function main() {
           strict_constraint_query: row.metrics.strictConstraintQuery,
           strict_constraint_reason: row.metrics.strictConstraintReason,
           service_commit: row.metrics.serviceCommit,
+          service_version_commit_present: row.metrics.serviceVersionCommitPresent,
           ingredient_intents: row.metrics.ingredientIntents,
           matched_ingredient_ids: row.metrics.matchedIngredientIds,
           visible_option_intents: row.metrics.visibleOptionIntents,
@@ -875,6 +900,8 @@ async function main() {
     `- request_error_rate: ${summary.request_error_rate.toFixed(4)}`,
     `- fallback_rate: ${summary.fallback_rate.toFixed(4)}`,
     `- primary_path_degraded_count: ${summary.primary_path_degraded_count}`,
+    `- main_path_pass_count: ${summary.main_path_pass_count}`,
+    `- service_version_commit_missing_count: ${summary.service_version_commit_missing_count}`,
     `- strict_empty_rate: ${summary.strict_empty_rate.toFixed(4)}`,
     `- irrelevant_result_rate: ${summary.irrelevant_result_rate.toFixed(4)}`,
     `- non_empty_rate: ${summary.non_empty_rate.toFixed(4)}`,
@@ -891,6 +918,8 @@ async function main() {
     `| request_error_count | ${requestErrorCount} |`,
     `| fallback_count | ${fallbackCount} |`,
     `| primary_path_degraded_count | ${primaryPathDegradedCount} |`,
+    `| main_path_pass_count | ${mainPathPassCount} |`,
+    `| service_version_commit_missing_count | ${serviceVersionCommitMissingCount} |`,
     `| strict_empty_count | ${strictEmptyCount} |`,
     `| irrelevant_count | ${irrelevantCount} |`,
     `| non_empty_count | ${nonEmptyCount} |`,
