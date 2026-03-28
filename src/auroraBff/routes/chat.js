@@ -643,6 +643,19 @@ function joinBrandAndName(brandRaw, nameRaw) {
   return `${brand} ${name}`.trim();
 }
 
+function stripLeadingBrandFromName(nameRaw, brandRaw) {
+  const name = String(nameRaw || '').trim();
+  const brand = String(brandRaw || '').trim();
+  if (!name || !brand) return name;
+  const nameLower = name.toLowerCase();
+  const brandLower = brand.toLowerCase();
+  if (nameLower === brandLower) return name;
+  if (nameLower.startsWith(`${brandLower} `)) {
+    return name.slice(brand.length).trim() || name;
+  }
+  return name;
+}
+
 function normalizeProductCatalogQuery(raw) {
   let text = String(raw || '').trim();
   if (!text) return '';
@@ -726,7 +739,28 @@ function buildCompatProductCatalogQueries({ inputText, inputUrl, productAnchor }
   };
 
   const productIdentity = readProductIdentity(productAnchor);
-  add(joinBrandAndName(productIdentity.brand, productIdentity.name));
+  const product = isPlainObject(productAnchor) ? productAnchor : {};
+  const productType = pickFirstTrimmed(
+    product.product_type,
+    product.productType,
+    product.category,
+    product.category_name,
+    product.type,
+  );
+  const shortName = pickFirstTrimmed(
+    stripLeadingBrandFromName(product.display_name, productIdentity.brand),
+    stripLeadingBrandFromName(product.displayName, productIdentity.brand),
+    stripLeadingBrandFromName(product.name, productIdentity.brand),
+    stripLeadingBrandFromName(product.title, productIdentity.brand),
+    stripLeadingBrandFromName(product.product_name, productIdentity.brand),
+    stripLeadingBrandFromName(product.productName, productIdentity.brand),
+  );
+  const canonicalName = joinBrandAndName(productIdentity.brand, shortName || productIdentity.name);
+
+  add(canonicalName);
+  if (productType) add(joinBrandAndName(productIdentity.brand, `${shortName || productIdentity.name} ${productType}`.trim()));
+  if (productType && productIdentity.brand) add(`${productIdentity.brand} ${productType}`);
+  if (productType && shortName) add(`${shortName} ${productType}`);
   add(productIdentity.name);
   add(productIdentity.productId);
 

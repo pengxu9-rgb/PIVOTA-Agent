@@ -349,7 +349,93 @@ test('enrichSkillRequestForCompat derives URL-based catalog queries for dupe sug
   );
 });
 
-test('enrichSkillRequestForCompat falls back to reco alternatives when dupe search candidate pool stays empty', async () => {
+test('enrichSkillRequestForCompat builds category-aware dupe candidate queries without duplicating brand tokens', async () => {
+  resetAuroraModules();
+  const { buildSkillRequest, enrichSkillRequestForCompat } = require('../src/auroraBff/routes/chat');
+
+  const seenQueries = [];
+  const skillRequest = buildSkillRequest({
+    body: {
+      action: {
+        action_id: 'chip.start.dupes',
+        kind: 'chip',
+        data: {
+          reply_text: 'Find dupes: Nivea Creme',
+          product_anchor: {
+            brand: 'Nivea',
+            name: 'Creme',
+            display_name: 'Nivea Creme',
+            product_type: 'moisturizer',
+          },
+        },
+      },
+    },
+    headers: buildHeaders(),
+  });
+
+  const enriched = await enrichSkillRequestForCompat(
+    {
+      body: {
+        action: {
+          action_id: 'chip.start.dupes',
+          kind: 'chip',
+          data: {
+            reply_text: 'Find dupes: Nivea Creme',
+            product_anchor: {
+              brand: 'Nivea',
+              name: 'Creme',
+              display_name: 'Nivea Creme',
+              product_type: 'moisturizer',
+            },
+          },
+        },
+      },
+      headers: buildHeaders(),
+      get: () => null,
+    },
+    skillRequest,
+    {
+      buildProductInputText: () => 'Nivea Creme',
+      buildRecoAlternativesCandidatePool: () => [],
+      searchPivotaBackendProducts: async ({ query }) => {
+        seenQueries.push(query);
+        const normalized = String(query || '').trim().toLowerCase();
+        if (normalized === 'nivea creme moisturizer' || normalized === 'nivea moisturizer') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'dupe_nivea_1',
+                brand: 'Budget Lab',
+                name: 'Barrier Daily Cream',
+                url: 'https://example.com/products/barrier-daily-cream',
+              },
+            ],
+          };
+        }
+        return { ok: true, products: [] };
+      },
+    },
+  );
+
+  assert.equal(Array.isArray(enriched.params._candidate_pool), true);
+  assert.equal(enriched.params._candidate_pool.length, 1);
+  assert.equal(enriched.params._candidate_pool[0].product_id, 'dupe_nivea_1');
+  assert.equal(
+    seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea creme moisturizer'),
+    true,
+  );
+  assert.equal(
+    seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea moisturizer'),
+    true,
+  );
+  assert.equal(
+    seenQueries.some((query) => String(query).trim().toLowerCase() === 'nivea nivea creme'),
+    false,
+  );
+});
+
+test('enrichSkillRequestForCompat does not fall back to reco alternatives when dupe search candidate pool stays empty', async () => {
   resetAuroraModules();
   const { buildSkillRequest, enrichSkillRequestForCompat } = require('../src/auroraBff/routes/chat');
 
@@ -414,11 +500,8 @@ test('enrichSkillRequestForCompat falls back to reco alternatives when dupe sear
     },
   );
 
-  assert.equal(Array.isArray(enriched.params._candidate_pool), true);
-  assert.equal(enriched.params._candidate_pool.length, 1);
-  assert.equal(enriched.params._candidate_pool[0].brand, 'Budget Lab');
-  assert.equal(enriched.params._candidate_pool[0].name, 'Defense Lotion Alternative');
-  assert.equal(enriched.params._candidate_pool[0].similarity_score, 78);
+  assert.equal(Array.isArray(enriched.params._candidate_pool), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(enriched.params, '_candidate_pool'), false);
 });
 
 test('buildSkillRequest preserves same_as_am routine semantics in current routine context', () => {
@@ -1161,6 +1244,12 @@ test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a 
             ok: true,
             products: [
               {
+                product_id: 'anchor_url_1',
+                brand: 'Lab Series',
+                name: 'All-In-One Defense Lotion Moisturizer SPF 35',
+                url: 'https://www.labseries.com/product/32020/91265/skincare/moisturizerspf/all-in-one-defense-lotion-moisturizer-spf-35/all-in-one',
+              },
+              {
                 product_id: 'dupe_url_1',
                 brand: 'Budget Lab',
                 name: 'Defense Lotion Alternative',
@@ -1217,7 +1306,7 @@ test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a 
   );
 });
 
-test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a dupe result via reco fallback when search returns nothing', async () => {
+test('/v1/chat returns an explicit empty state when dupe search stays empty instead of using reco fallback', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -1271,7 +1360,8 @@ test('/v1/chat delegates chip.start.dupes with a url-only product anchor into a 
           })
           .expect(200);
 
-        assert.equal(response.body.cards?.[0]?.card_type, 'dupe_suggest');
+        assert.equal(response.body.cards?.[0]?.card_type, 'empty_state');
+        assert.equal(response.body.cards?.[0]?.sections?.[0]?.message_en, 'Candidate pool is empty');
       } finally {
         routes.__internal.buildRecoAlternativesCandidatePool = originalBuildRecoAlternativesCandidatePool;
         routes.__internal.searchPivotaBackendProducts = originalSearchPivotaBackendProducts;
