@@ -1161,6 +1161,114 @@ test('runRoutineAnalysisV2: routine audit v1 builds anchored conflict, user-fit,
   assert.ok(typeof adjustmentCard.payload.complexity_score === 'number');
 });
 
+test('runRoutineAnalysisV2: routine audit v1 skips recommendation resolve and disables stage B retry', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  let searchCallCount = 0;
+  const stageCalls = [];
+  const llmGateway = {
+    async callWithSchemaDiagnostics(args = {}) {
+      stageCalls.push({
+        templateId: args.templateId,
+        retryStructuredFailure: args.retryStructuredFailure === true,
+      });
+      if (args.templateId === 'routine_product_audit_v1') {
+        return {
+          parsed: buildStageAResult([
+            buildAuditProduct('prod_retinol', {
+              slot: 'pm',
+              original_step_label: 'treatment',
+              input_label: 'Retinol serum',
+              inferred_product_type: 'retinoid serum',
+              likely_role: 'anti-aging treatment',
+              likely_key_ingredients_or_signals: ['retinoid signal'],
+            }),
+          ]),
+          parsedCandidate: buildStageAResult([
+            buildAuditProduct('prod_retinol', {
+              slot: 'pm',
+              original_step_label: 'treatment',
+              input_label: 'Retinol serum',
+              inferred_product_type: 'retinoid serum',
+              likely_role: 'anti-aging treatment',
+              likely_key_ingredients_or_signals: ['retinoid signal'],
+            }),
+          ]),
+          raw: '{}',
+          provider: 'stub',
+          schemaValid: true,
+          validationErrors: [],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: null,
+        parsedCandidate: buildStageBResult({
+          recommendation_needs: [
+            {
+              adjustment_id: 'adj_replace_retinol',
+              need_state: 'replace_current',
+              target_step: 'serum',
+              why: 'Use a gentler PM treatment first.',
+              required_attributes: ['lower irritation risk'],
+              avoid_attributes: ['stacked exfoliants'],
+              timing: 'pm',
+              priority: 'high',
+            },
+          ],
+          recommendation_queries: [
+            {
+              adjustment_id: 'adj_replace_retinol',
+              query_en: 'gentle pm serum lower irritation risk',
+            },
+          ],
+        }),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: false,
+        validationErrors: [{ path: '$.improved_pm_routine[0].note', reason: 'type_mismatch' }],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1_skip_reco',
+    language: 'EN',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['acne'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'prod_retinol', slot: 'pm', step: 'treatment', product_text: 'Retinol serum' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => {
+        searchCallCount += 1;
+        return { ok: true, transient: false, products: [], queryCount: 0 };
+      },
+    },
+  });
+
+  assert.equal(searchCallCount, 0);
+  assert.deepEqual(
+    stageCalls.map((row) => [row.templateId, row.retryStructuredFailure]),
+    [
+      ['routine_product_audit_v1', true],
+      ['routine_synthesis_v1', false],
+    ],
+  );
+  assert.deepEqual(result.recommendation_groups, []);
+  assert.equal(result.debug_meta.stage_b.retry_count, 0);
+  assert.equal(result.debug_meta.stage_b.attempt_count, 1);
+});
+
 test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   const { LlmQualityError } = require('../src/auroraBff/services/llm_gateway');
@@ -1646,6 +1754,84 @@ test('runRoutineAnalysisV2: invalid JSON after one retry still falls back cleanl
   assert.equal(result.debug_meta.stage_a.attempt_count, 2);
   assert.equal(result.debug_meta.stage_a.retry_count, 1);
   assert.equal(result.debug_meta.stage_a.product_reason_sources[0].reason_source, 'fallback_substituted');
+});
+
+test('runRoutineAnalysisV2: stage A chunk calls run in parallel when routine exceeds one chunk', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  let inFlightStageA = 0;
+  let maxInFlightStageA = 0;
+  const llmGateway = {
+    async callWithSchemaDiagnostics({ templateId, params }) {
+      if (templateId === 'routine_product_audit_v1') {
+        inFlightStageA += 1;
+        maxInFlightStageA = Math.max(maxInFlightStageA, inFlightStageA);
+        const chunkIndex = Number(params?.deterministic_signals_json?.stage_a_chunk_index || 1);
+        const products = chunkIndex === 1
+          ? [
+              buildAuditProduct('routine_am_01', { inputLabel: 'AM cleanser 1' }),
+              buildAuditProduct('routine_am_02', { inputLabel: 'AM cleanser 2' }),
+              buildAuditProduct('routine_am_03', { inputLabel: 'AM cleanser 3' }),
+              buildAuditProduct('routine_am_04', { inputLabel: 'AM cleanser 4' }),
+            ]
+          : [
+              buildAuditProduct('routine_pm_05', {
+                slot: 'pm',
+                inputLabel: 'PM serum 1',
+                inferredProductType: 'serum',
+                likelyRole: 'treatment',
+              }),
+            ];
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        inFlightStageA -= 1;
+        return {
+          parsed: buildStageAResult(products),
+          parsedCandidate: buildStageAResult(products),
+          raw: '{}',
+          provider: 'stub',
+          schemaValid: true,
+          validationErrors: [],
+          attemptCount: 1,
+          retried: false,
+        };
+      }
+      return {
+        parsed: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        parsedCandidate: buildStageBResult({
+          recommendation_needs: [],
+          recommendation_queries: [],
+        }),
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_stage_a_parallel',
+    language: 'EN',
+    routineProductCandidates: [
+      { product_ref: 'routine_am_01', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 1' },
+      { product_ref: 'routine_am_02', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 2' },
+      { product_ref: 'routine_am_03', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 3' },
+      { product_ref: 'routine_am_04', slot: 'am', step: 'cleanser', product_text: 'AM cleanser 4' },
+      { product_ref: 'routine_pm_05', slot: 'pm', step: 'treatment', product_text: 'PM serum 1' },
+    ],
+    llmGateway,
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(result.debug_meta.stage_a.chunk_count, 2);
+  assert.equal(maxInFlightStageA >= 2, true);
 });
 test('normalizeFallbackAuditOutput: quality gate replaces low-value cleanser reasoning with category-level fallback', () => {
   const { normalizeFallbackAuditOutput } = require('../src/auroraBff/routineAnalysisV2');

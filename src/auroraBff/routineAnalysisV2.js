@@ -1394,11 +1394,15 @@ function primaryStructuredFailureReason(validationErrors, fallback = 'schema_val
   return asString(first && first.reason) === 'invalid_json' ? 'invalid_json' : fallback;
 }
 
-async function callRoutineStructuredWithDiagnostics(gateway, request) {
+async function callRoutineStructuredWithDiagnostics(gateway, request, options = {}) {
+  const retryStructuredFailure =
+    options && Object.prototype.hasOwnProperty.call(options, 'retryStructuredFailure')
+      ? options.retryStructuredFailure === true
+      : true;
   if (gateway && typeof gateway.callWithSchemaDiagnostics === 'function') {
     return gateway.callWithSchemaDiagnostics({
       ...request,
-      retryStructuredFailure: true,
+      retryStructuredFailure,
     });
   }
   const result = await gateway.call(request);
@@ -2738,20 +2742,30 @@ async function runRoutineAnalysisV2({
     climate: seasonClimateContext.climate,
   };
 
-  for (let chunkIndex = 0; chunkIndex < stageAChunks.length; chunkIndex += 1) {
-    const chunkProducts = stageAChunks[chunkIndex];
+  const stageAChunkPlans = stageAChunks.map((chunkProducts, chunkIndex) => {
     const chunkStart = chunkIndex * stageAChunkSize;
-    const chunkCandidates = prioritized.audited.slice(chunkStart, chunkStart + chunkProducts.length);
-    const chunkBudget = computeStageOutputBudget('stage_a', chunkProducts.length);
-    stageAChunkBudgets.push(chunkBudget);
-    const chunkSignals = {
-      ...deterministicSignals,
-      product_count: chunkProducts.length,
-      selected_product_refs: chunkProducts.map((item) => item.product_ref),
-      stage_a_chunk_index: chunkIndex + 1,
-      stage_a_chunk_count: stageAChunks.length,
+    return {
+      chunkIndex,
+      chunkProducts,
+      chunkCandidates: prioritized.audited.slice(chunkStart, chunkStart + chunkProducts.length),
+      chunkBudget: computeStageOutputBudget('stage_a', chunkProducts.length),
+      chunkSignals: {
+        ...deterministicSignals,
+        product_count: chunkProducts.length,
+        selected_product_refs: chunkProducts.map((item) => item.product_ref),
+        stage_a_chunk_index: chunkIndex + 1,
+        stage_a_chunk_count: stageAChunks.length,
+      },
     };
-
+  });
+  stageAChunkBudgets.push(...stageAChunkPlans.map((plan) => plan.chunkBudget));
+  const stageAChunkResults = await Promise.all(stageAChunkPlans.map(async ({
+    chunkIndex,
+    chunkProducts,
+    chunkCandidates,
+    chunkBudget,
+    chunkSignals,
+  }) => {
     try {
       const result = await callRoutineStructuredWithDiagnostics(gateway, {
         templateId: 'routine_product_audit_v1',
@@ -2770,31 +2784,37 @@ async function runRoutineAnalysisV2({
         schema: 'RoutineProductAuditOutput',
         maxOutputTokens: chunkBudget,
       });
-      const chunkMeta = buildStructuredStageMeta(
-        result,
-        primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
-      );
-      stageAChunkMetas.push(chunkMeta);
-      stageAAuditOutputs.push(normalizeFallbackAuditOutput(
-        chunkCandidates,
-        result && (result.schemaValid ? result.parsed : result.parsedCandidate),
-        auditContext,
-      ));
+      return {
+        chunkMeta: buildStructuredStageMeta(
+          result,
+          primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
+        ),
+        auditOutput: normalizeFallbackAuditOutput(
+          chunkCandidates,
+          result && (result.schemaValid ? result.parsed : result.parsedCandidate),
+          auditContext,
+        ),
+      };
     } catch (error) {
-      const chunkMeta = buildStageFailureMeta(
-        error,
-        error && error.name === 'LlmQualityError'
-          ? 'schema_validation_failed'
-          : error && error.code === 'MISSING_API_KEY'
-            ? 'missing_api_key'
-            : error && error.code === 'EMPTY_OUTPUT'
-              ? 'empty_output'
-              : 'upstream_error',
-      );
-      stageAChunkMetas.push(chunkMeta);
-      stageAAuditOutputs.push(normalizeFallbackAuditOutput(chunkCandidates, null, auditContext));
       logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error), chunk_index: chunkIndex + 1 }, 'routine analysis v2: stage A chunk failed, using fallback audit');
+      return {
+        chunkMeta: buildStageFailureMeta(
+          error,
+          error && error.name === 'LlmQualityError'
+            ? 'schema_validation_failed'
+            : error && error.code === 'MISSING_API_KEY'
+              ? 'missing_api_key'
+              : error && error.code === 'EMPTY_OUTPUT'
+                ? 'empty_output'
+                : 'upstream_error',
+        ),
+        auditOutput: normalizeFallbackAuditOutput(chunkCandidates, null, auditContext),
+      };
     }
+  }));
+  for (const chunkResult of stageAChunkResults) {
+    stageAChunkMetas.push(chunkResult.chunkMeta);
+    stageAAuditOutputs.push(chunkResult.auditOutput);
   }
   const audit = mergeAuditOutputs(stageAAuditOutputs);
   const stageAMeta = aggregateStageChunkMeta(stageAChunkMetas, stageAChunkBudgets);
@@ -2848,6 +2868,8 @@ async function runRoutineAnalysisV2({
       },
       schema: 'RoutineSynthesisOutput',
       maxOutputTokens: stageBBudget,
+    }, {
+      retryStructuredFailure: surfaceMode !== 'routine_audit_v1',
     });
     stageBRaw = result && (result.schemaValid ? result.parsed : result.parsedCandidate);
     stageBMeta = buildStructuredStageMeta(
@@ -2873,18 +2895,20 @@ async function runRoutineAnalysisV2({
     goals: goalContext.goals,
     routine_inventory: routineInventory,
   });
-  const recommendationGroups = await resolveRecommendationGroups({
-    recommendationNeeds: synthesis.recommendation_needs,
-    recommendationQueries: synthesis.recommendation_queries,
-    context: {
-      language: normalizedLanguage,
-      skinType: profileContext.skin_type,
-      sensitivity: profileContext.sensitivity,
-      goals: goalContext.goals,
-    },
-    logger,
-    deps: recommendationResolverDeps,
-  });
+  const recommendationGroups = surfaceMode === 'routine_audit_v1'
+    ? []
+    : await resolveRecommendationGroups({
+      recommendationNeeds: synthesis.recommendation_needs,
+      recommendationQueries: synthesis.recommendation_queries,
+      context: {
+        language: normalizedLanguage,
+        skinType: profileContext.skin_type,
+        sensitivity: profileContext.sensitivity,
+        goals: goalContext.goals,
+      },
+      logger,
+      deps: recommendationResolverDeps,
+    });
   const cards = surfaceMode === 'routine_audit_v1'
     ? buildRoutineAuditV1Cards({
       audit,
