@@ -2,6 +2,14 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const {
+  AUTHORITATIVE_COMMERCE,
+  normalizeRailMode,
+  normalizeEndpoint,
+  resolveBaseUrl,
+  assertRailAuth,
+} = require('./lib/commerce_invoke_contract');
+const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
 
 function timestamp() {
   const now = new Date();
@@ -10,9 +18,11 @@ function timestamp() {
 }
 
 function parseArgs(argv) {
+  const railMode = normalizeRailMode(process.env.SEARCH_MATRIX_RAIL_MODE || '');
   const args = {
-    baseUrl: process.env.SEARCH_MATRIX_BASE_URL || 'https://agent.pivota.cc',
-    endpoint: process.env.SEARCH_MATRIX_ENDPOINT || '/api/gateway',
+    railMode,
+    baseUrl: resolveBaseUrl(process.env.SEARCH_MATRIX_BASE_URL || '', railMode),
+    endpoint: normalizeEndpoint(process.env.SEARCH_MATRIX_ENDPOINT || '', railMode),
     rounds: Number(process.env.SEARCH_MATRIX_ROUNDS || 20),
     timeoutMs: Number(process.env.SEARCH_MATRIX_TIMEOUT_MS || 10000),
     outDir: process.env.SEARCH_MATRIX_OUT_DIR || 'reports',
@@ -31,6 +41,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const token = String(argv[i] || '');
     const next = argv[i + 1];
+    if (token === '--rail-mode' && next) args.railMode = normalizeRailMode(next);
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--endpoint' && next) args.endpoint = String(next);
     if (token === '--rounds' && next) args.rounds = Math.max(1, Number(next) || 1);
@@ -45,6 +56,8 @@ function parseArgs(argv) {
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--fail-on-gate-failures') args.failOnGateFailures = true;
   }
+  args.baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
+  args.endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   return args;
 }
 
@@ -92,6 +105,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_have_clarification: null,
       expected_contract_path: null,
       catalog_surface: null,
+      require_primary_path: true,
+      allow_strict_empty: false,
+      allowed_query_sources: [],
+      must_not_match_fallback_sources: [],
     };
   }
   const query = String(rawCase?.query || '').trim();
@@ -148,6 +165,16 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
     expected_contract_path: String(rawCase?.expected_contract_path || '').trim() || null,
     limit: Math.max(1, Number(rawCase?.limit || 10) || 10),
     in_stock_only: rawCase?.in_stock_only !== false,
+    require_primary_path: rawCase?.require_primary_path !== false,
+    allow_strict_empty: rawCase?.allow_strict_empty === true,
+    allowed_query_sources: Array.isArray(rawCase?.allowed_query_sources)
+      ? rawCase.allowed_query_sources.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    must_not_match_fallback_sources: Array.isArray(rawCase?.must_not_match_fallback_sources)
+      ? rawCase.must_not_match_fallback_sources
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -297,6 +324,12 @@ function evaluateCase(row) {
   const reasonCodes = Array.isArray(data.reason_codes) ? data.reason_codes.map((item) => String(item || '').trim()).filter(Boolean) : [];
   const hasClarification = Boolean(data?.clarification && data.clarification.question);
   const reasons = [];
+  const primaryPath = evaluatePrimaryPathContract(data, {
+    require_primary_path: spec.require_primary_path !== false,
+    allow_strict_empty: spec.allow_strict_empty === true,
+    allowed_query_sources: spec.allowed_query_sources,
+    must_not_match_fallback_sources: spec.must_not_match_fallback_sources,
+  });
 
   if (spec.expected_contract_path) {
     const actualContract = String(contractBridge.resolved_contract || '').trim();
@@ -408,9 +441,14 @@ function evaluateCase(row) {
     }
   }
 
+  if (!primaryPath.passed) {
+    reasons.push(...primaryPath.reasons);
+  }
+
   return {
     passed: reasons.length === 0,
     reasons,
+    primaryPath: primaryPath.assessment,
   };
 }
 
@@ -490,13 +528,19 @@ function classifyRow(row) {
       ? metadata.service_version
       : {};
   const products = Array.isArray(data.products) ? data.products : [];
-  const querySource = String(metadata.query_source || '');
+  const primaryPath = evaluatePrimaryPathContract(data, {
+    require_primary_path: false,
+    allow_strict_empty: true,
+  }).assessment;
+  const querySource = String(primaryPath.querySource || metadata.query_source || '');
   const upstreamCode = String(
     metadata.upstream_error_code || metadata?.proxy_search_fallback?.upstream_error_code || '',
   );
   const timeout = upstreamCode.toUpperCase() === 'ECONNABORTED';
-  const strictEmpty = Boolean(metadata.strict_empty) || (products.length === 0 && !data.clarification);
-  const fallback = querySource === 'agent_products_error_fallback';
+  const strictEmpty =
+    Boolean(primaryPath.strictEmpty) ||
+    (Boolean(metadata.strict_empty) || (products.length === 0 && !data.clarification));
+  const fallback = primaryPath.degraded;
   const irrelevant = !isRelevantResult(row.query, products);
   const queryClass = String(
     searchTrace.query_class || metadata?.search_decision?.query_class || inferQueryClassFromQuery(row.query),
@@ -540,15 +584,25 @@ function classifyRow(row) {
     matchedVisibleOptionLabels: Array.isArray(metadata.matched_visible_option_labels)
       ? metadata.matched_visible_option_labels
       : [],
+    primaryPathDegraded: primaryPath.degraded,
+    primaryPathDegradedReasons: primaryPath.reasons,
+    primaryPathUsed: primaryPath.primaryPathUsed,
+    fallbackReason: primaryPath.fallbackReason,
   };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertRailAuth({
+    railMode: args.railMode,
+    authToken: args.authToken,
+    agentApiKey: args.agentApiKey,
+    context: 'search_stability_matrix',
+  });
   const cases = loadQueryCases(args.queryFile, args.source);
   const runTs = timestamp();
-  const baseUrl = args.baseUrl.replace(/\/$/, '');
-  const endpoint = args.endpoint.startsWith('/') ? args.endpoint : `/${args.endpoint}`;
+  const baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
+  const endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   const url = `${baseUrl}${endpoint}`;
   const results = [];
   const startedAt = Date.now();
@@ -644,6 +698,7 @@ async function main() {
   const timeoutCount = classified.filter((row) => row.metrics.timeout).length;
   const requestErrorCount = classified.filter((row) => row.metrics.requestError).length;
   const fallbackCount = classified.filter((row) => row.metrics.fallback).length;
+  const primaryPathDegradedCount = classified.filter((row) => row.metrics.primaryPathDegraded).length;
   const strictEmptyCount = classified.filter((row) => row.metrics.strictEmpty).length;
   const irrelevantCount = classified.filter((row) => row.metrics.irrelevant).length;
   const nonEmptyCount = classified.filter((row) => row.metrics.productCount > 0).length;
@@ -717,6 +772,11 @@ async function main() {
     generated_at: new Date().toISOString(),
     base_url: baseUrl,
     endpoint,
+    rail_mode: args.railMode,
+    authoritative_endpoint:
+      args.railMode === AUTHORITATIVE_COMMERCE ? `${baseUrl}${endpoint}` : null,
+    authoritative_mode: args.railMode === AUTHORITATIVE_COMMERCE ? AUTHORITATIVE_COMMERCE : null,
+    public_probe_non_authoritative: args.railMode !== AUTHORITATIVE_COMMERCE,
     auth_mode: authMode,
     eval_mode: Boolean(args.evalMode),
     rounds: args.rounds,
@@ -725,6 +785,7 @@ async function main() {
     timeout_rate: total ? timeoutCount / total : 0,
     request_error_rate: total ? requestErrorCount / total : 0,
     fallback_rate: total ? fallbackCount / total : 0,
+    primary_path_degraded_count: primaryPathDegradedCount,
     strict_empty_rate: total ? strictEmptyCount / total : 0,
     irrelevant_result_rate: total ? irrelevantCount / total : 0,
     non_empty_rate: total ? nonEmptyCount / total : 0,
@@ -766,6 +827,10 @@ async function main() {
           product_count: row.metrics.productCount,
           timeout: row.metrics.timeout,
           fallback: row.metrics.fallback,
+          primary_path_degraded: row.metrics.primaryPathDegraded,
+          primary_path_degraded_reasons: row.metrics.primaryPathDegradedReasons,
+          primary_path_used: row.metrics.primaryPathUsed,
+          fallback_reason: row.metrics.fallbackReason,
           strict_empty: row.metrics.strictEmpty,
           irrelevant: row.metrics.irrelevant,
           query_class: row.metrics.queryClass,
@@ -801,11 +866,15 @@ async function main() {
     `- generated_at: ${summary.generated_at}`,
     `- base_url: ${summary.base_url}`,
     `- endpoint: ${summary.endpoint}`,
+    `- rail_mode: ${summary.rail_mode}`,
+    `- authoritative_endpoint: ${summary.authoritative_endpoint || 'n/a'}`,
+    `- public_probe_non_authoritative: ${summary.public_probe_non_authoritative}`,
     `- rounds: ${summary.rounds}`,
     `- total_requests: ${summary.total_requests}`,
     `- timeout_rate: ${summary.timeout_rate.toFixed(4)}`,
     `- request_error_rate: ${summary.request_error_rate.toFixed(4)}`,
     `- fallback_rate: ${summary.fallback_rate.toFixed(4)}`,
+    `- primary_path_degraded_count: ${summary.primary_path_degraded_count}`,
     `- strict_empty_rate: ${summary.strict_empty_rate.toFixed(4)}`,
     `- irrelevant_result_rate: ${summary.irrelevant_result_rate.toFixed(4)}`,
     `- non_empty_rate: ${summary.non_empty_rate.toFixed(4)}`,
@@ -821,6 +890,7 @@ async function main() {
     `| timeout_count | ${timeoutCount} |`,
     `| request_error_count | ${requestErrorCount} |`,
     `| fallback_count | ${fallbackCount} |`,
+    `| primary_path_degraded_count | ${primaryPathDegradedCount} |`,
     `| strict_empty_count | ${strictEmptyCount} |`,
     `| irrelevant_count | ${irrelevantCount} |`,
     `| non_empty_count | ${nonEmptyCount} |`,

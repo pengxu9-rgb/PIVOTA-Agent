@@ -258,6 +258,10 @@ function writeArtifacts(args, payload) {
     markdownTableRow(['pass_count', String(payload.staging.summary.pass_count || 0)]),
     markdownTableRow(['fail_count', String(payload.staging.summary.fail_count || 0)]),
     markdownTableRow([
+      'primary_path_degraded_count',
+      String(payload.staging.summary.primary_path_degraded_count || 0),
+    ]),
+    markdownTableRow([
       'review_required_count',
       String(payload.staging.summary.review_required_count || 0),
     ]),
@@ -268,6 +272,18 @@ function writeArtifacts(args, payload) {
     markdownTableRow([
       'blocking_failures',
       String(payload.staging.summary.blocking_failures || 0),
+    ]),
+    markdownTableRow([
+      'authoritative_endpoint',
+      String(payload.readiness.authoritative_endpoint || 'missing'),
+    ]),
+    markdownTableRow([
+      'authoritative_mode',
+      String(payload.readiness.authoritative_mode || 'missing'),
+    ]),
+    markdownTableRow([
+      'public_probe_non_authoritative',
+      String(payload.readiness.public_probe_non_authoritative || 'false'),
     ]),
     '',
     '## Decision',
@@ -327,6 +343,9 @@ function main() {
       summary_path: args.readinessSummary || null,
       report_path: args.readinessReport || null,
       scorecard: readiness.scorecard || {},
+      authoritative_endpoint: readiness.authoritative_endpoint || null,
+      authoritative_mode: readiness.authoritative_mode || null,
+      public_probe_non_authoritative: readiness.public_probe_non_authoritative || null,
     },
     gateway_daily: {
       summary_path: args.gatewayDailySummary || null,

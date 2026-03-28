@@ -53,11 +53,16 @@ describe('Celestial commerce-core staging invoke smoke wrapper', () => {
         JSON.stringify({
           products: [],
           metadata: {
+            query_source: 'agent_products_search',
             service_version: {
               commit: 'staging123',
             },
             search_trace: {
               final_decision: 'cache_returned',
+            },
+            route_health: {
+              fallback_triggered: false,
+              primary_path_used: 'primary_search',
             },
           },
         }),
@@ -87,8 +92,11 @@ describe('Celestial commerce-core staging invoke smoke wrapper', () => {
       expect(report.summary.total_cases).toBe(1);
       expect(report.summary.pass_count).toBe(1);
       expect(report.summary.blocking_failures).toBe(0);
+      expect(report.summary.authoritative_mode).toBe('authoritative_commerce');
+      expect(report.summary.primary_path_degraded_count).toBe(0);
       expect(report.results[0].id).toBe('staging_invoke_auth_smoke');
       expect(report.results[0].overall_status).toBe('pass');
+      expect(report.results[0].response_excerpt.primary_path_degraded).toBe(false);
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }

@@ -40,22 +40,16 @@ Run:
 npm run probe:commerce-core:prod-canary
 ```
 
-By default this probes the public `POST /api/gateway` contract.
-
-If the deployed commerce entrypoint is now authenticated, probe the supported invoke surface explicitly instead:
+By default this probes the supported authenticated invoke rail:
 
 ```bash
-ENDPOINT=/agent/shop/v1/invoke \
 AUTH_TOKEN=ak_live_your_prod_key \
 npm run probe:commerce-core:prod-canary
 ```
 
-When `BASE_URL` is left at the public default and `ENDPOINT=/agent/shop/v1/invoke`, the wrapper now auto-switches the probe base to `https://pivota-agent-production.up.railway.app`.
-
 You can also use:
 
 ```bash
-ENDPOINT=/agent/shop/v1/invoke \
 AGENT_API_KEY=ak_live_your_prod_key \
 npm run probe:commerce-core:prod-canary
 ```
@@ -63,7 +57,7 @@ npm run probe:commerce-core:prod-canary
 Optional inputs:
 
 ```bash
-BASE_URL=https://agent.pivota.cc \
+BASE_URL=https://pivota-agent-production.up.railway.app \
 ROUNDS=1 \
 VERIFY_DEPLOY=0 \
 FAIL_ON_GATE_FAILURES=0 \
@@ -78,6 +72,8 @@ Supported auth envs for the authenticated invoke path:
 - `COMMERCE_CORE_PROD_AGENT_API_KEY`
 - `COMMERCE_CORE_PROD_CANARY_ENDPOINT`
 - `COMMERCE_CORE_PROD_CANARY_BASE_URL`
+
+Public `POST /api/gateway` remains a non-authoritative observability surface. Do not use it as the default canary rail.
 
 ## Default Behavior
 

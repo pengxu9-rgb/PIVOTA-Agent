@@ -1,21 +1,29 @@
 #!/usr/bin/env node
 const https = require('https');
 const { URL } = require('url');
+const {
+  normalizeRailMode,
+  normalizeEndpoint,
+  resolveBaseUrl,
+  assertRailAuth,
+} = require('./lib/commerce_invoke_contract');
+const { assessPrimaryPath: assessPrimaryPathBase } = require('./lib/commerce_primary_path');
 
 function parseArgs(argv) {
+  const railMode = normalizeRailMode(process.env.RAIL_MODE || process.env.BUDGET_FX_PREFLIGHT_RAIL_MODE || '');
   const envAuthToken = process.env.AUTH_TOKEN || process.env.COMMERCE_CORE_PROD_AUTH_TOKEN || '';
   const envAgentApiKey =
     process.env.AGENT_API_KEY || process.env.COMMERCE_CORE_PROD_AGENT_API_KEY || '';
-  const defaultEndpoint =
-    process.env.ENDPOINT ||
-    process.env.COMMERCE_CORE_PROD_SMOKE_ENDPOINT ||
-    (envAuthToken || envAgentApiKey ? '/agent/shop/v1/invoke' : '/api/gateway');
   const args = {
-    baseUrl:
-      process.env.BASE_URL ||
-      process.env.COMMERCE_CORE_PROD_SMOKE_BASE_URL ||
-      'https://agent.pivota.cc',
-    endpoint: defaultEndpoint,
+    railMode,
+    baseUrl: resolveBaseUrl(
+      process.env.BASE_URL || process.env.COMMERCE_CORE_PROD_SMOKE_BASE_URL || '',
+      railMode,
+    ),
+    endpoint: normalizeEndpoint(
+      process.env.ENDPOINT || process.env.COMMERCE_CORE_PROD_SMOKE_ENDPOINT || '',
+      railMode,
+    ),
     authToken: envAuthToken,
     agentApiKey: envAgentApiKey,
     source: process.env.SEARCH_MATRIX_SOURCE || 'search',
@@ -28,48 +36,20 @@ function parseArgs(argv) {
     const next = argv[i + 1];
     if (token === '--base-url' && next) args.baseUrl = String(next);
     if (token === '--endpoint' && next) args.endpoint = String(next);
+    if (token === '--rail-mode' && next) args.railMode = normalizeRailMode(next);
     if (token === '--auth-token' && next) args.authToken = String(next);
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--source' && next) args.source = String(next);
     if (token === '--query' && next) args.query = String(next);
     if (token === '--timeout-ms' && next) args.timeoutMs = Math.max(1000, Number(next) || 15000);
   }
+  args.baseUrl = resolveBaseUrl(args.baseUrl, args.railMode);
+  args.endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   return args;
 }
 
 function assessPrimaryPath(metadata) {
-  const routeHealth =
-    metadata && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
-      ? metadata.route_health
-      : {};
-  const proxySearchFallback =
-    metadata &&
-    typeof metadata.proxy_search_fallback === 'object' &&
-    !Array.isArray(metadata.proxy_search_fallback)
-      ? metadata.proxy_search_fallback
-      : {};
-  const querySource = String(metadata?.query_source || '').trim();
-  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim();
-  const reasons = [];
-
-  if (
-    querySource === 'agent_products_error_fallback' ||
-    querySource === 'agent_products_resolver_fallback' ||
-    querySource === 'agent_products_resolver_ref_fallback'
-  ) {
-    reasons.push(`query_source=${querySource}`);
-  }
-  if (proxySearchFallback.applied === true) reasons.push('proxy_search_fallback.applied=true');
-  if (routeHealth.fallback_triggered === true) reasons.push('route_health.fallback_triggered=true');
-  if (/(fallback|primary_unusable)/i.test(primaryPathUsed)) {
-    reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
-  }
-
-  return {
-    degraded: reasons.length > 0,
-    reasons,
-    primaryPathUsed: primaryPathUsed || null,
-  };
+  return assessPrimaryPathBase(metadata);
 }
 
 function requestJson(url, payload, timeoutMs, extraHeaders = {}) {
@@ -116,10 +96,14 @@ function requestJson(url, payload, timeoutMs, extraHeaders = {}) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertRailAuth({
+    railMode: args.railMode,
+    authToken: args.authToken,
+    agentApiKey: args.agentApiKey,
+    context: 'check_budget_fx_freshness',
+  });
   const baseUrl = String(args.baseUrl || '').replace(/\/$/, '');
-  const endpoint = String(args.endpoint || '').startsWith('/')
-    ? String(args.endpoint)
-    : `/${args.endpoint}`;
+  const endpoint = normalizeEndpoint(args.endpoint, args.railMode);
   const response = await requestJson(
     `${baseUrl}${endpoint}`,
     {
@@ -173,6 +157,8 @@ async function main() {
     budget_fx_source: metadata.budget_fx_source ?? null,
     budget_fx_candidate_currency: metadata.budget_fx_candidate_currency ?? null,
     budget_fx_unresolved: metadata.budget_fx_unresolved === true,
+    rail_mode: args.railMode,
+    authoritative_endpoint: args.railMode === 'authoritative_commerce' ? `${baseUrl}${endpoint}` : null,
     primary_path_degraded: primaryPath.degraded,
     primary_path_degraded_reasons: primaryPath.reasons,
     primary_path_used: primaryPath.primaryPathUsed,

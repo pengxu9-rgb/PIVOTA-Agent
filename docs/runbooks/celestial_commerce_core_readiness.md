@@ -66,7 +66,7 @@ COMMERCE_CORE_PROD_AUTH_TOKEN=ak_live_your_prod_key \
 npm run audit:readiness:commerce-core
 ```
 
-When `BASE_URL` stays on the public default and `COMMERCE_CORE_PROD_SMOKE_ENDPOINT=/agent/shop/v1/invoke`, the production smoke auto-switches to `https://pivota-agent-production.up.railway.app` for the authenticated invoke run. The report still keeps the separate public probe on `https://agent.pivota.cc`.
+The production smoke defaults to `https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke`. The report still keeps the separate public probe on `https://agent.pivota.cc`, but marks it as non-authoritative.
 
 You can also provide:
 
@@ -153,6 +153,14 @@ The commerce-core baseline should keep these scenario families under one shared 
 - clarify-required query behavior
 
 Exact product-specific lookup should stay covered, but if a source contract is still live-flaky, keep it in local contract tests until runtime routing is stabilized enough for deterministic production smoke.
+
+Current shared live corpus should include:
+
+- `serum`
+- `vitamin c serum under €30`
+- `IPSA Time Reset Aqua`
+- `IPSA products`
+- the current clarify-required makeup/date case
 
 ## Scorecard Dimensions
 

@@ -17,7 +17,13 @@ This audit records which release and acceptance rails now use the supported auth
   - prod skincare smoke uses authenticated invoke only
 - `scripts/verify_deployed_commit_matches.sh`
   - supports `INVOKE_BASE_URL`, `AUTH_TOKEN`, `AGENT_API_KEY`
-  - supports `ALLOW_HEADER_FALLBACK=0` for strict invoke-only verification
+  - defaults to strict invoke-only verification for `authoritative_commerce`
+
+## Scan Conclusion
+
+- The current repo has no remaining runtime or workflow calls to `/agent/gateway`.
+- Residual public-rail usage is `/api/gateway`, and it is now intentionally limited to public observability / legacy probes.
+- See [Commerce Invoke Rail Matrix](./commerce_invoke_rail_matrix.md) for the allowlist and ownership split.
 
 ## Rails Intentionally Left On Public Aurora Routes
 
