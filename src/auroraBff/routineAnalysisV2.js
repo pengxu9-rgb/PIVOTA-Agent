@@ -909,8 +909,8 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
   const pmStrongActives = pmProducts.filter((product) => isStrongActiveType(product.inferred_product_type, product.input_label));
   if (pmStrongActives.length > 1) {
     issues.push({
-      issue_type: 'overlap',
-      title: 'Strong active load may be stacked too heavily',
+      issue_type: 'conflict',
+      title: 'Strong PM actives look stacked in the same window',
       evidence: pmStrongActives.map((product) => `${product.input_label} looks like a stronger active in PM.`).slice(0, 4),
       affected_products: pmStrongActives.map((product) => product.product_ref),
     });
@@ -980,6 +980,26 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     if (adjustments.length >= 3) break;
   }
 
+  const primaryConflict = overlapOrGaps.find((issue) => asString(issue && issue.issue_type).toLowerCase() === 'conflict');
+  if (primaryConflict) {
+    const affectedRefs = uniqStrings(primaryConflict && primaryConflict.affected_products, 3);
+    const affectedProducts = products.filter((product) => affectedRefs.includes(asString(product && product.product_ref)));
+    const alreadyCovered = adjustments.some((item) =>
+      asArray(item && item.affected_products).some((productRef) => affectedRefs.includes(asString(productRef))));
+    if (affectedProducts.length >= 2 && !alreadyCovered) {
+      const affectedLabels = affectedProducts.map((product) => asString(product && product.input_label)).filter(Boolean);
+      adjustments.unshift({
+        adjustment_id: `adj_conflict_${affectedRefs.slice(0, 2).join('_') || crypto.randomUUID().slice(0, 8)}`,
+        priority_rank: 1,
+        title: `Stop same-window stacking of ${affectedLabels.slice(0, 2).join(' + ')}`,
+        action_type: 'remove',
+        affected_products: affectedRefs,
+        why_this_first: 'The current PM stack is carrying the clearest irritation and tolerance risk.',
+        expected_outcome: 'Lower flare risk and a routine that is easier to tolerate consistently.',
+      });
+    }
+  }
+
   if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
     adjustments.push({
       adjustment_id: 'adj_add_spf_gap',
@@ -992,9 +1012,16 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     });
   }
 
-  const improvedAm = buildImprovedRoutine(products, 'am', adjustments);
-  const improvedPm = buildImprovedRoutine(products, 'pm', adjustments);
-  const recommendationNeeds = adjustments
+  const prioritizedAdjustments = adjustments
+    .slice(0, 3)
+    .map((item, index) => ({
+      ...item,
+      priority_rank: index + 1,
+    }));
+
+  const improvedAm = buildImprovedRoutine(products, 'am', prioritizedAdjustments);
+  const improvedPm = buildImprovedRoutine(products, 'pm', prioritizedAdjustments);
+  const recommendationNeeds = prioritizedAdjustments
     .filter((item) => item.action_type === 'replace' || item.action_type === 'add_step' || item.action_type === 'swap_step')
     .map((item) => {
       const affected = products.find((product) => item.affected_products.includes(product.product_ref));
@@ -1020,17 +1047,17 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
   return {
     schema_version: 'aurora.routine_synthesis.v1',
     current_routine_assessment: {
-      summary: buildAssessmentSummary(adjustments, overlapOrGaps),
+      summary: buildAssessmentSummary(prioritizedAdjustments, overlapOrGaps),
       main_strengths: buildMainStrengths(products),
-      main_issues: buildMainIssues(adjustments, overlapOrGaps),
+      main_issues: buildMainIssues(prioritizedAdjustments, overlapOrGaps),
     },
     per_step_order_am: amOrder,
     per_step_order_pm: pmOrder,
     overlap_or_gaps: overlapOrGaps,
-    top_3_adjustments: adjustments.slice(0, 3),
+    top_3_adjustments: prioritizedAdjustments,
     improved_am_routine: improvedAm,
     improved_pm_routine: improvedPm,
-    rationale_for_each_adjustment: adjustments.slice(0, 3).map((item) => ({
+    rationale_for_each_adjustment: prioritizedAdjustments.map((item) => ({
       adjustment_id: item.adjustment_id,
       reasoning: item.why_this_first,
       evidence: collectAdjustmentEvidence(item, products, overlapOrGaps),
@@ -1878,12 +1905,17 @@ function inferSeverity(issueType) {
 
 function collectRelationshipEntries(synthesis, products, language) {
   const productNames = asArray(products).map((row) => row.identified_as).filter(Boolean);
+  const productNameByRef = new Map(
+    asArray(products)
+      .map((row) => [asString(row && row.product_ref), asString(row && row.identified_as)])
+      .filter(([productRef, identifiedAs]) => productRef && identifiedAs),
+  );
   const list = [];
   for (const issue of asArray(synthesis && synthesis.overlap_or_gaps)) {
     const issueType = asString(issue && issue.issue_type).toLowerCase();
     const relationshipType = inferRelationshipType(issueType);
     const affected = uniqStrings([
-      ...asArray(issue && issue.affected_products),
+      ...asArray(issue && issue.affected_products).map((value) => productNameByRef.get(asString(value)) || asString(value)),
       ...productNames.filter((name) => asString(issue && issue.title).toLowerCase().includes(name.toLowerCase())),
     ], 4);
     list.push({
@@ -2877,59 +2909,76 @@ async function runRoutineAnalysisV2({
     attempt_count: 1,
     retry_count: 0,
   };
-  try {
-    const result = await callRoutineStructuredWithDiagnostics(gateway, {
-      templateId: 'routine_synthesis_v1',
-      taskMode: 'routine',
-      params: {
-        profile_context_json: profileContext,
-        goal_context_json: goalContext,
-        season_climate_context_json: seasonClimateContext,
-        analysis_context_hard_json: analysisContextHard,
-        analysis_context_soft_json: analysisContextSoft,
-        analysis_context_evidence_json: analysisContextEvidence,
-        analysis_context_conflicts_json: analysisContextConflicts,
-        deterministic_signals_json: deterministicSignals,
-        routine_products_json: stageAInputProducts,
-        deferred_products_json: prioritized.additional.map((candidate) => ({
-          product_ref: candidate.product_ref,
-          slot: normalizeSlot(candidate.slot),
-          original_step_label: normalizeStep(candidate.step),
-          input_label: asString(candidate.product_text),
-          inferred_product_type_hint: inferProductType(candidate),
-        })),
-        all_routine_products_json: prioritized.audited.concat(prioritized.additional).map((candidate) => ({
-          product_ref: candidate.product_ref,
-          slot: normalizeSlot(candidate.slot),
-          original_step_label: normalizeStep(candidate.step),
-          input_label: asString(candidate.product_text),
-          inferred_product_type_hint: inferProductType(candidate),
-        })),
-        product_audit_json: audit,
-        ingredient_plan_json: ingredientPlan || null,
-      },
-      schema: 'RoutineSynthesisOutput',
-      maxOutputTokens: stageBBudget,
-    }, {
-      retryStructuredFailure: surfaceMode !== 'routine_audit_v1',
-    });
-    stageBRaw = result && (result.schemaValid ? result.parsed : result.parsedCandidate);
-    stageBMeta = buildStructuredStageMeta(
-      result,
-      primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
-    );
-  } catch (error) {
-    stageBMeta = buildStageFailureMeta(
-      error,
-      error && error.name === 'LlmQualityError'
-        ? 'schema_validation_failed'
-        : error && error.code === 'MISSING_API_KEY'
-          ? 'missing_api_key'
-          : error && error.code === 'EMPTY_OUTPUT'
-            ? 'empty_output'
-            : 'upstream_error',
-    );
-    logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage B failed, using deterministic synthesis');
+  if (surfaceMode === 'routine_audit_v1') {
+    stageBMeta = {
+      llm_status: 'skipped',
+      fallback_reason: null,
+      error_name: null,
+      error_code: null,
+      status_code: null,
+      validation_error_count: 0,
+      validation_errors_preview: [],
+      raw_present: false,
+      raw_length: 0,
+      provider: null,
+      attempt_count: 0,
+      retry_count: 0,
+    };
+  } else {
+    try {
+      const result = await callRoutineStructuredWithDiagnostics(gateway, {
+        templateId: 'routine_synthesis_v1',
+        taskMode: 'routine',
+        params: {
+          profile_context_json: profileContext,
+          goal_context_json: goalContext,
+          season_climate_context_json: seasonClimateContext,
+          analysis_context_hard_json: analysisContextHard,
+          analysis_context_soft_json: analysisContextSoft,
+          analysis_context_evidence_json: analysisContextEvidence,
+          analysis_context_conflicts_json: analysisContextConflicts,
+          deterministic_signals_json: deterministicSignals,
+          routine_products_json: stageAInputProducts,
+          deferred_products_json: prioritized.additional.map((candidate) => ({
+            product_ref: candidate.product_ref,
+            slot: normalizeSlot(candidate.slot),
+            original_step_label: normalizeStep(candidate.step),
+            input_label: asString(candidate.product_text),
+            inferred_product_type_hint: inferProductType(candidate),
+          })),
+          all_routine_products_json: prioritized.audited.concat(prioritized.additional).map((candidate) => ({
+            product_ref: candidate.product_ref,
+            slot: normalizeSlot(candidate.slot),
+            original_step_label: normalizeStep(candidate.step),
+            input_label: asString(candidate.product_text),
+            inferred_product_type_hint: inferProductType(candidate),
+          })),
+          product_audit_json: audit,
+          ingredient_plan_json: ingredientPlan || null,
+        },
+        schema: 'RoutineSynthesisOutput',
+        maxOutputTokens: stageBBudget,
+      }, {
+        retryStructuredFailure: true,
+      });
+      stageBRaw = result && (result.schemaValid ? result.parsed : result.parsedCandidate);
+      stageBMeta = buildStructuredStageMeta(
+        result,
+        primaryStructuredFailureReason(result && result.validationErrors, 'schema_validation_failed'),
+      );
+    } catch (error) {
+      stageBMeta = buildStageFailureMeta(
+        error,
+        error && error.name === 'LlmQualityError'
+          ? 'schema_validation_failed'
+          : error && error.code === 'MISSING_API_KEY'
+            ? 'missing_api_key'
+            : error && error.code === 'EMPTY_OUTPUT'
+              ? 'empty_output'
+              : 'upstream_error',
+      );
+      logger && logger.warn && logger.warn({ err: error && error.message ? error.message : String(error) }, 'routine analysis v2: stage B failed, using deterministic synthesis');
+    }
   }
   const synthesis = coerceSynthesisOutput(stageBRaw, audit, {
     skinType: profileContext.skin_type,

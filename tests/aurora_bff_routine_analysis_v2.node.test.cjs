@@ -1161,7 +1161,7 @@ test('runRoutineAnalysisV2: routine audit v1 builds anchored conflict, user-fit,
   assert.ok(typeof adjustmentCard.payload.complexity_score === 'number');
 });
 
-test('runRoutineAnalysisV2: routine audit v1 skips recommendation resolve and disables stage B retry', async () => {
+test('runRoutineAnalysisV2: routine audit v1 skips stage B LLM and recommendation resolve', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   let searchCallCount = 0;
   const stageCalls = [];
@@ -1261,12 +1261,12 @@ test('runRoutineAnalysisV2: routine audit v1 skips recommendation resolve and di
     stageCalls.map((row) => [row.templateId, row.retryStructuredFailure]),
     [
       ['routine_product_audit_v1', true],
-      ['routine_synthesis_v1', false],
     ],
   );
   assert.deepEqual(result.recommendation_groups, []);
+  assert.equal(result.debug_meta.stage_b.llm_status, 'skipped');
   assert.equal(result.debug_meta.stage_b.retry_count, 0);
-  assert.equal(result.debug_meta.stage_b.attempt_count, 1);
+  assert.equal(result.debug_meta.stage_b.attempt_count, 0);
 });
 
 test('runRoutineAnalysisV2: stage A debug meta captures schema-validation fallback diagnostics', async () => {
