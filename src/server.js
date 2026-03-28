@@ -16359,6 +16359,16 @@ function recoverStrictMainPathResponseFromPrefetch({
   const sourceBreakdown = isPlainRecord(restMetadata.source_breakdown)
     ? restMetadata.source_breakdown
     : {};
+  const ingredientIntents = Array.isArray(restMetadata.ingredient_intents)
+    ? restMetadata.ingredient_intents
+        .map((value) => toNonEmptyStringOrNull(value))
+        .filter(Boolean)
+    : [];
+  const matchedIngredientIds = Array.isArray(restMetadata.matched_ingredient_ids)
+    ? restMetadata.matched_ingredient_ids
+        .map((value) => toNonEmptyStringOrNull(value))
+        .filter(Boolean)
+    : [];
   const budgetMetadata = extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody);
   const nextMetadata = {
     ...restMetadata,
@@ -16368,6 +16378,9 @@ function recoverStrictMainPathResponseFromPrefetch({
       strictInvokeDecision.strictConstraintReason ||
       restMetadata.strict_constraint_reason ||
       null,
+    ingredient_intents: ingredientIntents,
+    matched_ingredient_ids:
+      matchedIngredientIds.length > 0 ? matchedIngredientIds : ingredientIntents,
     external_seed_returned_count: supplementedProducts.length,
     external_seed_rows_fetched: Math.max(
       supplementedProducts.length,
