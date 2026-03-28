@@ -170,9 +170,12 @@ test('product_analyze carries product_anchor into add_to_routine next action par
   );
 
   const addToRoutine = response.next_actions.find((action) => action.target_skill_id === 'explore.add_to_routine');
+  const findAlternatives = response.next_actions.find((action) => action.target_skill_id === 'dupe.suggest');
 
   assert.ok(addToRoutine);
   assert.deepEqual(addToRoutine.params?.product_anchor, productAnchor);
+  assert.ok(findAlternatives);
+  assert.deepEqual(findAlternatives.params?.product_anchor, productAnchor);
 });
 
 test('skill_router derives target_step from a freeform mask request', () => {
