@@ -253,6 +253,116 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('exact IPSA lookup does not accept brand-only cache hits', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 2 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_generic_1',
+                  product_id: 'prod_ipsa_generic_1',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Balancing Lotion',
+                  description: 'Daily balancing lotion',
+                  vendor: 'IPSA',
+                  status: 'published',
+                  inventory_quantity: 9,
+                  price: 39,
+                  currency: 'USD',
+                },
+              },
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'prod_ipsa_generic_2',
+                  product_id: 'prod_ipsa_generic_2',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Cleansing Foam',
+                  description: 'Foaming cleanser',
+                  vendor: 'IPSA',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  price: 29,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(
+        (q) =>
+          String(q.search_all_merchants || '') === 'true' &&
+          String(q.query || '') === 'IPSA Time Reset Aqua',
+      )
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_ipsa_exact_1',
+            product_id: 'prod_ipsa_exact_1',
+            merchant_id: 'merch_1',
+            title: 'IPSA Time Reset Aqua',
+            description: 'Hydrating toner essence',
+            status: 'active',
+            inventory_quantity: 7,
+            price: 42,
+            currency: 'USD',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'IPSA Time Reset Aqua',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          entry: 'home',
+          scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'prod_ipsa_exact_1',
+          title: 'IPSA Time Reset Aqua',
+        }),
+      ]),
+    );
+    expect(String(resp.body.metadata?.query_source || '')).not.toBe('cache_cross_merchant_search');
+    expect(String(resp.body.metadata?.search_trace?.final_decision || '')).not.toBe('cache_returned');
+  });
+
   test('treats zh brand lookup as relevant for en-vendor cached rows', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
