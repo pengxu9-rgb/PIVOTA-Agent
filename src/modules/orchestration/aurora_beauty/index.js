@@ -1282,6 +1282,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     hasMerchantScope = false,
     preferInternalSpecificBeautyCache = false,
     cacheBeautyQueryProfile,
+    internalGuidanceHitDecision = null,
   } = {}) {
     const normalizedCacheQueryText = String(cacheQueryText || '').trim();
     const normalizedResponse =
@@ -1330,6 +1331,15 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       normalizedCacheValidation.enabled &&
         (!normalizedCacheValidation.accepted || lookupRelevantCacheMiss),
     );
+    const guidanceSuccessContractSatisfied =
+      internalGuidanceHitDecision?.applied === true &&
+      internalGuidanceHitDecision?.hit_quality === 'valid_hit' &&
+      Number(internalGuidanceHitDecision?.same_family_topk_count || 0) > 0 &&
+      internalGuidanceHitDecision?.success_contract_result &&
+      typeof internalGuidanceHitDecision.success_contract_result === 'object' &&
+      !Array.isArray(internalGuidanceHitDecision.success_contract_result) &&
+      internalGuidanceHitDecision.success_contract_result.satisfied === true &&
+      normalizedEffectiveProducts.length > 0;
     const genericSkincareSerumCacheHit =
       !isLookupQuery &&
       !cacheBrandLikeQuery &&
@@ -1337,7 +1347,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       String(cacheBeautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
       /\bserum\b/i.test(normalizedCacheQueryText) &&
       normalizedEffectiveProducts.length > 0 &&
-      cacheRelevant &&
+      (cacheRelevant || guidanceSuccessContractSatisfied) &&
       !cacheRejectedLowQuality;
     const cacheMissingExternalForUnified =
       unifiedRelevanceRequested &&
@@ -1358,6 +1368,9 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       !cacheBeautyQueryProfile?.isSpecificBeautyQuery;
 
     let nextEffectiveCacheHit = Boolean(effectiveCacheHit);
+    if (!nextEffectiveCacheHit && genericSkincareSerumCacheHit) {
+      nextEffectiveCacheHit = true;
+    }
     if (
       cacheRejectedLowQuality ||
       cacheClarifyOnlyShouldUseEarlyDecision ||
