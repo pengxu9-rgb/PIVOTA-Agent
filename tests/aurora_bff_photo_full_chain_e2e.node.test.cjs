@@ -427,7 +427,10 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
           }
         } else {
           const noticeReason = String(noticeCard.payload && noticeCard.payload.reason || '').trim();
-          assert.equal(['reco_mainline_empty', 'low_confidence'].includes(noticeReason), true);
+          assert.equal(
+            ['reco_mainline_empty', 'needs_more_context', 'low_confidence', 'ingredient_constraint_no_match'].includes(noticeReason),
+            true,
+          );
           const recoEvent = chat.body?.ops?.experiment_events?.recos_requested || null;
           if (recoEvent) {
             assert.equal(

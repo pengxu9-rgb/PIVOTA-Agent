@@ -13412,6 +13412,35 @@ function normalizeIngredientRecoContextValue(raw) {
   const sensitivity = normalizeIngredientSensitivityToken(
     pickFirstTrimmed(raw.sensitivity, raw.ingredient_sensitivity, raw.ingredientSensitivity, raw.skin_sensitivity),
   );
+  const resolvedTargetStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      raw.resolved_target_step,
+      raw.resolvedTargetStep,
+      raw.target_step,
+      raw.targetStep,
+      raw.step,
+    ),
+  );
+  const resolvedTargetStepConfidence = String(
+    pickFirstTrimmed(
+      raw.resolved_target_step_confidence,
+      raw.resolvedTargetStepConfidence,
+      raw.target_step_confidence,
+      raw.targetStepConfidence,
+      raw.step_confidence,
+      raw.stepConfidence,
+    ),
+  ).trim().toLowerCase();
+  const resolvedTargetStepSource = String(
+    pickFirstTrimmed(
+      raw.resolved_target_step_source,
+      raw.resolvedTargetStepSource,
+      raw.target_step_source,
+      raw.targetStepSource,
+      raw.step_source,
+      raw.stepSource,
+    ),
+  ).trim().toLowerCase();
   const candidates = normalizeIngredientCandidateList(
     Array.isArray(raw.candidates)
       ? raw.candidates
@@ -13432,13 +13461,22 @@ function normalizeIngredientRecoContextValue(raw) {
     .slice(0, 12);
   const source = pickFirstTrimmed(raw.source, raw.entry_source, raw.trigger_source, raw.route_source);
   const updatedRaw = Number(raw.updated_at_ms || raw.updatedAtMs || 0);
-  if (!query && !goal && candidates.length === 0) return null;
+  if (!query && !goal && candidates.length === 0 && !resolvedTargetStep && productCandidates.length === 0) return null;
   const out = {
     ...(query ? { query: String(query).slice(0, 120) } : {}),
     ...(goal ? { goal } : {}),
     ...(candidates.length ? { candidates } : {}),
     ...(candidates.length ? { ingredient_candidates: candidates } : {}),
     ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
+    ...(resolvedTargetStep
+      ? {
+          target_step: resolvedTargetStep,
+          step: resolvedTargetStep,
+          resolved_target_step: resolvedTargetStep,
+        }
+      : {}),
+    ...(resolvedTargetStepConfidence ? { resolved_target_step_confidence: resolvedTargetStepConfidence.slice(0, 24) } : {}),
+    ...(resolvedTargetStepSource ? { resolved_target_step_source: resolvedTargetStepSource.slice(0, 48) } : {}),
     sensitivity: sensitivity || 'unknown',
     ...(source ? { source: String(source).slice(0, 48) } : {}),
   };
@@ -13464,6 +13502,24 @@ function mergeIngredientRecoContextValue(base, patch) {
     ...(Array.isArray(right.product_candidates) ? right.product_candidates : []),
     ...(Array.isArray(left.product_candidates) ? left.product_candidates : []),
   ].filter((p) => p && typeof p === 'object' && !Array.isArray(p)).slice(0, 12);
+  const mergedResolvedTargetStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      right.resolved_target_step,
+      right.target_step,
+      right.step,
+      left.resolved_target_step,
+      left.target_step,
+      left.step,
+    ),
+  );
+  const mergedResolvedTargetStepConfidence = pickFirstTrimmed(
+    right.resolved_target_step_confidence,
+    left.resolved_target_step_confidence,
+  );
+  const mergedResolvedTargetStepSource = pickFirstTrimmed(
+    right.resolved_target_step_source,
+    left.resolved_target_step_source,
+  );
   return {
     ...left,
     ...right,
@@ -13471,6 +13527,15 @@ function mergeIngredientRecoContextValue(base, patch) {
     goal: right.goal || left.goal || '',
     ...(mergedCandidates.length ? { candidates: mergedCandidates, ingredient_candidates: mergedCandidates } : {}),
     ...(mergedProductCandidates.length ? { product_candidates: mergedProductCandidates } : {}),
+    ...(mergedResolvedTargetStep
+      ? {
+          target_step: mergedResolvedTargetStep,
+          step: mergedResolvedTargetStep,
+          resolved_target_step: mergedResolvedTargetStep,
+        }
+      : {}),
+    ...(mergedResolvedTargetStepConfidence ? { resolved_target_step_confidence: mergedResolvedTargetStepConfidence } : {}),
+    ...(mergedResolvedTargetStepSource ? { resolved_target_step_source: mergedResolvedTargetStepSource } : {}),
     sensitivity: right.sensitivity || left.sensitivity || 'unknown',
     source: right.source || left.source || '',
     updated_at_ms: Math.max(

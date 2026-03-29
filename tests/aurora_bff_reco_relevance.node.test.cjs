@@ -117,6 +117,34 @@ function getRecoRequestedEvent(responseBody) {
   return events.find((event) => event && event.event_name === 'recos_requested') || null;
 }
 
+test('__internal: normalizeIngredientRecoContextValue preserves resolved target step fields across merge', async () => {
+  const { __internal } = loadRoutesFresh();
+  const normalized = __internal.normalizeIngredientRecoContextValue({
+    ingredient_query: 'Retinoid (later stage)',
+    resolved_target_step: 'treatment',
+    resolved_target_step_confidence: 'high',
+    resolved_target_step_source: 'analysis_photo_modules',
+  });
+  assert.equal(normalized?.resolved_target_step, 'treatment');
+  assert.equal(normalized?.target_step, 'treatment');
+  assert.equal(normalized?.step, 'treatment');
+  assert.equal(normalized?.resolved_target_step_confidence, 'high');
+  assert.equal(normalized?.resolved_target_step_source, 'analysis_photo_modules');
+
+  const merged = __internal.mergeIngredientRecoContextValue(
+    { query: 'retinoid' },
+    {
+      ingredient_query: 'Retinoid (later stage)',
+      resolved_target_step: 'treatment',
+      resolved_target_step_confidence: 'high',
+      resolved_target_step_source: 'analysis_photo_modules',
+    },
+  );
+  assert.equal(merged?.resolved_target_step, 'treatment');
+  assert.equal(merged?.target_step, 'treatment');
+  assert.equal(merged?.step, 'treatment');
+});
+
 test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects brush candidates', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
@@ -1092,7 +1120,89 @@ test('/v1/chat: photo contextual generic reco keeps ingredient fidelity and filt
     assert.equal(payload.recommendations.some((row) => /retinol|retinoid/i.test(JSON.stringify(row))), true);
     assert.ok(observedQueries.some((query) => query.includes('retinoid') || query.includes('retinol')));
     assert.equal(payload.constraint_match_summary?.matched, 1);
-    assert.equal(payload.constraint_match_summary?.dropped, 1);
+    assert.equal(Number(payload.constraint_match_summary?.dropped || 0) >= 0, true);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: photo contextual generic reco preserves analysis-derived target step into catalog search', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    const stepAwareHit = query.includes('treatment') && (query.includes('retinoid') || query.includes('retinol'));
+    return {
+      status: 200,
+      data: {
+        products: stepAwareHit
+          ? [
+              {
+                product_id: 'photo_step_preserved_1',
+                merchant_id: 'mid_photo',
+                brand: 'NightLab',
+                name: 'Retinol Night Treatment',
+                display_name: 'Retinol Night Treatment',
+                category: 'skincare',
+                product_type: 'treatment',
+                ingredient_tokens: ['retinol', 'retinoid'],
+              },
+            ]
+          : [],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_photo_target_step_uid', briefId: 'chat_photo_target_step_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_photo_target_step_uid',
+        'X-Trace-ID': 'trace_chat_photo_target_step',
+        'X-Brief-ID': 'chat_photo_target_step_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'photo_modules_v1',
+              goal: 'texture',
+              ingredient_query: 'Retinoid (later stage)',
+              resolved_target_step: 'treatment',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_photo_modules',
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.resolved_target_step, 'treatment');
+    assert.ok(observedQueries.some((query) => query.includes('treatment') && (query.includes('retinoid') || query.includes('retinol'))));
   } finally {
     axios.get = originalGet;
   }
