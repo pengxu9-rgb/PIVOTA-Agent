@@ -444,6 +444,57 @@ test('photo modules summary_v1: top_product_id drops an obvious active-title con
   assert.equal(summary.top_product_id, null);
 });
 
+test('photo modules summary_v1: top_product_id skips rejected grounding rows and keeps the verified primary product', () => {
+  const summary = buildSummaryV1(
+    [
+      {
+        module_id: 'under_eye_right',
+        module_rank_score: 0.94,
+        issues: [
+          {
+            issue_type: 'texture',
+            severity_0_4: 3,
+            confidence_0_1: 0.52,
+            confidence_bucket: 'medium',
+            issue_rank_score: 0.94,
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+        actions: [
+          {
+            ingredient_canonical_id: 'retinol',
+            ingredient_name: 'Retinoid (later stage)',
+            action_rank_score: 0.94,
+            products: [
+              {
+                product_id: 'retinol_rejected_seed',
+                name: 'Retinol Renewal Serum',
+                ingredient_grounding: {
+                  admission_verdict: 'rejected',
+                  reject_reason: 'all_candidates_filtered_noise',
+                },
+              },
+              {
+                product_id: 'retinol_verified_seed',
+                name: 'Retinol Renewal Serum',
+                ingredient_grounding: {
+                  admission_verdict: 'verified',
+                  reject_reason: null,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    { qualityGrade: 'pass', qualityReasons: [] },
+  );
+
+  assert.ok(summary);
+  assert.equal(summary.top_action_ingredient_id, 'retinol');
+  assert.equal(summary.top_product_id, 'retinol_verified_seed');
+});
+
 test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_heatmap_weak_overlap',

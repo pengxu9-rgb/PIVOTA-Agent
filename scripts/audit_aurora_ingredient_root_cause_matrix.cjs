@@ -35,6 +35,7 @@ function parseArgs(argv) {
     baseUrl: DEFAULT_BASE_URL,
     limit: DEFAULT_LIMIT,
     outPath: '',
+    outMdPath: '',
     timeoutMs: DEFAULT_TIMEOUT_MS,
     startIndex: 0,
     count: 0,
@@ -52,6 +53,9 @@ function parseArgs(argv) {
       idx += 1;
     } else if (token === '--out') {
       out.outPath = String(argv[idx + 1] || '').trim();
+      idx += 1;
+    } else if (token === '--out-md') {
+      out.outMdPath = String(argv[idx + 1] || '').trim();
       idx += 1;
     } else if (token === '--timeout-ms') {
       out.timeoutMs = Math.max(5_000, Number.parseInt(argv[idx + 1], 10) || DEFAULT_TIMEOUT_MS);
@@ -105,6 +109,33 @@ function summarizeProducts(products, limit = 3) {
       row?.url ||
       '',
     ).trim() || null,
+    ingredient_grounding:
+      row?.ingredient_grounding && typeof row.ingredient_grounding === 'object'
+        ? {
+            admission_verdict: String(row.ingredient_grounding.admission_verdict || '').trim() || null,
+            reject_reason: String(row.ingredient_grounding.reject_reason || '').trim() || null,
+            target_surface_anchor_hits: Math.max(0, Number(row.ingredient_grounding.target_surface_anchor_hits || 0)),
+            competing_surface_hits: Math.max(0, Number(row.ingredient_grounding.competing_surface_hits || 0)),
+            source_ingredient_ids: Array.isArray(row.ingredient_grounding.source_ingredient_ids)
+              ? row.ingredient_grounding.source_ingredient_ids
+                  .map((value) => String(value || '').trim())
+                  .filter(Boolean)
+                  .slice(0, 8)
+              : [],
+            evidence_provenance:
+              row.ingredient_grounding.evidence_provenance &&
+              typeof row.ingredient_grounding.evidence_provenance === 'object'
+                ? {
+                    runtime_ingredient_evidence_source:
+                      String(row.ingredient_grounding.evidence_provenance.runtime_ingredient_evidence_source || '').trim() || null,
+                    seed_anchor_source_kind:
+                      String(row.ingredient_grounding.evidence_provenance.seed_anchor_source_kind || '').trim() || null,
+                    kb_explicit_provenance:
+                      String(row.ingredient_grounding.evidence_provenance.kb_explicit_provenance || '').trim() || null,
+                  }
+                : null,
+          }
+        : null,
   }));
 }
 
@@ -161,9 +192,15 @@ function classifyRootCause(metadata, products) {
   const rejectBreakdown = metadata?.ingredient_candidate_reject_breakdown || {};
   const rejectTotal = Object.values(rejectBreakdown).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0);
   const hasRejects = rejectTotal > 0;
+  const offSurfaceVisible = (Array.isArray(products) ? products : []).some((row) =>
+    String(row?.ingredient_grounding?.reject_reason || '').trim() === 'off_surface_contamination' ||
+    String(row?.ingredient_grounding?.admission_verdict || '').trim() === 'rejected',
+  );
+  const offSurfaceRejected = Number(rejectBreakdown.off_surface_contamination || 0) > 0;
   const stageCounts = metadata?.ingredient_direct_source_stage_counts || {};
   const sourceActive = hasStageActivity(stageCounts);
 
+  if (offSurfaceVisible || offSurfaceRejected) return 'off_surface_contamination';
   if (directStatus === 'direct_hit' && Array.isArray(products) && products.length > 0) return 'direct_hit';
   if (!registryMatch) return 'registry_not_resolved';
   if (hasExplicitEvidence && hasRejects) return 'explicit_supply_present_but_filtered';
@@ -176,6 +213,7 @@ function classifyRootCause(metadata, products) {
 function classifyRecommendedAction(bucket) {
   const normalized = String(bucket || '').trim();
   if (normalized === 'direct_hit') return 'none';
+  if (normalized === 'off_surface_contamination') return 'seed_row_and_runtime_admission_cleanup';
   if (normalized === 'explicit_supply_present_but_filtered') return 'code_admission_or_step_surface_fix';
   if (normalized === 'explicit_supply_present_but_misranked') return 'ranking_fix';
   if (normalized === 'only_family_supply_present') return 'upstream_seed_or_kb_supply_remediation';
@@ -245,6 +283,58 @@ function writeSummary(outPath, payload) {
   if (!outPath) return;
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function buildMarkdownSummary(payload) {
+  const lines = [
+    '# Aurora Ingredient Root Cause Matrix',
+    '',
+    `- Generated At: ${payload.generated_at || ''}`,
+    `- Base URL: ${payload.base_url || ''}`,
+    `- X-Service-Commit: ${payload.x_service_commit || 'unknown'}`,
+    '',
+    '## Bucket Counts',
+    '',
+  ];
+  const bucketCounts = payload.bucket_counts && typeof payload.bucket_counts === 'object'
+    ? payload.bucket_counts
+    : {};
+  for (const [bucket, count] of Object.entries(bucketCounts)) {
+    lines.push(`- ${bucket}: ${count}`);
+  }
+  lines.push('', '## Rows', '');
+  for (const row of Array.isArray(payload.rows) ? payload.rows : []) {
+    lines.push(`### ${row.ingredient_name || row.ingredient_id || 'unknown'}`);
+    lines.push(`- Ingredient ID: ${row.ingredient_id || ''}`);
+    lines.push(`- Query: ${row.query || ''}`);
+    lines.push(`- Root Cause: ${row.root_cause_bucket || 'unknown'}`);
+    lines.push(`- Recommended Action: ${row.recommended_action || 'manual_triage'}`);
+    lines.push(`- Direct Main Path Status: ${row.direct_main_path_status || 'n/a'}`);
+    lines.push(`- Miss Reason: ${row.miss_reason || 'n/a'}`);
+    const topProducts = Array.isArray(row.top_products) ? row.top_products : [];
+    if (topProducts.length > 0) {
+      lines.push('- Top Products:');
+      for (const product of topProducts) {
+        const grounding = product?.ingredient_grounding || null;
+        const groundingSuffix = grounding
+          ? ` [${grounding.admission_verdict || 'unknown'}${grounding.reject_reason ? ` / ${grounding.reject_reason}` : ''}]`
+          : '';
+        lines.push(`  - ${product.name || 'unknown'}${groundingSuffix}`);
+      }
+    }
+    const rejectedSamples = Array.isArray(row.rejected_samples) ? row.rejected_samples : [];
+    if (rejectedSamples.length > 0) {
+      lines.push(`- Rejected Samples: ${rejectedSamples.length}`);
+    }
+    lines.push('');
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function writeMarkdownSummary(outPath, payload) {
+  if (!outPath) return;
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, buildMarkdownSummary(payload), 'utf8');
 }
 
 async function fetchAuditRow(baseUrl, limit, timeoutMs, [ingredientClass, ingredientId, ingredientName, query]) {
@@ -334,6 +424,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const baseUrl = normalizeBaseUrl(args.baseUrl);
   const outPath = resolveOutputPath(args.outPath);
+  const outMdPath = resolveOutputPath(
+    args.outMdPath || (outPath && outPath.endsWith('.json') ? outPath.replace(/\.json$/i, '.md') : ''),
+  );
   const selectedEntries = selectMatrixRows(args);
   const existingRows = args.resume ? loadExistingRows(outPath) : [];
   const existingByIngredientId = new Map(
@@ -363,6 +456,17 @@ async function main() {
         selectedEntries,
       }),
     );
+    writeMarkdownSummary(
+      outMdPath,
+      buildSummaryPayload({
+        args,
+        baseUrl,
+        rows,
+        serviceCommit,
+        completed: rows.length === selectedEntries.length,
+        selectedEntries,
+      }),
+    );
   }
   const summary = buildSummaryPayload({
     args,
@@ -375,6 +479,7 @@ async function main() {
   const output = `${JSON.stringify(summary, null, 2)}\n`;
   process.stdout.write(output);
   writeSummary(outPath, summary);
+  writeMarkdownSummary(outMdPath, summary);
   process.exit(0);
 }
 

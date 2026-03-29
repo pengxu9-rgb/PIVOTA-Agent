@@ -4,6 +4,12 @@ const crypto = require('node:crypto');
 
 const { query } = require('../db');
 const { buildExternalSeedProduct } = require('../services/externalSeedProducts');
+const {
+  resolveIngredientRecallProfile,
+  LOCAL_INGREDIENT_RECALL_REGISTRY,
+  normalizeIngredientRecallText,
+} = require('../services/ingredientRecallRegistry');
+const { evaluateIngredientRecallCandidate } = require('../services/ingredientSkuEvidence');
 const { resolveIngredientRecommendation, normalizeMarket } = require('./ingredientKbV2/resolve');
 const { renderAllowedTemplate } = require('./claimsTemplates/render');
 
@@ -119,6 +125,317 @@ function round3(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 1000) / 1000;
+}
+
+function parseStructuredSeedIdArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeIngredientCanonicalId(item)).filter(Boolean);
+  }
+  const text = String(value || '').trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => normalizeIngredientCanonicalId(item)).filter(Boolean);
+    }
+  } catch {
+    // fall through to best-effort token parsing
+  }
+  return text
+    .split(/[,\s|/]+/)
+    .map((item) => normalizeIngredientCanonicalId(item))
+    .filter(Boolean);
+}
+
+function resolveDeterministicSeedSourceMatchFields(row, ingredientId) {
+  const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
+  if (!normalizedIngredientId) return [];
+  const seedData = row && typeof row.seed_data === 'object' && !Array.isArray(row.seed_data)
+    ? row.seed_data
+    : {};
+  const snapshot = seedData && typeof seedData.snapshot === 'object' && !Array.isArray(seedData.snapshot)
+    ? seedData.snapshot
+    : {};
+  const fields = [
+    ['reviewed_ingredient_ids', seedData.reviewed_ingredient_ids],
+    ['canonical_ingredient_ids', seedData.canonical_ingredient_ids],
+    ['ingredient_ids', seedData.ingredient_ids],
+    ['snapshot.reviewed_ingredient_ids', snapshot.reviewed_ingredient_ids],
+    ['snapshot.canonical_ingredient_ids', snapshot.canonical_ingredient_ids],
+    ['snapshot.ingredient_ids', snapshot.ingredient_ids],
+  ];
+  return fields
+    .filter(([, rawValue]) => parseStructuredSeedIdArray(rawValue).includes(normalizedIngredientId))
+    .map(([field]) => field);
+}
+
+function buildDeterministicSeedEntryContext(input = {}) {
+  const ingredientId = normalizeIngredientCanonicalId(
+    pickFirstString(input && input.ingredientId, input && input.ingredient_id),
+  );
+  const ingredientName = pickFirstString(input && input.ingredientName, input && input.ingredient_name);
+  const targetStepFamily = String(
+    input && (
+      input.targetStepFamily
+      || input.target_step_family
+      || input.targetStep
+      || input.target_step
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const queryText = pickFirstString(
+    input && input.queryText,
+    input && input.query_text,
+    [ingredientName, targetStepFamily].filter(Boolean).join(' '),
+    ingredientName,
+    ingredientId.replace(/_/g, ' '),
+  );
+  const profile = ingredientId
+    ? resolveIngredientRecallProfile({ ingredientId, query: ingredientName || queryText })
+    : null;
+  return {
+    ingredientId,
+    ingredientName,
+    targetStepFamily,
+    queryText,
+    profile,
+  };
+}
+
+function buildDeterministicSeedGroundingAudit({
+  entry,
+  profile,
+  product,
+  row = null,
+  evidence = null,
+  rejectReason = null,
+} = {}) {
+  const audit = {
+    target_ingredient_id: String(entry && entry.ingredientId || '').trim() || null,
+    target_ingredient_entity: pickFirstString(
+      entry && entry.ingredientName,
+      profile && profile.display_name,
+      entry && entry.ingredientId,
+    ) || null,
+    target_family: pickFirstString(profile && profile.ingredient_class) || null,
+    product_title: pickFirstString(product && (product.title || product.name || product.display_name || product.displayName)) || null,
+    product_url: pickFirstString(product && (product.url || product.canonical_url || product.destination_url || product.direct_url)) || null,
+    product_category: pickFirstString(product && (product.category || product.product_type || product.type)) || null,
+    source_ingredient_ids: asArray(product && product.ingredient_ids)
+      .map((value) => normalizeIngredientCanonicalId(value))
+      .filter(Boolean)
+      .slice(0, 12),
+    target_surface_anchor_hits: Number(evidence && evidence.target_surface_anchor_hits || 0) || 0,
+    competing_surface_hits: Number(evidence && evidence.competing_surface_hits || 0) || 0,
+    admission_verdict: rejectReason ? 'rejected' : 'verified',
+    reject_reason: rejectReason ? String(rejectReason).trim() : null,
+    evidence_provenance: {
+      runtime_ingredient_evidence_source: pickFirstString(evidence && evidence.runtime_ingredient_evidence_source) || 'none',
+      seed_anchor_source_kind: pickFirstString(evidence && evidence.seed_anchor_source_kind) || 'none',
+      kb_explicit_provenance: pickFirstString(evidence && evidence.kb_explicit_provenance) || 'none',
+      source_match_fields: resolveDeterministicSeedSourceMatchFields(row, entry && entry.ingredientId),
+    },
+  };
+  if (row && row.id) audit.source_seed_row_id = String(row.id);
+  const candidateStep = pickFirstString(evidence && evidence.candidate_step);
+  if (candidateStep) audit.candidate_step = candidateStep;
+  const familyRelation = pickFirstString(evidence && evidence.family_relation);
+  if (familyRelation) audit.family_relation = familyRelation;
+  return audit;
+}
+
+function attachDeterministicSeedGroundingAudit(product, audit) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  if (!audit || typeof audit !== 'object') return product;
+  return {
+    ...product,
+    ingredient_grounding: {
+      ...audit,
+      evidence_provenance:
+        audit.evidence_provenance && typeof audit.evidence_provenance === 'object'
+          ? { ...audit.evidence_provenance }
+          : {},
+    },
+  };
+}
+
+function initDeterministicSeedIngredientAudit(entry = {}) {
+  return {
+    target_ingredient_id: String(entry.ingredientId || '').trim() || null,
+    target_ingredient_entity: pickFirstString(entry.ingredientName, entry.ingredientId) || null,
+    target_family: pickFirstString(entry.profile && entry.profile.ingredient_class) || null,
+    admitted_count: 0,
+    rejected_count: 0,
+    reject_reason_breakdown: {},
+    admitted_samples: [],
+    rejected_samples: [],
+  };
+}
+
+function recordDeterministicSeedIngredientAudit(target, audit) {
+  if (!target || typeof target !== 'object' || !audit || typeof audit !== 'object') return;
+  const admitted = String(audit.admission_verdict || '').trim().toLowerCase() === 'verified';
+  if (admitted) {
+    target.admitted_count = Number(target.admitted_count || 0) + 1;
+    if (Array.isArray(target.admitted_samples) && target.admitted_samples.length < 12) {
+      target.admitted_samples.push(audit);
+    }
+    return;
+  }
+  target.rejected_count = Number(target.rejected_count || 0) + 1;
+  const rejectReason = String(audit.reject_reason || 'unknown').trim() || 'unknown';
+  target.reject_reason_breakdown[rejectReason] = Number(target.reject_reason_breakdown[rejectReason] || 0) + 1;
+  if (Array.isArray(target.rejected_samples) && target.rejected_samples.length < 20) {
+    target.rejected_samples.push(audit);
+  }
+}
+
+function attachGroundingAuditProperty(target, propertyName, value) {
+  if (!target || typeof target !== 'object' || !propertyName) return target;
+  try {
+    Object.defineProperty(target, propertyName, {
+      value,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    target[propertyName] = value;
+  }
+  return target;
+}
+
+function countNormalizedPhraseHits(text, phrases = []) {
+  const normalizedText = normalizeIngredientRecallText(text);
+  if (!normalizedText) return 0;
+  let hits = 0;
+  for (const phrase of Array.isArray(phrases) ? phrases : []) {
+    const normalizedPhrase = normalizeIngredientRecallText(phrase);
+    if (!normalizedPhrase) continue;
+    if (normalizedText.includes(normalizedPhrase)) hits += 1;
+  }
+  return hits;
+}
+
+function resolveCompetingSeedSurfaceSignal(entry = null, product = null) {
+  const targetIngredientId = normalizeIngredientCanonicalId(entry && entry.ingredientId);
+  const normalizedSurfaceText = normalizeIngredientRecallText([
+    pickFirstString(product && (product.title || product.name || product.display_name || product.displayName)),
+    pickFirstString(product && (product.url || product.canonical_url || product.destination_url || product.direct_url)),
+  ].filter(Boolean).join(' '));
+  if (!normalizedSurfaceText) return null;
+  let best = null;
+  for (const [profileId, profile] of Object.entries(LOCAL_INGREDIENT_RECALL_REGISTRY || {})) {
+    if (!profile || normalizeIngredientCanonicalId(profileId) === targetIngredientId) continue;
+    const exactHits = countNormalizedPhraseHits(normalizedSurfaceText, profile.exact_phrases);
+    const aliasHits = countNormalizedPhraseHits(normalizedSurfaceText, profile.alias_phrases);
+    const totalHits = exactHits + aliasHits;
+    if (totalHits <= 0) continue;
+    const candidate = {
+      ingredient_id: normalizeIngredientCanonicalId(profile.ingredient_id || profileId),
+      ingredient_class: pickFirstString(profile.ingredient_class) || null,
+      exact_hits: exactHits,
+      alias_hits: aliasHits,
+      total_hits: totalHits,
+    };
+    if (
+      !best ||
+      candidate.total_hits > best.total_hits ||
+      (candidate.total_hits === best.total_hits && candidate.exact_hits > best.exact_hits)
+    ) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function resolveDeterministicSeedStrictRejectReason({ entry = null, product = null, evidence = null } = {}) {
+  if (!evidence || typeof evidence !== 'object') return null;
+  const targetSurfaceAnchorHits = Number(evidence.target_surface_anchor_hits || 0) || 0;
+  const competingSurfaceHits = Number(evidence.competing_surface_hits || 0) || 0;
+  const competingTitleUrlHits = Number(evidence.competing_title_url_hits || 0) || 0;
+  const titleExactHits = Number(evidence.title_exact || 0) || 0;
+  const titleAliasHits = Number(evidence.title_alias || 0) || 0;
+  const urlAliasHits = Number(evidence.url_alias || 0) || 0;
+  const ingredientTokenHits =
+    (Number(evidence.ingredient_token_exact || 0) || 0) +
+    (Number(evidence.ingredient_token_alias || 0) || 0);
+  const kbExplicitHits = Number(evidence.kb_explicit || 0) || 0;
+  const directSurfaceExplicitHits = titleExactHits + titleAliasHits + urlAliasHits;
+  const competingSeedSurface = resolveCompetingSeedSurfaceSignal(entry, product);
+  if (targetSurfaceAnchorHits <= 0 && competingSeedSurface) {
+    return 'off_surface_contamination';
+  }
+  if (
+    targetSurfaceAnchorHits <= 0 &&
+    competingTitleUrlHits > 0
+  ) {
+    return 'off_surface_contamination';
+  }
+  if (
+    targetSurfaceAnchorHits <= 0 &&
+    competingSurfaceHits > 0 &&
+    directSurfaceExplicitHits <= 0 &&
+    (ingredientTokenHits > 0 || kbExplicitHits > 0)
+  ) {
+    return 'all_candidates_filtered_noise';
+  }
+  return null;
+}
+
+function verifyDeterministicSeedCandidate({ entry, product, row = null } = {}) {
+  const profile = entry && entry.profile ? entry.profile : null;
+  const candidateProduct =
+    product && typeof product === 'object' && !Array.isArray(product)
+      ? { ...product }
+      : null;
+  const evaluation = profile
+    ? evaluateIngredientRecallCandidate(candidateProduct, {
+        profile,
+        targetStepFamily: entry && entry.targetStepFamily ? entry.targetStepFamily : '',
+        queryText: entry && entry.queryText ? entry.queryText : '',
+        sourceTag: 'external_seed_deterministic_ingredient_match',
+      })
+    : { reject_reason: 'no_registry_profile', evidence: null, product: null };
+  const audit = buildDeterministicSeedGroundingAudit({
+    entry,
+    profile,
+    product: candidateProduct || product,
+    row,
+    evidence: evaluation && evaluation.evidence ? evaluation.evidence : null,
+    rejectReason:
+      resolveDeterministicSeedStrictRejectReason({
+        entry,
+        product: candidateProduct || product,
+        evidence: evaluation && evaluation.evidence ? evaluation.evidence : null,
+      }) ||
+      (evaluation && evaluation.reject_reason ? evaluation.reject_reason : null),
+  });
+  const strictRejectReason = resolveDeterministicSeedStrictRejectReason({
+    entry,
+    product: candidateProduct || product,
+    evidence: evaluation && evaluation.evidence ? evaluation.evidence : null,
+  });
+  if (strictRejectReason) {
+    return {
+      admitted: false,
+      product: null,
+      audit: {
+        ...audit,
+        admission_verdict: 'rejected',
+        reject_reason: strictRejectReason,
+      },
+    };
+  }
+  if (!evaluation || !evaluation.product) {
+    return { admitted: false, product: null, audit };
+  }
+  return {
+    admitted: true,
+    product: attachDeterministicSeedGroundingAudit(evaluation.product, audit),
+    audit,
+  };
 }
 
 function normalizeRetrievalSource(value, fallback = 'catalog') {
@@ -259,6 +576,18 @@ function normalizeNeutralCandidate(raw, { fallbackSource = 'catalog', fallbackRe
         merchant_id: pickFirstString(canonicalRefRaw.merchant_id, canonicalRefRaw.merchantId),
       }
     : null;
+  const ingredientGrounding =
+    raw.ingredient_grounding && typeof raw.ingredient_grounding === 'object' && !Array.isArray(raw.ingredient_grounding)
+      ? {
+          ...raw.ingredient_grounding,
+          evidence_provenance:
+            raw.ingredient_grounding.evidence_provenance &&
+            typeof raw.ingredient_grounding.evidence_provenance === 'object' &&
+            !Array.isArray(raw.ingredient_grounding.evidence_provenance)
+              ? { ...raw.ingredient_grounding.evidence_provenance }
+              : {},
+        }
+      : null;
 
   return {
     product_id: productId,
@@ -284,6 +613,7 @@ function normalizeNeutralCandidate(raw, { fallbackSource = 'catalog', fallbackRe
     retrieval_reason: retrievalReason,
     why_match: pickFirstString(raw.why_match, raw.why, raw.reason),
     direct_url: directUrl,
+    ...(ingredientGrounding ? { ingredient_grounding: ingredientGrounding } : {}),
   };
 }
 
@@ -593,17 +923,16 @@ async function loadDeterministicExternalSeedCandidatesBatch({
   const normalizedEntries = [];
   const seen = new Set();
   for (const input of asArray(ingredientInputs)) {
-    const normalizedIngredientId = normalizeIngredientCanonicalId(
-      pickFirstString(input && input.ingredientId, input && input.ingredient_id),
-    );
-    if (!normalizedIngredientId || seen.has(normalizedIngredientId)) continue;
-    seen.add(normalizedIngredientId);
-    normalizedEntries.push({
-      ingredientId: normalizedIngredientId,
-      ingredientName: pickFirstString(input && input.ingredientName, input && input.ingredient_name),
-    });
+    const entry = buildDeterministicSeedEntryContext(input);
+    if (!entry.ingredientId || seen.has(entry.ingredientId)) continue;
+    seen.add(entry.ingredientId);
+    normalizedEntries.push(entry);
   }
   const buckets = new Map(normalizedEntries.map((entry) => [entry.ingredientId, []]));
+  const auditByIngredient = new Map(
+    normalizedEntries.map((entry) => [entry.ingredientId, initDeterministicSeedIngredientAudit(entry)]),
+  );
+  attachGroundingAuditProperty(buckets, 'ingredient_grounding_audit', auditByIngredient);
   if (!normalizedEntries.length) return buckets;
   if (!process.env.DATABASE_URL) return buckets;
 
@@ -655,15 +984,25 @@ async function loadDeterministicExternalSeedCandidatesBatch({
 
       for (const entry of normalizedEntries) {
         if (!productIngredientIds.includes(entry.ingredientId)) continue;
+        const verification = verifyDeterministicSeedCandidate({
+          entry,
+          product,
+          row,
+        });
+        recordDeterministicSeedIngredientAudit(
+          auditByIngredient.get(entry.ingredientId),
+          verification.audit,
+        );
+        if (!verification.admitted || !verification.product) continue;
         const bucket = buckets.get(entry.ingredientId) || [];
         const bucketSeen = seenByIngredient.get(entry.ingredientId) || new Set();
-        const productId = pickFirstString(product.product_id, product.id);
-        const merchantId = pickFirstString(product.merchant_id, product.merchantId);
+        const productId = pickFirstString(verification.product.product_id, verification.product.id);
+        const merchantId = pickFirstString(verification.product.merchant_id, verification.product.merchantId);
         const key = `${productId.toLowerCase()}::${merchantId.toLowerCase()}`;
         if (!productId || !merchantId || bucketSeen.has(key)) continue;
         bucketSeen.add(key);
         bucket.push({
-          ...product,
+          ...verification.product,
           retrieval_source: 'external_seed',
           retrieval_reason: 'external_seed_deterministic_ingredient_match',
         });
@@ -693,19 +1032,25 @@ async function loadDeterministicExternalSeedCandidatesBatch({
 async function loadDeterministicExternalSeedCandidates({
   ingredientId,
   ingredientName,
+  targetStepFamily = '',
+  queryText = '',
   market,
   maxProducts = 3,
 } = {}) {
   const normalizedIngredientId = normalizeIngredientCanonicalId(ingredientId);
   if (!normalizedIngredientId) return [];
   const batch = await loadDeterministicExternalSeedCandidatesBatch({
-    ingredientInputs: [{ ingredientId: normalizedIngredientId, ingredientName }],
+    ingredientInputs: [{ ingredientId: normalizedIngredientId, ingredientName, targetStepFamily, queryText }],
     market,
     maxProducts,
   });
-  return Array.isArray(batch && batch.get(normalizedIngredientId))
+  const out = Array.isArray(batch && batch.get(normalizedIngredientId))
     ? batch.get(normalizedIngredientId)
     : [];
+  if (Array.isArray(out) && batch && batch.ingredient_grounding_audit instanceof Map) {
+    attachGroundingAuditProperty(out, 'ingredient_grounding_audit', batch.ingredient_grounding_audit.get(normalizedIngredientId) || null);
+  }
+  return out;
 }
 
 function getTopIssueType(issues) {
@@ -972,6 +1317,18 @@ function buildNeutralProductOutput({
       ? { canonical_product_ref: candidate.canonical_product_ref }
       : {}),
     ...(directUrl ? { pdp_url: directUrl, url: directUrl, product_url: directUrl, purchase_path: directUrl } : {}),
+    ...(candidate && candidate.ingredient_grounding && typeof candidate.ingredient_grounding === 'object'
+      ? {
+          ingredient_grounding: {
+            ...candidate.ingredient_grounding,
+            evidence_provenance:
+              candidate.ingredient_grounding.evidence_provenance &&
+              typeof candidate.ingredient_grounding.evidence_provenance === 'object'
+                ? { ...candidate.ingredient_grounding.evidence_provenance }
+                : {},
+          },
+        }
+      : {}),
   };
 
   if (internalTestMode) {
@@ -1348,6 +1705,18 @@ async function buildIngredientProductRecommendationsNeutral({
   const seen = new Set();
   const externalSearchCtas = [];
   const sourceCounter = { catalog: 0, external_seed: 0, llm_fallback: 0 };
+  const lookupQueries = normalizeSearchQueries({
+    ingredientId: normalizedIngredientId,
+    ingredientName,
+    issueType: normalizedIssueType,
+    lang: normalizedLang,
+  });
+  const deterministicSeedEntry = buildDeterministicSeedEntryContext({
+    ingredientId: normalizedIngredientId,
+    ingredientName,
+    queryText: lookupQueries[0] || ingredientName || normalizedIngredientId,
+  });
+  const deterministicSeedAudit = initDeterministicSeedIngredientAudit(deterministicSeedEntry);
   let deterministicExternalCount = 0;
   let filteredBySafety = 0;
   let filteredByUrl = 0;
@@ -1418,6 +1787,7 @@ async function buildIngredientProductRecommendationsNeutral({
       moduleId,
       ingredientId: normalizedIngredientId,
       ingredientName,
+      queryText: lookupQueries[0] || ingredientName || normalizedIngredientId,
       issueType: normalizedIssueType,
       market: normalizedMarket,
       lang: normalizedLang,
@@ -1429,7 +1799,13 @@ async function buildIngredientProductRecommendationsNeutral({
       ? deterministicOut
       : asArray(deterministicOut && deterministicOut.products);
     for (const row of deterministicProducts) {
-      mergeCandidate(row, {
+      const verification = verifyDeterministicSeedCandidate({
+        entry: deterministicSeedEntry,
+        product: row,
+      });
+      recordDeterministicSeedIngredientAudit(deterministicSeedAudit, verification.audit);
+      if (!verification.admitted || !verification.product) continue;
+      mergeCandidate(verification.product, {
         defaultSource: 'external_seed',
         defaultReason: 'external_seed_deterministic_ingredient_match',
       });
@@ -1439,13 +1815,6 @@ async function buildIngredientProductRecommendationsNeutral({
   }
   deterministicExternalCount = Number(sourceCounter.external_seed || 0);
   mainlinePoolCount = pool.length;
-
-  const lookupQueries = normalizeSearchQueries({
-    ingredientId: normalizedIngredientId,
-    ingredientName,
-    issueType: normalizedIssueType,
-    lang: normalizedLang,
-  });
 
   const fallbackQueries = lookupQueries.slice(0, fallbackQueryLimitN);
   if (
@@ -1640,6 +2009,15 @@ async function buildIngredientProductRecommendationsNeutral({
         pool.length > 0 ? Number(sourceCounter.external_seed || 0) / Math.max(1, pool.length) : 0,
       ),
       generic_copy_rate: round3(outputs.length > 0 ? genericCopyCount / outputs.length : 0),
+      deterministic_seed_audit: {
+        admitted_count: Number(deterministicSeedAudit.admitted_count || 0),
+        rejected_count: Number(deterministicSeedAudit.rejected_count || 0),
+        reject_reason_breakdown:
+          deterministicSeedAudit.reject_reason_breakdown &&
+          typeof deterministicSeedAudit.reject_reason_breakdown === 'object'
+            ? { ...deterministicSeedAudit.reject_reason_breakdown }
+            : {},
+      },
       low_confidence_fallback_only: Boolean(AURORA_RULE_RELAX_AGGRESSIVE && outputs.length === 0 && dedupedCtas.length > 0),
       rich_fields_coverage: {
         image_rate: round3(outputs.length > 0 ? richImageCount / outputs.length : 0),

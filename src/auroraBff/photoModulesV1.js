@@ -582,10 +582,23 @@ function isPhotoActionProductTitleConflict(actionRow, product) {
   return true;
 }
 
+function isVerifiedPhotoActionProduct(product) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+  const grounding = product.ingredient_grounding && typeof product.ingredient_grounding === 'object'
+    ? product.ingredient_grounding
+    : null;
+  if (!grounding) return true;
+  const verdict = String(grounding.admission_verdict || '').trim().toLowerCase();
+  const rejectReason = String(grounding.reject_reason || '').trim().toLowerCase();
+  if (rejectReason) return false;
+  return verdict === 'verified';
+}
+
 function findTopProductIdFromAction(actionRow) {
   if (!actionRow || typeof actionRow !== 'object') return null;
   const products = Array.isArray(actionRow.products) ? actionRow.products : [];
   for (const product of products) {
+    if (!isVerifiedPhotoActionProduct(product)) continue;
     if (isPhotoActionProductTitleConflict(actionRow, product)) continue;
     const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
       .trim();

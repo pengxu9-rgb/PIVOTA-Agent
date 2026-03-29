@@ -402,26 +402,41 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
         });
         assert.equal(chat.status, 200);
         const recoCard = getCard(chat.body, 'recommendations');
-        assert.ok(recoCard);
+        const noticeCard = getCard(chat.body, 'confidence_notice');
+        assert.ok(recoCard || noticeCard);
 
-        const recommendations = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
-          ? recoCard.payload.recommendations
-          : [];
-        if (recommendations.length > 0) {
-          for (const row of recommendations) {
-            const url = String(
-              (row && (row.pdp_url || row.url || row.product_url || row.purchase_path)) || '',
-            )
-              .trim()
-              .toLowerCase();
-            assert.equal(/^https:\/\//.test(url), true);
-            assert.equal(url.includes('google.com/search'), false);
+        if (recoCard) {
+          const recommendations = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
+            ? recoCard.payload.recommendations
+            : [];
+          if (recommendations.length > 0) {
+            for (const row of recommendations) {
+              const url = String(
+                (row && (row.pdp_url || row.url || row.product_url || row.purchase_path)) || '',
+              )
+                .trim()
+                .toLowerCase();
+              assert.equal(/^https:\/\//.test(url), true);
+              assert.equal(url.includes('google.com/search'), false);
+            }
+          } else {
+            const emptyReason = String(recoCard.payload && recoCard.payload.products_empty_reason || '').trim();
+            assert.equal(emptyReason.length > 0, true);
+            const fieldMissing = Array.isArray(recoCard.field_missing) ? recoCard.field_missing : [];
+            assert.equal(fieldMissing.length > 0, true);
           }
         } else {
-          const emptyReason = String(recoCard.payload && recoCard.payload.products_empty_reason || '').trim();
-          assert.equal(emptyReason.length > 0, true);
-          const fieldMissing = Array.isArray(recoCard.field_missing) ? recoCard.field_missing : [];
-          assert.equal(fieldMissing.length > 0, true);
+          const noticeReason = String(noticeCard.payload && noticeCard.payload.reason || '').trim();
+          assert.equal(['reco_mainline_empty', 'low_confidence'].includes(noticeReason), true);
+          const recoEvent = chat.body?.ops?.experiment_events?.recos_requested || null;
+          if (recoEvent) {
+            assert.equal(
+              ['reco_mainline_empty', 'needs_more_context', 'low_confidence'].includes(
+                String(recoEvent?.mainline_status || '').trim(),
+              ),
+              true,
+            );
+          }
         }
       } finally {
         if (routes && routes.__internal) {

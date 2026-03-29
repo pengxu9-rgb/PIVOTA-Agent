@@ -17438,12 +17438,15 @@ async function enrichPhotoModulesCardWithIngredientProducts({
     ].join('::');
     if (!cacheKey || cacheKey === '::') return [];
     if (!deterministicCandidateCache.has(cacheKey)) {
+      const targetStepFamily = deriveRecoTargetStepFromIngredient(ingredientId, ingredientName);
       deterministicCandidateCache.set(
         cacheKey,
         loadDeterministicExternalSeedCandidatesImpl({
           moduleId,
           ingredientId,
           ingredientName,
+          ...(targetStepFamily ? { targetStepFamily } : {}),
+          queryText: [ingredientName, issueType].filter(Boolean).join(' '),
           issueType,
           market,
           lang: candidateLang,
@@ -17467,9 +17470,13 @@ async function enrichPhotoModulesCardWithIngredientProducts({
       if (!ingredientId) continue;
       const normalizedIngredientId = String(ingredientId || '').trim().toLowerCase();
       if (normalizedIngredientId && !deterministicBatchInputs.has(normalizedIngredientId)) {
+        const ingredientName = pickFirstString(action.ingredient_name, action.ingredient);
+        const targetStepFamily = deriveRecoTargetStepFromIngredient(ingredientId, ingredientName);
         deterministicBatchInputs.set(normalizedIngredientId, {
           ingredientId: normalizedIngredientId,
-          ingredientName: pickFirstString(action.ingredient_name, action.ingredient),
+          ingredientName,
+          ...(targetStepFamily ? { targetStepFamily } : {}),
+          queryText: [ingredientName, issueType].filter(Boolean).join(' '),
         });
       }
       uniqueActionRecoKeys.add(
@@ -24301,6 +24308,16 @@ function isTravelRecoHandoffRequest({ actionId, actionData, profile, session } =
   return Boolean(context.travel_readiness || context.has_travel_plan);
 }
 
+function isVerifiedBeautyProductCandidate(row) {
+  if (!isPlainObject(row)) return false;
+  const grounding = isPlainObject(row.ingredient_grounding) ? row.ingredient_grounding : null;
+  if (!grounding) return true;
+  const verdict = String(grounding.admission_verdict || '').trim().toLowerCase();
+  const rejectReason = pickFirstTrimmed(grounding.reject_reason).toLowerCase();
+  if (rejectReason) return false;
+  return verdict === 'verified';
+}
+
 function sanitizeRecoRequestContext(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const message = String(raw.message || '').trim();
@@ -24322,7 +24339,7 @@ function sanitizeRecoRequestContext(raw = {}) {
   ).trim().toLowerCase();
   const artifactId = String(raw.artifact_id || raw.artifactId || '').trim();
   const productCandidates = (Array.isArray(raw.product_candidates) ? raw.product_candidates : Array.isArray(raw.productCandidates) ? raw.productCandidates : [])
-    .filter((row) => isPlainObject(row))
+    .filter((row) => isVerifiedBeautyProductCandidate(row))
     .slice(0, 12);
   const createdAtMsRaw = Number(raw.created_at_ms || raw.createdAtMs);
   const createdAtMs = Number.isFinite(createdAtMsRaw) ? Math.max(0, Math.trunc(createdAtMsRaw)) : Date.now();
@@ -24848,6 +24865,7 @@ function filterPhotoActionProducts(action, products, maxItems = 12) {
   const filtered = [];
   for (const product of Array.isArray(products) ? products : []) {
     if (!isPlainObject(product)) continue;
+    if (!isVerifiedBeautyProductCandidate(product)) continue;
     if (isPhotoActionProductTitleConflict(action, product)) continue;
     filtered.push(product);
   }

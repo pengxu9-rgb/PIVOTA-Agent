@@ -529,6 +529,75 @@ test('neutral rec: photo path prefers deterministic external seed mainline and s
   });
 });
 
+test('neutral rec: deterministic external seed path keeps only verified rows and drops off-surface contamination', async () => {
+  const dataset = buildRetinolDataset();
+  const catalog = [];
+
+  await withTempArtifacts({ dataset, catalog }, async ({ artifactPath, catalogPath }) => {
+    const result = await buildIngredientProductRecommendationsNeutral({
+      moduleId: 'under_eye_right',
+      ingredientId: 'retinol',
+      ingredientName: 'Retinoid (later stage)',
+      issueType: 'texture',
+      market: 'US',
+      lang: 'en',
+      riskTier: 'low',
+      qualityGrade: 'pass',
+      minCitations: 1,
+      minEvidenceGrade: 'B',
+      repairOnlyWhenDegraded: false,
+      artifactPath,
+      catalogPath,
+      allowBundledCatalogSeed: false,
+      maxProducts: 3,
+      mainlineOnly: true,
+      preferDeterministicMainline: true,
+      deterministicCandidateBuilder: async () => ({
+        products: [
+          {
+            product_id: 'ext_seed_bad_vitc',
+            merchant_id: 'external_seed',
+            title: 'Vitamin-C Serum',
+            brand: 'Bad Seed Brand',
+            ingredient_ids: ['retinol'],
+            url: 'https://seed.example.com/p/vitamin-c-serum',
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_deterministic_ingredient_match',
+          },
+          {
+            product_id: 'ext_seed_good_retinol',
+            merchant_id: 'external_seed',
+            title: 'Retinol Renewal Serum',
+            brand: 'Good Seed Brand',
+            ingredient_ids: ['retinol'],
+            url: 'https://seed.example.com/p/retinol-renewal-serum',
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_deterministic_ingredient_match',
+          },
+        ],
+      }),
+      fallbackCandidateBuilder: null,
+      llmFallbackRecoverFn: null,
+    });
+
+    assert.equal(result.products.length, 1);
+    assert.equal(result.products[0].product_id, 'ext_seed_good_retinol');
+    assert.equal(result.products[0].ingredient_grounding?.admission_verdict, 'verified');
+    assert.equal(result.products[0].ingredient_grounding?.reject_reason || null, null);
+    assert.equal(Number(result.debug?.deterministic_seed_audit?.admitted_count || 0), 1);
+    assert.equal(Number(result.debug?.deterministic_seed_audit?.rejected_count || 0), 1);
+    assert.equal(
+      Number(
+        result.debug?.deterministic_seed_audit?.reject_reason_breakdown?.off_surface_contamination
+        || result.debug?.deterministic_seed_audit?.reject_reason_breakdown?.all_candidates_filtered_noise
+        || result.debug?.deterministic_seed_audit?.reject_reason_breakdown?.no_explicit_sku_evidence
+        || 0,
+      ) >= 1,
+      true,
+    );
+  });
+});
+
 test('neutral rec: photo path still uses network fallback when deterministic mainline is empty', async () => {
   const dataset = buildNiacinamideDataset();
   const catalog = [];

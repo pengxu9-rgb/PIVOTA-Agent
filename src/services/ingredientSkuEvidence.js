@@ -1432,6 +1432,50 @@ function buildCandidateEvidence(
   return { evidence };
 }
 
+function evaluateIngredientRecallCandidate(
+  product,
+  {
+    profile = null,
+    targetStepFamily = '',
+    allowFamilyOnly = false,
+    kbEvidence = null,
+    queryText = '',
+    sourceTag = 'unknown',
+  } = {},
+) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) {
+    return { reject_reason: 'invalid_candidate', evidence: null, product: null };
+  }
+  if (!profile || typeof profile !== 'object') {
+    return { reject_reason: 'no_registry_profile', evidence: null, product: null };
+  }
+  const scored = buildCandidateEvidence(product, {
+    profile,
+    targetStepFamily,
+    allowFamilyOnly,
+    kbEvidence,
+    queryText,
+  });
+  if (!scored || !scored.evidence) {
+    return {
+      reject_reason: String(scored?.reject_reason || 'all_candidates_filtered_noise').trim() || 'all_candidates_filtered_noise',
+      evidence: scored?.evidence || null,
+      product: null,
+    };
+  }
+  attachIngredientRecallMeta(product, {
+    evidence: scored.evidence,
+    candidate_step: scored.evidence?.candidate_step,
+    family_relation: scored.evidence?.family_relation,
+    source_tag: sourceTag,
+  });
+  return {
+    reject_reason: null,
+    evidence: scored.evidence,
+    product,
+  };
+}
+
 function scoreCandidateEvidence(candidate, sourceRank = 0) {
   const title = normalizeIngredientRecallText(
     candidate?.product?.title || candidate?.product?.name || candidate?.product?.display_name || '',
@@ -2546,6 +2590,7 @@ module.exports = {
   EVIDENCE_MODE,
   recallIngredientProductsFromProfile,
   stabilizeIngredientRecallProducts,
+  evaluateIngredientRecallCandidate,
   _internals: {
     buildRecallCandidateFieldTexts,
     resolveRecallCandidateResolution,
