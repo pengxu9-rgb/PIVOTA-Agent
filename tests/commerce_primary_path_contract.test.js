@@ -73,4 +73,33 @@ describe('commerce primary path contract helper', () => {
     expect(evaluated.passed).toBe(true);
     expect(evaluated.reasons).toEqual([]);
   });
+
+  test('ignores observer-only fallback traces once a non-fallback authority is locked', () => {
+    const assessment = assessPrimaryPath({
+      metadata: {
+        query_source: 'cache_cross_merchant_search',
+        proxy_search_fallback: {
+          applied: true,
+          reason: 'resolver_after_primary',
+        },
+        route_health: {
+          fallback_triggered: true,
+          fallback_reason: 'resolver_after_primary',
+          primary_path_used: 'cache_stage',
+          observer_nodes: ['governance_shadow_block_observed'],
+        },
+        search_decision: {
+          final_decision: 'cache_returned',
+          decision_authority: 'cache_cross_merchant_search',
+          decision_locked: true,
+          decision_lock_reason: 'cache_main_path',
+        },
+      },
+    });
+
+    expect(assessment.degraded).toBe(false);
+    expect(assessment.querySource).toBe('cache_cross_merchant_search');
+    expect(assessment.decisionLocked).toBe(true);
+    expect(assessment.observerNodes).toContain('governance_shadow_block_observed');
+  });
 });

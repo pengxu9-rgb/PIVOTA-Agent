@@ -162,6 +162,9 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
       normalized_intent: selectedDecision?.normalized_intent || normalizedIntent || null,
       step_success_class: selectedDecision?.step_success_class || null,
       success_contract_result: successContractResult,
+      decision_authority: 'agent_products_guidance_fastpath',
+      decision_locked: true,
+      decision_lock_reason: 'guidance_fastpath_success_contract',
       candidate_origin_counts: candidateOriginCounts,
       candidate_class_counts: selectedDecision?.candidate_class_counts || selectedSummary?.counts || {},
       target_relevance_class_counts:
@@ -234,6 +237,7 @@ function createGuidanceLadderOutcomeRuntime(deps = {}) {
           fallback_triggered: false,
           fallback_reason: null,
           primary_path_used: 'guidance_fastpath',
+          observer_nodes: [],
         },
         search_decision: searchDecision,
         query_exhausted: true,

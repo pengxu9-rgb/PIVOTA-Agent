@@ -3974,6 +3974,7 @@ function buildSearchRouteHealth({
   fallbackAttemptCount = 0,
   selectedFallbackAttempt = 0,
   finalReturnedCount = 0,
+  observerNodes = null,
 }) {
   const normalizedExternalSeedSkipReason = externalSeedSkipReason
     ? String(externalSeedSkipReason || '').trim() || null
@@ -4065,6 +4066,7 @@ function buildSearchRouteHealth({
       0,
       Number.isFinite(Number(selectedFallbackAttempt)) ? Number(selectedFallbackAttempt) : 0,
     ),
+    observer_nodes: normalizeDecisionObserverNodes(observerNodes),
     final_returned_count: Math.max(
       0,
       Number.isFinite(Number(finalReturnedCount)) ? Number(finalReturnedCount) : 0,
@@ -4625,6 +4627,214 @@ function isGuidanceHydrationSupportiveSerumQuery({
   );
 }
 
+function normalizeDecisionObserverNodes(...nodeLists) {
+  const merged = [];
+  for (const nodeList of nodeLists) {
+    const items = Array.isArray(nodeList) ? nodeList : nodeList == null ? [] : [nodeList];
+    for (const item of items) {
+      const normalized = String(item || '').trim();
+      if (!normalized || merged.includes(normalized)) continue;
+      merged.push(normalized);
+    }
+  }
+  return merged;
+}
+
+function inferDecisionLockReason({
+  metadata = {},
+  searchDecision = {},
+  routeHealth = {},
+  searchTrace = {},
+  decisionAuthority = null,
+} = {}) {
+  const explicitReason = String(
+    searchDecision.decision_lock_reason ||
+      metadata.decision_lock_reason ||
+      '',
+  ).trim();
+  if (explicitReason) return explicitReason;
+
+  const crossMerchantCache =
+    metadata?.route_debug?.cross_merchant_cache &&
+    typeof metadata.route_debug.cross_merchant_cache === 'object' &&
+    !Array.isArray(metadata.route_debug.cross_merchant_cache)
+      ? metadata.route_debug.cross_merchant_cache
+      : {};
+  if (crossMerchantCache.main_path_contract_locked === true || metadata.main_path_contract_locked === true) {
+    return 'guidance_cache_success_contract';
+  }
+
+  const finalDecision = String(
+    searchDecision.final_decision ||
+      searchTrace.final_decision ||
+      metadata.final_decision ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const primaryPathUsed = String(
+    searchDecision.primary_path_used ||
+      routeHealth.primary_path_used ||
+      searchTrace.primary_path_used ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const authority = String(decisionAuthority || metadata.query_source || '').trim().toLowerCase();
+  if (finalDecision === 'cache_returned') return 'cache_main_path';
+  if (finalDecision === 'resolver_returned') return 'resolver_authority';
+  if (finalDecision === 'upstream_returned' || finalDecision === 'products_returned') {
+    return 'primary_authority';
+  }
+  if (finalDecision === 'products_returned_with_clarification' || finalDecision === 'clarify') {
+    return 'clarify_contract';
+  }
+  if (finalDecision === 'strict_empty') return 'strict_empty_contract';
+  if (finalDecision === 'invalid_hit') return 'invalid_hit_contract';
+  if (primaryPathUsed === 'guidance_fastpath' || authority === 'agent_products_guidance_fastpath') {
+    return 'guidance_fastpath_success_contract';
+  }
+  return null;
+}
+
+function extractSearchDecisionAuthorityState(bodyOrMetadata = {}) {
+  const metadata =
+    bodyOrMetadata &&
+    typeof bodyOrMetadata === 'object' &&
+    !Array.isArray(bodyOrMetadata) &&
+    bodyOrMetadata.metadata &&
+    typeof bodyOrMetadata.metadata === 'object' &&
+    !Array.isArray(bodyOrMetadata.metadata)
+      ? bodyOrMetadata.metadata
+      : bodyOrMetadata && typeof bodyOrMetadata === 'object' && !Array.isArray(bodyOrMetadata)
+      ? bodyOrMetadata
+      : {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+  const searchTrace =
+    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? metadata.search_trace
+      : {};
+  const searchDecision =
+    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
+      ? metadata.search_decision
+      : {};
+  const crossMerchantCache =
+    metadata?.route_debug?.cross_merchant_cache &&
+    typeof metadata.route_debug.cross_merchant_cache === 'object' &&
+    !Array.isArray(metadata.route_debug.cross_merchant_cache)
+      ? metadata.route_debug.cross_merchant_cache
+      : {};
+  const explicitDecisionLocked =
+    searchDecision.decision_locked != null
+      ? Boolean(searchDecision.decision_locked)
+      : metadata.decision_locked != null
+      ? Boolean(metadata.decision_locked)
+      : null;
+  const decisionLocked =
+    explicitDecisionLocked != null
+      ? explicitDecisionLocked
+      : crossMerchantCache.main_path_contract_locked === true || metadata.main_path_contract_locked === true;
+  const decisionAuthority =
+    String(
+      searchDecision.decision_authority ||
+        metadata.query_source ||
+        searchDecision.primary_path_used ||
+        routeHealth.primary_path_used ||
+        searchTrace.primary_path_used ||
+        '',
+    ).trim() || null;
+  const observerNodes = normalizeDecisionObserverNodes(
+    routeHealth.observer_nodes,
+    metadata.observer_nodes,
+  );
+  return {
+    decisionAuthority,
+    decisionLocked,
+    decisionLockReason: inferDecisionLockReason({
+      metadata,
+      searchDecision,
+      routeHealth,
+      searchTrace,
+      decisionAuthority,
+    }),
+    observerNodes,
+  };
+}
+
+function buildDecisionAuthorityPatch({
+  body = null,
+  finalDecision = null,
+  primaryPathUsed = null,
+  decisionAuthority = null,
+  decisionLocked = true,
+  decisionLockReason = null,
+} = {}) {
+  const metadata =
+    body?.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? body.metadata
+      : {};
+  const resolvedAuthority =
+    String(
+      decisionAuthority ||
+        metadata.query_source ||
+        primaryPathUsed ||
+        '',
+    ).trim() || null;
+  const searchDecision =
+    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
+      ? metadata.search_decision
+      : {};
+  const searchTrace =
+    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? metadata.search_trace
+      : {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+      ? metadata.route_health
+      : {};
+
+  return {
+    final_decision:
+      String(finalDecision || searchDecision.final_decision || searchTrace.final_decision || '').trim() || null,
+    primary_path_used:
+      String(primaryPathUsed || searchDecision.primary_path_used || routeHealth.primary_path_used || '').trim() ||
+      null,
+    decision_authority: resolvedAuthority,
+    decision_locked: Boolean(decisionLocked),
+    decision_lock_reason:
+      String(
+        decisionLockReason ||
+          inferDecisionLockReason({
+            metadata,
+            searchDecision: {
+              ...searchDecision,
+              final_decision: finalDecision || searchDecision.final_decision || searchTrace.final_decision || null,
+              primary_path_used:
+                primaryPathUsed ||
+                searchDecision.primary_path_used ||
+                routeHealth.primary_path_used ||
+                null,
+            },
+            routeHealth,
+            searchTrace: {
+              ...searchTrace,
+              final_decision: finalDecision || searchTrace.final_decision || searchDecision.final_decision || null,
+              primary_path_used:
+                primaryPathUsed ||
+                searchTrace.primary_path_used ||
+                routeHealth.primary_path_used ||
+                null,
+            },
+            decisionAuthority: resolvedAuthority,
+          }) ||
+          '',
+      ).trim() || null,
+  };
+}
+
 function withSearchDiagnostics(body, diagnostics = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
   const metadata =
@@ -4640,10 +4850,44 @@ function withSearchDiagnostics(body, diagnostics = {}) {
       ? diagnostics.route_health
       : null;
   const routeHealth = routeHealthPatch ? { ...existingRouteHealth, ...routeHealthPatch } : existingRouteHealth;
-  const existingSearchDecision =
+  const existingSearchTrace =
+    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+      ? { ...metadata.search_trace }
+      : null;
+  const searchTracePatch =
+    diagnostics.search_trace && typeof diagnostics.search_trace === 'object' && !Array.isArray(diagnostics.search_trace)
+      ? diagnostics.search_trace
+      : null;
+  const searchTrace = searchTracePatch
+    ? { ...(existingSearchTrace || {}), ...searchTracePatch }
+    : existingSearchTrace;
+  const searchDecisionPatch =
+    diagnostics.search_decision && typeof diagnostics.search_decision === 'object' && !Array.isArray(diagnostics.search_decision)
+      ? diagnostics.search_decision
+      : null;
+  const baseSearchDecision =
     metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
       ? { ...metadata.search_decision }
       : null;
+  let existingSearchDecision = searchDecisionPatch
+    ? { ...(baseSearchDecision || {}), ...searchDecisionPatch }
+    : baseSearchDecision;
+  if (
+    !existingSearchDecision &&
+    (
+      searchTrace?.final_decision ||
+      routeHealth?.primary_path_used ||
+      metadata.query_source
+    )
+  ) {
+    existingSearchDecision = {};
+  }
+  if (existingSearchDecision && searchTrace?.final_decision && !existingSearchDecision.final_decision) {
+    existingSearchDecision.final_decision = searchTrace.final_decision;
+  }
+  if (existingSearchDecision && routeHealth?.primary_path_used && !existingSearchDecision.primary_path_used) {
+    existingSearchDecision.primary_path_used = routeHealth.primary_path_used;
+  }
   const intNonNegative = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
@@ -4985,6 +5229,12 @@ function withSearchDiagnostics(body, diagnostics = {}) {
   metadata.selected_fallback_attempt = routeHealth.selected_fallback_attempt;
   metadata.final_returned_count = routeHealth.final_returned_count;
   metadata.fallback_reason = fallbackReason;
+  const observerNodes = normalizeDecisionObserverNodes(
+    routeHealth.observer_nodes,
+    diagnostics.observer_nodes,
+    existingSearchDecision?.observer_nodes,
+  );
+  routeHealth.observer_nodes = observerNodes;
   const brandQueryBypassAmbiguity = Boolean(
     metadata.brand_query_bypass_ambiguity === true ||
       existingSearchDecision?.brand_query_bypass_ambiguity === true ||
@@ -5019,15 +5269,25 @@ function withSearchDiagnostics(body, diagnostics = {}) {
         existingSearchDecision.final_decision = 'strict_empty';
       }
     }
+    const authorityState = extractSearchDecisionAuthorityState({
+      metadata: {
+        ...metadata,
+        route_health: routeHealth,
+        ...(searchTrace ? { search_trace: searchTrace } : {}),
+        search_decision: existingSearchDecision,
+      },
+    });
+    existingSearchDecision.decision_authority = authorityState.decisionAuthority;
+    existingSearchDecision.decision_locked = authorityState.decisionLocked;
+    existingSearchDecision.decision_lock_reason = authorityState.decisionLockReason;
     metadata.search_decision = existingSearchDecision;
   }
   metadata.route_health = routeHealth;
 
-  if (diagnostics.search_trace) metadata.search_trace = diagnostics.search_trace;
-  const metadataSearchTrace =
-    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
-      ? { ...metadata.search_trace }
-      : null;
+  if (searchTrace) metadata.search_trace = searchTrace;
+  const metadataSearchTrace = searchTrace
+    ? { ...searchTrace }
+    : null;
   if (metadataSearchTrace) {
     const rawTraceQuery = String(metadataSearchTrace.raw_query || '').trim();
     const lingerieScopedQuery =
@@ -12674,7 +12934,6 @@ function normalizeGovernanceShadowBlockContract(body) {
     return body;
   }
 
-  const products = Array.isArray(body.products) ? body.products : [];
   const routeHealth =
     metadata.route_health &&
     typeof metadata.route_health === 'object' &&
@@ -12695,128 +12954,51 @@ function normalizeGovernanceShadowBlockContract(body) {
       ? metadata.search_decision
       : null;
   const finalDecision = String(searchDecision?.final_decision || '').trim().toLowerCase();
-  const primaryPathUsed = String(
-    routeHealth?.primary_path_used ||
-      searchTrace?.primary_path_used ||
-      searchDecision?.primary_path_used ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  const fallbackReason = String(
-    metadata.fallback_reason ||
-      routeHealth?.fallback_reason ||
-      searchTrace?.fallback_reason ||
-      searchDecision?.fallback_reason ||
-      metadata.proxy_search_fallback?.reason ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  const hasClarification = Boolean(
-    body.clarification &&
-      typeof body.clarification === 'object' &&
-      !Array.isArray(body.clarification) &&
-      body.clarification.question,
-  );
-  const hasSoftFallback =
-    querySource === 'agent_products_error_fallback' ||
-    querySource === 'agent_products_resolver_fallback' ||
-    querySource === 'agent_products_resolver_ref_fallback' ||
-    Boolean(
-      metadata.proxy_search_fallback &&
-        typeof metadata.proxy_search_fallback === 'object' &&
-        !Array.isArray(metadata.proxy_search_fallback) &&
-        metadata.proxy_search_fallback.applied === true,
-    ) ||
-    routeHealth?.fallback_triggered === true ||
-    /(fallback|primary_unusable)/i.test(primaryPathUsed) ||
-    /^resolver_after_primary$/i.test(fallbackReason) ||
-    /^primary_unusable_/i.test(fallbackReason) ||
-    /^secondary_after_primary_unusable$/i.test(fallbackReason) ||
-    metadata.strict_empty === true ||
-    hasClarification ||
-    finalDecision === 'clarify' ||
-    finalDecision === 'strict_empty';
-  if (!hasSoftFallback) return body;
-
   const governanceBlockReason = governanceReasonCodes[0] || 'shadow_block';
-  const nextSearchDecision = searchDecision
-    ? {
-        ...searchDecision,
-        final_decision: 'governance_shadow_block',
-        clarify_triggered: false,
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-      }
-    : {
-        final_decision: 'governance_shadow_block',
-        clarify_triggered: false,
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-      };
-  const nextSearchTrace = searchTrace
-    ? {
-        ...searchTrace,
-        final_decision: 'governance_shadow_block',
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-      }
-    : {
-        final_decision: 'governance_shadow_block',
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-      };
-  const nextRouteHealth = routeHealth
-    ? {
-        ...routeHealth,
-        fallback_triggered: false,
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-        primary_path_degraded: false,
-      }
-    : {
-        fallback_triggered: false,
-        fallback_reason: null,
-        primary_path_used: 'governance_shadow_block',
-        primary_path_degraded: false,
-      };
+  const authorityState = extractSearchDecisionAuthorityState({ metadata });
+  const observerNodes = normalizeDecisionObserverNodes(
+    authorityState.observerNodes,
+    'governance_shadow_block_observed',
+  );
+  const nextSearchDecision = {
+    ...(searchDecision || {}),
+    decision_authority: authorityState.decisionAuthority,
+    decision_locked: authorityState.decisionLocked,
+    decision_lock_reason: authorityState.decisionLockReason,
+  };
+  const nextSearchTrace = searchTrace ? { ...searchTrace } : null;
+  const nextRouteHealth = {
+    ...(routeHealth || {}),
+    observer_nodes: observerNodes,
+  };
   const nextMetadata = {
     ...metadata,
-    query_source: 'gateway_governance_shadow_block',
-    proxy_search_fallback:
-      metadata.proxy_search_fallback &&
-      typeof metadata.proxy_search_fallback === 'object' &&
-      !Array.isArray(metadata.proxy_search_fallback)
-        ? {
-            ...metadata.proxy_search_fallback,
-            applied: false,
-            reason: null,
-          }
-        : {
-            applied: false,
-            reason: null,
-          },
     search_decision: nextSearchDecision,
-    search_trace: nextSearchTrace,
+    ...(nextSearchTrace ? { search_trace: nextSearchTrace } : {}),
     route_health: nextRouteHealth,
     governance_shadow_contract: {
-      normalized: true,
+      normalized: false,
+      observer_only: true,
       recovery_reason: `${governanceBlockReason}_shadow_block`,
-      original_query_source: querySource,
+      original_query_source: querySource || null,
       original_final_decision: finalDecision || null,
       governance_reason_codes: governanceReasonCodes,
+      authority_locked: authorityState.decisionLocked === true,
     },
   };
-  delete nextMetadata.strict_empty;
-  delete nextMetadata.strict_empty_reason;
-  delete nextMetadata.fallback_reason;
-  delete nextMetadata.fallback_route;
+  const nextReasonCodes = Array.from(
+    new Set(
+      []
+        .concat(Array.isArray(body.reason_codes) ? body.reason_codes : [])
+        .concat(governanceReasonCodes)
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  );
 
   return {
     ...body,
-    clarification: null,
-    reason_codes: governanceReasonCodes,
+    reason_codes: nextReasonCodes,
     metadata: nextMetadata,
   };
 }
@@ -13797,6 +13979,10 @@ async function proxyAgentSearchToBackend(req, res) {
       intent = null,
 	      fallbackStrategy = null,
 	      flagsSnapshot = null,
+        observerNodes = null,
+        decisionAuthority = null,
+        decisionLocked = true,
+        decisionLockReason = null,
 	    } = {},
 	  ) => {
     const latencyMs = Math.max(0, Date.now() - startedAtMs);
@@ -13892,12 +14078,17 @@ async function proxyAgentSearchToBackend(req, res) {
         : primaryQualityGatePassed
         ? 'not_needed'
         : String(fallbackStrategy?.secondary_skipped_reason || '').trim() || 'quality_gate_forced_but_skipped');
+    const normalizedObserverNodes = normalizeDecisionObserverNodes(
+      observerNodes,
+      fallbackStrategy?.observer_nodes,
+    );
     let out = withSearchDiagnostics(body, {
       route_health: buildSearchRouteHealth({
         primaryPathUsed,
         primaryLatencyMs: latencyMs,
         fallbackTriggered,
         fallbackReason,
+        observerNodes: normalizedObserverNodes,
         internalRawCount: intNonNegative(
           responseMetadata.internal_raw_count != null
             ? responseMetadata.internal_raw_count
@@ -13967,6 +14158,15 @@ async function proxyAgentSearchToBackend(req, res) {
 	        finalDecision,
 	        flagsSnapshot,
 	      }),
+      search_decision: buildDecisionAuthorityPatch({
+        body,
+        finalDecision,
+        primaryPathUsed,
+        decisionAuthority,
+        decisionLocked,
+        decisionLockReason,
+      }),
+      observer_nodes: normalizedObserverNodes,
       ...(fallbackStrategy && typeof fallbackStrategy === 'object'
         ? { fallback_strategy: fallbackStrategy }
         : {}),
@@ -14380,7 +14580,9 @@ async function proxyAgentSearchToBackend(req, res) {
     const primaryQualityScore = primaryRun.primary_quality_score;
     const primaryQualityDecision = primaryRun.primary_quality_decision || null;
     const primaryLowQualityNonempty = Boolean(primaryRun.low_quality_nonempty);
-    const shouldFallback = primaryRun.should_fallback;
+    const primaryDecisionState = extractSearchDecisionAuthorityState(normalized);
+    const primaryDecisionLocked = primaryDecisionState.decisionLocked === true;
+    const shouldFallback = primaryDecisionLocked ? false : primaryRun.should_fallback;
     const primaryProducts = Array.isArray(normalized?.products) ? normalized.products : [];
     const primaryExternalRawCount = primaryProducts.filter((product) => isExternalSeedProduct(product)).length;
     const primaryInternalRawCount = Math.max(0, primaryProducts.length - primaryExternalRawCount);
@@ -14417,6 +14619,14 @@ async function proxyAgentSearchToBackend(req, res) {
       (primaryQualityGate && typeof primaryQualityGate === 'object'
         ? String(primaryQualityGate.reason || '').trim() || null
         : null);
+    if (primaryDecisionLocked) {
+      fallbackStrategy.observer_nodes = normalizeDecisionObserverNodes(
+        fallbackStrategy.observer_nodes,
+        'primary_fallback_suppressed_by_locked_decision',
+      );
+      fallbackStrategy.secondary_skipped_reason =
+        fallbackStrategy.secondary_skipped_reason || 'decision_locked';
+    }
     const fallbackAdoptUsableThreshold = getFallbackAdoptUsableThreshold({
       operation: 'find_products_multi',
       source,
@@ -14610,6 +14820,9 @@ async function proxyAgentSearchToBackend(req, res) {
         : 'fallback_not_better');
     const primaryOutcomeDecision = getPrimaryFallbackOutcomeDecision({
       shouldFallback,
+      decisionLocked: primaryDecisionLocked,
+      decisionAuthority: primaryDecisionState.decisionAuthority,
+      decisionLockReason: primaryDecisionState.decisionLockReason,
       primaryUsableCount,
       primaryUnusable,
       primaryIrrelevant,
@@ -14620,6 +14833,35 @@ async function proxyAgentSearchToBackend(req, res) {
       semanticRetryApplied,
       fallbackNotBetterReason,
     });
+
+    if (primaryOutcomeDecision.decision === 'authority_locked') {
+      return respondSearch(resp.status, normalized, {
+        finalDecision:
+          String(
+            normalized?.metadata?.search_decision?.final_decision ||
+              normalized?.metadata?.search_trace?.final_decision ||
+              'upstream_returned',
+          ).trim() || 'upstream_returned',
+        primaryPathUsed:
+          String(
+            normalized?.metadata?.search_decision?.primary_path_used ||
+              normalized?.metadata?.route_health?.primary_path_used ||
+              primaryDecisionState.decisionAuthority ||
+              'proxy_search_primary',
+          ).trim() || 'proxy_search_primary',
+        fallbackTriggered: false,
+        fallbackReason: null,
+        upstreamStage,
+        fallbackStrategy,
+        decisionAuthority: primaryDecisionState.decisionAuthority,
+        decisionLocked: true,
+        decisionLockReason: primaryDecisionState.decisionLockReason,
+        observerNodes: normalizeDecisionObserverNodes(
+          fallbackStrategy?.observer_nodes,
+          'primary_fallback_suppressed_by_locked_decision',
+        ),
+      });
+    }
 
     if (primaryOutcomeDecision.decision === 'clarify') {
       return respondSearch(
@@ -22691,6 +22933,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
+    let primaryDecisionState = extractSearchDecisionAuthorityState(upstreamData);
+    let primaryDecisionLocked = primaryDecisionState.decisionLocked === true;
+    let decisionObserverNodes = primaryDecisionLocked
+      ? normalizeDecisionObserverNodes(
+          [],
+          'invoke_fallback_suppressed_by_locked_decision',
+        )
+      : [];
+
     if (
       (operation === 'find_products' || operation === 'find_products_multi') &&
       !(operation === 'find_products_multi' && strictCommerceFindProductsMulti)
@@ -22874,7 +23125,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstreamData?.metadata?.guidance_direct_external_seed_applied === true &&
         upstreamData?.metadata?.guidance_direct_external_seed_valid_hit === true &&
         primaryUsableCount > 0;
-      const shouldFallback = guidanceDirectSupplementValidHit
+      primaryDecisionState = extractSearchDecisionAuthorityState(upstreamData);
+      primaryDecisionLocked = primaryDecisionState.decisionLocked === true;
+      decisionObserverNodes = primaryDecisionLocked
+        ? normalizeDecisionObserverNodes(
+            [],
+            'invoke_fallback_suppressed_by_locked_decision',
+          )
+        : [];
+      const shouldFallback = primaryDecisionLocked
+        ? false
+        : guidanceDirectSupplementValidHit
         ? false
         : primaryUnusable || primaryIrrelevant || primaryLowQualityNonempty;
       const forceInvokeFallbackForFragrance =
@@ -22923,6 +23184,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         response.status >= 200 &&
         response.status < 300 &&
         !shouldFallback &&
+        !primaryDecisionLocked &&
         primaryUsableCount < requestedLimit &&
         FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
       ) {
@@ -23148,6 +23410,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
         }
         }
+      }
+
+      if (
+        operation === 'find_products_multi' &&
+        queryText &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        !shouldFallback &&
+        primaryDecisionLocked &&
+        primaryUsableCount < requestedLimit &&
+        FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE !== 'off'
+      ) {
+        decisionObserverNodes = normalizeDecisionObserverNodes(
+          decisionObserverNodes,
+          'second_stage_expansion_suppressed_by_locked_decision',
+        );
+        secondarySupplementMeta = {
+          attempted: false,
+          applied: false,
+          added_count: 0,
+          expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
+          reason: 'decision_locked',
+          page: requestedFindProductsMultiPage,
+        };
+        addFpmGateTrace({
+          gateId: 'second_stage_expansion',
+          applied: false,
+          decision: 'skipped',
+          reason: 'decision_locked',
+          costMsEstimate: 0,
+          queryClass: traceQueryClass,
+        });
       }
 
       if (shouldFallback) {
@@ -24465,6 +24759,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         searchDecision?.degrade_flags && typeof searchDecision.degrade_flags === 'object'
           ? searchDecision.degrade_flags
           : { vector_skipped: false, behavior_skipped: false, nlu_degraded: false };
+      const normalizedDecisionObserverNodes = normalizeDecisionObserverNodes(
+        decisionObserverNodes,
+      );
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
@@ -24472,6 +24769,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           primaryLatencyMs: Math.max(0, Date.now() - invokeStartedAtMs),
           fallbackTriggered,
           fallbackReason,
+          observerNodes: normalizedDecisionObserverNodes,
           ambiguityScorePre:
             Number.isFinite(Number(searchDecision?.ambiguity_score_pre))
               ? Number(searchDecision.ambiguity_score_pre)
@@ -24495,6 +24793,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           resolverStage,
           finalDecision,
         }),
+        search_decision: buildDecisionAuthorityPatch({
+          body: enriched,
+          finalDecision,
+          primaryPathUsed,
+          decisionAuthority: querySource,
+          decisionLocked: true,
+          decisionLockReason:
+            primaryDecisionLocked && primaryDecisionState.decisionLockReason
+              ? primaryDecisionState.decisionLockReason
+              : null,
+        }),
+        observer_nodes: normalizedDecisionObserverNodes,
         ...(relevanceDebug ? { relevance_debug: relevanceDebug } : {}),
         ...(isStrictEmpty
           ? {
@@ -24671,6 +24981,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
               finalDecision: 'cache_returned',
             }),
+            search_decision: buildDecisionAuthorityPatch({
+              body: cacheGuardBody,
+              finalDecision: 'cache_returned',
+              primaryPathUsed: 'invoke_outer_cache_guard',
+              decisionAuthority:
+                cacheGuardBody?.metadata?.query_source || 'cache_cross_merchant_search',
+              decisionLocked: true,
+              decisionLockReason: 'cache_main_path',
+            }),
           },
         );
         const finalCacheGuardBody =
@@ -24753,6 +25072,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          },
 	          finalDecision: strictEmptyHasClarification ? 'clarify' : 'strict_empty',
 	        }),
+          search_decision: buildDecisionAuthorityPatch({
+            body: strictEmpty,
+            finalDecision: strictEmptyHasClarification ? 'clarify' : 'strict_empty',
+            primaryPathUsed: 'invoke_outer_catch',
+            decisionAuthority: strictEmpty?.metadata?.query_source || 'agent_products_error_fallback',
+            decisionLocked: true,
+            decisionLockReason: strictEmptyHasClarification ? 'clarify_contract' : 'strict_empty_contract',
+          }),
           strict_empty: !strictEmptyHasClarification,
 	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });

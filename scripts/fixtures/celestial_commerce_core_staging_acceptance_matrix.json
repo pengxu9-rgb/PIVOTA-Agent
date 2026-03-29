@@ -492,9 +492,7 @@
       "blocking": true,
       "require_primary_path": true,
       "allow_strict_empty": false,
-      "allowed_query_sources": [
-        "gateway_governance_shadow_block"
-      ],
+      "allowed_query_sources": [],
       "endpoint": "/agent/shop/v1/invoke",
       "requires_auth": true,
       "auth_profile": "public",
@@ -527,7 +525,7 @@
           "layer_not_allowed"
         ],
         "must_have_paths": [
-          "metadata.governance_shadow_contract.normalized"
+          "metadata.governance_shadow_contract.observer_only"
         ]
       },
       "observability": {

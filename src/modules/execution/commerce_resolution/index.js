@@ -2044,6 +2044,9 @@ function createCommerceResolutionRuntime(deps = {}) {
 
   function getPrimaryFallbackOutcomeDecision({
     shouldFallback = false,
+    decisionLocked = false,
+    decisionAuthority = null,
+    decisionLockReason = null,
     primaryUsableCount = 0,
     primaryUnusable = false,
     primaryIrrelevant = false,
@@ -2097,6 +2100,14 @@ function createCommerceResolutionRuntime(deps = {}) {
           )
         ),
     );
+
+    if (decisionLocked) {
+      return {
+        decision: 'authority_locked',
+        reason: String(decisionLockReason || '').trim() || 'decision_locked',
+        querySource: String(decisionAuthority || '').trim() || querySource,
+      };
+    }
 
     if (primaryIrrelevant) {
       return {

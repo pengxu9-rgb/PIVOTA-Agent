@@ -2138,6 +2138,27 @@ describe('Commerce resolution facade', () => {
     );
   });
 
+  test('primary fallback outcome preserves a locked authority instead of re-adopting fallback through execution facade', () => {
+    const runtime = createCommerceResolutionRuntime();
+
+    expect(
+      runtime.getPrimaryFallbackOutcomeDecision({
+        shouldFallback: true,
+        decisionLocked: true,
+        decisionAuthority: 'cache_cross_merchant_search',
+        decisionLockReason: 'cache_main_path',
+        primaryUsableCount: 2,
+        primaryIrrelevant: true,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        decision: 'authority_locked',
+        reason: 'cache_main_path',
+        querySource: 'cache_cross_merchant_search',
+      }),
+    );
+  });
+
   test('primary search quality decision marks weak lookup evidence as low-quality through execution facade', () => {
     const runtime = createCommerceResolutionRuntime({
       buildFallbackCandidateText(product) {

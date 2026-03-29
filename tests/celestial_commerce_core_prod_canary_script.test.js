@@ -73,13 +73,13 @@ describe('Celestial commerce-core production canary wrapper', () => {
         rail_mode: 'authoritative_commerce',
         require_primary_path: true,
         allow_strict_empty: false,
-        allowed_query_sources: ['gateway_governance_shadow_block'],
+        allowed_query_sources: ['agent_products_search'],
         allow_zero_results: true,
         must_have_metadata: ['service_version.commit', 'search_trace.final_decision'],
         must_equal_metadata: {
-          'search_trace.final_decision': 'governance_shadow_block',
+          'search_trace.final_decision': 'clarify',
         },
-        must_have_clarification: false,
+        must_have_clarification: true,
         must_have_reason_codes: ['layer_not_allowed'],
       },
     ];
@@ -126,15 +126,24 @@ describe('Celestial commerce-core production canary wrapper', () => {
         res.end(
           JSON.stringify({
             products: [],
+            clarification: {
+              question: '你更想要底妆、眼妆还是唇妆？',
+            },
             reason_codes: ['layer_not_allowed'],
             metadata: {
               service_version: { commit: 'abc123' },
-              query_source: 'gateway_governance_shadow_block',
+              query_source: 'agent_products_search',
               route_health: {
                 fallback_triggered: false,
-                primary_path_used: 'governance_shadow_block',
+                primary_path_used: 'agent_products_search',
+                observer_nodes: ['governance_shadow_block_observed'],
               },
-              search_trace: { final_decision: 'governance_shadow_block' },
+              search_trace: { final_decision: 'clarify' },
+              search_decision: {
+                decision_authority: 'agent_products_search',
+                decision_locked: true,
+                decision_lock_reason: 'clarify_contract',
+              },
             },
           }),
         );

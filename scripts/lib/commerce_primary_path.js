@@ -31,6 +31,13 @@ function extractMetadata(bodyOrMetadata = {}) {
   return {};
 }
 
+function normalizeObserverNodes(nodes = []) {
+  const values = Array.isArray(nodes) ? nodes : nodes == null ? [] : [nodes];
+  return Array.from(
+    new Set(values.map((item) => String(item || '').trim()).filter(Boolean)),
+  );
+}
+
 function assessPrimaryPath(bodyOrMetadata = {}) {
   const metadata = extractMetadata(bodyOrMetadata);
   const routeHealth =
@@ -54,8 +61,14 @@ function assessPrimaryPath(bodyOrMetadata = {}) {
       ? metadata.search_decision
       : {};
   const querySource = String(metadata.query_source || '').trim();
+  const decisionAuthority = String(searchDecision.decision_authority || querySource || '').trim();
+  const decisionLocked = searchDecision.decision_locked === true;
+  const decisionLockReason = String(searchDecision.decision_lock_reason || '').trim() || null;
   const primaryPathUsed = String(
     routeHealth.primary_path_used || searchTrace.primary_path_used || searchDecision.primary_path_used || '',
+  ).trim();
+  const authorityPrimaryPathUsed = String(
+    searchDecision.primary_path_used || routeHealth.primary_path_used || searchTrace.primary_path_used || '',
   ).trim();
   const fallbackReason = String(
     metadata.fallback_reason ||
@@ -69,29 +82,43 @@ function assessPrimaryPath(bodyOrMetadata = {}) {
     searchTrace.final_decision || searchDecision.final_decision || metadata.final_decision || '',
   ).trim();
   const strictEmpty = metadata.strict_empty === true || finalDecision === 'strict_empty';
+  const observerNodes = normalizeObserverNodes(routeHealth.observer_nodes);
   const reasons = [];
+  const effectiveQuerySource = decisionAuthority || querySource || null;
+  const observerOnlyFallbackSignals =
+    decisionLocked &&
+    effectiveQuerySource &&
+    !FALLBACK_QUERY_SOURCES.has(effectiveQuerySource);
 
-  if (FALLBACK_QUERY_SOURCES.has(querySource)) {
-    reasons.push(`query_source=${querySource}`);
+  if (FALLBACK_QUERY_SOURCES.has(effectiveQuerySource || '')) {
+    reasons.push(`query_source=${effectiveQuerySource}`);
   }
-  if (proxySearchFallback.applied === true) {
+  if (proxySearchFallback.applied === true && !observerOnlyFallbackSignals) {
     reasons.push('proxy_search_fallback.applied=true');
   }
-  if (routeHealth.fallback_triggered === true) {
+  if (routeHealth.fallback_triggered === true && !observerOnlyFallbackSignals) {
     reasons.push('route_health.fallback_triggered=true');
   }
-  if (/(fallback|primary_unusable)/i.test(primaryPathUsed)) {
-    reasons.push(`route_health.primary_path_used=${primaryPathUsed}`);
+  if (/(fallback|primary_unusable)/i.test(authorityPrimaryPathUsed || primaryPathUsed) && !observerOnlyFallbackSignals) {
+    reasons.push(`route_health.primary_path_used=${authorityPrimaryPathUsed || primaryPathUsed}`);
   }
-  if (fallbackReason && FALLBACK_REASON_PATTERNS.some((pattern) => pattern.test(fallbackReason))) {
+  if (
+    fallbackReason &&
+    FALLBACK_REASON_PATTERNS.some((pattern) => pattern.test(fallbackReason)) &&
+    !observerOnlyFallbackSignals
+  ) {
     reasons.push(`fallback_reason=${fallbackReason}`);
   }
 
   return {
     degraded: reasons.length > 0,
     reasons,
-    querySource: querySource || null,
-    primaryPathUsed: primaryPathUsed || null,
+    querySource: effectiveQuerySource,
+    decisionAuthority: effectiveQuerySource,
+    decisionLocked,
+    decisionLockReason,
+    observerNodes,
+    primaryPathUsed: authorityPrimaryPathUsed || primaryPathUsed || null,
     fallbackReason: fallbackReason || null,
     finalDecision: finalDecision || null,
     strictEmpty,

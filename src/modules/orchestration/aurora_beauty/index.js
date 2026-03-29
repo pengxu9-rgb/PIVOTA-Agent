@@ -1871,6 +1871,18 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     const normalizedFallbackReason = String(fallbackReason || '').trim() || null;
     const normalizedStrictEmptyReason =
       String(strictEmptyReason || '').trim() || normalizedFallbackReason || 'no_candidates';
+    const cacheQuerySource =
+      response?.metadata && typeof response.metadata === 'object' && !Array.isArray(response.metadata)
+        ? String(response.metadata.query_source || '').trim() || null
+        : null;
+    const cacheDecisionLockReason =
+      normalizedCacheRouteDebug?.main_path_contract_locked === true
+        ? 'guidance_cache_success_contract'
+        : normalizedFinalDecision === 'cache_returned'
+        ? 'cache_main_path'
+        : normalizedFinalDecision === 'clarify'
+        ? 'clarify_contract'
+        : 'strict_empty_contract';
 
     return withSearchDiagnosticsImpl(response, {
       route_health: buildSearchRouteHealthImpl({
@@ -1914,6 +1926,13 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
         },
         finalDecision: normalizedFinalDecision,
       }),
+      search_decision: {
+        final_decision: normalizedFinalDecision,
+        primary_path_used: 'cache_stage',
+        decision_authority: cacheQuerySource,
+        decision_locked: true,
+        decision_lock_reason: cacheDecisionLockReason,
+      },
       ...(strictEmpty
         ? {
             strict_empty: true,
