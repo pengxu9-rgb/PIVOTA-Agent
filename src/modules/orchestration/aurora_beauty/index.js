@@ -601,11 +601,15 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       existingCrossMerchantCache.guidance_hit_quality === 'valid_hit' &&
       Number(existingCrossMerchantCache.internal_products_relevant_count || 0) > 0 &&
       Number(existingCrossMerchantCache.guidance_scoped_internal_products_count || 0) > 0;
+    const primaryHasLockedGuidanceMainPath =
+      existingCrossMerchantCache.main_path_contract_locked === true ||
+      existingMeta.main_path_contract_locked === true;
     const shouldAttemptDirectSupplement =
       Boolean(guidanceOnlyDiscovery) &&
       requestedAllowExternalSeed === true &&
       Boolean(normalizedTargetStepFamily) &&
       normalizedQuery.length > 0 &&
+      !primaryHasLockedGuidanceMainPath &&
       !primaryHasCacheReturnedGuidanceFastpath &&
       (!primaryHasValidGuidanceHit ||
         (!primaryHasExternalSeedBeforeGuidance &&
@@ -618,6 +622,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       primaryProductsBeforeGuidance,
       primaryHasExternalSeedBeforeGuidance,
       primaryHasValidGuidanceHit,
+      primaryHasLockedGuidanceMainPath,
       primaryHasCacheReturnedGuidanceFastpath,
     };
   }
@@ -1276,6 +1281,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     cacheBrandLikeQuery = false,
     isLookupQuery = false,
     cacheRelevant = true,
+    relaxCacheRelevanceGate = false,
     unifiedRelevanceRequested = false,
     externalCount = 0,
     source,
@@ -1340,6 +1346,16 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       !Array.isArray(internalGuidanceHitDecision.success_contract_result) &&
       internalGuidanceHitDecision.success_contract_result.satisfied === true &&
       normalizedEffectiveProducts.length > 0;
+    const relaxedGuidanceSerumCacheHit =
+      !isLookupQuery &&
+      !cacheBrandLikeQuery &&
+      String(cacheBeautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
+      /\bserum\b/i.test(normalizedCacheQueryText) &&
+      normalizedEffectiveProducts.length > 0 &&
+      !cacheRelevant &&
+      Boolean(relaxCacheRelevanceGate) &&
+      guidanceSuccessContractSatisfied &&
+      !cacheRejectedLowQuality;
     const genericSkincareSerumCacheHit =
       !isLookupQuery &&
       !cacheBrandLikeQuery &&
@@ -1349,6 +1365,9 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       normalizedEffectiveProducts.length > 0 &&
       (cacheRelevant || guidanceSuccessContractSatisfied) &&
       !cacheRejectedLowQuality;
+    const protectedSkincareSerumCacheHit =
+      genericSkincareSerumCacheHit || relaxedGuidanceSerumCacheHit;
+    const mainPathContractLocked = protectedSkincareSerumCacheHit;
     const cacheMissingExternalForUnified =
       unifiedRelevanceRequested &&
       !isShoppingSourceImpl(source) &&
@@ -1357,7 +1376,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       Math.max(0, Number(externalCount || 0) || 0) <= 0 &&
       !isLookupQuery &&
       !preferInternalSpecificBeautyCache &&
-      !genericSkincareSerumCacheHit;
+      !mainPathContractLocked;
     const forceSearchFirstForExpandedQuery =
       Boolean(cacheQueryText) &&
       Boolean(queryText) &&
@@ -1365,10 +1384,11 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       !isLookupQuery &&
       !cacheBrandLikeQuery &&
       ['category', 'exploratory'].includes(cachePolicyQueryClass) &&
-      !cacheBeautyQueryProfile?.isSpecificBeautyQuery;
+      !cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
+      !mainPathContractLocked;
 
     let nextEffectiveCacheHit = Boolean(effectiveCacheHit);
-    if (!nextEffectiveCacheHit && genericSkincareSerumCacheHit) {
+    if (!nextEffectiveCacheHit && protectedSkincareSerumCacheHit) {
       nextEffectiveCacheHit = true;
     }
     if (
@@ -1399,6 +1419,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       cacheClarifyOnlyShouldUseEarlyDecision,
       cacheValidation: normalizedCacheValidation,
       cacheRejectedLowQuality,
+      mainPathContractLocked,
       cacheMissingExternalForUnified,
       cacheStrictEmptyBypassReason,
       forceSearchFirstForExpandedQuery,
@@ -1412,6 +1433,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       effectiveCacheHit,
       cacheValidation,
       cacheRejectedLowQuality,
+      mainPathContractLocked,
       cacheMissingExternalForUnified,
       bypassCacheStrictEmptyForUnified,
       cacheStrictEmptyBypassReason,
@@ -1429,6 +1451,9 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     if (has('cacheValidation')) next.cache_validation = cacheValidation || null;
     if (has('cacheRejectedLowQuality')) {
       next.cache_rejected_low_quality = Boolean(cacheRejectedLowQuality);
+    }
+    if (has('mainPathContractLocked')) {
+      next.main_path_contract_locked = Boolean(mainPathContractLocked);
     }
     if (has('cacheMissingExternalForUnified')) {
       next.cache_missing_external_for_unified = Boolean(cacheMissingExternalForUnified);
