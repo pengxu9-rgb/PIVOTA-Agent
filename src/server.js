@@ -20731,6 +20731,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
             if (serumFamilyInternalProducts.length > 0) {
               genericSerumScopedInternalProducts = serumFamilyInternalProducts;
+              const serumTokenInternalProducts = serumFamilyInternalProducts.filter((product) =>
+                /\bserum(?:s)?\b/i.test(buildFallbackCandidateText(product)),
+              );
+              if (
+                serumTokenInternalProducts.length > 0 &&
+                serumTokenInternalProducts.length < serumFamilyInternalProducts.length
+              ) {
+                const serumFamilyQualityGate = evaluateCacheQualityGate({
+                  products: serumFamilyInternalProducts,
+                  queryText: cacheQueryText,
+                  intent: effectiveIntent,
+                  queryClass: traceQueryClass,
+                });
+                const serumTokenQualityGate = evaluateCacheQualityGate({
+                  products: serumTokenInternalProducts,
+                  queryText: cacheQueryText,
+                  intent: effectiveIntent,
+                  queryClass: traceQueryClass,
+                });
+                if (
+                  serumFamilyQualityGate?.accepted === false &&
+                  serumTokenQualityGate?.accepted === true
+                ) {
+                  genericSerumScopedInternalProducts = serumTokenInternalProducts;
+                }
+              }
             }
           }
           const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
