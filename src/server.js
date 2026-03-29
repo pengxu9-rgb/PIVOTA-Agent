@@ -4495,12 +4495,13 @@ function decideGenericSkincareCachePreference({
       text,
     );
   });
-  const genericSerumCategoryQuery = isGenericSkincareSerumCategoryQuery({
-    rawQuery: queryText,
-    queryClass: normalizedQueryClass,
-    beautyBucket: effectiveBeautyBucket,
-    strictConstraintQuery,
-  });
+  const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
+  const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const genericSerumCategoryQuery =
+    hasSerumSignal &&
+    genericQueryClass &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery);
   const upstreamExternalOnly =
     upstreamProducts.length > 0 && upstreamProducts.every((product) => isExternalSeedProduct(product));
   const upstreamSampleBiased = sampleBiasedTopUpstreamProducts.length >= 2;
@@ -4568,7 +4569,7 @@ function decideGenericSkincareCachePreference({
   };
 }
 
-function isGenericSkincareSerumCategoryQuery({
+function resolveFindProductsMultiCacheStageBudgetMs({
   rawQuery = '',
   queryClass = null,
   beautyBucket = null,
@@ -4587,71 +4588,16 @@ function isGenericSkincareSerumCategoryQuery({
   const guidanceOnlySerumDiscoveryQuery =
     Boolean(guidanceOnlyDiscovery) &&
     ['attribute', 'category', 'exploratory', ''].includes(normalizedQueryClass);
-
-  return (
-    hasSerumSignal &&
-    effectiveBeautyBucket === 'skincare' &&
-    !Boolean(strictConstraintQuery) &&
-    (genericQueryClass || guidanceOnlySerumDiscoveryQuery)
-  );
-}
-
-function isGenericSkincareSerumCacheCandidate(product) {
-  const candidateText = buildFallbackCandidateText(product);
-  if (!candidateText) return false;
-  if (!/\b(serum|ampoule|essence|concentrate)\b/i.test(candidateText)) return false;
-  if (/\b(brush|applicator|tool|roller|massager|gadget)\b/i.test(candidateText)) return false;
-  return true;
-}
-
-function filterGenericSkincareSerumCacheProducts(
-  products,
-  {
-    rawQuery = '',
-    queryClass = null,
-    beautyBucket = null,
-    strictConstraintQuery = false,
-    guidanceOnlyDiscovery = false,
-  } = {},
-) {
-  const list = Array.isArray(products) ? products : [];
-  if (
-    !isGenericSkincareSerumCategoryQuery({
-      rawQuery,
-      queryClass,
-      beautyBucket,
-      strictConstraintQuery,
-      guidanceOnlyDiscovery,
-    })
-  ) {
-    return list;
-  }
-
-  const serumFamilyProducts = list.filter((product) => isGenericSkincareSerumCacheCandidate(product));
-  return serumFamilyProducts.length > 0 ? serumFamilyProducts : list;
-}
-
-function resolveFindProductsMultiCacheStageBudgetMs({
-  rawQuery = '',
-  queryClass = null,
-  beautyBucket = null,
-  strictConstraintQuery = false,
-  guidanceOnlyDiscovery = false,
-} = {}) {
-  const queryText = String(rawQuery || '').trim();
-  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
   const guidanceHydrationSupportiveSerumQuery = isGuidanceHydrationSupportiveSerumQuery({
     rawQuery: queryText,
     queryClass: normalizedQueryClass,
     guidanceOnlyDiscovery,
   });
-  const genericSkincareSerumCategoryQuery = isGenericSkincareSerumCategoryQuery({
-    rawQuery: queryText,
-    queryClass: normalizedQueryClass,
-    beautyBucket,
-    strictConstraintQuery,
-    guidanceOnlyDiscovery,
-  });
+  const genericSkincareSerumCategoryQuery =
+    hasSerumSignal &&
+    effectiveBeautyBucket === 'skincare' &&
+    !Boolean(strictConstraintQuery) &&
+    (genericQueryClass || guidanceOnlySerumDiscoveryQuery);
 
   if (!genericSkincareSerumCategoryQuery) {
     return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
@@ -20761,16 +20707,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? lookupRelevantInternalProducts
                 : internalProducts;
           const guidanceOnlyDiscovery = guidanceOnlyCacheDiscovery;
-          const genericSerumScopedInternalProducts = filterGenericSkincareSerumCacheProducts(
-            internalProductsForRecall,
-            {
-              rawQuery: cacheQueryText,
-              queryClass: cachePolicyQueryClass,
-              beautyBucket: cacheBeautyQueryProfile?.bucket || null,
-              strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
-              guidanceOnlyDiscovery,
-            },
-          );
+          const normalizedCachePolicyQueryClass = String(cachePolicyQueryClass || '').trim().toLowerCase();
+          const genericSerumScopedCacheQuery =
+            /\bserum(?:s)?\b/i.test(cacheQueryText) &&
+            String(cacheBeautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
+            !Boolean(strictFindProductsMultiDecision?.strictConstraintQuery) &&
+            (
+              !normalizedCachePolicyQueryClass ||
+              ['category', 'exploratory'].includes(normalizedCachePolicyQueryClass) ||
+              (Boolean(guidanceOnlyDiscovery) &&
+                ['attribute', 'category', 'exploratory', ''].includes(normalizedCachePolicyQueryClass))
+            );
+          let genericSerumScopedInternalProducts = internalProductsForRecall;
+          if (genericSerumScopedCacheQuery) {
+            const serumFamilyInternalProducts = internalProductsForRecall.filter((product) => {
+              const candidateText = buildFallbackCandidateText(product);
+              if (!candidateText) return false;
+              if (!/\b(serum|ampoule|essence|concentrate)\b/i.test(candidateText)) return false;
+              if (/\b(brush|applicator|tool|roller|massager|gadget)\b/i.test(candidateText)) {
+                return false;
+              }
+              return true;
+            });
+            if (serumFamilyInternalProducts.length > 0) {
+              genericSerumScopedInternalProducts = serumFamilyInternalProducts;
+            }
+          }
           const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
           const leashAnchoredInternalProducts = leashAnchoredQuery
             ? genericSerumScopedInternalProducts.filter((product) =>
