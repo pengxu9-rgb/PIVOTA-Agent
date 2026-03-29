@@ -228,11 +228,11 @@ describe('Celestial commerce-core production canary wrapper', () => {
         rail_mode: 'authoritative_commerce',
         require_primary_path: true,
         allow_strict_empty: false,
-        allowed_query_sources: ['cache_cross_merchant_search_supplemented'],
+        allowed_query_sources: ['cache_cross_merchant_search'],
         allow_zero_results: false,
         must_have_metadata: ['service_version.commit', 'query_source'],
         must_equal_metadata: {
-          query_source: 'cache_cross_merchant_search_supplemented',
+          query_source: 'cache_cross_merchant_search',
         },
         must_return_one_of_titles: ['Auth Serum'],
       },
@@ -262,7 +262,7 @@ describe('Celestial commerce-core production canary wrapper', () => {
           products: [{ title: 'Auth Serum' }],
           metadata: {
             service_version: { commit: 'def456' },
-            query_source: 'cache_cross_merchant_search_supplemented',
+            query_source: 'cache_cross_merchant_search',
             route_health: {
               fallback_triggered: false,
               primary_path_used: 'cache_stage',

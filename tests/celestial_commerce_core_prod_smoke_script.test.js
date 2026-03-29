@@ -39,7 +39,7 @@ describe('Celestial commerce-core production smoke wrapper', () => {
             allow_zero_results: false,
             must_have_metadata: ['service_version.commit', 'query_source'],
             must_equal_metadata: {
-              query_source: 'cache_cross_merchant_search_supplemented',
+              query_source: 'cache_cross_merchant_search',
             },
             must_return_one_of_titles: ['Auth Smoke Serum'],
           },
@@ -72,7 +72,7 @@ describe('Celestial commerce-core production smoke wrapper', () => {
           products: [{ title: 'Auth Smoke Serum' }],
           metadata: {
             service_version: { commit: 'smoke123' },
-            query_source: 'cache_cross_merchant_search_supplemented',
+            query_source: 'cache_cross_merchant_search',
             search_trace: { final_decision: 'cache_returned' },
           },
         }),

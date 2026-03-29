@@ -45,7 +45,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "cache_cross_merchant_search"
+      "agent_products_search"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
@@ -59,18 +59,16 @@
     "must_have_metadata": [
       "service_version.commit",
       "query_source",
-      "cache_stage_selected_source",
-      "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "search_trace.final_decision",
+      "search_decision.decision_authority",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search",
-      "cache_stage_selected_source": "internal_cache",
-      "source_breakdown.external_seed_count": 0
+      "query_source": "agent_products_search",
+      "search_trace.final_decision": "products_returned",
+      "search_decision.decision_authority": "agent_products_search",
+      "search_decision.decision_locked": true
     },
-    "must_be_positive_metadata": [
-      "source_breakdown.internal_count"
-    ],
     "must_return_one_of_titles": [
       "Winona Soothing Repair Serum",
       "The Ordinary Niacinamide 10% + Zinc 1%"
@@ -125,7 +123,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "cache_cross_merchant_search_supplemented"
+      "cache_cross_merchant_search"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
@@ -138,15 +136,17 @@
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "search_decision.decision_authority",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search_supplemented",
-      "cache_stage_selected_source": "internal_cache"
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "search_decision.decision_authority": "cache_cross_merchant_search",
+      "search_decision.decision_locked": true
     },
     "must_be_positive_metadata": [
-      "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "source_breakdown.internal_count"
     ],
     "must_return_one_of_titles": [
       "Winona Soothing Repair Serum",
