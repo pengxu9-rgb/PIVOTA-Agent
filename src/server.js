@@ -16540,7 +16540,6 @@ function normalizeStrictCacheMainPathFallbackMetadata({
   if (!hasFallbackFlags) return responseBody;
 
   const hasUpstreamFallbackEvidence =
-    Number(metadata.upstream_status || 0) > 0 ||
     String(metadata.upstream_error_code || '').trim().length > 0 ||
     String(metadata.upstream_error_message || '').trim().length > 0 ||
     Number(proxySearchFallback?.upstream_status || 0) > 0 ||

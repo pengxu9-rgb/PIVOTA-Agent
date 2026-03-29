@@ -935,6 +935,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         total: 2,
         metadata: {
           query_source: 'cache_multi_intent',
+          upstream_status: 200,
           strict_constraint_query: true,
           strict_constraint_reason: 'ingredient',
           ingredient_intents: ['niacinamide'],
