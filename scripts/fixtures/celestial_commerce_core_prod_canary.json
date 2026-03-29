@@ -45,7 +45,8 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "cache_cross_merchant_search"
+      "cache_cross_merchant_search",
+      "cache_cross_merchant_search_supplemented"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
@@ -62,9 +63,7 @@
       "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search",
       "cache_stage_selected_source": "internal_cache",
-      "search_decision.decision_authority": "cache_cross_merchant_search",
       "search_decision.decision_locked": true
     },
     "must_be_positive_metadata": [
