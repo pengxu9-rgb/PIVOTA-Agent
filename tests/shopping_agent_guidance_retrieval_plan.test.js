@@ -89,6 +89,7 @@ describe('Shopping agent guidance retrieval plan module', () => {
       'barrier repair serum',
       'soothing serum',
       'hydrating serum',
+      'serum',
     ]);
 
     expect(
@@ -145,7 +146,31 @@ describe('Shopping agent guidance retrieval plan module', () => {
       },
       {
         intent_strength: 'supportive_family',
-        cluster_queries: ['hydrating serum', 'balancing serum'],
+        cluster_queries: ['hydrating serum', 'balancing serum', 'serum'],
+        selected_query: 'hydrating serum',
+        stop_on_success: true,
+      },
+    ]);
+  });
+
+  test('adds a generic serum recall variant for supportive-family serum guidance queries', () => {
+    const runtime = createTestRuntime();
+
+    expect(
+      runtime.buildGuidanceServerOwnedLadderAttempts('hydrating serum', {
+        is_server_owned_ladder: true,
+        target_step_family: 'serum',
+      }),
+    ).toEqual([
+      {
+        intent_strength: 'strong_goal_family',
+        cluster_queries: ['hydrating serum'],
+        selected_query: 'hydrating serum',
+        stop_on_success: true,
+      },
+      {
+        intent_strength: 'supportive_family',
+        cluster_queries: ['hydrating serum', 'serum'],
         selected_query: 'hydrating serum',
         stop_on_success: true,
       },
