@@ -4476,9 +4476,7 @@ function decideGenericSkincareCachePreference({
     rawQuery: queryText,
     queryClass: normalizedQueryClass || undefined,
   });
-  const effectiveBeautyBucket = String(
-    beautyBucket || beautyQueryProfile?.bucket || '',
-  ).trim().toLowerCase();
+  const effectiveBeautyBucket = String(beautyBucket || beautyQueryProfile?.bucket || '').trim().toLowerCase();
   const upstreamProducts = Array.isArray(upstreamResponse?.products) ? upstreamResponse.products : [];
   const cacheProducts = Array.isArray(cacheResponse?.products) ? cacheResponse.products : [];
   const upstreamQuerySource = String(upstreamResponse?.metadata?.query_source || '').trim();
@@ -4584,12 +4582,9 @@ function resolveFindProductsMultiCacheStageBudgetMs({
     rawQuery: queryText,
     queryClass: normalizedQueryClass || undefined,
   });
-  const effectiveBeautyBucket = String(
-    beautyBucket || beautyQueryProfile?.bucket || '',
-  ).trim().toLowerCase();
+  const effectiveBeautyBucket = String(beautyBucket || beautyQueryProfile?.bucket || '').trim().toLowerCase();
   const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
-  const genericQueryClass =
-    !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
+  const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
   const guidanceOnlySerumDiscoveryQuery =
     Boolean(guidanceOnlyDiscovery) &&
     ['attribute', 'category', 'exploratory', ''].includes(normalizedQueryClass);
@@ -20711,17 +20706,43 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : strictLookupCacheMatchRequired
                 ? lookupRelevantInternalProducts
                 : internalProducts;
+          const guidanceOnlyDiscovery = guidanceOnlyCacheDiscovery;
+          const normalizedCachePolicyQueryClass = String(cachePolicyQueryClass || '').trim().toLowerCase();
+          const genericSerumScopedCacheQuery =
+            /\bserum(?:s)?\b/i.test(cacheQueryText) &&
+            String(cacheBeautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
+            !Boolean(strictFindProductsMultiDecision?.strictConstraintQuery) &&
+            (
+              !normalizedCachePolicyQueryClass ||
+              ['category', 'exploratory'].includes(normalizedCachePolicyQueryClass) ||
+              (Boolean(guidanceOnlyDiscovery) &&
+                ['attribute', 'category', 'exploratory', ''].includes(normalizedCachePolicyQueryClass))
+            );
+          let genericSerumScopedInternalProducts = internalProductsForRecall;
+          if (genericSerumScopedCacheQuery) {
+            const serumFamilyInternalProducts = internalProductsForRecall.filter((product) => {
+              const candidateText = buildFallbackCandidateText(product);
+              if (!candidateText) return false;
+              if (!/\b(serum|ampoule|essence|concentrate)\b/i.test(candidateText)) return false;
+              if (/\b(brush|applicator|tool|roller|massager|gadget)\b/i.test(candidateText)) {
+                return false;
+              }
+              return true;
+            });
+            if (serumFamilyInternalProducts.length > 0) {
+              genericSerumScopedInternalProducts = serumFamilyInternalProducts;
+            }
+          }
           const leashAnchoredQuery = hasPetLeashSearchSignal(cacheQueryText);
           const leashAnchoredInternalProducts = leashAnchoredQuery
-            ? internalProductsForRecall.filter((product) =>
+            ? genericSerumScopedInternalProducts.filter((product) =>
                 hasStrictPetHarnessCatalogSignal(buildFallbackCandidateText(product)),
               )
-            : internalProductsForRecall;
+            : genericSerumScopedInternalProducts;
           const internalProductsAfterAnchor = leashAnchoredInternalProducts;
           // Let generic skincare category queries mix internal cache hits with
           // relevant external seed supplement instead of forcing an internal-only lane.
           const preferInternalSpecificBeautyCache = false;
-          const guidanceOnlyDiscovery = guidanceOnlyCacheDiscovery;
           const guidanceCachePlan = await buildGuidanceOnlyCacheSearchPlan({
             uiSurface: cacheUiSurface,
             requestedTargetStepFamily:
