@@ -69218,7 +69218,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
         const genericGoalDrivenNeedsMoreContext =
-          !hasRecoArtifact
+          !hasDeterministicRecoTarget
           && !hasExplicitRecoTarget
           && !ingredientDrivenRecommendationRequested
           && !travelRecoHandoff
@@ -69287,7 +69287,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           }, noContextContract);
           const sessionPatch = {};
-          appendLatestRecoContextToSessionPatch(sessionPatch, latestRecoContextPatch);
+          clearLatestRecoContextInSessionPatch(sessionPatch);
           attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
           sessionPatch.meta = {
             ...(isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {}),
