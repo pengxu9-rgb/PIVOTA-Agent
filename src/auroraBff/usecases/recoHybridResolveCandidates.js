@@ -23,7 +23,7 @@ const STEP_ALIASES = Object.freeze({
   oil: ['face oil', 'facial oil', 'oil serum', 'skin oil', '护肤油', '面油'],
 });
 
-const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤油)\b/i;
+const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
 const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|hair|comb|razor|shaver|accessor|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|梳子|剃须|配件)\b/i;
 
 function isPlainObject(value) {

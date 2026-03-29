@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 
+const { resolveIngredientRecallProfile } = require('../services/ingredientRecallRegistry');
 const {
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   resolveRecoTargetStepIntent,
@@ -99,6 +100,16 @@ function normalizeQueryToken(value) {
     .trim();
 }
 
+function joinUniqueQueryParts(...parts) {
+  return uniqCaseInsensitiveStrings(
+    parts
+      .flatMap((item) => (Array.isArray(item) ? item : [item]))
+      .map((item) => normalizeQueryToken(item))
+      .filter(Boolean),
+    12,
+  ).join(' ');
+}
+
 function normalizeStringArray(values, max = 12) {
   return uniqCaseInsensitiveStrings(
     (Array.isArray(values) ? values : [values])
@@ -166,14 +177,51 @@ function collectProfileGoalTerms(profileSummary, recoContext = null) {
 function collectIngredientTerms(ingredientContext, recoContext = null) {
   const ctx = isPlainObject(ingredientContext) ? ingredientContext : {};
   const candidates = Array.isArray(ctx.candidates) ? ctx.candidates : [];
+  const rawTerms = normalizeStringArray([
+    normalizeQueryToken(ctx.query),
+    ...candidates.map((item) => normalizeQueryToken(item)),
+    ...collectRecoContextIngredientTerms(recoContext),
+  ], 6);
+  const ingredientId = pickFirstTrimmed(
+    ctx.ingredient_id,
+    ctx.ingredientId,
+    ctx.canonical_ingredient_id,
+    ctx.canonicalIngredientId,
+  );
+  const recallProfile = resolveIngredientRecallProfile({
+    target: ctx,
+    query: rawTerms.join(' '),
+    ingredientId,
+  });
+  const canonicalTerms = normalizeStringArray([
+    pickFirstTrimmed(recallProfile?.display_name, recallProfile?.ingredient_name),
+    ...(Array.isArray(recallProfile?.exact_phrases) ? recallProfile.exact_phrases.slice(0, 2) : []),
+    ...(Array.isArray(recallProfile?.alias_phrases) ? recallProfile.alias_phrases.slice(0, 2) : []),
+  ], 6);
   return uniqCaseInsensitiveStrings(
     [
-      normalizeQueryToken(ctx.query),
-      ...candidates.map((item) => normalizeQueryToken(item)),
-      ...collectRecoContextIngredientTerms(recoContext),
+      ...canonicalTerms,
+      ...rawTerms,
     ].filter(Boolean),
     4,
   );
+}
+
+function isSeedTermCompatibleWithTargetStep(seedTerm, targetStep) {
+  const normalizedStep = normalizeRecoTargetStep(targetStep);
+  const normalizedSeed = normalizeQueryToken(seedTerm);
+  if (!normalizedStep || !normalizedSeed) return Boolean(normalizedSeed);
+  const recallProfile = resolveIngredientRecallProfile({ query: normalizedSeed });
+  const expectedFamilies = Array.isArray(recallProfile?.expected_step_families)
+    ? recallProfile.expected_step_families.map((item) => normalizeRecoTargetStep(item)).filter(Boolean)
+    : [];
+  if (expectedFamilies.length) {
+    return expectedFamilies.includes(normalizedStep);
+  }
+  const stepIntent = resolveRecoTargetStepIntent({ text: normalizedSeed });
+  const seedStep = normalizeRecoTargetStep(stepIntent?.resolved_target_step);
+  if (!seedStep) return true;
+  return getRecoTargetFamilyRelation(normalizedStep, seedStep) !== 'incompatible_family';
 }
 
 function collectConcernTerms(profileSummary, ingredientContext, recoContext = null) {
@@ -240,7 +288,9 @@ function buildSameFamilyQueryLevels({
   const ingredientTerms = collectIngredientTerms(ingredientContext, recoContext).slice(0, 2);
   const concernTerms = collectConcernTerms(profileSummary, ingredientContext, recoContext).slice(0, 2);
   const normalizedSeedTerms = uniqCaseInsensitiveStrings(
-    (Array.isArray(seedTerms) ? seedTerms : []).map((item) => normalizeQueryToken(item)).filter(Boolean),
+    (Array.isArray(seedTerms) ? seedTerms : [])
+      .map((item) => normalizeQueryToken(item))
+      .filter((item) => isSeedTermCompatibleWithTargetStep(item, step)),
     4,
   );
 
@@ -249,30 +299,28 @@ function buildSameFamilyQueryLevels({
       ladder_level: 'step_goal_ingredient_concern',
       queries: uniqCaseInsensitiveStrings([
         ...goalTerms.flatMap((goal) => ingredientTerms.flatMap((ingredient) => concernTerms.length
-          ? concernTerms.map((concern) => `${stepPrimary} ${goal} ${ingredient} ${concern}`)
-          : [`${stepPrimary} ${goal} ${ingredient}`])),
-        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [`${seed} ${goal}`, `${stepPrimary} ${seed} ${goal}`])),
+          ? concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, goal, ingredient, concern))
+          : [joinUniqueQueryParts(stepPrimary, goal, ingredient)])),
+        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [joinUniqueQueryParts(stepPrimary, seed, goal)])),
       ], 8),
     },
     {
       ladder_level: 'step_goal',
       queries: uniqCaseInsensitiveStrings([
-        ...goalTerms.map((goal) => `${stepPrimary} ${goal}`),
-        ...normalizedSeedTerms,
+        ...goalTerms.map((goal) => joinUniqueQueryParts(stepPrimary, goal)),
       ], 8),
     },
     {
       ladder_level: 'step_concern',
       queries: uniqCaseInsensitiveStrings([
-        ...concernTerms.map((concern) => `${stepPrimary} ${concern}`),
-        ...normalizedSeedTerms.map((seed) => `${stepPrimary} ${seed}`),
+        ...concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, concern)),
+        ...normalizedSeedTerms.map((seed) => joinUniqueQueryParts(stepPrimary, seed)),
       ], 8),
     },
     {
       ladder_level: 'step_only',
       queries: uniqCaseInsensitiveStrings([
         stepPrimary,
-        ...normalizedSeedTerms,
       ], 8),
     },
     {
@@ -282,6 +330,7 @@ function buildSameFamilyQueryLevels({
   ];
 
   const slot = inferSlotForStep(step);
+  const seenQueries = new Set();
   return levels
     .map((level, index) => ({
       level_index: index,
@@ -297,6 +346,18 @@ function buildSameFamilyQueryLevels({
           ladder_level: level.ladder_level,
         })),
     }))
+    .map((level) => {
+      const uniqueQueries = level.queries.filter((row) => {
+        const key = normalizeQueryToken(row?.query).toLowerCase();
+        if (!key || seenQueries.has(key)) return false;
+        seenQueries.add(key);
+        return true;
+      });
+      return {
+        ...level,
+        queries: uniqueQueries,
+      };
+    })
     .filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
 }
 
@@ -339,6 +400,24 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       candidate_step: structuredStep,
       candidate_step_source: 'structured_category',
       candidate_step_confidence: 'high',
+    };
+  }
+  const retrievalStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      row.retrieval_step,
+      row.retrievalStep,
+      row.retrieval_slot_step,
+      row.retrievalSlotStep,
+    ),
+  );
+  if (retrievalStep) {
+    return {
+      candidate_step: retrievalStep,
+      candidate_step_source: 'retrieval_step',
+      candidate_step_confidence:
+        retrievalStep === normalizeRecoTargetStep(targetContext?.resolved_target_step)
+          ? 'high'
+          : 'medium',
     };
   }
   const resolutionText = buildCandidateResolutionText(row);

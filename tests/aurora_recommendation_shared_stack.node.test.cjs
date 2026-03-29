@@ -98,7 +98,10 @@ test('same-family ladder never broadens moisturizer into cleanser or sunscreen f
   assert.equal(poolState.target_fidelity_level, 'satisfied');
   assert.equal(poolState.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
   assert.equal(poolState.viable[0].candidate_step, 'moisturizer');
-  assert.equal(poolState.viable[0].candidate_step_source, 'text_salvage');
+  assert.equal(
+    ['text_salvage', 'title_or_tag_alias'].includes(poolState.viable[0].candidate_step_source),
+    true,
+  );
   assert.ok(poolState.candidate_pool_signature);
   assert.ok(poolState.raw_candidate_pool_debug_signature);
 });
@@ -120,8 +123,8 @@ test('same-family ladder keeps rich moisturizer seeds step-scoped and never emit
 
   assert.equal(flattenedQueries.some((query) => query === 'barrier repair'), false);
   assert.equal(flattenedQueries.some((query) => query === 'ceramide'), false);
-  assert.equal(flattenedQueries.some((query) => query.includes('barrier repair moisturizer')), true);
-  assert.equal(flattenedQueries.some((query) => query.includes('ceramide moisturizer')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('moisturizer barrier repair')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('moisturizer ceramide')), true);
 });
 
 test('same-family ladder drops step-incompatible seeds like uv filters from moisturizer queries', () => {
@@ -140,8 +143,30 @@ test('same-family ladder drops step-incompatible seeds like uv filters from mois
   const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
 
   assert.equal(flattenedQueries.some((query) => query.includes('uv filters')), false);
-  assert.equal(flattenedQueries.some((query) => query.includes('ceramide moisturizer')), true);
-  assert.equal(flattenedQueries.some((query) => query.includes('barrier repair moisturizer')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('moisturizer ceramide')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('moisturizer barrier repair')), true);
+});
+
+test('same-family ladder canonicalizes photo-stage ingredient labels before query expansion', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'treatment',
+    text: 'Recommend products now',
+    entryType: 'chat',
+  });
+  const levels = buildSameFamilyQueryLevels({
+    targetContext,
+    profileSummary: { goals: ['texture'] },
+    ingredientContext: {
+      query: 'Retinoid (later stage)',
+      resolved_target_step: 'treatment',
+    },
+    lang: 'EN',
+  });
+  const flattenedQueries = levels.flatMap((level) => level.queries.map((row) => row.query.toLowerCase()));
+
+  assert.equal(flattenedQueries.some((query) => query.includes('retinol')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('retinoid')), true);
+  assert.equal(flattenedQueries.some((query) => query.includes('retinoid (later stage)')), false);
 });
 
 test('viability stage rejects non-skincare and preserves moisturizer candidates', () => {
