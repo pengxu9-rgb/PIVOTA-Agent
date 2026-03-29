@@ -1208,6 +1208,182 @@ test('/v1/chat: photo contextual generic reco preserves analysis-derived target 
   }
 });
 
+test('/v1/chat: photo contextual generic reco restores verified context candidates after post-filter drop', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'catalog_generic_serum_1',
+            merchant_id: 'mid_catalog',
+            brand: 'AcidLab',
+            name: 'Clarifying Serum',
+            display_name: 'Clarifying Serum',
+            category: 'serum',
+            product_type: 'serum',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_photo_restore_uid', briefId: 'chat_photo_restore_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_photo_restore_uid',
+        'X-Trace-ID': 'trace_chat_photo_restore',
+        'X-Brief-ID': 'chat_photo_restore_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'photo_modules_v1',
+              goal: 'texture',
+              ingredient_query: 'Salicylic acid (BHA)',
+              resolved_target_step: 'serum',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_ingredient_plan',
+              product_candidates: [
+                {
+                  product_id: 'bha_verified_1',
+                  merchant_id: 'mid_verified',
+                  brand: 'The Ordinary',
+                  name: 'Salicylic Acid 2% Solution',
+                  display_name: 'Salicylic Acid 2% Solution',
+                  category: 'serum',
+                  pdp_url: 'https://example.com/bha-verified',
+                  url: 'https://example.com/bha-verified',
+                  product_url: 'https://example.com/bha-verified',
+                  retrieval_source: 'external_seed',
+                  retrieval_reason: 'external_seed_deterministic_ingredient_match',
+                },
+              ],
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload.recommendation_meta?.verified_candidate_restore_applied, true);
+    assert.equal(payload.recommendation_meta?.verified_candidate_restore_count, 1);
+    assert.equal(Array.isArray(payload.recommendations), true);
+    assert.equal(payload.recommendations.some((row) => String(row?.product_id || '') === 'bha_verified_1'), true);
+    assert.equal(payload.recommendations.some((row) => /salicylic acid/i.test(JSON.stringify(row))), true);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'catalog_generic_serum_2',
+            merchant_id: 'mid_catalog',
+            brand: 'AcidLab',
+            name: 'Clarifying Serum',
+            display_name: 'Clarifying Serum',
+            category: 'serum',
+            product_type: 'serum',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_photo_constraint_uid', briefId: 'chat_photo_constraint_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_photo_constraint_uid',
+        'X-Trace-ID': 'trace_chat_photo_constraint',
+        'X-Brief-ID': 'chat_photo_constraint_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'photo_modules_v1',
+              goal: 'texture',
+              ingredient_query: 'Salicylic acid (BHA)',
+              resolved_target_step: 'serum',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_ingredient_plan',
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceNotice =
+      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'ingredient_constraint_no_match')
+      || null;
+    assert.ok(confidenceNotice);
+    const recoEvent = getRecoRequestedEvent(response.body);
+    if (recoEvent?.data) {
+      assert.notEqual(String(recoEvent.data.reason || ''), 'reco_mainline_empty');
+      assert.notEqual(String(recoEvent.data.products_empty_reason || ''), 'reco_mainline_empty');
+    }
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: retrieval step rescues generic skincare candidates with opaque titles', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
