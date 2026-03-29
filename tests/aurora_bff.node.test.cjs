@@ -14228,6 +14228,41 @@ test('buildAssistantMessageFromStoryV2 does not emit unconfirmed placeholders wh
   assert.ok(message.includes('Confidence for this read is **medium**.'), `Expected confidence line: ${message}`);
 });
 
+test('buildAssistantMessageFromStoryV2 keeps photo-first action ahead of supporting routine optimization', () => {
+  const { __internal } = loadRouteInternals();
+  const buildAssistantMessageFromStoryV2 = __internal.buildAssistantMessageFromStoryV2;
+  if (!buildAssistantMessageFromStoryV2) { console.log('SKIP: buildAssistantMessageFromStoryV2 not exported'); return; }
+
+  const storyPayload = {
+    confidence_overall: { level: 'low', score: 0.32 },
+    priority_findings: [
+      { title: 'Right under-eye may be the clearest visible texture irregularity signal right now' },
+    ],
+    ui_card_v1: {
+      headline: 'Photos suggest texture irregularity around the Right under-eye as the main focus, but the read stays conservative.',
+      actions_now: [
+        'Trial BHA/LHA conservatively and watch the texture irregularity around the Right under-eye.',
+      ],
+    },
+    existing_products_optimization: {
+      keep: ['Gentle cleanser: keep it as the non-irritating cleanse step.'],
+      add: ['Add SPF50+ sunscreen every morning.'],
+    },
+    am_plan: [
+      { step: 'Gentle cleanse' },
+      { step: 'SPF50+ sunscreen' },
+    ],
+    pm_plan: [
+      { step: 'Gentle cleanse' },
+      { step: 'BHA/LHA' },
+      { step: 'Barrier moisturizer' },
+    ],
+  };
+  const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
+  assert.match(message, /This week: Trial BHA\/LHA conservatively/i, `Expected photo-led action in message: ${message}`);
+  assert.doesNotMatch(message, /This week: add SPF50\+ sunscreen every morning/i, `Routine sunscreen should not steal the main axis: ${message}`);
+});
+
 test('isDeepDiveStoryWeakerThanFallback detects weaker story', () => {
   const { __internal } = loadRouteInternals();
   const isDeepDiveStoryWeakerThanFallback = __internal.isDeepDiveStoryWeakerThanFallback;

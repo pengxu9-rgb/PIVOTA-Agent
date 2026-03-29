@@ -24168,6 +24168,13 @@ function normalizeStoryActionStepName(value) {
 function buildAnalysisStoryImmediateActions(storyPayload, { language } = {}) {
   const isCn = language === 'CN';
   const story = isPlainObject(storyPayload) ? storyPayload : {};
+  const uiActions = story && story.ui_card_v1 && Array.isArray(story.ui_card_v1.actions_now)
+    ? story.ui_card_v1.actions_now
+      .map((item) => stripStorySummaryTerminalPunctuation(item))
+      .filter(Boolean)
+      .slice(0, 2)
+    : [];
+  if (uiActions.length) return uiActions;
   const amPlan = Array.isArray(story.am_plan) ? story.am_plan : [];
   const pmPlan = Array.isArray(story.pm_plan) ? story.pm_plan : [];
   const actions = [];
