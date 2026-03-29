@@ -64624,12 +64624,37 @@ function mountAuroraBffRoutes(app, { logger }) {
             }),
           );
         }
+        const routineAnalysisCards = Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.cards)
+          ? routineAnalysisV2Result.cards
+          : [];
+        const routineAnalysisHasStructuredStory = routineAnalysisCards.some((card) => {
+          if (!isPlainObject(card)) return false;
+          const type = String(card.type || '').trim().toLowerCase();
+          return type === 'analysis_summary' || type === 'analysis_story_v2';
+        });
+        const shouldSurfacePhotoAnalysisSummaryAlongsideRoutineCards = Boolean(
+          routineAnalysisV2Result &&
+          photoModulesCard &&
+          !routineAuditV1Enabled &&
+          AURORA_ANALYSIS_STORY_V2_ENABLED &&
+          !routineAnalysisHasStructuredStory,
+        );
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
           suggested_chips: analysisChips,
           cards: routineAnalysisV2Result
             ? [
-                ...((Array.isArray(routineAnalysisV2Result.cards) ? routineAnalysisV2Result.cards : [])),
+                ...(shouldSurfacePhotoAnalysisSummaryAlongsideRoutineCards
+                  ? [
+                      {
+                        card_id: `analysis_${ctx.request_id}`,
+                        type: 'analysis_summary',
+                        payload: analysisSummaryPayload,
+                        ...(analysisFieldMissing.length ? { field_missing: analysisFieldMissing } : {}),
+                      },
+                    ]
+                  : []),
+                ...routineAnalysisCards,
                 ...(routineProductsPreviewCard ? [routineProductsPreviewCard] : []),
                 ...((photoModulesCard && !routineAuditV1Enabled) ? [photoModulesCard] : []),
                 ...extraCards,

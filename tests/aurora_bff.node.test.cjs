@@ -13431,6 +13431,183 @@ test('/v1/analysis/skin: fresh photo readiness retries transient diagnosis throw
   );
 });
 
+test('/v1/analysis/skin: mixed routine+photo keeps photo-led analysis_story_v2 even when routine analysis cards are present', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '2500',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '800',
+    },
+    async () => {
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      const skinDiagnosisModuleId = require.resolve('../src/auroraBff/skinDiagnosisV1');
+      const routineAnalysisModuleId = require.resolve('../src/auroraBff/routineAnalysisV2');
+      delete require.cache[routesModuleId];
+      delete require.cache[skinDiagnosisModuleId];
+      delete require.cache[routineAnalysisModuleId];
+
+      const axios = require('axios');
+      const sharp = require('sharp');
+      const skinDiagnosis = require('../src/auroraBff/skinDiagnosisV1');
+      const routineAnalysisV2 = require('../src/auroraBff/routineAnalysisV2');
+      const originalRunSkinDiagnosisV1 = skinDiagnosis.runSkinDiagnosisV1;
+      const originalRunRoutineAnalysisV2 = routineAnalysisV2.runRoutineAnalysisV2;
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalRequest = axios.request;
+      let routineCalls = 0;
+      const pngBytes = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: { r: 220, g: 192, b: 176 } },
+      })
+        .png()
+        .toBuffer();
+
+      skinDiagnosis.runSkinDiagnosisV1 = async () => ({
+        ok: true,
+        diagnosis: {
+          issues: [
+            {
+              issue_type: 'texture',
+              severity: 'mild',
+              severity_level: 2,
+              severity_score: 0.61,
+              confidence: 0.2,
+              confidence_label: 'uncertain',
+              summary: 'Visible texture irregularity near the right under-eye area.',
+            },
+          ],
+          quality: { grade: 'pass', reasons: ['qc_passed'] },
+          photo_findings: [
+            {
+              finding_id: 'mixed_photo_story_texture',
+              issue_type: 'texture',
+              confidence: 0.2,
+              evidence: 'Visible texture irregularity near the right under-eye area.',
+            },
+          ],
+        },
+        internal: { source: 'test_mixed_photo_story' },
+      });
+
+      routineAnalysisV2.runRoutineAnalysisV2 = async () => {
+        routineCalls += 1;
+        return ({
+          cards: [
+            {
+              card_id: 'routine_audit_test',
+              type: 'routine_product_audit_v1',
+              payload: {
+                summary: 'Add Sunscreen in the AM',
+                primary_gap: 'Missing sunscreen',
+              },
+            },
+            {
+              card_id: 'routine_adjustment_test',
+              type: 'routine_adjustment_plan_v1',
+              payload: {
+                steps: ['Add SPF50+ sunscreen every morning.'],
+              },
+            },
+          ],
+          assistant_text:
+            'I reviewed each current product first. The best place to start is "Add Sunscreen in the AM" because it drives the biggest routine mismatch right now.',
+          persist_payload: {
+            schema_version: 'aurora.routine_analysis.v2',
+            recommendation_groups: [],
+          },
+          legacy_compat: {
+            source: 'routine_analysis_v2',
+          },
+          recommendation_groups: [],
+          debug_meta: {
+            stage_a: { deferred_product_count: 0 },
+          },
+        });
+      };
+
+      try {
+        axios.get = async (url) => {
+          const u = String(url || '');
+          if (u.endsWith('/photos/download-url')) {
+            return {
+              status: 200,
+              data: {
+                download: {
+                  url: 'https://signed-download.test/mixed-photo-story',
+                  expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+                },
+                content_type: 'image/png',
+              },
+            };
+          }
+          if (u === 'https://signed-download.test/mixed-photo-story') {
+            return {
+              status: 200,
+              data: pngBytes,
+              headers: { 'content-type': 'image/png' },
+            };
+          }
+          throw new Error(`Unexpected axios.get url: ${u}`);
+        };
+
+        const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+        const request = supertest(app);
+        const resp = await request
+          .post('/v1/analysis/skin')
+          .set({
+            'X-Aurora-UID': 'uid_mixed_photo_story',
+            'X-Trace-ID': 'trace_mixed_photo_story',
+            'X-Brief-ID': 'brief_mixed_photo_story',
+            'X-Lang': 'EN',
+          })
+          .send({
+            use_photo: true,
+            currentRoutine: {
+              am: [
+                { step: 'cleanser', product_text: 'Gentle Cleanser' },
+                { step: 'moisturizer', product_text: 'Barrier Cream' },
+              ],
+              pm: [
+                { step: 'cleanser', product_text: 'Gentle Cleanser' },
+                { step: 'treatment', product_text: 'Retinoid Serum' },
+                { step: 'moisturizer', product_text: 'Barrier Cream' },
+              ],
+            },
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_mixed_story', qc_status: 'passed' }],
+          })
+          .expect(200);
+
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        const storyCard = findCardByType(cards, 'analysis_story_v2');
+        const routineAuditCard = findCardByType(cards, 'routine_product_audit_v1');
+        assert.equal(routineCalls, 1);
+        assert.ok(storyCard);
+        assert.ok(routineAuditCard);
+        assert.equal(String(storyCard?.payload?.ui_card_v1?.actions_now?.[0] || '').length > 0, true);
+        assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /Add Sunscreen in the AM/i);
+        assert.match(String(resp.body?.assistant_message?.content || ''), /This week:/i);
+      } finally {
+        skinDiagnosis.runSkinDiagnosisV1 = originalRunSkinDiagnosisV1;
+        routineAnalysisV2.runRoutineAnalysisV2 = originalRunRoutineAnalysisV2;
+        axios.get = originalGet;
+        axios.post = originalPost;
+        axios.request = originalRequest;
+        delete require.cache[routesModuleId];
+        delete require.cache[skinDiagnosisModuleId];
+        delete require.cache[routineAnalysisModuleId];
+      }
+    },
+  );
+});
+
 test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice', async () => {
   await withEnv(
     {
