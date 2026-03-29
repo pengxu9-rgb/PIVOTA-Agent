@@ -45,6 +45,7 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       push('barrier repair serum');
       push('soothing serum');
       push('hydrating serum');
+      push('serum');
     }
     return out;
   }
@@ -163,6 +164,7 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       if (hasNiacinamide || hasZinc) pushUnique(supportiveQueries, 'balancing serum');
       if (hasVitaminC) pushUnique(supportiveQueries, 'brightening serum');
       pushUnique(supportiveQueries, 'hydrating serum');
+      pushUnique(supportiveQueries, 'serum');
       if (strongQueries.length > 2) strongQueries.splice(2);
       if (supportiveQueries.length > 3) supportiveQueries.splice(3);
     } else {
