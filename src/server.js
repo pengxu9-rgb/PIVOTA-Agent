@@ -4593,10 +4593,11 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   const guidanceOnlySerumDiscoveryQuery =
     Boolean(guidanceOnlyDiscovery) &&
     ['attribute', 'category', 'exploratory', ''].includes(normalizedQueryClass);
-  const guidanceHydrationSupportiveSerumQuery =
-    Boolean(guidanceOnlyDiscovery) &&
-    normalizedQueryClass === 'attribute' &&
-    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/i.test(queryText);
+  const guidanceHydrationSupportiveSerumQuery = isGuidanceHydrationSupportiveSerumQuery({
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass,
+    guidanceOnlyDiscovery,
+  });
   const genericSkincareSerumCategoryQuery =
     hasSerumSignal &&
     effectiveBeautyBucket === 'skincare' &&
@@ -4612,6 +4613,21 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   }
 
   return FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS;
+}
+
+function isGuidanceHydrationSupportiveSerumQuery({
+  rawQuery = '',
+  queryClass = null,
+  guidanceOnlyDiscovery = false,
+} = {}) {
+  const queryText = String(rawQuery || '').trim();
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  return (
+    Boolean(guidanceOnlyDiscovery) &&
+    normalizedQueryClass === 'attribute' &&
+    /\bserum(?:s)?\b/i.test(queryText) &&
+    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/i.test(queryText)
+  );
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -20542,9 +20558,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryClass: cachePolicyQueryClass,
         intent: effectiveIntent,
       });
+      const guidanceHydrationSupportiveSerumQuery = isGuidanceHydrationSupportiveSerumQuery({
+        rawQuery: cacheQueryText,
+        queryClass: cachePolicyQueryClass,
+        guidanceOnlyDiscovery:
+          normalizeSearchUiSurface(
+            metadata?.ui_surface ||
+              effectivePayload?.metadata?.ui_surface ||
+              effectivePayload?.context?.ui_surface ||
+              payload?.metadata?.ui_surface ||
+              payload?.context?.ui_surface ||
+              search?.ui_surface ||
+              search?.uiSurface ||
+              null,
+          ) === 'ingredient_plan_guidance_only',
+      });
       const preferRawBeautyCacheQuery =
         cacheBeautyQueryProfile?.isSpecificBeautyQuery &&
-        ['attribute', 'category', 'lookup'].includes(String(cachePolicyQueryClass || ''));
+        ['attribute', 'category', 'lookup'].includes(String(cachePolicyQueryClass || '')) &&
+        !guidanceHydrationSupportiveSerumQuery;
       const isCrossMerchantQuerySearch =
         !isCreatorUi &&
         (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
@@ -24861,6 +24893,7 @@ module.exports._debug = {
   applyShoppingCatalogQueryGuards,
   applyFindProductsMultiSourceContract,
   resolveFindProductsMultiCacheStageBudgetMs,
+  isGuidanceHydrationSupportiveSerumQuery,
   FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
   FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS,
   FIND_PRODUCTS_MULTI_GUIDANCE_HYDRATION_SERUM_CACHE_STAGE_BUDGET_MS,
