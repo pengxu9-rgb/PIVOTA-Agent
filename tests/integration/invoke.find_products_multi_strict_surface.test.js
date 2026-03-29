@@ -910,6 +910,98 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.metadata.strict_empty_reason).toBeUndefined();
   });
 
+  test('clears stale fallback markers from strict cache success responses', async () => {
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'prod_watch_ya_tone',
+            product_id: 'prod_watch_ya_tone',
+            merchant_id: 'merch_skin',
+            title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+            source: 'shopify',
+          },
+          {
+            id: 'prod_ordinary',
+            product_id: 'prod_ordinary',
+            merchant_id: 'merch_skin',
+            title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            source: 'shopify',
+          },
+        ],
+        total: 2,
+        metadata: {
+          query_source: 'cache_multi_intent',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'ingredient',
+          ingredient_intents: ['niacinamide'],
+          matched_ingredient_ids: ['niacinamide'],
+          proxy_search_fallback: {
+            applied: true,
+            reason: null,
+          },
+          route_health: {
+            fallback_triggered: true,
+            fallback_reason: null,
+            primary_path_used: 'cache_stage',
+          },
+          search_trace: {
+            final_decision: 'cache_returned',
+            fallback_reason: null,
+            primary_path_used: 'cache_stage',
+          },
+          search_decision: {
+            final_decision: 'cache_returned',
+            fallback_reason: null,
+            primary_path_used: 'cache_stage',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(res.body.products).toHaveLength(2);
+    expect(res.body.metadata?.query_source).toBe('cache_multi_intent');
+    expect(res.body.metadata?.proxy_search_fallback).toEqual(
+      expect.objectContaining({
+        applied: false,
+        reason: null,
+      }),
+    );
+    expect(res.body.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'cache_stage',
+      }),
+    );
+    expect(res.body.metadata?.search_trace).toEqual(
+      expect.objectContaining({
+        final_decision: 'cache_returned',
+      }),
+    );
+  });
+
   test('strict external seed prefetch SQL requires structured ingredient evidence before sampling candidate rows', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     let capturedSql = '';

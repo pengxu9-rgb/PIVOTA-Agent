@@ -1802,6 +1802,47 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
   });
 
+  test('serum cache preference helper prefers internal skincare cache when upstream is sample-biased', async () => {
+    const app = require('../../src/server');
+    const decision = app._debug.decideGenericSkincareCachePreference({
+      rawQuery: 'serum',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+      upstreamResponse: {
+        products: [
+          {
+            id: 'upstream_1',
+            merchant_id: 'merchant_a',
+            title: 'Rapid Dark Spot Correcting Serum Travel Size',
+          },
+          {
+            id: 'upstream_2',
+            merchant_id: 'merchant_b',
+            title: 'Vita-C Glycolic Serum Deluxe Travel Size',
+          },
+          {
+            id: 'upstream_3',
+            merchant_id: 'merchant_c',
+            title: 'Vitamin C Super Serum Plus - Jumbo',
+          },
+        ],
+        metadata: { query_source: 'agent_products_search' },
+      },
+      cacheResponse: {
+        products: [{ id: 'int_1', merchant_id: 'merch_skin', title: 'Winona Soothing Repair Serum' }],
+      },
+    });
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        evaluated: true,
+        decision: 'replace_with_cache',
+        reason: 'upstream_sample_biased_prefers_internal_cache',
+      }),
+    );
+  });
+
   test('serum cache preference helper keeps upstream when internal skincare cache is empty', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
