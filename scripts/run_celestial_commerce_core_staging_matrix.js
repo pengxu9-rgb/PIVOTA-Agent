@@ -641,6 +641,10 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         service_version_commit_present: hasServiceVersionCommit(body),
         fallback_used: primaryPathDegraded(body),
         main_path_pass: false,
+        decision_authority: getPath(body, 'metadata.search_decision.decision_authority') || null,
+        decision_locked: getPath(body, 'metadata.search_decision.decision_locked') === true,
+        decision_lock_reason: getPath(body, 'metadata.search_decision.decision_lock_reason') || null,
+        observer_nodes: getPath(body, 'metadata.route_health.observer_nodes') || [],
       },
       response_headers: {
         invocation_surface: headers['x-gateway-invocation-surface'] || null,
@@ -664,7 +668,11 @@ async function runCase(baseUrl, testCase, timeoutMs) {
   const ownership = evaluateRuleSet(testCase.ownership, context);
   const observability = evaluateRuleSet(testCase.observability, context);
   const overall_status = computeOverallStatus([correctness, ownership, observability]);
-  const primaryPathIsDegraded = primaryPathDegraded(body);
+  const primaryPathAssessment = evaluatePrimaryPathContract(body, {
+    require_primary_path: true,
+    allow_strict_empty: true,
+  }).assessment;
+  const primaryPathIsDegraded = primaryPathAssessment.degraded;
   const serviceVersionCommitPresent = hasServiceVersionCommit(body);
   const mainPathPass =
     execution.response.status === 200 &&
@@ -700,11 +708,16 @@ async function runCase(baseUrl, testCase, timeoutMs) {
       contract_path: getPath(body, 'metadata.contract_bridge.resolved_contract') || null,
       strict_constraint_reason: getPath(body, 'metadata.strict_constraint_reason') || null,
       primary_path_degraded: primaryPathIsDegraded,
+      primary_path_degraded_reasons: primaryPathAssessment.reasons,
       failure_stage: getPath(body, 'metadata.route_trace.failure_stage') || null,
       node_timings_ms: getPath(body, 'metadata.route_trace.node_timings_ms') || null,
       service_version_commit_present: serviceVersionCommitPresent,
       fallback_used: primaryPathIsDegraded,
       main_path_pass: mainPathPass,
+      decision_authority: primaryPathAssessment.decisionAuthority || null,
+      decision_locked: primaryPathAssessment.decisionLocked === true,
+      decision_lock_reason: primaryPathAssessment.decisionLockReason || null,
+      observer_nodes: primaryPathAssessment.observerNodes || [],
       product_count: Array.isArray(body?.products) ? body.products.length : 0,
       clarification_question: getPath(body, 'clarification.question') || null,
     },

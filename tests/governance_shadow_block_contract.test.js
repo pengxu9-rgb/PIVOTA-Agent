@@ -16,7 +16,7 @@ describe('governance shadow block contract', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  test('normalizes governance shadow block soft fallback into non-degraded governed response', () => {
+  test('records governance shadow block as observer-only and preserves the locked response contract', () => {
     const app = require('../src/server');
     const input = {
       products: [],
@@ -56,28 +56,21 @@ describe('governance shadow block contract', () => {
 
     expect(normalized.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'gateway_governance_shadow_block',
-        proxy_search_fallback: expect.objectContaining({
-          applied: false,
-          reason: null,
-        }),
+        query_source: 'agent_products_error_fallback',
         search_decision: expect.objectContaining({
-          final_decision: 'governance_shadow_block',
-          clarify_triggered: false,
-          primary_path_used: 'governance_shadow_block',
-        }),
-        search_trace: expect.objectContaining({
-          final_decision: 'governance_shadow_block',
-          primary_path_used: 'governance_shadow_block',
+          final_decision: 'clarify',
+          decision_authority: 'agent_products_error_fallback',
         }),
         route_health: expect.objectContaining({
-          fallback_triggered: false,
-          fallback_reason: null,
-          primary_path_used: 'governance_shadow_block',
-          primary_path_degraded: false,
+          fallback_triggered: true,
+          fallback_reason: 'primary_irrelevant_no_fallback',
+          primary_path_used: 'invoke_primary_fallback',
+          primary_path_degraded: true,
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
         }),
         governance_shadow_contract: expect.objectContaining({
-          normalized: true,
+          normalized: false,
+          observer_only: true,
           recovery_reason: 'layer_not_allowed_shadow_block',
           original_query_source: 'agent_products_error_fallback',
           original_final_decision: 'clarify',
@@ -85,13 +78,13 @@ describe('governance shadow block contract', () => {
         }),
       }),
     );
-    expect(normalized.reason_codes).toEqual(['layer_not_allowed']);
-    expect(normalized.metadata.strict_empty).toBeUndefined();
-    expect(normalized.metadata.strict_empty_reason).toBeUndefined();
-    expect(normalized.clarification).toBeNull();
+    expect(normalized.reason_codes).toEqual(expect.arrayContaining(['layer_not_allowed']));
+    expect(normalized.metadata.strict_empty).toBe(true);
+    expect(normalized.metadata.strict_empty_reason).toBe('primary_irrelevant_no_fallback');
+    expect(normalized.clarification).toEqual(input.clarification);
   });
 
-  test('normalizes resolver fallback shadow block responses while preserving returned products', () => {
+  test('records governance shadow block on resolver fallback responses without rewriting authority', () => {
     const app = require('../src/server');
     const input = {
       products: [{ product_id: 'p1', title: 'IPSA Time Reset Aqua' }],
@@ -125,21 +118,24 @@ describe('governance shadow block contract', () => {
     const normalized = app._debug.normalizeGovernanceShadowBlockContract(input);
 
     expect(normalized.products).toEqual(input.products);
-    expect(normalized.reason_codes).toEqual(['deep_pagination_blocked']);
+    expect(normalized.reason_codes).toEqual(expect.arrayContaining(['deep_pagination_blocked']));
     expect(normalized.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'gateway_governance_shadow_block',
-        proxy_search_fallback: expect.objectContaining({
-          applied: false,
-          reason: null,
+        query_source: 'agent_products_resolver_fallback',
+        search_decision: expect.objectContaining({
+          final_decision: 'resolver_returned',
+          decision_authority: 'agent_products_resolver_fallback',
         }),
         route_health: expect.objectContaining({
-          fallback_triggered: false,
-          fallback_reason: null,
-          primary_path_used: 'governance_shadow_block',
-          primary_path_degraded: false,
+          fallback_triggered: true,
+          fallback_reason: 'resolver_after_primary',
+          primary_path_used: 'resolver_fallback',
+          primary_path_degraded: true,
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
         }),
         governance_shadow_contract: expect.objectContaining({
+          normalized: false,
+          observer_only: true,
           recovery_reason: 'deep_pagination_blocked_shadow_block',
           governance_reason_codes: ['deep_pagination_blocked'],
         }),
@@ -147,7 +143,7 @@ describe('governance shadow block contract', () => {
     );
   });
 
-  test('normalizes shadow block after gateway audit metadata is merged in the response wrapper path', () => {
+  test('preserves response authority after gateway audit metadata is merged in shadow mode', () => {
     const app = require('../src/server');
     const input = {
       products: [],
@@ -205,23 +201,27 @@ describe('governance shadow block contract', () => {
     const merged = app._debug.mergeInvokeGatewayAuditMetadata(input, gatewayAudit);
     const normalized = app._debug.normalizeGovernanceShadowBlockContract(merged);
 
-    expect(normalized.reason_codes).toEqual(['layer_not_allowed']);
+    expect(normalized.reason_codes).toEqual(
+      expect.arrayContaining(['FILTERED_TO_EMPTY', 'layer_not_allowed']),
+    );
     expect(normalized.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'gateway_governance_shadow_block',
+        query_source: 'agent_products_error_fallback',
         governance_shadow_contract: expect.objectContaining({
-          normalized: true,
+          normalized: false,
+          observer_only: true,
           recovery_reason: 'layer_not_allowed_shadow_block',
           original_query_source: 'agent_products_error_fallback',
         }),
         route_health: expect.objectContaining({
-          fallback_triggered: false,
-          primary_path_degraded: false,
-          primary_path_used: 'governance_shadow_block',
+          fallback_triggered: true,
+          primary_path_degraded: true,
+          primary_path_used: 'upstream_stage',
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
         }),
       }),
     );
-    expect(normalized.clarification).toBeNull();
+    expect(normalized.clarification).toEqual(input.clarification);
   });
 
   test('leaves non-governed or healthy responses unchanged', () => {

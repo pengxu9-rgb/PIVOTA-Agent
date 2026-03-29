@@ -87,6 +87,9 @@ describe('Celestial commerce-core aurora manual review runner', () => {
             },
             search_decision: {
               final_decision: 'cache_returned',
+              decision_authority: 'agent_products_guidance_fastpath',
+              decision_locked: true,
+              decision_lock_reason: 'guidance_fastpath_success_contract',
             },
           },
         }),
@@ -220,6 +223,12 @@ describe('Celestial commerce-core aurora manual review runner', () => {
                   ],
                 },
               },
+            },
+            search_decision: {
+              final_decision: 'cache_returned',
+              decision_authority: 'cache_cross_merchant_search_supplemented',
+              decision_locked: true,
+              decision_lock_reason: 'cache_main_path',
             },
           },
         }),

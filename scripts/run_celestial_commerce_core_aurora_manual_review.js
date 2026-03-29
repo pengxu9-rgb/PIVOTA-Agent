@@ -134,7 +134,17 @@ function summarizeCase(testCase, response) {
     metadata.gateway_governance && typeof metadata.gateway_governance === 'object'
       ? metadata.gateway_governance
       : {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object'
+      ? metadata.route_health
+      : {};
   const products = Array.isArray(body.products) ? body.products : [];
+  const decisionAuthority =
+    typeof searchDecision.decision_authority === 'string' && searchDecision.decision_authority.trim()
+      ? searchDecision.decision_authority.trim()
+      : typeof metadata.query_source === 'string'
+      ? metadata.query_source
+      : '';
 
   return {
     id: testCase.id,
@@ -145,6 +155,12 @@ function summarizeCase(testCase, response) {
     error: typeof body.error === 'string' ? body.error : '',
     message: typeof body.message === 'string' ? body.message : '',
     query_source: typeof metadata.query_source === 'string' ? metadata.query_source : '',
+    decision_authority: decisionAuthority,
+    decision_locked: searchDecision.decision_locked === true,
+    decision_lock_reason:
+      typeof searchDecision.decision_lock_reason === 'string'
+        ? searchDecision.decision_lock_reason
+        : '',
     final_decision:
       typeof searchTrace.final_decision === 'string' ? searchTrace.final_decision : '',
     guidance_final_decision:
@@ -166,6 +182,7 @@ function summarizeCase(testCase, response) {
         : {},
     cache_stage: cacheStage,
     gateway_governance: gatewayGovernance,
+    observer_nodes: Array.isArray(routeHealth.observer_nodes) ? routeHealth.observer_nodes : [],
     request_id:
       response.responseHeaders['x-request-id'] ||
       response.responseHeaders['x-gateway-request-id'] ||
@@ -181,13 +198,15 @@ function verdictRank(value) {
 }
 
 function isGuidanceCacheHitMainPath(result) {
+  const authority = String(result.decision_authority || result.query_source || '').trim();
   return (
     result.status === 200 &&
     result.product_count > 0 &&
+    result.decision_locked === true &&
     result.final_decision === 'cache_returned' &&
     (
-      String(result.query_source || '').startsWith('cache_') ||
-      result.query_source === 'agent_products_guidance_fastpath'
+      authority.startsWith('cache_') ||
+      authority === 'agent_products_guidance_fastpath'
     )
   );
 }
