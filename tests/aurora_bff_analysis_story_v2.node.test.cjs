@@ -104,7 +104,8 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
       payload: {
         targets: [
           {
-            ingredient: 'UV filters',
+            ingredient_id: 'sunscreen_filters',
+            ingredient_name: 'UV filters',
             products: {
               competitors: [{ name: 'UV Fluid SPF50', pdp_url: 'https://example.com/pdp/uv-fluid' }],
               dupes: [{ name: 'Daily UV Gel', pdp_url: 'https://example.com/pdp/uv-gel' }],
@@ -142,8 +143,7 @@ test('analysis_story_v2: routine soft gate adds story/prompt and delays ingredie
   const planCard = out.find((card) => card.type === 'ingredient_plan_v2');
   assert.equal(planCard.payload.preview_only, true);
   assert.equal(planCard.payload.preview_reason, 'routine_missing');
-  assert.deepEqual(planCard.payload.targets[0].products.competitors, []);
-  assert.deepEqual(planCard.payload.targets[0].products.dupes, []);
+  assert.deepEqual(Array.isArray(planCard.payload.targets) ? planCard.payload.targets : [], []);
 });
 
 test('analysis_story_v2: routine summary fast path stays concrete for routine-only analysis', async () => {
@@ -976,6 +976,7 @@ test('analysis_story_v2: photo story review realigns priority/actions to summary
   assert.match(String(reviewed.repaired.priority_findings[0].title || ''), /under.?eye|texture/i);
   assert.match(String(reviewed.repaired.ui_card_v1.headline || ''), /suggest|under.?eye|texture/i);
   assert.match(String(reviewed.repaired.ui_card_v1.actions_now[0] || ''), /Azelaic|under.?eye|texture/i);
+  assert.match(String(reviewed.repaired.ui_card_v1.confidence_label || ''), /low/i);
 });
 
 test('analysis_story_v2: photo-led ingredient plan fills resolved_target_step and prunes empty non-primary targets', () => {
@@ -1085,8 +1086,93 @@ test('analysis_story_v2: photo-led ingredient plan fills resolved_target_step an
   assert.equal(annotated.targets[0].ingredient_id, 'azelaic_acid');
   assert.equal(annotated.targets[0].recommendation_mode, 'cta_only');
   assert.equal(annotated.targets[0].resolved_target_step, 'serum');
+  assert.match(String(annotated.targets[0].why_match_short || ''), /under.?eye|texture/i);
   assert.equal(annotated.targets.every((row) => typeof row.resolved_target_step === 'string' && row.resolved_target_step.length > 0), true);
   assert.equal(annotated.targets.some((row) => row.ingredient_id === 'zinc_pca'), false);
+});
+
+test('analysis_story_v2: photo-led ingredient coverage uses summary-ranked module when the same ingredient appears in multiple modules', () => {
+  const internal = loadInternalWithFlags({});
+  const photoModulesCard = {
+    type: 'photo_modules_v1',
+    payload: {
+      used_photos: true,
+      modules: [
+        {
+          module_id: 'forehead',
+          module_rank_score: 0.71,
+          issues: [{ issue_type: 'redness' }],
+          actions: [
+            {
+              ingredient_id: 'retinol',
+              ingredient_name: 'Retinoid (later stage)',
+              action_rank_score: 0.71,
+              evidence_issue_types: ['redness'],
+              products: [],
+            },
+          ],
+        },
+        {
+          module_id: 'under_eye_right',
+          module_rank_score: 0.95,
+          issues: [{ issue_type: 'texture' }],
+          actions: [
+            {
+              ingredient_id: 'retinol',
+              ingredient_name: 'Retinoid (later stage)',
+              action_rank_score: 0.95,
+              evidence_issue_types: ['texture'],
+              products: [],
+              external_search_ctas: [{ title: 'Search Retinoid', url: 'https://example.com/search/retinoid' }],
+            },
+          ],
+        },
+      ],
+      summary_v1: {
+        top_module_id: 'under_eye_right',
+        top_issue_type: 'texture',
+        top_action_ingredient_id: 'retinol',
+        top_findings: [
+          {
+            module_id: 'under_eye_right',
+            issue_type: 'texture',
+            severity_0_4: 2.8,
+            confidence_0_1: 0.14,
+            confidence_bucket: 'low',
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+          {
+            module_id: 'forehead',
+            issue_type: 'redness',
+            severity_0_4: 2.1,
+            confidence_0_1: 0.38,
+            confidence_bucket: 'medium',
+            evidence_region_ids: ['forehead_redness_heatmap'],
+          },
+        ],
+      },
+    },
+  };
+
+  const annotated = internal.annotateIngredientPlanForPhotoLed(
+    {
+      targets: [
+        {
+          ingredient_id: 'retinol',
+          ingredient_name: 'Retinoid (later stage)',
+          why: ['Helps smooth visible texture.'],
+          products: { competitors: [], dupes: [] },
+        },
+      ],
+    },
+    photoModulesCard,
+    'EN',
+  );
+
+  assert.ok(Array.isArray(annotated.targets));
+  assert.equal(annotated.targets[0].ingredient_id, 'retinol');
+  assert.match(String(annotated.targets[0].why_match_short || ''), /under.?eye|texture/i);
+  assert.doesNotMatch(String(annotated.targets[0].why_match_short || ''), /forehead/i);
 });
 
 test('analysis_story_v2: photo-led ingredient plan synthesizes missing primary target and keeps reco step aligned', () => {

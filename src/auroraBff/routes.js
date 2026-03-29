@@ -24321,6 +24321,9 @@ function sanitizeRecoRequestContext(raw = {}) {
     raw.resolved_target_step_source || raw.resolvedTargetStepSource || '',
   ).trim().toLowerCase();
   const artifactId = String(raw.artifact_id || raw.artifactId || '').trim();
+  const productCandidates = (Array.isArray(raw.product_candidates) ? raw.product_candidates : Array.isArray(raw.productCandidates) ? raw.productCandidates : [])
+    .filter((row) => isPlainObject(row))
+    .slice(0, 12);
   const createdAtMsRaw = Number(raw.created_at_ms || raw.createdAtMs);
   const createdAtMs = Number.isFinite(createdAtMsRaw) ? Math.max(0, Math.trunc(createdAtMsRaw)) : Date.now();
   const includeAlternatives = raw.include_alternatives === true;
@@ -24340,6 +24343,7 @@ function sanitizeRecoRequestContext(raw = {}) {
   if (resolvedTargetStepConfidence) out.resolved_target_step_confidence = resolvedTargetStepConfidence.slice(0, 24);
   if (resolvedTargetStepSource) out.resolved_target_step_source = resolvedTargetStepSource.slice(0, 48);
   if (artifactId) out.artifact_id = artifactId.slice(0, 120);
+  if (productCandidates.length) out.product_candidates = productCandidates;
   return out;
 }
 
@@ -24600,6 +24604,7 @@ function derivePhotoModulesRecoContext(photoModulesCard, { profileSummary = null
         entryType: 'analysis',
       });
       if (!targetContext.resolved_target_step && !ingredientName) continue;
+      const productCandidates = filterPhotoActionProducts(action, action && action.products, 12);
       return {
         intent: 'reco_products',
         source_detail: 'analysis_handoff',
@@ -24618,6 +24623,7 @@ function derivePhotoModulesRecoContext(photoModulesCard, { profileSummary = null
           targetStep ? 'analysis_photo_modules' : '',
         ),
         artifact_id: pickFirstTrimmed(artifactId),
+        ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
       };
     }
   }
@@ -24766,6 +24772,88 @@ function normalizePhotoIngredientKey(value) {
   return token || '';
 }
 
+const PHOTO_PRODUCT_ALIGNMENT_FAMILIES = Object.freeze({
+  retinol: ['retinol', 'retinoid', 'retinal', 'adapalene', 'tretinoin', 'tazarotene'],
+  ascorbic_acid: ['vitamin c', 'ascorbic acid', 'thd ascorbate', 'tetrahexyldecyl ascorbate'],
+  niacinamide: ['niacinamide', 'vitamin b3'],
+  azelaic_acid: ['azelaic acid'],
+  salicylic_acid: ['salicylic acid', 'bha', 'beta hydroxy'],
+  benzoyl_peroxide: ['benzoyl peroxide'],
+  ceramide_np: ['ceramide', 'ceramides'],
+  panthenol: ['panthenol', 'pro vitamin b5', 'provitamin b5', 'vitamin b5'],
+});
+
+const PHOTO_PRODUCT_ALIGNMENT_FAMILY_ALIASES = Object.freeze({
+  retinoid_later: 'retinol',
+  vitamin_c_gentle: 'ascorbic_acid',
+  ceramides: 'ceramide_np',
+  bha: 'salicylic_acid',
+  bha_gentle: 'salicylic_acid',
+  bha_lha: 'salicylic_acid',
+  niacinamide_low_pct: 'niacinamide',
+  benzoyl_peroxide_spot: 'benzoyl_peroxide',
+});
+
+function resolvePhotoActionIngredientFamilyKey(action) {
+  const rawIngredientId = normalizePhotoIngredientKey(
+    pickFirstString(
+      action && action.ingredient_canonical_id,
+      action && action.ingredient_id,
+      action && action.ingredientId,
+    ),
+  );
+  const aliasedIngredientId = PHOTO_PRODUCT_ALIGNMENT_FAMILY_ALIASES[rawIngredientId] || rawIngredientId;
+  if (PHOTO_PRODUCT_ALIGNMENT_FAMILIES[aliasedIngredientId]) return aliasedIngredientId;
+  const ingredientName = pickFirstString(action && action.ingredient_name, action && action.ingredient, aliasedIngredientId);
+  const entityMatch = ingredientEntityMatchFromText(ingredientName);
+  if (entityMatch && PHOTO_PRODUCT_ALIGNMENT_FAMILIES[entityMatch.entity_key]) return entityMatch.entity_key;
+  return '';
+}
+
+function photoProductTitleIncludesToken(normalizedTitle, token) {
+  const haystack = ingredient_query_normalize(normalizedTitle || '');
+  const needle = ingredient_query_normalize(token || '');
+  if (!haystack || !needle) return false;
+  return ingredientAliasTokenMatches(haystack, needle);
+}
+
+function collectPhotoProductAlignmentFamilies(product) {
+  const title = pickFirstString(
+    product && product.name,
+    product && product.title,
+    product && product.display_name,
+    product && product.displayName,
+  );
+  const normalizedTitle = ingredient_query_normalize(title);
+  if (!normalizedTitle) return new Set();
+  const families = new Set();
+  for (const [familyKey, tokens] of Object.entries(PHOTO_PRODUCT_ALIGNMENT_FAMILIES)) {
+    if ((tokens || []).some((token) => photoProductTitleIncludesToken(normalizedTitle, token))) {
+      families.add(familyKey);
+    }
+  }
+  return families;
+}
+
+function isPhotoActionProductTitleConflict(action, product) {
+  const expectedFamily = resolvePhotoActionIngredientFamilyKey(action);
+  if (!expectedFamily) return false;
+  const matchedFamilies = collectPhotoProductAlignmentFamilies(product);
+  if (!matchedFamilies.size) return false;
+  if (matchedFamilies.has(expectedFamily)) return false;
+  return true;
+}
+
+function filterPhotoActionProducts(action, products, maxItems = 12) {
+  const filtered = [];
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(product)) continue;
+    if (isPhotoActionProductTitleConflict(action, product)) continue;
+    filtered.push(product);
+  }
+  return dedupePhotoIngredientProducts(filtered, maxItems);
+}
+
 const PHOTO_ISSUE_DEFAULT_STEP_FAMILY = Object.freeze({
   redness: 'serum',
   pigmentation: 'serum',
@@ -24827,11 +24915,46 @@ function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
   const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+  const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
+  const summaryTopFindingRank = new Map(
+    (Array.isArray(summary.top_findings) ? summary.top_findings : [])
+      .map((row, idx) => [pickFirstString(row && row.module_id), idx])
+      .filter((row) => row[0]),
+  );
+  const summaryTopModuleId = pickFirstString(summary.top_module_id);
+  const summaryTopActionIngredientId = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
+  const orderedModules = modules
+    .slice()
+    .sort((left, right) => {
+      const leftId = pickFirstString(left && left.module_id);
+      const rightId = pickFirstString(right && right.module_id);
+      const leftRank = summaryTopFindingRank.has(leftId)
+        ? summaryTopFindingRank.get(leftId)
+        : (leftId && leftId === summaryTopModuleId ? -1 : 100);
+      const rightRank = summaryTopFindingRank.has(rightId)
+        ? summaryTopFindingRank.get(rightId)
+        : (rightId && rightId === summaryTopModuleId ? -1 : 100);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+    });
   const index = new Map();
-  for (const moduleRow of modules) {
+  for (const moduleRow of orderedModules) {
     const moduleId = pickFirstString(moduleRow && moduleRow.module_id);
     const moduleLabel = humanizePhotoStoryModuleLabel(moduleId, isCn);
-    const actions = Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [];
+    const actions = (Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [])
+      .filter((row) => isPlainObject(row))
+      .sort((left, right) => {
+        const leftId = normalizePhotoIngredientKey(
+          pickFirstString(left && left.ingredient_canonical_id, left && left.ingredient_id, left && left.ingredientId),
+        );
+        const rightId = normalizePhotoIngredientKey(
+          pickFirstString(right && right.ingredient_canonical_id, right && right.ingredient_id, right && right.ingredientId),
+        );
+        const leftRank = summaryTopActionIngredientId && moduleId === summaryTopModuleId && leftId === summaryTopActionIngredientId ? 0 : 1;
+        const rightRank = summaryTopActionIngredientId && moduleId === summaryTopModuleId && rightId === summaryTopActionIngredientId ? 0 : 1;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0);
+      });
     const moduleIssueTypes = Array.isArray(moduleRow && moduleRow.issues)
       ? moduleRow.issues.map((issue) => pickFirstString(issue && issue.issue_type)).filter(Boolean)
       : [];
@@ -24854,17 +24977,12 @@ function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
         ? action.evidence_issue_types.map((item) => pickFirstString(item)).filter(Boolean)
         : moduleIssueTypes;
       for (const issueType of issueTypes) existing.source_issue_types.add(issueType);
-      const strictProductCount = Array.isArray(action && action.products)
-        ? action.products.filter((product) => {
-            const productId = pickFirstString(product && product.product_id, product && product.productId);
-            const productName = pickFirstString(product && product.name, product && product.title);
-            return Boolean(productId || productName);
-          }).length
-        : 0;
+      const alignedStrictProducts = filterPhotoActionProducts(action, action && action.products, 12);
+      const strictProductCount = alignedStrictProducts.length;
       existing.strict_product_count += strictProductCount;
-      if (Array.isArray(action && action.products) && action.products.length) {
+      if (alignedStrictProducts.length) {
         existing.strict_products = dedupePhotoIngredientProducts(
-          [...existing.strict_products, ...action.products],
+          [...existing.strict_products, ...alignedStrictProducts],
           12,
         );
       }
@@ -35994,7 +36112,9 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   const primaryFocus = isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null;
   const lowConfidencePrimaryFocus = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
   const confidence = isPlainObject(row.confidence_overall) ? row.confidence_overall : {};
-  const confidenceLevel = pickFirstString(confidence.level, isCn ? '中' : 'medium');
+  const confidenceLevel = lowConfidencePrimaryFocus
+    ? (isCn ? '低' : 'low')
+    : pickFirstString(confidence.level, isCn ? '中' : 'medium');
   const findingTitles = asStringArray(
     Array.isArray(row.priority_findings)
       ? row.priority_findings.map((item) => pickFirstString(item && item.title, item && item.detail))
@@ -36070,11 +36190,23 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
           ? `Trial ${primaryFocus.ingredient_name} conservatively and watch the ${primaryFocus.issue_label} around the ${primaryFocus.module_label}.`
           : `Prioritize ${primaryFocus.ingredient_name} for the ${primaryFocus.issue_label} signal on the ${primaryFocus.module_label}.`))
       : '';
+  const secondaryTopActions = topActions
+    .filter((action) => {
+      const sameModuleAsPrimary =
+        primaryFocus
+        && String(primaryFocus.module_id || '').trim() === String(action && action.module_id || '').trim();
+      if (!sameModuleAsPrimary && lowConfidencePrimaryFocus) return false;
+      const sameIngredientAsPrimary =
+        primaryFocus
+        && String(primaryFocus.ingredient_id || '').trim().toLowerCase() === String(action && action.ingredient_id || '').trim().toLowerCase();
+      return !sameModuleAsPrimary || !sameIngredientAsPrimary || !primaryActionLine;
+    })
+    .slice(0, 3);
   const actionsNow = asStringArray(
     photoUsed
       ? [
           primaryActionLine,
-          ...topActions.slice(0, 3).map((action) => {
+          ...secondaryTopActions.map((action) => {
             const ingredientName = pickFirstString(action && action.ingredient_name, action && action.ingredient_id);
             const moduleLabel = pickFirstString(action && action.module_label, action && action.module_id);
             const issueType = Array.isArray(action && action.issue_types) ? action.issue_types[0] : null;
@@ -43783,11 +43915,195 @@ function collectIngredientRecoConstraintTokens(context) {
   return out.slice(0, 16);
 }
 
+function findIngredientEntityRowByKey(entityKey) {
+  const key = String(entityKey || '').trim().toLowerCase();
+  if (!key) return null;
+  return INGREDIENT_ENTITY_DICT.find((entry) => entry && entry.key === key) || null;
+}
+
+function buildIngredientRecoConstraintProfile(context) {
+  const normalizedContext = normalizeIngredientRecoContextValue(context);
+  const tokens = collectIngredientRecoConstraintTokens(context);
+  if (!normalizedContext) {
+    return {
+      normalized_context: null,
+      tokens,
+      entity_keys: [],
+      family_keys: [],
+      product_candidates: [],
+    };
+  }
+  const entityKeys = [];
+  const familyKeys = [];
+  const seenEntityKeys = new Set();
+  const seenFamilyKeys = new Set();
+  const sourceTexts = [
+    pickFirstTrimmed(normalizedContext.query),
+    ...(Array.isArray(normalizedContext.ingredient_candidates) ? normalizedContext.ingredient_candidates : []),
+    ...(Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []),
+  ];
+  for (const text of sourceTexts) {
+    const match = ingredientEntityMatchFromText(text);
+    if (match && match.entity_key && !seenEntityKeys.has(match.entity_key)) {
+      seenEntityKeys.add(match.entity_key);
+      entityKeys.push(match.entity_key);
+      const entityRow = findIngredientEntityRowByKey(match.entity_key);
+      const entityFamily = String(entityRow && entityRow.family || '').trim().toLowerCase();
+      if (entityFamily && !seenFamilyKeys.has(entityFamily)) {
+        seenFamilyKeys.add(entityFamily);
+        familyKeys.push(entityFamily);
+      }
+    }
+    const inferredFamily = inferIngredientFamilyKeyFromInputName(text);
+    if (inferredFamily && !seenFamilyKeys.has(inferredFamily)) {
+      seenFamilyKeys.add(inferredFamily);
+      familyKeys.push(inferredFamily);
+    }
+  }
+  return {
+    normalized_context: normalizedContext,
+    tokens,
+    entity_keys: entityKeys,
+    family_keys: familyKeys,
+    product_candidates: Array.isArray(normalizedContext.product_candidates)
+      ? normalizedContext.product_candidates.filter((row) => isPlainObject(row)).slice(0, 12)
+      : [],
+  };
+}
+
+function buildIngredientRecoConstraintCandidateText(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
+  return [
+    candidate.brand,
+    candidate.name,
+    candidate.title,
+    candidate.display_name,
+    candidate.displayName,
+    candidate.category,
+    candidate.product_type,
+    candidate.type,
+    candidate.ingredient_name,
+    ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
+    sku.brand,
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    sku.category,
+    sku.product_type,
+    sku.type,
+    ...(Array.isArray(sku.ingredient_tokens) ? sku.ingredient_tokens : []),
+  ]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function collectIngredientRecoConstraintCandidateFamilies(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
+  const out = [];
+  const seen = new Set();
+  const texts = [
+    candidate.ingredient_name,
+    candidate.name,
+    candidate.title,
+    candidate.display_name,
+    candidate.displayName,
+    ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
+    sku.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    ...(Array.isArray(sku.ingredient_tokens) ? sku.ingredient_tokens : []),
+  ];
+  for (const text of texts) {
+    const match = ingredientEntityMatchFromText(text);
+    if (match && match.entity_key) {
+      const entityRow = findIngredientEntityRowByKey(match.entity_key);
+      const family = String(entityRow && entityRow.family || '').trim().toLowerCase();
+      if (family && !seen.has(family)) {
+        seen.add(family);
+        out.push(family);
+      }
+    }
+    const family = inferIngredientFamilyKeyFromInputName(text);
+    if (family && !seen.has(family)) {
+      seen.add(family);
+      out.push(family);
+    }
+  }
+  return out;
+}
+
+function rowMatchesIngredientConstraintEntity(normalizedCandidateText, entityKey) {
+  const entityRow = findIngredientEntityRowByKey(entityKey);
+  if (!entityRow || !normalizedCandidateText) return false;
+  const aliasSet = [
+    ingredient_query_normalize(entityRow.canonical_en),
+    ingredient_query_normalize(entityRow.canonical_cn),
+    ...((Array.isArray(entityRow.aliases) ? entityRow.aliases : []).map((alias) => ingredient_query_normalize(alias))),
+  ].filter(Boolean);
+  return aliasSet.some((token) => ingredientAliasTokenMatches(normalizedCandidateText, token));
+}
+
+function rowMatchesIngredientConstraintProductCandidate(row, productCandidates) {
+  const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
+  const rowProductId = pickFirstTrimmed(candidate.product_id, candidate.productId, sku.product_id, sku.productId);
+  const rowMerchantId = pickFirstTrimmed(candidate.merchant_id, candidate.merchantId, sku.merchant_id, sku.merchantId);
+  const rowTitle = ingredient_query_normalize(
+    pickFirstTrimmed(
+      candidate.display_name,
+      candidate.displayName,
+      candidate.name,
+      candidate.title,
+      sku.display_name,
+      sku.displayName,
+      sku.name,
+      sku.title,
+    ),
+  );
+  for (const productCandidate of Array.isArray(productCandidates) ? productCandidates : []) {
+    if (!isPlainObject(productCandidate)) continue;
+    const candidateProductId = pickFirstTrimmed(productCandidate.product_id, productCandidate.productId);
+    const candidateMerchantId = pickFirstTrimmed(productCandidate.merchant_id, productCandidate.merchantId);
+    if (
+      rowProductId &&
+      candidateProductId &&
+      rowProductId === candidateProductId &&
+      (!rowMerchantId || !candidateMerchantId || rowMerchantId === candidateMerchantId)
+    ) {
+      return true;
+    }
+    const candidateTitle = ingredient_query_normalize(
+      pickFirstTrimmed(
+        productCandidate.display_name,
+        productCandidate.displayName,
+        productCandidate.name,
+        productCandidate.title,
+      ),
+    );
+    if (rowTitle && candidateTitle && rowTitle === candidateTitle) return true;
+  }
+  return false;
+}
+
 function applyIngredientRecoConstraint(payload, context) {
   const base = isPlainObject(payload) ? { ...payload } : {};
   const recommendations = Array.isArray(base.recommendations) ? base.recommendations : [];
-  const tokens = collectIngredientRecoConstraintTokens(context);
-  if (!recommendations.length || !tokens.length) {
+  const profile = buildIngredientRecoConstraintProfile(context);
+  const tokens = Array.isArray(profile.tokens) ? profile.tokens : [];
+  const entityKeys = Array.isArray(profile.entity_keys) ? profile.entity_keys : [];
+  const familyKeys = Array.isArray(profile.family_keys) ? profile.family_keys : [];
+  const productCandidates = Array.isArray(profile.product_candidates) ? profile.product_candidates : [];
+  const strictPhotoMode = String(profile.normalized_context && profile.normalized_context.source || '').trim().toLowerCase() === 'photo_modules_v1';
+  if (
+    !recommendations.length ||
+    (!tokens.length && !entityKeys.length && !familyKeys.length && !productCandidates.length)
+  ) {
     return {
       payload: base,
       constrained: false,
@@ -43798,9 +44114,24 @@ function applyIngredientRecoConstraint(payload, context) {
   }
   const kept = [];
   for (const row of recommendations) {
-    const serialized = ingredient_query_normalize(JSON.stringify(row || {}));
-    if (!serialized) continue;
-    if (tokens.some((token) => serialized.includes(token))) {
+    const normalizedCandidateText = ingredient_query_normalize(buildIngredientRecoConstraintCandidateText(row));
+    const matchesProductCandidate = rowMatchesIngredientConstraintProductCandidate(row, productCandidates);
+    const matchesEntity =
+      Boolean(normalizedCandidateText)
+      && entityKeys.some((entityKey) => rowMatchesIngredientConstraintEntity(normalizedCandidateText, entityKey));
+    const candidateFamilies = collectIngredientRecoConstraintCandidateFamilies(row);
+    const matchesFamily = familyKeys.some((familyKey) => candidateFamilies.includes(familyKey));
+    const matchesToken = Boolean(normalizedCandidateText) && tokens.some((token) => normalizedCandidateText.includes(token));
+    const keep =
+      matchesProductCandidate ||
+      matchesEntity ||
+      matchesFamily ||
+      (
+        !strictPhotoMode
+          ? matchesToken
+          : (!entityKeys.length && !familyKeys.length && matchesToken)
+      );
+    if (keep) {
       kept.push(row);
     }
   }
@@ -68670,6 +69001,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             target_step: pickFirstTrimmed(latestRecoContextSeed.resolved_target_step),
             query: pickFirstTrimmed(latestRecoContextSeed.ingredient_query),
             goal: pickFirstTrimmed(latestRecoContextSeed.goal),
+            product_candidates: Array.isArray(latestRecoContextSeed.product_candidates)
+              ? latestRecoContextSeed.product_candidates.slice(0, 12)
+              : [],
             source: pickFirstTrimmed(latestRecoContextSeed.context_origin, 'analysis_handoff'),
             updated_at_ms: Date.now(),
           });
@@ -69112,6 +69446,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             target_step: pickFirstTrimmed(latestRecoContextForRecommendation.resolved_target_step),
             query: pickFirstTrimmed(latestRecoContextForRecommendation.ingredient_query),
             goal: pickFirstTrimmed(latestRecoContextForRecommendation.goal),
+            product_candidates: Array.isArray(latestRecoContextForRecommendation.product_candidates)
+              ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
+              : [],
             source: pickFirstTrimmed(latestRecoContextForRecommendation.context_origin, 'analysis_handoff'),
             updated_at_ms: Date.now(),
           });
@@ -69187,6 +69524,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             latestArtifact && latestArtifact.artifact_id,
             latestRecoContextForRecommendation && latestRecoContextForRecommendation.artifact_id,
           ) || '',
+          product_candidates: Array.isArray(
+            recoIngredientContext && recoIngredientContext.product_candidates,
+          )
+            ? recoIngredientContext.product_candidates.slice(0, 12)
+            : Array.isArray(
+                latestRecoContextForRecommendation && latestRecoContextForRecommendation.product_candidates,
+              )
+              ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
+              : [],
         };
         const hasDeterministicRecoTarget = Boolean(
           pickFirstTrimmed(
@@ -69520,7 +69866,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           ({ matcherBundle, matcherPayload } = computeMatcherIfNeeded());
           matcherRecoCount = Array.isArray(matcherPayload?.recommendations) ? matcherPayload.recommendations.length : 0;
         }
-        if (ingredientRecoOptInRequested && isPlainObject(norm?.payload)) {
+        const shouldApplyPhotoIngredientConstraint =
+          !ingredientRecoOptInRequested
+          && !travelRecoHandoff
+          && isPlainObject(norm?.payload)
+          && String(latestRecoContextPatch.context_origin || '').trim().toLowerCase() === 'photo_modules_v1'
+          && Boolean(pickFirstTrimmed(recoContextIngredientQuery));
+        if ((ingredientRecoOptInRequested || shouldApplyPhotoIngredientConstraint) && isPlainObject(norm?.payload)) {
           const constrained = applyIngredientRecoConstraint(norm.payload, recoIngredientContext);
           if (constrained.constrained) {
             norm.payload = constrained.payload;

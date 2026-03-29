@@ -405,6 +405,45 @@ test('photo modules summary_v1: top_product_id stays aligned to the primary acti
   assert.equal(summary.top_product_id, null);
 });
 
+test('photo modules summary_v1: top_product_id drops an obvious active-title contradiction on the primary action', () => {
+  const summary = buildSummaryV1(
+    [
+      {
+        module_id: 'under_eye_right',
+        module_rank_score: 0.94,
+        issues: [
+          {
+            issue_type: 'texture',
+            severity_0_4: 3,
+            confidence_0_1: 0.41,
+            confidence_bucket: 'low',
+            issue_rank_score: 0.94,
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+        actions: [
+          {
+            ingredient_canonical_id: 'retinol',
+            ingredient_name: 'Retinoid (later stage)',
+            action_rank_score: 0.94,
+            products: [
+              {
+                product_id: 'vitc_pick_1',
+                name: 'Vitamin-C Serum',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    { qualityGrade: 'pass', qualityReasons: [] },
+  );
+
+  assert.ok(summary);
+  assert.equal(summary.top_action_ingredient_id, 'retinol');
+  assert.equal(summary.top_product_id, null);
+});
+
 test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {
   const built = buildPhotoModulesCard({
     requestId: 'req_photo_modules_heatmap_weak_overlap',

@@ -1004,6 +1004,100 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with norm
   }
 });
 
+test('/v1/chat: photo contextual generic reco keeps ingredient fidelity and filters mismatched products', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'photo_mismatch_1',
+            merchant_id: 'mid_photo',
+            brand: 'MismatchLab',
+            name: 'Niacinamide Rescue Serum',
+            display_name: 'Niacinamide Rescue Serum',
+            category: 'skincare',
+            product_type: 'treatment',
+            ingredient_tokens: ['niacinamide'],
+          },
+          {
+            product_id: 'photo_match_1',
+            merchant_id: 'mid_photo',
+            brand: 'NightLab',
+            name: 'Retinol Night Treatment',
+            display_name: 'Retinol Night Treatment',
+            category: 'skincare',
+            product_type: 'treatment',
+            ingredient_tokens: ['retinol', 'retinoid'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_photo_contextual_reco_uid', briefId: 'chat_photo_contextual_reco_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_photo_contextual_reco_uid',
+        'X-Trace-ID': 'trace_chat_photo_contextual_reco',
+        'X-Brief-ID': 'chat_photo_contextual_reco_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'analysis_handoff',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'photo_modules_v1',
+              goal: 'texture',
+              ingredient_query: 'Retinoid (later stage)',
+              resolved_target_step: 'treatment',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'analysis_photo_modules',
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.resolved_target_step, 'treatment');
+    assert.equal(payload.recommendations.some((row) => /niacinamide/i.test(JSON.stringify(row))), false);
+    assert.equal(payload.recommendations.some((row) => /retinol|retinoid/i.test(JSON.stringify(row))), true);
+    assert.ok(observedQueries.some((query) => query.includes('retinoid') || query.includes('retinol')));
+    assert.equal(payload.constraint_match_summary?.matched, 1);
+    assert.equal(payload.constraint_match_summary?.dropped, 1);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: retrieval step rescues generic skincare candidates with opaque titles', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {

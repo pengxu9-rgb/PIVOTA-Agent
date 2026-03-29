@@ -513,10 +513,80 @@ function computeModuleRankScore({ issues, actions } = {}) {
   return round3(clamp01(topIssueScore * 0.68 + avgTopIssueScore * 0.2 + topActionScore * 0.12));
 }
 
+const PHOTO_ACTION_PRODUCT_FAMILIES = Object.freeze({
+  retinol: ['retinol', 'retinoid', 'retinal', 'adapalene', 'tretinoin', 'tazarotene'],
+  ascorbic_acid: ['vitamin c', 'ascorbic acid', 'thd ascorbate', 'tetrahexyldecyl ascorbate'],
+  niacinamide: ['niacinamide', 'vitamin b3'],
+  azelaic_acid: ['azelaic acid'],
+  salicylic_acid: ['salicylic acid', 'bha', 'beta hydroxy'],
+  benzoyl_peroxide: ['benzoyl peroxide'],
+  ceramide_np: ['ceramide', 'ceramides'],
+  panthenol: ['panthenol', 'pro vitamin b5', 'provitamin b5', 'vitamin b5'],
+});
+
+const PHOTO_ACTION_PRODUCT_FAMILY_ALIASES = Object.freeze({
+  retinoid_later: 'retinol',
+  vitamin_c_gentle: 'ascorbic_acid',
+  ceramides: 'ceramide_np',
+  bha: 'salicylic_acid',
+  bha_gentle: 'salicylic_acid',
+  bha_lha: 'salicylic_acid',
+  niacinamide_low_pct: 'niacinamide',
+  benzoyl_peroxide_spot: 'benzoyl_peroxide',
+});
+
+function normalizePhotoActionTitleToken(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/[-–—_]/g, ' ')
+    .replace(/[()[\]{}:,;.!?]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolvePhotoActionIngredientFamily(actionRow) {
+  const rawId = String(
+    actionRow && (actionRow.ingredient_canonical_id || actionRow.ingredient_id || actionRow.ingredientId)
+      ? actionRow.ingredient_canonical_id || actionRow.ingredient_id || actionRow.ingredientId
+      : '',
+  )
+    .trim()
+    .toLowerCase();
+  const aliasedId = PHOTO_ACTION_PRODUCT_FAMILY_ALIASES[rawId] || rawId;
+  if (PHOTO_ACTION_PRODUCT_FAMILIES[aliasedId]) return aliasedId;
+  return '';
+}
+
+function collectPhotoActionProductFamilies(product) {
+  const title = normalizePhotoActionTitleToken(
+    product && (product.name || product.title || product.display_name || product.displayName),
+  );
+  if (!title) return new Set();
+  const out = new Set();
+  for (const [familyKey, tokens] of Object.entries(PHOTO_ACTION_PRODUCT_FAMILIES)) {
+    if ((tokens || []).some((token) => title.includes(normalizePhotoActionTitleToken(token)))) {
+      out.add(familyKey);
+    }
+  }
+  return out;
+}
+
+function isPhotoActionProductTitleConflict(actionRow, product) {
+  const expectedFamily = resolvePhotoActionIngredientFamily(actionRow);
+  if (!expectedFamily) return false;
+  const matchedFamilies = collectPhotoActionProductFamilies(product);
+  if (!matchedFamilies.size) return false;
+  if (matchedFamilies.has(expectedFamily)) return false;
+  return true;
+}
+
 function findTopProductIdFromAction(actionRow) {
   if (!actionRow || typeof actionRow !== 'object') return null;
   const products = Array.isArray(actionRow.products) ? actionRow.products : [];
   for (const product of products) {
+    if (isPhotoActionProductTitleConflict(actionRow, product)) continue;
     const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
       .trim();
     if (productId) return productId;
