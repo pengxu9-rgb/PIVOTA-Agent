@@ -1855,6 +1855,13 @@ const FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS = Math.max(
   FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS, 4200),
 );
+const FIND_PRODUCTS_MULTI_GUIDANCE_HYDRATION_SERUM_CACHE_STAGE_BUDGET_MS = Math.max(
+  FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS,
+  parseTimeoutMs(
+    process.env.FIND_PRODUCTS_MULTI_GUIDANCE_HYDRATION_SERUM_CACHE_STAGE_BUDGET_MS,
+    6200,
+  ),
+);
 const FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS = Math.max(
   300,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_RESOLVER_STAGE_BUDGET_MS, 1200),
@@ -4586,6 +4593,10 @@ function resolveFindProductsMultiCacheStageBudgetMs({
   const guidanceOnlySerumDiscoveryQuery =
     Boolean(guidanceOnlyDiscovery) &&
     ['attribute', 'category', 'exploratory', ''].includes(normalizedQueryClass);
+  const guidanceHydrationSupportiveSerumQuery =
+    Boolean(guidanceOnlyDiscovery) &&
+    normalizedQueryClass === 'attribute' &&
+    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/i.test(queryText);
   const genericSkincareSerumCategoryQuery =
     hasSerumSignal &&
     effectiveBeautyBucket === 'skincare' &&
@@ -4594,6 +4605,10 @@ function resolveFindProductsMultiCacheStageBudgetMs({
 
   if (!genericSkincareSerumCategoryQuery) {
     return FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS;
+  }
+
+  if (guidanceHydrationSupportiveSerumQuery) {
+    return FIND_PRODUCTS_MULTI_GUIDANCE_HYDRATION_SERUM_CACHE_STAGE_BUDGET_MS;
   }
 
   return FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS;
@@ -24848,6 +24863,7 @@ module.exports._debug = {
   resolveFindProductsMultiCacheStageBudgetMs,
   FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS,
   FIND_PRODUCTS_MULTI_GENERIC_SKINCARE_CACHE_STAGE_BUDGET_MS,
+  FIND_PRODUCTS_MULTI_GUIDANCE_HYDRATION_SERUM_CACHE_STAGE_BUDGET_MS,
   uiChatFindLatestScenarioSelection,
   uiChatFindLatestShoppingIntent,
   uiChatIsScenarioClarification,
