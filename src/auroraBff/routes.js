@@ -17555,12 +17555,32 @@ function buildPersistableLastAnalysisSnapshot({
   ingredientPlan = null,
   routineFitCard = null,
   routineAnalysisV2Result = null,
+  latestRecoContext = null,
+  profileSummary = null,
 } = {}) {
-  const base = isPlainObject(analysis) ? { ...analysis } : null;
+  const normalizedLatestRecoContext = normalizeIngredientRecoContextValue(latestRecoContext);
+  const base = isPlainObject(analysis)
+    ? { ...analysis }
+    : (
+      normalizedLatestRecoContext
+      || isPlainObject(profileSummary)
+      || isPlainObject(routineAnalysisV2Result && routineAnalysisV2Result.persist_payload)
+        ? {}
+        : null
+    );
   if (!base) return null;
   const ingredientPlanSummary = buildPersistableIngredientPlanSummary(ingredientPlan);
   if (ingredientPlanSummary) {
     base.ingredient_plan = ingredientPlanSummary;
+  }
+  const summary = isPlainObject(profileSummary) ? profileSummary : null;
+  if (!isPlainObject(base.skin_profile) && summary) {
+    const skinProfile = {
+      ...(pickFirstTrimmed(summary.skinType) ? { skin_type_tendency: pickFirstTrimmed(summary.skinType) } : {}),
+      ...(pickFirstTrimmed(summary.sensitivity) ? { sensitivity_tendency: pickFirstTrimmed(summary.sensitivity) } : {}),
+      ...(pickFirstTrimmed(summary.barrierStatus) ? { barrier_status_tendency: pickFirstTrimmed(summary.barrierStatus) } : {}),
+    };
+    if (Object.keys(skinProfile).length) base.skin_profile = skinProfile;
   }
   const routineFitPayload = routineFitCard && isPlainObject(routineFitCard.payload) ? routineFitCard.payload : null;
   if (routineFitPayload) {
@@ -17576,7 +17596,34 @@ function buildPersistableLastAnalysisSnapshot({
   if (routineAnalysisV2Result && routineAnalysisV2Result.legacy_compat !== undefined) {
     base.routine_analysis_legacy_compat = routineAnalysisV2Result.legacy_compat;
   }
+  if (normalizedLatestRecoContext) {
+    base.latest_reco_context_snapshot = normalizedLatestRecoContext;
+  }
+  if (!pickFirstTrimmed(base.analysis_source) && normalizedLatestRecoContext) {
+    base.analysis_source = pickFirstTrimmed(
+      normalizedLatestRecoContext.context_origin,
+      normalizedLatestRecoContext.owner_source,
+      normalizedLatestRecoContext.source,
+      'analysis_summary',
+    );
+  }
   return base;
+}
+
+function extractLatestRecoContextSnapshotFromLastAnalysis(lastAnalysis = null) {
+  const analysis = isPlainObject(lastAnalysis) ? lastAnalysis : null;
+  if (!analysis) return null;
+  return normalizeIngredientRecoContextValue(
+    isPlainObject(analysis.latest_reco_context_snapshot)
+      ? analysis.latest_reco_context_snapshot
+      : isPlainObject(analysis.latestRecoContextSnapshot)
+        ? analysis.latestRecoContextSnapshot
+        : isPlainObject(analysis.latest_reco_context)
+          ? analysis.latest_reco_context
+          : isPlainObject(analysis.latestRecoContext)
+            ? analysis.latestRecoContext
+            : null,
+  );
 }
 
 function deferLastAnalysisPersistence({
@@ -63091,19 +63138,28 @@ function mountAuroraBffRoutes(app, { logger }) {
               sessionPatch.profile = profileSummary;
             }
             appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
+            const routineLatestRecoContext = buildLatestRecoContextFromAnalysisArtifacts({
+              routineAnalysisResult: routineAnalysisV2Result,
+              profileSummary,
+              artifactId: latestArtifactId,
+              contextOrigin: 'routine_audit_v1',
+              analysisSource: 'routine_audit_v1',
+              usePhoto: false,
+              usedPhotos: false,
+              photoQualityGrade: '',
+            });
             appendLatestRecoContextToSessionPatch(
               sessionPatch,
-              buildLatestRecoContextFromAnalysisArtifacts({
-                routineAnalysisResult: routineAnalysisV2Result,
-                profileSummary,
-                artifactId: latestArtifactId,
-                contextOrigin: 'routine_audit_v1',
-                analysisSource: 'routine_audit_v1',
-                usePhoto: false,
-                usedPhotos: false,
-                photoQualityGrade: '',
-              }),
+              routineLatestRecoContext,
             );
+            const persistableRoutineFastPathAnalysis = buildPersistableLastAnalysisSnapshot({
+              analysis: null,
+              ingredientPlan: null,
+              routineFitCard: null,
+              routineAnalysisV2Result,
+              latestRecoContext: routineLatestRecoContext,
+              profileSummary,
+            });
 
             const analysisChips = buildAnalysisSuggestedChips({
               language: ctx.lang,
@@ -63168,6 +63224,23 @@ function mountAuroraBffRoutes(app, { logger }) {
             });
             profiler.end('render', { kind: 'routine_audit_fast_path' });
             recordAuroraSkinFlowMetric({ stage: 'routine_audit_fast_path_completed', hit: true });
+            if (persistLastAnalysis && persistableRoutineFastPathAnalysis) {
+              try {
+                await saveLastAnalysisForIdentity(
+                  { auroraUid: identity.auroraUid, userId: identity.userId },
+                  { analysis: persistableRoutineFastPathAnalysis, lang: ctx.lang },
+                );
+              } catch (err) {
+                logger?.warn(
+                  {
+                    err: err && err.message ? err.message : String(err),
+                    request_id: ctx.request_id,
+                    trace_id: ctx.trace_id,
+                  },
+                  'aurora bff: routine audit fast path last analysis persistence failed',
+                );
+              }
+            }
 
             return {
               envelope,
@@ -65148,13 +65221,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysisSummaryPayload.routine_analysis_legacy_compat = routineAnalysisV2Result.legacy_compat;
         }
 
-        const persistableLastAnalysis = buildPersistableLastAnalysisSnapshot({
-          analysis,
-          ingredientPlan,
-          routineFitCard,
-          routineAnalysisV2Result,
-        });
-
         if (routineFitPlan.shouldQueueKbBackfill) {
           setImmediate(async () => {
             let asyncCompleted = 0;
@@ -65245,6 +65311,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         } else {
           appendLatestRecoContextToSessionPatch(sessionPatch, analysisLatestRecoContext);
         }
+        const persistableLastAnalysis = buildPersistableLastAnalysisSnapshot({
+          analysis,
+          ingredientPlan,
+          routineFitCard,
+          routineAnalysisV2Result,
+          latestRecoContext: analysisLatestRecoContext,
+          profileSummary,
+        });
         const routineAnalysisCards = Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.cards)
           ? routineAnalysisV2Result.cards
           : [];
@@ -65972,11 +66046,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           };
           sessionPatch.meta = meta;
           timedFinalEnvelope.session_patch = sessionPatch;
+          const persistedAnalysisSnapshot = buildPersistableLastAnalysisSnapshot({
+            analysis: output && output.analysis_for_persist ? output.analysis_for_persist : null,
+            latestRecoContext: sessionPatch && sessionPatch.state ? sessionPatch.state.latest_reco_context : null,
+            profileSummary: sessionPatch && isPlainObject(sessionPatch.profile) ? sessionPatch.profile : null,
+          });
 
           setImmediate(() => {
             saveLastAnalysisForIdentity(
               { auroraUid: identity.auroraUid, userId: identity.userId },
-              { analysis: { ...(output && output.analysis_for_persist ? output.analysis_for_persist : {}), analysis_story_snapshot: storyCard.payload }, lang: ctx.lang },
+              {
+                analysis: { ...(persistedAnalysisSnapshot || {}), analysis_story_snapshot: storyCard.payload },
+                lang: ctx.lang,
+              },
             ).catch(() => {});
           });
         }
@@ -66089,6 +66171,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       const profileSummary = summarizeProfileForContext(profile);
       const isReturning = Boolean(profile) || recentLogs.length > 0;
       const checkinDue = isCheckinDue(recentLogs);
+      const lastAnalysisLatestRecoContext =
+        !dbError
+          ? extractLatestRecoContextSnapshotFromLastAnalysis(profile && profile.lastAnalysis)
+          : null;
       const latestAnalysisContext =
         !dbError
           ? buildAnalysisContextSnapshotForRoute({
@@ -66099,40 +66185,43 @@ function mountAuroraBffRoutes(app, { logger }) {
           : null;
       const bootstrapLatestRecoContext =
         !dbError
-          ? buildLatestRecoContextFromAnalysisArtifacts({
-              ingredientPlan: latestIngredientPlan,
-              profileSummary,
-              artifactId: pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id),
-              contextOrigin: 'latest_artifact',
-              analysisSource: pickFirstTrimmed(
-                latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.analysis_source,
-                latestArtifact && latestArtifact.analysis_source,
-              ),
-              usePhoto: Boolean(
-                latestArtifact && (
-                  latestArtifact.use_photo === true
-                  || (latestArtifact.analysis_context && latestArtifact.analysis_context.use_photo === true)
+          ? mergeIngredientRecoContextValue(
+              buildLatestRecoContextFromAnalysisArtifacts({
+                ingredientPlan: latestIngredientPlan,
+                profileSummary,
+                artifactId: pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id),
+                contextOrigin: 'latest_artifact',
+                analysisSource: pickFirstTrimmed(
+                  latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.analysis_source,
+                  latestArtifact && latestArtifact.analysis_source,
                 ),
-              ),
-              usedPhotos: Boolean(
-                latestArtifact && (
-                  (latestArtifact.analysis_context && latestArtifact.analysis_context.used_photos === true)
-                  || latestArtifact.use_photo === true
+                usePhoto: Boolean(
+                  latestArtifact && (
+                    latestArtifact.use_photo === true
+                    || (latestArtifact.analysis_context && latestArtifact.analysis_context.use_photo === true)
+                  ),
                 ),
-              ),
-              photoQualityGrade: pickFirstTrimmed(
-                latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.quality_grade,
-                latestArtifact
-                  && latestArtifact.analysis_context
-                  && latestArtifact.analysis_context.quality_report
-                  && latestArtifact.analysis_context.quality_report.photo_quality
-                  && latestArtifact.analysis_context.quality_report.photo_quality.grade,
-                latestArtifact
-                  && latestArtifact.quality_report
-                  && latestArtifact.quality_report.photo_quality
-                  && latestArtifact.quality_report.photo_quality.grade,
-              ),
-            })
+                usedPhotos: Boolean(
+                  latestArtifact && (
+                    (latestArtifact.analysis_context && latestArtifact.analysis_context.used_photos === true)
+                    || latestArtifact.use_photo === true
+                  ),
+                ),
+                photoQualityGrade: pickFirstTrimmed(
+                  latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.quality_grade,
+                  latestArtifact
+                    && latestArtifact.analysis_context
+                    && latestArtifact.analysis_context.quality_report
+                    && latestArtifact.analysis_context.quality_report.photo_quality
+                    && latestArtifact.analysis_context.quality_report.photo_quality.grade,
+                  latestArtifact
+                    && latestArtifact.quality_report
+                    && latestArtifact.quality_report.photo_quality
+                    && latestArtifact.quality_report.photo_quality.grade,
+                ),
+              }),
+              lastAnalysisLatestRecoContext,
+            )
           : null;
 
       const cards = [

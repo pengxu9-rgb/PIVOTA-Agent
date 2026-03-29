@@ -11632,6 +11632,56 @@ test('__internal: applyBeautyCanonicalOwnershipToEnvelope writes owner fields in
   }
 });
 
+test('__internal: buildPersistableLastAnalysisSnapshot keeps canonical latest reco context without analysis base', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const snapshot = __internal.buildPersistableLastAnalysisSnapshot({
+      analysis: null,
+      routineAnalysisV2Result: {
+        persist_payload: {
+          routine_audit_v1: {
+            verdict: { summary: 'Morning sunscreen gap' },
+          },
+        },
+        legacy_compat: { enabled: true },
+      },
+      latestRecoContext: {
+        context_origin: 'routine_audit_v1',
+        owner_source: 'routine_audit_v1',
+        target_bundle_owner: 'routine_audit_v1',
+        final_outcome_owner: 'analysis_skin_response',
+        ingredient_query: 'cleanser',
+        goal: 'barrier_support',
+        resolved_target_step: 'cleanser',
+        primary_target_id: 'adj_pm_cleanser_replace',
+        ranked_targets: [
+          {
+            target_id: 'adj_pm_cleanser_replace',
+            ingredient_query: 'cleanser',
+            resolved_target_step: 'cleanser',
+            target_role: 'primary',
+            source: 'routine_audit_v1',
+          },
+        ],
+      },
+      profileSummary: {
+        skinType: 'combination',
+        sensitivity: 'high',
+        barrierStatus: 'reactive',
+      },
+    });
+
+    assert.ok(snapshot);
+    assert.equal(snapshot.skin_profile?.skin_type_tendency, 'combination');
+    assert.equal(snapshot.skin_profile?.sensitivity_tendency, 'high');
+    assert.equal(snapshot.latest_reco_context_snapshot?.primary_target_id, 'adj_pm_cleanser_replace');
+    assert.equal(snapshot.latest_reco_context_snapshot?.owner_source, 'routine_audit_v1');
+    assert.equal(snapshot.routine_analysis_legacy_compat?.enabled, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('__internal: applyBeautyCanonicalOwnershipToEnvelope rebuilds reco assistant text when selection shift needs explanation', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -14943,6 +14993,91 @@ test('/v1/chat: analysis follow-up actions use lastAnalysis context instead of i
           actionEvents.some((event) => event && event.event_name === 'analysis_followup_action_routed' && event.data?.fell_back_to_generic === false),
           true,
         );
+      } finally {
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+        delete require.cache[routeModuleId];
+      }
+    },
+  );
+});
+
+test('/v1/session/bootstrap: restores canonical latest reco context from lastAnalysis snapshot when artifact is absent', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+      const uid = 'uid_bootstrap_latest_reco_snapshot';
+      const headers = {
+        'X-Aurora-UID': uid,
+        'X-Trace-ID': 'trace_bootstrap_latest_reco_snapshot',
+        'X-Brief-ID': 'brief_bootstrap_latest_reco_snapshot',
+        'X-Lang': 'EN',
+      };
+
+      try {
+        await memoryStore.saveLastAnalysisForIdentity(
+          { auroraUid: uid, userId: null },
+          {
+            analysis: {
+              skin_profile: {
+                skin_type_tendency: 'combination',
+                sensitivity_tendency: 'high',
+                barrier_status_tendency: 'reactive',
+              },
+              latest_reco_context_snapshot: {
+                context_origin: 'routine_audit_v1',
+                owner_source: 'routine_audit_v1',
+                target_bundle_owner: 'routine_audit_v1',
+                final_outcome_owner: 'analysis_skin_response',
+                ingredient_query: 'cleanser',
+                goal: 'barrier_support',
+                resolved_target_step: 'cleanser',
+                primary_target_id: 'adj_pm_cleanser_replace',
+                ranked_targets: [
+                  {
+                    target_id: 'adj_pm_cleanser_replace',
+                    ingredient_query: 'cleanser',
+                    resolved_target_step: 'cleanser',
+                    target_role: 'primary',
+                    source: 'routine_audit_v1',
+                  },
+                ],
+              },
+            },
+            lang: 'EN',
+          },
+        );
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .get('/v1/session/bootstrap')
+          .set(headers)
+          .expect(200);
+
+        const latestRecoContext = resp.body?.session_patch?.state?.latest_reco_context || null;
+        assert.ok(latestRecoContext);
+        assert.equal(latestRecoContext.primary_target_id, 'adj_pm_cleanser_replace');
+        assert.equal(latestRecoContext.context_origin, 'routine_audit_v1');
+        assert.equal(latestRecoContext.owner_source, 'routine_audit_v1');
+
+        const bootstrapCard = findCardByType(resp.body?.cards, 'session_bootstrap');
+        assert.ok(bootstrapCard);
+        const latestAnalysisContext = bootstrapCard?.payload?.latest_analysis_context || null;
+        assert.ok(latestAnalysisContext);
+        const ingredientTargets = Array.isArray(latestAnalysisContext?.ingredient_targets?.items)
+          ? latestAnalysisContext.ingredient_targets.items
+          : [];
+        assert.equal(ingredientTargets.length > 0, true);
       } finally {
         await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
         delete require.cache[routeModuleId];

@@ -453,6 +453,15 @@ function buildLastAnalysisFallbackCandidates(lastAnalysis = null) {
   if (!row) return null;
   const skinProfile = isPlainObject(row.skin_profile) ? row.skin_profile : isPlainObject(row.skinProfile) ? row.skinProfile : null;
   const ingredientPlan = isPlainObject(row.ingredient_plan) ? row.ingredient_plan : null;
+  const latestRecoContext = isPlainObject(row.latest_reco_context_snapshot)
+    ? row.latest_reco_context_snapshot
+    : isPlainObject(row.latestRecoContextSnapshot)
+      ? row.latestRecoContextSnapshot
+      : isPlainObject(row.latest_reco_context)
+        ? row.latest_reco_context
+        : isPlainObject(row.latestRecoContext)
+          ? row.latestRecoContext
+          : null;
   const out = {
     skin_type_tendency: [],
     sensitivity_tendency: [],
@@ -499,6 +508,13 @@ function buildLastAnalysisFallbackCandidates(lastAnalysis = null) {
       freshnessBucket: FRESHNESS_BUCKET.AGING,
     }));
   }
+  if (!out.data_quality.overall && latestRecoContext) {
+    const confidenceLevel = pickFirstTrimmed(
+      latestRecoContext.confidence_policy && latestRecoContext.confidence_policy.confidence_level,
+      latestRecoContext.confidence_policy && latestRecoContext.confidence_policy.level,
+    );
+    if (confidenceLevel) out.data_quality.overall = confidenceLevel;
+  }
   asArray(ingredientPlan && ingredientPlan.targets).forEach((item) => {
     const name = pickFirstTrimmed(item && item.ingredient_name, item && item.ingredient_id);
     if (!name) return;
@@ -523,6 +539,50 @@ function buildLastAnalysisFallbackCandidates(lastAnalysis = null) {
       freshnessBucket: FRESHNESS_BUCKET.AGING,
     }));
   });
+  asArray(latestRecoContext && latestRecoContext.ranked_targets).slice(0, 4).forEach((item) => {
+    const name = pickFirstTrimmed(item && item.ingredient_query, item && item.ingredient_name, item && item.ingredient_id);
+    if (!name) return;
+    out.ingredient_targets.push(makeCandidate({
+      value: name,
+      sourceClass: SOURCE_CLASS.HEURISTIC,
+      sourceSubclass: 'system_heuristic',
+      sourceRef: buildSourceRef('system_heuristic', 'lastAnalysis.latest_reco_context_snapshot.ranked_targets'),
+      confidence: 0.64,
+      freshnessBucket: FRESHNESS_BUCKET.AGING,
+    }));
+  });
+  if (
+    latestRecoContext
+    && !out.ingredient_targets.length
+    && pickFirstTrimmed(
+      latestRecoContext.ingredient_query,
+      latestRecoContext.query,
+      latestRecoContext.ingredient_name,
+    )
+  ) {
+    out.ingredient_targets.push(makeCandidate({
+      value: pickFirstTrimmed(
+        latestRecoContext.ingredient_query,
+        latestRecoContext.query,
+        latestRecoContext.ingredient_name,
+      ),
+      sourceClass: SOURCE_CLASS.HEURISTIC,
+      sourceSubclass: 'system_heuristic',
+      sourceRef: buildSourceRef('system_heuristic', 'lastAnalysis.latest_reco_context_snapshot.query'),
+      confidence: 0.6,
+      freshnessBucket: FRESHNESS_BUCKET.AGING,
+    }));
+  }
+  if (pickFirstTrimmed(latestRecoContext && latestRecoContext.goal)) {
+    out.goals.push(makeCandidate({
+      value: pickFirstTrimmed(latestRecoContext.goal),
+      sourceClass: SOURCE_CLASS.HEURISTIC,
+      sourceSubclass: 'system_heuristic',
+      sourceRef: buildSourceRef('system_heuristic', 'lastAnalysis.latest_reco_context_snapshot.goal'),
+      confidence: 0.58,
+      freshnessBucket: FRESHNESS_BUCKET.AGING,
+    }));
+  }
   asArray(row.priority_findings || row.findings).slice(0, 5).forEach((item) => {
     const title = pickFirstTrimmed(item && item.title, item && item.detail, item && item.observation);
     if (!title) return;
@@ -539,6 +599,28 @@ function buildLastAnalysisFallbackCandidates(lastAnalysis = null) {
       freshnessBucket: FRESHNESS_BUCKET.STALE,
     }));
   });
+  if (!out.photo_findings_summary.length && latestRecoContext && isPlainObject(latestRecoContext.primary_focus)) {
+    const finding = pickFirstTrimmed(
+      latestRecoContext.primary_focus.issue_label,
+      latestRecoContext.primary_focus.issue_type,
+      latestRecoContext.primary_focus.ingredient_name,
+      latestRecoContext.ingredient_query,
+    );
+    if (finding) {
+      out.photo_findings_summary.push(makeCandidate({
+        value: {
+          finding,
+          region: asString(latestRecoContext.primary_focus.module_label) || null,
+          severity: asString(latestRecoContext.confidence_policy && latestRecoContext.confidence_policy.confidence_level) || null,
+        },
+        sourceClass: SOURCE_CLASS.HEURISTIC,
+        sourceSubclass: 'system_heuristic',
+        sourceRef: buildSourceRef('system_heuristic', 'lastAnalysis.latest_reco_context_snapshot.primary_focus'),
+        confidence: 0.48,
+        freshnessBucket: FRESHNESS_BUCKET.STALE,
+      }));
+    }
+  }
   return out;
 }
 
