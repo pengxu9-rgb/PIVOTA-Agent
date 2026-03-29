@@ -54,6 +54,22 @@ npm run audit:stabilization:commerce-core
 
 If no raw gateway log path or sampled shadow file is supplied, the workflow falls back to the checked-in shadow sample fixture so the acceptance report remains runnable locally.
 
+For the production-governance provenance leg, the preferred Phase 2 path is to enable automated Railway export instead of relying on a checked-in fixture:
+
+```bash
+RAILWAY_API_TOKEN=railway_workspace_token \
+GATEWAY_GOVERNANCE_AUTO_FETCH=1 \
+npm run audit:stabilization:commerce-core
+```
+
+Supported override envs:
+
+- `GATEWAY_GOVERNANCE_RAILWAY_PROJECT` default: `Pivota Agent`
+- `GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT` default: `production`
+- `GATEWAY_GOVERNANCE_RAILWAY_SERVICE` default: `PIVOTA-Agent`
+- `GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE` optional workspace selector
+- `GATEWAY_GOVERNANCE_FETCH_LINES` default: `500`
+
 The staging matrix uses the supported live commerce entrypoint `POST /agent/shop/v1/invoke`. Public `POST /api/gateway` should not be treated as the primary commerce acceptance rail for this workflow. If a case requires auth and the matching staging profile is not configured, the case is marked `review_required` instead of failing.
 
 Supported auth envs:
