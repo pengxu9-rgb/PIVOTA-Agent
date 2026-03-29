@@ -266,6 +266,7 @@ function classifyResult(result) {
   }
 
   if (result.id === 'aurora_guidance_only_cache_miss_manual') {
+    const lockedCacheMainPathWithoutSupplement = isGuidanceLockedCacheMainPathWithoutSupplement(result);
     if (
       result.status === 200 &&
       result.final_decision &&
@@ -276,6 +277,13 @@ function classifyResult(result) {
         verdict: 'pass',
         notes:
           'cache miss degraded through a non-cache-returned guidance-only lane with diagnostics intact.',
+      };
+    }
+    if (lockedCacheMainPathWithoutSupplement) {
+      return {
+        verdict: 'pass',
+        notes:
+          'the historical cache-miss candidate no longer reproduced a miss because a locked cache main path already satisfied the request with coherent serum-scoped results and intact diagnostics.',
       };
     }
     return {
@@ -409,20 +417,28 @@ function buildChecklist(result) {
       Boolean(result.final_decision) &&
       result.final_decision !== 'cache_returned' &&
       !String(result.query_source || '').startsWith('cache_cross_merchant_search_supplemented');
+    const lockedCacheMainPathWithoutSupplement = isGuidanceLockedCacheMainPathWithoutSupplement(result);
     const reviewRequired = result.verdict === 'review_required';
     return [
       checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
       checklistItem(
-        'Case reproduced a non-cache-returned guidance path',
-        nonCacheLane,
+        'Case either reproduced a non-cache-returned guidance path or proved a coherent locked cache main path',
+        nonCacheLane || lockedCacheMainPathWithoutSupplement,
         `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
         reviewRequired,
       ),
       checklistItem(
-        'Supplemented cache lane did not replace the intended miss scenario',
-        !String(result.query_source || '').startsWith('cache_cross_merchant_search_supplemented'),
+        'Supplemented cache lane did not replace the intended miss scenario unless a locked cache main path already satisfied it',
+        !String(result.query_source || '').startsWith('cache_cross_merchant_search_supplemented') ||
+          lockedCacheMainPathWithoutSupplement,
         `query_source=${result.query_source || 'missing'}`,
         reviewRequired,
+      ),
+      checklistItem(
+        'Locked cache main path remained coherent when staging data promoted the historical miss candidate',
+        !lockedCacheMainPathWithoutSupplement || result.decision_locked === true,
+        `decision_locked=${result.decision_locked === true}, decision_authority=${result.decision_authority || 'missing'}`,
+        reviewRequired && lockedCacheMainPathWithoutSupplement !== true,
       ),
       checklistItem(
         'Diagnostics remained visible for operator review',

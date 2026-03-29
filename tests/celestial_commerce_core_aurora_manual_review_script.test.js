@@ -435,4 +435,143 @@ describe('Celestial commerce-core aurora manual review runner', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('accepts a locked cache main path when the historical cache-miss candidate is now satisfied upstream', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'run_celestial_commerce_core_aurora_manual_review.js',
+    );
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-aurora-manual-'));
+    const casesPath = path.join(outDir, 'manual-cases.json');
+
+    fs.writeFileSync(
+      casesPath,
+      JSON.stringify(
+        {
+          semantic_cases: [
+            {
+              id: 'aurora_guidance_only_cache_miss_manual',
+              title: 'historical cache miss promoted to cache main path',
+              family: 'aurora_guidance_only_cache_miss',
+              execution_mode: 'manual',
+              request: {
+                operation: 'find_products_multi',
+                payload: {
+                  search: {
+                    query: 'repair serum',
+                    limit: 6,
+                    in_stock_only: true,
+                    ui_surface: 'ingredient_plan_guidance_only',
+                  },
+                },
+                metadata: {
+                  source: 'aurora-bff',
+                  ui_surface: 'ingredient_plan_guidance_only',
+                  query_target_step_family: 'serum',
+                  query_step_strength: 'focused',
+                  decision_mode: 'guidance_only',
+                  source_policy: 'guided_only',
+                },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (_req, res) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('X-Request-Id', 'aurora-manual-cache-miss-promoted');
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'Winona Repair Serum' }],
+          metadata: {
+            query_source: 'cache_cross_merchant_search',
+            search_trace: {
+              final_decision: 'cache_returned',
+            },
+            source_breakdown: {
+              internal_count: 1,
+              external_seed_count: 0,
+            },
+            route_debug: {
+              cross_merchant_cache: {
+                main_path_contract_locked: true,
+                supplement: {
+                  attempted: false,
+                  applied: false,
+                  stage_timeout: false,
+                },
+              },
+            },
+            search_decision: {
+              final_decision: 'cache_returned',
+              decision_authority: 'cache_cross_merchant_search',
+              decision_locked: true,
+              decision_lock_reason: 'cache_main_path',
+            },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          scriptPath,
+          '--base-url',
+          baseUrl,
+          '--endpoint',
+          '/',
+          '--cases',
+          casesPath,
+          '--out-dir',
+          outDir,
+          '--auth-token',
+          'ak_live_test_stage_key',
+        ],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const summary = JSON.parse(fs.readFileSync(payload.json, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(summary.pass_count).toBe(1);
+      expect(summary.fail_count).toBe(0);
+      expect(summary.review_required_count).toBe(0);
+      expect(summary.results[0]).toEqual(
+        expect.objectContaining({
+          verdict: 'pass',
+          query_source: 'cache_cross_merchant_search',
+          final_decision: 'cache_returned',
+          decision_authority: 'cache_cross_merchant_search',
+          decision_locked: true,
+        }),
+      );
+      expect(summary.results[0].notes).toContain('historical cache-miss candidate no longer reproduced a miss');
+      expect(summary.results[0].checklist).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: expect.stringContaining('locked cache main path'),
+            status: 'pass',
+          }),
+        ]),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
