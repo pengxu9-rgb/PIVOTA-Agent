@@ -39486,9 +39486,19 @@ async function applyProductIntelGuardrailsToEnvelope({
     isPlainObject(base.session_patch.meta.routine_analysis_v2)
       ? base.session_patch.meta.routine_analysis_v2
       : null;
+  const hasPhotoLedAnalysisSurface =
+    sanitized.cards.some((card) => {
+      if (!isPlainObject(card)) return false;
+      return String(card.type || '').trim().toLowerCase() === 'analysis_summary';
+    }) &&
+    sanitized.cards.some((card) => {
+      if (!isPlainObject(card)) return false;
+      return String(card.type || '').trim().toLowerCase() === 'photo_modules_v1';
+    });
   if (
     routineAnalysisV2Meta &&
-    (routineAnalysisV2Meta.enabled === true || routineAnalysisV2Meta.guardrail_bypass === true)
+    (routineAnalysisV2Meta.enabled === true || routineAnalysisV2Meta.guardrail_bypass === true) &&
+    !hasPhotoLedAnalysisSurface
   ) {
     const lookupMeta = isPlainObject(sanitized.lookup_meta) ? sanitized.lookup_meta : {};
     const guardrailElapsedMs = computeElapsedMs(guardrailStartedAt);

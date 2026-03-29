@@ -13525,6 +13525,7 @@ test('/v1/analysis/skin: mixed routine+photo keeps photo-led analysis_story_v2 e
           },
           recommendation_groups: [],
           debug_meta: {
+            enabled: true,
             stage_a: { deferred_product_count: 0 },
           },
         });
