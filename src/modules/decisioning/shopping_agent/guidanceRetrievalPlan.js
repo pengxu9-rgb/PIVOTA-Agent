@@ -41,7 +41,29 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       push('ceramide moisturizer');
       push('sensitive skin moisturizer');
     } else if (guidanceContext.target_step_family === 'serum') {
-      if (/\bpanthenol\b/.test(normalized)) push('panthenol serum');
+      const hasPanthenol = /\bpanthenol\b/.test(normalized);
+      const hasHyaluronic = /\b(hyaluronic|hyaluron|sodium hyaluronate|ha)\b/.test(normalized);
+      const hasNiacinamide = /\bniacinamide\b/.test(normalized);
+      const hasZinc = /\b(zinc|zinc pca)\b/.test(normalized);
+      const hasAzelaic = /\bazelaic\b/.test(normalized);
+      const hasSalicylic = /\b(salicylic|bha)\b/.test(normalized);
+      const hasVitaminC = /\b(vitamin c|ascorbic)\b/.test(normalized);
+      const hasBarrier = /\b(barrier|repair)\b/.test(normalized);
+      const hydrationFocused = hasHyaluronic || /\b(hydrat\w*|dehydrat\w*|dry)\b/.test(normalized);
+      const needsHydrationSupportiveBridge =
+        hydrationFocused &&
+        !hasPanthenol &&
+        !hasBarrier &&
+        !hasNiacinamide &&
+        !hasZinc &&
+        !hasAzelaic &&
+        !hasSalicylic &&
+        !hasVitaminC;
+      if (hasPanthenol) push('panthenol serum');
+      if (needsHydrationSupportiveBridge) {
+        push('repair serum');
+        push('soothing repair serum');
+      }
       push('barrier repair serum');
       push('soothing serum');
       push('hydrating serum');
@@ -167,11 +189,17 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       if (hydrationFocused) {
         pushUnique(supportiveQueries, 'hydrating serum');
       }
+      if (needsHydrationSupportiveBridge) {
+        pushUnique(supportiveQueries, 'repair serum');
+      }
       if (hasPanthenol || hasBarrier || needsHydrationSupportiveBridge) {
         pushUnique(supportiveQueries, 'barrier repair serum');
       }
       if (hasPanthenol || /\b(soothing|calming|sensitive|cica|centella)\b/.test(normalized)) {
         pushUnique(supportiveQueries, 'soothing serum');
+      }
+      if (needsHydrationSupportiveBridge) {
+        pushUnique(supportiveQueries, 'soothing repair serum');
       }
       if (!hydrationFocused) {
         pushUnique(supportiveQueries, 'hydrating serum');
@@ -181,7 +209,7 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       pushUnique(supportiveQueries, 'hydrating serum');
       pushUnique(supportiveQueries, 'serum');
       if (strongQueries.length > 2) strongQueries.splice(2);
-      if (supportiveQueries.length > 4) supportiveQueries.splice(4);
+      if (supportiveQueries.length > 5) supportiveQueries.splice(5);
     } else {
       return [];
     }

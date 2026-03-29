@@ -93,6 +93,20 @@ describe('Shopping agent guidance retrieval plan module', () => {
     ]);
 
     expect(
+      runtime.buildGuidanceRecallSupplementQueries('hydrating serum', {
+        is_guidance_only: true,
+        target_step_family: 'serum',
+      }),
+    ).toEqual([
+      'repair serum',
+      'soothing repair serum',
+      'barrier repair serum',
+      'soothing serum',
+      'hydrating serum',
+      'serum',
+    ]);
+
+    expect(
       runtime.buildIngredientRecallQueryVariants(
         'repair serum',
         {
@@ -170,7 +184,13 @@ describe('Shopping agent guidance retrieval plan module', () => {
       },
       {
         intent_strength: 'supportive_family',
-        cluster_queries: ['hydrating serum', 'barrier repair serum', 'serum'],
+        cluster_queries: [
+          'hydrating serum',
+          'repair serum',
+          'barrier repair serum',
+          'soothing repair serum',
+          'serum',
+        ],
         selected_query: 'hydrating serum',
         stop_on_success: true,
       },
