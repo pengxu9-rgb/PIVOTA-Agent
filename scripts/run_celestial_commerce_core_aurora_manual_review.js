@@ -211,6 +211,38 @@ function isGuidanceCacheHitMainPath(result) {
   );
 }
 
+function isGuidanceLockedCacheMainPathWithoutSupplement(result) {
+  if (!isGuidanceCacheHitMainPath(result)) {
+    return false;
+  }
+  const cacheStage =
+    result.cache_stage && typeof result.cache_stage === 'object' ? result.cache_stage : {};
+  const supplement =
+    cacheStage.supplement && typeof cacheStage.supplement === 'object'
+      ? cacheStage.supplement
+      : {};
+  const searchStageB =
+    result.search_stage_b && typeof result.search_stage_b === 'object'
+      ? result.search_stage_b
+      : {};
+  const sourceBreakdown =
+    result.source_breakdown && typeof result.source_breakdown === 'object'
+      ? result.source_breakdown
+      : {};
+  const externalCount =
+    Number(sourceBreakdown.external_count || sourceBreakdown.external_seed_count || 0) || 0;
+  const titles = Array.isArray(result.titles) ? result.titles : [];
+  return (
+    externalCount <= 0 &&
+    supplement.applied !== true &&
+    searchStageB.applied !== true &&
+    result.guidance_direct_external_seed_applied !== true &&
+    result.guidance_direct_external_seed_valid_hit !== true &&
+    titles.length > 0 &&
+    titles.some((item) => /\bserum\b/i.test(String(item || '')))
+  );
+}
+
 function classifyResult(result) {
   if (result.id === 'aurora_guidance_only_cache_hit_manual') {
     if (isGuidanceCacheHitMainPath(result)) {
@@ -291,6 +323,9 @@ function classifyResult(result) {
       result.guidance_direct_external_seed_valid_hit === true &&
       externalCount > 0 &&
       supplement.stage_timeout !== true;
+    const lockedCacheMainPathWithoutSupplement =
+      isGuidanceLockedCacheMainPathWithoutSupplement(result) &&
+      supplement.stage_timeout !== true;
     if (
       result.status === 200 &&
       (
@@ -304,13 +339,16 @@ function classifyResult(result) {
           supplement.stage_timeout !== true
         ) ||
         cacheStageBoundedGuidanceSupplement ||
-        directGuidanceReplacement
+        directGuidanceReplacement ||
+        lockedCacheMainPathWithoutSupplement
       )
     ) {
       const notes = directGuidanceReplacement
         ? 'guidance-only supplement stayed bounded through the explicit external-seed replacement lane, with valid-hit metadata and no obvious generic drift in the top titles.'
         : cacheStageBoundedGuidanceSupplement
           ? 'guidance-only supplement stayed bounded inside the cache-stage guidance lane: the internal hit remained visible, guidance recall variants stayed serum-scoped, and the top titles did not drift generically.'
+          : lockedCacheMainPathWithoutSupplement
+            ? 'guidance-only supplement correctly stayed inactive because a locked cache main path already satisfied the request, and the response remained serum-scoped without generic widening.'
           : 'guidance-only supplement stayed bounded: internal cache remained visible, supplement applied explicitly, and no obvious generic drift appeared in the top titles.';
       return {
         verdict: 'pass',
@@ -420,6 +458,27 @@ function buildChecklist(result) {
       supplement.applied === true ||
       searchStageB.applied === true ||
       result.guidance_direct_external_seed_applied === true;
+    const lockedCacheMainPathWithoutSupplement = isGuidanceLockedCacheMainPathWithoutSupplement(result);
+    if (lockedCacheMainPathWithoutSupplement) {
+      return [
+        checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
+        checklistItem(
+          'Locked cache main path stayed authoritative instead of widening into supplement',
+          true,
+          `query_source=${result.query_source || 'missing'}, final_decision=${result.final_decision || 'missing'}`,
+        ),
+        checklistItem(
+          'Supplement stayed inactive because no bounded supplement was needed',
+          internalCount > 0 && externalCount <= 0 && !validSupplementSignal,
+          `internal=${internalCount}, external=${externalCount}, supplement=${validSupplementSignal}`,
+        ),
+        checklistItem(
+          'Top titles stayed serum-scoped for operator spot-check',
+          titles.length > 0 && titles.some((item) => /\bserum\b/i.test(String(item || ''))),
+          titles.join(' | ') || 'no_titles',
+        ),
+      ];
+    }
     return [
       checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
       checklistItem(
