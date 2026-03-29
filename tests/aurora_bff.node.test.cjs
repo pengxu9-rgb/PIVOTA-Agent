@@ -14223,9 +14223,9 @@ test('buildAssistantMessageFromStoryV2 does not emit unconfirmed placeholders wh
     ],
   };
   const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
-  assert.ok(message.startsWith('Analysis complete.'), `Expected aligned intro, got: ${message}`);
   assert.ok(!message.includes('unconfirmed'), `Should not include placeholder confidence labels: ${message}`);
-  assert.ok(message.includes('Confidence for this read is **medium**.'), `Expected confidence line: ${message}`);
+  assert.match(message, /Fix first: Barrier stress around cheeks/i, `Expected useful finding-led summary: ${message}`);
+  assert.doesNotMatch(message, /Analysis complete\.|Confidence for this read/i, `Should not fall back to generic wrapper text: ${message}`);
 });
 
 test('buildAssistantMessageFromStoryV2 keeps photo-first action ahead of supporting routine optimization', () => {
@@ -14242,6 +14242,7 @@ test('buildAssistantMessageFromStoryV2 keeps photo-first action ahead of support
       headline: 'Photos suggest texture irregularity around the Right under-eye as the main focus, but the read stays conservative.',
       actions_now: [
         'Trial BHA/LHA conservatively and watch the texture irregularity around the Right under-eye.',
+        'Prioritize Azelaic Acid for the texture irregularity signal on the Right under-eye.',
       ],
     },
     existing_products_optimization: {
@@ -14260,7 +14261,9 @@ test('buildAssistantMessageFromStoryV2 keeps photo-first action ahead of support
   };
   const message = buildAssistantMessageFromStoryV2(storyPayload, { language: 'EN' });
   assert.match(message, /This week: Trial BHA\/LHA conservatively/i, `Expected photo-led action in message: ${message}`);
+  assert.match(message, /Secondary option: Prioritize Azelaic Acid/i, `Expected clearly labeled secondary action in message: ${message}`);
   assert.doesNotMatch(message, /This week: add SPF50\+ sunscreen every morning/i, `Routine sunscreen should not steal the main axis: ${message}`);
+  assert.doesNotMatch(message, /This week:[^.]*Azelaic Acid/i, `Secondary action should not be rendered as co-primary: ${message}`);
 });
 
 test('isDeepDiveStoryWeakerThanFallback detects weaker story', () => {

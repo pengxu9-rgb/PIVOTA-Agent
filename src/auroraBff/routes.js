@@ -24224,6 +24224,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     ? story.priority_findings.map((f) => stripStorySummaryTerminalPunctuation(pickFirstTrimmed(f && f.title, f && f.detail))).filter(Boolean).slice(0, 3)
     : [];
   const actions = buildAnalysisStoryImmediateActions(story, { language });
+  const primaryAction = actions[0] || '';
+  const secondaryAction = actions[1] || '';
   const optimization = normalizeExistingProductsOptimization(story.existing_products_optimization);
   const keepLines = optimization ? optimization.keep.slice(0, 2).map((item) => stripStorySummaryTerminalPunctuation(item)).filter(Boolean) : [];
   const addLines = optimization ? optimization.add.slice(0, 1).map((item) => stripStorySummaryTerminalPunctuation(item)).filter(Boolean) : [];
@@ -24239,7 +24241,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     if (findings.length) lines.push(`先处理：${findings.slice(0, 2).join('；')}。`);
     if (keepLines.length) lines.push(`现有产品：${keepLines.join('；')}。`);
     else if (addLines.length) lines.push(`当前缺口：${addLines[0]}。`);
-    if (actions.length) lines.push(`这周先这样调：${actions.join('；')}。`);
+    if (primaryAction) lines.push(`这周先这样调：${primaryAction}。`);
+    if (secondaryAction) lines.push(`次方向可选：${secondaryAction}。`);
     else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('当前把调整控制在低刺激、屏障优先。');
   } else {
     if (headline) {
@@ -24254,7 +24257,8 @@ function buildAssistantMessageFromStoryV2(storyPayload, { language } = {}) {
     if (findings.length) lines.push(`Fix first: ${findings.slice(0, 2).join('; ')}.`);
     if (keepLines.length) lines.push(`Current products: ${keepLines.join('; ')}.`);
     else if (addLines.length) lines.push(`Current gap: ${addLines[0]}.`);
-    if (actions.length) lines.push(`This week: ${actions.join('; ')}.`);
+    if (primaryAction) lines.push(`This week: ${primaryAction}.`);
+    if (secondaryAction) lines.push(`Secondary option: ${secondaryAction}.`);
     else if (String(confLevel || '').trim().toLowerCase() === 'low') lines.push('Keep changes conservative and barrier-first until the routine settles.');
   }
   return lines.join(' ');
