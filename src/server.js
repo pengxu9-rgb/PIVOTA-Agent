@@ -6599,6 +6599,37 @@ function buildFallbackCandidateText(product) {
   return normalizeSearchTextForMatch(parts.join(' '));
 }
 
+function isSparseSerumLikeCacheCandidate(product, queryText = '') {
+  const candidateText = buildFallbackCandidateText(product);
+  if (!candidateText) return false;
+  const coarse = classifySharedBeautyCoarseCandidate(product, {
+    queryText,
+    queryTargetStepFamily: 'serum',
+    queryStepStrength: 'generic_family',
+  });
+  const blockedFamilyCue = /\b(essence|ampoule|toner|mist|lotion|cream|moisturi[sz]er|balm|cleanser|wash|spf|sunscreen|oil|mask|patch|concentrate)\b/i.test(
+    candidateText,
+  );
+  const serumLikeActiveCue = /\b(niacinamide|vitamin c|ascorb(?:ic|yl)|retinol|retinal|peptide|hyalur\w*|tranexamic|azelaic|salicylic|glycolic|lactic|kojic|dark spot|zinc)\b/i.test(
+    candidateText,
+  );
+  return (
+    !blockedFamilyCue &&
+    serumLikeActiveCue &&
+    coarse?.domain_scope === 'skincare' &&
+    coarse?.usage_scope === 'face' &&
+    coarse?.object_type === 'product'
+  );
+}
+
+function isGenericSerumCacheCandidate(product, queryText = '') {
+  const candidateText = buildFallbackCandidateText(product);
+  if (!candidateText) return false;
+  if (/\b(brush|applicator|tool|roller|massager|gadget)\b/i.test(candidateText)) return false;
+  if (/\bserum(?:s)?\b/i.test(candidateText)) return true;
+  return isSparseSerumLikeCacheCandidate(product, queryText);
+}
+
 function hasBrandTermMatch(candidateText, brandTerm) {
   const normalizedCandidate = normalizeSearchTextForMatch(candidateText);
   const normalizedTerm = normalizeSearchTextForMatch(brandTerm);
@@ -20721,18 +20752,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let genericSerumScopedInternalProducts = internalProductsForRecall;
           if (genericSerumScopedCacheQuery) {
             const serumFamilyInternalProducts = internalProductsForRecall.filter((product) => {
-              const candidateText = buildFallbackCandidateText(product);
-              if (!candidateText) return false;
-              if (!/\b(serum|ampoule|essence|concentrate)\b/i.test(candidateText)) return false;
-              if (/\b(brush|applicator|tool|roller|massager|gadget)\b/i.test(candidateText)) {
-                return false;
-              }
-              return true;
+              return isGenericSerumCacheCandidate(product, cacheQueryText);
             });
             if (serumFamilyInternalProducts.length > 0) {
               genericSerumScopedInternalProducts = serumFamilyInternalProducts;
               const serumTokenInternalProducts = serumFamilyInternalProducts.filter((product) =>
                 /\bserum(?:s)?\b/i.test(buildFallbackCandidateText(product)),
+              );
+              const sparseSerumLikeInternalProducts = serumFamilyInternalProducts.filter(
+                (product) =>
+                  !/\bserum(?:s)?\b/i.test(buildFallbackCandidateText(product)) &&
+                  isSparseSerumLikeCacheCandidate(product, cacheQueryText),
               );
               if (
                 serumTokenInternalProducts.length > 0 &&
@@ -20752,7 +20782,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 });
                 if (
                   serumFamilyQualityGate?.accepted === false &&
-                  serumTokenQualityGate?.accepted === true
+                  serumTokenQualityGate?.accepted === true &&
+                  sparseSerumLikeInternalProducts.length === 0
                 ) {
                   genericSerumScopedInternalProducts = serumTokenInternalProducts;
                 }
