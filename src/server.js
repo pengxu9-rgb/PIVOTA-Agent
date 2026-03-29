@@ -11968,18 +11968,24 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   const offset = (safePage - 1) * safeLimit;
   const q = String(queryText || '').trim().toLowerCase();
   const inStockOnly = options?.inStockOnly !== false;
+  const normalizedQueryClass = String(options?.queryClass || options?.intent?.query_class || '').trim().toLowerCase();
   const beautyQueryProfile =
     options?.beautyQueryProfile && typeof options.beautyQueryProfile === 'object'
       ? options.beautyQueryProfile
       : buildBeautyQueryProfile({
           rawQuery: queryText,
-          queryClass: options?.queryClass || options?.intent?.query_class,
+          queryClass: normalizedQueryClass,
           intent: options?.intent,
         });
+  const genericSkincareSerumCacheQuery =
+    String(beautyQueryProfile?.bucket || '').trim().toLowerCase() === 'skincare' &&
+    /\bserum\b/.test(q) &&
+    !/\b(toner|mist|cleanser|wash|sunscreen|spf|cream|moisturi[sz]er|lotion)\b/.test(q) &&
+    ['category', 'exploratory', ''].includes(normalizedQueryClass);
 
   const terms = tokenizeQueryForCache(q, {
     intent: options?.intent,
-    queryClass: options?.queryClass || options?.intent?.query_class,
+    queryClass: normalizedQueryClass,
     beautyQueryProfile,
   });
   if (terms.length === 0) {
@@ -12086,7 +12092,9 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     AND mo.psp_connected = true
   `;
 
-  const pageFetch = Math.min(Math.max(safeLimit * 4, 80), 400);
+  const pageFetch = genericSkincareSerumCacheQuery
+    ? Math.min(Math.max(safeLimit * 12, 240), 800)
+    : Math.min(Math.max(safeLimit * 4, 80), 400);
   const pageOffset = Math.max(0, offset);
 
   const countSql = `

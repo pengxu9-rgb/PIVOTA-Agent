@@ -150,17 +150,14 @@ function getBeautyCacheExpansionTerms(profile) {
       !/\b(toner|mist|cleanser|wash|sunscreen|spf|cream|moisturi[sz]er|lotion)\b/.test(rawQuery);
     return genericSerumQuery
       ? [
-          'skincare',
           'serum',
           'niacinamide',
           'vitamin c',
           'hyaluronic',
+          'hyaluronate',
           'retinol',
-          'toner',
-          'moisturizer',
-          'sunscreen',
-          'cleanser',
-          'cream',
+          'peptide',
+          'dark spot',
         ]
       : ['skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser', 'cream'];
   }
