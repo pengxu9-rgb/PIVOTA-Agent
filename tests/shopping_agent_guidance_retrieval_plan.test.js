@@ -170,7 +170,7 @@ describe('Shopping agent guidance retrieval plan module', () => {
       },
       {
         intent_strength: 'supportive_family',
-        cluster_queries: ['hydrating serum', 'serum'],
+        cluster_queries: ['hydrating serum', 'barrier repair serum', 'serum'],
         selected_query: 'hydrating serum',
         stop_on_success: true,
       },

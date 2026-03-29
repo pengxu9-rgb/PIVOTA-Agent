@@ -140,6 +140,16 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       const hasSalicylic = /\b(salicylic|bha)\b/.test(normalized);
       const hasVitaminC = /\b(vitamin c|ascorbic)\b/.test(normalized);
       const hasBarrier = /\b(barrier|repair)\b/.test(normalized);
+      const hydrationFocused = hasHyaluronic || /\b(hydrat\w*|dehydrat\w*|dry)\b/.test(normalized);
+      const needsHydrationSupportiveBridge =
+        hydrationFocused &&
+        !hasPanthenol &&
+        !hasBarrier &&
+        !hasNiacinamide &&
+        !hasZinc &&
+        !hasAzelaic &&
+        !hasSalicylic &&
+        !hasVitaminC;
 
       if (hasPanthenol) {
         pushUnique(strongQueries, 'panthenol serum');
@@ -154,11 +164,16 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       if (strongQueries.length === 0 && hasBarrier) pushUnique(strongQueries, 'barrier repair serum');
       if (strongQueries.length === 0) pushUnique(strongQueries, String(queryText || '').trim());
 
-      if (hasPanthenol || hasBarrier) pushUnique(supportiveQueries, 'barrier repair serum');
+      if (hydrationFocused) {
+        pushUnique(supportiveQueries, 'hydrating serum');
+      }
+      if (hasPanthenol || hasBarrier || needsHydrationSupportiveBridge) {
+        pushUnique(supportiveQueries, 'barrier repair serum');
+      }
       if (hasPanthenol || /\b(soothing|calming|sensitive|cica|centella)\b/.test(normalized)) {
         pushUnique(supportiveQueries, 'soothing serum');
       }
-      if (hasHyaluronic || /\b(hydrat|dehydrat|dry)\b/.test(normalized)) {
+      if (!hydrationFocused) {
         pushUnique(supportiveQueries, 'hydrating serum');
       }
       if (hasNiacinamide || hasZinc) pushUnique(supportiveQueries, 'balancing serum');
@@ -166,7 +181,7 @@ function createGuidanceRetrievalPlanRuntime(deps = {}) {
       pushUnique(supportiveQueries, 'hydrating serum');
       pushUnique(supportiveQueries, 'serum');
       if (strongQueries.length > 2) strongQueries.splice(2);
-      if (supportiveQueries.length > 3) supportiveQueries.splice(3);
+      if (supportiveQueries.length > 4) supportiveQueries.splice(4);
     } else {
       return [];
     }
