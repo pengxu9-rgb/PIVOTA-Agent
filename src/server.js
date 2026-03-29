@@ -6723,6 +6723,34 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   return Array.from(out);
 }
 
+function buildBeautySupportiveQueryTokens(queryText) {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  const out = new Set();
+  const pushToken = (token) => {
+    const value = normalizeSearchTextForMatch(token);
+    if (!value || BEAUTY_FORM_FACTOR_TOKENS.has(value) || value.length < 3) return;
+    out.add(value);
+  };
+
+  if (!normalized) return Array.from(out);
+
+  if (
+    /\bserum(?:s)?\b/.test(normalized) &&
+    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/.test(normalized)
+  ) {
+    pushToken('hydrat');
+    pushToken('hydration');
+    pushToken('hydrating');
+    pushToken('dehydrated');
+    pushToken('hyalur');
+    pushToken('hyaluronic');
+    pushToken('hyaluronate');
+    pushToken('sodium hyaluronate');
+  }
+
+  return Array.from(out);
+}
+
 function isKnownLookupAliasQuery(queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return false;
@@ -7030,7 +7058,13 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     ? usefulQueryTokens.filter((token) => !BEAUTY_FORM_FACTOR_TOKENS.has(token))
     : usefulQueryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
-  const effectiveTokens = Array.from(new Set([...meaningfulTokens, ...intentTokens]));
+  const supportiveTokens =
+    beautyQueryBucket === 'skincare'
+      ? buildBeautySupportiveQueryTokens(queryText)
+      : [];
+  const effectiveTokens = Array.from(
+    new Set([...meaningfulTokens, ...intentTokens, ...supportiveTokens]),
+  );
   if (!effectiveTokens.length) return true;
   if (effectiveTokens.length === 1) {
     return candidateText.includes(effectiveTokens[0]);
