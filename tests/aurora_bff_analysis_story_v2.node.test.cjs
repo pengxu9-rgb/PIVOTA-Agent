@@ -1089,6 +1089,79 @@ test('analysis_story_v2: photo-led ingredient plan fills resolved_target_step an
   assert.equal(annotated.targets.some((row) => row.ingredient_id === 'zinc_pca'), false);
 });
 
+test('analysis_story_v2: photo-led ingredient plan synthesizes missing primary target and keeps reco step aligned', () => {
+  const internal = loadInternalWithFlags({});
+  const photoModulesCard = {
+    type: 'photo_modules_v1',
+    payload: {
+      used_photos: true,
+      modules: [
+        {
+          module_id: 'forehead',
+          issues: [{ issue_type: 'redness' }],
+          actions: [
+            {
+              ingredient_id: 'ceramide_np',
+              ingredient_name: 'Ceramides',
+              evidence_issue_types: ['redness'],
+              products: [{ product_id: 'ceramide_cream_1', name: 'Ceramide Cream' }],
+            },
+          ],
+        },
+        {
+          module_id: 'under_eye_right',
+          issues: [{ issue_type: 'texture' }],
+          actions: [
+            {
+              ingredient_id: 'retinol',
+              ingredient_name: 'Retinoid (later stage)',
+              evidence_issue_types: ['texture'],
+              products: [{ product_id: 'retinol_serum_1', name: 'Retinol Serum' }],
+            },
+          ],
+        },
+      ],
+      summary_v1: {
+        top_module_id: 'under_eye_right',
+        top_issue_type: 'texture',
+        top_action_ingredient_id: 'retinol',
+        top_findings: [
+          {
+            module_id: 'under_eye_right',
+            issue_type: 'texture',
+            severity_0_4: 2.8,
+            confidence_0_1: 0.14,
+            confidence_bucket: 'low',
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+      },
+    },
+  };
+
+  const annotated = internal.annotateIngredientPlanForPhotoLed(
+    {
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          why: ['Barrier support for visible redness.'],
+          products: { competitors: [], dupes: [] },
+        },
+      ],
+    },
+    photoModulesCard,
+    'EN',
+  );
+
+  assert.ok(Array.isArray(annotated.targets));
+  assert.equal(annotated.targets[0].ingredient_id, 'retinol');
+  assert.equal(annotated.targets[0].presentation_bucket, 'photo_derived');
+  assert.equal(annotated.targets[0].resolved_target_step, 'treatment');
+  assert.equal(annotated.targets[0].strict_product_count > 0, true);
+  assert.match(String(annotated.targets[0].why_match_short || ''), /under.?eye|texture/i);
+});
+
 test('analysis_story_v2: photo reco handoff stays aligned to summary_v1 primary action instead of raw module order', () => {
   const internal = loadInternalWithFlags({});
   const recoContext = internal.derivePhotoModulesRecoContext(

@@ -24877,6 +24877,32 @@ function targetHasVisibleStrictProducts(products) {
   return competitors.length > 0 || dupes.length > 0;
 }
 
+function buildSyntheticPrimaryPhotoTarget({ primaryIngredientId, coverageIndex, photoModulesCard } = {}) {
+  const ingredientId = normalizePhotoIngredientKey(primaryIngredientId);
+  if (!ingredientId || !(coverageIndex instanceof Map)) return null;
+  const coverage = coverageIndex.get(ingredientId);
+  if (!coverage) return null;
+  const resolvedTargetStep = derivePhotoPlanResolvedTargetStep(
+    {
+      ingredient_id: ingredientId,
+      ingredient_name: coverage.ingredient_name || ingredientId,
+    },
+    coverage,
+    photoModulesCard,
+  );
+  if (!resolvedTargetStep) return null;
+  return {
+    ingredient_id: ingredientId,
+    ingredient_name: coverage.ingredient_name || ingredientId,
+    priority_score_0_100: 100,
+    priority_level: 'high',
+    why: coverage.why_match_short ? [coverage.why_match_short] : [],
+    usage_guidance: [],
+    products: {},
+    resolved_target_step: resolvedTargetStep,
+  };
+}
+
 function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) {
   if (!isPlainObject(payload)) return payload;
   const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
@@ -24884,8 +24910,22 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
   const targets = Array.isArray(payload.targets) ? payload.targets : [];
   if (!targets.length) return payload;
   const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
+  const seededTargets = targets.slice();
+  if (
+    primaryIngredientId &&
+    !seededTargets.some((row) => normalizePhotoIngredientKey(
+      row && (row.ingredient_id || row.ingredientId || row.ingredient_name || row.ingredientName),
+    ) === primaryIngredientId)
+  ) {
+    const syntheticPrimaryTarget = buildSyntheticPrimaryPhotoTarget({
+      primaryIngredientId,
+      coverageIndex,
+      photoModulesCard,
+    });
+    if (syntheticPrimaryTarget) seededTargets.unshift(syntheticPrimaryTarget);
+  }
 
-  const nextTargets = targets
+  const nextTargets = seededTargets
     .map((targetRaw) => {
       const target = isPlainObject(targetRaw) ? { ...targetRaw } : null;
       if (!target) return targetRaw;

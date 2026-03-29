@@ -78,7 +78,19 @@ function extractPrimaryFocusFromHeadline(headline) {
 
 function includesAllTokens(haystack, tokens) {
   const normalizedHaystack = normalizeToken(haystack);
-  return tokens.filter(Boolean).every((token) => normalizedHaystack.includes(normalizeToken(token)));
+  const fragments = [];
+  for (const token of tokens.filter(Boolean)) {
+    const normalized = normalizeToken(token);
+    if (!normalized) continue;
+    if (/[\u4e00-\u9fff]/.test(normalized)) {
+      fragments.push(normalized);
+      continue;
+    }
+    for (const part of normalized.replace(/_/g, ' ').split(/\s+/).filter(Boolean)) {
+      fragments.push(part);
+    }
+  }
+  return Array.from(new Set(fragments)).every((token) => normalizedHaystack.includes(token));
 }
 
 function humanSummary(summaryCard, storyCard, ingredientPlanCard, latestRecoContext, recoCard) {
