@@ -671,6 +671,71 @@ test('guidance-only serum classifier promotes panthenol repair serum and rejects
   );
 });
 
+test('guidance-only hydrating serum classifier treats hydration-supportive serum rows as valid serum hits', () => {
+  const hydrating = classifyBeautyCoarseCandidate({
+    title: 'Hydrating Serum',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryText: 'hydrating serum',
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  const hyaluronic = classifyBeautyCoarseCandidate({
+    title: 'Hyaluronic Acid Serum',
+    category: 'serum',
+    product_type: 'serum',
+  }, {
+    queryText: 'hydrating serum',
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'hydrating serum',
+    products: [
+      {
+        product_id: 'hydrating_serum_1',
+        merchant_id: 'merchant_hydrating',
+        title: 'Hydrating Serum',
+        category: 'serum',
+        product_type: 'serum',
+      },
+      {
+        product_id: 'hydrating_serum_2',
+        merchant_id: 'merchant_hyaluronic',
+        title: 'Hyaluronic Acid Serum',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(hydrating.target_relevance_class, 'supportive_family');
+  assert.equal(hydrating.coarse_valid_for_target, true);
+  assert.equal(hyaluronic.target_relevance_class, 'supportive_family');
+  assert.equal(hyaluronic.coarse_valid_for_target, true);
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.success_contract_result?.satisfied, true);
+  assert.equal(decision.quality_gate_result?.satisfied, true);
+  assert.deepEqual(decision.candidate_class_counts, {
+    supportive_family: 2,
+  });
+  assert.deepEqual(
+    decision.valid_products.map((product) => String(product?.product_id || '')),
+    ['hydrating_serum_1', 'hydrating_serum_2'],
+  );
+});
+
 test('guidance-only serum classifier still promotes explicit barrier-repair serum without panthenol canary overlay', () => {
   const strong = classifyBeautyCoarseCandidate({
     title: 'Soothing Barrier Repair Serum',
