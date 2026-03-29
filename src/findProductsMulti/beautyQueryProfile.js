@@ -137,13 +137,32 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
     allowBeautyDiversity,
     queryClass: normalizedQueryClass,
     scenario: scenario || null,
+    rawQuery,
   };
 }
 
 function getBeautyCacheExpansionTerms(profile) {
   const bucket = String(profile?.bucket || '');
   if (bucket === 'skincare') {
-    return ['skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser', 'cream'];
+    const rawQuery = String(profile?.rawQuery || '').trim().toLowerCase();
+    const genericSerumQuery =
+      /\bserum\b/.test(rawQuery) &&
+      !/\b(toner|mist|cleanser|wash|sunscreen|spf|cream|moisturi[sz]er|lotion)\b/.test(rawQuery);
+    return genericSerumQuery
+      ? [
+          'skincare',
+          'serum',
+          'niacinamide',
+          'vitamin c',
+          'hyaluronic',
+          'retinol',
+          'toner',
+          'moisturizer',
+          'sunscreen',
+          'cleanser',
+          'cream',
+        ]
+      : ['skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser', 'cream'];
   }
   if (bucket === 'tools') {
     return ['makeup', 'cosmetic', 'beauty', 'brush', 'sponge', 'puff', 'applicator'];
