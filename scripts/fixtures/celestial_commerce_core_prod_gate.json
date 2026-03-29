@@ -162,7 +162,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "cache_cross_merchant_search_supplemented"
+      "cache_cross_merchant_search"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
@@ -178,12 +178,13 @@
       "source_breakdown.external_seed_count"
     ],
     "must_equal_metadata": {
-      "query_source": "cache_cross_merchant_search_supplemented",
-      "cache_stage_selected_source": "internal_cache"
+      "query_source": "cache_cross_merchant_search",
+      "cache_stage_selected_source": "internal_cache",
+      "search_decision.decision_authority": "cache_cross_merchant_search",
+      "search_decision.decision_locked": true
     },
     "must_be_positive_metadata": [
-      "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "source_breakdown.internal_count"
     ],
     "must_return_one_of_titles": [
       "Winona Soothing Repair Serum",

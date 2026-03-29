@@ -454,7 +454,7 @@
     },
     {
       "id": "aurora_guidance_only_direct_supplement_manual",
-      "title": "Aurora guidance-only direct supplement path can still be reviewed explicitly",
+      "title": "Aurora guidance-only supplement stays bounded without overturning a healthy cache main path",
       "family": "aurora_guidance_only_direct_supplement",
       "blocking": false,
       "execution_mode": "manual",
@@ -479,8 +479,8 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm direct supplement only applies when the hit is valid and does not silently widen into generic recall.",
-        "notes": "Look for guidance supplement metadata, source breakdown changes, and no low-quality drift."
+        "expected_outcome": "Confirm guidance-only supplement stays bounded: either an explicit supplemented lane appears with valid-hit metadata, or a locked cache main path stays authoritative without unnecessary supplement widening.",
+        "notes": "Look for explicit supplement metadata when a supplement lane is needed, or a coherent cache main path with serum-scoped titles when no supplement is needed."
       }
     }
   ],
