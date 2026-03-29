@@ -2106,6 +2106,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'authority_locked',
         reason: String(decisionLockReason || '').trim() || 'decision_locked',
         querySource: String(decisionAuthority || '').trim() || querySource,
+        resolution_authority: String(decisionAuthority || '').trim() || querySource,
+        fallback_applied: false,
+        fallback_reason_codes: [String(decisionLockReason || '').trim() || 'decision_locked'],
       };
     }
 
@@ -2114,6 +2117,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'clarify',
         reason: irrelevantReason,
         querySource,
+        resolution_authority: querySource,
+        fallback_applied: Boolean(shouldFallback),
+        fallback_reason_codes: [irrelevantReason],
       };
     }
 
@@ -2122,6 +2128,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'clarify',
         reason: lowQualityReason,
         querySource,
+        resolution_authority: querySource,
+        fallback_applied: true,
+        fallback_reason_codes: [lowQualityReason],
       };
     }
 
@@ -2130,6 +2139,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'strict_empty',
         reason: unusableReason,
         querySource,
+        resolution_authority: querySource,
+        fallback_applied: true,
+        fallback_reason_codes: [unusableReason],
       };
     }
 
@@ -2138,6 +2150,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'clarify',
         reason: exhaustedReason,
         querySource,
+        resolution_authority: querySource,
+        fallback_applied: true,
+        fallback_reason_codes: [exhaustedReason],
       };
     }
 
@@ -2146,6 +2161,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'strict_empty',
         reason: exhaustedReason,
         querySource,
+        resolution_authority: querySource,
+        fallback_applied: true,
+        fallback_reason_codes: [exhaustedReason],
       };
     }
 
@@ -2154,6 +2172,9 @@ function createCommerceResolutionRuntime(deps = {}) {
         decision: 'upstream_returned',
         reason: shouldFallback ? exhaustedReason : 'not_needed',
         querySource,
+        resolution_authority: shouldFallback ? querySource : 'primary_upstream',
+        fallback_applied: Boolean(shouldFallback),
+        fallback_reason_codes: shouldFallback ? [exhaustedReason] : [],
       };
     }
 
@@ -2161,6 +2182,9 @@ function createCommerceResolutionRuntime(deps = {}) {
       decision: 'strict_empty',
       reason: shouldFallback ? exhaustedReason : 'no_candidates',
       querySource,
+      resolution_authority: shouldFallback ? querySource : 'primary_upstream',
+      fallback_applied: Boolean(shouldFallback),
+      fallback_reason_codes: [shouldFallback ? exhaustedReason : 'no_candidates'],
     };
   }
 
@@ -2855,6 +2879,9 @@ function createCommerceResolutionRuntime(deps = {}) {
     return createExecutionFacingOutput({
       context: normalized.context,
       status: 'not_resolved',
+      resolution_authority: 'execution_facing',
+      fallback_applied: false,
+      fallback_reason_codes: [],
       blockers: ['milestone0_execution_facade_not_yet_bound'],
     });
   }

@@ -113,11 +113,6 @@
     ]
   },
   {
-    "id": "shopping_agent_strict_niacinamide_serum",
-    "family": "strict_consistency",
-    "query": "niacinamide serum",
-    "source": "shopping_agent",
-    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
@@ -130,21 +125,25 @@
       "matched_ingredient_ids.0"
     ],
     "must_equal_metadata": {
+      "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     },
+    "id": "shopping_agent_strict_niacinamide_serum",
+    "family": "strict_ingredient",
+    "query": "niacinamide serum",
+    "source": "shopping_agent",
     "must_return_one_of_titles": [
       "The Ordinary Niacinamide 10% + Zinc 1%",
       "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
       "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ],
+    "family_aliases": [
+      "strict_ingredient",
+      "strict_consistency"
     ]
   },
   {
-    "id": "shopping_agent_exact_ipsa_time_reset_aqua",
-    "family": "exact_product_lookup",
-    "query": "IPSA Time Reset Aqua",
-    "source": "shopping_agent",
-    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -166,16 +165,42 @@
       "search_trace.query_class": "lookup",
       "search_trace.final_decision": "cache_returned"
     },
+    "id": "shopping_agent_exact_ipsa_time_reset_aqua",
+    "family": "exact_product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "shopping_agent",
     "must_return_one_of_titles": [
       "IPSA Time Reset Aqua"
     ]
   },
   {
-    "id": "shopping_agent_merchant_query_ipsa_products",
-    "family": "merchant_query",
-    "query": "IPSA products",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "contract_bridge.resolved_contract": "shop_invoke_strict",
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "id": "shopping_agent_strict_niacinamide",
+    "family": "exactish_lookup",
+    "query": "niacinamide serum",
     "source": "shopping_agent",
-    "rail_mode": "authoritative_commerce",
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -195,16 +220,19 @@
     "must_equal_metadata": {
       "search_trace.final_decision": "cache_returned"
     },
+    "id": "shopping_agent_merchant_query_ipsa_products",
+    "family": "merchant_query",
+    "query": "IPSA products",
+    "source": "shopping_agent",
     "must_return_one_of_titles": [
       "IPSA Time Reset Aqua"
+    ],
+    "family_aliases": [
+      "merchant_query",
+      "merchant_product_split"
     ]
   },
   {
-    "id": "shopping_agent_clarify_date_makeup",
-    "family": "clarify_required",
-    "query": "有什么适合今晚约会的",
-    "source": "shopping_agent",
-    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -224,8 +252,16 @@
       "search_trace.final_decision": "clarify"
     },
     "must_have_clarification": true,
+    "id": "shopping_agent_clarify_date_makeup",
+    "family": "scenario_clarify",
+    "query": "有什么适合今晚约会的",
+    "source": "shopping_agent",
     "must_have_reason_codes": [
       "AMBIGUITY_CLARIFY"
+    ],
+    "family_aliases": [
+      "scenario_clarify",
+      "clarify_required"
     ]
   }
 ]

@@ -146,6 +146,14 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     typeof deps.normalizeGuidanceDiscoveryProductPdpContract === 'function'
       ? deps.normalizeGuidanceDiscoveryProductPdpContract
       : (value) => value;
+  const uiChatFindLatestScenarioSelectionImpl =
+    typeof deps.uiChatFindLatestScenarioSelection === 'function'
+      ? deps.uiChatFindLatestScenarioSelection
+      : () => null;
+  const uiChatFindLatestShoppingIntentImpl =
+    typeof deps.uiChatFindLatestShoppingIntent === 'function'
+      ? deps.uiChatFindLatestShoppingIntent
+      : () => null;
   const buildGuidanceOnlyHitQualityDecisionImpl =
     typeof deps.buildGuidanceOnlyHitQualityDecision === 'function'
       ? deps.buildGuidanceOnlyHitQualityDecision
@@ -202,6 +210,56 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       : (value) => value;
   const guidanceDecisionContractVersion =
     String(deps.guidanceDecisionContractVersion || '').trim() || null;
+
+  function normalizePromptText(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  function summarizeAuroraConversationState(messages = []) {
+    const list = Array.isArray(messages) ? messages : [];
+    const userMessages = list.filter(
+      (item) => String(item?.role || '').trim().toLowerCase() === 'user' && String(item?.content || '').trim(),
+    );
+    const latestUserMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1] : null;
+    const latestUserText = String(latestUserMessage?.content || '').trim();
+    const latestScenarioSelection = uiChatFindLatestScenarioSelectionImpl(list);
+    const latestShoppingIntent = uiChatFindLatestShoppingIntentImpl(list);
+    const latestScenarioText = normalizePromptText(latestScenarioSelection?.text || '');
+    const latestUserNormalized = normalizePromptText(latestUserText);
+    const scenarioSelectionChosen =
+      Boolean(latestScenarioSelection?.option?.key) &&
+      Boolean(latestUserNormalized) &&
+      latestUserNormalized === latestScenarioText;
+
+    let promptIntent = null;
+    let conversationProgress = null;
+    let earlyDecision = 'stay_in_layer';
+
+    if (scenarioSelectionChosen) {
+      promptIntent = 'scenario_selection';
+      conversationProgress = 'scenario_selected';
+      earlyDecision = 'resume_prior_goal';
+    } else if (userMessages.length > 1) {
+      promptIntent = 'follow_up_refinement';
+      conversationProgress = 'follow_up';
+      earlyDecision = 'resume_prior_goal';
+    } else if (userMessages.length === 1 || latestShoppingIntent?.text) {
+      promptIntent = 'shopping_request';
+      conversationProgress = 'new_request';
+      earlyDecision = 'delegate_to_decisioning';
+    }
+
+    return {
+      promptIntent,
+      conversationProgress,
+      earlyDecision,
+      latestShoppingIntent: String(latestShoppingIntent?.text || '').trim() || null,
+      latestScenario: String(latestScenarioSelection?.option?.key || '').trim() || null,
+    };
+  }
 
   function buildAuroraFindProductsMultiPlan({ source, operation = 'find_products_multi' } = {}) {
     const normalizedSource = normalizeAgentSourceImpl(source);
@@ -2742,12 +2800,26 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
 
   async function handleAuroraBeautyOrchestration(input = {}) {
     const normalized = createAuroraOrchestrationInput(input);
+    const conversationState = summarizeAuroraConversationState(normalized.messages);
+    const hasMessages = normalized.messages.length > 0;
     return createAuroraOrchestrationOutput({
       context: normalized.context,
-      status: normalized.messages.length > 0 ? 'delegated' : 'completed',
-      delegation_plan: normalized.messages.length > 0 ? 'call_decisioning' : 'stay_in_layer',
-      next_layer: normalized.messages.length > 0 ? 'decisioning' : null,
-      orchestration_notes: ['milestone0_orchestration_facade'],
+      status: hasMessages ? 'delegated' : 'completed',
+      prompt_intent: conversationState.promptIntent,
+      conversation_progress: conversationState.conversationProgress,
+      early_decision: conversationState.earlyDecision,
+      decision_owner: 'aurora_orchestration',
+      delegation_plan: hasMessages ? 'call_decisioning' : 'stay_in_layer',
+      next_layer: hasMessages ? 'decisioning' : null,
+      orchestration_notes: [
+        'milestone0_orchestration_facade',
+        ...(conversationState.latestShoppingIntent
+          ? [`latest_shopping_intent:${conversationState.latestShoppingIntent}`]
+          : []),
+        ...(conversationState.latestScenario
+          ? [`latest_scenario:${conversationState.latestScenario}`]
+          : []),
+      ],
     });
   }
 

@@ -1,0 +1,119 @@
+{
+  "prompt_cases": [
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.prompt_intent": "shopping_request",
+          "meta.conversation_progress": "new_request",
+          "meta.early_decision": "delegate_to_decisioning",
+          "meta.decision_owner": "aurora_orchestration"
+        }
+      },
+      "id": "prompt_clarify_date_makeup",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "ui-chat",
+      "title": "new shopping request is tagged as a fresh orchestration prompt",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "有什么适合今晚约会的"
+          }
+        ]
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "scenario_selection",
+          "meta.conversation_progress": "scenario_selected"
+        }
+      },
+      "id": "conversation_progress_resume_date_selection",
+      "family": "conversation_progress_resume",
+      "query": "约会",
+      "source": "ui-chat",
+      "title": "scenario choice resumes the prior shopping goal",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "帮我买一款 serum"
+          },
+          {
+            "role": "assistant",
+            "content": "你更偏哪种场景？"
+          },
+          {
+            "role": "user",
+            "content": "约会"
+          }
+        ]
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
+      "id": "followup_refinement_lightweight",
+      "family": "conversation_progress_resume",
+      "query": "更轻薄一点",
+      "source": "ui-chat",
+      "title": "follow-up refinement stays in the same orchestration thread",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "推荐一个 repair serum"
+          },
+          {
+            "role": "assistant",
+            "content": "你更在意修护还是保湿？"
+          },
+          {
+            "role": "user",
+            "content": "更轻薄一点"
+          }
+        ]
+      }
+    }
+  ]
+}

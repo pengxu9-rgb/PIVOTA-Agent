@@ -1,0 +1,504 @@
+{
+  "semantic_cases": [
+    {
+      "id": "aurora_guidance_only_cache_hit_hydrating_serum",
+      "title": "guidance cache hit: hydrating serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "hydrating serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_hydration_serum",
+      "title": "guidance cache hit: hydration serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "hydration serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_lightweight_hydrating_serum",
+      "title": "guidance cache hit: lightweight hydrating serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "lightweight hydrating serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_dehydrated_skin_serum",
+      "title": "guidance cache hit: dehydrated skin serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "dehydrated skin serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_hyaluronic_acid_serum",
+      "title": "guidance cache hit: hyaluronic acid serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "hyaluronic acid serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_sodium_hyaluronate_serum",
+      "title": "guidance cache hit: sodium hyaluronate serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "sodium hyaluronate serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_hyaluronic_acid_b5_serum",
+      "title": "guidance cache hit: hyaluronic acid b5 serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "hyaluronic acid b5 serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_repair_serum",
+      "title": "guidance cache hit: repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_soothing_repair_serum",
+      "title": "guidance cache hit: soothing repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "soothing repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_barrier_repair_serum",
+      "title": "guidance cache hit: barrier repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "barrier repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_panthenol_repair_serum",
+      "title": "guidance cache hit: panthenol repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "panthenol repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_panthenol_barrier_repair_serum",
+      "title": "guidance cache hit: panthenol barrier repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "panthenol barrier repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_provitamin_b5_repair_serum",
+      "title": "guidance cache hit: provitamin b5 repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "provitamin b5 repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_b5_repair_serum",
+      "title": "guidance cache hit: b5 repair serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "b5 repair serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_ceramide_serum",
+      "title": "guidance cache hit: ceramide serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "ceramide serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_soothing_ceramide_serum",
+      "title": "guidance cache hit: soothing ceramide serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "soothing ceramide serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_ceramide_barrier_serum",
+      "title": "guidance cache hit: ceramide barrier serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "ceramide barrier serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_soothing_hydrating_serum",
+      "title": "guidance cache hit: soothing hydrating serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "soothing hydrating serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_peptide_serum",
+      "title": "guidance cache hit: peptide serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "peptide serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_vitamin_b5_serum",
+      "title": "guidance cache hit: vitamin b5 serum",
+      "family": "aurora_guidance_only_cache_hit",
+      "execution_mode": "manual",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "vitamin b5 serum",
+            "limit": 6,
+            "in_stock_only": true,
+            "ui_surface": "ingredient_plan_guidance_only"
+          }
+        },
+        "metadata": {
+          "source": "aurora-bff",
+          "ui_surface": "ingredient_plan_guidance_only",
+          "query_target_step_family": "serum",
+          "query_step_strength": "focused",
+          "decision_mode": "guidance_only",
+          "source_policy": "guided_only"
+        }
+      }
+    }
+  ]
+}

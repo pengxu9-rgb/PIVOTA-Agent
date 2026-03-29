@@ -53,10 +53,10 @@
       "agent_products_resolver_fallback",
       "agent_products_resolver_ref_fallback"
     ],
-    "request_search": {
-      "external_seed_strategy": "unified_relevance"
-    },
     "allow_zero_results": false,
+    "request_metadata": {
+      "ignore_unified_relevance_override": true
+    },
     "must_have_metadata": [
       "service_version.commit",
       "query_source",
@@ -88,25 +88,21 @@
       "agent_products_resolver_fallback",
       "agent_products_resolver_ref_fallback"
     ],
-    "request_search": {
-      "external_seed_strategy": "supplement_internal_first"
-    },
     "allow_zero_results": false,
+    "request_metadata": {
+      "ignore_supplement_override": true
+    },
     "must_have_metadata": [
       "service_version.commit",
       "query_source",
-      "cache_stage_selected_source",
-      "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "search_trace.final_decision",
+      "search_decision.decision_authority",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
       "query_source": "cache_cross_merchant_search",
-      "cache_stage_selected_source": "internal_cache",
-      "source_breakdown.external_seed_count": 0
+      "search_decision.decision_locked": true
     },
-    "must_be_positive_metadata": [
-      "source_breakdown.internal_count"
-    ],
     "must_return_one_of_titles": [
       "Winona Soothing Repair Serum",
       "The Ordinary Niacinamide 10% + Zinc 1%"
@@ -172,7 +168,8 @@
       "query_source",
       "cache_stage_selected_source",
       "source_breakdown.internal_count",
-      "source_breakdown.external_seed_count"
+      "search_decision.decision_authority",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
       "query_source": "cache_cross_merchant_search",
@@ -189,6 +186,11 @@
     ]
   },
   {
+    "id": "search_strict_niacinamide_serum",
+    "family": "strict_consistency",
+    "query": "niacinamide serum",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
@@ -201,25 +203,21 @@
       "matched_ingredient_ids.0"
     ],
     "must_equal_metadata": {
-      "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
     "id": "shopping_agent_strict_niacinamide_serum",
-    "family": "strict_ingredient",
+    "family": "strict_consistency",
     "query": "niacinamide serum",
     "source": "shopping_agent",
-    "must_return_one_of_titles": [
-      "The Ordinary Niacinamide 10% + Zinc 1%",
-      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
-      "Watch Ya Tone Niacinamide Dark Spot Serum"
-    ],
-    "family_aliases": [
-      "strict_ingredient",
-      "strict_consistency"
-    ]
-  },
-  {
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "expected_contract_path": "shop_invoke_strict",
@@ -232,25 +230,190 @@
       "matched_ingredient_ids.0"
     ],
     "must_equal_metadata": {
-      "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
       "strict_constraint_reason": "ingredient"
     },
-    "id": "aurora_bff_strict_niacinamide_serum",
-    "family": "strict_ingredient",
-    "query": "niacinamide serum",
-    "source": "aurora-bff",
     "must_return_one_of_titles": [
       "The Ordinary Niacinamide 10% + Zinc 1%",
       "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
       "Watch Ya Tone Niacinamide Dark Spot Serum"
-    ],
-    "family_aliases": [
-      "strict_ingredient",
-      "strict_consistency"
     ]
   },
   {
+    "id": "aurora_bff_strict_niacinamide_serum",
+    "family": "strict_consistency",
+    "query": "niacinamide serum",
+    "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "The Ordinary Niacinamide 10% + Zinc 1%",
+      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+      "Watch Ya Tone Niacinamide Dark Spot Serum"
+    ]
+  },
+  {
+    "id": "search_strict_vitamin_c_serum",
+    "family": "strict_ingredient",
+    "query": "vitamin c serum",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum"
+    ]
+  },
+  {
+    "id": "shopping_agent_strict_vitamin_c_serum",
+    "family": "strict_ingredient",
+    "query": "vitamin c serum",
+    "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum"
+    ]
+  },
+  {
+    "id": "aurora_bff_strict_vitamin_c_serum",
+    "family": "strict_ingredient",
+    "query": "vitamin c serum",
+    "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_titles": [
+      "Banana Bright 15% Vitamin C Dark Spot Serum",
+      "Vitamin-C Serum",
+      "Truth Serum"
+    ]
+  },
+  {
+    "id": "search_strict_vitamin_c_serum_budget_eur",
+    "family": "strict_ingredient_budget",
+    "query": "vitamin c serum under €30",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_zero_results": false,
+    "allow_strict_empty": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "budget_fx_applied",
+      "budget_fx_rate",
+      "budget_fx_source"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint",
+      "budget_fx_applied": true,
+      "budget_fx_candidate_currency": "USD",
+      "budget_fx_unresolved": false
+    },
+    "must_return_one_of_titles": [
+      "Vitamin-C Serum"
+    ]
+  },
+  {
+    "id": "search_strict_vitamin_c_serum_budget_usd",
+    "family": "strict_ingredient_budget",
+    "query": "vitamin c serum under $30",
+    "source": "search",
+    "expected_contract_path": "shop_invoke_strict",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_zero_results": false,
+    "allow_strict_empty": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint"
+    },
+    "must_return_one_of_titles": [
+      "Vitamin-C Serum"
+    ]
+  },
+  {
+    "id": "search_exact_ipsa_time_reset_aqua",
+    "family": "exact_product_lookup",
+    "query": "IPSA Time Reset Aqua",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -272,15 +435,47 @@
       "search_trace.query_class": "lookup",
       "search_trace.final_decision": "cache_returned"
     },
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
     "id": "shopping_agent_exact_ipsa_time_reset_aqua",
     "family": "exact_product_lookup",
     "query": "IPSA Time Reset Aqua",
     "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "cache_cross_merchant_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "query_source",
+      "search_trace.query_class",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.query_class": "lookup",
+      "search_trace.final_decision": "cache_returned"
+    },
     "must_return_one_of_titles": [
       "IPSA Time Reset Aqua"
     ]
   },
   {
+    "id": "search_merchant_query_winona_products",
+    "family": "merchant_query",
+    "query": "Winona products",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -300,19 +495,16 @@
     "must_equal_metadata": {
       "search_trace.final_decision": "cache_returned"
     },
+    "must_return_one_of_titles": [
+      "Winona Soothing Repair Serum"
+    ]
+  },
+  {
     "id": "shopping_agent_merchant_query_ipsa_products",
     "family": "merchant_query",
     "query": "IPSA products",
     "source": "shopping_agent",
-    "must_return_one_of_titles": [
-      "IPSA Time Reset Aqua"
-    ],
-    "family_aliases": [
-      "merchant_query",
-      "merchant_product_split"
-    ]
-  },
-  {
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
@@ -332,107 +524,95 @@
     "must_equal_metadata": {
       "search_trace.final_decision": "cache_returned"
     },
+    "must_return_one_of_titles": [
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
     "id": "aurora_bff_merchant_query_ipsa_products",
     "family": "merchant_query",
     "query": "IPSA products",
     "source": "aurora-bff",
-    "must_return_one_of_titles": [
-      "IPSA Time Reset Aqua"
-    ],
-    "family_aliases": [
-      "merchant_query",
-      "merchant_product_split"
-    ]
-  },
-  {
+    "rail_mode": "authoritative_commerce",
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "agent_products_search"
+      "cache_cross_merchant_search"
     ],
     "must_not_match_fallback_sources": [
       "agent_products_error_fallback",
       "agent_products_resolver_fallback",
       "agent_products_resolver_ref_fallback"
     ],
-    "allow_zero_results": true,
-    "must_have_metadata": [
-      "service_version.commit",
-      "search_trace.final_decision"
-    ],
-    "must_equal_metadata": {
-      "search_trace.final_decision": "clarify"
-    },
-    "must_have_clarification": true,
-    "id": "shopping_agent_clarify_date_makeup",
-    "family": "scenario_clarify",
-    "query": "有什么适合今晚约会的",
-    "source": "shopping_agent",
-    "must_have_reason_codes": [
-      "AMBIGUITY_CLARIFY"
-    ],
-    "family_aliases": [
-      "scenario_clarify",
-      "clarify_required"
-    ]
-  },
-  {
-    "require_primary_path": true,
-    "allow_strict_empty": false,
-    "allowed_query_sources": [
-      "agent_products_search"
-    ],
-    "must_not_match_fallback_sources": [
-      "agent_products_error_fallback",
-      "agent_products_resolver_fallback",
-      "agent_products_resolver_ref_fallback"
-    ],
-    "allow_zero_results": true,
-    "must_have_metadata": [
-      "service_version.commit",
-      "search_trace.final_decision"
-    ],
-    "must_equal_metadata": {
-      "search_trace.final_decision": "clarify"
-    },
-    "must_have_clarification": true,
-    "id": "aurora_bff_clarify_date_makeup",
-    "family": "scenario_clarify",
-    "query": "有什么适合今晚约会的",
-    "source": "aurora-bff",
-    "must_have_reason_codes": [
-      "layer_not_allowed"
-    ],
-    "family_aliases": [
-      "scenario_clarify",
-      "clarify_required"
-    ]
-  },
-  {
-    "require_primary_path": true,
-    "allow_strict_empty": false,
     "allow_zero_results": false,
     "must_have_metadata": [
       "service_version.commit",
-      "contract_bridge.resolved_contract",
-      "strict_constraint_query",
-      "strict_constraint_reason",
-      "matched_ingredient_ids.0",
+      "query_source",
       "search_trace.final_decision"
     ],
     "must_equal_metadata": {
-      "contract_bridge.resolved_contract": "shop_invoke_strict",
-      "strict_constraint_query": true,
-      "strict_constraint_reason": "ingredient"
+      "search_trace.final_decision": "cache_returned"
     },
-    "id": "shopping_agent_strict_niacinamide",
-    "family": "exactish_lookup",
-    "query": "niacinamide serum",
-    "source": "shopping_agent",
     "must_return_one_of_titles": [
-      "The Ordinary Niacinamide 10% + Zinc 1%",
-      "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
-      "Watch Ya Tone Niacinamide Dark Spot Serum"
+      "IPSA Time Reset Aqua"
+    ]
+  },
+  {
+    "id": "shopping_agent_clarify_date_makeup",
+    "family": "clarify_required",
+    "query": "有什么适合今晚约会的",
+    "source": "shopping_agent",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "agent_products_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "service_version.commit",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "clarify"
+    },
+    "must_have_clarification": true,
+    "must_have_reason_codes": [
+      "AMBIGUITY_CLARIFY"
+    ]
+  },
+  {
+    "id": "aurora_bff_clarify_date_makeup",
+    "family": "clarify_required",
+    "query": "有什么适合今晚约会的",
+    "source": "aurora-bff",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "agent_products_search"
+    ],
+    "must_not_match_fallback_sources": [
+      "agent_products_error_fallback",
+      "agent_products_resolver_fallback",
+      "agent_products_resolver_ref_fallback"
+    ],
+    "allow_zero_results": true,
+    "must_have_metadata": [
+      "service_version.commit",
+      "search_trace.final_decision"
+    ],
+    "must_equal_metadata": {
+      "search_trace.final_decision": "clarify"
+    },
+    "must_have_clarification": true,
+    "must_have_reason_codes": [
+      "AMBIGUITY_CLARIFY"
     ]
   }
 ]

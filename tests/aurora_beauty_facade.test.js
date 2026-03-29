@@ -2901,4 +2901,71 @@ describe('Aurora beauty orchestration facade', () => {
       product_only_applied: true,
     });
   });
+
+  test('orchestration facade emits prompt-intent and conversation-progress contract for scenario selection', async () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      uiChatFindLatestScenarioSelection() {
+        return {
+          text: '约会',
+          option: { key: 'date' },
+        };
+      },
+      uiChatFindLatestShoppingIntent() {
+        return {
+          text: 'serum',
+        };
+      },
+    });
+
+    await expect(
+      runtime.handleAuroraBeautyOrchestration({
+        messages: [
+          { role: 'user', content: '帮我买一款 serum' },
+          { role: 'assistant', content: '你更偏哪种场景？' },
+          { role: 'user', content: '约会' },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      layer: 'orchestration',
+      status: 'delegated',
+      prompt_intent: 'scenario_selection',
+      conversation_progress: 'scenario_selected',
+      early_decision: 'resume_prior_goal',
+      decision_owner: 'aurora_orchestration',
+      delegation_plan: 'call_decisioning',
+      next_layer: 'decisioning',
+    });
+  });
+
+  test('orchestration facade keeps follow-up refinement inside orchestration-owned prompt contract', async () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      uiChatFindLatestScenarioSelection() {
+        return null;
+      },
+      uiChatFindLatestShoppingIntent() {
+        return {
+          text: 'repair serum',
+        };
+      },
+    });
+
+    await expect(
+      runtime.handleAuroraBeautyOrchestration({
+        messages: [
+          { role: 'user', content: '推荐一个 repair serum' },
+          { role: 'assistant', content: '你更在意修护还是保湿？' },
+          { role: 'user', content: '更轻薄一点' },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      layer: 'orchestration',
+      status: 'delegated',
+      prompt_intent: 'follow_up_refinement',
+      conversation_progress: 'follow_up',
+      early_decision: 'resume_prior_goal',
+      decision_owner: 'aurora_orchestration',
+      delegation_plan: 'call_decisioning',
+      next_layer: 'decisioning',
+    });
+  });
 });

@@ -1,3 +1,7 @@
+const {
+  extractSearchDecisionAuthorityState,
+} = require('../../src/modules/contracts/searchDecisionAuthority');
+
 const FALLBACK_QUERY_SOURCES = new Set([
   'agent_products_error_fallback',
   'agent_products_resolver_fallback',
@@ -31,13 +35,6 @@ function extractMetadata(bodyOrMetadata = {}) {
   return {};
 }
 
-function normalizeObserverNodes(nodes = []) {
-  const values = Array.isArray(nodes) ? nodes : nodes == null ? [] : [nodes];
-  return Array.from(
-    new Set(values.map((item) => String(item || '').trim()).filter(Boolean)),
-  );
-}
-
 function assessPrimaryPath(bodyOrMetadata = {}) {
   const metadata = extractMetadata(bodyOrMetadata);
   const routeHealth =
@@ -61,9 +58,10 @@ function assessPrimaryPath(bodyOrMetadata = {}) {
       ? metadata.search_decision
       : {};
   const querySource = String(metadata.query_source || '').trim();
-  const decisionAuthority = String(searchDecision.decision_authority || querySource || '').trim();
-  const decisionLocked = searchDecision.decision_locked === true;
-  const decisionLockReason = String(searchDecision.decision_lock_reason || '').trim() || null;
+  const authorityState = extractSearchDecisionAuthorityState(bodyOrMetadata);
+  const decisionAuthority = String(authorityState.decisionAuthority || querySource || '').trim();
+  const decisionLocked = authorityState.decisionLocked === true;
+  const decisionLockReason = String(authorityState.decisionLockReason || '').trim() || null;
   const primaryPathUsed = String(
     routeHealth.primary_path_used || searchTrace.primary_path_used || searchDecision.primary_path_used || '',
   ).trim();
@@ -82,7 +80,9 @@ function assessPrimaryPath(bodyOrMetadata = {}) {
     searchTrace.final_decision || searchDecision.final_decision || metadata.final_decision || '',
   ).trim();
   const strictEmpty = metadata.strict_empty === true || finalDecision === 'strict_empty';
-  const observerNodes = normalizeObserverNodes(routeHealth.observer_nodes);
+  const observerNodes = Array.isArray(authorityState.observerNodes)
+    ? authorityState.observerNodes
+    : [];
   const reasons = [];
   const effectiveQuerySource = decisionAuthority || querySource || null;
   const observerOnlyFallbackSignals =
@@ -164,6 +164,7 @@ function evaluatePrimaryPathContract(bodyOrMetadata = {}, spec = {}) {
 
 module.exports = {
   FALLBACK_QUERY_SOURCES,
+  extractSearchDecisionAuthorityState,
   assessPrimaryPath,
   evaluatePrimaryPathContract,
 };

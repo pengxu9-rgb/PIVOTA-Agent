@@ -10,6 +10,7 @@ const {
   assertRailAuth,
 } = require('./lib/commerce_invoke_contract');
 const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
+const { loadProdGateCases } = require('./lib/commerce_shared_acceptance_corpus');
 
 function timestamp() {
   const now = new Date();
@@ -186,28 +187,40 @@ function defaultQueryCases(defaultSource) {
 
 function loadQueryCases(queryFile, defaultSource) {
   if (!queryFile) return defaultQueryCases(defaultSource);
-  const fullPath = path.resolve(queryFile);
-  const text = fs.readFileSync(fullPath, 'utf8');
-  const trimmed = text.trim();
-  if (!trimmed) return defaultQueryCases(defaultSource);
-
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    const parsed = JSON.parse(trimmed);
-    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.cases) ? parsed.cases : [];
+  try {
+    const list = loadProdGateCases(queryFile);
     const cases = list
       .map((item, index) => normalizeCase(item, defaultSource, `case_${index + 1}`))
       .filter(Boolean);
     return cases.length ? cases : defaultQueryCases(defaultSource);
-  }
+  } catch (_error) {
+    const fullPath = path.resolve(queryFile);
+    const text = fs.readFileSync(fullPath, 'utf8');
+    const trimmed = text.trim();
+    if (!trimmed) return defaultQueryCases(defaultSource);
 
-  const lines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const cases = lines
-    .map((line, index) => normalizeCase(line, defaultSource, `line_${index + 1}`))
-    .filter(Boolean);
-  return cases.length ? cases : defaultQueryCases(defaultSource);
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      const parsed = JSON.parse(trimmed);
+      const list = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.cases)
+        ? parsed.cases
+        : [];
+      const cases = list
+        .map((item, index) => normalizeCase(item, defaultSource, `case_${index + 1}`))
+        .filter(Boolean);
+      return cases.length ? cases : defaultQueryCases(defaultSource);
+    }
+
+    const lines = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const cases = lines
+      .map((line, index) => normalizeCase(line, defaultSource, `line_${index + 1}`))
+      .filter(Boolean);
+    return cases.length ? cases : defaultQueryCases(defaultSource);
+  }
 }
 
 function buildAnchorTokens(query) {
