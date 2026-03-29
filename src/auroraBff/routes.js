@@ -24365,6 +24365,13 @@ function appendLatestRecoContextToSessionPatch(sessionPatch, context) {
   sessionPatch.state = state;
 }
 
+function clearLatestRecoContextInSessionPatch(sessionPatch) {
+  if (!sessionPatch || typeof sessionPatch !== 'object') return;
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  state.latest_reco_context = null;
+  sessionPatch.state = state;
+}
+
 function pickPrimaryRecoGoal(profileSummary, fallback = '') {
   const goals = Array.isArray(profileSummary && profileSummary.goals)
     ? profileSummary.goals.map((item) => String(item || '').trim()).filter(Boolean)
@@ -24623,6 +24630,43 @@ function buildLatestRecoContextFromAnalysisArtifacts({
     || deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary, artifactId, contextOrigin })
     || null
   );
+}
+
+function shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
+  analysisSource = '',
+  userRequestedPhoto = false,
+  photosProvided = false,
+  usedPhotos = false,
+  photoQuality = null,
+} = {}) {
+  const normalizedSource = String(analysisSource || '').trim().toLowerCase();
+  const qualityGrade = String(photoQuality && photoQuality.grade || '').trim().toLowerCase();
+  if (normalizedSource === 'retake') return true;
+  if (userRequestedPhoto && photosProvided && !usedPhotos && qualityGrade === 'fail') return true;
+  return false;
+}
+
+function buildPhotoQualityFailedIngredientPlanV2(plan, profile = null) {
+  const basePlan = normalizeIngredientPlanForV2Upgrade(plan) || plan;
+  const upgraded = upgradeIngredientPlanToV2({ plan: basePlan, profile });
+  const nextPlan = isPlainObject(upgraded)
+    ? { ...upgraded }
+    : {
+        schema_version: 'aurora.ingredient_plan.v2',
+        targets: [],
+        avoid: [],
+        conflicts: [],
+      };
+  nextPlan.targets = [];
+  nextPlan.preview_only = true;
+  nextPlan.preview_reason = 'photo_quality_failed';
+  nextPlan.products_empty_reason = 'photo_quality_failed';
+  nextPlan.external_fallback_used = false;
+  if (Array.isArray(nextPlan.external_search_ctas)) nextPlan.external_search_ctas = [];
+  if (Object.prototype.hasOwnProperty.call(nextPlan, '__missing_catalog_queries')) {
+    delete nextPlan.__missing_catalog_queries;
+  }
+  return nextPlan;
 }
 
 function normalizeIngredientPlanForV2Upgrade(plan) {
@@ -24905,11 +24949,29 @@ function buildSyntheticPrimaryPhotoTarget({ primaryIngredientId, coverageIndex, 
 
 function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) {
   if (!isPlainObject(payload)) return payload;
+  const photoPayload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  const summary = isPlainObject(photoPayload && photoPayload.summary_v1) ? photoPayload.summary_v1 : {};
+  const qualityGrade = String(
+    pickFirstTrimmed(
+      photoPayload && photoPayload.quality_grade,
+      photoPayload && photoPayload.quality_report && photoPayload.quality_report.photo_quality && photoPayload.quality_report.photo_quality.grade,
+    ) || '',
+  ).trim().toLowerCase();
+  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
+  if (qualityGrade === 'fail' || (!topFindings.length && !primaryIngredientId)) {
+    return {
+      ...payload,
+      targets: [],
+      preview_only: true,
+      preview_reason: 'photo_quality_failed',
+      products_empty_reason: 'photo_quality_failed',
+    };
+  }
   const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
   if (!coverageIndex.size) return payload;
   const targets = Array.isArray(payload.targets) ? payload.targets : [];
   if (!targets.length) return payload;
-  const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
   const seededTargets = targets.slice();
   if (
     primaryIngredientId &&
@@ -35321,22 +35383,27 @@ async function sanitizeRecoCandidatesForUi(
           hasResolvedProducts: keptProductsCount > 0,
         })
         : [];
-      const productsEmptyReason = deriveProductsEmptyReason({
-        keptCount: keptProductsCount,
-        externalSearchCount: finalExternalSearchCtas.length,
-        strictFallbackCount: 0,
-        droppedCount: droppedForCard,
-        missingUrlCount: missingUrlFallbackForCard,
-        contractOnlyCount: contractDemotedForCard,
-        searchDemotedCount: searchDemotedForCard,
-        nonHttpsCount: nonHttpsDemotedForCard,
-        llmFallbackAttempted: llmFallbackAttemptedForCard,
-        llmFallbackRecovered: llmFallbackRecoveredForCard,
-        llmFallbackTimeout: llmFallbackTimeoutForCard,
-        llmFallbackInvalidJson: llmFallbackInvalidJsonForCard,
-        llmFallbackError: llmFallbackErrorForCard,
-        llmFallbackEmpty: llmFallbackEmptyForCard,
-      });
+      const productsEmptyReason = (
+        pickFirstTrimmed(payload.preview_reason) === 'photo_quality_failed'
+        || pickFirstTrimmed(payload.products_empty_reason) === 'photo_quality_failed'
+      )
+        ? 'photo_quality_failed'
+        : deriveProductsEmptyReason({
+          keptCount: keptProductsCount,
+          externalSearchCount: finalExternalSearchCtas.length,
+          strictFallbackCount: 0,
+          droppedCount: droppedForCard,
+          missingUrlCount: missingUrlFallbackForCard,
+          contractOnlyCount: contractDemotedForCard,
+          searchDemotedCount: searchDemotedForCard,
+          nonHttpsCount: nonHttpsDemotedForCard,
+          llmFallbackAttempted: llmFallbackAttemptedForCard,
+          llmFallbackRecovered: llmFallbackRecoveredForCard,
+          llmFallbackTimeout: llmFallbackTimeoutForCard,
+          llmFallbackInvalidJson: llmFallbackInvalidJsonForCard,
+          llmFallbackError: llmFallbackErrorForCard,
+          llmFallbackEmpty: llmFallbackEmptyForCard,
+        });
       if (productsEmptyReason && !lookupMeta.ingredient_plan_products_empty_reason) {
         lookupMeta.ingredient_plan_products_empty_reason = productsEmptyReason;
       }
@@ -60979,6 +61046,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           delete analysisMeta.routine_product_enrichment_deferred;
         }
 
+        const suppressPhotoFailureIngredientPlan = shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
+          analysisSource: renderedAnalysisSource,
+          userRequestedPhoto,
+          photosProvided,
+          usedPhotos,
+          photoQuality,
+        });
+        if (suppressPhotoFailureIngredientPlan && ingredientPlan) {
+          ingredientPlan = buildPhotoQualityFailedIngredientPlanV2(ingredientPlan, profileSummary || profile || null);
+          analysisMeta.reco_artifact_eligible = false;
+        }
+
         if (!routineAnalysisV2Result && ingredientPlan) {
           extraCards.push(buildIngredientPlanCard(ingredientPlan, ctx.request_id));
         }
@@ -61327,17 +61406,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (profileSummary) {
           sessionPatch.profile = profileSummary;
         }
-        appendLatestRecoContextToSessionPatch(
-          sessionPatch,
-          buildLatestRecoContextFromAnalysisArtifacts({
-            routineAnalysisResult: routineAnalysisV2Result,
-            ingredientPlan,
-            photoModulesCard,
-            profileSummary,
-            artifactId: latestArtifactId,
-            contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
-          }),
-        );
+        if (suppressPhotoFailureIngredientPlan) {
+          clearLatestRecoContextInSessionPatch(sessionPatch);
+        } else {
+          appendLatestRecoContextToSessionPatch(
+            sessionPatch,
+            buildLatestRecoContextFromAnalysisArtifacts({
+              routineAnalysisResult: routineAnalysisV2Result,
+              ingredientPlan,
+              photoModulesCard,
+              profileSummary,
+              artifactId: latestArtifactId,
+              contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
+            }),
+          );
+        }
         const envelope = buildEnvelope(ctx, {
           assistant_message: makeAssistantMessage(analysisAssistantText),
           suggested_chips: analysisChips,

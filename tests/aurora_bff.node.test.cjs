@@ -10721,6 +10721,13 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
 
   const findings = Array.isArray(storyCard?.payload?.priority_findings) ? storyCard.payload.priority_findings : [];
   assert.equal(findings.length <= 1, true);
+  const ingredientPlanCard = findCardByType(cards, 'ingredient_plan_v2');
+  assert.ok(ingredientPlanCard);
+  assert.deepEqual(ingredientPlanCard?.payload?.targets || [], []);
+  assert.equal(ingredientPlanCard?.payload?.preview_only, true);
+  assert.equal(ingredientPlanCard?.payload?.preview_reason, 'photo_quality_failed');
+  assert.equal(ingredientPlanCard?.payload?.products_empty_reason, 'photo_quality_failed');
+  assert.equal(resp.body?.session_patch?.state?.latest_reco_context || null, null);
   const confidenceCard = findCardByType(cards, 'confidence_notice');
   assert.ok(confidenceCard);
   const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
