@@ -14022,6 +14022,10 @@ function normalizeIngredientRecoContextValue(raw) {
     rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
     rankedTargets[0]?.target_id,
   );
+  const ownerSource = pickFirstTrimmed(raw.owner_source, raw.ownerSource);
+  const targetBundleOwner = pickFirstTrimmed(raw.target_bundle_owner, raw.targetBundleOwner);
+  const finalOutcomeOwner = pickFirstTrimmed(raw.final_outcome_owner, raw.finalOutcomeOwner);
+  const ownerShiftReason = pickFirstTrimmed(raw.owner_shift_reason, raw.ownerShiftReason);
   const selectedTargetIds = normalizeRecoContextTargetIds(
     Array.isArray(raw.selected_target_ids)
       ? raw.selected_target_ids
@@ -14068,6 +14072,10 @@ function normalizeIngredientRecoContextValue(raw) {
     ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
     ...(confidencePolicy ? { confidence_policy: confidencePolicy } : {}),
     ...(primaryTargetId ? { primary_target_id: primaryTargetId } : {}),
+    ...(ownerSource ? { owner_source: ownerSource.slice(0, 64) } : {}),
+    ...(targetBundleOwner ? { target_bundle_owner: targetBundleOwner.slice(0, 64) } : {}),
+    ...(finalOutcomeOwner ? { final_outcome_owner: finalOutcomeOwner.slice(0, 64) } : {}),
+    ...(ownerShiftReason ? { owner_shift_reason: ownerShiftReason.slice(0, 120) } : {}),
     ...(selectedTargetIds.length ? { selected_target_ids: selectedTargetIds } : {}),
   };
   if (Number.isFinite(updatedRaw) && updatedRaw > 0) {
@@ -14127,6 +14135,45 @@ function mergeIngredientRecoContextValue(base, patch) {
     ...(Array.isArray(right.selected_target_ids) ? right.selected_target_ids : []),
     ...(Array.isArray(left.selected_target_ids) ? left.selected_target_ids : []),
   ]);
+  const mergedOwnerSource = pickFirstTrimmed(
+    patch && patch.owner_source,
+    patch && patch.ownerSource,
+    right && right.owner_source,
+    base && base.owner_source,
+    base && base.ownerSource,
+    left && left.owner_source,
+  );
+  const mergedTargetBundleOwner = pickFirstTrimmed(
+    patch && patch.target_bundle_owner,
+    patch && patch.targetBundleOwner,
+    right && right.target_bundle_owner,
+    base && base.target_bundle_owner,
+    base && base.targetBundleOwner,
+    left && left.target_bundle_owner,
+  );
+  const mergedFinalOutcomeOwner = pickFirstTrimmed(
+    patch && patch.final_outcome_owner,
+    patch && patch.finalOutcomeOwner,
+    right && right.final_outcome_owner,
+    base && base.final_outcome_owner,
+    base && base.finalOutcomeOwner,
+    left && left.final_outcome_owner,
+  );
+  const mergedOwnerShiftReason = pickFirstTrimmed(
+    patch && patch.owner_shift_reason,
+    patch && patch.ownerShiftReason,
+    right && right.owner_shift_reason,
+    base && base.owner_shift_reason,
+    base && base.ownerShiftReason,
+    left && left.owner_shift_reason,
+  );
+  const mergedSelectedTargetIdsFromRaw = normalizeRecoContextTargetIds([
+    ...(Array.isArray(patch && patch.selected_target_ids) ? patch.selected_target_ids : []),
+    ...(Array.isArray(patch && patch.selectedTargetIds) ? patch.selectedTargetIds : []),
+    ...mergedSelectedTargetIds,
+    ...(Array.isArray(base && base.selected_target_ids) ? base.selected_target_ids : []),
+    ...(Array.isArray(base && base.selectedTargetIds) ? base.selectedTargetIds : []),
+  ]);
   return {
     ...left,
     ...right,
@@ -14155,7 +14202,11 @@ function mergeIngredientRecoContextValue(base, patch) {
     ...(mergedRankedTargets.length ? { ranked_targets: mergedRankedTargets } : {}),
     ...(mergedConfidencePolicy ? { confidence_policy: mergedConfidencePolicy } : {}),
     ...(mergedPrimaryTargetId ? { primary_target_id: mergedPrimaryTargetId } : {}),
-    ...(mergedSelectedTargetIds.length ? { selected_target_ids: mergedSelectedTargetIds } : {}),
+    ...(mergedOwnerSource ? { owner_source: mergedOwnerSource } : {}),
+    ...(mergedTargetBundleOwner ? { target_bundle_owner: mergedTargetBundleOwner } : {}),
+    ...(mergedFinalOutcomeOwner ? { final_outcome_owner: mergedFinalOutcomeOwner } : {}),
+    ...(mergedOwnerShiftReason ? { owner_shift_reason: mergedOwnerShiftReason } : {}),
+    ...(mergedSelectedTargetIdsFromRaw.length ? { selected_target_ids: mergedSelectedTargetIdsFromRaw } : {}),
     updated_at_ms: Math.max(
       Number.isFinite(Number(left.updated_at_ms)) ? Number(left.updated_at_ms) : 0,
       Number.isFinite(Number(right.updated_at_ms)) ? Number(right.updated_at_ms) : 0,
@@ -25059,6 +25110,10 @@ function sanitizeRecoRequestContext(raw = {}) {
     rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
     rankedTargets[0]?.target_id,
   );
+  const ownerSource = pickFirstTrimmed(raw.owner_source, raw.ownerSource);
+  const targetBundleOwner = pickFirstTrimmed(raw.target_bundle_owner, raw.targetBundleOwner);
+  const finalOutcomeOwner = pickFirstTrimmed(raw.final_outcome_owner, raw.finalOutcomeOwner);
+  const ownerShiftReason = pickFirstTrimmed(raw.owner_shift_reason, raw.ownerShiftReason);
   const selectedTargetIds = normalizeRecoContextTargetIds(
     Array.isArray(raw.selected_target_ids)
       ? raw.selected_target_ids
@@ -25090,6 +25145,10 @@ function sanitizeRecoRequestContext(raw = {}) {
   if (confidencePolicy) out.confidence_policy = confidencePolicy;
   if (rankedTargets.length) out.ranked_targets = rankedTargets;
   if (primaryTargetId) out.primary_target_id = primaryTargetId;
+  if (ownerSource) out.owner_source = ownerSource.slice(0, 64);
+  if (targetBundleOwner) out.target_bundle_owner = targetBundleOwner.slice(0, 64);
+  if (finalOutcomeOwner) out.final_outcome_owner = finalOutcomeOwner.slice(0, 64);
+  if (ownerShiftReason) out.owner_shift_reason = ownerShiftReason.slice(0, 120);
   if (selectedTargetIds.length) out.selected_target_ids = selectedTargetIds;
   return out;
 }
@@ -25199,14 +25258,39 @@ function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummar
       entryType: 'analysis',
     });
     if (!targetContext.resolved_target_step) continue;
+    const goal = pickPrimaryRecoGoal(profileSummary);
+    const targetLabel = pickFirstTrimmed(
+      linkedNeed && linkedNeed.target_step,
+      humanizeRecoProductType(targetContext.resolved_target_step, 'EN'),
+      row.title,
+    );
+    const targetId = buildRecoContextTargetId({
+      ingredientQuery: targetLabel,
+      step: targetContext.resolved_target_step,
+      issueType: goal,
+      targetId: pickFirstTrimmed(row.adjustment_id),
+    });
+    const rankedTargets = targetId
+      ? [
+          {
+            target_id: targetId,
+            target_role: 'primary',
+            ...(targetLabel ? { ingredient_query: targetLabel } : {}),
+            ...(goal ? { goal } : {}),
+            resolved_target_step: targetContext.resolved_target_step,
+            target_confidence: 'high',
+            source: 'routine_audit_v1',
+          },
+        ]
+      : [];
     return {
       intent: 'reco_products',
       source_detail: 'analysis_handoff',
       trigger_source: 'analysis_handoff',
       context_origin: 'routine_audit_v1',
       message: pickFirstTrimmed(row.title, row.why),
-      goal: pickPrimaryRecoGoal(profileSummary),
-      ingredient_query: '',
+      goal,
+      ingredient_query: targetLabel,
       resolved_target_step: targetContext.resolved_target_step,
       resolved_target_step_confidence: pickFirstTrimmed(
         targetContext.resolved_target_step_confidence,
@@ -25217,6 +25301,8 @@ function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummar
         linkedNeed && linkedNeed.target_step ? 'analysis_recommendation_need' : 'analysis_adjustment',
       ),
       artifact_id: pickFirstTrimmed(artifactId),
+      ...(targetId ? { primary_target_id: targetId } : {}),
+      ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
     };
   }
   return null;
@@ -25865,8 +25951,9 @@ function buildLatestRecoContextFromAnalysisArtifacts({
     normalizedAnalysisSource === 'retake'
     || (Boolean(usePhoto) && normalizedPhotoQualityGrade === 'fail')
     || (Boolean(usePhoto) && !usedPhotos && normalizedPhotoQualityGrade === 'fail');
-  if (suppressPhotoDerivedRecoContext) return null;
-  const photoRecoContext = derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId });
+  const photoRecoContext = suppressPhotoDerivedRecoContext
+    ? null
+    : derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId });
   const ingredientPlanContextOrigin =
     photoModulesCard && isPlainObject(photoModulesCard.payload)
       ? 'photo_modules_v1'
@@ -28029,6 +28116,9 @@ function buildRecoRequestedEventData({
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
+    ...(pickFirstTrimmed(meta.owner_source) ? { owner_source: pickFirstTrimmed(meta.owner_source) } : {}),
+    ...(pickFirstTrimmed(meta.final_outcome_owner) ? { final_outcome_owner: pickFirstTrimmed(meta.final_outcome_owner) } : {}),
+    ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
     ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
     ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
   };
@@ -41331,6 +41421,447 @@ function assistantTextUsesOverconfidentRecoLanguage(text) {
   return /(definitely|guaranteed|will fix|always works|certainly|一定会|肯定|必然|马上见效)/i.test(String(text || ''));
 }
 
+function normalizeBeautyOwnerToken(raw, fallback = '') {
+  const token = String(raw || fallback || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token.includes('photo_modules')) return 'photo_modules_v1';
+  if (token.includes('analysis_story')) return 'analysis_story_v2';
+  if (token.includes('routine_audit') || token.includes('routine_analysis')) return 'routine_audit_v1';
+  if (token.includes('analysis_summary')) return 'analysis_summary';
+  if (token.includes('recommendation') || token.includes('reco_contract')) return 'reco_contract_builder';
+  if (token.includes('final_surfaced') || token.includes('payload_bound') || token.includes('payload')) return 'final_surfaced_payload';
+  if (token.includes('session_bootstrap')) return 'session_bootstrap';
+  if (token.includes('analysis_context_snapshot')) return 'analysis_context_snapshot';
+  if (token.includes('product_analyze')) return 'product_analyze';
+  return token.slice(0, 64);
+}
+
+function getEnvelopeEventData(evt) {
+  if (isPlainObject(evt && evt.data)) return evt.data;
+  if (isPlainObject(evt && evt.event_data)) return evt.event_data;
+  return {};
+}
+
+function hasRoutineAnalysisSurface(cards) {
+  return (Array.isArray(cards) ? cards : []).some((card) => {
+    const type = String(card && card.type ? card.type : '').trim().toLowerCase();
+    return type.startsWith('routine_');
+  });
+}
+
+function inferBeautyCanonicalOwnershipRoute({ envelope, route = '' } = {}) {
+  const explicit = String(route || '').trim().toLowerCase();
+  if (explicit) return explicit;
+  const inferred = inferRouteFromCards(Array.isArray(envelope && envelope.cards) ? envelope.cards : []) || null;
+  const cardRoute = String(inferred && inferred.route ? inferred.route : '').trim().toLowerCase();
+  if (cardRoute === 'reco') return 'chat_reco';
+  if (cardRoute) return cardRoute;
+  if (getEnvelopeCardByType(envelope, 'analysis_story_v2') || getEnvelopeCardByType(envelope, 'analysis_summary')) {
+    return 'analysis_skin';
+  }
+  return 'beauty';
+}
+
+function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantText = '' } = {}) {
+  const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
+  const routeHint = inferBeautyCanonicalOwnershipRoute({ envelope, route });
+  const bootstrapCard = getEnvelopeCardByType(envelope, 'session_bootstrap');
+  const bootstrapPayload = isPlainObject(bootstrapCard && bootstrapCard.payload) ? bootstrapCard.payload : null;
+  const photoModulesCard = getEnvelopeCardByType(envelope, 'photo_modules_v1');
+  const storyCard = getEnvelopeCardByType(envelope, 'analysis_story_v2');
+  const ingredientPlanCard =
+    getEnvelopeCardByType(envelope, 'ingredient_plan_v2')
+    || getEnvelopeCardByType(envelope, 'ingredient_plan');
+  const recoCard = getEnvelopeCardByType(envelope, 'recommendations');
+  const confidenceNoticeCard = getEnvelopeCardByType(envelope, 'confidence_notice');
+  const recoPayload = isPlainObject(recoCard && recoCard.payload) ? recoCard.payload : null;
+  const recommendationMeta = isPlainObject(recoPayload && recoPayload.recommendation_meta)
+    ? recoPayload.recommendation_meta
+    : isPlainObject(envelope && envelope.recommendation_meta)
+      ? envelope.recommendation_meta
+      : {};
+  const analysisMeta = isPlainObject(envelope && envelope.analysis_meta) ? envelope.analysis_meta : {};
+  const sessionPatch = isPlainObject(envelope && envelope.session_patch) ? envelope.session_patch : {};
+  const sessionMeta = isPlainObject(sessionPatch.meta) ? sessionPatch.meta : {};
+  const latestRecoContext = normalizeIngredientRecoContextValue(
+    isPlainObject(sessionPatch.state) ? sessionPatch.state.latest_reco_context : null,
+  );
+  const contextSpine = getRecoContentSpineFromContext(latestRecoContext || recommendationMeta);
+  const metaTargets = pickRecoMetaTargets(recoPayload || { recommendation_meta: recommendationMeta });
+  const recoPrimaryTarget = metaTargets.primaryTarget;
+  const recoMainlineStatus = String(
+    pickFirstTrimmed(recoPayload && recoPayload.mainline_status, recommendationMeta.mainline_status) || '',
+  ).trim().toLowerCase();
+  const confidenceNoticeReason = String(
+    pickFirstTrimmed(
+      confidenceNoticeCard && confidenceNoticeCard.payload && confidenceNoticeCard.payload.reason,
+      recoPayload && recoPayload.products_empty_reason,
+      recommendationMeta.products_empty_reason,
+    ) || '',
+  ).trim().toLowerCase();
+  const photoFocus = extractPhotoPrimaryFocusSignal(photoModulesCard && photoModulesCard.payload);
+  const storySignal = extractStoryPrimaryFocusSignal(storyCard && storyCard.payload);
+  const ingredientPlanTarget = extractIngredientPlanPrimaryTargetSignal(ingredientPlanCard && ingredientPlanCard.payload);
+  const contextPrimaryTarget =
+    contextSpine.ranked_targets.find((item) => item.target_id === contextSpine.primary_target_id)
+    || contextSpine.ranked_targets[0]
+    || null;
+  const recosRequestedEvents = (Array.isArray(envelope && envelope.events) ? envelope.events : [])
+    .filter((evt) => String(evt && evt.event_name ? evt.event_name : '').trim() === 'recos_requested');
+  const recosRequestedData = recosRequestedEvents.map((evt) => getEnvelopeEventData(evt));
+  const recosRequestedStatuses = uniqCaseInsensitiveStrings(
+    recosRequestedData.map((row) => pickFirstTrimmed(row.mainline_status)),
+    6,
+  );
+  const routineSurfacePresent = hasRoutineAnalysisSurface(cards);
+  const photoSurfacePresent = Boolean(photoModulesCard);
+  const hasRecommendations = Array.isArray(recoPayload && recoPayload.recommendations) && recoPayload.recommendations.length > 0;
+  const selectedProducts = pickRecoNames(recoPayload || {}, 3);
+  const primaryTargetLabel = pickFirstTrimmed(
+    recoPrimaryTarget && recoPrimaryTarget.ingredient_query,
+    recoPrimaryTarget && recoPrimaryTarget.ingredient_id,
+    contextPrimaryTarget && contextPrimaryTarget.ingredient_query,
+    contextPrimaryTarget && contextPrimaryTarget.ingredient_id,
+    recommendationMeta.resolved_target_step,
+  );
+  const selectionShiftReason = pickFirstTrimmed(
+    recommendationMeta.selection_shift_reason,
+    latestRecoContext && latestRecoContext.owner_shift_reason,
+    latestRecoContext && latestRecoContext.confidence_policy && latestRecoContext.confidence_policy.selection_shift_reason,
+  );
+
+  const primaryFocusOwner = normalizeBeautyOwnerToken(
+    pickFirstTrimmed(
+      analysisMeta.canonical_owner_source,
+      recommendationMeta.owner_source,
+      latestRecoContext && latestRecoContext.owner_source,
+      latestRecoContext && latestRecoContext.context_origin,
+      photoSurfacePresent ? 'photo_modules_v1' : '',
+      routineSurfacePresent ? 'routine_audit_v1' : '',
+      routeHint,
+    ),
+  );
+  const targetBundleOwner = normalizeBeautyOwnerToken(
+    pickFirstTrimmed(
+      latestRecoContext && latestRecoContext.target_bundle_owner,
+      recommendationMeta.owner_source,
+      latestRecoContext && latestRecoContext.owner_source,
+      latestRecoContext && latestRecoContext.context_origin,
+      primaryFocusOwner,
+    ),
+  );
+  const outcomeOwner = normalizeBeautyOwnerToken(
+    pickFirstTrimmed(
+      recommendationMeta.final_outcome_owner,
+      latestRecoContext && latestRecoContext.final_outcome_owner,
+      recoCard || confidenceNoticeCard ? 'reco_contract_builder' : '',
+      routeHint === 'analysis_skin' ? 'analysis_skin_response' : '',
+      routeHint === 'session_bootstrap' ? 'session_bootstrap' : '',
+      routeHint === 'product_analyze' ? 'product_analyze' : '',
+    ),
+  );
+  const copyOwner = normalizeBeautyOwnerToken(
+    pickFirstTrimmed(
+      recoCard || confidenceNoticeCard ? 'final_surfaced_payload' : '',
+      storyCard ? 'analysis_story_v2' : '',
+      latestRecoContext ? 'latest_reco_context' : '',
+      routeHint,
+    ),
+  );
+
+  const successLikeStatus = new Set(['grounded_success', 'partially_grounded', 'ungrounded_success']);
+  const ownerConflict = Boolean(
+    primaryFocusOwner &&
+    targetBundleOwner &&
+    primaryFocusOwner !== targetBundleOwner &&
+    !selectionShiftReason
+  ) || Boolean(
+    photoSurfacePresent &&
+    storyCard &&
+    latestRecoContext &&
+    normalizeBeautyOwnerToken(latestRecoContext.context_origin) === 'photo_modules_v1' &&
+    primaryFocusOwner === 'routine_audit_v1'
+  );
+  const lateOutcomeOverride = Boolean(
+    (!hasRecommendations && (
+      successLikeStatus.has(recoMainlineStatus)
+      || recosRequestedStatuses.some((status) => successLikeStatus.has(String(status || '').trim().toLowerCase()))
+    ))
+    || (hasRecommendations && confidenceNoticeReason)
+    || (
+      recoMainlineStatus &&
+      recosRequestedStatuses.length > 0 &&
+      recosRequestedStatuses.some((status) => String(status || '').trim().toLowerCase() !== recoMainlineStatus)
+    )
+  );
+  const legacyBypassSkip = Boolean(
+    photoSurfacePresent &&
+    (
+      pickFirstTrimmed(analysisMeta.story_generation_skipped_reason)
+      || (
+        isPlainObject(sessionMeta.routine_analysis_v2) &&
+        (
+          sessionMeta.routine_analysis_v2.enabled === true
+          || sessionMeta.routine_analysis_v2.guardrail_bypass === true
+        ) &&
+        !storyCard
+      )
+    ),
+  );
+  const contextPersistenceExpected = Boolean(
+    routeHint === 'session_bootstrap'
+      ? (
+        latestRecoContext
+        || isPlainObject(bootstrapPayload && bootstrapPayload.latest_analysis_context)
+      )
+      : (
+        latestRecoContext
+        || recoCard
+        || confidenceNoticeCard
+        || ingredientPlanCard
+        || routeHint === 'chat_reco'
+        || routeHint === 'reco_generate'
+      )
+  );
+  const contextLossBetweenRoutes = Boolean(
+    contextPersistenceExpected &&
+    (
+      !latestRecoContext
+      || !pickFirstTrimmed(latestRecoContext.primary_target_id)
+      || !Array.isArray(latestRecoContext.ranked_targets)
+      || latestRecoContext.ranked_targets.length === 0
+    )
+  );
+  const assistantPayloadMismatch = Boolean(
+    hasRecommendations &&
+    (
+      (selectedProducts.length > 0 && !assistantTextMentionsAny(assistantText, selectedProducts))
+      || (primaryTargetLabel && !assistantTextMentionsAny(assistantText, [primaryTargetLabel]))
+    )
+  );
+  const cardConflictSameTurn = Boolean(
+    (photoSurfacePresent && storyCard && !focusSignalsAreAligned(photoModulesCard && photoModulesCard.payload, recommendationMeta.primary_focus || latestRecoContext && latestRecoContext.primary_focus))
+    || (
+      ingredientPlanTarget &&
+      contextPrimaryTarget &&
+      !targetsAreSemanticallyAligned(ingredientPlanTarget, contextPrimaryTarget)
+    )
+    || (
+      contextPrimaryTarget &&
+      recoPrimaryTarget &&
+      !targetsAreSemanticallyAligned(contextPrimaryTarget, recoPrimaryTarget) &&
+      !selectionShiftReason
+    )
+  );
+
+  return {
+    version: 'aurora.beauty.canonical_ownership_audit.v1',
+    route: routeHint,
+    owner_matrix: {
+      primary_focus_owner: primaryFocusOwner || '',
+      target_bundle_owner: targetBundleOwner || '',
+      outcome_owner: outcomeOwner || '',
+      copy_owner: copyOwner || '',
+      owner_shift_reason: selectionShiftReason || '',
+    },
+    drift: {
+      owner_conflict: ownerConflict,
+      late_outcome_override: lateOutcomeOverride,
+      legacy_bypass_skip: legacyBypassSkip,
+      context_loss_between_routes: contextLossBetweenRoutes,
+      assistant_payload_mismatch: assistantPayloadMismatch,
+      card_conflict_same_turn: cardConflictSameTurn,
+    },
+    signals: {
+      has_photo_modules: photoSurfacePresent,
+      has_analysis_story: Boolean(storyCard),
+      has_routine_cards: routineSurfacePresent,
+      has_recommendations_card: Boolean(recoCard),
+      has_confidence_notice: Boolean(confidenceNoticeCard),
+      has_latest_reco_context: Boolean(latestRecoContext),
+      has_latest_reco_primary_target: Boolean(pickFirstTrimmed(latestRecoContext && latestRecoContext.primary_target_id)),
+    },
+    audit: {
+      story_generation_skipped_reason: pickFirstTrimmed(analysisMeta.story_generation_skipped_reason) || '',
+      guardrail_bypass_applied: legacyBypassSkip,
+      context_origin: pickFirstTrimmed(latestRecoContext && latestRecoContext.context_origin),
+      surface_card_types: cards.map((card) => String(card && card.type ? card.type : '').trim()).filter(Boolean).slice(0, 16),
+      recommendation_count: Array.isArray(recoPayload && recoPayload.recommendations) ? recoPayload.recommendations.length : 0,
+      recommendation_mainline_status: recoMainlineStatus || '',
+      event_mainline_statuses: recosRequestedStatuses,
+      recommendation_primary_target: recoPrimaryTarget,
+      latest_reco_primary_target: contextPrimaryTarget,
+      ingredient_plan_primary_target: ingredientPlanTarget,
+      photo_focus: photoFocus,
+      story_focus: {
+        headline: storySignal.headline,
+        finding: storySignal.finding,
+        confidence_label: storySignal.confidence_label,
+      },
+      confidence_notice_reason: confidenceNoticeReason || '',
+      selected_products: selectedProducts,
+    },
+  };
+}
+
+function patchRecoRequestedEventsForCanonicalOwnership(events, { ownerSource = '', finalOutcomeOwner = '', primaryTargetId = '', mainlineStatus = '' } = {}) {
+  return (Array.isArray(events) ? events : []).map((evt) => {
+    if (!isPlainObject(evt) || String(evt.event_name || '').trim() !== 'recos_requested') return evt;
+    const currentData = getEnvelopeEventData(evt);
+    const nextData = {
+      ...currentData,
+      ...(ownerSource ? { owner_source: ownerSource } : {}),
+      ...(finalOutcomeOwner ? { final_outcome_owner: finalOutcomeOwner } : {}),
+      ...(primaryTargetId ? { primary_target_id: primaryTargetId } : {}),
+      ...(mainlineStatus ? { mainline_status: mainlineStatus } : {}),
+    };
+    return {
+      ...evt,
+      data: nextData,
+      event_data: nextData,
+    };
+  });
+}
+
+function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assistantText = '', policyMeta = null, profile = null } = {}) {
+  if (!isPlainObject(envelope)) return envelope;
+  const ownershipAudit = buildBeautyCanonicalOwnershipAudit({ envelope, route, assistantText });
+  const ownerSource = pickFirstTrimmed(
+    ownershipAudit && ownershipAudit.owner_matrix && ownershipAudit.owner_matrix.primary_focus_owner,
+    ownershipAudit && ownershipAudit.owner_matrix && ownershipAudit.owner_matrix.target_bundle_owner,
+  );
+  const targetBundleOwner = pickFirstTrimmed(ownershipAudit && ownershipAudit.owner_matrix && ownershipAudit.owner_matrix.target_bundle_owner);
+  const finalOutcomeOwner = pickFirstTrimmed(ownershipAudit && ownershipAudit.owner_matrix && ownershipAudit.owner_matrix.outcome_owner);
+  const ownerShiftReason = pickFirstTrimmed(ownershipAudit && ownershipAudit.owner_matrix && ownershipAudit.owner_matrix.owner_shift_reason);
+
+  const out = { ...envelope };
+  const topMeta = isPlainObject(out.meta) ? { ...out.meta } : {};
+  topMeta.canonical_ownership = ownershipAudit;
+  out.meta = topMeta;
+
+  const analysisMeta = isPlainObject(out.analysis_meta) ? { ...out.analysis_meta } : {};
+  if (ownerSource) analysisMeta.canonical_owner_source = ownerSource;
+  if (!pickFirstTrimmed(analysisMeta.story_generation_skipped_reason)) {
+    const skippedReason = pickFirstTrimmed(ownershipAudit && ownershipAudit.audit && ownershipAudit.audit.story_generation_skipped_reason);
+    if (skippedReason) analysisMeta.story_generation_skipped_reason = skippedReason;
+  }
+  if (ownershipAudit && ownershipAudit.audit && ownershipAudit.audit.guardrail_bypass_applied === true) {
+    analysisMeta.guardrail_bypass_applied = true;
+  }
+  if (Object.keys(analysisMeta).length > 0) out.analysis_meta = analysisMeta;
+
+  const sessionPatch = isPlainObject(out.session_patch) ? { ...out.session_patch } : {};
+  const state = isPlainObject(sessionPatch.state) ? { ...sessionPatch.state } : {};
+  const latestRecoContext = normalizeIngredientRecoContextValue(state.latest_reco_context);
+  if (latestRecoContext) {
+    const mergedLatestRecoContext = mergeIngredientRecoContextValue(latestRecoContext, {
+      owner_source: ownerSource,
+      target_bundle_owner: targetBundleOwner,
+      final_outcome_owner: finalOutcomeOwner,
+      owner_shift_reason: ownerShiftReason,
+    });
+    if (mergedLatestRecoContext) {
+      const sanitizedLatestRecoContext = sanitizeRecoRequestContext(mergedLatestRecoContext);
+      if (sanitizedLatestRecoContext) {
+        state.latest_reco_context = {
+          ...sanitizedLatestRecoContext,
+          ...(ownerSource ? { owner_source: ownerSource } : {}),
+          ...(targetBundleOwner ? { target_bundle_owner: targetBundleOwner } : {}),
+          ...(finalOutcomeOwner ? { final_outcome_owner: finalOutcomeOwner } : {}),
+          ...(ownerShiftReason ? { owner_shift_reason: ownerShiftReason } : {}),
+        };
+      }
+    }
+  }
+  if (Object.keys(state).length > 0) sessionPatch.state = state;
+  if (Object.keys(sessionPatch).length > 0) out.session_patch = sessionPatch;
+
+  const recommendationMetaPatch = (metaRaw = {}) => {
+    const meta = isPlainObject(metaRaw) ? { ...metaRaw } : {};
+    if (ownerSource) meta.owner_source = ownerSource;
+    if (finalOutcomeOwner) meta.final_outcome_owner = finalOutcomeOwner;
+    if (ownerShiftReason && !pickFirstTrimmed(meta.selection_shift_reason)) meta.selection_shift_reason = ownerShiftReason;
+    return meta;
+  };
+
+  if (isPlainObject(out.recommendation_meta)) {
+    out.recommendation_meta = recommendationMetaPatch(out.recommendation_meta);
+  }
+  if (Array.isArray(out.cards)) {
+    out.cards = out.cards.map((card) => {
+      if (!isPlainObject(card)) return card;
+      if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
+      const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
+      payload.recommendation_meta = recommendationMetaPatch(payload.recommendation_meta);
+      return {
+        ...card,
+        payload,
+      };
+    });
+  }
+
+  if (Array.isArray(out.cards) && ownerShiftReason) {
+    const recoCard = out.cards.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'recommendations');
+    const recoPayload = isPlainObject(recoCard && recoCard.payload) ? recoCard.payload : null;
+    const currentAssistantText =
+      isPlainObject(out.assistant_message) && typeof out.assistant_message.content === 'string'
+        ? out.assistant_message.content
+        : assistantText;
+    if (
+      recoPayload &&
+      !/(secondary direction|shifted to|closest verified secondary|次方向|改用|已切到)/i.test(String(currentAssistantText || ''))
+    ) {
+      const rebuiltAssistantText = buildPayloadBoundRecoAssistantText({
+        payload: recoPayload,
+        language: String(out.lang || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN',
+        profile,
+      });
+      if (String(rebuiltAssistantText || '').trim()) {
+        out.assistant_message = makeAssistantMessage(rebuiltAssistantText);
+      }
+    }
+  }
+
+  const mainlineStatus = pickFirstTrimmed(
+    out.recommendation_meta && out.recommendation_meta.mainline_status,
+    (() => {
+      const recoCard = getEnvelopeCardByType(out, 'recommendations');
+      return recoCard && recoCard.payload && recoCard.payload.recommendation_meta
+        ? recoCard.payload.recommendation_meta.mainline_status
+        : '';
+    })(),
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    out.recommendation_meta && out.recommendation_meta.primary_target_id,
+    state.latest_reco_context && state.latest_reco_context.primary_target_id,
+  );
+  out.events = patchRecoRequestedEventsForCanonicalOwnership(out.events, {
+    ownerSource,
+    finalOutcomeOwner,
+    primaryTargetId,
+    mainlineStatus,
+  });
+
+  if (policyMeta || (isPlainObject(out.meta) && isPlainObject(out.meta.quality_contract))) {
+    const refreshedAssistantText =
+      isPlainObject(out.assistant_message) && typeof out.assistant_message.content === 'string'
+        ? out.assistant_message.content
+        : assistantText;
+    const qualityContract = evaluateQualityContractForEnvelope({
+      envelope: out,
+      policyMeta,
+      assistantText: refreshedAssistantText,
+      profile,
+    });
+    out.meta = {
+      ...(isPlainObject(out.meta) ? out.meta : {}),
+      quality_contract: qualityContract,
+    };
+  }
+
+  return out;
+}
+
 function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
   const recoCard = getEnvelopeCardByType(envelope, 'recommendations');
   const photoModulesCard = getEnvelopeCardByType(envelope, 'photo_modules_v1');
@@ -41358,6 +41889,15 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
   const ingredientPlanTarget = extractIngredientPlanPrimaryTargetSignal(ingredientPlanCard && ingredientPlanCard.payload);
   const contextSpine = getRecoContentSpineFromContext(latestRecoContext || recommendationMeta);
   const metaTargets = pickRecoMetaTargets(recoPayload || { recommendation_meta: recommendationMeta });
+  const canonicalOwnerSource = normalizeBeautyOwnerToken(
+    pickFirstTrimmed(
+      recommendationMeta.owner_source,
+      latestRecoContext && latestRecoContext.owner_source,
+      latestRecoContext && latestRecoContext.target_bundle_owner,
+      latestRecoContext && latestRecoContext.context_origin,
+    ),
+  );
+  const routineOwnedContext = canonicalOwnerSource === 'routine_audit_v1';
   const contextPrimaryTarget =
     contextSpine.ranked_targets.find((item) => item.target_id === contextSpine.primary_target_id)
     || contextSpine.ranked_targets[0]
@@ -41369,7 +41909,8 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
   const primaryFocus = normalizeRecoContextPrimaryFocus(recommendationMeta.primary_focus || contextSpine.primary_focus);
 
   const storyMatchesPhotoFocus =
-    !pickFirstTrimmed(photoFocus.module_label, photoFocus.issue_label, photoFocus.issue_type)
+    routineOwnedContext
+    || !pickFirstTrimmed(photoFocus.module_label, photoFocus.issue_label, photoFocus.issue_type)
     || !String(storySignal.text || '').trim()
     || assistantTextMentionsAny(storySignal.text, [
       photoFocus.module_label,
@@ -41378,8 +41919,12 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
       photoFocus.issue_type,
     ]);
   const primaryFocusAlignmentPass =
-    focusSignalsAreAligned(photoFocus, primaryFocus)
-    && storyMatchesPhotoFocus;
+    routineOwnedContext
+      ? true
+      : (
+        focusSignalsAreAligned(photoFocus, primaryFocus)
+        && storyMatchesPhotoFocus
+      );
 
   const primaryTargetAligned =
     (!ingredientPlanTarget || !contextPrimaryTarget || targetsAreSemanticallyAligned(ingredientPlanTarget, contextPrimaryTarget))
@@ -41415,13 +41960,14 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
       ]))
     );
 
-  const lowConfidenceExpected = [
-    photoFocus.confidence_bucket,
-    storySignal.confidence_label,
+  const lowConfidenceSignals = [
+    !routineOwnedContext && photoModulesCard && pickFirstTrimmed(photoFocus.module_id, photoFocus.issue_type) ? photoFocus.confidence_bucket : '',
+    storyCard ? storySignal.confidence_label : '',
     pickFirstTrimmed(recommendationMeta.resolved_target_step_confidence, recoPayload && recoPayload.recommendation_confidence_level),
   ]
     .map((value) => String(value || '').trim().toLowerCase())
-    .includes('low');
+    .filter(Boolean);
+  const lowConfidenceExpected = lowConfidenceSignals.includes('low');
   const confidenceConsistencyPass =
     !lowConfidenceExpected
     || (
@@ -41438,6 +41984,7 @@ function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
     && !/direction\s*[123]|方向\s*[123]/i.test(String(assistantText || ''))
     && (
       metaTargets.secondaryTargets.length > 0
+      || Boolean(selectionShiftReason)
       || !/(secondary direction|次方向)/i.test(String(assistantText || ''))
     );
 
@@ -41520,6 +42067,21 @@ function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantTex
     envelope,
     assistantText,
   });
+  const ownershipAudit = buildBeautyCanonicalOwnershipAudit({
+    envelope,
+    assistantText,
+  });
+  const primaryFocusOwnerConsistent = !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.owner_conflict);
+  const targetBundleOwnerConsistent =
+    !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.owner_conflict)
+    && !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.context_loss_between_routes);
+  const outcomeOwnerConsistent = !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.late_outcome_override);
+  const assistantPayloadAlignmentPass =
+    semanticAudit.assistant_reco_alignment_pass
+    && !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.assistant_payload_mismatch);
+  const contextPersistencePass = !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.context_loss_between_routes);
+  const legacyOverrideAbsent = !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.legacy_bypass_skip);
+  const lateOverrideAbsent = !(ownershipAudit && ownershipAudit.drift && ownershipAudit.drift.late_outcome_override);
   const semanticContractPass = [
     semanticAudit.primary_focus_alignment_pass,
     semanticAudit.target_bundle_alignment_pass,
@@ -41527,10 +42089,17 @@ function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantTex
     semanticAudit.confidence_consistency_pass,
     semanticAudit.selection_shift_explained_pass,
     semanticAudit.direction_diversity_discipline_pass,
+    primaryFocusOwnerConsistent,
+    targetBundleOwnerConsistent,
+    outcomeOwnerConsistent,
+    assistantPayloadAlignmentPass,
+    contextPersistencePass,
+    legacyOverrideAbsent,
+    lateOverrideAbsent,
   ].every(Boolean);
 
   return {
-    version: 'routine_expert.strict_quality_contract.v4',
+    version: 'routine_expert.strict_quality_contract.v5',
     contract_pass: critical.length === 0,
     semantic_contract_pass: semanticContractPass,
     stall_hit: stallHit,
@@ -41542,7 +42111,15 @@ function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantTex
     confidence_consistency_pass: semanticAudit.confidence_consistency_pass,
     selection_shift_explained_pass: semanticAudit.selection_shift_explained_pass,
     direction_diversity_discipline_pass: semanticAudit.direction_diversity_discipline_pass,
+    primary_focus_owner_consistent: primaryFocusOwnerConsistent,
+    target_bundle_owner_consistent: targetBundleOwnerConsistent,
+    outcome_owner_consistent: outcomeOwnerConsistent,
+    assistant_payload_alignment_pass: assistantPayloadAlignmentPass,
+    context_persistence_pass: contextPersistencePass,
+    legacy_override_absent: legacyOverrideAbsent,
+    late_override_absent: lateOverrideAbsent,
     semantic_audit: semanticAudit.audit,
+    canonical_ownership_audit: ownershipAudit,
     strict_fail_flags: {
       stall_fail_placeholder: placeholderStall,
       stall_fail_gate_only: gateOnlyStall,
@@ -57876,6 +58453,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         },
       };
+      augmented = applyBeautyCanonicalOwnershipToEnvelope({
+        envelope: augmented,
+        route: 'product_analyze',
+        assistantText:
+          isPlainObject(augmented.assistant_message) && typeof augmented.assistant_message.content === 'string'
+            ? augmented.assistant_message.content
+            : '',
+        policyMeta: { intent_canonical: 'product_analyze' },
+      });
       try {
         const productCard = Array.isArray(augmented?.cards)
           ? augmented.cards.find((card) => card && card.type === 'product_analysis')
@@ -60860,9 +61446,27 @@ function mountAuroraBffRoutes(app, { logger }) {
               ...(isPlainObject(envelope.session_patch) ? envelope.session_patch : {}),
             },
           };
-          return res.json(noRecoEnvelope);
+          return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+            envelope: noRecoEnvelope,
+            route: 'reco_generate',
+            assistantText:
+              isPlainObject(noRecoEnvelope.assistant_message) && typeof noRecoEnvelope.assistant_message.content === 'string'
+                ? noRecoEnvelope.assistant_message.content
+                : '',
+            policyMeta: { intent_canonical: 'reco_products' },
+            profile,
+          }));
         }
-        return res.json(envelope);
+        return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+          envelope,
+          route: 'reco_generate',
+          assistantText:
+            isPlainObject(envelope.assistant_message) && typeof envelope.assistant_message.content === 'string'
+              ? envelope.assistant_message.content
+              : '',
+          policyMeta: { intent_canonical: 'reco_products' },
+          profile,
+        }));
       }
       const guardrailResult = await applyRecommendationOutputGuardrailsForRoute({
         envelope,
@@ -61014,7 +61618,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         }),
       }).events;
       guardedEnvelope.session_patch = nextSessionPatch;
-      return res.json(guardedEnvelope);
+      return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+        envelope: guardedEnvelope,
+        route: 'reco_generate',
+        assistantText:
+          isPlainObject(guardedEnvelope.assistant_message) && typeof guardedEnvelope.assistant_message.content === 'string'
+            ? guardedEnvelope.assistant_message.content
+            : '',
+        policyMeta: { intent_canonical: 'reco_products' },
+        profile,
+      }));
     } catch (err) {
       const status = err.status || 500;
       const envelope = buildEnvelope(ctx, {
@@ -64615,24 +65228,22 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (profileSummary) {
           sessionPatch.profile = profileSummary;
         }
-        if (suppressPhotoFailureIngredientPlan) {
+        const analysisLatestRecoContext = buildLatestRecoContextFromAnalysisArtifacts({
+          routineAnalysisResult: routineAnalysisV2Result,
+          ingredientPlan,
+          photoModulesCard,
+          profileSummary,
+          artifactId: latestArtifactId,
+          contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
+          analysisSource: renderedAnalysisSource,
+          usePhoto: userRequestedPhoto,
+          usedPhotos,
+          photoQualityGrade: photoQuality && photoQuality.grade,
+        });
+        if (suppressPhotoFailureIngredientPlan && !analysisLatestRecoContext) {
           clearLatestRecoContextInSessionPatch(sessionPatch);
         } else {
-          appendLatestRecoContextToSessionPatch(
-            sessionPatch,
-            buildLatestRecoContextFromAnalysisArtifacts({
-              routineAnalysisResult: routineAnalysisV2Result,
-              ingredientPlan,
-              photoModulesCard,
-              profileSummary,
-              artifactId: latestArtifactId,
-              contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
-              analysisSource: renderedAnalysisSource,
-              usePhoto: userRequestedPhoto,
-              usedPhotos,
-              photoQualityGrade: photoQuality && photoQuality.grade,
-            }),
-          );
+          appendLatestRecoContextToSessionPatch(sessionPatch, analysisLatestRecoContext);
         }
         const routineAnalysisCards = Array.isArray(routineAnalysisV2Result && routineAnalysisV2Result.cards)
           ? routineAnalysisV2Result.cards
@@ -65269,8 +65880,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger,
           shadowRun: false,
         });
-        applyAnalysisResponseTimingHeaders(res, degradedEnvelope);
-        return res.json(degradedEnvelope);
+        const finalizedDegradedEnvelope = applyBeautyCanonicalOwnershipToEnvelope({
+          envelope: degradedEnvelope,
+          route: 'analysis_skin',
+          assistantText:
+            isPlainObject(degradedEnvelope.assistant_message) && typeof degradedEnvelope.assistant_message.content === 'string'
+              ? degradedEnvelope.assistant_message.content
+              : '',
+          policyMeta: { intent_canonical: 'analysis_skin' },
+        });
+        applyAnalysisResponseTimingHeaders(res, finalizedDegradedEnvelope);
+        return res.json(finalizedDegradedEnvelope);
       }
 
       if (shadowRunV2) {
@@ -65286,8 +65906,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           envelope: output.envelope,
           startedAtMs: analysisBudgetStartedAtMs,
         });
-        applyAnalysisResponseTimingHeaders(res, skipGuardrailEnvelope);
-        return res.json(skipGuardrailEnvelope);
+        const finalizedSkipGuardrailEnvelope = applyBeautyCanonicalOwnershipToEnvelope({
+          envelope: skipGuardrailEnvelope,
+          route: 'analysis_skin',
+          assistantText:
+            isPlainObject(skipGuardrailEnvelope.assistant_message) && typeof skipGuardrailEnvelope.assistant_message.content === 'string'
+              ? skipGuardrailEnvelope.assistant_message.content
+              : '',
+          policyMeta: { intent_canonical: 'analysis_skin' },
+        });
+        applyAnalysisResponseTimingHeaders(res, finalizedSkipGuardrailEnvelope);
+        return res.json(finalizedSkipGuardrailEnvelope);
       }
 
       const guardrailResult = await applyProductIntelGuardrailsToEnvelope({
@@ -65353,8 +65982,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
       const syncedFinalEnvelope = refreshLatestRecoContextFromAnalysisEnvelope(timedFinalEnvelope);
-      applyAnalysisResponseTimingHeaders(res, syncedFinalEnvelope);
-      return res.json(syncedFinalEnvelope);
+      const finalizedAnalysisEnvelope = applyBeautyCanonicalOwnershipToEnvelope({
+        envelope: syncedFinalEnvelope,
+        route: 'analysis_skin',
+        assistantText:
+          isPlainObject(syncedFinalEnvelope.assistant_message) && typeof syncedFinalEnvelope.assistant_message.content === 'string'
+            ? syncedFinalEnvelope.assistant_message.content
+            : '',
+        policyMeta: { intent_canonical: 'analysis_skin' },
+      });
+      applyAnalysisResponseTimingHeaders(res, finalizedAnalysisEnvelope);
+      return res.json(finalizedAnalysisEnvelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error(
@@ -65426,16 +66064,29 @@ function mountAuroraBffRoutes(app, { logger }) {
       let profile = null;
       let recentLogs = [];
       let latestArtifact = null;
+      let latestIngredientPlan = null;
       let dbError = null;
       const identity = await resolveIdentity(req, ctx);
       try {
         profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
         recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
         latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
+        const latestArtifactId = pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id);
+        if (latestArtifactId) {
+          const existingPlan = await getIngredientPlanByArtifactId({ artifactId: latestArtifactId });
+          if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
+            latestIngredientPlan = {
+              ...existingPlan.plan_json,
+              plan_id: existingPlan.plan_id,
+              created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
+            };
+          }
+        }
       } catch (err) {
         dbError = err;
       }
 
+      const profileSummary = summarizeProfileForContext(profile);
       const isReturning = Boolean(profile) || recentLogs.length > 0;
       const checkinDue = isCheckinDue(recentLogs);
       const latestAnalysisContext =
@@ -65446,13 +66097,50 @@ function mountAuroraBffRoutes(app, { logger }) {
               recentLogs,
             })
           : null;
+      const bootstrapLatestRecoContext =
+        !dbError
+          ? buildLatestRecoContextFromAnalysisArtifacts({
+              ingredientPlan: latestIngredientPlan,
+              profileSummary,
+              artifactId: pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id),
+              contextOrigin: 'latest_artifact',
+              analysisSource: pickFirstTrimmed(
+                latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.analysis_source,
+                latestArtifact && latestArtifact.analysis_source,
+              ),
+              usePhoto: Boolean(
+                latestArtifact && (
+                  latestArtifact.use_photo === true
+                  || (latestArtifact.analysis_context && latestArtifact.analysis_context.use_photo === true)
+                ),
+              ),
+              usedPhotos: Boolean(
+                latestArtifact && (
+                  (latestArtifact.analysis_context && latestArtifact.analysis_context.used_photos === true)
+                  || latestArtifact.use_photo === true
+                ),
+              ),
+              photoQualityGrade: pickFirstTrimmed(
+                latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.quality_grade,
+                latestArtifact
+                  && latestArtifact.analysis_context
+                  && latestArtifact.analysis_context.quality_report
+                  && latestArtifact.analysis_context.quality_report.photo_quality
+                  && latestArtifact.analysis_context.quality_report.photo_quality.grade,
+                latestArtifact
+                  && latestArtifact.quality_report
+                  && latestArtifact.quality_report.photo_quality
+                  && latestArtifact.quality_report.photo_quality.grade,
+              ),
+            })
+          : null;
 
       const cards = [
         {
           card_id: `bootstrap_${ctx.request_id}`,
           type: 'session_bootstrap',
           payload: {
-            profile: summarizeProfileForContext(profile),
+            profile: profileSummary,
             recent_logs: recentLogs,
             checkin_due: checkinDue,
             is_returning: isReturning,
@@ -65471,15 +66159,20 @@ function mountAuroraBffRoutes(app, { logger }) {
         suggested_chips: [],
         cards,
         session_patch: {
-          profile: summarizeProfileForContext(profile),
+          profile: profileSummary,
           recent_logs: recentLogs,
           checkin_due: checkinDue,
           is_returning: isReturning,
           ...(latestAnalysisContext ? { meta: { analysis_context_snapshot: latestAnalysisContext } } : {}),
+          ...(bootstrapLatestRecoContext ? { state: { latest_reco_context: bootstrapLatestRecoContext } } : {}),
         },
         events,
       });
-      return res.json(envelope);
+      return res.json(applyBeautyCanonicalOwnershipToEnvelope({
+        envelope,
+        route: 'session_bootstrap',
+        policyMeta: { intent_canonical: 'session_bootstrap' },
+      }));
     } catch (err) {
       const status = err.status || 500;
       logger?.warn({ err: err.message, status }, 'session bootstrap failed');
@@ -66897,6 +67590,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (postGuardRecoInvariant.envelope && typeof postGuardRecoInvariant.envelope === 'object') {
         envelopeWithGuardrails = { ...postGuardRecoInvariant.envelope };
       }
+      envelopeWithGuardrails = applyBeautyCanonicalOwnershipToEnvelope({
+        envelope: envelopeWithGuardrails,
+        route: 'chat',
+        assistantText:
+          isPlainObject(envelopeWithGuardrails.assistant_message) && typeof envelopeWithGuardrails.assistant_message.content === 'string'
+            ? envelopeWithGuardrails.assistant_message.content
+            : '',
+        policyMeta,
+        profile,
+      });
 
       const threadOps = (() => {
         const topicFromIntent = String(policyMeta.intent_canonical || canonicalIntentForResponse.intent || INTENT_ENUM.UNKNOWN)
@@ -75126,6 +75829,8 @@ const __internal = {
   ensureNonEmptyChatCardsEnvelope,
   shouldApplyRecoOutputGuard,
   looksLikeStallPhrase,
+  buildBeautyCanonicalOwnershipAudit,
+  applyBeautyCanonicalOwnershipToEnvelope,
   evaluateQualityContractForEnvelope,
   applyRecoContentSpineToPayload,
   buildPayloadBoundRecoAssistantText,

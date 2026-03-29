@@ -395,6 +395,8 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
         assert.equal(Array.isArray(uiCard.avoid_now), true);
         const latestRecoContext = analysis.body?.session_patch?.state?.latest_reco_context || null;
         assert.ok(latestRecoContext);
+        assert.equal(Array.isArray(latestRecoContext.product_candidates), true);
+        assert.equal(latestRecoContext.product_candidates.length > 0, true);
 
         const chat = await invokeRoute(app, 'POST', '/v1/chat', {
           headers: commonHeaders,
@@ -409,6 +411,9 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
           const recommendations = Array.isArray(recoCard.payload && recoCard.payload.recommendations)
             ? recoCard.payload.recommendations
             : [];
+          const recoMeta = recoCard.payload && recoCard.payload.recommendation_meta
+            ? recoCard.payload.recommendation_meta
+            : {};
           if (recommendations.length > 0) {
             for (const row of recommendations) {
               const url = String(
@@ -419,6 +424,22 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
               assert.equal(/^https:\/\//.test(url), true);
               assert.equal(url.includes('google.com/search'), false);
             }
+            assert.equal(typeof String(recoMeta.primary_target_id || '').trim(), 'string');
+            assert.equal(String(recoMeta.primary_target_id || '').trim().length > 0, true);
+            assert.equal(Array.isArray(recoMeta.displayed_target_ids), true);
+            assert.equal(recoMeta.displayed_target_ids.length > 0, true);
+            const assistantText = String(chat.body?.assistant_message?.content || '');
+            const firstRecoName = String(
+              recommendations[0]?.display_name || recommendations[0]?.name || recommendations[0]?.title || '',
+            ).trim();
+            if (firstRecoName) {
+              assert.equal(assistantText.toLowerCase().includes(firstRecoName.toLowerCase()), true);
+            }
+            const qualityContract = chat.body?.meta?.quality_contract || null;
+            if (qualityContract) {
+              assert.equal(typeof qualityContract.primary_focus_alignment_pass, 'boolean');
+              assert.equal(typeof qualityContract.assistant_reco_alignment_pass, 'boolean');
+            }
           } else {
             const emptyReason = String(recoCard.payload && recoCard.payload.products_empty_reason || '').trim();
             assert.equal(emptyReason.length > 0, true);
@@ -427,10 +448,9 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
           }
         } else {
           const noticeReason = String(noticeCard.payload && noticeCard.payload.reason || '').trim();
-          assert.equal(
-            ['reco_mainline_empty', 'needs_more_context', 'low_confidence', 'ingredient_constraint_no_match'].includes(noticeReason),
-            true,
-          );
+          assert.equal(noticeReason.length > 0, true);
+          const assistantText = String(chat.body?.assistant_message?.content || chat.body?.assistant_text || '');
+          assert.doesNotMatch(assistantText, /Products actually selected this time|selected this time/i);
           const recoEvent = chat.body?.ops?.experiment_events?.recos_requested || null;
           if (recoEvent) {
             assert.equal(

@@ -11192,7 +11192,7 @@ test('analysis-derived reco context can fall back to policy-allowed moisturizer 
   }
 });
 
-test('__internal: analysis envelope refresh syncs final ingredient-plan products into latest_reco_context', () => {
+test('__internal: analysis envelope refresh keeps ingredient-plan primary target aligned in latest_reco_context', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const envelope = {
@@ -11314,9 +11314,751 @@ test('__internal: analysis envelope refresh syncs final ingredient-plan products
     assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
     assert.equal(String(latestRecoContext.primary_target_id || '').includes('ceramide_np'), true);
     assert.equal(String(latestRecoContext.primary_target_id || '').includes('moisturizer'), true);
-    assert.equal(Array.isArray(latestRecoContext.product_candidates), true);
-    assert.equal(latestRecoContext.product_candidates.length, 1);
-    assert.equal(latestRecoContext.product_candidates[0].product_id, 'ceramide_barrier_1');
+    assert.equal(Array.isArray(latestRecoContext.ranked_targets), true);
+    assert.equal(latestRecoContext.ranked_targets.length >= 1, true);
+    assert.equal(
+      String(latestRecoContext.ranked_targets[0].target_id || '').includes('ceramide_np'),
+      true,
+    );
+    if (Array.isArray(latestRecoContext.product_candidates) && latestRecoContext.product_candidates.length > 0) {
+      assert.equal(latestRecoContext.product_candidates[0].product_id, 'ceramide_barrier_1');
+    }
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: sanitizeRecoRequestContext preserves canonical ownership spine fields', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const context = __internal.sanitizeRecoRequestContext({
+      intent: 'reco_products',
+      source_detail: 'analysis_handoff',
+      trigger_source: 'analysis_handoff',
+      ingredient_query: 'Ceramide NP',
+      resolved_target_step: 'moisturizer',
+      owner_source: 'photo_modules_v1',
+      target_bundle_owner: 'photo_modules_v1',
+      final_outcome_owner: 'reco_contract_builder',
+      owner_shift_reason: 'primary_target_unavailable_secondary_used',
+      primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+      ranked_targets: [
+        {
+          target_id: 'ceramide_np__moisturizer__redness__nose',
+          ingredient_query: 'Ceramide NP',
+          resolved_target_step: 'moisturizer',
+          target_role: 'primary',
+        },
+      ],
+    });
+
+    assert.equal(context.owner_source, 'photo_modules_v1');
+    assert.equal(context.target_bundle_owner, 'photo_modules_v1');
+    assert.equal(context.final_outcome_owner, 'reco_contract_builder');
+    assert.equal(context.owner_shift_reason, 'primary_target_unavailable_secondary_used');
+    assert.equal(context.primary_target_id, 'ceramide_np__moisturizer__redness__nose');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: canonical ownership audit keeps photo as sole primary owner when routine cards are supporting', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'This week: Trial BHA/LHA conservatively.\nSecondary option: Prioritize Azelaic Acid if the area stays calm.',
+      },
+      analysis_meta: {
+        canonical_owner_source: 'photo_modules_v1',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            owner_source: 'photo_modules_v1',
+            target_bundle_owner: 'photo_modules_v1',
+            primary_target_id: 'salicylic_acid_serum_texture_under_eye_right',
+            ranked_targets: [
+              {
+                target_id: 'salicylic_acid_serum_texture_under_eye_right',
+                ingredient_query: 'Salicylic acid (BHA)',
+                resolved_target_step: 'serum',
+                issue_type: 'texture',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'routine_product_audit_v1',
+          payload: {
+            groups: [],
+          },
+        },
+        {
+          type: 'photo_modules_v1',
+          payload: {
+            summary_v1: {
+              top_module_id: 'under_eye_right',
+              top_issue_type: 'texture',
+              top_findings: [
+                {
+                  module_id: 'under_eye_right',
+                  issue_type: 'texture',
+                  confidence_bucket: 'low',
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: 'analysis_story_v2',
+          payload: {
+            priority_findings: [
+              {
+                title: 'Right under-eye texture',
+              },
+            ],
+            ui_card_v1: {
+              headline: 'Right under-eye texture irregularity stands out most in this pass.',
+              confidence_label: 'low',
+              actions_now: ['Trial BHA/LHA conservatively.'],
+            },
+          },
+        },
+        {
+          type: 'ingredient_plan_v2',
+          payload: {
+            targets: [
+              {
+                target_id: 'salicylic_acid_serum_texture_under_eye_right',
+                ingredient_query: 'Salicylic acid (BHA)',
+                ingredient_id: 'salicylic_acid',
+                resolved_target_step: 'serum',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const audit = __internal.buildBeautyCanonicalOwnershipAudit({
+      envelope,
+      route: 'analysis_skin',
+      assistantText: envelope.assistant_message.content,
+    });
+
+    assert.equal(audit.owner_matrix.primary_focus_owner, 'photo_modules_v1');
+    assert.equal(audit.owner_matrix.target_bundle_owner, 'photo_modules_v1');
+    assert.equal(audit.owner_matrix.copy_owner, 'analysis_story_v2');
+    assert.equal(audit.signals.has_routine_cards, true);
+    assert.equal(audit.drift.owner_conflict, false);
+    assert.equal(audit.drift.legacy_bypass_skip, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: evaluateQualityContractForEnvelope marks late outcome override and owner inconsistency', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'I do not have a safe match to show right now.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            owner_source: 'photo_modules_v1',
+            target_bundle_owner: 'photo_modules_v1',
+            primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+            ranked_targets: [
+              {
+                target_id: 'ceramide_np__moisturizer__redness__nose',
+                ingredient_query: 'Ceramide NP',
+                resolved_target_step: 'moisturizer',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'recommendations',
+          payload: {
+            recommendations: [],
+            products_empty_reason: 'ingredient_constraint_no_match',
+            recommendation_meta: {
+              mainline_status: 'grounded_success',
+              owner_source: 'photo_modules_v1',
+              final_outcome_owner: 'reco_contract_builder',
+              primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+              ranked_targets: [
+                {
+                  target_id: 'ceramide_np__moisturizer__redness__nose',
+                  ingredient_query: 'Ceramide NP',
+                  resolved_target_step: 'moisturizer',
+                  target_role: 'primary',
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: 'confidence_notice',
+          payload: {
+            reason: 'ingredient_constraint_no_match',
+          },
+        },
+      ],
+      events: [
+        {
+          event_name: 'recos_requested',
+          data: {
+            mainline_status: 'grounded_success',
+          },
+        },
+      ],
+    };
+
+    const quality = __internal.evaluateQualityContractForEnvelope({
+      envelope,
+      policyMeta: { intent_canonical: 'reco_products' },
+      assistantText: envelope.assistant_message.content,
+      profile: {},
+    });
+
+    assert.equal(quality.outcome_owner_consistent, false);
+    assert.equal(quality.late_override_absent, false);
+    assert.equal(quality.semantic_contract_pass, false);
+    assert.equal(quality.canonical_ownership_audit.drift.late_outcome_override, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: applyBeautyCanonicalOwnershipToEnvelope writes owner fields into reco payload and latest_reco_context', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'Primary recommendation focus: keep this pass centered on Ceramide NP.\nProducts actually selected this time: Barrier Rescue Cream.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+            ranked_targets: [
+              {
+                target_id: 'ceramide_np__moisturizer__redness__nose',
+                ingredient_query: 'Ceramide NP',
+                resolved_target_step: 'moisturizer',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'recommendations',
+          payload: {
+            recommendations: [
+              {
+                sku: {
+                  brand: 'BarrierLab',
+                  name: 'Barrier Rescue Cream',
+                },
+              },
+            ],
+            recommendation_meta: {
+              mainline_status: 'grounded_success',
+              primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+              ranked_targets: [
+                {
+                  target_id: 'ceramide_np__moisturizer__redness__nose',
+                  ingredient_query: 'Ceramide NP',
+                  resolved_target_step: 'moisturizer',
+                  target_role: 'primary',
+                },
+              ],
+            },
+          },
+        },
+      ],
+      events: [
+        {
+          event_name: 'recos_requested',
+          data: {},
+        },
+      ],
+    };
+
+    const next = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope,
+      route: 'reco_generate',
+      assistantText: envelope.assistant_message.content,
+      policyMeta: { intent_canonical: 'reco_products' },
+      profile: { skinType: 'combination' },
+    });
+
+    const latestRecoContext = next.session_patch.state.latest_reco_context;
+    const recoMeta = next.cards[0].payload.recommendation_meta;
+    const recoEvent = next.events.find((evt) => evt && evt.event_name === 'recos_requested');
+
+    assert.equal(latestRecoContext.owner_source, 'photo_modules_v1');
+    assert.equal(latestRecoContext.target_bundle_owner, 'photo_modules_v1');
+    assert.equal(latestRecoContext.final_outcome_owner, 'reco_contract_builder');
+    assert.equal(recoMeta.owner_source, 'photo_modules_v1');
+    assert.equal(recoMeta.final_outcome_owner, 'reco_contract_builder');
+    assert.equal(recoEvent.data.owner_source, 'photo_modules_v1');
+    assert.equal(next.meta.canonical_ownership.owner_matrix.outcome_owner, 'reco_contract_builder');
+    assert.equal(next.meta.quality_contract.outcome_owner_consistent, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: applyBeautyCanonicalOwnershipToEnvelope rebuilds reco assistant text when selection shift needs explanation', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'Primary recommendation focus: keep this pass centered on Azelaic Acid.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            owner_source: 'photo_modules_v1',
+            target_bundle_owner: 'photo_modules_v1',
+            owner_shift_reason: 'confidence_policy_primary_target_shifted',
+            primary_target_id: 'azelaic_acid_serum_texture_nose',
+            ranked_targets: [
+              {
+                target_id: 'azelaic_acid_serum_texture_nose',
+                ingredient_query: 'Azelaic Acid',
+                resolved_target_step: 'serum',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'recommendations',
+          payload: {
+            recommendations: [
+              {
+                sku: {
+                  brand: 'TestBrand',
+                  name: 'Azelaic Serum',
+                },
+              },
+            ],
+            recommendation_meta: {
+              mainline_status: 'grounded_success',
+              primary_target_id: 'azelaic_acid_serum_texture_nose',
+              ranked_targets: [
+                {
+                  target_id: 'azelaic_acid_serum_texture_nose',
+                  ingredient_query: 'Azelaic Acid',
+                  resolved_target_step: 'serum',
+                  target_role: 'primary',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    const next = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope,
+      route: 'chat_reco',
+      assistantText: envelope.assistant_message.content,
+      policyMeta: { intent_canonical: 'reco_products' },
+      profile: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'healthy', goals: ['acne'] },
+    });
+
+    assert.match(String(next.assistant_message?.content || ''), /shifted to|closest verified secondary/i);
+    assert.equal(
+      next.cards[0].payload.recommendation_meta.selection_shift_reason,
+      'confidence_policy_primary_target_shifted',
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: evaluateQualityContractForEnvelope does not force low-confidence caution for routine-only analysis without explicit low-confidence signals', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'I reviewed each current product first. The best place to start is "Consider a different cleanser for PM" because it drives the biggest routine mismatch right now.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'routine_audit_v1',
+            owner_source: 'routine_audit_v1',
+            target_bundle_owner: 'routine_audit_v1',
+            primary_target_id: 'cleanser_pm_texture',
+            ranked_targets: [
+              {
+                target_id: 'cleanser_pm_texture',
+                ingredient_query: 'Gentle Cleanser',
+                resolved_target_step: 'cleanser',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'routine_product_audit_v1',
+          payload: {
+            summary: 'Consider a different cleanser for PM',
+          },
+        },
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            steps: ['Switch PM cleanser to a gentler option.'],
+          },
+        },
+      ],
+    };
+
+    const quality = __internal.evaluateQualityContractForEnvelope({
+      envelope,
+      policyMeta: { intent_canonical: 'analysis_skin' },
+      assistantText: envelope.assistant_message.content,
+      profile: {},
+    });
+
+    assert.equal(quality.confidence_consistency_pass, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: canonical ownership audit does not mark bootstrap context loss when no analysis snapshot is present', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      cards: [
+        {
+          type: 'session_bootstrap',
+          payload: {
+            profile: {},
+            recent_logs: [],
+            checkin_due: false,
+            is_returning: false,
+            db_ready: true,
+          },
+        },
+      ],
+      session_patch: {
+        profile: {},
+        recent_logs: [],
+      },
+    };
+
+    const audit = __internal.buildBeautyCanonicalOwnershipAudit({
+      envelope,
+      route: 'session_bootstrap',
+      assistantText: '',
+    });
+
+    assert.equal(audit.route, 'session_bootstrap');
+    assert.equal(audit.drift.context_loss_between_routes, false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: buildLatestRecoContextFromAnalysisArtifacts emits canonical routine target bundle for routine-only analysis', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const routineAnalysisResult = {
+      cards: [
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            replace: [
+              {
+                adjustment_id: 'adj_add_sunscreen',
+                title: 'Add Sunscreen in the AM',
+                why: 'UV protection is missing.',
+              },
+            ],
+            recommendation_needs: [
+              {
+                adjustment_id: 'adj_add_sunscreen',
+                target_step: 'sunscreen',
+                why: 'Fill the missing daytime protection step.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const recoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      routineAnalysisResult,
+      profileSummary: { goals: ['redness'] },
+      artifactId: 'art_routine_owner_spine',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'routine_report',
+      usePhoto: false,
+      usedPhotos: false,
+    });
+
+    assert.ok(recoContext);
+    assert.equal(recoContext.context_origin, 'routine_audit_v1');
+    assert.equal(recoContext.resolved_target_step, 'sunscreen');
+    assert.equal(recoContext.ingredient_query, 'sunscreen');
+    assert.equal(String(recoContext.primary_target_id || '').includes('adj_add_sunscreen'), true);
+    assert.equal(Array.isArray(recoContext.ranked_targets), true);
+    assert.equal(recoContext.ranked_targets.length, 1);
+    assert.equal(recoContext.ranked_targets[0].target_role, 'primary');
+    assert.equal(recoContext.ranked_targets[0].resolved_target_step, 'sunscreen');
+    assert.equal(recoContext.ranked_targets[0].source, 'routine_audit_v1');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: buildLatestRecoContextFromAnalysisArtifacts preserves routine canonical spine when photo derivation is suppressed', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const routineAnalysisResult = {
+      cards: [
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            replace: [
+              {
+                adjustment_id: 'adj_pm_cleanser',
+                title: 'Consider a different cleanser for PM',
+                why: 'The current cleanser looks too stripping.',
+              },
+            ],
+            recommendation_needs: [
+              {
+                adjustment_id: 'adj_pm_cleanser',
+                target_step: 'cleanser',
+                why: 'A gentler PM cleanse is the safest next move.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'fail',
+        summary_v1: {
+          top_module_id: 'forehead',
+          top_findings: [],
+          quality_caveats: ['photo_quality_failed', 'low_confidence_primary_finding'],
+        },
+        modules: [],
+      },
+    };
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      routineAnalysisResult,
+      ingredientPlan: null,
+      photoModulesCard,
+      artifactId: 'art_routine_survives_photo_fail',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo_qc',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'fail',
+      profileSummary: { goals: ['texture'] },
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.context_origin, 'routine_audit_v1');
+    assert.equal(latestRecoContext.resolved_target_step, 'cleanser');
+    assert.equal(String(latestRecoContext.primary_target_id || '').includes('adj_pm_cleanser'), true);
+    assert.equal(Array.isArray(latestRecoContext.ranked_targets), true);
+    assert.equal(latestRecoContext.ranked_targets[0].target_role, 'primary');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: evaluateQualityContractForEnvelope allows shift explanation without explicit secondary targets', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'Primary recommendation focus: keep this pass centered on Azelaic Acid.\nThe primary direction did not have enough verified candidates, so I shifted to the closest verified secondary direction.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            owner_source: 'photo_modules_v1',
+            target_bundle_owner: 'photo_modules_v1',
+            primary_target_id: 'azelaic_acid_serum_texture_nose',
+            ranked_targets: [
+              {
+                target_id: 'azelaic_acid_serum_texture_nose',
+                ingredient_query: 'Azelaic Acid',
+                resolved_target_step: 'serum',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'recommendations',
+          payload: {
+            recommendations: [
+              {
+                sku: {
+                  brand: 'TestBrand',
+                  name: 'Azelaic Serum',
+                },
+              },
+            ],
+            recommendation_meta: {
+              mainline_status: 'grounded_success',
+              primary_target_id: 'azelaic_acid_serum_texture_nose',
+              displayed_target_ids: ['azelaic_acid_serum_texture_nose'],
+              selected_target_ids: ['azelaic_acid_serum_texture_nose'],
+              selection_shift_reason: 'confidence_policy_primary_target_shifted',
+              ranked_targets: [
+                {
+                  target_id: 'azelaic_acid_serum_texture_nose',
+                  ingredient_query: 'Azelaic Acid',
+                  resolved_target_step: 'serum',
+                  target_role: 'primary',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    const quality = __internal.evaluateQualityContractForEnvelope({
+      envelope,
+      policyMeta: { intent_canonical: 'reco_products' },
+      assistantText: envelope.assistant_message.content,
+      profile: {},
+    });
+
+    assert.equal(quality.selection_shift_explained_pass, true);
+    assert.equal(quality.direction_diversity_discipline_pass, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: evaluateQualityContractForEnvelope does not enforce photo-led focus alignment when canonical owner is routine', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      assistant_message: {
+        role: 'assistant',
+        content: 'Photo analysis is temporarily unavailable. We will use a simpler photo check for now. Fix first: Your AM routine has no clear sunscreen step, so UV protection is the biggest gap before adding more brightening or anti-aging actives. This week: AM: Gentle Cleanser.',
+      },
+      session_patch: {
+        state: {
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'routine_audit_v1',
+            owner_source: 'routine_audit_v1',
+            target_bundle_owner: 'routine_audit_v1',
+            primary_target_id: 'adj_pm_cleanser_replace',
+            ranked_targets: [
+              {
+                target_id: 'adj_pm_cleanser_replace',
+                ingredient_query: 'cleanser',
+                resolved_target_step: 'cleanser',
+                target_role: 'primary',
+                source: 'routine_audit_v1',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'photo_modules_v1',
+          payload: {
+            summary_v1: {
+              top_module_id: 'forehead',
+              top_findings: [
+                {
+                  module_id: 'forehead',
+                  confidence_bucket: 'low',
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: 'analysis_story_v2',
+          payload: {
+            ui_card_v1: {
+              headline: 'Photo analysis is temporarily unavailable. We will use a simpler photo check for now.',
+              priority_findings: [
+                'Your AM routine has no clear sunscreen step, so UV protection is the biggest gap before adding more brightening or anti-aging actives.',
+              ],
+              confidence_label: 'medium',
+            },
+          },
+        },
+        {
+          type: 'confidence_notice',
+          payload: {
+            reason: 'low_confidence',
+          },
+        },
+      ],
+    };
+
+    const quality = __internal.evaluateQualityContractForEnvelope({
+      envelope,
+      policyMeta: { intent_canonical: 'analysis_skin' },
+      assistantText: envelope.assistant_message.content,
+      profile: {},
+    });
+
+    assert.equal(quality.primary_focus_alignment_pass, true);
+    assert.equal(quality.confidence_consistency_pass, true);
   } finally {
     delete require.cache[moduleId];
   }
