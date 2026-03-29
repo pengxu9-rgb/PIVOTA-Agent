@@ -225,6 +225,9 @@ describe('Aurora beauty orchestration facade', () => {
       normalizeSearchUiSurface(value) {
         return String(value || '').trim().toLowerCase();
       },
+      isExternalSeedProduct(product) {
+        return product?.merchant_id === 'external_seed';
+      },
       countCandidateOriginBreakdown(products) {
         return { internal: Array.isArray(products) ? products.length : 0 };
       },
@@ -244,11 +247,23 @@ describe('Aurora beauty orchestration facade', () => {
     expect(
       runtime.applyGuidanceOnlyHitQualityOutcome({
         response: {
-          products: [{ product_id: 'sku_1' }],
+          products: [
+            { product_id: 'sku_1', merchant_id: 'merchant_internal' },
+            { product_id: 'seed_1', merchant_id: 'external_seed' },
+          ],
+          total: 2,
+          page_size: 2,
           clarification: { question: 'Which texture?' },
           reason_codes: ['AMBIGUITY_CLARIFY', 'KEEP_ME'],
           metadata: {
             query_source: 'agent_products_error_fallback',
+            source_breakdown: {
+              internal_count: 1,
+              external_seed_count: 1,
+              stale_cache_used: false,
+            },
+            guidance_direct_external_seed_applied: true,
+            guidance_direct_external_seed_valid_hit: true,
             search_decision: {
               existing_field: true,
             },
@@ -264,6 +279,7 @@ describe('Aurora beauty orchestration facade', () => {
           candidate_class_counts: { core: 1 },
           target_relevance_class_counts: { target: 1 },
           noise_drop_counts: { noise: 0 },
+          valid_products: [{ product_id: 'sku_1', merchant_id: 'merchant_internal' }],
           products_returned_count: 1,
           fallback_mode: 'normal',
         },
@@ -275,7 +291,9 @@ describe('Aurora beauty orchestration facade', () => {
         queryExhausted: false,
       }),
     ).toEqual({
-      products: [{ product_id: 'sku_1' }],
+      products: [{ product_id: 'sku_1', merchant_id: 'merchant_internal' }],
+      total: 1,
+      page_size: 1,
       clarification: null,
       reply: '',
       reason_codes: ['KEEP_ME'],
@@ -284,6 +302,14 @@ describe('Aurora beauty orchestration facade', () => {
         normalized_intent: null,
         quality_gate_result: null,
         candidate_origin_counts: { internal: 1 },
+        source_breakdown: {
+          internal_count: 1,
+          external_seed_count: 0,
+          stale_cache_used: false,
+        },
+        external_seed_returned_count: 0,
+        guidance_direct_external_seed_applied: false,
+        guidance_direct_external_seed_valid_hit: false,
         displayable_candidate_count: undefined,
         fill_target_count: undefined,
         fill_completed_count: undefined,
@@ -780,6 +806,68 @@ describe('Aurora beauty orchestration facade', () => {
       primaryProductsBeforeGuidance: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
       primaryHasExternalSeedBeforeGuidance: false,
       primaryHasValidGuidanceHit: true,
+      primaryHasCacheReturnedGuidanceFastpath: false,
+    });
+  });
+
+  test('guidance-only direct supplement plan skips when the cache-hit fastpath contract is already satisfied', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      isExternalSeedProduct(product) {
+        return product?.merchant_name === 'external_seed';
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyDirectSupplementPlan({
+        guidanceOnlyDiscovery: true,
+        requestedAllowExternalSeed: true,
+        requestedTargetStepFamily: 'serum',
+        queryText: 'hydrating serum',
+        upstreamData: {
+          products: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
+          metadata: {
+            query_source: 'agent_products_guidance_fastpath',
+            final_decision: 'cache_returned',
+            search_decision: {
+              hit_quality: 'valid_hit',
+              same_family_topk_count: 1,
+            },
+            route_debug: {
+              cross_merchant_cache: {
+                guidance_hit_quality: 'valid_hit',
+                internal_products_relevant_count: 1,
+                guidance_scoped_internal_products_count: 1,
+              },
+            },
+          },
+        },
+        requestedLimit: 10,
+      }),
+    ).toEqual({
+      shouldAttemptDirectSupplement: false,
+      existingMeta: {
+        query_source: 'agent_products_guidance_fastpath',
+        final_decision: 'cache_returned',
+        search_decision: {
+          hit_quality: 'valid_hit',
+          same_family_topk_count: 1,
+        },
+        route_debug: {
+          cross_merchant_cache: {
+            guidance_hit_quality: 'valid_hit',
+            internal_products_relevant_count: 1,
+            guidance_scoped_internal_products_count: 1,
+          },
+        },
+      },
+      existingSearchDecision: {
+        hit_quality: 'valid_hit',
+        same_family_topk_count: 1,
+      },
+      primaryProductsBeforeGuidance: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
+      primaryHasExternalSeedBeforeGuidance: false,
+      primaryHasValidGuidanceHit: true,
+      primaryHasCacheReturnedGuidanceFastpath: true,
     });
   });
 
@@ -1006,6 +1094,74 @@ describe('Aurora beauty orchestration facade', () => {
           ambiguity_score_pre: 0.18,
           lookup_query_bypass: false,
           guidance_fill_bypassed: true,
+        },
+      },
+    });
+  });
+
+  test('guidance-only cache supplement plan skips when shared success contract is already satisfied', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      isCatalogGuardSource() {
+        return true;
+      },
+      hasPetHarnessSearchSignal() {
+        return false;
+      },
+      hasFragranceSearchSignal() {
+        return false;
+      },
+      isBeautyGeneralDiversitySupplementCandidate() {
+        return true;
+      },
+      searchExternalFillGated: () => true,
+      searchExternalHardRulePrune: () => false,
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheSupplementPlan({
+        source: 'aurora-bff',
+        page: 1,
+        queryText: 'hydrating serum',
+        effectiveIntent: {
+          confidence: { overall: 0.82 },
+        },
+        baselineProducts: [{ product_id: 'sku_1' }],
+        internalGuidanceHitDecision: {
+          applied: true,
+          hit_quality: 'valid_hit',
+          step_success_class: 'supportive_family',
+          success_contract_result: {
+            satisfied: true,
+          },
+        },
+        rawInternalProductsCount: 1,
+        safeResultLimit: 6,
+        guidanceTargetStepFamily: 'serum',
+        guidanceNormalizedIntent: null,
+        guidanceNeedsPrimaryFillSupplement: false,
+        cachePolicyQueryClass: 'category',
+        ambiguityScorePre: 0.18,
+        isLookupQuery: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyBucket: 'skincare',
+      }),
+    ).toEqual({
+      guidanceFillTargetCount: 6,
+      needsPrimaryFillSupplement: false,
+      needsBeautyDiversitySupplement: true,
+      shouldAttemptSupplement: false,
+      neededCount: 0,
+      supplementMeta: {
+        attempted: false,
+        applied: false,
+        added_count: 0,
+        reason: 'guidance_contract_satisfied',
+        gate: {
+          internal_count: 1,
+          raw_internal_count: 1,
+          step_success_class: 'supportive_family',
+          success_contract_satisfied: true,
+          beauty_diversity_targeted: true,
         },
       },
     });

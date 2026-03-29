@@ -313,13 +313,36 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       !Array.isArray(existingMeta.search_decision)
         ? existingMeta.search_decision
         : {};
+    const existingSourceBreakdown =
+      existingMeta.source_breakdown &&
+      typeof existingMeta.source_breakdown === 'object' &&
+      !Array.isArray(existingMeta.source_breakdown)
+        ? existingMeta.source_breakdown
+        : {};
     const products = Array.isArray(response.products) ? response.products : [];
+    const validProducts = Array.isArray(guidanceDecision.valid_products)
+      ? guidanceDecision.valid_products
+      : [];
+    const shouldReplaceProducts =
+      guidanceDecision.hit_quality === 'valid_hit' && validProducts.length > 0;
+    const nextProducts = shouldReplaceProducts ? validProducts : products;
+    const nextExternalSeedCount = nextProducts.filter((product) =>
+      isExternalSeedProductImpl(product),
+    ).length;
+    const nextInternalCount = Math.max(0, nextProducts.length - nextExternalSeedCount);
     const reasonCodes = Array.isArray(response.reason_codes) ? response.reason_codes : [];
     const candidateOriginCounts =
-      guidanceDecision.candidate_origin_counts || countCandidateOriginBreakdownImpl(products);
+      guidanceDecision.candidate_origin_counts || countCandidateOriginBreakdownImpl(nextProducts);
 
     return {
       ...response,
+      ...(shouldReplaceProducts
+        ? {
+            products: nextProducts,
+            total: nextProducts.length,
+            page_size: nextProducts.length,
+          }
+        : {}),
       ...(clarificationPlan.suppressLegacyClarification
         ? {
             clarification: null,
@@ -332,6 +355,22 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
         normalized_intent: guidanceDecision.normalized_intent || null,
         quality_gate_result: guidanceDecision.quality_gate_result || null,
         candidate_origin_counts: candidateOriginCounts,
+        source_breakdown: {
+          ...existingSourceBreakdown,
+          internal_count: nextInternalCount,
+          external_seed_count: nextExternalSeedCount,
+          stale_cache_used:
+            existingSourceBreakdown.stale_cache_used === true,
+        },
+        external_seed_returned_count: nextExternalSeedCount,
+        guidance_direct_external_seed_applied:
+          shouldReplaceProducts && nextExternalSeedCount <= 0
+            ? false
+            : existingMeta.guidance_direct_external_seed_applied,
+        guidance_direct_external_seed_valid_hit:
+          shouldReplaceProducts && nextExternalSeedCount <= 0
+            ? false
+            : existingMeta.guidance_direct_external_seed_valid_hit,
         displayable_candidate_count: guidanceDecision.displayable_candidate_count,
         fill_target_count: guidanceDecision.fill_target_count,
         fill_completed_count: guidanceDecision.fill_completed_count,
@@ -536,6 +575,18 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       !Array.isArray(existingMeta.search_decision)
         ? existingMeta.search_decision
         : {};
+    const existingRouteDebug =
+      existingMeta.route_debug &&
+      typeof existingMeta.route_debug === 'object' &&
+      !Array.isArray(existingMeta.route_debug)
+        ? existingMeta.route_debug
+        : {};
+    const existingCrossMerchantCache =
+      existingRouteDebug.cross_merchant_cache &&
+      typeof existingRouteDebug.cross_merchant_cache === 'object' &&
+      !Array.isArray(existingRouteDebug.cross_merchant_cache)
+        ? existingRouteDebug.cross_merchant_cache
+        : {};
     const primaryProductsBeforeGuidance = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
     const primaryHasExternalSeedBeforeGuidance = primaryProductsBeforeGuidance.some((product) =>
       isExternalSeedProductImpl(product),
@@ -544,11 +595,18 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       existingSearchDecision.hit_quality === 'valid_hit' &&
       Number(existingSearchDecision.same_family_topk_count || 0) > 0 &&
       primaryProductsBeforeGuidance.length > 0;
+    const primaryHasCacheReturnedGuidanceFastpath =
+      String(existingMeta.query_source || '').trim() === 'agent_products_guidance_fastpath' &&
+      String(existingMeta.final_decision || '').trim() === 'cache_returned' &&
+      existingCrossMerchantCache.guidance_hit_quality === 'valid_hit' &&
+      Number(existingCrossMerchantCache.internal_products_relevant_count || 0) > 0 &&
+      Number(existingCrossMerchantCache.guidance_scoped_internal_products_count || 0) > 0;
     const shouldAttemptDirectSupplement =
       Boolean(guidanceOnlyDiscovery) &&
       requestedAllowExternalSeed === true &&
       Boolean(normalizedTargetStepFamily) &&
       normalizedQuery.length > 0 &&
+      !primaryHasCacheReturnedGuidanceFastpath &&
       (!primaryHasValidGuidanceHit ||
         (!primaryHasExternalSeedBeforeGuidance &&
           primaryProductsBeforeGuidance.length < Math.max(1, Number(requestedLimit || 20) || 20)));
@@ -560,6 +618,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       primaryProductsBeforeGuidance,
       primaryHasExternalSeedBeforeGuidance,
       primaryHasValidGuidanceHit,
+      primaryHasCacheReturnedGuidanceFastpath,
     };
   }
 
@@ -673,6 +732,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     queryText,
     effectiveIntent,
     baselineProducts,
+    internalGuidanceHitDecision,
     rawInternalProductsCount,
     safeResultLimit,
     guidanceTargetStepFamily,
@@ -685,15 +745,30 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     cacheBeautyBucket = null,
   } = {}) {
     const normalizedBaselineProducts = Array.isArray(baselineProducts) ? baselineProducts : [];
+    const normalizedInternalGuidanceHitDecision =
+      internalGuidanceHitDecision &&
+      typeof internalGuidanceHitDecision === 'object' &&
+      !Array.isArray(internalGuidanceHitDecision)
+        ? internalGuidanceHitDecision
+        : {};
     const normalizedSafeResultLimit = Math.max(1, Number(safeResultLimit || 20) || 20);
     const normalizedPage = Number(page);
     const normalizedQueryText = String(queryText || '').trim();
+    const guidanceSuccessContractSatisfied =
+      normalizedInternalGuidanceHitDecision.applied === true &&
+      normalizedInternalGuidanceHitDecision.hit_quality === 'valid_hit' &&
+      normalizedInternalGuidanceHitDecision.success_contract_result &&
+      typeof normalizedInternalGuidanceHitDecision.success_contract_result === 'object' &&
+      !Array.isArray(normalizedInternalGuidanceHitDecision.success_contract_result) &&
+      normalizedInternalGuidanceHitDecision.success_contract_result.satisfied === true &&
+      normalizedBaselineProducts.length > 0;
     const guidanceFillTargetCount =
       guidanceNormalizedIntent?.backbone_id && guidanceTargetStepFamily === 'serum'
         ? Math.min(3, normalizedSafeResultLimit)
         : normalizedSafeResultLimit;
     const needsPrimaryFillSupplement =
-      guidanceNeedsPrimaryFillSupplement || normalizedBaselineProducts.length < guidanceFillTargetCount;
+      !guidanceSuccessContractSatisfied &&
+      (guidanceNeedsPrimaryFillSupplement || normalizedBaselineProducts.length < guidanceFillTargetCount);
     const shouldSkipExternalSupplementForPetHarness =
       hasPetHarnessSearchSignalImpl(normalizedQueryText) && normalizedBaselineProducts.length >= 3;
     const needsBeautyDiversitySupplement =
@@ -723,6 +798,29 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
         reason: 'not_needed',
       },
     };
+
+    if (guidanceSuccessContractSatisfied) {
+      return {
+        ...basePlan,
+        supplementMeta: {
+          attempted: false,
+          applied: false,
+          added_count: 0,
+          reason: 'guidance_contract_satisfied',
+          gate: {
+            internal_count: normalizedBaselineProducts.length,
+            raw_internal_count: Math.max(
+              0,
+              Number(rawInternalProductsCount || normalizedBaselineProducts.length) || 0,
+            ),
+            step_success_class:
+              String(normalizedInternalGuidanceHitDecision.step_success_class || '').trim() || null,
+            success_contract_satisfied: true,
+            beauty_diversity_targeted: needsBeautyDiversitySupplement,
+          },
+        },
+      };
+    }
 
     if (
       !isCatalogGuardSourceImpl(source) ||
