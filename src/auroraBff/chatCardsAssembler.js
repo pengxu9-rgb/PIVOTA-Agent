@@ -578,6 +578,14 @@ function buildChatCardsResponse({
     (uiLanguage === 'CN'
       ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
       : 'I will start with a low-risk actionable suggestion, then refine with your context.');
+  const assistantMessage =
+    isPlainObject(base.assistant_message) && asString(base.assistant_message.content)
+      ? base.assistant_message
+      : {
+          role: 'assistant',
+          content: assistantText,
+          format: 'markdown',
+        };
   const cards = normalizeCards({ envelope: base, requestId, language: uiLanguage, assistantText });
   const { quickReplies, followUpQuestions } = normalizeFollowUpAndQuickReplies({
     envelope: base,
@@ -597,6 +605,7 @@ function buildChatCardsResponse({
     request_id: requestId,
     trace_id: traceId,
     assistant_text: assistantText,
+    assistant_message: assistantMessage,
     cards,
     follow_up_questions: followUpQuestions,
     suggested_quick_replies: quickReplies,

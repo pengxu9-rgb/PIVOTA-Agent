@@ -88,12 +88,21 @@ const ThreadOpSchema = z
   })
   .strict();
 
+const AssistantMessageSchema = z
+  .object({
+    role: z.literal('assistant'),
+    content: z.string(),
+    format: z.enum(['text', 'markdown']).optional(),
+  })
+  .strict();
+
 const ChatCardsResponseSchema = z
   .object({
     version: z.literal('1.0'),
     request_id: z.string().min(1),
     trace_id: z.string().min(1),
     assistant_text: z.string(),
+    assistant_message: AssistantMessageSchema.optional(),
     cards: z.array(ChatCardSchema).max(4),
     follow_up_questions: z.array(FollowUpQuestionSchema).max(3),
     suggested_quick_replies: z.array(QuickReplySchema).max(8),
@@ -141,5 +150,6 @@ module.exports = {
   QuickReplySchema,
   FollowUpQuestionSchema,
   ChatCardSchema,
+  AssistantMessageSchema,
   ChatCardsResponseSchema,
 };
