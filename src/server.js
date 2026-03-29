@@ -4476,6 +4476,20 @@ function decideGenericSkincareCachePreference({
   const cacheProducts = Array.isArray(cacheResponse?.products) ? cacheResponse.products : [];
   const upstreamQuerySource = String(upstreamResponse?.metadata?.query_source || '').trim();
   const cacheInternalProducts = cacheProducts.filter((product) => !isExternalSeedProduct(product));
+  const sampleBiasedTopUpstreamProducts = upstreamProducts.slice(0, 3).filter((product) => {
+    const text = [
+      product?.title,
+      product?.description,
+      product?.product_type,
+      product?.category,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ');
+    return /\b(sample|mini|travel(?:\s+size)?|trial(?:\s+size)?|deluxe(?:\s+travel)?\s+size)\b/i.test(
+      text,
+    );
+  });
   const hasSerumSignal = /\bserum(?:s)?\b/i.test(queryText);
   const genericQueryClass = !normalizedQueryClass || ['category', 'exploratory'].includes(normalizedQueryClass);
   const genericSerumCategoryQuery =
@@ -4485,6 +4499,7 @@ function decideGenericSkincareCachePreference({
     !Boolean(strictConstraintQuery);
   const upstreamExternalOnly =
     upstreamProducts.length > 0 && upstreamProducts.every((product) => isExternalSeedProduct(product));
+  const upstreamSampleBiased = sampleBiasedTopUpstreamProducts.length >= 2;
   const evaluated =
     genericSerumCategoryQuery &&
     cacheInternalProducts.length > 0 &&
@@ -4504,6 +4519,17 @@ function decideGenericSkincareCachePreference({
   }
 
   if (!upstreamExternalOnly) {
+    if (upstreamSampleBiased) {
+      return {
+        evaluated,
+        decision: 'replace_with_cache',
+        reason: 'upstream_sample_biased_prefers_internal_cache',
+        beauty_bucket: effectiveBeautyBucket || null,
+        cache_internal_count: cacheInternalProducts.length,
+        upstream_external_only: upstreamExternalOnly,
+        upstream_query_source: upstreamQuerySource || null,
+      };
+    }
     return {
       evaluated,
       decision: 'keep_upstream',
@@ -16476,6 +16502,97 @@ function recoverStrictMainPathResponseFromPrefetch({
   };
 }
 
+function normalizeStrictCacheMainPathFallbackMetadata({
+  responseBody = null,
+  strictInvokeDecision = null,
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!strictInvokeDecision?.strictConstraintQuery) return responseBody;
+
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : null;
+  if (!metadata) return responseBody;
+
+  const products = Array.isArray(responseBody.products) ? responseBody.products : [];
+  if (products.length === 0) return responseBody;
+  if (responseBody?.clarification?.question) return responseBody;
+
+  const querySource = String(metadata.query_source || '').trim().toLowerCase();
+  if (!querySource.startsWith('cache_')) return responseBody;
+
+  const proxySearchFallback = isPlainRecord(metadata.proxy_search_fallback)
+    ? metadata.proxy_search_fallback
+    : null;
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+  const searchDecision = isPlainRecord(metadata.search_decision) ? metadata.search_decision : {};
+  const fallbackReason = String(
+    metadata.fallback_reason ||
+      routeHealth.fallback_reason ||
+      searchTrace.fallback_reason ||
+      searchDecision.fallback_reason ||
+      proxySearchFallback?.reason ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const hasFallbackFlags =
+    proxySearchFallback?.applied === true || routeHealth.fallback_triggered === true;
+  if (!hasFallbackFlags) return responseBody;
+
+  const hasUpstreamFallbackEvidence =
+    Number(metadata.upstream_status || 0) > 0 ||
+    String(metadata.upstream_error_code || '').trim().length > 0 ||
+    String(metadata.upstream_error_message || '').trim().length > 0 ||
+    Number(proxySearchFallback?.upstream_status || 0) > 0 ||
+    String(proxySearchFallback?.upstream_error_code || '').trim().length > 0 ||
+    String(proxySearchFallback?.upstream_error_message || '').trim().length > 0 ||
+    Boolean(metadata.upstream_quota_guarded) ||
+    /^resolver_after_primary$/i.test(fallbackReason) ||
+    /^primary_unusable_/i.test(fallbackReason) ||
+    /^secondary_after_primary_/i.test(fallbackReason);
+  if (hasUpstreamFallbackEvidence) return responseBody;
+
+  const nextMetadata = {
+    ...metadata,
+    proxy_search_fallback: proxySearchFallback
+      ? {
+          ...proxySearchFallback,
+          applied: false,
+          reason: null,
+        }
+      : {
+          applied: false,
+          reason: null,
+        },
+    route_health: {
+      ...routeHealth,
+      fallback_triggered: false,
+      fallback_reason: null,
+      primary_path_used: 'cache_stage',
+      primary_path_degraded: false,
+    },
+    search_trace: {
+      ...searchTrace,
+      fallback_reason: null,
+      primary_path_used: 'cache_stage',
+      final_decision: toNonEmptyStringOrNull(searchTrace.final_decision) || 'cache_returned',
+    },
+    search_decision: {
+      ...searchDecision,
+      fallback_reason: null,
+      primary_path_used: 'cache_stage',
+      final_decision: toNonEmptyStringOrNull(searchDecision.final_decision) || 'cache_returned',
+    },
+  };
+  delete nextMetadata.fallback_reason;
+  delete nextMetadata.fallback_route;
+
+  return {
+    ...responseBody,
+    metadata: nextMetadata,
+  };
+}
+
 async function handleOffersResolveOperation({
   payload,
   metadata,
@@ -22402,6 +22519,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstreamData = recoverStrictMainPathResponseFromPrefetch({
           responseBody: upstreamData,
           invokeRequestBody: requestBody,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+        });
+        upstreamData = normalizeStrictCacheMainPathFallbackMetadata({
+          responseBody: upstreamData,
           strictInvokeDecision: strictFindProductsMultiDecision,
         });
       }
