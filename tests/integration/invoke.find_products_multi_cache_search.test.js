@@ -1950,6 +1950,26 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
   });
 
+  test('guidance-only hydration-supportive serum discovery does not prefer raw-first cache query mode', async () => {
+    const app = require('../../src/server');
+
+    expect(
+      app._debug.isGuidanceHydrationSupportiveSerumQuery({
+        rawQuery: 'hydrating serum',
+        queryClass: 'attribute',
+        guidanceOnlyDiscovery: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      app._debug.isGuidanceHydrationSupportiveSerumQuery({
+        rawQuery: 'soothing barrier serum sensitive skin',
+        queryClass: 'attribute',
+        guidanceOnlyDiscovery: true,
+      }),
+    ).toBe(false);
+  });
+
   test('foundation brush query keeps beauty tools results after bucket backstop', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
