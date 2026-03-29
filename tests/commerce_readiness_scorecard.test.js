@@ -40,12 +40,12 @@ describe('Commerce readiness scorecard', () => {
       gatewayGovernanceLocalStatus: 'pass',
       prodSmokeStatus: 'pass',
       promptLiveSmokeStatus: 'pass',
-      gatewayGovernanceExtractStatus: 'missing',
+      gatewayGovernanceExtractStatus: 'pass',
       gatewayGovernanceReportStatus: 'pass',
       gatewayGovernanceReadinessStatus: 'green',
       publicGatewayAuthRequired: false,
-      agentProdCommit: 'abc123',
-      backendProdCommit: 'def456',
+      authoritativeProdCommit: 'abc123',
+      gatewayGovernanceAutomationStatus: 'pass',
       promptCases: {
         prompt_cases: [
           { family: 'prompt_clarify' },
@@ -96,12 +96,11 @@ describe('Commerce readiness scorecard', () => {
       gatewayGovernanceLocalStatus: 'pass',
       prodSmokeStatus: 'pass',
       promptLiveSmokeStatus: 'pass',
-      gatewayGovernanceExtractStatus: 'missing',
+      gatewayGovernanceExtractStatus: 'pass',
       gatewayGovernanceReportStatus: 'pass',
       gatewayGovernanceReadinessStatus: 'green',
       publicGatewayAuthRequired: false,
-      agentProdCommit: 'abc123',
-      backendProdCommit: '',
+      authoritativeProdCommit: 'abc123',
       gatewayGovernanceLogInputPath: '/tmp/runtime.ndjson',
       promptCases: {
         prompt_cases: [
@@ -127,7 +126,7 @@ describe('Commerce readiness scorecard', () => {
     expect(result.scorecard.merchant_product_routing).toBe('amber');
     expect(result.scorecard.fallback_resilience).toBe('amber');
     expect(result.scorecard.cross_layer_contract_drift).toBe('amber');
-    expect(result.scorecard.observability_provenance).toBe('green');
+    expect(result.scorecard.observability_provenance).toBe('amber');
   });
 
   test('keeps live-routing dimensions amber until exactish coverage enters the prod corpus', () => {
@@ -142,8 +141,8 @@ describe('Commerce readiness scorecard', () => {
       gatewayGovernanceReportStatus: 'pass',
       gatewayGovernanceReadinessStatus: 'green',
       publicGatewayAuthRequired: false,
-      agentProdCommit: 'abc123',
-      backendProdCommit: 'def456',
+      authoritativeProdCommit: 'abc123',
+      gatewayGovernanceAutomationStatus: 'pass',
       promptCases: {
         prompt_cases: [
           { family: 'prompt_clarify' },
@@ -176,5 +175,6 @@ describe('Commerce readiness scorecard', () => {
     expect(result.scorecard.merchant_product_routing).toBe('amber');
     expect(result.scorecard.fallback_resilience).toBe('amber');
     expect(result.scorecard.cross_layer_contract_drift).toBe('amber');
+    expect(result.scorecard.observability_provenance).toBe('green');
   });
 });

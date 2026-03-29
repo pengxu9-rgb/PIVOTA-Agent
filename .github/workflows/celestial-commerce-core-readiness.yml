@@ -39,6 +39,7 @@ on:
       - "scripts/smoke_celestial_commerce_core_prod.sh"
       - "scripts/search_stability_matrix.js"
       - "scripts/extract_gateway_governance_shadow_sample.js"
+      - "scripts/fetch_celestial_commerce_gateway_governance_logs.js"
       - "scripts/evaluate_celestial_commerce_gateway_governance_alerts.js"
       - "scripts/run_gateway_governance_daily_summary.sh"
       - "scripts/generate_celestial_commerce_gateway_governance_report.js"
@@ -73,6 +74,7 @@ on:
       - "tests/celestial_commerce_gateway_shadow_summary.test.js"
       - "tests/celestial_commerce_gateway_governance_report_script.test.js"
       - "tests/celestial_commerce_gateway_shadow_sample_extract_script.test.js"
+      - "tests/celestial_commerce_gateway_governance_fetch_script.test.js"
       - "tests/celestial_commerce_gateway_governance_alerts_script.test.js"
       - "tests/celestial_commerce_gateway_daily_summary_script.test.js"
       - "tests/celestial_commerce_core_staging_matrix_script.test.js"
@@ -125,6 +127,7 @@ jobs:
           node --check scripts/search_stability_matrix.js
           node --check scripts/run_celestial_commerce_core_staging_matrix.js
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
+          node --check scripts/fetch_celestial_commerce_gateway_governance_logs.js
           node scripts/verify_commerce_invoke_rails.js
           node scripts/verify_celestial_commerce_core_boundaries.js
           bash -n scripts/smoke_celestial_commerce_core_prod.sh
@@ -148,6 +151,7 @@ jobs:
             tests/celestial_commerce_gateway_shadow_summary.test.js \
             tests/celestial_commerce_gateway_governance_report_script.test.js \
             tests/celestial_commerce_gateway_shadow_sample_extract_script.test.js \
+            tests/celestial_commerce_gateway_governance_fetch_script.test.js \
             tests/celestial_commerce_gateway_governance_alerts_script.test.js \
             tests/celestial_commerce_gateway_daily_summary_script.test.js \
             tests/celestial_commerce_core_staging_matrix_script.test.js \
@@ -175,6 +179,14 @@ jobs:
       COMMERCE_CORE_PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
       COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
       COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+      RAILWAY_API_TOKEN: ${{ secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN || '' }}
+      RAILWAY_TOKEN: ${{ secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN || '' }}
+      GATEWAY_GOVERNANCE_AUTO_FETCH: ${{ (secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN) != '' && '1' || '0' }}
+      GATEWAY_GOVERNANCE_RAILWAY_PROJECT: ${{ vars.GATEWAY_GOVERNANCE_RAILWAY_PROJECT || 'Pivota Agent' }}
+      GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT: ${{ vars.GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT || 'production' }}
+      GATEWAY_GOVERNANCE_RAILWAY_SERVICE: ${{ vars.GATEWAY_GOVERNANCE_RAILWAY_SERVICE || 'PIVOTA-Agent' }}
+      GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE: ${{ vars.GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE || '' }}
+      GATEWAY_GOVERNANCE_FETCH_LINES: ${{ vars.GATEWAY_GOVERNANCE_FETCH_LINES || '500' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -187,6 +199,9 @@ jobs:
 
       - name: Install deps
         run: npm ci
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@4.35.0
 
       - name: Verify deployed commit via service_version
         if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
@@ -212,6 +227,12 @@ jobs:
           COMMERCE_CORE_PROD_SMOKE_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
           COMMERCE_CORE_PROD_AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
           COMMERCE_CORE_PROD_AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          GATEWAY_GOVERNANCE_AUTO_FETCH="$GATEWAY_GOVERNANCE_AUTO_FETCH" \
+          GATEWAY_GOVERNANCE_RAILWAY_PROJECT="$GATEWAY_GOVERNANCE_RAILWAY_PROJECT" \
+          GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT="$GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT" \
+          GATEWAY_GOVERNANCE_RAILWAY_SERVICE="$GATEWAY_GOVERNANCE_RAILWAY_SERVICE" \
+          GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE="$GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE" \
+          GATEWAY_GOVERNANCE_FETCH_LINES="$GATEWAY_GOVERNANCE_FETCH_LINES" \
           OUT_DIR="reports/celestial-commerce-core-readiness-ci" \
           bash scripts/run_celestial_commerce_core_readiness_audit.sh
 

@@ -61,8 +61,11 @@ function evaluateReadinessScorecard(input = {}) {
     String(input.gatewayGovernanceReadinessStatus || '').trim() || '';
   const publicGatewayAuthRequired = input.publicGatewayAuthRequired === true;
   const agentProdCommit = String(input.agentProdCommit || '').trim();
-  const backendProdCommit = String(input.backendProdCommit || '').trim();
+  const authoritativeProdCommit = String(input.authoritativeProdCommit || '').trim();
   const gatewayGovernanceLogInputPath = String(input.gatewayGovernanceLogInputPath || '').trim();
+  const gatewayGovernanceAutomationStatus =
+    String(input.gatewayGovernanceAutomationStatus || '').trim() || 'missing';
+  const gatewayGovernanceLogInputAutomated = input.gatewayGovernanceLogInputAutomated === true;
 
   const promptFixtureComplete = fixtureHasFamilyAliases(input.promptCases, [
     'prompt_clarify',
@@ -171,11 +174,11 @@ function evaluateReadinessScorecard(input = {}) {
   }
 
   if (
-    agentProdCommit &&
+    (authoritativeProdCommit || agentProdCommit) &&
     gatewayGovernanceReportStatus === 'pass' &&
-    (backendProdCommit ||
-      gatewayGovernanceExtractStatus === 'pass' ||
-      gatewayGovernanceLogInputPath)
+    gatewayGovernanceExtractStatus === 'pass' &&
+    (gatewayGovernanceAutomationStatus === 'pass' ||
+      (gatewayGovernanceLogInputAutomated && Boolean(gatewayGovernanceLogInputPath)))
   ) {
     observabilityProvenance = 'green';
   }

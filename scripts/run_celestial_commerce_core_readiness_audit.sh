@@ -20,6 +20,13 @@ COMMERCE_CORE_PROMPT_AGENT_API_KEY="${COMMERCE_CORE_PROMPT_AGENT_API_KEY:-}"
 COMMERCE_CORE_PROMPT_CASES="${COMMERCE_CORE_PROMPT_CASES:-${AGENT_CLEAN_REPO}/scripts/fixtures/celestial_commerce_core_prompt_live_smoke.json}"
 GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH:-}"
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH:-}"
+GATEWAY_GOVERNANCE_AUTO_FETCH="${GATEWAY_GOVERNANCE_AUTO_FETCH:-0}"
+GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED="${GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED:-0}"
+GATEWAY_GOVERNANCE_RAILWAY_PROJECT="${GATEWAY_GOVERNANCE_RAILWAY_PROJECT:-Pivota Agent}"
+GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT="${GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT:-production}"
+GATEWAY_GOVERNANCE_RAILWAY_SERVICE="${GATEWAY_GOVERNANCE_RAILWAY_SERVICE:-PIVOTA-Agent}"
+GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE="${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE:-}"
+GATEWAY_GOVERNANCE_FETCH_LINES="${GATEWAY_GOVERNANCE_FETCH_LINES:-500}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/celestial-commerce-core-readiness}"
 
 timestamp() {
@@ -33,6 +40,8 @@ SUMMARY_JSON="${RUN_DIR}/summary.json"
 GATEWAY_GOVERNANCE_REPORT_MD="${RUN_DIR}/gateway_governance_shadow_summary.md"
 GATEWAY_GOVERNANCE_REPORT_JSON="${RUN_DIR}/gateway_governance_shadow_summary.json"
 GATEWAY_GOVERNANCE_EXTRACTED_SAMPLE="${RUN_DIR}/gateway_governance_shadow_runtime_sample.ndjson"
+GATEWAY_GOVERNANCE_RAW_EXPORT="${RUN_DIR}/gateway_governance_raw_log_export.ndjson"
+GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA="${RUN_DIR}/gateway_governance_raw_log_export.json"
 mkdir -p "${RUN_DIR}"
 
 repo_branch() {
@@ -397,11 +406,43 @@ run_step \
   "commerce_core_prompt_live_smoke" \
   bash -lc "cd '${AGENT_CLEAN_REPO}' && BASE_URL='${COMMERCE_CORE_PROMPT_SMOKE_BASE_URL}' ENDPOINT='${COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT}' AUTH_TOKEN='${COMMERCE_CORE_PROMPT_AUTH_TOKEN}' AGENT_API_KEY='${COMMERCE_CORE_PROMPT_AGENT_API_KEY}' CASES_PATH='${COMMERCE_CORE_PROMPT_CASES}' OUT_DIR='${RUN_DIR}/commerce_core_prompt_live_smoke' bash scripts/probe_celestial_commerce_core_prompt_live_smoke.sh"
 
+gateway_governance_log_input_path="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}"
+gateway_governance_log_input_automated="${GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED}"
+gateway_governance_automation_status="missing"
+gateway_governance_auto_fetch_enabled="false"
+if [[ "${GATEWAY_GOVERNANCE_AUTO_FETCH}" == "1" || "${GATEWAY_GOVERNANCE_AUTO_FETCH}" == "true" ]]; then
+  gateway_governance_auto_fetch_enabled="true"
+fi
+if [[ "${gateway_governance_log_input_automated}" == "1" || "${gateway_governance_log_input_automated}" == "true" ]]; then
+  gateway_governance_log_input_automated="true"
+  gateway_governance_automation_status="pass"
+else
+  gateway_governance_log_input_automated="false"
+fi
+
+if [[ -z "${gateway_governance_log_input_path}" && -z "${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH}" && "${gateway_governance_auto_fetch_enabled}" == "true" ]]; then
+  gateway_fetch_workspace_args=""
+  if [[ -n "${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE}" ]]; then
+    gateway_fetch_workspace_args="--workspace '${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE}'"
+  fi
+  run_step \
+    "gateway_governance_raw_export" \
+    bash -lc "cd '${AGENT_CLEAN_REPO}' && '${node_bin}' scripts/fetch_celestial_commerce_gateway_governance_logs.js --out '${GATEWAY_GOVERNANCE_RAW_EXPORT}' --metadata-out '${GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA}' --project '${GATEWAY_GOVERNANCE_RAILWAY_PROJECT}' --environment '${GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT}' --service '${GATEWAY_GOVERNANCE_RAILWAY_SERVICE}' --lines '${GATEWAY_GOVERNANCE_FETCH_LINES}' ${gateway_fetch_workspace_args}"
+  gateway_governance_raw_export_last_status="${STEP_STATUSES[$((${#STEP_STATUSES[@]} - 1))]}"
+  if [[ "${gateway_governance_raw_export_last_status}" == "pass" ]]; then
+    gateway_governance_log_input_path="${GATEWAY_GOVERNANCE_RAW_EXPORT}"
+    gateway_governance_log_input_automated="true"
+    gateway_governance_automation_status="pass"
+  else
+    gateway_governance_automation_status="fail"
+  fi
+fi
+
 gateway_governance_runtime_input_path="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH}"
-if [[ -n "${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}" ]]; then
+if [[ -n "${gateway_governance_log_input_path}" ]]; then
   run_step \
     "gateway_governance_shadow_extract" \
-    bash -lc "cd '${AGENT_CLEAN_REPO}' && '${node_bin}' scripts/extract_gateway_governance_shadow_sample.js --input '${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}' --out '${GATEWAY_GOVERNANCE_EXTRACTED_SAMPLE}'"
+    bash -lc "cd '${AGENT_CLEAN_REPO}' && '${node_bin}' scripts/extract_gateway_governance_shadow_sample.js --input '${gateway_governance_log_input_path}' --out '${GATEWAY_GOVERNANCE_EXTRACTED_SAMPLE}'"
   gateway_governance_extract_last_status="${STEP_STATUSES[$((${#STEP_STATUSES[@]} - 1))]}"
   if [[ "${gateway_governance_extract_last_status}" == "pass" ]]; then
     gateway_governance_runtime_input_path="${GATEWAY_GOVERNANCE_EXTRACTED_SAMPLE}"
@@ -461,6 +502,7 @@ aurora_local_status="$(step_status aurora_commerce_orchestration_local_gate)"
 gateway_governance_local_status="$(step_status gateway_governance_local_gate)"
 prod_smoke_status="$(step_status commerce_core_production_smoke)"
 prompt_live_smoke_status="$(step_status commerce_core_prompt_live_smoke)"
+gateway_governance_raw_export_status="$(step_status gateway_governance_raw_export)"
 gateway_governance_extract_status="$(step_status gateway_governance_shadow_extract)"
 gateway_governance_report_status="$(step_status gateway_governance_shadow_report)"
 public_gateway_auth_required="false"
@@ -493,8 +535,11 @@ readiness_scorecard_json="$(
   GATEWAY_GOVERNANCE_READINESS_STATUS="${gateway_governance_status}" \
   PUBLIC_GATEWAY_AUTH_REQUIRED="${public_gateway_auth_required}" \
   AGENT_PROD_COMMIT="${agent_prod_commit}" \
+  AUTHORITATIVE_PROD_COMMIT="${prod_smoke_commit}" \
   BACKEND_PROD_COMMIT="${backend_prod_commit}" \
-  GATEWAY_GOVERNANCE_LOG_INPUT_PATH_VALUE="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}" \
+  GATEWAY_GOVERNANCE_LOG_INPUT_PATH_VALUE="${gateway_governance_log_input_path}" \
+  GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED_VALUE="${gateway_governance_log_input_automated}" \
+  GATEWAY_GOVERNANCE_AUTOMATION_STATUS="${gateway_governance_automation_status}" \
   "${node_bin}" - <<'JS'
 const fs = require('fs');
 const {
@@ -518,8 +563,12 @@ const payload = evaluateReadinessScorecard({
   gatewayGovernanceReadinessStatus: process.env.GATEWAY_GOVERNANCE_READINESS_STATUS,
   publicGatewayAuthRequired: process.env.PUBLIC_GATEWAY_AUTH_REQUIRED === 'true',
   agentProdCommit: process.env.AGENT_PROD_COMMIT,
+  authoritativeProdCommit: process.env.AUTHORITATIVE_PROD_COMMIT,
   backendProdCommit: process.env.BACKEND_PROD_COMMIT,
   gatewayGovernanceLogInputPath: process.env.GATEWAY_GOVERNANCE_LOG_INPUT_PATH_VALUE,
+  gatewayGovernanceLogInputAutomated:
+    process.env.GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED_VALUE === 'true',
+  gatewayGovernanceAutomationStatus: process.env.GATEWAY_GOVERNANCE_AUTOMATION_STATUS,
   promptCases: readJson(process.env.PROMPT_CASES_PATH),
   prodGateCases: readJson(process.env.PROD_GATE_CASES_PATH),
   stagingCases: readJson(process.env.STAGING_CASES_PATH),
@@ -620,6 +669,10 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "- Runtime would-enforce shadow events: ${gateway_governance_runtime_would_enforce:-0}"
   echo "- Runtime blocked/throttled shadow events: ${gateway_governance_runtime_blocked:-0}"
   echo "- Runtime downgraded/truncated shadow events: ${gateway_governance_runtime_downgraded:-0}"
+  echo "- Raw log export step: ${gateway_governance_raw_export_status}"
+  echo "- Raw log automation status: ${gateway_governance_automation_status}"
+  echo "- Raw log input path: \`${gateway_governance_log_input_path:-missing}\`"
+  echo "- Raw log export metadata: \`${GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA}\`"
   echo "- Markdown artifact: \`${GATEWAY_GOVERNANCE_REPORT_MD}\`"
   echo "- JSON artifact: \`${GATEWAY_GOVERNANCE_REPORT_JSON}\`"
   echo
@@ -641,7 +694,7 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "1. Treat authenticated \`/agent/shop/v1/invoke\` as the supported commerce contract and retire public \`/api/gateway\` from shared commerce acceptance."
   echo "2. Keep \`search\`, \`shopping_agent\`, and \`aurora-bff\` contract fixtures in one shared authenticated prod smoke so future drift is visible immediately."
   echo "3. Keep \`/ui/chat\` prompt smoke green and treat it as the canonical live prompt rail for prompt intent and conversation progress."
-  echo "4. Automate daily export of production gateway governance logs and pass the raw file via \`GATEWAY_GOVERNANCE_LOG_INPUT_PATH\` so the readiness report stays on real traffic without manual sample prep."
+  echo "4. Keep automated production gateway governance export enabled via \`GATEWAY_GOVERNANCE_AUTO_FETCH=1\` or an upstream automated raw-log handoff marked with \`GATEWAY_GOVERNANCE_LOG_INPUT_AUTOMATED=true\`."
   echo "5. Keep exact product-lookup routing for \`shopping_agent\` and merchant/product decomposition inside the shared live corpus, not in isolated local-only gates."
   echo "6. Keep Aurora guidance-only families in the shared corpus so future regressions fail the shared contract instead of drifting into manual-only interpretation."
 } >"${REPORT_MD}"
@@ -711,9 +764,14 @@ summary = {
     },
     "gateway_governance_shadow": {
         "local_gate": "${gateway_governance_local_status}",
+        "raw_export_step": "${gateway_governance_raw_export_status}",
+        "automation_status": "${gateway_governance_automation_status}",
         "extract_step": "${gateway_governance_extract_status}",
         "report_generation": "${gateway_governance_report_status}",
         "readiness_status": "${gateway_governance_status}",
+        "raw_log_input_path": "${gateway_governance_log_input_path}",
+        "raw_export_path": "${GATEWAY_GOVERNANCE_RAW_EXPORT}",
+        "raw_export_metadata_path": "${GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA}",
         "total_scenarios": "${gateway_governance_total_scenarios}",
         "matched_scenarios": "${gateway_governance_matched_scenarios}",
         "would_enforce_count": "${gateway_governance_would_enforce}",

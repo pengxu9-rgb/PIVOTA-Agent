@@ -92,10 +92,36 @@ GATEWAY_GOVERNANCE_LOG_INPUT_PATH=/path/to/gateway.log.ndjson \
 npm run audit:readiness:commerce-core
 ```
 
+The preferred Phase 2 path is to let the audit fetch production gateway logs automatically instead of hand-carrying a raw file:
+
+```bash
+RAILWAY_API_TOKEN=railway_workspace_token \
+GATEWAY_GOVERNANCE_AUTO_FETCH=1 \
+npm run audit:readiness:commerce-core
+```
+
+Supported override envs:
+
+- `GATEWAY_GOVERNANCE_RAILWAY_PROJECT` default: `Pivota Agent`
+- `GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT` default: `production`
+- `GATEWAY_GOVERNANCE_RAILWAY_SERVICE` default: `PIVOTA-Agent`
+- `GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE` optional workspace selector
+- `GATEWAY_GOVERNANCE_FETCH_LINES` default: `500`
+
+`Observability/Provenance Readiness` should only be treated as `green` when the report has both deploy truth and an automated raw-log export path. A manually supplied `GATEWAY_GOVERNANCE_LOG_INPUT_PATH` is still supported for diagnosis, but should not be used to claim the dimension is fully green.
+
 For a lighter daily governance-only report, use:
 
 ```bash
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH=/path/to/gateway.log.ndjson \
+npm run audit:gateway-governance:daily
+```
+
+Or let the daily report fetch production logs directly:
+
+```bash
+RAILWAY_API_TOKEN=railway_workspace_token \
+GATEWAY_GOVERNANCE_AUTO_FETCH=1 \
 npm run audit:gateway-governance:daily
 ```
 
