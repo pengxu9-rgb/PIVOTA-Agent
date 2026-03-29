@@ -24536,15 +24536,43 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
 function derivePhotoModulesRecoContext(photoModulesCard, { profileSummary = null, artifactId = '' } = {}) {
   const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
   const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
-  for (const moduleRow of modules) {
-    const actions = Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [];
+  const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
+  const topModuleId = pickFirstTrimmed(summary.top_module_id);
+  const topActionIngredientId = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
+  const orderedModules = modules.slice().sort((left, right) => {
+    const leftId = pickFirstTrimmed(left && left.module_id);
+    const rightId = pickFirstTrimmed(right && right.module_id);
+    const leftRank = leftId && leftId === topModuleId ? 0 : 1;
+    const rightRank = rightId && rightId === topModuleId ? 0 : 1;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    return Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+  });
+  for (const moduleRow of orderedModules) {
+    const actions = (Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [])
+      .filter((row) => isPlainObject(row))
+      .sort((left, right) => {
+        const leftId = normalizePhotoIngredientKey(pickFirstTrimmed(
+          left && left.ingredient_canonical_id,
+          left && left.ingredient_id,
+          left && left.ingredientId,
+        ));
+        const rightId = normalizePhotoIngredientKey(pickFirstTrimmed(
+          right && right.ingredient_canonical_id,
+          right && right.ingredient_id,
+          right && right.ingredientId,
+        ));
+        const leftRank = topActionIngredientId && leftId === topActionIngredientId ? 0 : 1;
+        const rightRank = topActionIngredientId && rightId === topActionIngredientId ? 0 : 1;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0);
+      });
     for (const action of actions) {
-      if (!isPlainObject(action)) continue;
       const ingredientId = pickFirstTrimmed(action.ingredient_canonical_id, action.ingredient_id, action.ingredientId);
       const ingredientName = pickFirstTrimmed(action.ingredient_name, action.ingredient, ingredientId);
       const targetStep = deriveRecoTargetStepFromIngredient(ingredientId, ingredientName);
       const issueType = pickFirstTrimmed(
         Array.isArray(action.evidence_issue_types) ? action.evidence_issue_types[0] : '',
+        summary.top_issue_type,
       );
       const targetContext = resolveRecommendationTargetContext({
         explicitStep: targetStep,
@@ -24660,6 +24688,36 @@ function normalizePhotoIngredientKey(value) {
   return token || '';
 }
 
+const PHOTO_ISSUE_DEFAULT_STEP_FAMILY = Object.freeze({
+  redness: 'serum',
+  pigmentation: 'serum',
+  tone: 'serum',
+  texture: 'serum',
+  acne: 'serum',
+  pores: 'serum',
+  shine: 'serum',
+  dehydration: 'moisturizer',
+  dryness: 'moisturizer',
+  barrier: 'moisturizer',
+  sensitivity: 'moisturizer',
+  photoaging: 'serum',
+  uv: 'sunscreen',
+});
+
+function resolvePhotoIssueDefaultTargetStep(issueTypes = [], fallbackIssueType = '') {
+  const ordered = [
+    ...(Array.isArray(issueTypes) ? issueTypes : []),
+    fallbackIssueType,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  for (const issueType of ordered) {
+    const mapped = normalizeRecoTargetStep(PHOTO_ISSUE_DEFAULT_STEP_FAMILY[issueType]);
+    if (mapped) return mapped;
+  }
+  return '';
+}
+
 function dedupePhotoIngredientProducts(products, maxItems = 12) {
   const out = [];
   const seen = new Set();
@@ -24747,12 +24805,85 @@ function buildPhotoIngredientCoverageIndex(photoModulesCard, language) {
   return index;
 }
 
+function resolvePhotoPrimaryTargetIngredientId(photoModulesCard) {
+  const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
+  const explicit = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
+  if (explicit) return explicit;
+  const topModuleId = pickFirstTrimmed(summary.top_module_id);
+  const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+  const targetModule =
+    modules.find((row) => pickFirstTrimmed(row && row.module_id) === topModuleId)
+    || modules[0]
+    || null;
+  const actions = (Array.isArray(targetModule && targetModule.actions) ? targetModule.actions : [])
+    .filter((row) => isPlainObject(row))
+    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0));
+  return normalizePhotoIngredientKey(pickFirstTrimmed(
+    actions[0] && actions[0].ingredient_canonical_id,
+    actions[0] && actions[0].ingredient_id,
+    actions[0] && actions[0].ingredientId,
+  ));
+}
+
+function resolvePhotoPrimaryIssueType(photoModulesCard) {
+  const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
+  const explicit = pickFirstTrimmed(summary.top_issue_type);
+  if (explicit) return explicit;
+  const topModuleId = pickFirstTrimmed(summary.top_module_id);
+  const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+  const targetModule =
+    modules.find((row) => pickFirstTrimmed(row && row.module_id) === topModuleId)
+    || modules[0]
+    || null;
+  const issues = (Array.isArray(targetModule && targetModule.issues) ? targetModule.issues : [])
+    .filter((row) => isPlainObject(row))
+    .sort((left, right) => Number(right && right.issue_rank_score || 0) - Number(left && left.issue_rank_score || 0));
+  return pickFirstTrimmed(issues[0] && issues[0].issue_type);
+}
+
+function derivePhotoPlanResolvedTargetStep(target, coverage, photoModulesCard) {
+  const ingredientId = pickFirstTrimmed(target && (target.ingredient_id || target.ingredientId));
+  const ingredientName = pickFirstTrimmed(
+    target && (target.ingredient_name || target.ingredientName || target.ingredient),
+    coverage && coverage.ingredient_name,
+    ingredientId,
+  );
+  return pickFirstTrimmed(
+    normalizeRecoTargetStep(
+      target && (
+        target.resolved_target_step
+        || target.resolvedTargetStep
+        || target.target_step_family
+        || target.targetStepFamily
+        || target.step_family
+        || target.stepFamily
+      ),
+    ),
+    resolveIngredientPlanTargetStepFamily(target),
+    deriveRecoTargetStepFromIngredient(ingredientId, ingredientName),
+    resolvePhotoIssueDefaultTargetStep(
+      coverage ? Array.from(coverage.source_issue_types) : [],
+      resolvePhotoPrimaryIssueType(photoModulesCard),
+    ),
+  );
+}
+
+function targetHasVisibleStrictProducts(products) {
+  const node = isPlainObject(products) ? products : {};
+  const competitors = Array.isArray(node.competitors) ? node.competitors : [];
+  const dupes = Array.isArray(node.dupes) ? node.dupes : [];
+  return competitors.length > 0 || dupes.length > 0;
+}
+
 function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) {
   if (!isPlainObject(payload)) return payload;
   const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
   if (!coverageIndex.size) return payload;
   const targets = Array.isArray(payload.targets) ? payload.targets : [];
   if (!targets.length) return payload;
+  const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
 
   const nextTargets = targets
     .map((targetRaw) => {
@@ -24771,6 +24902,8 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
         : PHOTO_BASELINE_SUPPORT_INGREDIENT_IDS.has(canonicalId)
           ? 'baseline_support'
           : 'supporting_context';
+      const resolvedTargetStep = derivePhotoPlanResolvedTargetStep(target, coverage, photoModulesCard);
+      const isPrimaryTarget = Boolean(primaryIngredientId) && canonicalId === primaryIngredientId;
       if (coverage && strictProductCount > 0) {
         const currentCompetitors = Array.isArray(products.competitors) ? products.competitors : [];
         const currentDupes = Array.isArray(products.dupes) ? products.dupes : [];
@@ -24802,10 +24935,20 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
       target.strict_product_count = strictProductCount;
       target.why_match_short = coverage ? coverage.why_match_short : null;
       target.presentation_bucket = presentationBucket;
+      target.resolved_target_step = resolvedTargetStep || null;
+      target.is_primary_photo_target = isPrimaryTarget;
       return target;
+    })
+    .filter((row) => {
+      if (!isPlainObject(row)) return false;
+      const whyMatch = pickFirstTrimmed(row.why_match_short) || (Array.isArray(row.why) && row.why.length > 0);
+      if (!row.resolved_target_step || !whyMatch) return false;
+      if (Number(row.strict_product_count || 0) > 0 || targetHasVisibleStrictProducts(row.products)) return true;
+      return row.is_primary_photo_target === true && String(row.recommendation_mode || '').trim().toLowerCase() === 'cta_only';
     })
     .sort((left, right) => {
       const rank = (row) => {
+        if (row && row.is_primary_photo_target) return -1;
         const bucket = String(row && row.presentation_bucket || '').trim().toLowerCase();
         if (bucket === 'photo_derived') return 0;
         if (bucket === 'supporting_context') return 1;
@@ -24817,9 +24960,35 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
       return Number(right && right.priority_score_0_100 || 0) - Number(left && left.priority_score_0_100 || 0);
     });
 
+  const photoDerived = nextTargets
+    .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'photo_derived')
+    .slice(0, 3);
+  const supportingContext = photoDerived.length < 3
+    ? nextTargets
+      .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'supporting_context')
+      .slice(0, Math.max(0, 3 - photoDerived.length))
+    : [];
+  const baselineSupport = nextTargets
+    .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'baseline_support')
+    .slice(0, 1);
+  const dedupedTargets = [];
+  const seenIngredientIds = new Set();
+  for (const row of [...photoDerived, ...supportingContext, ...baselineSupport]) {
+    const ingredientId = normalizePhotoIngredientKey(row && (row.ingredient_id || row.ingredientId || row.ingredient_name || row.ingredientName));
+    if (!ingredientId || seenIngredientIds.has(ingredientId)) continue;
+    seenIngredientIds.add(ingredientId);
+    dedupedTargets.push(row);
+    if (dedupedTargets.length >= 4) break;
+  }
+
   return {
     ...payload,
-    targets: nextTargets,
+    targets: dedupedTargets.map((row) => {
+      if (!isPlainObject(row)) return row;
+      const nextRow = { ...row };
+      delete nextRow.is_primary_photo_target;
+      return nextRow;
+    }),
   };
 }
 
@@ -35288,14 +35457,32 @@ function formatPhotoSeverityLabel(severity, isCn) {
   return 'subtle';
 }
 
-function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons } = {}) {
-  const out = [];
+function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons, summaryTokens, topFindings } = {}) {
+  const out = Array.isArray(summaryTokens)
+    ? summaryTokens.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
   const grade = String(qualityGrade || '').trim().toLowerCase();
   if (grade === 'degraded') out.push('photo_quality_degraded');
   if (grade === 'fail') out.push('photo_quality_failed');
   for (const reason of Array.isArray(qualityReasons) ? qualityReasons : []) {
     const token = String(reason || '').trim().toLowerCase();
     if (token) out.push(token);
+  }
+  const findings = Array.isArray(topFindings) ? topFindings : [];
+  const primaryFinding = findings[0] || null;
+  const primaryBucket = normalizePhotoStoryConfidenceBucket(
+    primaryFinding && primaryFinding.confidence_0_1,
+    primaryFinding && primaryFinding.confidence_bucket,
+  );
+  if (primaryBucket === 'low') out.push('low_confidence_primary_finding');
+  if (
+    findings.length > 0 &&
+    findings.every((row) => {
+      const bucket = normalizePhotoStoryConfidenceBucket(row && row.confidence_0_1, row && row.confidence_bucket);
+      return bucket === 'low' || bucket === 'medium';
+    })
+  ) {
+    out.push('conservative_photo_interpretation');
   }
   return Array.from(new Set(out)).slice(0, 8);
 }
@@ -35321,7 +35508,89 @@ function renderPhotoQualityCaveatText(token, isCn) {
   if (normalized === 'blurred') {
     return isCn ? '轻微模糊会削弱细节观察。' : 'Blur reduces detail-level confidence.';
   }
+  if (normalized === 'low_confidence_primary_finding') {
+    return isCn ? '当前最明显的照片信号置信度较低，请把这次结论当作保守读数。' : 'The leading photo signal is low-confidence, so treat this read as conservative.';
+  }
+  if (normalized === 'conservative_photo_interpretation') {
+    return isCn ? '这次照片结论更适合做保守参考，建议用同角度复拍确认趋势。' : 'Use this photo read as a conservative reference until the same pattern repeats in clearer photos.';
+  }
   return humanizeAnalysisStoryLabel(normalized);
+}
+
+function buildPhotoStoryPrimaryFocus({ topFindings, topActionsByModule, isCn } = {}) {
+  const finding = Array.isArray(topFindings) ? topFindings[0] : null;
+  if (!finding || !finding.module_id || !finding.issue_type) return null;
+  const primaryAction = (Array.isArray(topActionsByModule) ? topActionsByModule : [])
+    .find((row) => String(row && row.module_id || '').trim() === String(finding.module_id || '').trim())
+    || null;
+  const ingredientId = pickFirstString(primaryAction && primaryAction.ingredient_id);
+  const ingredientName = pickFirstString(primaryAction && primaryAction.ingredient_name, ingredientId);
+  return {
+    module_id: pickFirstString(finding.module_id),
+    module_label: pickFirstString(finding.module_label, humanizePhotoStoryModuleLabel(finding.module_id, isCn)),
+    issue_type: pickFirstString(finding.issue_type),
+    issue_label: pickFirstString(finding.issue_label, humanizePhotoStoryIssueLabel(finding.issue_type, isCn)),
+    severity_0_4: Number.isFinite(Number(finding.severity_0_4)) ? Number(finding.severity_0_4) : null,
+    confidence_0_1: clamp01Score(Number(finding.confidence_0_1 || 0)),
+    confidence_bucket: normalizePhotoStoryConfidenceBucket(finding.confidence_0_1, finding.confidence_bucket),
+    ingredient_id: ingredientId || null,
+    ingredient_name: ingredientName || null,
+    resolved_target_step: ingredientId || ingredientName
+      ? deriveRecoTargetStepFromIngredient(ingredientId, ingredientName)
+      : '',
+  };
+}
+
+function buildPhotoStoryPriorityFinding(primaryFocus, isCn) {
+  if (!isPlainObject(primaryFocus)) return null;
+  const moduleLabel = pickFirstString(primaryFocus.module_label, primaryFocus.module_id);
+  const issueLabel = pickFirstString(primaryFocus.issue_label, primaryFocus.issue_type);
+  if (!moduleLabel || !issueLabel) return null;
+  const lowConfidence = String(primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
+  const title = lowConfidence
+    ? (isCn
+      ? `${moduleLabel}的${issueLabel}是当前最需要复核的可见信号`
+      : `${moduleLabel} may be the clearest visible ${issueLabel} signal right now`)
+    : (isCn
+      ? `${moduleLabel}的${issueLabel}是当前最优先的可见问题`
+      : `${moduleLabel} is the clearest visible ${issueLabel} focus right now`);
+  const detail = lowConfidence
+    ? (isCn
+      ? `照片提示${moduleLabel}的${issueLabel}值得优先关注，但本次判断保持保守。`
+      : `Photos suggest ${issueLabel} around the ${moduleLabel}, but this read stays conservative.`)
+    : (isCn
+      ? `${moduleLabel}的${issueLabel}最值得先处理。`
+      : `${issueLabel} around the ${moduleLabel} is the main treatment focus.`);
+  return {
+    priority: 1,
+    title,
+    detail,
+    evidence_region_or_module: [moduleLabel],
+  };
+}
+
+function storyFindingMatchesPrimaryFocus(row, primaryFocus) {
+  if (!isPlainObject(row) || !isPlainObject(primaryFocus)) return false;
+  const haystack = [
+    pickFirstString(row.title),
+    pickFirstString(row.detail),
+    ...(Array.isArray(row.evidence_region_or_module) ? row.evidence_region_or_module : []),
+  ]
+    .join(' ')
+    .toLowerCase();
+  const moduleTokens = [
+    pickFirstString(primaryFocus.module_id),
+    pickFirstString(primaryFocus.module_label),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const issueTokens = [
+    pickFirstString(primaryFocus.issue_type),
+    pickFirstString(primaryFocus.issue_label),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  return moduleTokens.some((token) => haystack.includes(token)) && issueTokens.some((token) => haystack.includes(token));
 }
 
 function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, language } = {}) {
@@ -35365,8 +35634,33 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
       if (Math.abs(severityDiff) > 1e-6) return severityDiff;
       return clamp01Score(Number(right && right.confidence_0_1 || 0)) - clamp01Score(Number(left && left.confidence_0_1 || 0));
     });
+  const summaryTopFindingRank = new Map(
+    (Array.isArray(summaryV1.top_findings) ? summaryV1.top_findings : [])
+      .map((row, idx) => [pickFirstString(row && row.module_id), idx])
+      .filter((row) => row[0]),
+  );
+  const summaryTopModuleId = pickFirstString(summaryV1.top_module_id);
+  const summaryTopActionIngredientId = normalizePhotoIngredientKey(summaryV1.top_action_ingredient_id);
+  const orderedModules = modules
+    .slice()
+    .sort((left, right) => {
+      const leftId = pickFirstString(left && left.module_id);
+      const rightId = pickFirstString(right && right.module_id);
+      const leftRank = summaryTopFindingRank.has(leftId)
+        ? summaryTopFindingRank.get(leftId)
+        : (leftId && leftId === summaryTopModuleId ? -1 : 100);
+      const rightRank = summaryTopFindingRank.has(rightId)
+        ? summaryTopFindingRank.get(rightId)
+        : (rightId && rightId === summaryTopModuleId ? -1 : 100);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      const rankDiff = Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+      if (Math.abs(rankDiff) > 1e-6) return rankDiff;
+      const leftIssue = rankIssues(left && left.issues)[0] || null;
+      const rightIssue = rankIssues(right && right.issues)[0] || null;
+      return Number(rightIssue && rightIssue.severity_0_4 || 0) - Number(leftIssue && leftIssue.severity_0_4 || 0);
+    });
 
-  for (const moduleRow of modules.slice(0, 6)) {
+  for (const moduleRow of orderedModules.slice(0, 6)) {
     const actions = Array.isArray(moduleRow.actions) ? moduleRow.actions.filter((item) => isPlainObject(item)) : [];
     const issues = rankIssues(moduleRow.issues);
     const directProducts = Array.isArray(moduleRow.products) ? moduleRow.products.filter((item) => isPlainObject(item)) : [];
@@ -35422,7 +35716,17 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
       }
     }
 
-    for (const action of actions.slice(0, 2)) {
+    const orderedActions = actions
+      .slice()
+      .sort((left, right) => {
+        const leftIngredientId = normalizePhotoIngredientKey(pickFirstString(left && left.ingredient_canonical_id, left && left.ingredient_id, left && left.ingredientId));
+        const rightIngredientId = normalizePhotoIngredientKey(pickFirstString(right && right.ingredient_canonical_id, right && right.ingredient_id, right && right.ingredientId));
+        const leftRank = summaryTopActionIngredientId && pickFirstString(moduleRow.module_id) === summaryTopModuleId && leftIngredientId === summaryTopActionIngredientId ? 0 : 1;
+        const rightRank = summaryTopActionIngredientId && pickFirstString(moduleRow.module_id) === summaryTopModuleId && rightIngredientId === summaryTopActionIngredientId ? 0 : 1;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0);
+      });
+    for (const action of orderedActions.slice(0, 2)) {
       const issueTypes = Array.isArray(action.evidence_issue_types) && action.evidence_issue_types.length
         ? action.evidence_issue_types.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 4)
         : issues.slice(0, 2).map((issue) => pickFirstString(issue && issue.issue_type)).filter(Boolean);
@@ -35470,7 +35774,12 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
     }))
     .filter((row) => row.module_id && row.issue_type)
     .slice(0, 3);
-  const qualityCaveatTokens = buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons });
+  const qualityCaveatTokens = buildPhotoQualityCaveatTokens({
+    qualityGrade,
+    qualityReasons,
+    summaryTokens: summaryV1.quality_caveats,
+    topFindings,
+  });
   const qualityCaveatTexts = qualityCaveatTokens
     .map((token) => renderPhotoQualityCaveatText(token, isCn))
     .filter(Boolean)
@@ -35499,14 +35808,16 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
         : 0),
   };
   const topFinding = topFindings[0] || null;
+  const primaryFocus = buildPhotoStoryPrimaryFocus({ topFindings, topActionsByModule, isCn });
+  const lowConfidencePrimaryFinding = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
   const headlineHint = usedPhotos
     ? pickFirstString(
         topFinding
           ? (
-              qualityGrade === 'degraded' || qualityGrade === 'fail'
+              qualityGrade === 'degraded' || qualityGrade === 'fail' || lowConfidencePrimaryFinding
                 ? (isCn
-                  ? `照片提示 ${topFinding.module_label}的${topFinding.issue_label}最值得关注，但当前判断保持保守。`
-                  : `Photos still point to ${topFinding.issue_label} around the ${topFinding.module_label} as the main focus, but the read stays conservative.`)
+                  ? `照片提示 ${topFinding.module_label}的${topFinding.issue_label}最值得复核，当前判断保持保守。`
+                  : `Photos suggest ${topFinding.issue_label} around the ${topFinding.module_label} as the main focus, but the read stays conservative.`)
                 : (isCn
                   ? `照片里最值得先处理的是${topFinding.module_label}的${topFinding.issue_label}。`
                   : `The clearest photo-led focus right now is ${topFinding.issue_label} around the ${topFinding.module_label}.`)
@@ -35536,6 +35847,7 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
     strict_match_coverage_overview: strictMatchCoverageOverview,
     finding_evidence: findingEvidence.slice(0, 6),
     headline_hint: headlineHint || null,
+    primary_focus: primaryFocus,
   };
 }
 
@@ -35544,6 +35856,8 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   const row = isPlainObject(story) ? story : {};
   const photoContext = isPlainObject(evidence && evidence.photo_context) ? evidence.photo_context : {};
   const photoUsed = photoContext.used_photos === true;
+  const primaryFocus = isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null;
+  const lowConfidencePrimaryFocus = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
   const confidence = isPlainObject(row.confidence_overall) ? row.confidence_overall : {};
   const confidenceLevel = pickFirstString(confidence.level, isCn ? '中' : 'medium');
   const findingTitles = asStringArray(
@@ -35560,9 +35874,14 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       const issueLabel = pickFirstString(finding && finding.issue_label, finding && finding.issue_type);
       const severityLabel = formatPhotoSeverityLabel(finding && finding.severity_0_4, isCn);
       if (!moduleLabel || !issueLabel) return '';
+      const confidenceBucket = normalizePhotoStoryConfidenceBucket(finding && finding.confidence_0_1, finding && finding.confidence_bucket);
       return isCn
-        ? `${moduleLabel}的${issueLabel}是当前最明显的可见信号，强度为${severityLabel}。`
-        : `${moduleLabel} shows the clearest visible ${issueLabel} signal right now, at a ${severityLabel} level.`;
+        ? (confidenceBucket === 'low'
+          ? `${moduleLabel}的${issueLabel}看起来值得优先复核，但这次判断保持保守。`
+          : `${moduleLabel}的${issueLabel}是当前最明显的可见信号，强度为${severityLabel}。`)
+        : (confidenceBucket === 'low'
+          ? `${moduleLabel} may be showing the clearest visible ${issueLabel} signal, but this read stays conservative.`
+          : `${moduleLabel} shows the clearest visible ${issueLabel} signal right now, at a ${severityLabel} level.`);
     })
     .filter(Boolean)
     .slice(0, 3);
@@ -35571,9 +35890,14 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       const moduleLabel = pickFirstString(finding && finding.module_label, finding && finding.module_id);
       const issueLabel = pickFirstString(finding && finding.issue_label, finding && finding.issue_type);
       if (!moduleLabel || !issueLabel) return '';
+      const confidenceBucket = normalizePhotoStoryConfidenceBucket(finding && finding.confidence_0_1, finding && finding.confidence_bucket);
       return isCn
-        ? `${moduleLabel}的${issueLabel}是当前最优先的处理方向，所以先围绕这个区域做定向干预，而不是同时扩展多个强活性。`
-        : `${moduleLabel} is driving the visible ${issueLabel} pattern, so treatment should stay focused there first instead of widening into multiple strong actives.`;
+        ? (confidenceBucket === 'low'
+          ? `${moduleLabel}的${issueLabel}更像当前最需要保守处理的方向，所以先围绕这个区域做小步调整。`
+          : `${moduleLabel}的${issueLabel}是当前最优先的处理方向，所以先围绕这个区域做定向干预，而不是同时扩展多个强活性。`)
+        : (confidenceBucket === 'low'
+          ? `${moduleLabel} appears to be the most useful cautious focus, so keep treatment targeted there before widening into stronger actives.`
+          : `${moduleLabel} is driving the visible ${issueLabel} pattern, so treatment should stay focused there first instead of widening into multiple strong actives.`);
     })
     .filter(Boolean)
     .slice(0, 3);
@@ -35601,15 +35925,32 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
     Array.isArray(row.pm_plan) ? row.pm_plan.map((step) => pickFirstString(step && step.step)) : [],
     2,
   );
+  const primaryActionLine =
+    photoUsed && primaryFocus && primaryFocus.ingredient_name && primaryFocus.module_label
+      ? (isCn
+        ? (lowConfidencePrimaryFocus
+          ? `优先低强度尝试 ${primaryFocus.ingredient_name}，先观察${primaryFocus.module_label}的${primaryFocus.issue_label}变化。`
+          : `优先用 ${primaryFocus.ingredient_name} 处理${primaryFocus.module_label}的${primaryFocus.issue_label}。`)
+        : (lowConfidencePrimaryFocus
+          ? `Trial ${primaryFocus.ingredient_name} conservatively and watch the ${primaryFocus.issue_label} around the ${primaryFocus.module_label}.`
+          : `Prioritize ${primaryFocus.ingredient_name} for the ${primaryFocus.issue_label} signal on the ${primaryFocus.module_label}.`))
+      : '';
   const actionsNow = asStringArray(
     photoUsed
       ? [
+          primaryActionLine,
           ...topActions.slice(0, 3).map((action) => {
             const ingredientName = pickFirstString(action && action.ingredient_name, action && action.ingredient_id);
             const moduleLabel = pickFirstString(action && action.module_label, action && action.module_id);
             const issueType = Array.isArray(action && action.issue_types) ? action.issue_types[0] : null;
             const issueLabel = humanizePhotoStoryIssueLabel(issueType, isCn);
             if (!ingredientName || !moduleLabel) return '';
+            const isPrimaryAction =
+              primaryFocus
+              && String(primaryFocus.module_id || '').trim() === String(action && action.module_id || '').trim()
+              && String(primaryFocus.ingredient_id || '').trim().toLowerCase() === String(action && action.ingredient_id || '').trim().toLowerCase()
+              && primaryActionLine;
+            if (isPrimaryAction) return '';
             return isCn
               ? `优先用 ${ingredientName} 处理${moduleLabel}的${issueLabel}。`
               : `Prioritize ${ingredientName} for the ${issueLabel} signal on the ${moduleLabel}.`;
@@ -35661,6 +36002,7 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       ? (
           String(photoContext.quality_grade || '').trim().toLowerCase() === 'degraded'
             || String(photoContext.quality_grade || '').trim().toLowerCase() === 'fail'
+            || lowConfidencePrimaryFocus
             ? (isCn
               ? `请在更均匀的自然光下复拍同样角度，再确认${pickFirstString(topFindings[0] && topFindings[0].module_label)}的${pickFirstString(topFindings[0] && topFindings[0].issue_label)}。`
               : `Retake the same angles in more even daylight before escalating treatment for the ${pickFirstString(topFindings[0] && topFindings[0].issue_label)} around the ${pickFirstString(topFindings[0] && topFindings[0].module_label)}.`)
@@ -36369,6 +36711,7 @@ function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profi
     analysis_source: pickFirstString(payload.analysis_source),
     low_confidence: payload.low_confidence === true,
     photo_context: photoContext,
+    primary_focus: isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null,
     observed_signals: Array.isArray(photoContext.observed_signals) ? photoContext.observed_signals : [],
     quality_caveats: Array.isArray(photoContext.quality_caveats) ? photoContext.quality_caveats : [],
     top_actions_by_module: Array.isArray(photoContext.top_actions_by_module) ? photoContext.top_actions_by_module : [],
@@ -36421,6 +36764,19 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
   const existingProductsOptimization = normalizeExistingProductsOptimization(candidate.existing_products_optimization);
   if (existingProductsOptimization) candidate.existing_products_optimization = existingProductsOptimization;
   else delete candidate.existing_products_optimization;
+  const primaryFocus = isPlainObject(evidence && evidence.photo_context && evidence.photo_context.primary_focus)
+    ? evidence.photo_context.primary_focus
+    : null;
+  if (primaryFocus) {
+    const isCn = String(evidence && evidence.language || '').toUpperCase() === 'CN';
+    const deterministicPrimaryFinding = buildPhotoStoryPriorityFinding(primaryFocus, isCn);
+    if (deterministicPrimaryFinding) {
+      const priorityFindings = Array.isArray(candidate.priority_findings) ? candidate.priority_findings.filter((row) => isPlainObject(row)) : [];
+      const remainingFindings = priorityFindings.filter((row) => !storyFindingMatchesPrimaryFocus(row, primaryFocus));
+      candidate.priority_findings = [deterministicPrimaryFinding, ...remainingFindings].slice(0, 6);
+      issues.push('photo_primary_focus_aligned');
+    }
+  }
 
   if (!Array.isArray(candidate.priority_findings)) {
     candidate.priority_findings = [];
@@ -36555,6 +36911,8 @@ function buildAnalysisStoryGenerationPrompt({ evidence, fallbackStory } = {}) {
     '- Do NOT use the same placeholder plan for every user.',
     '- Do NOT use medical diagnosis or prescription language.',
     '- Do NOT recommend branded products or claim evidence that is not present in Evidence JSON.',
+    '- If evidence.photo_context.primary_focus exists, keep the headline, priority_findings[0], and first action anchored to that exact module/issue/action.',
+    '- If evidence.photo_context.primary_focus.confidence_bucket is low, use tentative wording such as "suggests" or "may".',
     '- If missing_routine_fields is non-empty, include routine_bridge with why_now, cta_label, and cta_action.',
     '- disclaimer_non_medical MUST be true.',
     'Missing-data policy:',
@@ -36584,6 +36942,7 @@ function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
   const safeEvidence = isPlainObject(evidence) ? evidence : {};
   const evidenceDigest = {
     language: safeEvidence.language || null,
+    primary_focus: isPlainObject(safeEvidence.primary_focus) ? safeEvidence.primary_focus : null,
     finding_evidence: Array.isArray(safeEvidence.finding_evidence)
       ? safeEvidence.finding_evidence.slice(0, 4).map((row) => ({
           title: pickFirstString(row && row.title, row && row.label, row && row.observation),
@@ -36631,6 +36990,7 @@ function buildAnalysisStoryReviewPrompt({ story, evidence } = {}) {
     'Hard rules:',
     '- patch_ops must stay within evidence boundaries.',
     '- Do NOT introduce new findings, causes, products, or brands.',
+    '- If evidence_digest.primary_focus exists, keep headline, priority_findings[0], and the first action aligned to that primary focus.',
     '- Remove any unsupported product recommendation CTA or routine-intake CTA.',
     '- Keep grounded existing_products_optimization entries when they refer to the user\'s current routine rather than a new shopping shortlist.',
     '- Keep ui_card_v1 with headline, key_points, actions_now, avoid_now, confidence_label, next_checkin.',
@@ -71316,6 +71676,8 @@ const __internal = {
   buildSkinAnalysisContextForPrefix,
   buildAnalysisContextSnapshotForRoute,
   buildTaskAnalysisContextForPrefix,
+  buildPhotoStoryContext,
+  buildAnalysisStoryUiCardV1,
   buildAnalysisEvidence,
   ANALYSIS_STORY_GENERATION_PROMPT_VERSION,
   ANALYSIS_STORY_REVIEW_PROMPT_VERSION,
@@ -71348,6 +71710,8 @@ const __internal = {
   deferProfilePatchPersistence,
   deferDiagnosisArtifactPersistence,
   applyAnalysisStoryAndRoutineSoftGate,
+  derivePhotoModulesRecoContext,
+  annotateIngredientPlanForPhotoLed,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,
   buildPersistableLastAnalysisSnapshot,

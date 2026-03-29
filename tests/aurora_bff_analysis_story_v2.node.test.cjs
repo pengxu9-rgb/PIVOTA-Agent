@@ -851,6 +851,295 @@ test('analysis_story_v2: photo-led ingredient plan carries strict-match products
   assert.equal(planCard.payload.targets[0].products.products_empty_reason, undefined);
 });
 
+test('analysis_story_v2: photo story review realigns priority/actions to summary_v1 primary focus and adds low-confidence caveat', () => {
+  const internal = loadInternalWithFlags({});
+  const photoModulesCard = {
+    type: 'photo_modules_v1',
+    payload: {
+      used_photos: true,
+      quality_grade: 'pass',
+      modules: [
+        {
+          module_id: 'forehead',
+          module_rank_score: 0.71,
+          issues: [
+            {
+              issue_type: 'redness',
+              severity_0_4: 2.1,
+              confidence_0_1: 0.77,
+              confidence_bucket: 'high',
+              issue_rank_score: 0.71,
+              evidence_region_ids: ['forehead_redness_bbox'],
+              explanation_short: 'Redness is most noticeable on the forehead.',
+            },
+          ],
+          actions: [
+            {
+              ingredient_id: 'niacinamide',
+              ingredient_name: 'Niacinamide',
+              action_rank_score: 0.71,
+              why: 'Niacinamide is the best lane for the forehead redness signal.',
+              evidence_issue_types: ['redness'],
+              products: [{ product_id: 'niacinamide_serum', name: 'Niacinamide Serum' }],
+            },
+          ],
+        },
+        {
+          module_id: 'under_eye_right',
+          module_rank_score: 0.95,
+          issues: [
+            {
+              issue_type: 'texture',
+              severity_0_4: 2.8,
+              confidence_0_1: 0.08,
+              confidence_bucket: 'low',
+              issue_rank_score: 0.95,
+              evidence_region_ids: ['under_eye_right_texture_heatmap'],
+              explanation_short: 'Texture is most noticeable under the right eye.',
+            },
+          ],
+          actions: [
+            {
+              ingredient_id: 'azelaic_acid',
+              ingredient_name: 'Azelaic Acid',
+              action_rank_score: 0.95,
+              why: 'Azelaic Acid is the best lane for the under-eye texture signal.',
+              evidence_issue_types: ['texture'],
+              products: [],
+              external_search_ctas: [{ title: 'Search Azelaic Acid', url: 'https://example.com/search/azelaic' }],
+            },
+          ],
+        },
+      ],
+      summary_v1: {
+        top_module_id: 'under_eye_right',
+        top_issue_type: 'texture',
+        top_action_ingredient_id: 'azelaic_acid',
+        top_findings: [
+          {
+            module_id: 'under_eye_right',
+            issue_type: 'texture',
+            severity_0_4: 2.8,
+            confidence_0_1: 0.08,
+            confidence_bucket: 'low',
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+        quality_caveats: [],
+      },
+    },
+  };
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      used_photos: true,
+      analysis_source: 'vision_gemini',
+      analysis: { features: [] },
+    },
+    photoModulesCard,
+    profile: {},
+    language: 'EN',
+    fallbackStory: null,
+  });
+
+  assert.equal(evidence.photo_context.primary_focus.module_id, 'under_eye_right');
+  assert.equal(evidence.photo_context.primary_focus.ingredient_id, 'azelaic_acid');
+  assert.equal(evidence.photo_context.quality_caveats.includes('low_confidence_primary_finding'), true);
+
+  const reviewed = internal.reviewAnalysisStoryV2Json({
+    story: {
+      schema_version: 'aurora.analysis_story.v2',
+      confidence_overall: { level: 'medium' },
+      skin_profile: { current_strengths: ['Forehead looks stable.'] },
+      priority_findings: [
+        { priority: 1, title: 'Forehead redness is the main issue', detail: 'Forehead remains the dominant visible concern.' },
+      ],
+      target_state: ['Calm forehead redness first.'],
+      core_principles: ['Stability first.'],
+      am_plan: [],
+      pm_plan: [],
+      timeline: { first_4_weeks: ['Week 1'], week_8_12_expectation: ['Week 8'] },
+      ui_card_v1: {
+        headline: 'Forehead redness is the main issue.',
+        key_points: ['Forehead redness'],
+        actions_now: ['Prioritize niacinamide for forehead redness.'],
+        avoid_now: [],
+        confidence_label: 'medium',
+        next_checkin: 'Re-check in 2 weeks.',
+      },
+      safety_notes: [],
+      disclaimer_non_medical: true,
+    },
+    evidence,
+  });
+
+  assert.equal(reviewed.ok, true);
+  assert.match(String(reviewed.repaired.priority_findings[0].title || ''), /under.?eye|texture/i);
+  assert.match(String(reviewed.repaired.ui_card_v1.headline || ''), /suggest|under.?eye|texture/i);
+  assert.match(String(reviewed.repaired.ui_card_v1.actions_now[0] || ''), /Azelaic|under.?eye|texture/i);
+});
+
+test('analysis_story_v2: photo-led ingredient plan fills resolved_target_step and prunes empty non-primary targets', () => {
+  const internal = loadInternalWithFlags({});
+  const photoModulesCard = {
+    type: 'photo_modules_v1',
+    payload: {
+      used_photos: true,
+      modules: [
+        {
+          module_id: 'forehead',
+          issues: [{ issue_type: 'redness' }],
+          actions: [
+            {
+              ingredient_id: 'panthenol',
+              ingredient_name: 'Panthenol',
+              evidence_issue_types: ['redness'],
+              products: [{ product_id: 'barrier_serum_1', name: 'Barrier Rescue Serum' }],
+            },
+          ],
+        },
+        {
+          module_id: 'under_eye_right',
+          issues: [{ issue_type: 'texture' }],
+          actions: [
+            {
+              ingredient_id: 'azelaic_acid',
+              ingredient_name: 'Azelaic Acid',
+              evidence_issue_types: ['texture'],
+              products: [],
+              external_search_ctas: [{ title: 'Search Azelaic Acid', url: 'https://example.com/search/azelaic' }],
+            },
+          ],
+        },
+        {
+          module_id: 'left_cheek',
+          issues: [{ issue_type: 'redness' }],
+          actions: [
+            {
+              ingredient_id: 'niacinamide',
+              ingredient_name: 'Niacinamide',
+              evidence_issue_types: ['redness'],
+              products: [{ product_id: 'niacinamide_serum_1', name: 'Niacinamide Serum' }],
+            },
+          ],
+        },
+      ],
+      summary_v1: {
+        top_module_id: 'under_eye_right',
+        top_issue_type: 'texture',
+        top_action_ingredient_id: 'azelaic_acid',
+        top_findings: [
+          {
+            module_id: 'under_eye_right',
+            issue_type: 'texture',
+            severity_0_4: 2.8,
+            confidence_0_1: 0.14,
+            confidence_bucket: 'low',
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+      },
+    },
+  };
+
+  const annotated = internal.annotateIngredientPlanForPhotoLed(
+    {
+      targets: [
+        {
+          ingredient_id: 'azelaic_acid',
+          ingredient_name: 'Azelaic Acid',
+          why: ['Helps smooth visible texture.'],
+          products: { competitors: [], dupes: [] },
+        },
+        {
+          ingredient_id: 'panthenol',
+          ingredient_name: 'Panthenol',
+          why: ['Supports visible redness.'],
+          products: { competitors: [], dupes: [] },
+        },
+        {
+          ingredient_id: 'niacinamide',
+          ingredient_name: 'Niacinamide',
+          why: ['Helps rebalance visible redness.'],
+          products: { competitors: [], dupes: [] },
+        },
+        {
+          ingredient_id: 'zinc_pca',
+          ingredient_name: 'Zinc PCA',
+          why: ['Helps manage visible oiliness.'],
+          products: { competitors: [], dupes: [] },
+        },
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          why: ['Daily baseline support.'],
+          products: { competitors: [{ product_id: 'ceramide_cream_1', name: 'Ceramide Cream' }], dupes: [] },
+        },
+      ],
+    },
+    photoModulesCard,
+    'EN',
+  );
+
+  assert.ok(Array.isArray(annotated.targets));
+  assert.equal(annotated.targets.length <= 4, true);
+  assert.equal(annotated.targets[0].ingredient_id, 'azelaic_acid');
+  assert.equal(annotated.targets[0].recommendation_mode, 'cta_only');
+  assert.equal(annotated.targets[0].resolved_target_step, 'serum');
+  assert.equal(annotated.targets.every((row) => typeof row.resolved_target_step === 'string' && row.resolved_target_step.length > 0), true);
+  assert.equal(annotated.targets.some((row) => row.ingredient_id === 'zinc_pca'), false);
+});
+
+test('analysis_story_v2: photo reco handoff stays aligned to summary_v1 primary action instead of raw module order', () => {
+  const internal = loadInternalWithFlags({});
+  const recoContext = internal.derivePhotoModulesRecoContext(
+    {
+      type: 'photo_modules_v1',
+      payload: {
+        modules: [
+          {
+            module_id: 'forehead',
+            module_rank_score: 0.71,
+            actions: [
+              {
+                ingredient_id: 'niacinamide',
+                ingredient_name: 'Niacinamide',
+                action_rank_score: 0.71,
+                why: 'Niacinamide is the best lane for the forehead redness signal.',
+                evidence_issue_types: ['redness'],
+              },
+            ],
+          },
+          {
+            module_id: 'under_eye_right',
+            module_rank_score: 0.95,
+            actions: [
+              {
+                ingredient_id: 'azelaic_acid',
+                ingredient_name: 'Azelaic Acid',
+                action_rank_score: 0.95,
+                why: 'Azelaic Acid is the best lane for the under-eye texture signal.',
+                evidence_issue_types: ['texture'],
+              },
+            ],
+          },
+        ],
+        summary_v1: {
+          top_module_id: 'under_eye_right',
+          top_issue_type: 'texture',
+          top_action_ingredient_id: 'azelaic_acid',
+        },
+      },
+    },
+    { profileSummary: { goals: ['smooth texture'] }, artifactId: 'artifact_photo_1' },
+  );
+
+  assert.ok(recoContext);
+  assert.equal(recoContext.context_origin, 'photo_modules_v1');
+  assert.equal(recoContext.ingredient_query, 'Azelaic Acid');
+  assert.equal(recoContext.resolved_target_step, 'serum');
+  assert.equal(recoContext.goal, 'texture');
+});
+
 test('routine_fit_summary helpers: prompt/context/chips/message stay analysis-first', () => {
   const internal = loadInternalWithFlags({});
   const prompt = internal.buildRoutineFitSummaryPrompt({

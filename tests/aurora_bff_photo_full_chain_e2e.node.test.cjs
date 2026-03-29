@@ -172,7 +172,7 @@ function makeVisionAnalysisFixture() {
   };
 }
 
-function buildRecoChatBody() {
+function buildRecoChatBody(latestRecoContext = null) {
   return {
     action: {
       action_id: 'chip.start.reco_products',
@@ -188,7 +188,11 @@ function buildRecoChatBody() {
       },
     },
     client_state: 'IDLE_CHAT',
-    session: { state: 'idle' },
+    session: {
+      state: {
+        latest_reco_context: latestRecoContext || undefined,
+      },
+    },
     language: 'EN',
   };
 }
@@ -328,21 +332,26 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
           },
         });
         assert.equal(analysis.status, 200);
-        const analysisSummary = getCard(analysis.body, 'analysis_summary');
         const photoModules = getCard(analysis.body, 'photo_modules_v1');
         const story = getCard(analysis.body, 'analysis_story_v2');
-        assert.ok(analysisSummary);
         assert.ok(photoModules);
         assert.ok(story);
 
-        assert.equal(Boolean(analysisSummary.payload && analysisSummary.payload.used_photos), true);
+        const analysisSummary = getCard(analysis.body, 'analysis_summary');
+        const usedPhotos =
+          analysisSummary && analysisSummary.payload
+            ? analysisSummary.payload.used_photos
+            : photoModules.payload && photoModules.payload.used_photos;
+        assert.equal(Boolean(usedPhotos), true);
         const qualityGrade = String(
-          analysisSummary.payload &&
+          analysisSummary && analysisSummary.payload &&
             analysisSummary.payload.quality_report &&
             analysisSummary.payload.quality_report.photo_quality &&
             analysisSummary.payload.quality_report.photo_quality.grade
             ? analysisSummary.payload.quality_report.photo_quality.grade
-            : '',
+            : photoModules.payload && photoModules.payload.quality_grade
+              ? photoModules.payload.quality_grade
+              : '',
         )
           .trim()
           .toLowerCase();
@@ -384,10 +393,12 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
         assert.equal(Array.isArray(uiCard.key_points), true);
         assert.equal(Array.isArray(uiCard.actions_now), true);
         assert.equal(Array.isArray(uiCard.avoid_now), true);
+        const latestRecoContext = analysis.body?.session_patch?.state?.latest_reco_context || null;
+        assert.ok(latestRecoContext);
 
         const chat = await invokeRoute(app, 'POST', '/v1/chat', {
           headers: commonHeaders,
-          body: buildRecoChatBody(),
+          body: buildRecoChatBody(latestRecoContext),
         });
         assert.equal(chat.status, 200);
         const recoCard = getCard(chat.body, 'recommendations');

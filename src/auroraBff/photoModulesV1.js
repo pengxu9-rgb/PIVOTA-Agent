@@ -513,20 +513,19 @@ function computeModuleRankScore({ issues, actions } = {}) {
   return round3(clamp01(topIssueScore * 0.68 + avgTopIssueScore * 0.2 + topActionScore * 0.12));
 }
 
+function findTopProductIdFromAction(actionRow) {
+  if (!actionRow || typeof actionRow !== 'object') return null;
+  const products = Array.isArray(actionRow.products) ? actionRow.products : [];
+  for (const product of products) {
+    const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
+      .trim();
+    if (productId) return productId;
+  }
+  return null;
+}
+
 function findTopProductIdFromModule(moduleRow) {
   if (!moduleRow || typeof moduleRow !== 'object') return null;
-  const actionRows = Array.isArray(moduleRow.actions) ? moduleRow.actions : [];
-  const rankedActions = actionRows
-    .slice()
-    .sort((left, right) => Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0));
-  for (const action of rankedActions) {
-    const products = Array.isArray(action && action.products) ? action.products : [];
-    for (const product of products) {
-      const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
-        .trim();
-      if (productId) return productId;
-    }
-  }
   const moduleProducts = Array.isArray(moduleRow.products) ? moduleRow.products : [];
   for (const product of moduleProducts) {
     const productId = String(product && (product.product_id || product.productId) ? product.product_id || product.productId : '')
@@ -543,7 +542,7 @@ function normalizeConfidenceBucket(value) {
   return 'low';
 }
 
-function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons } = {}) {
+function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons, topFindings } = {}) {
   const caveats = [];
   const normalizedGrade = String(qualityGrade || '').trim().toLowerCase();
   if (normalizedGrade === 'degraded') caveats.push('photo_quality_degraded');
@@ -552,6 +551,21 @@ function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons } = {}) 
     const token = String(reason || '').trim().toLowerCase();
     if (!token) continue;
     caveats.push(token);
+  }
+  const findings = Array.isArray(topFindings) ? topFindings : [];
+  const primaryFinding = findings[0] || null;
+  const primaryBucket = String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
+    || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1);
+  if (primaryBucket === 'low') caveats.push('low_confidence_primary_finding');
+  if (
+    findings.length > 0 &&
+    findings.every((row) => {
+      const bucket = String(row && row.confidence_bucket || '').trim().toLowerCase()
+        || normalizeConfidenceBucket(row && row.confidence_0_1);
+      return bucket === 'low' || bucket === 'medium';
+    })
+  ) {
+    caveats.push('conservative_photo_interpretation');
   }
   return Array.from(new Set(caveats)).slice(0, 6);
 }
@@ -640,9 +654,9 @@ function buildSummaryV1(modules, { qualityGrade = null, qualityReasons = [] } = 
     top_action_ingredient_id: topAction
       ? String(topAction.ingredient_canonical_id || topAction.ingredient_id || '').trim() || null
       : null,
-    top_product_id: findTopProductIdFromModule(topModule),
+    top_product_id: findTopProductIdFromAction(topAction),
     top_findings: topFindings,
-    quality_caveats: buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons }),
+    quality_caveats: buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons, topFindings }),
     module_confidence_overview: confidenceOverview,
     strict_match_coverage_overview: {
       total_actions: totalActions,

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildPhotoModulesCard } = require('../src/auroraBff/photoModulesV1');
+const { buildPhotoModulesCard, buildSummaryV1 } = require('../src/auroraBff/photoModulesV1');
 const { resetVisionMetrics, renderVisionMetricsPrometheus } = require('../src/auroraBff/visionMetrics');
 const { decodeRleBinary, countOnes } = require('../src/auroraBff/evalAdapters/common/metrics');
 
@@ -307,6 +307,102 @@ test('photo modules card: requires used_photos=true; fail quality is tolerated i
       disabledByQuality.card.payload.quality_labels.includes('quality_low_confidence'),
     true,
   );
+});
+
+test('photo modules summary_v1: low-confidence primary finding adds conservative caveats even when quality passes', () => {
+  const summary = buildSummaryV1(
+    [
+      {
+        module_id: 'under_eye_right',
+        module_rank_score: 0.91,
+        issues: [
+          {
+            issue_type: 'texture',
+            severity_0_4: 3,
+            confidence_0_1: 0.12,
+            confidence_bucket: 'low',
+            issue_rank_score: 0.91,
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+        actions: [
+          {
+            ingredient_canonical_id: 'azelaic_acid',
+            ingredient_name: 'Azelaic Acid',
+            action_rank_score: 0.91,
+            products: [],
+          },
+        ],
+      },
+      {
+        module_id: 'nose',
+        module_rank_score: 0.82,
+        issues: [
+          {
+            issue_type: 'texture',
+            severity_0_4: 2.8,
+            confidence_0_1: 0.31,
+            confidence_bucket: 'medium',
+            issue_rank_score: 0.82,
+            evidence_region_ids: ['nose_texture_heatmap'],
+          },
+        ],
+        actions: [],
+      },
+    ],
+    { qualityGrade: 'pass', qualityReasons: [] },
+  );
+
+  assert.ok(summary);
+  assert.equal(summary.top_findings[0].module_id, 'under_eye_right');
+  assert.equal(summary.top_findings[0].confidence_bucket, 'low');
+  assert.equal(summary.quality_caveats.includes('low_confidence_primary_finding'), true);
+  assert.equal(summary.quality_caveats.includes('conservative_photo_interpretation'), true);
+});
+
+test('photo modules summary_v1: top_product_id stays aligned to the primary action instead of borrowing another action product', () => {
+  const summary = buildSummaryV1(
+    [
+      {
+        module_id: 'under_eye_right',
+        module_rank_score: 0.94,
+        issues: [
+          {
+            issue_type: 'texture',
+            severity_0_4: 3,
+            confidence_0_1: 0.65,
+            confidence_bucket: 'medium',
+            issue_rank_score: 0.94,
+            evidence_region_ids: ['under_eye_right_texture_heatmap'],
+          },
+        ],
+        actions: [
+          {
+            ingredient_canonical_id: 'azelaic_acid',
+            ingredient_name: 'Azelaic Acid',
+            action_rank_score: 0.94,
+            products: [],
+          },
+          {
+            ingredient_canonical_id: 'salicylic_acid',
+            ingredient_name: 'Salicylic Acid',
+            action_rank_score: 0.73,
+            products: [
+              {
+                product_id: 'bha_pick_1',
+                name: 'BHA Serum',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    { qualityGrade: 'pass', qualityReasons: [] },
+  );
+
+  assert.ok(summary);
+  assert.equal(summary.top_action_ingredient_id, 'azelaic_acid');
+  assert.equal(summary.top_product_id, null);
 });
 
 test('photo modules card: keeps heatmap evidence when bbox overlaps but heatmap intensity is weak', () => {
