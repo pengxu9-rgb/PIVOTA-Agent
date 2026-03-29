@@ -62,9 +62,18 @@ const {
   createSourcePolicyRuntime,
 } = require('./modules/policy/sourcePolicy');
 const {
+  applyGovernanceShadowRuntimeMetadata,
+} = require('./modules/policy/governanceShadowRuntime');
+const {
   createShoppingContext,
   validateShoppingContextGrowth,
 } = require('./modules/contracts/shoppingContext');
+const {
+  normalizeDecisionObserverNodes,
+  inferDecisionLockReason,
+  extractSearchDecisionAuthorityState,
+  buildDecisionAuthorityPatch,
+} = require('./modules/contracts/searchDecisionAuthority');
 const {
   uiChatFindLatestScenarioSelection,
   uiChatFindLatestShoppingIntent,
@@ -4625,214 +4634,6 @@ function isGuidanceHydrationSupportiveSerumQuery({
     /\bserum(?:s)?\b/i.test(queryText) &&
     /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/i.test(queryText)
   );
-}
-
-function normalizeDecisionObserverNodes(...nodeLists) {
-  const merged = [];
-  for (const nodeList of nodeLists) {
-    const items = Array.isArray(nodeList) ? nodeList : nodeList == null ? [] : [nodeList];
-    for (const item of items) {
-      const normalized = String(item || '').trim();
-      if (!normalized || merged.includes(normalized)) continue;
-      merged.push(normalized);
-    }
-  }
-  return merged;
-}
-
-function inferDecisionLockReason({
-  metadata = {},
-  searchDecision = {},
-  routeHealth = {},
-  searchTrace = {},
-  decisionAuthority = null,
-} = {}) {
-  const explicitReason = String(
-    searchDecision.decision_lock_reason ||
-      metadata.decision_lock_reason ||
-      '',
-  ).trim();
-  if (explicitReason) return explicitReason;
-
-  const crossMerchantCache =
-    metadata?.route_debug?.cross_merchant_cache &&
-    typeof metadata.route_debug.cross_merchant_cache === 'object' &&
-    !Array.isArray(metadata.route_debug.cross_merchant_cache)
-      ? metadata.route_debug.cross_merchant_cache
-      : {};
-  if (crossMerchantCache.main_path_contract_locked === true || metadata.main_path_contract_locked === true) {
-    return 'guidance_cache_success_contract';
-  }
-
-  const finalDecision = String(
-    searchDecision.final_decision ||
-      searchTrace.final_decision ||
-      metadata.final_decision ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  const primaryPathUsed = String(
-    searchDecision.primary_path_used ||
-      routeHealth.primary_path_used ||
-      searchTrace.primary_path_used ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
-  const authority = String(decisionAuthority || metadata.query_source || '').trim().toLowerCase();
-  if (finalDecision === 'cache_returned') return 'cache_main_path';
-  if (finalDecision === 'resolver_returned') return 'resolver_authority';
-  if (finalDecision === 'upstream_returned' || finalDecision === 'products_returned') {
-    return 'primary_authority';
-  }
-  if (finalDecision === 'products_returned_with_clarification' || finalDecision === 'clarify') {
-    return 'clarify_contract';
-  }
-  if (finalDecision === 'strict_empty') return 'strict_empty_contract';
-  if (finalDecision === 'invalid_hit') return 'invalid_hit_contract';
-  if (primaryPathUsed === 'guidance_fastpath' || authority === 'agent_products_guidance_fastpath') {
-    return 'guidance_fastpath_success_contract';
-  }
-  return null;
-}
-
-function extractSearchDecisionAuthorityState(bodyOrMetadata = {}) {
-  const metadata =
-    bodyOrMetadata &&
-    typeof bodyOrMetadata === 'object' &&
-    !Array.isArray(bodyOrMetadata) &&
-    bodyOrMetadata.metadata &&
-    typeof bodyOrMetadata.metadata === 'object' &&
-    !Array.isArray(bodyOrMetadata.metadata)
-      ? bodyOrMetadata.metadata
-      : bodyOrMetadata && typeof bodyOrMetadata === 'object' && !Array.isArray(bodyOrMetadata)
-      ? bodyOrMetadata
-      : {};
-  const routeHealth =
-    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
-      ? metadata.route_health
-      : {};
-  const searchTrace =
-    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
-      ? metadata.search_trace
-      : {};
-  const searchDecision =
-    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
-      ? metadata.search_decision
-      : {};
-  const crossMerchantCache =
-    metadata?.route_debug?.cross_merchant_cache &&
-    typeof metadata.route_debug.cross_merchant_cache === 'object' &&
-    !Array.isArray(metadata.route_debug.cross_merchant_cache)
-      ? metadata.route_debug.cross_merchant_cache
-      : {};
-  const explicitDecisionLocked =
-    searchDecision.decision_locked != null
-      ? Boolean(searchDecision.decision_locked)
-      : metadata.decision_locked != null
-      ? Boolean(metadata.decision_locked)
-      : null;
-  const decisionLocked =
-    explicitDecisionLocked != null
-      ? explicitDecisionLocked
-      : crossMerchantCache.main_path_contract_locked === true || metadata.main_path_contract_locked === true;
-  const decisionAuthority =
-    String(
-      searchDecision.decision_authority ||
-        metadata.query_source ||
-        searchDecision.primary_path_used ||
-        routeHealth.primary_path_used ||
-        searchTrace.primary_path_used ||
-        '',
-    ).trim() || null;
-  const observerNodes = normalizeDecisionObserverNodes(
-    routeHealth.observer_nodes,
-    metadata.observer_nodes,
-  );
-  return {
-    decisionAuthority,
-    decisionLocked,
-    decisionLockReason: inferDecisionLockReason({
-      metadata,
-      searchDecision,
-      routeHealth,
-      searchTrace,
-      decisionAuthority,
-    }),
-    observerNodes,
-  };
-}
-
-function buildDecisionAuthorityPatch({
-  body = null,
-  finalDecision = null,
-  primaryPathUsed = null,
-  decisionAuthority = null,
-  decisionLocked = true,
-  decisionLockReason = null,
-} = {}) {
-  const metadata =
-    body?.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
-      ? body.metadata
-      : {};
-  const resolvedAuthority =
-    String(
-      decisionAuthority ||
-        metadata.query_source ||
-        primaryPathUsed ||
-        '',
-    ).trim() || null;
-  const searchDecision =
-    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
-      ? metadata.search_decision
-      : {};
-  const searchTrace =
-    metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
-      ? metadata.search_trace
-      : {};
-  const routeHealth =
-    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
-      ? metadata.route_health
-      : {};
-
-  return {
-    final_decision:
-      String(finalDecision || searchDecision.final_decision || searchTrace.final_decision || '').trim() || null,
-    primary_path_used:
-      String(primaryPathUsed || searchDecision.primary_path_used || routeHealth.primary_path_used || '').trim() ||
-      null,
-    decision_authority: resolvedAuthority,
-    decision_locked: Boolean(decisionLocked),
-    decision_lock_reason:
-      String(
-        decisionLockReason ||
-          inferDecisionLockReason({
-            metadata,
-            searchDecision: {
-              ...searchDecision,
-              final_decision: finalDecision || searchDecision.final_decision || searchTrace.final_decision || null,
-              primary_path_used:
-                primaryPathUsed ||
-                searchDecision.primary_path_used ||
-                routeHealth.primary_path_used ||
-                null,
-            },
-            routeHealth,
-            searchTrace: {
-              ...searchTrace,
-              final_decision: finalDecision || searchTrace.final_decision || searchDecision.final_decision || null,
-              primary_path_used:
-                primaryPathUsed ||
-                searchTrace.primary_path_used ||
-                routeHealth.primary_path_used ||
-                null,
-            },
-            decisionAuthority: resolvedAuthority,
-          }) ||
-          '',
-      ).trim() || null,
-  };
 }
 
 function withSearchDiagnostics(body, diagnostics = {}) {
@@ -18214,8 +18015,40 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     const { operation, payload: parsedPayload } = parsed.data;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
-    const metadata = normalizeMetadata(req.body.metadata, parsedPayload);
-    const payload = applyFindProductsMultiSourceContract(parsedPayload, metadata, operation);
+    let metadata = normalizeMetadata(req.body.metadata, parsedPayload);
+    let payload = applyFindProductsMultiSourceContract(parsedPayload, metadata, operation);
+    try {
+      gatewayGovernanceEnvelope = prepareGatewayGovernanceEnvelope(
+        buildInvokeIngressGatewayInput({
+          req,
+          routeContext,
+          operation,
+          payload,
+          metadata,
+          request_id: gatewayRequestId,
+        }),
+      );
+      gatewayGovernanceAudit = buildGatewayShadowAudit(gatewayGovernanceEnvelope, {
+        shadow_mode: shouldUseGatewayGovernanceShadowMode(routeContext),
+      });
+    } catch (gatewayGovernanceErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: gatewayGovernanceErr?.message || String(gatewayGovernanceErr),
+          operation,
+        },
+        'failed to prepare gateway governance audit for invoke ingress',
+      );
+      gatewayGovernanceEnvelope = null;
+      gatewayGovernanceAudit = null;
+    }
+    metadata = applyGovernanceShadowRuntimeMetadata({
+      metadata,
+      gatewayGovernanceAudit,
+      operation,
+    });
+    payload = applyFindProductsMultiSourceContract(parsedPayload, metadata, operation);
     const auroraInvokePlan = buildAuroraFindProductsMultiPlan({
       source: metadata?.source,
       operation,
@@ -18306,32 +18139,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     )
       ? Number(findProductsExpansionMeta.ambiguity_score_pre)
       : null;
-    try {
-      gatewayGovernanceEnvelope = prepareGatewayGovernanceEnvelope(
-        buildInvokeIngressGatewayInput({
-          req,
-          routeContext,
-          operation,
-          payload: effectivePayload,
-          metadata: policyMetadata || metadata || {},
-          request_id: gatewayRequestId,
-        }),
-      );
-      gatewayGovernanceAudit = buildGatewayShadowAudit(gatewayGovernanceEnvelope, {
-        shadow_mode: shouldUseGatewayGovernanceShadowMode(routeContext),
-      });
-    } catch (gatewayGovernanceErr) {
-      logger.warn(
-        {
-          gateway_request_id: gatewayRequestId,
-          err: gatewayGovernanceErr?.message || String(gatewayGovernanceErr),
-          operation,
-        },
-        'failed to prepare gateway governance audit for invoke ingress',
-      );
-      gatewayGovernanceEnvelope = null;
-      gatewayGovernanceAudit = null;
-    }
     if (operation === 'find_products_multi') {
       const invokeGuidanceFastpathResponse = await runGuidanceServerOwnedLadderSearch({
         req,
@@ -25354,6 +25161,11 @@ module.exports._debug = {
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
   resolveSearchDedupePerTitleLimit,
+  normalizeDecisionObserverNodes,
+  inferDecisionLockReason,
+  extractSearchDecisionAuthorityState,
+  buildDecisionAuthorityPatch,
+  applyGovernanceShadowRuntimeMetadata,
   normalizeGovernanceShadowBlockContract,
   mergeInvokeGatewayAuditMetadata,
   resolveCatalogSyncMerchantIds,

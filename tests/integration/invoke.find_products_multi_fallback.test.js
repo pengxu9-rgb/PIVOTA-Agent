@@ -1160,7 +1160,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     expect(resp.body.metadata.selected_fallback_attempt).toBeGreaterThan(0);
   });
 
-  test('aurora direct_api source is governance-block-observed even when fallback toggles are forced', async () => {
+  test('aurora direct_api source downgrades to the stable public search contract when governance block is observed', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
@@ -1189,15 +1189,20 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === queryText &&
-          String(q.fast_mode || '') === 'true'
+          String(q.query || '') === queryText
         );
       })
       .reply(200, {
         status: 'success',
         success: true,
-        products: [],
-        total: 0,
+        products: [
+          {
+            product_id: 'cp_primary_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper Peptide Serum',
+          },
+        ],
+        total: 1,
       });
 
     const secondaryScope = nock('http://pivota.test')
@@ -1224,6 +1229,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
+      .set('X-Pivota-Invocation-Surface', 'direct_api')
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -1241,20 +1247,34 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(secondaryScope.isDone()).toBe(true);
+    expect(secondaryScope.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'cp_primary_1',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        }),
+      ]),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: expect.stringMatching(/primary_(unusable|irrelevant)_no_fallback/),
-        }),
-        strict_empty: true,
+        query_source: 'agent_products_search',
         gateway_governance: expect.objectContaining({
           observed_action: 'block',
           would_enforce: true,
           reason_codes: expect.arrayContaining(['layer_not_allowed']),
+        }),
+        governance_shadow_contract: expect.objectContaining({
+          observer_only: true,
+        }),
+        search_decision: expect.objectContaining({
+          decision_authority: 'agent_products_search',
+          decision_locked: true,
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
         }),
       }),
     );
@@ -1396,7 +1416,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('aurora direct_api uses dedicated upstream base before governance-block-observed strict empty', async () => {
+  test('aurora direct_api shadow block uses the stable public base instead of the aurora upstream base', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
@@ -1413,10 +1433,26 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
         products: [],
         total: 0,
       });
+    const publicPrimaryScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '') === queryText)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cp_public_1',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper Peptide Repair Serum',
+          },
+        ],
+        total: 1,
+      });
 
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
+      .set('X-Pivota-Invocation-Surface', 'direct_api')
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -1432,12 +1468,23 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(auroraPrimaryScope.isDone()).toBe(true);
+    expect(auroraPrimaryScope.isDone()).toBe(false);
+    expect(publicPrimaryScope.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'cp_public_1',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        }),
+      ]),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        strict_empty: true,
+        query_source: 'agent_products_search',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
         gateway_governance: expect.objectContaining({
           observed_action: 'block',
           would_enforce: true,
@@ -1861,7 +1908,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     );
   });
 
-  test('aurora direct_api path governance-blocks before adopting relevant secondary fallback', async () => {
+  test('aurora direct_api path keeps the stable public primary and suppresses secondary fallback adoption', async () => {
     const queryText = 'copper peptides serum alternatives';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
     process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
@@ -1873,23 +1920,23 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         return (
-          String(q.query || '') === queryText &&
-          String(q.search_all_merchants || '') === 'true' &&
-          String(q.fast_mode || '') === 'true'
+          String(q.query || '') === queryText
         );
       })
       .reply(200, {
         status: 'success',
         success: true,
         products: [
-          { product_id: 'irrelevant_1', merchant_id: 'm1', title: 'Round Powder Brush' },
-          { product_id: 'irrelevant_2', merchant_id: 'm2', title: 'Foundation Makeup Sponge' },
-          { product_id: 'irrelevant_3', merchant_id: 'm3', title: 'Eyeliner Brush Kit' },
+          {
+            product_id: 'cp_primary_2',
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            title: 'Copper Peptides Serum Alternatives',
+          },
         ],
-        total: 3,
+        total: 1,
       });
 
-    nock('http://pivota.test')
+    const fallbackScope = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke', (body) => {
         const parsed = typeof body === 'string' ? JSON.parse(body) : body;
         return (
@@ -1916,6 +1963,7 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
     const app = require('../../src/server');
     const resp = await request(app)
       .post('/agent/shop/v1/invoke')
+      .set('X-Pivota-Invocation-Surface', 'direct_api')
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -1934,15 +1982,23 @@ describe('/agent/shop/v1/invoke find_products_multi fallback', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(fallbackScope.isDone()).toBe(false);
     expect(Array.isArray(resp.body.products)).toBe(true);
-    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'cp_primary_2',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+        }),
+      ]),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        proxy_search_fallback: expect.objectContaining({
-          applied: true,
-          reason: expect.stringMatching(/primary_(unusable|irrelevant)_no_fallback/),
+        query_source: 'agent_products_search',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
         }),
-        strict_empty: true,
         gateway_governance: expect.objectContaining({
           observed_action: 'block',
           would_enforce: true,
