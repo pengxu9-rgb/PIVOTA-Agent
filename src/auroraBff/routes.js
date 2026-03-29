@@ -69227,8 +69227,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           !hasStableRecoTarget
           && !hasExplicitRecoTarget
           && !ingredientDrivenRecommendationRequested
-          && !travelRecoHandoff
-          && chatRecoContextSourceMode === 'explicit_only';
+          && !travelRecoHandoff;
 
         if (genericGoalDrivenNeedsMoreContext) {
           const recommendationContextState = {
