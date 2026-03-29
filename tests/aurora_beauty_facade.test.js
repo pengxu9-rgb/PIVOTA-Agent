@@ -806,6 +806,7 @@ describe('Aurora beauty orchestration facade', () => {
       primaryProductsBeforeGuidance: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
       primaryHasExternalSeedBeforeGuidance: false,
       primaryHasValidGuidanceHit: true,
+      primaryHasLockedGuidanceMainPath: false,
       primaryHasCacheReturnedGuidanceFastpath: false,
     });
   });
@@ -867,7 +868,68 @@ describe('Aurora beauty orchestration facade', () => {
       primaryProductsBeforeGuidance: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
       primaryHasExternalSeedBeforeGuidance: false,
       primaryHasValidGuidanceHit: true,
+      primaryHasLockedGuidanceMainPath: false,
       primaryHasCacheReturnedGuidanceFastpath: true,
+    });
+  });
+
+  test('guidance-only direct supplement plan skips when a cache-stage main path contract is already locked', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      isExternalSeedProduct(product) {
+        return product?.merchant_name === 'external_seed';
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyDirectSupplementPlan({
+        guidanceOnlyDiscovery: true,
+        requestedAllowExternalSeed: true,
+        requestedTargetStepFamily: 'serum',
+        queryText: 'hydrating serum',
+        upstreamData: {
+          products: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
+          metadata: {
+            search_decision: {
+              hit_quality: 'valid_hit',
+              same_family_topk_count: 1,
+            },
+            route_debug: {
+              cross_merchant_cache: {
+                main_path_contract_locked: true,
+                guidance_hit_quality: 'valid_hit',
+                internal_products_relevant_count: 1,
+                guidance_scoped_internal_products_count: 1,
+              },
+            },
+          },
+        },
+        requestedLimit: 10,
+      }),
+    ).toEqual({
+      shouldAttemptDirectSupplement: false,
+      existingMeta: {
+        search_decision: {
+          hit_quality: 'valid_hit',
+          same_family_topk_count: 1,
+        },
+        route_debug: {
+          cross_merchant_cache: {
+            main_path_contract_locked: true,
+            guidance_hit_quality: 'valid_hit',
+            internal_products_relevant_count: 1,
+            guidance_scoped_internal_products_count: 1,
+          },
+        },
+      },
+      existingSearchDecision: {
+        hit_quality: 'valid_hit',
+        same_family_topk_count: 1,
+      },
+      primaryProductsBeforeGuidance: [{ product_id: 'sku_1', merchant_name: 'internal_cache' }],
+      primaryHasExternalSeedBeforeGuidance: false,
+      primaryHasValidGuidanceHit: true,
+      primaryHasLockedGuidanceMainPath: true,
+      primaryHasCacheReturnedGuidanceFastpath: false,
     });
   });
 
@@ -1424,6 +1486,7 @@ describe('Aurora beauty orchestration facade', () => {
           reason: 'anchor_below_threshold',
         },
         cacheRejectedLowQuality: true,
+        mainPathContractLocked: false,
         cacheMissingExternalForUnified: true,
         bypassCacheStrictEmptyForUnified: true,
         cacheStrictEmptyBypassReason: 'missing_external_for_unified',
@@ -1443,6 +1506,7 @@ describe('Aurora beauty orchestration facade', () => {
         reason: 'anchor_below_threshold',
       },
       cache_rejected_low_quality: true,
+      main_path_contract_locked: false,
       cache_missing_external_for_unified: true,
       cache_strict_empty_bypassed: true,
       cache_strict_empty_bypass_reason: 'missing_external_for_unified',
@@ -1502,6 +1566,7 @@ describe('Aurora beauty orchestration facade', () => {
         anchor_ratio: 0.39,
       },
       cacheRejectedLowQuality: true,
+      mainPathContractLocked: false,
       cacheMissingExternalForUnified: false,
       cacheStrictEmptyBypassReason: 'cache_rejected_low_quality',
       forceSearchFirstForExpandedQuery: false,
@@ -1556,6 +1621,7 @@ describe('Aurora beauty orchestration facade', () => {
         reason: null,
       },
       cacheRejectedLowQuality: false,
+      mainPathContractLocked: true,
       cacheMissingExternalForUnified: false,
       cacheStrictEmptyBypassReason: null,
       forceSearchFirstForExpandedQuery: false,
@@ -1618,6 +1684,71 @@ describe('Aurora beauty orchestration facade', () => {
         reason: null,
       },
       cacheRejectedLowQuality: false,
+      mainPathContractLocked: true,
+      cacheMissingExternalForUnified: false,
+      cacheStrictEmptyBypassReason: null,
+      forceSearchFirstForExpandedQuery: false,
+      bypassCacheStrictEmptyForUnified: false,
+    });
+  });
+
+  test('guidance-only cache transition plan locks a relaxed attribute-style hydrating serum main path once the shared contract is satisfied', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      evaluateCacheQualityGate() {
+        return {
+          enabled: true,
+          accepted: true,
+          reason: null,
+        };
+      },
+      isShoppingSource() {
+        return false;
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheTransitionPlan({
+        effectiveCacheHit: true,
+        response: {
+          products: [{ product_id: 'sku_1' }],
+        },
+        effectiveProducts: [{ product_id: 'sku_1' }],
+        cacheQueryText: 'hydrating serum',
+        queryText: 'hydrating serum skincare serum treatment serum face serum',
+        intent: { query_class: 'attribute' },
+        traceQueryClass: 'attribute',
+        cachePolicyQueryClass: 'attribute',
+        cacheBrandLikeQuery: false,
+        isLookupQuery: false,
+        cacheRelevant: false,
+        relaxCacheRelevanceGate: true,
+        unifiedRelevanceRequested: true,
+        externalCount: 0,
+        source: 'aurora-bff',
+        hasMerchantScope: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyQueryProfile: { isSpecificBeautyQuery: false, bucket: 'skincare' },
+        internalGuidanceHitDecision: {
+          applied: true,
+          hit_quality: 'valid_hit',
+          same_family_topk_count: 1,
+          success_contract_result: {
+            satisfied: true,
+          },
+        },
+      }),
+    ).toEqual({
+      effectiveCacheHit: true,
+      withPolicyProducts: [{ product_id: 'sku_1' }],
+      cacheClarifyOnly: false,
+      cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheValidation: {
+        enabled: true,
+        accepted: true,
+        reason: null,
+      },
+      cacheRejectedLowQuality: false,
+      mainPathContractLocked: true,
       cacheMissingExternalForUnified: false,
       cacheStrictEmptyBypassReason: null,
       forceSearchFirstForExpandedQuery: false,
@@ -1672,6 +1803,7 @@ describe('Aurora beauty orchestration facade', () => {
         reason: null,
       },
       cacheRejectedLowQuality: false,
+      mainPathContractLocked: false,
       cacheMissingExternalForUnified: true,
       cacheStrictEmptyBypassReason: 'missing_external_for_unified',
       forceSearchFirstForExpandedQuery: false,

@@ -21049,6 +21049,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheBrandLikeQuery,
             isLookupQuery,
             cacheRelevant,
+            relaxCacheRelevanceGate,
             unifiedRelevanceRequested,
             externalCount,
             source,
@@ -21063,6 +21064,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheTransitionPlan.cacheClarifyOnlyShouldUseEarlyDecision;
           const cacheValidation = cacheTransitionPlan.cacheValidation;
           const cacheRejectedLowQuality = cacheTransitionPlan.cacheRejectedLowQuality;
+          const mainPathContractLocked =
+            cacheTransitionPlan.mainPathContractLocked;
           const cacheMissingExternalForUnified =
             cacheTransitionPlan.cacheMissingExternalForUnified;
           const cacheStrictEmptyBypassReason =
@@ -21076,6 +21079,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             effectiveCacheHit,
             cacheValidation,
             cacheRejectedLowQuality,
+            mainPathContractLocked,
             cacheMissingExternalForUnified,
             bypassCacheStrictEmptyForUnified,
             cacheStrictEmptyBypassReason,
