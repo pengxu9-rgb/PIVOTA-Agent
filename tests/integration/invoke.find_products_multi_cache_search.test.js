@@ -1815,6 +1815,161 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('generic serum cache flow tightens to serum-only hits when essence/concentrate noise would fail cache quality', async () => {
+    process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 4 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_skin_a',
+                merchant_name: 'Skin Shop A',
+                product_data: {
+                  id: 'prod_winona',
+                  product_id: 'prod_winona',
+                  merchant_id: 'merch_skin_a',
+                  title: 'Winona Soothing Repair Serum',
+                  description: 'repair serum for sensitive skin',
+                  product_type: 'Serum',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+              {
+                merchant_id: 'merch_skin_b',
+                merchant_name: 'Skin Shop B',
+                product_data: {
+                  id: 'prod_ordinary',
+                  product_id: 'prod_ordinary',
+                  merchant_id: 'merch_skin_b',
+                  title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                  description: 'niacinamide serum for uneven tone',
+                  product_type: 'Serum',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 8,
+                },
+              },
+              {
+                merchant_id: 'merch_skin_c',
+                merchant_name: 'Skin Shop C',
+                product_data: {
+                  id: 'prod_concentrate_1',
+                  product_id: 'prod_concentrate_1',
+                  merchant_id: 'merch_skin_c',
+                  title: 'Youth Reset Concentrate',
+                  description: 'brightening concentrate for smoother skin',
+                  product_type: 'Concentrate',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+              {
+                merchant_id: 'merch_skin_d',
+                merchant_name: 'Skin Shop D',
+                product_data: {
+                  id: 'prod_essence_1',
+                  product_id: 'prod_essence_1',
+                  merchant_id: 'merch_skin_d',
+                  title: 'Hydra Veil Essence',
+                  description: 'daily essence for softer-looking skin',
+                  product_type: 'Essence',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 5,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.search_all_merchants || '') === 'true' && String(q.query || '') === 'serum')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'upstream_travel_1',
+            product_id: 'upstream_travel_1',
+            merchant_id: 'merchant_x',
+            title: 'Rapid Dark Spot Correcting Serum Travel Size',
+            description: 'travel serum',
+            status: 'active',
+          },
+          {
+            id: 'upstream_travel_2',
+            product_id: 'upstream_travel_2',
+            merchant_id: 'merchant_y',
+            title: 'Vita-C Glycolic Serum Deluxe Travel Size',
+            description: 'deluxe travel serum',
+            status: 'active',
+          },
+          {
+            id: 'upstream_jumbo_1',
+            product_id: 'upstream_jumbo_1',
+            merchant_id: 'merchant_z',
+            title: 'Vitamin C Super Serum Plus - Jumbo',
+            description: 'jumbo serum',
+            status: 'active',
+          },
+        ],
+        total: 3,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'serum',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+        source_breakdown: expect.objectContaining({
+          internal_count: 2,
+          external_seed_count: 0,
+        }),
+        cache_stage_selected_source: 'internal_cache',
+      }),
+    );
+    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
+      expect.arrayContaining([
+        'Winona Soothing Repair Serum',
+        'The Ordinary Niacinamide 10% + Zinc 1%',
+      ]),
+    );
+    expect(resp.body.products.map((item) => String(item?.title || ''))).not.toEqual(
+      expect.arrayContaining(['Youth Reset Concentrate', 'Hydra Veil Essence']),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('aurora-bff serum contract stays internal-first while supplementing external coverage', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora.test';
