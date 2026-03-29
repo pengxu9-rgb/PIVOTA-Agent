@@ -21055,6 +21055,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             hasMerchantScope,
             preferInternalSpecificBeautyCache,
             cacheBeautyQueryProfile,
+            internalGuidanceHitDecision,
           });
           effectiveCacheHit = cacheTransitionPlan.effectiveCacheHit;
           const withPolicyProducts = cacheTransitionPlan.withPolicyProducts;

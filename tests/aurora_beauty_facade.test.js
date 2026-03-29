@@ -1563,6 +1563,68 @@ describe('Aurora beauty orchestration facade', () => {
     });
   });
 
+  test('guidance-only cache transition plan preserves a hydration-supportive serum main path when the shared success contract is satisfied', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      evaluateCacheQualityGate() {
+        return {
+          enabled: true,
+          accepted: true,
+          reason: null,
+        };
+      },
+      isShoppingSource() {
+        return false;
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyCacheTransitionPlan({
+        effectiveCacheHit: false,
+        response: {
+          products: [{ product_id: 'sku_1' }],
+        },
+        effectiveProducts: [{ product_id: 'sku_1' }],
+        cacheQueryText: 'hydrating serum',
+        queryText: 'hydrating serum',
+        intent: { query_class: 'category' },
+        traceQueryClass: 'category',
+        cachePolicyQueryClass: 'category',
+        cacheBrandLikeQuery: false,
+        isLookupQuery: false,
+        cacheRelevant: false,
+        unifiedRelevanceRequested: true,
+        externalCount: 0,
+        source: 'aurora-bff',
+        hasMerchantScope: false,
+        preferInternalSpecificBeautyCache: false,
+        cacheBeautyQueryProfile: { isSpecificBeautyQuery: false, bucket: 'skincare' },
+        internalGuidanceHitDecision: {
+          applied: true,
+          hit_quality: 'valid_hit',
+          same_family_topk_count: 1,
+          success_contract_result: {
+            satisfied: true,
+          },
+        },
+      }),
+    ).toEqual({
+      effectiveCacheHit: true,
+      withPolicyProducts: [{ product_id: 'sku_1' }],
+      cacheClarifyOnly: false,
+      cacheClarifyOnlyShouldUseEarlyDecision: false,
+      cacheValidation: {
+        enabled: true,
+        accepted: true,
+        reason: null,
+      },
+      cacheRejectedLowQuality: false,
+      cacheMissingExternalForUnified: false,
+      cacheStrictEmptyBypassReason: null,
+      forceSearchFirstForExpandedQuery: false,
+      bypassCacheStrictEmptyForUnified: false,
+    });
+  });
+
   test('guidance-only cache transition plan still marks unified relevance external gap for non-serum generic beauty queries', () => {
     const runtime = createAuroraBeautyOrchestrationRuntime({
       evaluateCacheQualityGate() {
