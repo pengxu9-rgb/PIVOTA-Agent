@@ -1294,6 +1294,12 @@ test('/v1/chat: photo contextual generic reco restores verified context candidat
     assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
     assert.equal(payload.recommendation_meta?.verified_candidate_restore_applied, true);
     assert.equal(payload.recommendation_meta?.verified_candidate_restore_count, 1);
+    assert.equal(payload.recommendation_meta?.contract_status, 'recommendations_ready');
+    assert.equal(payload.recommendation_meta?.terminal_success, true);
+    assert.equal(payload.recommendation_meta?.viable_pool_strength, 'strong');
+    assert.equal(payload.recommendation_meta?.target_fidelity_level, 'satisfied');
+    assert.equal(payload.recommendation_meta?.weak_viable_pool, undefined);
+    assert.equal(payload.recommendation_meta?.selected_candidate_count, 1);
     assert.equal(Array.isArray(payload.recommendations), true);
     assert.equal(payload.recommendations.some((row) => String(row?.product_id || '') === 'bha_verified_1'), true);
     assert.equal(payload.recommendations.some((row) => /salicylic acid/i.test(JSON.stringify(row))), true);

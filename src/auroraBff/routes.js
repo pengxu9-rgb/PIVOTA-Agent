@@ -70164,6 +70164,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               delete restoredRecommendationMeta.products_empty_reason;
               delete restoredRecommendationMeta.catalog_skip_reason;
               delete restoredRecommendationMeta.upstream_status;
+              delete restoredRecommendationMeta.weak_viable_pool;
+              delete restoredRecommendationMeta.same_family_success_threshold_met;
+              delete restoredRecommendationMeta.overall_target_fidelity_satisfied;
+              delete restoredRecommendationMeta.selected_candidate_count;
+              delete restoredRecommendationMeta.candidate_pool_signature;
               norm.payload = {
                 ...norm.payload,
                 source: 'catalog_grounded_v1',
@@ -70171,6 +70176,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                 grounding_status: 'grounded',
                 grounded_count: restoredRecommendations.length,
                 ungrounded_count: 0,
+                recommendation_confidence_level: pickFirstTrimmed(norm.payload?.recommendation_confidence_level, 'medium') || 'medium',
+                recommendation_confidence_score:
+                  Number.isFinite(Number(norm.payload?.recommendation_confidence_score))
+                    ? Number(norm.payload.recommendation_confidence_score)
+                    : 0.61,
                 recommendation_meta: {
                   ...restoredRecommendationMeta,
                   source_mode: 'catalog_grounded',
@@ -70187,15 +70197,19 @@ function mountAuroraBffRoutes(app, { logger }) {
                   target_fidelity_level: 'satisfied',
                   presentation_mode: 'deterministic_degraded',
                   success_mode: 'degraded_success',
+                  same_family_success_threshold_met: true,
+                  overall_target_fidelity_satisfied: true,
                   pre_llm_selected_candidate_count: restoredRecommendations.length,
                   final_selected_candidate_count: restoredRecommendations.length,
                   post_guardrail_count: restoredRecommendations.length,
+                  selected_candidate_count: restoredRecommendations.length,
                   verified_candidate_restore_applied: true,
                   verified_candidate_restore_count: restoredRecommendations.length,
                 },
                 metadata: {
                   ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
                   mainline_status: 'grounded_success',
+                  contract_status: 'recommendations_ready',
                   verified_candidate_restore_applied: true,
                   verified_candidate_restore_count: restoredRecommendations.length,
                 },
