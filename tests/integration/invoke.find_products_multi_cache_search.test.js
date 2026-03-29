@@ -1473,7 +1473,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           search: {
             query: 'serum',
             page: 1,
-            limit: 5,
+            limit: 6,
             in_stock_only: true,
           },
         },
@@ -2139,6 +2139,190 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
     expect(resp.body.products.map((item) => String(item?.title || ''))).not.toEqual(
       expect.arrayContaining(['Hydra Veil Essence', 'Youth Reset Concentrate']),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('generic serum cache flow widens the cache fetch window before falling back upstream', async () => {
+    process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
+
+    const makeNoiseRow = (index) => ({
+      merchant_id: `merch_noise_${index}`,
+      merchant_name: `Noise Shop ${index}`,
+      product_data: {
+        id: `prod_noise_${index}`,
+        product_id: `prod_noise_${index}`,
+        merchant_id: `merch_noise_${index}`,
+        title:
+          index % 3 === 0
+            ? `Barrier Repair Cream ${index}`
+            : index % 3 === 1
+            ? `Daily Sunscreen SPF ${index}`
+            : `Hydration Cleanser ${index}`,
+        description: 'recent skincare noise row',
+        product_type: index % 2 === 0 ? 'Cream' : 'Cleanser',
+        category: 'skincare',
+        status: 'published',
+        inventory_quantity: 9,
+      },
+    });
+
+    const serumRows = [
+      {
+        merchant_id: 'merch_skin_a',
+        merchant_name: 'Skin Shop A',
+        product_data: {
+          id: 'prod_winona',
+          product_id: 'prod_winona',
+          merchant_id: 'merch_skin_a',
+          title: 'Winona Soothing Repair Serum',
+          status: 'published',
+          inventory_quantity: 6,
+        },
+      },
+      {
+        merchant_id: 'merch_skin_b',
+        merchant_name: 'Skin Shop B',
+        product_data: {
+          id: 'prod_ordinary',
+          product_id: 'prod_ordinary',
+          merchant_id: 'merch_skin_b',
+          title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          status: 'published',
+          inventory_quantity: 8,
+        },
+      },
+      {
+        merchant_id: 'merch_skin_c',
+        merchant_name: 'Skin Shop C',
+        product_data: {
+          id: 'prod_truth',
+          product_id: 'prod_truth',
+          merchant_id: 'merch_skin_c',
+          title: 'Truth Serum',
+          status: 'published',
+          inventory_quantity: 5,
+        },
+      },
+      {
+        merchant_id: 'merch_skin_d',
+        merchant_name: 'Skin Shop D',
+        product_data: {
+          id: 'prod_vitc',
+          product_id: 'prod_vitc',
+          merchant_id: 'merch_skin_d',
+          title: 'Vitamin-C Serum',
+          status: 'published',
+          inventory_quantity: 5,
+        },
+      },
+      {
+        merchant_id: 'merch_skin_e',
+        merchant_name: 'Skin Shop E',
+        product_data: {
+          id: 'prod_banana',
+          product_id: 'prod_banana',
+          merchant_id: 'merch_skin_e',
+          title: 'Banana Bright 15% Vitamin C Dark Spot Serum',
+          status: 'published',
+          inventory_quantity: 5,
+        },
+      },
+      {
+        merchant_id: 'merch_skin_f',
+        merchant_name: 'Skin Shop F',
+        product_data: {
+          id: 'prod_watch',
+          product_id: 'prod_watch',
+          merchant_id: 'merch_skin_f',
+          title: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+          status: 'published',
+          inventory_quantity: 5,
+        },
+      },
+    ];
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 86 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          const fetchLimit = Number(params[params.length - 1] || 0);
+          const noiseRows = Array.from({ length: 80 }, (_, index) => makeNoiseRow(index + 1));
+          return {
+            rows: fetchLimit >= 240 ? noiseRows.concat(serumRows) : noiseRows,
+          };
+        }
+        if (text.includes('FROM products_cache') && !text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.search_all_merchants || '') === 'true' && String(q.query || '') === 'serum')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'upstream_serum_1',
+            product_id: 'upstream_serum_1',
+            merchant_id: 'merchant_x',
+            title: 'Travel Brightening Serum',
+            description: 'mini serum set',
+            status: 'active',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'serum',
+            page: 1,
+            limit: 5,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'cache_cross_merchant_search',
+        source_breakdown: expect.objectContaining({
+          internal_count: 5,
+          external_seed_count: 0,
+        }),
+        cache_stage_selected_source: 'internal_cache',
+      }),
+    );
+    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
+      expect.arrayContaining([
+        'Winona Soothing Repair Serum',
+        'The Ordinary Niacinamide 10% + Zinc 1%',
+        'Truth Serum',
+        'Banana Bright 15% Vitamin C Dark Spot Serum',
+      ]),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_query_terms).toEqual(
+      expect.arrayContaining(['serum', 'niacinamide', 'vitamin c']),
+    );
+    expect(resp.body.metadata?.route_debug?.cross_merchant_cache?.cache_query_terms).not.toEqual(
+      expect.arrayContaining(['moisturizer', 'sunscreen', 'cleanser', 'cream']),
     );
     expect(upstreamSearch.isDone()).toBe(false);
   });
