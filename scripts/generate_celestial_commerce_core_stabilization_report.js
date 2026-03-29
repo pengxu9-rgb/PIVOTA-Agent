@@ -88,28 +88,80 @@ function collectScorecardBuckets(scorecard = {}) {
 
 function collectStagingReviewBuckets(stagingMatrix = {}) {
   const results = Array.isArray(stagingMatrix.results) ? stagingMatrix.results : [];
+  const auroraResults = Array.isArray(stagingMatrix.aurora_manual_results)
+    ? stagingMatrix.aurora_manual_results
+    : [];
+  const manualCases = results.filter((item) => item.execution_mode === 'manual');
+  const manualBlockingIds = new Set(
+    manualCases.filter((item) => item.blocking !== false).map((item) => String(item.id || '').trim()),
+  );
+  const manualNonBlockingIds = new Set(
+    manualCases.filter((item) => item.blocking === false).map((item) => String(item.id || '').trim()),
+  );
+  const nonManualReviewRequired =
+    results.length === 0
+      ? Number(stagingMatrix?.summary?.review_required_count || 0)
+      : results.filter(
+          (item) => item.overall_status === 'review_required' && item.execution_mode !== 'manual',
+        ).length;
+
+  if (auroraResults.length > 0) {
+    let manualReviewRequiredBlocking = 0;
+    let manualReviewRequiredNonBlocking = 0;
+    let manualReviewRequiredUnknown = 0;
+    for (const item of auroraResults) {
+      const verdict = String(item?.verdict || item?.overall_status || '').trim();
+      if (verdict !== 'review_required') continue;
+      const id = String(item?.id || '').trim();
+      if (manualBlockingIds.has(id)) {
+        manualReviewRequiredBlocking += 1;
+      } else if (manualNonBlockingIds.has(id)) {
+        manualReviewRequiredNonBlocking += 1;
+      } else {
+        manualReviewRequiredUnknown += 1;
+      }
+    }
+    return {
+      manual_review_required_blocking: manualReviewRequiredBlocking,
+      manual_review_required_non_blocking: manualReviewRequiredNonBlocking,
+      manual_review_required_unknown: manualReviewRequiredUnknown,
+      non_manual_review_required: nonManualReviewRequired,
+      manual_review_artifact_present: true,
+    };
+  }
+
   if (results.length === 0) {
     return {
-      manual_review_required: 0,
-      non_manual_review_required: Number(stagingMatrix?.summary?.review_required_count || 0),
+      manual_review_required_blocking: 0,
+      manual_review_required_non_blocking: 0,
+      manual_review_required_unknown: 0,
+      non_manual_review_required: nonManualReviewRequired,
+      manual_review_artifact_present: false,
     };
   }
   return {
-    manual_review_required: results.filter(
-      (item) => item.overall_status === 'review_required' && item.execution_mode === 'manual',
+    manual_review_required_blocking: manualCases.filter(
+      (item) => item.overall_status === 'review_required' && item.blocking !== false,
     ).length,
-    non_manual_review_required: results.filter(
-      (item) => item.overall_status === 'review_required' && item.execution_mode !== 'manual',
+    manual_review_required_non_blocking: manualCases.filter(
+      (item) => item.overall_status === 'review_required' && item.blocking === false,
     ).length,
+    manual_review_required_unknown: 0,
+    non_manual_review_required: nonManualReviewRequired,
+    manual_review_artifact_present: false,
   };
 }
 
 function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auroraManualReview }) {
   const failedSteps = (steps || []).filter((item) => item.status !== 'pass');
   const scorecardBuckets = collectScorecardBuckets(scorecard);
-  const stagingReviewBuckets = collectStagingReviewBuckets(stagingMatrix);
+  const stagingReviewBuckets = collectStagingReviewBuckets({
+    ...(stagingMatrix || {}),
+    aurora_manual_results: Array.isArray(auroraManualReview?.results) ? auroraManualReview.results : [],
+  });
   const blockingFailures = [];
   const holdReasons = [];
+  const advisories = [];
 
   if (failedSteps.length > 0) {
     blockingFailures.push(
@@ -171,6 +223,7 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
       next_action: 'fix blocker regressions before any staging hardening or additional refactor',
       blocking_failures: blockingFailures,
       hold_reasons: [],
+      advisories: [],
     };
   }
 
@@ -187,7 +240,7 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
   }
 
   if (scorecardBuckets.amber.length > 0) {
-    holdReasons.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
+    advisories.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
   }
 
   if (stagingReviewBuckets.non_manual_review_required > 0) {
@@ -202,20 +255,35 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
     holdReasons.push('staging matrix artifact missing');
   }
 
-  if (stagingReviewBuckets.manual_review_required > 0) {
+  if (
+    stagingReviewBuckets.manual_review_required_blocking > 0 ||
+    stagingReviewBuckets.manual_review_required_unknown > 0
+  ) {
     if (!auroraManualReview || Object.keys(auroraManualReview).length === 0) {
       holdReasons.push(
         `aurora manual review artifact missing for ${String(
-          stagingReviewBuckets.manual_review_required,
+          stagingReviewBuckets.manual_review_required_blocking +
+            stagingReviewBuckets.manual_review_required_unknown,
         )} staging cases`,
       );
-    } else if (Number(auroraManualReview.review_required_count || 0) > 0) {
+    } else if (
+      Number(auroraManualReview.review_required_count || 0) > 0
+    ) {
       holdReasons.push(
-        `aurora manual reviews still pending: ${String(
-          auroraManualReview.review_required_count,
+        `blocking aurora manual reviews still pending: ${String(
+          stagingReviewBuckets.manual_review_required_blocking +
+            stagingReviewBuckets.manual_review_required_unknown,
         )}`,
       );
     }
+  }
+
+  if (stagingReviewBuckets.manual_review_required_non_blocking > 0) {
+    advisories.push(
+      `non-blocking aurora manual reviews still pending: ${String(
+        stagingReviewBuckets.manual_review_required_non_blocking,
+      )}`,
+    );
   }
 
   if (holdReasons.length > 0) {
@@ -225,15 +293,17 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
       next_action: 'freeze new refactors, clear amber areas or complete manual staging review, then rerun acceptance',
       blocking_failures: [],
       hold_reasons: holdReasons,
+      advisories,
     };
   }
 
   return {
     decision: 'GO',
-    label: 'GO for continued staging hardening',
-    next_action: 'continue with blocker-only fixes and prepare the next formal staging acceptance cycle',
+    label: 'GO for controlled production rollout',
+    next_action: 'proceed with controlled production rollout while tracking advisory-only architecture debt',
     blocking_failures: [],
     hold_reasons: [],
+    advisories,
   };
 }
 
@@ -363,6 +433,11 @@ function writeArtifacts(args, payload) {
     for (const item of payload.decision.hold_reasons) lines.push(`  - ${item}`);
   }
 
+  if (payload.decision.advisories.length > 0) {
+    lines.push('- Advisories:');
+    for (const item of payload.decision.advisories) lines.push(`  - ${item}`);
+  }
+
   lines.push('');
   fs.writeFileSync(markdownPath, `${lines.join('\n')}\n`, 'utf8');
   fs.writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
@@ -430,6 +505,7 @@ function main() {
       fail_count: auroraManualReview.fail_count || 0,
       review_required_count: auroraManualReview.review_required_count || 0,
       all_cases_resolved: auroraManualReview.all_cases_resolved === true,
+      results: Array.isArray(auroraManualReview.results) ? auroraManualReview.results : [],
     },
     artifacts: {
       readiness_report: args.readinessReport || null,

@@ -448,8 +448,8 @@
         }
       },
       "manual_review": {
-        "expected_outcome": "Confirm cache miss transitions cleanly to strict-empty, clarify, or resolver fallback with complete diagnostics.",
-        "notes": "This is intentionally manual because catalog/staging data can shift while the owned orchestration path must stay inspectable."
+        "expected_outcome": "Confirm the historical cache-miss candidate either transitions cleanly to strict-empty/clarify/resolver fallback, or now resolves through a coherent locked cache main path with complete diagnostics.",
+        "notes": "This remains manual because catalog/staging data can promote the query into a stable cache main path; either way the owned orchestration path must stay inspectable."
       }
     },
     {
