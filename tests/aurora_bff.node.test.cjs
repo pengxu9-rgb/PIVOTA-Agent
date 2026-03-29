@@ -10936,6 +10936,9 @@ test('analysis-derived reco context prefers displayable ingredient-plan target o
     assert.equal(latestRecoContext.ingredient_query, 'Salicylic acid (BHA)');
     assert.equal(latestRecoContext.resolved_target_step, 'serum');
     assert.equal(latestRecoContext.artifact_id, 'art_photo_displayable');
+    assert.equal(Array.isArray(latestRecoContext.product_candidates), true);
+    assert.equal(latestRecoContext.product_candidates.length, 1);
+    assert.equal(latestRecoContext.product_candidates[0].product_id, 'bha_1');
   } finally {
     delete require.cache[moduleId];
   }

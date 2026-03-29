@@ -24623,7 +24623,14 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
       entryType: 'analysis',
     });
     if (!targetContext.resolved_target_step && !ingredientName) continue;
-    return {
+    const products = isPlainObject(target.products) ? target.products : null;
+    const productCandidates = [
+      ...(Array.isArray(products && products.competitors) ? products.competitors : []),
+      ...(Array.isArray(products && products.dupes) ? products.dupes : []),
+    ]
+      .filter((row) => isPlainObject(row))
+      .slice(0, 12);
+    const out = {
       intent: 'reco_products',
       source_detail: 'analysis_handoff',
       trigger_source: 'analysis_handoff',
@@ -24650,6 +24657,8 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
       ),
       artifact_id: pickFirstTrimmed(artifactId),
     };
+    if (productCandidates.length) out.product_candidates = productCandidates;
+    return out;
   }
   return null;
 }
