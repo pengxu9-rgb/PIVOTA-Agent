@@ -173,6 +173,124 @@ test('extractProfilePatchFromRequestContextPayload reads nested quick-profile si
   }
 });
 
+test('__internal: filterRecoContextProductCandidates drops wrong-family and query-shaped mock-like candidates', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const filtered = __internal.filterRecoContextProductCandidates(
+      [
+        {
+          product_id: 'prod_retinol_wrong_family',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'Night Retinol Emulsion',
+          display_name: 'BarrierLab Night Retinol Emulsion',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          retrieval_reason: 'catalog_search_match',
+          canonical_product_ref: { product_id: 'prod_retinol_wrong_family', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_retinol_wrong_family?merchant_id=mid_test&entry=creator_agent',
+        },
+        {
+          product_id: 'prod_query_like_best',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'Ceramide NP skincare product best',
+          display_name: 'BarrierLab Ceramide NP skincare product best',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          retrieval_reason: 'catalog_search_match',
+          canonical_product_ref: { product_id: 'prod_query_like_best', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_query_like_best?merchant_id=mid_test&entry=creator_agent',
+        },
+        {
+          product_id: 'prod_query_like_context',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'moisturizer barrier Ceramide NP',
+          display_name: 'BarrierLab moisturizer barrier Ceramide NP',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          retrieval_reason: 'catalog_search_match',
+          canonical_product_ref: { product_id: 'prod_query_like_context', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_query_like_context?merchant_id=mid_test&entry=creator_agent',
+        },
+        {
+          product_id: 'prod_barrier_relief_ok',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'Barrier Relief Moisturizer',
+          display_name: 'BarrierLab Barrier Relief Moisturizer',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          retrieval_reason: 'catalog_search_match',
+          canonical_product_ref: { product_id: 'prod_barrier_relief_ok', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_barrier_relief_ok?merchant_id=mid_test&entry=creator_agent',
+        },
+      ],
+      {
+        target: {
+          ingredient_query: 'Ceramide NP',
+          goal: 'barrier',
+          resolved_target_step: 'moisturizer',
+          issue_type: 'redness',
+        },
+        max: 12,
+      },
+    );
+    assert.deepEqual(
+      filtered.map((row) => row.product_id),
+      ['prod_barrier_relief_ok'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: sanitizeRecoRequestContext keeps only aligned non-query-shaped product candidates', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const context = __internal.sanitizeRecoRequestContext({
+      intent: 'reco_products',
+      source_detail: 'analysis_handoff',
+      trigger_source: 'analysis_handoff',
+      ingredient_query: 'Ceramide NP',
+      goal: 'barrier',
+      resolved_target_step: 'moisturizer',
+      product_candidates: [
+        {
+          product_id: 'prod_query_like_context',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'moisturizer barrier Ceramide NP',
+          display_name: 'BarrierLab moisturizer barrier Ceramide NP',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          canonical_product_ref: { product_id: 'prod_query_like_context', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_query_like_context?merchant_id=mid_test&entry=creator_agent',
+        },
+        {
+          product_id: 'prod_barrier_relief_ok',
+          merchant_id: 'mid_test',
+          brand: 'BarrierLab',
+          name: 'Barrier Relief Moisturizer',
+          display_name: 'BarrierLab Barrier Relief Moisturizer',
+          category: 'moisturizer',
+          retrieval_source: 'catalog',
+          canonical_product_ref: { product_id: 'prod_barrier_relief_ok', merchant_id: 'mid_test' },
+          url: 'https://agent.pivota.cc/products/prod_barrier_relief_ok?merchant_id=mid_test&entry=creator_agent',
+        },
+      ],
+    });
+    assert.ok(context);
+    assert.deepEqual(
+      (context.product_candidates || []).map((row) => row.product_id),
+      ['prod_barrier_relief_ok'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();
@@ -10939,6 +11057,663 @@ test('analysis-derived reco context prefers displayable ingredient-plan target o
     assert.equal(Array.isArray(latestRecoContext.product_candidates), true);
     assert.equal(latestRecoContext.product_candidates.length, 1);
     assert.equal(latestRecoContext.product_candidates[0].product_id, 'bha_1');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('analysis-derived reco context can fall back to policy-allowed moisturizer when degraded low-confidence photo clears aggressive bundle', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'degraded',
+        summary_v1: {
+          top_module_id: 'nose',
+          top_action_ingredient_id: 'retinol',
+          top_issue_type: 'texture',
+          top_findings: [
+            {
+              module_id: 'nose',
+              issue_type: 'texture',
+              confidence_bucket: 'low',
+            },
+          ],
+        },
+        modules: [
+          {
+            module_id: 'nose',
+            module_rank_score: 0.95,
+            actions: [
+              {
+                ingredient_canonical_id: 'retinol',
+                ingredient_name: 'Retinoid (later stage)',
+                action_rank_score: 0.95,
+                why: 'Retinoid (later stage) helps improve uneven texture in highlighted areas.',
+                evidence_issue_types: ['texture'],
+                products: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const ingredientPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'retinol',
+          ingredient_name: 'Retinoid (later stage)',
+          priority_score_0_100: 95,
+          recommendation_mode: 'cta_only',
+          strict_product_count: 0,
+          presentation_bucket: 'photo_derived',
+          resolved_target_step: 'treatment',
+          source_issue_types: ['texture'],
+          why: ['Retinoid is the strongest texture-active candidate.'],
+          products: {
+            competitors: [],
+            products_empty_reason: 'strict_match_miss',
+          },
+        },
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          priority_score_0_100: 84,
+          recommendation_mode: 'strict_match',
+          strict_product_count: 3,
+          presentation_bucket: 'baseline_support',
+          resolved_target_step: 'moisturizer',
+          source_issue_types: ['texture'],
+          why: ['Barrier support keeps the plan conservative while texture confidence is low.'],
+          products: {
+            competitors: [
+              {
+                product_id: 'ceramide_1',
+                name: 'Barrier Rescue Cream',
+                brand: 'BarrierLab',
+              },
+            ],
+          },
+        },
+        {
+          ingredient_id: 'salicylic_acid',
+          ingredient_name: 'Salicylic acid (BHA)',
+          priority_score_0_100: 82,
+          recommendation_mode: 'strict_match',
+          strict_product_count: 4,
+          presentation_bucket: 'photo_derived',
+          resolved_target_step: 'serum',
+          source_issue_types: ['texture'],
+          why: ['BHA can help texture, but this degraded low-confidence read should stay below serum aggressiveness.'],
+          products: {
+            competitors: [
+              {
+                product_id: 'bha_1',
+                name: 'BHA Clarifying Serum',
+                brand: 'AcidLab',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan,
+      photoModulesCard,
+      artifactId: 'art_photo_policy_safe',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'degraded',
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.context_origin, 'photo_modules_v1');
+    assert.equal(latestRecoContext.ingredient_query, 'Ceramide NP');
+    assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
+    assert.equal(latestRecoContext.primary_target_id, 'ceramide_np__moisturizer__texture');
+    assert.equal(Array.isArray(latestRecoContext.ranked_targets), true);
+    assert.equal(latestRecoContext.ranked_targets.some((row) => /retinoid/i.test(String(row?.ingredient_query || ''))), false);
+    assert.equal(latestRecoContext.ranked_targets.some((row) => /salicylic acid/i.test(String(row?.ingredient_query || ''))), false);
+    assert.equal(
+      latestRecoContext.product_candidates == null || Array.isArray(latestRecoContext.product_candidates),
+      true,
+    );
+    if (Array.isArray(latestRecoContext.product_candidates) && latestRecoContext.product_candidates.length > 0) {
+      assert.equal(latestRecoContext.product_candidates[0].product_id, 'ceramide_1');
+    }
+    assert.equal(latestRecoContext.confidence_policy?.max_target_step, 'moisturizer');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: analysis envelope refresh syncs final ingredient-plan products into latest_reco_context', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const envelope = {
+      analysis_meta: {
+        analysis_mode: 'analysis_summary',
+        detector_source: 'rule_based_with_photo',
+      },
+      session_patch: {
+        profile: {
+          skinType: 'combination',
+          sensitivity: 'medium',
+          goals: ['barrier'],
+        },
+        state: {
+          latest_artifact_id: 'art_sync_latest_reco',
+          latest_reco_context: {
+            intent: 'reco_products',
+            context_origin: 'photo_modules_v1',
+            ingredient_query: 'Ceramide NP',
+            resolved_target_step: 'moisturizer',
+            primary_target_id: 'ceramide_np__moisturizer__redness__nose',
+            ranked_targets: [
+              {
+                target_id: 'ceramide_np__moisturizer__redness__nose',
+                ingredient_query: 'Ceramide NP',
+                resolved_target_step: 'moisturizer',
+                issue_type: 'redness',
+                target_role: 'primary',
+              },
+            ],
+          },
+        },
+      },
+      cards: [
+        {
+          type: 'analysis_summary',
+          payload: {
+            analysis_source: 'rule_based_with_photo',
+            photos_provided: true,
+            used_photos: true,
+            quality_report: {
+              photo_quality: { grade: 'degraded', reasons: ['indoor_lighting'] },
+            },
+          },
+        },
+        {
+          type: 'photo_modules_v1',
+          payload: {
+            quality_grade: 'degraded',
+            summary_v1: {
+              top_module_id: 'nose',
+              top_action_ingredient_id: 'ceramide_np',
+              top_issue_type: 'redness',
+              top_findings: [
+                {
+                  module_id: 'nose',
+                  issue_type: 'redness',
+                  confidence_bucket: 'low',
+                },
+              ],
+            },
+            modules: [
+              {
+                module_id: 'nose',
+                module_rank_score: 0.94,
+                actions: [
+                  {
+                    ingredient_canonical_id: 'ceramide_np',
+                    ingredient_name: 'Ceramide NP',
+                    action_rank_score: 0.9,
+                    why: 'Barrier support for redness.',
+                    evidence_issue_types: ['redness'],
+                    products: [],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          type: 'ingredient_plan_v2',
+          payload: {
+            schema_version: 'aurora.ingredient_plan.v2',
+            targets: [
+              {
+                target_id: 'ceramide_np__moisturizer__redness__nose',
+                ingredient_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                target_role: 'primary',
+                priority_score_0_100: 88,
+                recommendation_mode: 'strict_match',
+                strict_product_count: 1,
+                presentation_bucket: 'baseline_support',
+                resolved_target_step: 'moisturizer',
+                source_module_ids: ['nose'],
+                source_issue_types: ['redness'],
+                why: ['Barrier support keeps the plan conservative while redness confidence is low.'],
+                products: {
+                  competitors: [
+                    {
+                      product_id: 'ceramide_barrier_1',
+                      name: 'Barrier Rescue Cream',
+                      brand: 'BarrierLab',
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const refreshed = __internal.refreshLatestRecoContextFromAnalysisEnvelope(envelope);
+    const latestRecoContext = refreshed?.session_patch?.state?.latest_reco_context || null;
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.ingredient_query, 'Ceramide NP');
+    assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
+    assert.equal(String(latestRecoContext.primary_target_id || '').includes('ceramide_np'), true);
+    assert.equal(String(latestRecoContext.primary_target_id || '').includes('moisturizer'), true);
+    assert.equal(Array.isArray(latestRecoContext.product_candidates), true);
+    assert.equal(latestRecoContext.product_candidates.length, 1);
+    assert.equal(latestRecoContext.product_candidates[0].product_id, 'ceramide_barrier_1');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('annotated ingredient plan retains policy-safe moisturizer primary for degraded low-confidence photo without reviving aggressive target', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'degraded',
+        summary_v1: {
+          top_module_id: 'nose',
+          top_action_ingredient_id: 'retinol',
+          top_issue_type: 'texture',
+          top_findings: [
+            {
+              module_id: 'nose',
+              issue_type: 'texture',
+              confidence_bucket: 'low',
+            },
+          ],
+        },
+        modules: [
+          {
+            module_id: 'nose',
+            module_rank_score: 0.95,
+            actions: [
+              {
+                ingredient_canonical_id: 'retinol',
+                ingredient_name: 'Retinoid (later stage)',
+                action_rank_score: 0.95,
+                why: 'Retinoid (later stage) helps improve uneven texture in highlighted areas.',
+                evidence_issue_types: ['texture'],
+                products: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const ingredientPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'retinol',
+          ingredient_name: 'Retinoid (later stage)',
+          priority_score_0_100: 95,
+          recommendation_mode: 'cta_only',
+          strict_product_count: 0,
+          presentation_bucket: 'photo_derived',
+          resolved_target_step: 'treatment',
+          source_issue_types: ['texture'],
+          why: ['Retinoid is the strongest texture-active candidate.'],
+          products: {
+            competitors: [],
+            products_empty_reason: 'strict_match_miss',
+          },
+        },
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          priority_score_0_100: 84,
+          recommendation_mode: 'cta_only',
+          strict_product_count: 0,
+          presentation_bucket: 'baseline_support',
+          resolved_target_step: 'moisturizer',
+          source_issue_types: ['texture'],
+          why: ['Barrier support keeps the plan conservative while texture confidence is low.'],
+          products: {
+            competitors: [],
+            products_empty_reason: 'strict_match_miss',
+          },
+        },
+        {
+          ingredient_id: 'panthenol',
+          ingredient_name: 'Panthenol (B5)',
+          priority_score_0_100: 80,
+          recommendation_mode: 'cta_only',
+          strict_product_count: 0,
+          presentation_bucket: 'baseline_support',
+          resolved_target_step: 'moisturizer',
+          source_issue_types: ['texture'],
+          why: ['Panthenol is a low-risk repair support option.'],
+          products: {
+            competitors: [],
+            products_empty_reason: 'strict_match_miss',
+          },
+        },
+      ],
+    };
+
+    const annotated = __internal.annotateIngredientPlanForPhotoLed(ingredientPlan, photoModulesCard, 'EN');
+    assert.equal(Array.isArray(annotated?.targets), true);
+    assert.equal(annotated.targets.length > 0, true);
+    assert.equal(annotated.targets[0]?.ingredient_id, 'ceramide_np');
+    assert.equal(annotated.targets[0]?.target_role, 'primary');
+    assert.equal(annotated.targets[0]?.resolved_target_step, 'moisturizer');
+    assert.equal(annotated.targets.some((target) => target?.ingredient_id === 'retinol'), false);
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan: annotated,
+      photoModulesCard,
+      artifactId: 'art_safe_low_conf_plan',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'degraded',
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.ingredient_query, 'Ceramide NP');
+    assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
+    assert.match(String(latestRecoContext.primary_target_id || ''), /ceramide_np/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('photo-first latest reco context beats routine audit handoff when explicit photo analysis produced a usable photo bundle', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const routineAnalysisResult = {
+      cards: [
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            replace: [
+              {
+                adjustment_id: 'adj_add_sunscreen',
+                title: 'Add Sunscreen in the AM',
+                why: 'UV protection is missing.',
+              },
+            ],
+            recommendation_needs: [
+              {
+                adjustment_id: 'adj_add_sunscreen',
+                target_step: 'sunscreen',
+                why: 'Fill the missing daytime protection step.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'degraded',
+        summary_v1: {
+          top_module_id: 'nose',
+          top_action_ingredient_id: 'retinol',
+          top_issue_type: 'texture',
+          top_findings: [
+            {
+              module_id: 'nose',
+              issue_type: 'texture',
+              confidence_bucket: 'low',
+            },
+          ],
+        },
+        modules: [
+          {
+            module_id: 'nose',
+            module_rank_score: 0.95,
+            actions: [
+              {
+                ingredient_canonical_id: 'retinol',
+                ingredient_name: 'Retinoid (later stage)',
+                action_rank_score: 0.95,
+                why: 'Retinoid would be the aggressive texture direction.',
+                evidence_issue_types: ['texture'],
+                products: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const ingredientPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          priority_score_0_100: 84,
+          recommendation_mode: 'strict_match',
+          strict_product_count: 2,
+          presentation_bucket: 'baseline_support',
+          resolved_target_step: 'moisturizer',
+          source_issue_types: ['texture'],
+          why: ['Barrier support keeps the plan conservative while texture confidence is low.'],
+          products: {
+            competitors: [
+              {
+                product_id: 'ceramide_1',
+                name: 'Barrier Rescue Cream',
+                brand: 'BarrierLab',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      routineAnalysisResult,
+      ingredientPlan,
+      photoModulesCard,
+      artifactId: 'art_photo_should_win',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'degraded',
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.context_origin, 'photo_modules_v1');
+    assert.equal(latestRecoContext.ingredient_query, 'Ceramide NP');
+    assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
+    assert.equal(String(latestRecoContext.primary_target_id || '').includes('ceramide_np'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('applyAnalysisStoryAndRoutineSoftGate keeps analysis_story_v2 photo-first when routine preview is present', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const cards = [
+      {
+        type: 'analysis_summary',
+        payload: {
+          analysis_source: 'rule_based_with_photo',
+          photos_provided: true,
+          used_photos: true,
+          low_confidence: true,
+          quality_report: {
+            photo_quality: {
+              grade: 'degraded',
+              reasons: ['indoor_lighting'],
+            },
+          },
+          analysis: {
+            confidence: { level: 'low' },
+            features: [
+              { observation: 'Visible texture irregularity around the nose.' },
+            ],
+          },
+        },
+      },
+      {
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'degraded',
+          summary_v1: {
+            top_module_id: 'nose',
+            top_action_ingredient_id: 'retinol',
+            top_issue_type: 'texture',
+            top_findings: [
+              {
+                module_id: 'nose',
+                issue_type: 'texture',
+                confidence_bucket: 'low',
+              },
+            ],
+          },
+          modules: [
+            {
+              module_id: 'nose',
+              module_rank_score: 0.95,
+              issues: [
+                {
+                  issue_type: 'texture',
+                  severity_0_4: 2,
+                  confidence_0_1: 0.28,
+                  confidence_bucket: 'low',
+                  explanation_short: 'Visible texture irregularity around the nose.',
+                },
+              ],
+              actions: [
+                {
+                  ingredient_canonical_id: 'retinol',
+                  ingredient_name: 'Retinoid (later stage)',
+                  action_rank_score: 0.95,
+                  why: 'Retinoid would be the aggressive texture direction.',
+                  evidence_issue_types: ['texture'],
+                  products: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        type: 'routine_products_preview',
+        payload: {
+          groups: [
+            {
+              slot: 'am',
+              items: [
+                { slot: 'am', step: 'cleanser', display_name: 'Gentle Gel Cleanser' },
+                { slot: 'am', step: 'moisturizer', display_name: 'Daily Lotion' },
+              ],
+            },
+            {
+              slot: 'pm',
+              items: [
+                { slot: 'pm', step: 'cleanser', display_name: 'Gentle Gel Cleanser' },
+                { slot: 'pm', step: 'treatment', display_name: 'Night Retinoid' },
+                { slot: 'pm', step: 'moisturizer', display_name: 'Barrier Cream' },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        type: 'ingredient_plan_v2',
+        payload: {
+          schema_version: 'aurora.ingredient_plan.v2',
+          targets: [
+            {
+              ingredient_id: 'retinol',
+              ingredient_name: 'Retinoid (later stage)',
+              priority_score_0_100: 95,
+              recommendation_mode: 'cta_only',
+              strict_product_count: 0,
+              presentation_bucket: 'photo_derived',
+              resolved_target_step: 'treatment',
+              source_issue_types: ['texture'],
+              why: ['Retinoid is the strongest texture-active candidate.'],
+              products: {
+                competitors: [],
+                products_empty_reason: 'strict_match_miss',
+              },
+            },
+            {
+              ingredient_id: 'ceramide_np',
+              ingredient_name: 'Ceramide NP',
+              priority_score_0_100: 84,
+              recommendation_mode: 'strict_match',
+              strict_product_count: 2,
+              presentation_bucket: 'baseline_support',
+              resolved_target_step: 'moisturizer',
+              source_issue_types: ['texture'],
+              why: ['Barrier support keeps the plan conservative while texture confidence is low.'],
+              products: {
+                competitors: [
+                  {
+                    product_id: 'ceramide_barrier_1',
+                    name: 'Barrier Rescue Cream',
+                    brand: 'BarrierLab',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ];
+
+    const nextCards = await __internal.applyAnalysisStoryAndRoutineSoftGate(cards, {
+      ctx: { request_id: 'req_photo_story_axis' },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'fragile',
+        goals: ['barrier'],
+      },
+      language: 'EN',
+      qaMode: 'off',
+      singleProvider: 'gemini',
+      allowOpenAiFallback: false,
+      qaContext: { story_force_deterministic_reason: 'test_force_deterministic' },
+    });
+
+    const storyCard = findCardByType(nextCards, 'analysis_story_v2');
+    assert.ok(storyCard);
+    const storyPayload = storyCard?.payload || {};
+    const firstFinding = String(storyPayload?.priority_findings?.[0]?.title || '');
+    const headline = String(storyPayload?.ui_card_v1?.headline || '');
+    const firstAction = String(storyPayload?.ui_card_v1?.actions_now?.[0] || '');
+    assert.match(firstFinding, /nose|texture/i);
+    assert.doesNotMatch(firstFinding, /sunscreen/i);
+    assert.doesNotMatch(headline, /sunscreen/i);
+    assert.match(firstAction, /ceramide/i);
+    assert.doesNotMatch(firstAction, /sunscreen/i);
+    assert.doesNotMatch(firstAction, /retinoid/i);
+
+    const ingredientPlanCard = findCardByType(nextCards, 'ingredient_plan_v2');
+    assert.ok(ingredientPlanCard);
+    assert.equal(ingredientPlanCard?.payload?.targets?.[0]?.ingredient_id, 'ceramide_np');
+    assert.equal(ingredientPlanCard?.payload?.targets?.[0]?.target_role, 'primary');
   } finally {
     delete require.cache[moduleId];
   }

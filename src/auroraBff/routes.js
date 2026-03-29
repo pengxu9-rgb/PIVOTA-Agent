@@ -738,6 +738,22 @@ const AURORA_PRODUCT_INTEL_NARRATIVE_QUALITY_RETRY_MAX = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 1;
   return Math.max(0, Math.min(1, v));
 })();
+const AURORA_RECO_ASSISTANT_REWRITE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_RECO_ASSISTANT_REWRITE_ENABLED || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS || 4500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4500;
+  return Math.max(1200, Math.min(9000, v));
+})();
+const AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS = (() => {
+  const n = Number(process.env.AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS || 320);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 320;
+  return Math.max(120, Math.min(800, v));
+})();
 const AURORA_PRODUCT_RELEVANCE_QA_MODE = (() => {
   const explicitMode = String(process.env.AURORA_LLM_QA_MODE || '')
     .trim()
@@ -13396,8 +13412,536 @@ function applyCommerceMedicalClaimGuard(text, lang) {
     : "I can help with product info/ingredients/where to buy, but I can't provide medical diagnosis or treatment advice. If you suspect dermatitis/eczema, please see a clinician. Which brand or product are you looking for?";
 }
 
+const RECO_CONTEXT_CONTENT_MAX_TARGETS = 3;
+const RECO_CONTEXT_CONTENT_STOPWORDS = new Set([
+  'acid',
+  'extract',
+  'serum',
+  'cream',
+  'lotion',
+  'gel',
+  'product',
+  'products',
+  'skin',
+  'skincare',
+  'ingredient',
+  'ingredients',
+  'care',
+  'with',
+  'for',
+  'and',
+  'the',
+]);
+
+function slugifyRecoContextValue(value, max = 48) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, max);
+}
+
+function normalizeRecoContextTargetRole(value, index = 0) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'primary' || token === 'secondary') return token;
+  return index === 0 ? 'primary' : 'secondary';
+}
+
+function normalizeRecoContextTargetIds(raw, max = RECO_CONTEXT_CONTENT_MAX_TARGETS) {
+  return uniqCaseInsensitiveStrings(
+    (Array.isArray(raw) ? raw : [raw])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+    max,
+  );
+}
+
+function buildRecoContextTargetId({
+  targetId = '',
+  ingredientQuery = '',
+  ingredientId = '',
+  step = '',
+  issueType = '',
+  moduleId = '',
+} = {}) {
+  const explicit = slugifyRecoContextValue(targetId, 120);
+  if (explicit) return explicit;
+  const parts = [
+    slugifyRecoContextValue(ingredientId || ingredientQuery, 48),
+    slugifyRecoContextValue(step, 24),
+    slugifyRecoContextValue(issueType, 24),
+    slugifyRecoContextValue(moduleId, 24),
+  ].filter(Boolean);
+  return parts.join('__').slice(0, 120);
+}
+
+function collectRecoContextTargetProductCandidates(raw, max = 12) {
+  const directCandidates = Array.isArray(raw && raw.product_candidates)
+    ? raw.product_candidates
+    : Array.isArray(raw && raw.productCandidates)
+      ? raw.productCandidates
+      : [];
+  const productsNode = isPlainObject(raw && raw.products) ? raw.products : null;
+  const derivedCandidates = [
+    ...(Array.isArray(productsNode && productsNode.competitors) ? productsNode.competitors : []),
+    ...(Array.isArray(productsNode && productsNode.dupes) ? productsNode.dupes : []),
+  ];
+  return filterRecoContextProductCandidates(
+    [...directCandidates, ...derivedCandidates],
+    {
+      target: raw,
+      max,
+    },
+  );
+}
+
+function collectRecoContextTargetTokens(target) {
+  const values = [
+    pickFirstTrimmed(target && target.ingredient_query, target && target.query),
+    pickFirstTrimmed(target && target.ingredient_id, target && target.ingredientId),
+    pickFirstTrimmed(target && target.goal),
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const normalized = ingredient_query_normalize(raw);
+    if (!normalized) continue;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      out.push(normalized);
+    }
+    for (const part of normalized.split(' ')) {
+      const token = String(part || '').trim().toLowerCase();
+      if (!token || token.length < 4 || RECO_CONTEXT_CONTENT_STOPWORDS.has(token)) continue;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      out.push(token);
+    }
+  }
+  return out.slice(0, 8);
+}
+
+function normalizeRecoContextPrimaryFocus(raw) {
+  if (!isPlainObject(raw)) return null;
+  const moduleId = pickFirstTrimmed(raw.module_id, raw.moduleId);
+  const issueType = pickFirstTrimmed(raw.issue_type, raw.issueType);
+  const ingredientId = pickFirstTrimmed(raw.ingredient_id, raw.ingredientId);
+  const ingredientName = pickFirstTrimmed(raw.ingredient_name, raw.ingredientName, ingredientId);
+  const resolvedTargetStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      raw.resolved_target_step,
+      raw.resolvedTargetStep,
+      raw.target_step,
+      raw.targetStep,
+      raw.step,
+    ),
+  );
+  if (!moduleId && !issueType && !ingredientName && !resolvedTargetStep) return null;
+  const confidenceScore = Number(raw.confidence_0_1);
+  return {
+    ...(moduleId ? { module_id: moduleId } : {}),
+    ...(pickFirstTrimmed(raw.module_label, raw.moduleLabel) ? { module_label: pickFirstTrimmed(raw.module_label, raw.moduleLabel) } : {}),
+    ...(issueType ? { issue_type: issueType } : {}),
+    ...(pickFirstTrimmed(raw.issue_label, raw.issueLabel) ? { issue_label: pickFirstTrimmed(raw.issue_label, raw.issueLabel) } : {}),
+    ...(Number.isFinite(confidenceScore) ? { confidence_0_1: clamp01Score(confidenceScore) } : {}),
+    confidence_bucket: normalizePhotoStoryConfidenceBucket(raw.confidence_0_1, raw.confidence_bucket),
+    ...(ingredientId ? { ingredient_id: ingredientId } : {}),
+    ...(ingredientName ? { ingredient_name: ingredientName } : {}),
+    ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
+  };
+}
+
+const RECO_CONTEXT_MOCKLIKE_TITLE_NOISE_RE =
+  /\b(skincare(?:\s+products?)?|skin\s+care\s+products?|best|recommend(?:ed|ation)?|for\s+me|for\s+my\s+skin)\b/i;
+const RECO_CONTEXT_MOCKLIKE_GENERIC_TOKENS = new Set([
+  'acne',
+  'antiaging',
+  'barrier',
+  'barrier_repair',
+  'best',
+  'blemish',
+  'brightening',
+  'calming',
+  'care',
+  'ceramide',
+  'cleanser',
+  'cream',
+  'dark',
+  'dry',
+  'filters',
+  'for',
+  'gel',
+  'good',
+  'hydration',
+  'hydrate',
+  'hydrating',
+  'ingredient',
+  'ingredients',
+  'lotion',
+  'me',
+  'moisture',
+  'moisturizer',
+  'my',
+  'niacinamide',
+  'np',
+  'panthenol',
+  'product',
+  'products',
+  'redness',
+  'repair',
+  'rescue',
+  'retinol',
+  'retinoid',
+  'serum',
+  'skin',
+  'skincare',
+  'soothing',
+  'spf',
+  'spot',
+  'sunscreen',
+  'support',
+  'texture',
+  'treatment',
+  'uv',
+  'vitamin',
+  'with',
+]);
+
+function tokenizeRecoCandidateTitle(value) {
+  return uniqCaseInsensitiveStrings(
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9%+]+/g, ' ')
+      .split(/\s+/)
+      .map((token) => String(token || '').trim())
+      .filter((token) => token.length >= 2),
+    24,
+  );
+}
+
+function stripRecoCandidateBrandPrefix(title, brand) {
+  const rawTitle = String(title || '').trim();
+  const rawBrand = String(brand || '').trim();
+  if (!rawTitle || !rawBrand) return rawTitle;
+  const normalizedTitle = ingredient_query_normalize(rawTitle);
+  const normalizedBrand = ingredient_query_normalize(rawBrand);
+  if (!normalizedTitle || !normalizedBrand) return rawTitle;
+  if (normalizedTitle === normalizedBrand) return '';
+  if (!normalizedTitle.startsWith(`${normalizedBrand} `)) return rawTitle;
+  return rawTitle.slice(rawBrand.length).trim();
+}
+
+function buildRecoContextCandidateFilterTarget(targetOrContext) {
+  const row = isPlainObject(targetOrContext) ? targetOrContext : null;
+  if (!row) return null;
+  const ingredientId = pickFirstTrimmed(row.ingredient_id, row.ingredientId);
+  const ingredientQuery = pickFirstTrimmed(
+    row.ingredient_query,
+    row.ingredientQuery,
+    row.query,
+    row.ingredient_name,
+    row.ingredientName,
+    ingredientId,
+  );
+  const resolvedTargetStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      row.resolved_target_step,
+      row.resolvedTargetStep,
+      row.target_step,
+      row.targetStep,
+      row.target_step_family,
+      row.targetStepFamily,
+      row.step,
+    ),
+  );
+  const issueType = pickFirstTrimmed(row.issue_type, row.issueType);
+  const goal = pickFirstTrimmed(row.goal);
+  if (!ingredientQuery && !resolvedTargetStep && !issueType && !goal) return null;
+  return {
+    ...(ingredientId ? { ingredient_id: ingredientId } : {}),
+    ...(ingredientQuery ? { ingredient_query: ingredientQuery } : {}),
+    ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
+    ...(issueType ? { issue_type: issueType } : {}),
+    ...(goal ? { goal } : {}),
+  };
+}
+
+function isMockLikeRecoContextCandidate(row, { target = null } = {}) {
+  const candidate = normalizeRecoCatalogProduct(row) || coerceRecoCandidateForGuardrail(row);
+  if (!isPlainObject(candidate)) return false;
+  const brand = pickFirstTrimmed(candidate.brand);
+  const rawTitle = pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title);
+  if (!rawTitle) return false;
+  const titleWithoutBrand = stripRecoCandidateBrandPrefix(rawTitle, brand) || rawTitle;
+  const normalizedTitle = ingredient_query_normalize(titleWithoutBrand);
+  if (!normalizedTitle) return false;
+  const titleTokens = tokenizeRecoCandidateTitle(titleWithoutBrand);
+  if (!titleTokens.length) return false;
+
+  const noiseMatchCount = (normalizedTitle.match(/\b(skincare|products?|best|recommend(?:ed|ation)?|for|with|my|skin)\b/g) || []).length;
+  if (RECO_CONTEXT_MOCKLIKE_TITLE_NOISE_RE.test(normalizedTitle) && noiseMatchCount >= 2) {
+    return true;
+  }
+
+  const targetStub = buildRecoContextCandidateFilterTarget(target);
+  if (!targetStub) return false;
+  const allowedTokens = new Set([
+    ...collectRecoContextTargetTokens(targetStub),
+    ...tokenizeRecoCandidateTitle(pickFirstTrimmed(targetStub.resolved_target_step)),
+    ...tokenizeRecoCandidateTitle(pickFirstTrimmed(targetStub.goal)),
+    ...tokenizeRecoCandidateTitle(pickFirstTrimmed(targetStub.issue_type)),
+  ]);
+  if (!allowedTokens.size) return false;
+  const allTokensAreContextual = titleTokens.every((token) =>
+    allowedTokens.has(token) || RECO_CONTEXT_MOCKLIKE_GENERIC_TOKENS.has(token));
+  if (!allTokensAreContextual) return false;
+  return titleTokens.length >= 3;
+}
+
+function filterRecoContextProductCandidates(candidates, { target = null, max = 12 } = {}) {
+  const targetStub = buildRecoContextCandidateFilterTarget(target);
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(candidates) ? candidates : []) {
+    if (!isVerifiedBeautyProductCandidate(raw)) continue;
+    const normalized = normalizeRecoCatalogProduct(raw) || coerceRecoCandidateForGuardrail(raw);
+    if (!isPlainObject(normalized)) continue;
+    if (isBlacklistedCategoryOrTitle(normalized) || isExternalSeedPlaceholderCandidate(normalized)) continue;
+    const directUrl = pickFirstTrimmed(
+      extractCandidateOpenUrl(raw),
+      extractCandidateOpenUrl(normalized),
+      normalized.pdp_url,
+      normalized.url,
+      normalized.product_url,
+      normalized.purchase_path,
+    );
+    if (directUrl && isSearchLikeUrl(directUrl)) continue;
+    if (targetStub && !recommendationStronglyMatchesRecoContextTarget(normalized, targetStub)) continue;
+    if (isMockLikeRecoContextCandidate(normalized, { target: targetStub })) continue;
+    const dedupeKey = pickFirstTrimmed(
+      normalized.product_id,
+      normalized.sku_id,
+      normalized.canonical_product_ref && `${normalized.canonical_product_ref.merchant_id}:${normalized.canonical_product_ref.product_id}`,
+      joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name)),
+    ).toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(normalized);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function normalizeRecoConfidencePolicy(raw) {
+  if (!isPlainObject(raw)) return null;
+  const decisionStage = pickFirstTrimmed(raw.decision_stage, raw.decisionStage, raw.stage);
+  const confidenceLevel = String(
+    pickFirstTrimmed(raw.confidence_level, raw.confidenceLevel, raw.primary_confidence_bucket, raw.primaryConfidenceBucket) || '',
+  ).trim().toLowerCase();
+  const qualityGrade = String(
+    pickFirstTrimmed(raw.quality_grade, raw.qualityGrade) || '',
+  ).trim().toLowerCase();
+  const maxTargetStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(raw.max_target_step, raw.maxTargetStep, raw.max_step, raw.maxStep),
+  );
+  const selectionShiftReason = pickFirstTrimmed(raw.selection_shift_reason, raw.selectionShiftReason);
+  const policyVersion = pickFirstTrimmed(raw.policy_version, raw.policyVersion);
+  const hasAggressiveFlag = typeof raw.aggressive_treatment_allowed === 'boolean';
+  if (
+    !decisionStage &&
+    !confidenceLevel &&
+    !qualityGrade &&
+    !maxTargetStep &&
+    !selectionShiftReason &&
+    !policyVersion &&
+    !hasAggressiveFlag
+  ) return null;
+  return {
+    ...(decisionStage ? { decision_stage: decisionStage.slice(0, 64) } : {}),
+    ...(confidenceLevel ? { confidence_level: confidenceLevel.slice(0, 24) } : {}),
+    ...(qualityGrade ? { quality_grade: qualityGrade.slice(0, 24) } : {}),
+    ...(policyVersion ? { policy_version: policyVersion.slice(0, 64) } : {}),
+    ...(maxTargetStep ? { max_target_step: maxTargetStep } : {}),
+    ...(selectionShiftReason ? { selection_shift_reason: selectionShiftReason.slice(0, 96) } : {}),
+    ...(hasAggressiveFlag ? { aggressive_treatment_allowed: raw.aggressive_treatment_allowed === true } : {}),
+  };
+}
+
+function mergeRecoConfidencePolicy(leftRaw, rightRaw) {
+  const left = normalizeRecoConfidencePolicy(leftRaw);
+  const right = normalizeRecoConfidencePolicy(rightRaw);
+  if (!left) return right;
+  if (!right) return left;
+  const merged = {
+    ...left,
+    ...right,
+  };
+  if (typeof right.aggressive_treatment_allowed !== 'boolean' && typeof left.aggressive_treatment_allowed === 'boolean') {
+    merged.aggressive_treatment_allowed = left.aggressive_treatment_allowed;
+  }
+  return merged;
+}
+
+function getRecoTargetAggressiveness(target) {
+  const row = isPlainObject(target) ? target : {};
+  const step = normalizeRecoTargetStep(
+    pickFirstTrimmed(row.resolved_target_step, row.target_step, row.targetStep, row.step),
+  );
+  const ingredientLabel = ingredient_query_normalize(
+    pickFirstTrimmed(row.ingredient_query, row.ingredient_name, row.ingredient_id),
+  );
+  if (/(retinoid|retinol|retinal|tretinoin|adapalene|trifarotene|tazarotene)/i.test(ingredientLabel)) return 3;
+  if (step === 'treatment') return 3;
+  if (step === 'serum') return 2;
+  if (step === 'moisturizer' || step === 'cleanser' || step === 'sunscreen') return 1;
+  return 2;
+}
+
+function targetSatisfiesRecoConfidencePolicy(target, confidencePolicy) {
+  const policy = normalizeRecoConfidencePolicy(confidencePolicy);
+  if (!policy || !pickFirstTrimmed(policy.max_target_step)) return true;
+  const allowedAggressiveness = getRecoTargetAggressiveness({
+    resolved_target_step: policy.max_target_step,
+  });
+  return getRecoTargetAggressiveness(target) <= allowedAggressiveness;
+}
+
+function targetMatchesRecoPrimaryFocus(target, primaryFocus) {
+  const focus = normalizeRecoContextPrimaryFocus(primaryFocus);
+  if (!focus) return true;
+  const focusModuleId = pickFirstTrimmed(focus.module_id);
+  const focusIssueType = pickFirstTrimmed(focus.issue_type);
+  const targetModuleId = pickFirstTrimmed(target && (target.module_id || target.moduleId));
+  const targetIssueType = pickFirstTrimmed(target && (target.issue_type || target.issueType));
+  if (focusModuleId && targetModuleId && focusModuleId === targetModuleId) return true;
+  if (focusIssueType && targetIssueType && focusIssueType === targetIssueType) return true;
+  return !focusModuleId && !focusIssueType;
+}
+
+function normalizeRecoContextRankedTargets(raw, max = RECO_CONTEXT_CONTENT_MAX_TARGETS) {
+  const source = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw && raw.ranked_targets)
+      ? raw.ranked_targets
+      : Array.isArray(raw && raw.rankedTargets)
+        ? raw.rankedTargets
+        : [];
+  const out = [];
+  const seen = new Set();
+  for (const [index, item] of source.entries()) {
+    if (!isPlainObject(item)) continue;
+    const ingredientId = pickFirstTrimmed(item.ingredient_id, item.ingredientId);
+    const ingredientQuery = pickFirstTrimmed(
+      item.ingredient_query,
+      item.ingredientQuery,
+      item.query,
+      item.ingredient_name,
+      item.ingredientName,
+      ingredientId,
+    );
+    const resolvedTargetStep = normalizeRecoTargetStep(
+      pickFirstTrimmed(
+        item.resolved_target_step,
+        item.resolvedTargetStep,
+        item.target_step,
+        item.targetStep,
+        item.target_step_family,
+        item.targetStepFamily,
+        item.step,
+      ),
+    );
+    const issueType = pickFirstTrimmed(item.issue_type, item.issueType);
+    const moduleId = pickFirstTrimmed(item.module_id, item.moduleId);
+    const targetId = buildRecoContextTargetId({
+      targetId: pickFirstTrimmed(item.target_id, item.targetId),
+      ingredientQuery,
+      ingredientId,
+      step: resolvedTargetStep,
+      issueType,
+      moduleId,
+    });
+    if (!targetId || seen.has(targetId)) continue;
+    if (!ingredientQuery && !resolvedTargetStep && !issueType) continue;
+    seen.add(targetId);
+    const productCandidates = collectRecoContextTargetProductCandidates(item, 12);
+    const verifiedProductCount = Number.isFinite(Number(item.verified_product_count))
+      ? Math.max(0, Math.trunc(Number(item.verified_product_count)))
+      : Number.isFinite(Number(item.strict_product_count))
+        ? Math.max(0, Math.trunc(Number(item.strict_product_count)))
+        : productCandidates.length;
+    out.push({
+      target_id: targetId,
+      target_role: normalizeRecoContextTargetRole(
+        pickFirstTrimmed(item.target_role, item.targetRole),
+        index,
+      ),
+      ...(ingredientId ? { ingredient_id: ingredientId } : {}),
+      ...(ingredientQuery ? { ingredient_query: ingredientQuery } : {}),
+      ...(pickFirstTrimmed(item.goal) ? { goal: normalizeIngredientGoalToken(item.goal) || pickFirstTrimmed(item.goal) } : {}),
+      ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
+      target_confidence: normalizePhotoStoryConfidenceBucket(
+        item.target_confidence,
+        pickFirstTrimmed(item.target_confidence, item.confidence_bucket),
+      ),
+      source: pickFirstTrimmed(
+        item.source,
+        item.context_origin,
+        item.recommendation_mode,
+        item.presentation_bucket,
+        'analysis',
+      ),
+      ...(moduleId ? { module_id: moduleId } : {}),
+      ...(pickFirstTrimmed(item.module_label, item.moduleLabel) ? { module_label: pickFirstTrimmed(item.module_label, item.moduleLabel) } : {}),
+      ...(issueType ? { issue_type: issueType } : {}),
+      ...(pickFirstTrimmed(item.issue_label, item.issueLabel) ? { issue_label: pickFirstTrimmed(item.issue_label, item.issueLabel) } : {}),
+      verified_product_count: verifiedProductCount,
+      ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
+    });
+    if (out.length >= max) break;
+  }
+  if (!out.length) return [];
+  const primaryTargetId = out.find((item) => item.target_role === 'primary')?.target_id || out[0].target_id;
+  return out.map((item, index) => ({
+    ...item,
+    target_role: item.target_id === primaryTargetId
+      ? 'primary'
+      : normalizeRecoContextTargetRole(item.target_role, index),
+  }));
+}
+
+function mergeRecoContextRankedTargets(leftTargets, rightTargets, primaryTargetId = '') {
+  const byId = new Map();
+  for (const row of [...(Array.isArray(rightTargets) ? rightTargets : []), ...(Array.isArray(leftTargets) ? leftTargets : [])]) {
+    if (!isPlainObject(row)) continue;
+    const targetId = pickFirstTrimmed(row.target_id, row.targetId);
+    if (!targetId || byId.has(targetId)) continue;
+    byId.set(targetId, row);
+    if (byId.size >= RECO_CONTEXT_CONTENT_MAX_TARGETS) break;
+  }
+  const merged = Array.from(byId.values());
+  if (!merged.length) return [];
+  const chosenPrimaryId = pickFirstTrimmed(
+    primaryTargetId,
+    merged.find((item) => item.target_role === 'primary')?.target_id,
+    merged[0]?.target_id,
+  );
+  return merged.map((item, index) => ({
+    ...item,
+    target_role: item.target_id === chosenPrimaryId
+      ? 'primary'
+      : normalizeRecoContextTargetRole(item.target_role, index),
+  }));
+}
+
 function normalizeIngredientRecoContextValue(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const intent = pickFirstTrimmed(raw.intent);
+  const sourceDetail = pickFirstTrimmed(raw.source_detail, raw.sourceDetail);
+  const triggerSource = pickFirstTrimmed(raw.trigger_source, raw.triggerSource);
+  const artifactId = pickFirstTrimmed(raw.artifact_id, raw.artifactId);
+  const contextOrigin = pickFirstTrimmed(raw.context_origin, raw.contextOrigin);
   const query = pickFirstTrimmed(
     raw.query,
     raw.ingredient_query,
@@ -13459,11 +14003,51 @@ function normalizeIngredientRecoContextValue(raw) {
   const productCandidates = productCandidatesRaw
     .filter((p) => p && typeof p === 'object' && !Array.isArray(p))
     .slice(0, 12);
+  const primaryFocus = normalizeRecoContextPrimaryFocus(
+    isPlainObject(raw.primary_focus) ? raw.primary_focus : isPlainObject(raw.primaryFocus) ? raw.primaryFocus : null,
+  );
+  const confidencePolicy = normalizeRecoConfidencePolicy(
+    isPlainObject(raw.confidence_policy) ? raw.confidence_policy : isPlainObject(raw.confidencePolicy) ? raw.confidencePolicy : null,
+  );
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(raw.ranked_targets)
+      ? raw.ranked_targets
+      : Array.isArray(raw.rankedTargets)
+        ? raw.rankedTargets
+        : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    raw.primary_target_id,
+    raw.primaryTargetId,
+    rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  const selectedTargetIds = normalizeRecoContextTargetIds(
+    Array.isArray(raw.selected_target_ids)
+      ? raw.selected_target_ids
+      : Array.isArray(raw.selectedTargetIds)
+        ? raw.selectedTargetIds
+        : [],
+  );
   const source = pickFirstTrimmed(raw.source, raw.entry_source, raw.trigger_source, raw.route_source);
   const updatedRaw = Number(raw.updated_at_ms || raw.updatedAtMs || 0);
-  if (!query && !goal && candidates.length === 0 && !resolvedTargetStep && productCandidates.length === 0) return null;
+  if (
+    !query &&
+    !goal &&
+    candidates.length === 0 &&
+    !resolvedTargetStep &&
+    productCandidates.length === 0 &&
+    !primaryFocus &&
+    rankedTargets.length === 0 &&
+    !primaryTargetId
+  ) return null;
   const out = {
+    ...(intent ? { intent: String(intent).slice(0, 48) } : {}),
+    ...(sourceDetail ? { source_detail: String(sourceDetail).slice(0, 64) } : {}),
+    ...(triggerSource ? { trigger_source: String(triggerSource).slice(0, 64) } : {}),
+    ...(artifactId ? { artifact_id: String(artifactId).slice(0, 128) } : {}),
     ...(query ? { query: String(query).slice(0, 120) } : {}),
+    ...(query ? { ingredient_query: String(query).slice(0, 120) } : {}),
     ...(goal ? { goal } : {}),
     ...(candidates.length ? { candidates } : {}),
     ...(candidates.length ? { ingredient_candidates: candidates } : {}),
@@ -13479,6 +14063,12 @@ function normalizeIngredientRecoContextValue(raw) {
     ...(resolvedTargetStepSource ? { resolved_target_step_source: resolvedTargetStepSource.slice(0, 48) } : {}),
     sensitivity: sensitivity || 'unknown',
     ...(source ? { source: String(source).slice(0, 48) } : {}),
+    ...(contextOrigin ? { context_origin: String(contextOrigin).slice(0, 64) } : {}),
+    ...(primaryFocus ? { primary_focus: primaryFocus } : {}),
+    ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
+    ...(confidencePolicy ? { confidence_policy: confidencePolicy } : {}),
+    ...(primaryTargetId ? { primary_target_id: primaryTargetId } : {}),
+    ...(selectedTargetIds.length ? { selected_target_ids: selectedTargetIds } : {}),
   };
   if (Number.isFinite(updatedRaw) && updatedRaw > 0) {
     out.updated_at_ms = Math.trunc(updatedRaw);
@@ -13520,10 +14110,32 @@ function mergeIngredientRecoContextValue(base, patch) {
     right.resolved_target_step_source,
     left.resolved_target_step_source,
   );
+  const mergedPrimaryFocus = right.primary_focus || left.primary_focus || null;
+  const mergedConfidencePolicy = mergeRecoConfidencePolicy(left.confidence_policy, right.confidence_policy);
+  const mergedPrimaryTargetId = pickFirstTrimmed(
+    right.primary_target_id,
+    left.primary_target_id,
+    right.ranked_targets && right.ranked_targets[0] && right.ranked_targets[0].target_id,
+    left.ranked_targets && left.ranked_targets[0] && left.ranked_targets[0].target_id,
+  );
+  const mergedRankedTargets = mergeRecoContextRankedTargets(
+    Array.isArray(left.ranked_targets) ? left.ranked_targets : [],
+    Array.isArray(right.ranked_targets) ? right.ranked_targets : [],
+    mergedPrimaryTargetId,
+  );
+  const mergedSelectedTargetIds = normalizeRecoContextTargetIds([
+    ...(Array.isArray(right.selected_target_ids) ? right.selected_target_ids : []),
+    ...(Array.isArray(left.selected_target_ids) ? left.selected_target_ids : []),
+  ]);
   return {
     ...left,
     ...right,
+    intent: right.intent || left.intent || '',
+    source_detail: right.source_detail || left.source_detail || '',
+    trigger_source: right.trigger_source || left.trigger_source || '',
+    artifact_id: right.artifact_id || left.artifact_id || '',
     query: right.query || left.query || '',
+    ingredient_query: right.ingredient_query || right.query || left.ingredient_query || left.query || '',
     goal: right.goal || left.goal || '',
     ...(mergedCandidates.length ? { candidates: mergedCandidates, ingredient_candidates: mergedCandidates } : {}),
     ...(mergedProductCandidates.length ? { product_candidates: mergedProductCandidates } : {}),
@@ -13538,6 +14150,12 @@ function mergeIngredientRecoContextValue(base, patch) {
     ...(mergedResolvedTargetStepSource ? { resolved_target_step_source: mergedResolvedTargetStepSource } : {}),
     sensitivity: right.sensitivity || left.sensitivity || 'unknown',
     source: right.source || left.source || '',
+    context_origin: right.context_origin || left.context_origin || '',
+    ...(mergedPrimaryFocus ? { primary_focus: mergedPrimaryFocus } : {}),
+    ...(mergedRankedTargets.length ? { ranked_targets: mergedRankedTargets } : {}),
+    ...(mergedConfidencePolicy ? { confidence_policy: mergedConfidencePolicy } : {}),
+    ...(mergedPrimaryTargetId ? { primary_target_id: mergedPrimaryTargetId } : {}),
+    ...(mergedSelectedTargetIds.length ? { selected_target_ids: mergedSelectedTargetIds } : {}),
     updated_at_ms: Math.max(
       Number.isFinite(Number(left.updated_at_ms)) ? Number(left.updated_at_ms) : 0,
       Number.isFinite(Number(right.updated_at_ms)) ? Number(right.updated_at_ms) : 0,
@@ -21578,12 +22196,16 @@ function applyRecoCardContractInvariant({ envelope, ctx, language } = {}) {
   });
 
   return {
-    envelope: {
-      ...baseEnvelope,
-      cards: nextCards,
-      session_patch: nextSessionPatch,
-      events: normalizedRecoEvents.events,
-    },
+    envelope: alignAssistantMessageToRecoNotice({
+      envelope: {
+        ...baseEnvelope,
+        cards: nextCards,
+        session_patch: nextSessionPatch,
+        events: normalizedRecoEvents.events,
+      },
+      language,
+      preferredReason: reason,
+    }),
     applied: true,
     reason,
     droppedCount,
@@ -24403,9 +25025,36 @@ function sanitizeRecoRequestContext(raw = {}) {
     raw.resolved_target_step_source || raw.resolvedTargetStepSource || '',
   ).trim().toLowerCase();
   const artifactId = String(raw.artifact_id || raw.artifactId || '').trim();
-  const productCandidates = (Array.isArray(raw.product_candidates) ? raw.product_candidates : Array.isArray(raw.productCandidates) ? raw.productCandidates : [])
-    .filter((row) => isVerifiedBeautyProductCandidate(row))
-    .slice(0, 12);
+  const productCandidates = filterRecoContextProductCandidates(
+    Array.isArray(raw.product_candidates) ? raw.product_candidates : Array.isArray(raw.productCandidates) ? raw.productCandidates : [],
+    { target: raw, max: 12 },
+  );
+  const primaryFocus = normalizeRecoContextPrimaryFocus(
+    isPlainObject(raw.primary_focus) ? raw.primary_focus : isPlainObject(raw.primaryFocus) ? raw.primaryFocus : null,
+  );
+  const confidencePolicy = normalizeRecoConfidencePolicy(
+    isPlainObject(raw.confidence_policy) ? raw.confidence_policy : isPlainObject(raw.confidencePolicy) ? raw.confidencePolicy : null,
+  );
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(raw.ranked_targets)
+      ? raw.ranked_targets
+      : Array.isArray(raw.rankedTargets)
+        ? raw.rankedTargets
+        : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    raw.primary_target_id,
+    raw.primaryTargetId,
+    rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  const selectedTargetIds = normalizeRecoContextTargetIds(
+    Array.isArray(raw.selected_target_ids)
+      ? raw.selected_target_ids
+      : Array.isArray(raw.selectedTargetIds)
+        ? raw.selectedTargetIds
+        : [],
+  );
   const createdAtMsRaw = Number(raw.created_at_ms || raw.createdAtMs);
   const createdAtMs = Number.isFinite(createdAtMsRaw) ? Math.max(0, Math.trunc(createdAtMsRaw)) : Date.now();
   const includeAlternatives = raw.include_alternatives === true;
@@ -24426,6 +25075,11 @@ function sanitizeRecoRequestContext(raw = {}) {
   if (resolvedTargetStepSource) out.resolved_target_step_source = resolvedTargetStepSource.slice(0, 48);
   if (artifactId) out.artifact_id = artifactId.slice(0, 120);
   if (productCandidates.length) out.product_candidates = productCandidates;
+  if (primaryFocus) out.primary_focus = primaryFocus;
+  if (confidencePolicy) out.confidence_policy = confidencePolicy;
+  if (rankedTargets.length) out.ranked_targets = rankedTargets;
+  if (primaryTargetId) out.primary_target_id = primaryTargetId;
+  if (selectedTargetIds.length) out.selected_target_ids = selectedTargetIds;
   return out;
 }
 
@@ -24557,7 +25211,328 @@ function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummar
   return null;
 }
 
-function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null, artifactId = '', contextOrigin = 'analysis_summary' } = {}) {
+function buildPhotoRecoConfidencePolicy({ primaryFocus = null, qualityGrade = '', rankedTargets = [] } = {}) {
+  const normalizedTargets = normalizeRecoContextRankedTargets(rankedTargets);
+  const confidenceLevel = String(
+    pickFirstTrimmed(
+      primaryFocus && primaryFocus.confidence_bucket,
+      normalizedTargets[0] && normalizedTargets[0].target_confidence,
+      'medium',
+    ) || 'medium',
+  ).trim().toLowerCase();
+  const normalizedQualityGrade = String(qualityGrade || '').trim().toLowerCase();
+  const strongestVerifiedAggressiveness = normalizedTargets.reduce((max, target) => {
+    const verifiedCount = Math.max(0, Number(target && target.verified_product_count || 0));
+    if (verifiedCount <= 0) return max;
+    return Math.max(max, getRecoTargetAggressiveness(target));
+  }, 0);
+  let maxTargetStep = 'treatment';
+  let aggressiveTreatmentAllowed = true;
+  if (normalizedQualityGrade === 'fail') {
+    maxTargetStep = 'moisturizer';
+    aggressiveTreatmentAllowed = false;
+  } else if (normalizedQualityGrade === 'degraded') {
+    maxTargetStep = confidenceLevel === 'low' ? 'moisturizer' : 'serum';
+    aggressiveTreatmentAllowed = false;
+  } else if (confidenceLevel === 'low') {
+    maxTargetStep = 'serum';
+    aggressiveTreatmentAllowed = false;
+  } else if (confidenceLevel === 'medium' || confidenceLevel === 'high') {
+    maxTargetStep = strongestVerifiedAggressiveness >= 3 ? 'treatment' : 'serum';
+    aggressiveTreatmentAllowed = maxTargetStep === 'treatment';
+  }
+  return normalizeRecoConfidencePolicy({
+    decision_stage: 'photo_confidence_policy_v1',
+    policy_version: 'photo_confidence_policy_v1',
+    confidence_level: confidenceLevel || 'medium',
+    quality_grade: normalizedQualityGrade || 'pass',
+    aggressive_treatment_allowed: aggressiveTreatmentAllowed,
+    max_target_step: maxTargetStep,
+  });
+}
+
+function canonicalizePhotoRecoTargetBundle({ rankedTargets, primaryFocus, qualityGrade } = {}) {
+  const normalizedTargets = normalizeRecoContextRankedTargets(rankedTargets);
+  const confidencePolicy = buildPhotoRecoConfidencePolicy({
+    primaryFocus,
+    qualityGrade,
+    rankedTargets: normalizedTargets,
+  });
+  if (!normalizedTargets.length) {
+    return {
+      ranked_targets: [],
+      primary_focus: normalizeRecoContextPrimaryFocus(primaryFocus),
+      confidence_policy: confidencePolicy,
+      display_policy: {
+        primary_target_id: null,
+        secondary_target_ids: [],
+        allow_cta_only: false,
+      },
+      selection_shift_reason: '',
+    };
+  }
+
+  const maxAggressiveness = getRecoTargetAggressiveness({ resolved_target_step: confidencePolicy && confidencePolicy.max_target_step });
+  const scoredTargets = normalizedTargets.map((target, index) => {
+    const aggressiveness = getRecoTargetAggressiveness(target);
+    const verifiedProductCount = Math.max(0, Number(target && target.verified_product_count || 0));
+    return {
+      target,
+      index,
+      aggressiveness,
+      verifiedProductCount,
+      eligible: aggressiveness <= maxAggressiveness,
+    };
+  });
+
+  const eligibleTargets = scoredTargets.filter((row) => row.eligible);
+  const sortedTargets = eligibleTargets
+    .slice()
+    .sort((left, right) => {
+      if (left.verifiedProductCount !== right.verifiedProductCount) return right.verifiedProductCount - left.verifiedProductCount;
+      if (left.aggressiveness !== right.aggressiveness) return left.aggressiveness - right.aggressiveness;
+      return left.index - right.index;
+    })
+    .slice(0, RECO_CONTEXT_CONTENT_MAX_TARGETS)
+    .map((row, index) => ({
+      ...row.target,
+      target_role: index === 0 ? 'primary' : 'secondary',
+    }));
+
+  const originalPrimaryTargetId = pickFirstTrimmed(normalizedTargets[0] && normalizedTargets[0].target_id);
+  const canonicalPrimaryTarget = sortedTargets[0] || null;
+  const selectionShiftReason = !canonicalPrimaryTarget && normalizedTargets.length
+    ? 'confidence_policy_target_bundle_cleared'
+    : (
+      canonicalPrimaryTarget && originalPrimaryTargetId && canonicalPrimaryTarget.target_id !== originalPrimaryTargetId
+        ? 'confidence_policy_primary_target_shifted'
+        : ''
+    );
+  const nextPrimaryFocus = (() => {
+    const base = normalizeRecoContextPrimaryFocus(primaryFocus) || {};
+    if (!canonicalPrimaryTarget) {
+      if (!Object.keys(base).length) return null;
+      const { ingredient_id: _ingredientId, ingredient_name: _ingredientName, resolved_target_step: _resolvedTargetStep, ...rest } = base;
+      return Object.keys(rest).length ? rest : null;
+    }
+    return {
+      ...base,
+      ...(pickFirstTrimmed(canonicalPrimaryTarget.ingredient_id) ? { ingredient_id: pickFirstTrimmed(canonicalPrimaryTarget.ingredient_id) } : {}),
+      ...(pickFirstTrimmed(canonicalPrimaryTarget.ingredient_query, canonicalPrimaryTarget.ingredient_id)
+        ? { ingredient_name: pickFirstTrimmed(canonicalPrimaryTarget.ingredient_query, canonicalPrimaryTarget.ingredient_id) }
+        : {}),
+      ...(pickFirstTrimmed(canonicalPrimaryTarget.resolved_target_step)
+        ? { resolved_target_step: pickFirstTrimmed(canonicalPrimaryTarget.resolved_target_step) }
+        : {}),
+    };
+  })();
+
+  return {
+    ranked_targets: sortedTargets,
+    primary_focus: nextPrimaryFocus,
+    confidence_policy: normalizeRecoConfidencePolicy({
+      ...confidencePolicy,
+      ...(selectionShiftReason ? { selection_shift_reason: selectionShiftReason } : {}),
+    }),
+    display_policy: {
+      primary_target_id: pickFirstTrimmed(canonicalPrimaryTarget && canonicalPrimaryTarget.target_id) || null,
+      secondary_target_ids: sortedTargets.slice(1).map((item) => item.target_id).filter(Boolean),
+      allow_cta_only: sortedTargets.some((item) => Number(item && item.verified_product_count || 0) <= 0),
+    },
+    selection_shift_reason: selectionShiftReason,
+  };
+}
+
+function sortPhotoActionsByCanonicalTargets(actionRows, rankedTargets) {
+  const rows = Array.isArray(actionRows) ? actionRows.slice() : [];
+  const targets = normalizeRecoContextRankedTargets(rankedTargets);
+  if (!rows.length || !targets.length) return rows;
+  const canonicalIndexFor = (action) => {
+    const actionTarget = {
+      ingredient_id: pickFirstTrimmed(action && action.ingredient_id),
+      ingredient_query: pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      resolved_target_step: deriveRecoTargetStepFromIngredient(
+        pickFirstTrimmed(action && action.ingredient_id),
+        pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      ),
+      module_id: pickFirstTrimmed(action && action.module_id),
+      issue_type: pickFirstTrimmed(Array.isArray(action && action.issue_types) ? action.issue_types[0] : ''),
+    };
+    const idx = targets.findIndex((target) => targetsAreSemanticallyAligned(target, actionTarget));
+    return idx >= 0 ? idx : 99;
+  };
+  return rows
+    .map((row, index) => ({ row, index, canonicalIndex: canonicalIndexFor(row) }))
+    .sort((left, right) => left.canonicalIndex - right.canonicalIndex || left.index - right.index)
+    .map((item) => item.row);
+}
+
+function buildIngredientPlanRecoContextTargets(rankedTargets, {
+  profileSummary = null,
+  contextOrigin = 'analysis_summary',
+} = {}) {
+  const out = [];
+  for (const [index, target] of (Array.isArray(rankedTargets) ? rankedTargets : []).entries()) {
+    if (!isPlainObject(target)) continue;
+    const ingredientId = pickFirstTrimmed(target.ingredient_id, target.ingredientId);
+    const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredientName, ingredientId);
+    const targetStep = pickFirstTrimmed(
+      target.resolved_target_step,
+      target.target_step_family,
+      target.targetStepFamily,
+      deriveRecoTargetStepFromIngredient(ingredientId, ingredientName),
+    );
+    const targetContext = resolveRecommendationTargetContext({
+      explicitStep: targetStep,
+      focus: ingredientName,
+      text: [
+        ingredientName,
+        ...(Array.isArray(target.why) ? target.why.slice(0, 3) : []),
+        ...(Array.isArray(target.usage_guidance) ? target.usage_guidance.slice(0, 2) : []),
+      ].filter(Boolean).join(' '),
+      entryType: 'analysis',
+    });
+    if (!targetContext.resolved_target_step && !ingredientName) continue;
+    const products = isPlainObject(target.products) ? target.products : null;
+    const productCandidates = [
+      ...(Array.isArray(products && products.competitors) ? products.competitors : []),
+      ...(Array.isArray(products && products.dupes) ? products.dupes : []),
+    ]
+      .filter((row) => isPlainObject(row))
+      .slice(0, 12);
+    out.push({
+      target_id: buildRecoContextTargetId({
+        targetId: pickFirstTrimmed(target.target_id, target.targetId),
+        ingredientQuery: ingredientName,
+        ingredientId,
+        step: targetContext.resolved_target_step || targetStep,
+        issueType: pickFirstTrimmed(Array.isArray(target.source_issue_types) ? target.source_issue_types[0] : ''),
+        moduleId: pickFirstTrimmed(Array.isArray(target.source_module_ids) ? target.source_module_ids[0] : ''),
+      }),
+      target_role: index === 0 ? 'primary' : 'secondary',
+      ingredient_id: ingredientId || '',
+      ingredient_query: ingredientName || ingredientId,
+      goal: pickPrimaryRecoGoal(
+        profileSummary,
+        pickFirstTrimmed(Array.isArray(target.source_issue_types) ? target.source_issue_types[0] : ''),
+      ),
+      resolved_target_step: targetContext.resolved_target_step || targetStep,
+      target_confidence: normalizePhotoStoryConfidenceBucket(
+        target.priority_score_0_100,
+        index === 0 ? 'high' : 'medium',
+      ),
+      source: contextOrigin,
+      module_id: pickFirstTrimmed(Array.isArray(target.source_module_ids) ? target.source_module_ids[0] : ''),
+      issue_type: pickFirstTrimmed(Array.isArray(target.source_issue_types) ? target.source_issue_types[0] : ''),
+      verified_product_count: Math.max(0, Number(target.verified_product_count || target.strict_product_count || productCandidates.length || 0)),
+      ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
+    });
+    if (out.length >= RECO_CONTEXT_CONTENT_MAX_TARGETS) break;
+  }
+  return out.filter((row) => pickFirstTrimmed(row.target_id));
+}
+
+function buildPhotoRecoContextTargets(photoModulesCard, { profileSummary = null } = {}) {
+  const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  if (!payload) return [];
+  const modules = Array.isArray(payload.modules) ? payload.modules : [];
+  const summary = isPlainObject(payload.summary_v1) ? payload.summary_v1 : {};
+  const topModuleId = pickFirstTrimmed(summary.top_module_id);
+  const topActionIngredientId = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
+  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  if (!modules.length || (!topFindings.length && !topActionIngredientId)) return [];
+  const confidenceByModuleIssue = new Map();
+  for (const finding of topFindings) {
+    const moduleId = pickFirstTrimmed(finding && finding.module_id);
+    const issueType = pickFirstTrimmed(finding && finding.issue_type);
+    if (!moduleId || !issueType) continue;
+    confidenceByModuleIssue.set(
+      `${moduleId}::${issueType}`.toLowerCase(),
+      normalizePhotoStoryConfidenceBucket(finding && finding.confidence_0_1, finding && finding.confidence_bucket),
+    );
+  }
+  const orderedModules = modules.slice().sort((left, right) => {
+    const leftId = pickFirstTrimmed(left && left.module_id);
+    const rightId = pickFirstTrimmed(right && right.module_id);
+    const leftRank = leftId && leftId === topModuleId ? 0 : 1;
+    const rightRank = rightId && rightId === topModuleId ? 0 : 1;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    return Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+  });
+  const out = [];
+  const seen = new Set();
+  for (const moduleRow of orderedModules) {
+    const moduleId = pickFirstTrimmed(moduleRow && moduleRow.module_id);
+    const actions = (Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [])
+      .filter((row) => isPlainObject(row))
+      .sort((left, right) => {
+        const leftId = normalizePhotoIngredientKey(pickFirstTrimmed(
+          left && left.ingredient_canonical_id,
+          left && left.ingredient_id,
+          left && left.ingredientId,
+        ));
+        const rightId = normalizePhotoIngredientKey(pickFirstTrimmed(
+          right && right.ingredient_canonical_id,
+          right && right.ingredient_id,
+          right && right.ingredientId,
+        ));
+        const leftRank = topActionIngredientId && leftId === topActionIngredientId ? 0 : 1;
+        const rightRank = topActionIngredientId && rightId === topActionIngredientId ? 0 : 1;
+        if (leftRank !== rightRank) return leftRank - rightRank;
+        return Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0);
+      });
+    for (const action of actions) {
+      const ingredientId = pickFirstTrimmed(action.ingredient_canonical_id, action.ingredient_id, action.ingredientId);
+      const ingredientName = pickFirstTrimmed(action.ingredient_name, action.ingredient, ingredientId);
+      const issueType = pickFirstTrimmed(
+        Array.isArray(action.evidence_issue_types) ? action.evidence_issue_types[0] : '',
+        summary.top_issue_type,
+      );
+      const targetStep = deriveRecoTargetStepFromIngredient(ingredientId, ingredientName);
+      const targetContext = resolveRecommendationTargetContext({
+        explicitStep: targetStep,
+        focus: ingredientName,
+        text: [ingredientName, pickFirstTrimmed(action.why), issueType].filter(Boolean).join(' '),
+        entryType: 'analysis',
+      });
+      const targetId = buildRecoContextTargetId({
+        ingredientQuery: ingredientName,
+        ingredientId,
+        step: targetContext.resolved_target_step || targetStep,
+        issueType,
+        moduleId,
+      });
+      if (!targetId || seen.has(targetId)) continue;
+      seen.add(targetId);
+      const productCandidates = filterPhotoActionProducts(action, action && action.products, 12);
+      out.push({
+        target_id: targetId,
+        target_role: out.length === 0 ? 'primary' : 'secondary',
+        ingredient_id: ingredientId || '',
+        ingredient_query: ingredientName || ingredientId,
+        goal: pickPrimaryRecoGoal(profileSummary, issueType),
+        resolved_target_step: targetContext.resolved_target_step || targetStep,
+        target_confidence: confidenceByModuleIssue.get(`${moduleId}::${issueType}`.toLowerCase()) || (out.length === 0 ? 'high' : 'medium'),
+        source: 'photo_modules_v1',
+        module_id: moduleId || '',
+        module_label: humanizePhotoStoryModuleLabel(moduleId, false),
+        issue_type: issueType || '',
+        issue_label: humanizePhotoStoryIssueLabel(issueType, false),
+        verified_product_count: productCandidates.length,
+        ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
+      });
+      if (out.length >= RECO_CONTEXT_CONTENT_MAX_TARGETS) return out;
+    }
+  }
+  return out;
+}
+
+function deriveIngredientPlanRecoContext(ingredientPlan, {
+  profileSummary = null,
+  artifactId = '',
+  contextOrigin = 'analysis_summary',
+  photoModulesCard = null,
+} = {}) {
   const plan = isPlainObject(ingredientPlan) ? ingredientPlan : null;
   const previewReason = pickFirstTrimmed(plan && plan.preview_reason, plan && plan.products_empty_reason).toLowerCase();
   if (previewReason === 'photo_quality_failed') return null;
@@ -24591,6 +25566,7 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
   const rankedTargets = normalizedTargets
     .filter((row) => !hasDisplayableRecoTarget || isDisplayableRecoTarget(row))
     .sort((left, right) => {
+      const targetRoleRank = (row) => String(row && row.target_role || '').trim().toLowerCase() === 'primary' ? -1 : 0;
       const leftBucket = String(left.presentation_bucket || '').trim().toLowerCase();
       const rightBucket = String(right.presentation_bucket || '').trim().toLowerCase();
       const bucketRank = (value) => {
@@ -24601,11 +25577,32 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
       };
       const leftScore = Number.isFinite(Number(left.priority_score_0_100)) ? Number(left.priority_score_0_100) : 0;
       const rightScore = Number.isFinite(Number(right.priority_score_0_100)) ? Number(right.priority_score_0_100) : 0;
-      return bucketRank(leftBucket) - bucketRank(rightBucket) || rightScore - leftScore;
+      return targetRoleRank(left) - targetRoleRank(right) || bucketRank(leftBucket) - bucketRank(rightBucket) || rightScore - leftScore;
     });
-  for (const target of rankedTargets) {
+  const recoTargets = buildIngredientPlanRecoContextTargets(rankedTargets, { profileSummary, contextOrigin });
+  const photoPayload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
+  const photoContext = photoPayload
+    ? buildPhotoStoryContext({
+      analysisSummaryPayload: {},
+      photoModulesCard,
+      language: 'EN',
+    })
+    : null;
+  const primaryFocus = normalizeRecoContextPrimaryFocus(photoContext && photoContext.primary_focus);
+  const confidencePolicy = normalizeRecoConfidencePolicy(photoContext && photoContext.confidence_policy);
+  const canonicalPhotoTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(photoContext && photoContext.ranked_targets) ? photoContext.ranked_targets : [],
+  );
+  const policyEligibleTargets = recoTargets.filter((target) => targetSatisfiesRecoConfidencePolicy(target, confidencePolicy));
+  const focusMatchedTargets = policyEligibleTargets.filter((target) => targetMatchesRecoPrimaryFocus(target, primaryFocus));
+  const filteredRecoTargets = canonicalPhotoTargets.length
+    ? policyEligibleTargets.filter((target) =>
+      canonicalPhotoTargets.some((photoTarget) => targetsAreSemanticallyAligned(photoTarget, target)))
+    : (focusMatchedTargets.length ? focusMatchedTargets : policyEligibleTargets);
+  if (photoPayload && !filteredRecoTargets.length) return null;
+  for (const target of filteredRecoTargets) {
     const ingredientId = pickFirstTrimmed(target.ingredient_id, target.ingredientId);
-    const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredientName, ingredientId);
+    const ingredientName = pickFirstTrimmed(target.ingredient_query, target.ingredient_name, target.ingredientName, ingredientId);
     const targetStep = pickFirstTrimmed(
       target.resolved_target_step,
       target.target_step_family,
@@ -24623,13 +25620,7 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
       entryType: 'analysis',
     });
     if (!targetContext.resolved_target_step && !ingredientName) continue;
-    const products = isPlainObject(target.products) ? target.products : null;
-    const productCandidates = [
-      ...(Array.isArray(products && products.competitors) ? products.competitors : []),
-      ...(Array.isArray(products && products.dupes) ? products.dupes : []),
-    ]
-      .filter((row) => isPlainObject(row))
-      .slice(0, 12);
+    const productCandidates = collectRecoContextTargetProductCandidates(target, 12);
     const out = {
       intent: 'reco_products',
       source_detail: 'analysis_handoff',
@@ -24641,9 +25632,7 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
       ].filter(Boolean).join(' '),
       goal: pickPrimaryRecoGoal(
         profileSummary,
-        pickFirstTrimmed(
-          Array.isArray(target.source_issue_types) ? target.source_issue_types[0] : '',
-        ),
+        pickFirstTrimmed(target.issue_type),
       ),
       ingredient_query: ingredientName || ingredientId,
       resolved_target_step: targetContext.resolved_target_step || targetStep,
@@ -24656,6 +25645,10 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
         targetStep ? 'analysis_ingredient_plan' : '',
       ),
       artifact_id: pickFirstTrimmed(artifactId),
+      primary_target_id: pickFirstTrimmed(filteredRecoTargets[0] && filteredRecoTargets[0].target_id),
+      ...(filteredRecoTargets.length ? { ranked_targets: filteredRecoTargets } : {}),
+      ...(confidencePolicy ? { confidence_policy: confidencePolicy } : {}),
+      ...(primaryFocus ? { primary_focus: primaryFocus } : {}),
     };
     if (productCandidates.length) out.product_candidates = productCandidates;
     return out;
@@ -24663,87 +25656,183 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
   return null;
 }
 
+function reconcilePhotoContextWithIngredientPlan({
+  photoContext = null,
+  ingredientPlanPayload = null,
+  photoModulesCard = null,
+  language = 'EN',
+} = {}) {
+  const base = isPlainObject(photoContext) ? { ...photoContext } : null;
+  const plan = isPlainObject(ingredientPlanPayload) ? ingredientPlanPayload : null;
+  if (!base || !plan || base.used_photos !== true) return base;
+
+  const ingredientPlanRecoContext = deriveIngredientPlanRecoContext(plan, {
+    profileSummary: null,
+    artifactId: '',
+    contextOrigin: 'photo_modules_v1',
+    photoModulesCard,
+  });
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(ingredientPlanRecoContext && ingredientPlanRecoContext.ranked_targets)
+      ? ingredientPlanRecoContext.ranked_targets
+      : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    ingredientPlanRecoContext && ingredientPlanRecoContext.primary_target_id,
+    rankedTargets[0] && rankedTargets[0].target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((target) => pickFirstTrimmed(target && target.target_id) === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  if (!primaryTarget || !primaryTargetId) return base;
+
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const existingFocus = isPlainObject(base.primary_focus) ? base.primary_focus : {};
+  const nextPrimaryFocus = {
+    ...existingFocus,
+    ...(pickFirstTrimmed(primaryTarget.module_id) ? { module_id: pickFirstTrimmed(primaryTarget.module_id) } : {}),
+    ...(pickFirstTrimmed(primaryTarget.module_label)
+      ? { module_label: pickFirstTrimmed(primaryTarget.module_label) }
+      : pickFirstTrimmed(existingFocus.module_label, existingFocus.module_id)
+        ? { module_label: pickFirstTrimmed(existingFocus.module_label, existingFocus.module_id) }
+        : {}),
+    ...(pickFirstTrimmed(primaryTarget.issue_type) ? { issue_type: pickFirstTrimmed(primaryTarget.issue_type) } : {}),
+    ...(pickFirstTrimmed(existingFocus.issue_label, primaryTarget.issue_type)
+      ? {
+          issue_label: pickFirstTrimmed(
+            existingFocus.issue_label,
+            humanizePhotoStoryIssueLabel(
+              pickFirstTrimmed(primaryTarget.issue_type, existingFocus.issue_type),
+              isCn,
+            ),
+          ),
+        }
+      : {}),
+    ...(pickFirstTrimmed(primaryTarget.target_confidence, existingFocus.confidence_bucket)
+      ? { confidence_bucket: pickFirstTrimmed(primaryTarget.target_confidence, existingFocus.confidence_bucket) }
+      : {}),
+    ...(pickFirstTrimmed(primaryTarget.ingredient_id, existingFocus.ingredient_id)
+      ? { ingredient_id: pickFirstTrimmed(primaryTarget.ingredient_id, existingFocus.ingredient_id) }
+      : {}),
+    ...(pickFirstTrimmed(primaryTarget.ingredient_query, primaryTarget.ingredient_id, existingFocus.ingredient_name)
+      ? {
+          ingredient_name: pickFirstTrimmed(
+            primaryTarget.ingredient_query,
+            primaryTarget.ingredient_id,
+            existingFocus.ingredient_name,
+          ),
+        }
+      : {}),
+    ...(pickFirstTrimmed(primaryTarget.resolved_target_step, existingFocus.resolved_target_step)
+      ? { resolved_target_step: pickFirstTrimmed(primaryTarget.resolved_target_step, existingFocus.resolved_target_step) }
+      : {}),
+  };
+
+  const existingActions = Array.isArray(base.top_actions_by_module)
+    ? base.top_actions_by_module.filter((row) => isPlainObject(row))
+    : [];
+  const syntheticPrimaryAction = {
+    module_id: pickFirstTrimmed(nextPrimaryFocus.module_id),
+    module_label: pickFirstTrimmed(nextPrimaryFocus.module_label),
+    ingredient_id: pickFirstTrimmed(primaryTarget.ingredient_id),
+    ingredient_name: pickFirstTrimmed(primaryTarget.ingredient_query, primaryTarget.ingredient_id),
+    issue_types: [pickFirstTrimmed(primaryTarget.issue_type, nextPrimaryFocus.issue_type)].filter(Boolean),
+    why: '',
+    strict_product_count: Math.max(0, Number(primaryTarget.verified_product_count || 0)),
+    recommendation_mode: Math.max(0, Number(primaryTarget.verified_product_count || 0)) > 0 ? 'strict_match' : 'cta_only',
+  };
+  const nextTopActions = sortPhotoActionsByCanonicalTargets(
+    [
+      syntheticPrimaryAction,
+      ...existingActions.filter((row) => !targetsAreSemanticallyAligned(primaryTarget, {
+        ingredient_id: pickFirstTrimmed(row && row.ingredient_id),
+        ingredient_query: pickFirstTrimmed(row && row.ingredient_name, row && row.ingredient_id),
+        resolved_target_step: deriveRecoTargetStepFromIngredient(
+          pickFirstTrimmed(row && row.ingredient_id),
+          pickFirstTrimmed(row && row.ingredient_name, row && row.ingredient_id),
+        ),
+        module_id: pickFirstTrimmed(row && row.module_id),
+        issue_type: pickFirstTrimmed(Array.isArray(row && row.issue_types) ? row.issue_types[0] : ''),
+      })),
+    ],
+    rankedTargets,
+  )
+    .filter((action) => targetSatisfiesRecoConfidencePolicy({
+      ingredient_id: pickFirstTrimmed(action && action.ingredient_id),
+      ingredient_query: pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      resolved_target_step: deriveRecoTargetStepFromIngredient(
+        pickFirstTrimmed(action && action.ingredient_id),
+        pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      ),
+      module_id: pickFirstTrimmed(action && action.module_id),
+      issue_type: pickFirstTrimmed(Array.isArray(action && action.issue_types) ? action.issue_types[0] : ''),
+    }, ingredientPlanRecoContext && ingredientPlanRecoContext.confidence_policy))
+    .slice(0, 6);
+
+  return {
+    ...base,
+    primary_focus: nextPrimaryFocus,
+    ranked_targets: rankedTargets,
+    display_policy: {
+      primary_target_id: primaryTargetId,
+      secondary_target_ids: rankedTargets.slice(1).map((item) => item.target_id).filter(Boolean),
+      allow_cta_only: rankedTargets.some((item) => Math.max(0, Number(item && item.verified_product_count || 0)) <= 0),
+    },
+    ...(ingredientPlanRecoContext && ingredientPlanRecoContext.confidence_policy
+      ? { confidence_policy: ingredientPlanRecoContext.confidence_policy }
+      : {}),
+    top_actions_by_module: nextTopActions,
+  };
+}
+
 function derivePhotoModulesRecoContext(photoModulesCard, { profileSummary = null, artifactId = '' } = {}) {
   const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
-  const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
   const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
   const qualityCaveats = Array.isArray(summary.quality_caveats)
     ? summary.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
     : [];
   if (qualityCaveats.includes('photo_quality_failed')) return null;
-  const topModuleId = pickFirstTrimmed(summary.top_module_id);
-  const topActionIngredientId = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
-  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
-  if (!topFindings.length && !topActionIngredientId) return null;
-  const orderedModules = modules.slice().sort((left, right) => {
-    const leftId = pickFirstTrimmed(left && left.module_id);
-    const rightId = pickFirstTrimmed(right && right.module_id);
-    const leftRank = leftId && leftId === topModuleId ? 0 : 1;
-    const rightRank = rightId && rightId === topModuleId ? 0 : 1;
-    if (leftRank !== rightRank) return leftRank - rightRank;
-    return Number(right && right.module_rank_score || 0) - Number(left && left.module_rank_score || 0);
+  const photoContext = buildPhotoStoryContext({
+    analysisSummaryPayload: {},
+    photoModulesCard,
+    language: 'EN',
   });
-  for (const moduleRow of orderedModules) {
-    const actions = (Array.isArray(moduleRow && moduleRow.actions) ? moduleRow.actions : [])
-      .filter((row) => isPlainObject(row))
-      .sort((left, right) => {
-        const leftId = normalizePhotoIngredientKey(pickFirstTrimmed(
-          left && left.ingredient_canonical_id,
-          left && left.ingredient_id,
-          left && left.ingredientId,
-        ));
-        const rightId = normalizePhotoIngredientKey(pickFirstTrimmed(
-          right && right.ingredient_canonical_id,
-          right && right.ingredient_id,
-          right && right.ingredientId,
-        ));
-        const leftRank = topActionIngredientId && leftId === topActionIngredientId ? 0 : 1;
-        const rightRank = topActionIngredientId && rightId === topActionIngredientId ? 0 : 1;
-        if (leftRank !== rightRank) return leftRank - rightRank;
-        return Number(right && right.action_rank_score || 0) - Number(left && left.action_rank_score || 0);
-      });
-    for (const action of actions) {
-      const ingredientId = pickFirstTrimmed(action.ingredient_canonical_id, action.ingredient_id, action.ingredientId);
-      const ingredientName = pickFirstTrimmed(action.ingredient_name, action.ingredient, ingredientId);
-      const targetStep = deriveRecoTargetStepFromIngredient(ingredientId, ingredientName);
-      const issueType = pickFirstTrimmed(
-        Array.isArray(action.evidence_issue_types) ? action.evidence_issue_types[0] : '',
-        summary.top_issue_type,
-      );
-      const targetContext = resolveRecommendationTargetContext({
-        explicitStep: targetStep,
-        focus: ingredientName,
-        text: [
-          ingredientName,
-          pickFirstTrimmed(action.why),
-          issueType,
-        ].filter(Boolean).join(' '),
-        entryType: 'analysis',
-      });
-      if (!targetContext.resolved_target_step && !ingredientName) continue;
-      const productCandidates = filterPhotoActionProducts(action, action && action.products, 12);
-      return {
-        intent: 'reco_products',
-        source_detail: 'analysis_handoff',
-        trigger_source: 'analysis_handoff',
-        context_origin: 'photo_modules_v1',
-        message: pickFirstTrimmed(action.why, ingredientName),
-        goal: pickPrimaryRecoGoal(profileSummary, issueType),
-        ingredient_query: ingredientName || ingredientId,
-        resolved_target_step: targetContext.resolved_target_step || targetStep,
-        resolved_target_step_confidence: pickFirstTrimmed(
-          targetContext.resolved_target_step_confidence,
-          targetStep ? 'high' : '',
-        ),
-        resolved_target_step_source: pickFirstTrimmed(
-          targetContext.resolved_target_step_source,
-          targetStep ? 'analysis_photo_modules' : '',
-        ),
-        artifact_id: pickFirstTrimmed(artifactId),
-        ...(productCandidates.length ? { product_candidates: productCandidates } : {}),
-      };
-    }
-  }
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(photoContext && photoContext.ranked_targets) ? photoContext.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    photoContext && photoContext.display_policy && photoContext.display_policy.primary_target_id,
+    rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((target) => target.target_id === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  const primaryFocus = normalizeRecoContextPrimaryFocus(photoContext && photoContext.primary_focus);
+  const confidencePolicy = normalizeRecoConfidencePolicy(photoContext && photoContext.confidence_policy);
+  if (!primaryTarget) return null;
+  return {
+    intent: 'reco_products',
+    source_detail: 'analysis_handoff',
+    trigger_source: 'analysis_handoff',
+    context_origin: 'photo_modules_v1',
+    message: pickFirstTrimmed(primaryFocus && primaryFocus.issue_label, primaryTarget.ingredient_query),
+    goal: primaryTarget.goal || pickPrimaryRecoGoal(profileSummary, primaryTarget.issue_type),
+    ingredient_query: primaryTarget.ingredient_query || primaryTarget.ingredient_id,
+    resolved_target_step: primaryTarget.resolved_target_step,
+    resolved_target_step_confidence: pickFirstTrimmed(primaryTarget.target_confidence, 'high'),
+    resolved_target_step_source: 'analysis_photo_modules',
+    artifact_id: pickFirstTrimmed(artifactId),
+    primary_target_id: primaryTarget.target_id,
+    ranked_targets: rankedTargets,
+    ...(confidencePolicy ? { confidence_policy: confidencePolicy } : {}),
+    ...(primaryFocus ? { primary_focus: primaryFocus } : {}),
+    ...(Array.isArray(primaryTarget.product_candidates) && primaryTarget.product_candidates.length
+      ? { product_candidates: primaryTarget.product_candidates }
+      : {}),
+  };
   return null;
 }
 
@@ -24765,8 +25854,6 @@ function buildLatestRecoContextFromAnalysisArtifacts({
     normalizedAnalysisSource === 'retake'
     || (Boolean(usePhoto) && normalizedPhotoQualityGrade === 'fail')
     || (Boolean(usePhoto) && !usedPhotos && normalizedPhotoQualityGrade === 'fail');
-  const routineRecoContext = deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary, artifactId });
-  if (routineRecoContext) return routineRecoContext;
   if (suppressPhotoDerivedRecoContext) return null;
   const photoRecoContext = derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId });
   const ingredientPlanContextOrigin =
@@ -24777,10 +25864,26 @@ function buildLatestRecoContextFromAnalysisArtifacts({
     profileSummary,
     artifactId,
     contextOrigin: ingredientPlanContextOrigin,
+    photoModulesCard,
   });
   const photoRecoHasVerifiedCandidates =
     Array.isArray(photoRecoContext && photoRecoContext.product_candidates)
     && photoRecoContext.product_candidates.length > 0;
+  const photoRecoPrimaryTarget =
+    Array.isArray(photoRecoContext && photoRecoContext.ranked_targets)
+      ? photoRecoContext.ranked_targets.find((target) => target && target.target_id === photoRecoContext.primary_target_id)
+        || photoRecoContext.ranked_targets[0]
+      : null;
+  const ingredientPlanPrimaryTarget =
+    Array.isArray(ingredientPlanRecoContext && ingredientPlanRecoContext.ranked_targets)
+      ? ingredientPlanRecoContext.ranked_targets.find((target) => target && target.target_id === ingredientPlanRecoContext.primary_target_id)
+        || ingredientPlanRecoContext.ranked_targets[0]
+      : null;
+  const ingredientPlanPrimaryAlignsPhoto = Boolean(
+    photoRecoPrimaryTarget
+    && ingredientPlanPrimaryTarget
+    && targetsAreSemanticallyAligned(photoRecoPrimaryTarget, ingredientPlanPrimaryTarget),
+  );
   const ingredientPlanHasDisplayableTarget =
     isPlainObject(ingredientPlan)
     && Array.isArray(ingredientPlan.targets)
@@ -24800,10 +25903,93 @@ function buildLatestRecoContextFromAnalysisArtifacts({
       const productsEmptyReason = pickFirstTrimmed(products && products.products_empty_reason).toLowerCase();
       return recommendationMode !== 'cta_only' && competitors.length > 0 && productsEmptyReason !== 'strict_match_miss';
     });
-  if (photoRecoContext && (photoRecoHasVerifiedCandidates || !ingredientPlanHasDisplayableTarget)) {
-    return photoRecoContext;
+  let photoPreferredContext = null;
+  if (photoRecoContext && (photoRecoHasVerifiedCandidates || ingredientPlanPrimaryAlignsPhoto || !ingredientPlanHasDisplayableTarget)) {
+    photoPreferredContext = mergeIngredientRecoContextValue(ingredientPlanRecoContext, photoRecoContext);
+  } else {
+    photoPreferredContext = mergeIngredientRecoContextValue(photoRecoContext, ingredientPlanRecoContext) || photoRecoContext || null;
   }
-  return ingredientPlanRecoContext || photoRecoContext || null;
+
+  const shouldPreferPhotoContext = Boolean(
+    usePhoto
+    && (usedPhotos || (photoModulesCard && isPlainObject(photoModulesCard.payload)))
+    && photoPreferredContext,
+  );
+  if (shouldPreferPhotoContext) return photoPreferredContext;
+
+  const routineRecoContext = deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary, artifactId });
+  if (routineRecoContext) return routineRecoContext;
+  return photoPreferredContext;
+}
+
+function refreshLatestRecoContextFromAnalysisEnvelope(envelope) {
+  if (!isPlainObject(envelope)) return envelope;
+  const sessionPatch = isPlainObject(envelope.session_patch) ? { ...envelope.session_patch } : {};
+  const existingContext = normalizeIngredientRecoContextValue(
+    sessionPatch && sessionPatch.state && sessionPatch.state.latest_reco_context,
+  );
+  if (!existingContext) return envelope;
+
+  const photoModulesCard = getEnvelopeCardByType(envelope, 'photo_modules_v1');
+  const ingredientPlanCard =
+    getEnvelopeCardByType(envelope, 'ingredient_plan_v2')
+    || getEnvelopeCardByType(envelope, 'ingredient_plan');
+  const analysisSummaryCard = getEnvelopeCardByType(envelope, 'analysis_summary');
+  if (!photoModulesCard && !ingredientPlanCard) return envelope;
+
+  const profileSummary = isPlainObject(sessionPatch.profile) ? sessionPatch.profile : null;
+  const ingredientPlanPayload =
+    isPlainObject(ingredientPlanCard && ingredientPlanCard.payload && ingredientPlanCard.payload.plan)
+      ? ingredientPlanCard.payload.plan
+      : isPlainObject(ingredientPlanCard && ingredientPlanCard.payload)
+        ? ingredientPlanCard.payload
+        : null;
+  const analysisSummaryPayload = isPlainObject(analysisSummaryCard && analysisSummaryCard.payload)
+    ? analysisSummaryCard.payload
+    : null;
+  const rebuiltContext = buildLatestRecoContextFromAnalysisArtifacts({
+    ingredientPlan: ingredientPlanPayload,
+    photoModulesCard,
+    profileSummary,
+    artifactId: pickFirstTrimmed(
+      sessionPatch && sessionPatch.state && sessionPatch.state.latest_artifact_id,
+      existingContext.artifact_id,
+    ),
+    contextOrigin: pickFirstTrimmed(
+      existingContext.context_origin,
+      envelope.analysis_meta && envelope.analysis_meta.analysis_mode,
+      'analysis_summary',
+    ),
+    analysisSource: pickFirstTrimmed(
+      analysisSummaryPayload && analysisSummaryPayload.analysis_source,
+      envelope.analysis_meta && envelope.analysis_meta.detector_source,
+    ),
+    usePhoto: Boolean(
+      photoModulesCard
+      || (analysisSummaryPayload && analysisSummaryPayload.photos_provided)
+      || (analysisSummaryPayload && analysisSummaryPayload.used_photos),
+    ),
+    usedPhotos: Boolean(
+      photoModulesCard
+      || (analysisSummaryPayload && analysisSummaryPayload.used_photos),
+    ),
+    photoQualityGrade: pickFirstTrimmed(
+      analysisSummaryPayload
+      && analysisSummaryPayload.quality_report
+      && analysisSummaryPayload.quality_report.photo_quality
+      && analysisSummaryPayload.quality_report.photo_quality.grade,
+      photoModulesCard && photoModulesCard.payload && photoModulesCard.payload.quality_grade,
+      envelope.analysis_meta && envelope.analysis_meta.photo_quality_grade,
+    ),
+  });
+  const mergedContext = mergeIngredientRecoContextValue(existingContext, rebuiltContext);
+  if (!mergedContext) return envelope;
+
+  appendLatestRecoContextToSessionPatch(sessionPatch, mergedContext);
+  return {
+    ...envelope,
+    session_patch: sessionPatch,
+  };
 }
 
 function shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
@@ -25252,6 +26438,27 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
   if (!isPlainObject(payload)) return payload;
   const photoPayload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
   const summary = isPlainObject(photoPayload && photoPayload.summary_v1) ? photoPayload.summary_v1 : {};
+  const photoContext = buildPhotoStoryContext({
+    analysisSummaryPayload: {},
+    photoModulesCard,
+    language,
+  });
+  const canonicalTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(photoContext && photoContext.ranked_targets) ? photoContext.ranked_targets : [],
+  );
+  const confidencePolicy = normalizeRecoConfidencePolicy(photoContext && photoContext.confidence_policy);
+  const conservativeSecondaryCap =
+    confidencePolicy && (
+      String(confidencePolicy.confidence_level || '').trim().toLowerCase() === 'low'
+      || String(confidencePolicy.quality_grade || '').trim().toLowerCase() === 'degraded'
+      || String(confidencePolicy.quality_grade || '').trim().toLowerCase() === 'fail'
+    )
+      ? 1
+      : 2;
+  const canonicalPrimaryTargetId = pickFirstTrimmed(
+    photoContext && photoContext.display_policy && photoContext.display_policy.primary_target_id,
+    canonicalTargets[0] && canonicalTargets[0].target_id,
+  );
   const qualityGrade = String(
     pickFirstTrimmed(
       photoPayload && photoPayload.quality_grade,
@@ -25259,7 +26466,13 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
     ) || '',
   ).trim().toLowerCase();
   const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
-  const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
+  const primaryIngredientId = normalizePhotoIngredientKey(
+    pickFirstTrimmed(
+      canonicalTargets[0] && canonicalTargets[0].ingredient_id,
+      canonicalTargets[0] && canonicalTargets[0].ingredient_query,
+      resolvePhotoPrimaryTargetIngredientId(photoModulesCard),
+    ),
+  );
   if (qualityGrade === 'fail' || (!topFindings.length && !primaryIngredientId)) {
     return buildPhotoQualityFailedIngredientPlanV2(payload, null);
   }
@@ -25282,7 +26495,7 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
     if (syntheticPrimaryTarget) seededTargets.unshift(syntheticPrimaryTarget);
   }
 
-  const nextTargets = seededTargets
+  const mappedTargets = seededTargets
     .map((targetRaw) => {
       const target = isPlainObject(targetRaw) ? { ...targetRaw } : null;
       if (!target) return targetRaw;
@@ -25334,15 +26547,81 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
       target.presentation_bucket = presentationBucket;
       target.resolved_target_step = resolvedTargetStep || null;
       target.is_primary_photo_target = isPrimaryTarget;
+      target.target_id = buildRecoContextTargetId({
+        targetId: pickFirstTrimmed(target.target_id, target.targetId),
+        ingredientId: canonicalId,
+        ingredientQuery: pickFirstTrimmed(target.ingredient_name, target.ingredientName, canonicalId),
+        step: pickFirstTrimmed(target.resolved_target_step),
+        issueType: pickFirstTrimmed(Array.isArray(target.source_issue_types) ? target.source_issue_types[0] : ''),
+        moduleId: pickFirstTrimmed(Array.isArray(target.source_module_ids) ? target.source_module_ids[0] : ''),
+      });
       return target;
     })
-    .filter((row) => {
+    .filter((row) => isPlainObject(row));
+
+  const isStructurallyUsableTarget = (row) => {
+    if (!isPlainObject(row)) return false;
       if (!isPlainObject(row)) return false;
       const whyMatch = pickFirstTrimmed(row.why_match_short) || (Array.isArray(row.why) && row.why.length > 0);
-      if (!row.resolved_target_step || !whyMatch) return false;
-      if (Number(row.strict_product_count || 0) > 0 || targetHasVisibleStrictProducts(row.products)) return true;
-      return row.is_primary_photo_target === true && String(row.recommendation_mode || '').trim().toLowerCase() === 'cta_only';
-    })
+    return Boolean(row.resolved_target_step && whyMatch);
+  };
+
+  const hasStrictDisplayProducts = (row) => {
+    if (!isPlainObject(row)) return false;
+    if (Number(row.strict_product_count || 0) > 0 || targetHasVisibleStrictProducts(row.products)) return true;
+    return row.is_primary_photo_target === true && String(row.recommendation_mode || '').trim().toLowerCase() === 'cta_only';
+  };
+
+  const scoreFallbackPrimaryTarget = (row) => {
+    if (!isPlainObject(row)) return Number.NEGATIVE_INFINITY;
+    const policyStep = normalizeRecoTargetStep(confidencePolicy && confidencePolicy.max_target_step);
+    const targetStep = normalizeRecoTargetStep(row.resolved_target_step);
+    const exactStepMatch = policyStep && targetStep === policyStep ? 1 : 0;
+    const strictDisplay = hasStrictDisplayProducts(row) ? 1 : 0;
+    const targetRole = String(row.target_role || '').trim().toLowerCase() === 'primary' ? 1 : 0;
+    const bucket = String(row.presentation_bucket || '').trim().toLowerCase();
+    const bucketRank = bucket === 'photo_derived'
+      ? 3
+      : bucket === 'supporting_context'
+        ? 2
+        : bucket === 'baseline_support'
+          ? 1
+          : 0;
+    const priorityScore = Number.isFinite(Number(row.priority_score_0_100)) ? Number(row.priority_score_0_100) : 0;
+    return (exactStepMatch * 1000) + (strictDisplay * 100) + (targetRole * 20) + (bucketRank * 10) + priorityScore;
+  };
+
+  const structurallyUsableTargets = mappedTargets
+    .filter((row) => isStructurallyUsableTarget(row));
+
+  const policyEligibleTargets = structurallyUsableTargets
+    .filter((row) => targetSatisfiesRecoConfidencePolicy({
+      ingredient_id: pickFirstTrimmed(row && (row.ingredient_id || row.ingredientId)),
+      ingredient_query: pickFirstTrimmed(row && (row.ingredient_name || row.ingredientName || row.ingredient)),
+      resolved_target_step: pickFirstTrimmed(row && row.resolved_target_step, row && row.target_step_family, row && row.targetStepFamily),
+      module_id: pickFirstTrimmed(Array.isArray(row && row.source_module_ids) ? row.source_module_ids[0] : ''),
+      issue_type: pickFirstTrimmed(Array.isArray(row && row.source_issue_types) ? row.source_issue_types[0] : ''),
+    }, confidencePolicy));
+
+  const visiblePolicyEligibleTargets = policyEligibleTargets
+    .filter((row) => hasStrictDisplayProducts(row));
+
+  const fallbackPrimaryTarget = !visiblePolicyEligibleTargets.length
+    ? policyEligibleTargets
+      .slice()
+      .sort((left, right) => scoreFallbackPrimaryTarget(right) - scoreFallbackPrimaryTarget(left))[0] || null
+    : null;
+
+  const nextTargets = (
+    visiblePolicyEligibleTargets.length
+      ? visiblePolicyEligibleTargets
+      : fallbackPrimaryTarget
+        ? [
+            fallbackPrimaryTarget,
+            ...policyEligibleTargets.filter((row) => row !== fallbackPrimaryTarget),
+          ]
+        : []
+  )
     .sort((left, right) => {
       const rank = (row) => {
         if (row && row.is_primary_photo_target) return -1;
@@ -25356,16 +26635,29 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
       if (rankDiff !== 0) return rankDiff;
       return Number(right && right.priority_score_0_100 || 0) - Number(left && left.priority_score_0_100 || 0);
     });
-
-  const photoDerived = nextTargets
+  const preferredTargets = canonicalTargets.length
+    ? (() => {
+      const aligned = policyEligibleTargets.filter((row) => {
+        const idx = canonicalTargets.findIndex((canonicalTarget) => targetsAreSemanticallyAligned(canonicalTarget, {
+          target_id: pickFirstTrimmed(row.target_id, row.targetId),
+          ingredient_query: pickFirstTrimmed(row.ingredient_name, row.ingredientName, row.ingredient_id, row.ingredientId),
+          ingredient_id: pickFirstTrimmed(row.ingredient_id, row.ingredientId),
+          resolved_target_step: pickFirstTrimmed(row.resolved_target_step, row.target_step_family, row.targetStepFamily),
+        }));
+        return idx >= 0;
+      });
+      return aligned.length ? aligned : policyEligibleTargets;
+    })()
+    : policyEligibleTargets;
+  const photoDerived = preferredTargets
     .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'photo_derived')
     .slice(0, 3);
   const supportingContext = photoDerived.length < 3
-    ? nextTargets
+    ? preferredTargets
       .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'supporting_context')
       .slice(0, Math.max(0, 3 - photoDerived.length))
     : [];
-  const baselineSupport = nextTargets
+  const baselineSupport = preferredTargets
     .filter((row) => String(row && row.presentation_bucket || '').trim().toLowerCase() === 'baseline_support')
     .slice(0, 1);
   const dedupedTargets = [];
@@ -25375,14 +26667,76 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
     if (!ingredientId || seenIngredientIds.has(ingredientId)) continue;
     seenIngredientIds.add(ingredientId);
     dedupedTargets.push(row);
-    if (dedupedTargets.length >= 4) break;
+    if (dedupedTargets.length >= 1 + conservativeSecondaryCap) break;
   }
+
+  const canonicalTargetIndexFor = (target) => {
+    const row = isPlainObject(target) ? target : null;
+    if (!row || !canonicalTargets.length) return 99;
+    const idx = canonicalTargets.findIndex((canonicalTarget) => targetsAreSemanticallyAligned(canonicalTarget, {
+      target_id: pickFirstTrimmed(row.target_id, row.targetId),
+      ingredient_query: pickFirstTrimmed(row.ingredient_name, row.ingredientName, row.ingredient_id, row.ingredientId),
+      ingredient_id: pickFirstTrimmed(row.ingredient_id, row.ingredientId),
+      resolved_target_step: pickFirstTrimmed(row.resolved_target_step, row.target_step_family, row.targetStepFamily),
+    }));
+    return idx >= 0 ? idx : 99;
+  };
+  const orderedTargets = dedupedTargets
+    .slice()
+    .sort((left, right) => canonicalTargetIndexFor(left) - canonicalTargetIndexFor(right));
+  const matchedCanonicalPrimaryTargetId = orderedTargets
+    .map((row) => {
+      if (!isPlainObject(row)) return '';
+      return pickFirstTrimmed(
+        row.target_id,
+        row.targetId,
+        buildRecoContextTargetId({
+          ingredientId: normalizePhotoIngredientKey(
+            row.ingredient_id || row.ingredientId || row.ingredient_name || row.ingredientName,
+          ),
+          ingredientQuery: pickFirstTrimmed(row.ingredient_name, row.ingredientName, row.ingredient_id, row.ingredientId),
+          step: pickFirstTrimmed(row.resolved_target_step, row.target_step_family, row.targetStepFamily),
+          issueType: pickFirstTrimmed(Array.isArray(row.source_issue_types) ? row.source_issue_types[0] : ''),
+          moduleId: pickFirstTrimmed(Array.isArray(row.source_module_ids) ? row.source_module_ids[0] : ''),
+        }),
+      );
+    })
+    .find((targetId) => targetId && targetId === canonicalPrimaryTargetId);
+  const finalPrimaryTargetId = pickFirstTrimmed(
+    matchedCanonicalPrimaryTargetId,
+    pickFirstTrimmed(
+      orderedTargets[0] && orderedTargets[0].target_id,
+      orderedTargets[0] && orderedTargets[0].targetId,
+      buildRecoContextTargetId({
+        ingredientId: normalizePhotoIngredientKey(
+          orderedTargets[0] && (orderedTargets[0].ingredient_id || orderedTargets[0].ingredientId || orderedTargets[0].ingredient_name || orderedTargets[0].ingredientName),
+        ),
+        ingredientQuery: pickFirstTrimmed(
+          orderedTargets[0] && orderedTargets[0].ingredient_name,
+          orderedTargets[0] && orderedTargets[0].ingredientName,
+          orderedTargets[0] && orderedTargets[0].ingredient_id,
+          orderedTargets[0] && orderedTargets[0].ingredientId,
+        ),
+        step: pickFirstTrimmed(orderedTargets[0] && orderedTargets[0].resolved_target_step, orderedTargets[0] && orderedTargets[0].target_step_family, orderedTargets[0] && orderedTargets[0].targetStepFamily),
+        issueType: pickFirstTrimmed(Array.isArray(orderedTargets[0] && orderedTargets[0].source_issue_types) ? orderedTargets[0].source_issue_types[0] : ''),
+        moduleId: pickFirstTrimmed(Array.isArray(orderedTargets[0] && orderedTargets[0].source_module_ids) ? orderedTargets[0].source_module_ids[0] : ''),
+      }),
+    ),
+  );
 
   return {
     ...payload,
-    targets: dedupedTargets.map((row) => {
+    targets: orderedTargets.map((row, index) => {
       if (!isPlainObject(row)) return row;
       const nextRow = { ...row };
+      nextRow.target_role = finalPrimaryTargetId
+        ? (nextRow.target_id === finalPrimaryTargetId ? 'primary' : 'secondary')
+        : (index === 0 ? 'primary' : 'secondary');
+      nextRow.displayable = true;
+      nextRow.verified_product_count = Math.max(
+        0,
+        Number(nextRow.verified_product_count || nextRow.strict_product_count || 0),
+      );
       delete nextRow.is_primary_photo_target;
       return nextRow;
     }),
@@ -25777,6 +27131,20 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
   const payloadObj = isPlainObject(payload) ? payload : {};
   const meta = isPlainObject(payloadObj.recommendation_meta) ? payloadObj.recommendation_meta : {};
   const fallbackObj = isPlainObject(fallback) ? fallback : {};
+  const hasRecommendations = Array.isArray(payloadObj.recommendations) && payloadObj.recommendations.length > 0;
+  const explicitEmptyReason = normalizeRecoProductsEmptyReason(
+    pickFirstTrimmed(
+      payloadObj.products_empty_reason,
+      meta.products_empty_reason,
+      payloadObj.failure_reason,
+      meta.primary_failure_reason,
+      meta.surface_reason,
+      fallbackObj.products_empty_reason,
+      fallbackObj.primary_failure_reason,
+      fallbackObj.surface_reason,
+    ),
+  );
+  const suppressInheritedSuccessState = !hasRecommendations && Boolean(explicitEmptyReason);
   const resolvedTargetStep = pickFirstTrimmed(
     typeof meta.resolved_target_step === 'string' ? meta.resolved_target_step : '',
     typeof fallbackObj.resolved_target_step === 'string' ? fallbackObj.resolved_target_step : '',
@@ -25827,7 +27195,9 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
       ),
     ),
     terminalSuccess:
-      typeof terminalSuccessRaw === 'boolean'
+      suppressInheritedSuccessState
+        ? false
+        : typeof terminalSuccessRaw === 'boolean'
         ? terminalSuccessRaw
         : typeof fallbackObj.terminal_success === 'boolean'
           ? fallbackObj.terminal_success
@@ -25835,27 +27205,75 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
     viablePoolStrength: normalizeRecoViablePoolStrength(
       pickFirstTrimmed(
         typeof meta.viable_pool_strength === 'string' ? meta.viable_pool_strength : '',
-        typeof fallbackObj.viable_pool_strength === 'string' ? fallbackObj.viable_pool_strength : '',
+        suppressInheritedSuccessState ? '' : (typeof fallbackObj.viable_pool_strength === 'string' ? fallbackObj.viable_pool_strength : ''),
       ),
-    ) || null,
+    ) && (
+      !suppressInheritedSuccessState
+      || ['weak', 'empty'].includes(
+        normalizeRecoViablePoolStrength(
+          pickFirstTrimmed(
+            typeof meta.viable_pool_strength === 'string' ? meta.viable_pool_strength : '',
+            '',
+          ),
+        ) || normalizeRecoViablePoolStrength(
+          pickFirstTrimmed(
+            suppressInheritedSuccessState ? '' : (typeof fallbackObj.viable_pool_strength === 'string' ? fallbackObj.viable_pool_strength : ''),
+            '',
+          ),
+        ),
+      )
+    )
+      ? normalizeRecoViablePoolStrength(
+        pickFirstTrimmed(
+          typeof meta.viable_pool_strength === 'string' ? meta.viable_pool_strength : '',
+          suppressInheritedSuccessState ? '' : (typeof fallbackObj.viable_pool_strength === 'string' ? fallbackObj.viable_pool_strength : ''),
+        ),
+      ) || null
+      : null,
     targetFidelityLevel: normalizeRecoTargetFidelityLevel(
       pickFirstTrimmed(
         typeof meta.target_fidelity_level === 'string' ? meta.target_fidelity_level : '',
-        typeof fallbackObj.target_fidelity_level === 'string' ? fallbackObj.target_fidelity_level : '',
+        suppressInheritedSuccessState ? '' : (typeof fallbackObj.target_fidelity_level === 'string' ? fallbackObj.target_fidelity_level : ''),
       ),
-    ) || null,
-    presentationMode: normalizeRecoPresentationMode(
-      pickFirstTrimmed(
-        typeof meta.presentation_mode === 'string' ? meta.presentation_mode : '',
-        typeof fallbackObj.presentation_mode === 'string' ? fallbackObj.presentation_mode : '',
-      ),
-    ) || null,
-    successMode: normalizeRecoSuccessMode(
-      pickFirstTrimmed(
-        typeof meta.success_mode === 'string' ? meta.success_mode : '',
-        typeof fallbackObj.success_mode === 'string' ? fallbackObj.success_mode : '',
-      ),
-    ) || null,
+    ) && (
+      !suppressInheritedSuccessState
+      || ['partial', 'failed'].includes(
+        normalizeRecoTargetFidelityLevel(
+          pickFirstTrimmed(
+            typeof meta.target_fidelity_level === 'string' ? meta.target_fidelity_level : '',
+            '',
+          ),
+        ) || normalizeRecoTargetFidelityLevel(
+          pickFirstTrimmed(
+            suppressInheritedSuccessState ? '' : (typeof fallbackObj.target_fidelity_level === 'string' ? fallbackObj.target_fidelity_level : ''),
+            '',
+          ),
+        ),
+      )
+    )
+      ? normalizeRecoTargetFidelityLevel(
+        pickFirstTrimmed(
+          typeof meta.target_fidelity_level === 'string' ? meta.target_fidelity_level : '',
+          suppressInheritedSuccessState ? '' : (typeof fallbackObj.target_fidelity_level === 'string' ? fallbackObj.target_fidelity_level : ''),
+        ),
+      ) || null
+      : null,
+    presentationMode: suppressInheritedSuccessState
+      ? null
+      : (normalizeRecoPresentationMode(
+        pickFirstTrimmed(
+          typeof meta.presentation_mode === 'string' ? meta.presentation_mode : '',
+          typeof fallbackObj.presentation_mode === 'string' ? fallbackObj.presentation_mode : '',
+        ),
+      ) || null),
+    successMode: suppressInheritedSuccessState
+      ? null
+      : (normalizeRecoSuccessMode(
+        pickFirstTrimmed(
+          typeof meta.success_mode === 'string' ? meta.success_mode : '',
+          typeof fallbackObj.success_mode === 'string' ? fallbackObj.success_mode : '',
+        ),
+      ) || null),
     preLlmSelectedCandidateCount: toCount(meta.pre_llm_selected_candidate_count, fallbackObj.pre_llm_selected_candidate_count),
     finalSelectedCandidateCount: toCount(meta.final_selected_candidate_count, fallbackObj.final_selected_candidate_count),
     postGuardrailCount: toCount(meta.post_guardrail_count, fallbackObj.post_guardrail_count),
@@ -26231,6 +27649,20 @@ function buildRecoMainlineContract({
   const normalizedGroundingStatus = normalizeRecoGroundingStatus(groundingStatus);
   const groundedCountValue = Number.isFinite(Number(groundedCount)) ? Math.max(0, Math.trunc(Number(groundedCount))) : null;
   const ungroundedCountValue = Number.isFinite(Number(ungroundedCount)) ? Math.max(0, Math.trunc(Number(ungroundedCount))) : null;
+  const suppressStaleSuccessState = !hasRecommendations && Boolean(normalizedProductsEmptyReason);
+  const mainlineStatusOverrideValue = pickFirstTrimmed(mainlineStatusOverride);
+  const sanitizedMainlineStatusOverride =
+    suppressStaleSuccessState &&
+    (
+      mainlineStatusOverrideValue === 'grounded_success'
+      || mainlineStatusOverrideValue === 'partially_grounded'
+      || mainlineStatusOverrideValue === 'ungrounded_success'
+    )
+      ? ''
+      : mainlineStatusOverrideValue;
+  const effectiveGroundingStatus = suppressStaleSuccessState ? null : (normalizedGroundingStatus || null);
+  const effectiveGroundedCount = suppressStaleSuccessState ? 0 : groundedCountValue;
+  const effectiveUngroundedCount = suppressStaleSuccessState ? 0 : ungroundedCountValue;
   const contractStatus = deriveRecoContractStatus({
     promptContractOk,
     recommendations: recoRows,
@@ -26275,7 +27707,7 @@ function buildRecoMainlineContract({
       presentationMode: normalizedPresentationMode,
       successMode: normalizedSuccessMode,
       sourceMode: normalizedSourceMode,
-      groundingStatus,
+      groundingStatus: effectiveGroundingStatus,
     });
     return {
       ok: normalizedTerminalSuccess,
@@ -26322,9 +27754,9 @@ function buildRecoMainlineContract({
       products_empty_reason: normalizedTerminalSuccess
         ? null
         : (sanitizeRecoClientVisibleToken(outcome.products_empty_reason) || null),
-      grounding_status: normalizedGroundingStatus || null,
-      grounded_count: groundedCountValue,
-      ungrounded_count: ungroundedCountValue,
+      grounding_status: effectiveGroundingStatus,
+      grounded_count: effectiveGroundedCount,
+      ungrounded_count: effectiveUngroundedCount,
       prompt_template_id: pickFirstTrimmed(promptTemplateId) || null,
       viable_pool_strength: normalizedViablePoolStrength || null,
       target_fidelity_level: normalizedTargetFidelityLevel || null,
@@ -26354,23 +27786,23 @@ function buildRecoMainlineContract({
     normalizedTelemetryReason = 'catalog_transient_failure';
   }
   const recommendationStatus = hasRecommendations
-    ? (normalizedGroundingStatus === 'ungrounded'
+    ? (effectiveGroundingStatus === 'ungrounded'
       ? 'ungrounded_success'
-      : normalizedGroundingStatus === 'partially_grounded'
+      : effectiveGroundingStatus === 'partially_grounded'
         ? 'partially_grounded'
-        : normalizedGroundingStatus === 'grounded'
+        : effectiveGroundingStatus === 'grounded'
           ? 'grounded_success'
-          : Number.isFinite(groundedCountValue) && Number.isFinite(ungroundedCountValue)
-            ? (groundedCountValue > 0 && ungroundedCountValue > 0
+          : Number.isFinite(effectiveGroundedCount) && Number.isFinite(effectiveUngroundedCount)
+            ? (effectiveGroundedCount > 0 && effectiveUngroundedCount > 0
               ? 'partially_grounded'
-              : groundedCountValue > 0
+              : effectiveGroundedCount > 0
                 ? 'grounded_success'
-                : ungroundedCountValue > 0
+                : effectiveUngroundedCount > 0
                   ? 'ungrounded_success'
                   : '')
             : '')
     : '';
-  const mainlineStatus = pickFirstTrimmed(mainlineStatusOverride, recommendationStatus)
+  const mainlineStatus = pickFirstTrimmed(sanitizedMainlineStatusOverride, recommendationStatus)
     || deriveRecoMainlineStatus({
       recommendations: recoRows,
       structuredSource: structuredSource || normalizedSourceMode,
@@ -26398,7 +27830,7 @@ function buildRecoMainlineContract({
       ? 'strict_filter_dropped'
       : normalizedProductsEmptyReason === 'reco_mainline_empty'
         ? 'reco_mainline_empty'
-      : 'artifact_missing';
+      : (sanitizeRecoClientVisibleToken(normalizedProductsEmptyReason) || 'artifact_missing');
   const clientVisibleProductsEmptyReason = hasRecommendations
     ? null
     : normalizedProductsEmptyReason === 'strict_filter_fallback_only'
@@ -26426,9 +27858,9 @@ function buildRecoMainlineContract({
     surface_reason: clientVisibleSurfaceReason,
     catalog_skip_reason: pickFirstTrimmed(catalogSkipReason) || null,
     products_empty_reason: clientVisibleProductsEmptyReason,
-    grounding_status: normalizedGroundingStatus || null,
-    grounded_count: groundedCountValue,
-    ungrounded_count: ungroundedCountValue,
+    grounding_status: effectiveGroundingStatus,
+    grounded_count: effectiveGroundedCount,
+    ungrounded_count: effectiveUngroundedCount,
     prompt_template_id: pickFirstTrimmed(promptTemplateId) || null,
   };
 }
@@ -26558,6 +27990,15 @@ function buildRecoRequestedEventData({
     || (recommendations.length ? '' : resolvedFailure.primaryReason || 'artifact_missing');
   const eventTelemetryReason = sanitizeRecoClientVisibleToken(telemetryReason) || resolvedFailure.telemetryReason;
   const eventFailureClass = sanitizeRecoClientVisibleFailureClass(failureClass) || sanitizeRecoClientVisibleFailureClass(meta.failure_class);
+  const rawMetaMainlineStatus = pickFirstTrimmed(meta.mainline_status);
+  const eventMainlineStatus =
+    recommendations.length === 0 && (
+      rawMetaMainlineStatus === 'grounded_success'
+      || rawMetaMainlineStatus === 'partially_grounded'
+      || rawMetaMainlineStatus === 'ungrounded_success'
+    )
+      ? ''
+      : rawMetaMainlineStatus;
   const data = {
     explicit: explicit === true,
     source: String(source || payloadObj.source || meta.source_mode || 'rules_only').trim() || 'rules_only',
@@ -26572,7 +28013,7 @@ function buildRecoRequestedEventData({
     ...(pickFirstTrimmed(payloadObj.grounding_status, meta.grounding_status) ? { grounding_status: pickFirstTrimmed(payloadObj.grounding_status, meta.grounding_status) } : {}),
     ...(Number.isFinite(Number(payloadObj.grounded_count)) ? { grounded_count: Number(payloadObj.grounded_count) } : Number.isFinite(Number(meta.grounded_count)) ? { grounded_count: Number(meta.grounded_count) } : {}),
     ...(Number.isFinite(Number(payloadObj.ungrounded_count)) ? { ungrounded_count: Number(payloadObj.ungrounded_count) } : Number.isFinite(Number(meta.ungrounded_count)) ? { ungrounded_count: Number(meta.ungrounded_count) } : {}),
-    ...(pickFirstTrimmed(meta.mainline_status) ? { mainline_status: pickFirstTrimmed(meta.mainline_status) } : {}),
+    ...(eventMainlineStatus ? { mainline_status: eventMainlineStatus } : {}),
     ...(pickFirstTrimmed(meta.catalog_skip_reason) ? { catalog_skip_reason: pickFirstTrimmed(meta.catalog_skip_reason) } : {}),
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
@@ -35952,6 +37393,26 @@ function buildPhotoStoryPrimaryFocus({ topFindings, topActionsByModule, isCn } =
   };
 }
 
+function photoContextOwnsPrimaryAnalysisAxis(photoContext) {
+  const context = isPlainObject(photoContext) ? photoContext : null;
+  if (!context || context.used_photos !== true) return false;
+  const primaryFocus = isPlainObject(context.primary_focus) ? context.primary_focus : null;
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(context.ranked_targets) ? context.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    context.display_policy && context.display_policy.primary_target_id,
+    rankedTargets[0] && rankedTargets[0].target_id,
+  );
+  return Boolean(
+    primaryFocus
+    && pickFirstTrimmed(primaryFocus.module_id)
+    && pickFirstTrimmed(primaryFocus.issue_type)
+    && rankedTargets.length
+    && primaryTargetId
+  );
+}
+
 function buildPhotoStoryPriorityFinding(primaryFocus, isCn) {
   if (!isPlainObject(primaryFocus)) return null;
   const moduleLabel = pickFirstString(primaryFocus.module_label, primaryFocus.module_id);
@@ -36219,7 +37680,34 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
         : 0),
   };
   const topFinding = topFindings[0] || null;
-  const primaryFocus = buildPhotoStoryPrimaryFocus({ topFindings, topActionsByModule, isCn });
+  const rawPrimaryFocus = buildPhotoStoryPrimaryFocus({ topFindings, topActionsByModule, isCn });
+  const rawRankedTargets = buildPhotoRecoContextTargets(
+    isPlainObject(photoModulesCard) ? photoModulesCard : { payload: photoCardPayload },
+    { profileSummary: null },
+  ).map((target, index) => ({
+    ...target,
+    target_role: index === 0 ? 'primary' : 'secondary',
+  }));
+  const canonicalTargetBundle = canonicalizePhotoRecoTargetBundle({
+    rankedTargets: rawRankedTargets,
+    primaryFocus: rawPrimaryFocus,
+    qualityGrade,
+  });
+  const rankedTargets = Array.isArray(canonicalTargetBundle.ranked_targets)
+    ? canonicalTargetBundle.ranked_targets
+    : rawRankedTargets;
+  const primaryFocus = canonicalTargetBundle.primary_focus || rawPrimaryFocus;
+  const topActionsForStory = sortPhotoActionsByCanonicalTargets(topActionsByModule, rankedTargets)
+    .filter((action) => targetSatisfiesRecoConfidencePolicy({
+      ingredient_id: pickFirstTrimmed(action && action.ingredient_id),
+      ingredient_query: pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      resolved_target_step: deriveRecoTargetStepFromIngredient(
+        pickFirstTrimmed(action && action.ingredient_id),
+        pickFirstTrimmed(action && action.ingredient_name, action && action.ingredient_id),
+      ),
+      module_id: pickFirstTrimmed(action && action.module_id),
+      issue_type: pickFirstTrimmed(Array.isArray(action && action.issue_types) ? action.issue_types[0] : ''),
+    }, canonicalTargetBundle.confidence_policy));
   const lowConfidencePrimaryFinding = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
   const headlineHint = usedPhotos
     ? pickFirstString(
@@ -36252,7 +37740,10 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
     product_highlights: asStringArray(productHighlights, 4),
     observed_signals: observedSignals.slice(0, 8),
     top_findings: topFindings,
-    top_actions_by_module: topActionsByModule.slice(0, 6),
+    top_actions_by_module: topActionsForStory.slice(0, 6),
+    ranked_targets: rankedTargets,
+    confidence_policy: canonicalTargetBundle.confidence_policy,
+    display_policy: canonicalTargetBundle.display_policy,
     strict_match_product_counts_by_action: strictMatchProductCountsByAction.slice(0, 8),
     module_confidence_overview: confidenceOverview,
     strict_match_coverage_overview: strictMatchCoverageOverview,
@@ -36969,7 +38460,12 @@ function buildAnalysisStoryFallbackPayload({
       ? payload.ingredient_plan
       : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
-  const photoContext = buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language });
+  const photoContext = reconcilePhotoContextWithIngredientPlan({
+    photoContext: buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language }),
+    ingredientPlanPayload: ingredientPlan,
+    photoModulesCard,
+    language,
+  });
   const findingSource =
     photoContext.used_photos && Array.isArray(photoContext.finding_evidence) && photoContext.finding_evidence.length
       ? photoContext.finding_evidence
@@ -36992,8 +38488,147 @@ function buildAnalysisStoryFallbackPayload({
     ingredientPlanPayload: ingredientPlan,
     language,
   });
+  const photoOwnsPrimaryAxis = photoContextOwnsPrimaryAnalysisAxis(photoContext);
   const skinType = pickFirstString(profile && profile.skinType);
   const sensitivity = pickFirstString(profile && profile.sensitivity);
+  const defaultPhotoCurrentStrengths = findings.length > 0
+    ? findings.slice(0, 2).map((row) => row.title)
+    : [isCn ? '当前可见信息有限，先按屏障友好策略执行。' : 'Visible signals are limited; start with a barrier-safe routine.'];
+  const photoLedTargetState = [photoContext.used_photos && photoContext.headline_hint
+    ? photoContext.headline_hint
+    : (isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.')];
+  const photoLedCorePrinciples = [
+    ...(photoContext.used_photos
+      ? [
+          isCn
+            ? '先围绕照片里最明显的区域做调整，再逐步扩大处理范围。'
+            : 'Prioritize the most visible photo-led hotspots before broadening treatment pressure.',
+        ]
+      : []),
+    isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
+    isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
+  ];
+  const defaultAmPlan = [
+    { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '减少刺激起点' : 'Minimize irritation load' },
+    { step: isCn ? '保湿/修护精华' : 'Hydration/repair serum', purpose: isCn ? '维持角质层稳定' : 'Support barrier stability' },
+    { step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen', purpose: isCn ? '控制紫外暴露' : 'Control UV exposure' },
+  ];
+  const defaultPmPlan = [
+    { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '清除日间残留' : 'Remove daytime residue' },
+    { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
+    { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
+  ];
+  const defaultTimeline = {
+    first_4_weeks: [
+      photoContext.used_photos
+        ? (isCn ? '第1周：保持同样光线条件复拍一次，先观察照片里的重点区域变化。' : 'Week 1: recheck the same photographed areas under similar lighting before widening the plan.')
+        : (isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.'),
+      isCn ? '第2-3周：逐步引入一个活性，隔天使用。' : 'Week 2-3: add one active gradually, every other day.',
+      isCn ? '第4周：耐受稳定后再评估加强。' : 'Week 4: scale only if tolerance remains stable.',
+    ],
+    week_8_12_expectation: [
+      isCn ? '8-12 周观察肤色均匀与稳定度改善。' : 'Expect visible stability and tone improvements in 8-12 weeks.',
+    ],
+  };
+  const photoLedStrengths = asStringArray(
+    [
+      ...defaultPhotoCurrentStrengths,
+      ...(routineAware && Array.isArray(routineAware.current_strengths) ? routineAware.current_strengths : []),
+    ],
+    3,
+  );
+  const photoLedSafetyNotes = asStringArray(
+    [
+      ...(routineAware && Array.isArray(routineAware.safety_notes) ? routineAware.safety_notes : []),
+      isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
+    ],
+    3,
+  );
+  const preferredCurrentStrengths = photoOwnsPrimaryAxis
+    ? photoLedStrengths
+    : routineAware
+      ? routineAware.current_strengths
+      : defaultPhotoCurrentStrengths;
+  const preferredPriorityFindings = photoOwnsPrimaryAxis
+    ? findings
+    : routineAware
+      ? routineAware.priority_findings.map((line, idx) => ({
+        priority: idx + 1,
+        title: line,
+        detail: line,
+        evidence_region_or_module: [],
+      }))
+      : findings;
+  const preferredTargetState = photoOwnsPrimaryAxis
+    ? photoLedTargetState
+    : routineAware
+      ? routineAware.target_state
+      : photoLedTargetState;
+  const preferredCorePrinciples = photoOwnsPrimaryAxis
+    ? photoLedCorePrinciples
+    : routineAware
+      ? routineAware.core_principles
+      : photoLedCorePrinciples;
+  const preferredAmPlan = photoOwnsPrimaryAxis
+    ? ((routineAware && Array.isArray(routineAware.am_plan) && routineAware.am_plan.length) ? routineAware.am_plan : defaultAmPlan)
+    : routineAware
+      ? routineAware.am_plan
+      : defaultAmPlan;
+  const preferredPmPlan = photoOwnsPrimaryAxis
+    ? ((routineAware && Array.isArray(routineAware.pm_plan) && routineAware.pm_plan.length) ? routineAware.pm_plan : defaultPmPlan)
+    : routineAware
+      ? routineAware.pm_plan
+      : defaultPmPlan;
+  const preferredTimeline = photoOwnsPrimaryAxis
+    ? defaultTimeline
+    : routineAware
+      ? routineAware.timeline
+      : defaultTimeline;
+  const preferredHeadline = photoOwnsPrimaryAxis
+    ? (photoContext.used_photos && photoContext.headline_hint
+      ? photoContext.headline_hint
+      : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.'))
+    : routineAware
+      ? routineAware.target_state[0]
+      : (photoContext.used_photos && photoContext.headline_hint
+        ? photoContext.headline_hint
+        : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.'));
+  const preferredKeyPoints = photoOwnsPrimaryAxis
+    ? (findings.length
+      ? findings.slice(0, 3).map((row) => row.title)
+      : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'])
+    : routineAware
+      ? routineAware.priority_findings.slice(0, 3)
+      : findings.length
+        ? findings.slice(0, 3).map((row) => row.title)
+        : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'];
+  const preferredActionsNow = photoOwnsPrimaryAxis
+    ? [
+        ...preferredAmPlan.slice(0, 2).map((step) => (isCn ? `早上：${step.step}` : `AM: ${step.step}`)),
+        ...preferredPmPlan.slice(0, 2).map((step) => (isCn ? `晚上：${step.step}` : `PM: ${step.step}`)),
+      ].slice(0, 4)
+    : routineAware
+      ? [
+          ...routineAware.am_plan.slice(0, 2).map((step) => (isCn ? `早上：${step.step}` : `AM: ${step.step}`)),
+          ...routineAware.pm_plan.slice(0, 2).map((step) => (isCn ? `晚上：${step.step}` : `PM: ${step.step}`)),
+        ].slice(0, 4)
+      : isCn
+        ? ['早上：温和清洁', '早上：SPF50+ 防晒', '晚上：屏障修护保湿']
+        : ['AM: Gentle cleanse', 'AM: SPF50+ sunscreen', 'PM: Barrier moisturizer'];
+  const preferredAvoidNow = photoOwnsPrimaryAxis
+    ? photoLedSafetyNotes.slice(0, 2)
+    : routineAware
+      ? routineAware.safety_notes.slice(0, 2)
+      : isCn
+        ? ['避免同一晚叠加多个强活性']
+        : ['Avoid stacking multiple strong actives in the same night'];
+  const preferredSafetyNotes = photoOwnsPrimaryAxis
+    ? photoLedSafetyNotes
+    : routineAware
+      ? routineAware.safety_notes
+      : [
+        isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
+      ];
 
   return {
     schema_version: 'aurora.analysis_story.v2',
@@ -37003,112 +38638,44 @@ function buildAnalysisStoryFallbackPayload({
     skin_profile: {
       ...(skinType ? { skin_type_tendency: skinType } : {}),
       ...(sensitivity ? { sensitivity_tendency: sensitivity } : {}),
-      current_strengths: routineAware
-        ? routineAware.current_strengths
-        : findings.length > 0
-          ? findings.slice(0, 2).map((row) => row.title)
-          : [isCn ? '当前可见信息有限，先按屏障友好策略执行。' : 'Visible signals are limited; start with a barrier-safe routine.'],
+      current_strengths: preferredCurrentStrengths,
     },
-    priority_findings: routineAware
-      ? routineAware.priority_findings.map((line, idx) => ({
-        priority: idx + 1,
-        title: line,
-        detail: line,
-        evidence_region_or_module: [],
-      }))
-      : findings,
-    target_state: routineAware
-      ? routineAware.target_state
-      : [photoContext.used_photos && photoContext.headline_hint
-        ? photoContext.headline_hint
-        : (isCn ? '先稳定屏障，再提高提亮与均匀度。' : 'Stabilize barrier first, then improve tone and texture consistency.')],
-    core_principles: routineAware
-      ? routineAware.core_principles
-      : [
-        ...(photoContext.used_photos
-          ? [
-              isCn
-                ? '先围绕照片里最明显的区域做调整，再逐步扩大处理范围。'
-                : 'Prioritize the most visible photo-led hotspots before broadening treatment pressure.',
-            ]
-          : []),
-        isCn ? '先稳后进，避免一次叠加多个强活性。' : 'Stability first, then progression; avoid stacking multiple strong actives at once.',
-        isCn ? '白天防晒是色素与光损管理的基线。' : 'Daily UV protection is the baseline for pigmentation and photoaging control.',
-      ],
-    am_plan: routineAware
-      ? routineAware.am_plan
-      : [
-        { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '减少刺激起点' : 'Minimize irritation load' },
-        { step: isCn ? '保湿/修护精华' : 'Hydration/repair serum', purpose: isCn ? '维持角质层稳定' : 'Support barrier stability' },
-        { step: isCn ? 'SPF50+ 防晒' : 'SPF50+ sunscreen', purpose: isCn ? '控制紫外暴露' : 'Control UV exposure' },
-      ],
-    pm_plan: routineAware
-      ? routineAware.pm_plan
-      : [
-        { step: isCn ? '温和清洁' : 'Gentle cleanse', purpose: isCn ? '清除日间残留' : 'Remove daytime residue' },
-        { step: isCn ? '单一主力活性（低频）' : 'Single core active (low frequency)', purpose: isCn ? '降低不耐受概率' : 'Reduce irritation risk' },
-        { step: isCn ? '屏障面霜' : 'Barrier moisturizer', purpose: isCn ? '夜间修护' : 'Night recovery' },
-      ],
+    priority_findings: preferredPriorityFindings,
+    target_state: preferredTargetState,
+    core_principles: preferredCorePrinciples,
+    am_plan: preferredAmPlan,
+    pm_plan: preferredPmPlan,
     ...(routineAware && routineAware.existing_products_optimization
       ? { existing_products_optimization: routineAware.existing_products_optimization }
       : {}),
-    timeline: routineAware
-      ? routineAware.timeline
-      : {
-        first_4_weeks: [
-          photoContext.used_photos
-            ? (isCn ? '第1周：保持同样光线条件复拍一次，先观察照片里的重点区域变化。' : 'Week 1: recheck the same photographed areas under similar lighting before widening the plan.')
-            : (isCn ? '第1周：只保留基础清洁-保湿-防晒。' : 'Week 1: keep cleanse-moisturize-sunscreen baseline only.'),
-          isCn ? '第2-3周：逐步引入一个活性，隔天使用。' : 'Week 2-3: add one active gradually, every other day.',
-          isCn ? '第4周：耐受稳定后再评估加强。' : 'Week 4: scale only if tolerance remains stable.',
-        ],
-        week_8_12_expectation: [
-          isCn ? '8-12 周观察肤色均匀与稳定度改善。' : 'Expect visible stability and tone improvements in 8-12 weeks.',
-        ],
-      },
+    timeline: preferredTimeline,
     ui_card_v1: {
-      headline: routineAware
-        ? routineAware.target_state[0]
-        : (photoContext.used_photos && photoContext.headline_hint
-          ? photoContext.headline_hint
-          : (isCn ? '先稳定，再循序推进提亮与均匀度。' : 'Stabilize first, then improve tone and texture step by step.')),
-      key_points: routineAware
-        ? routineAware.priority_findings.slice(0, 3)
-        : findings.length
-          ? findings.slice(0, 3).map((row) => row.title)
-          : [isCn ? '当前可见信息有限，先执行低刺激基础方案。' : 'Visible signals are limited, start with a low-irritation baseline.'],
-      actions_now: routineAware
-        ? [
-          ...routineAware.am_plan.slice(0, 2).map((step) => (isCn ? `早上：${step.step}` : `AM: ${step.step}`)),
-          ...routineAware.pm_plan.slice(0, 2).map((step) => (isCn ? `晚上：${step.step}` : `PM: ${step.step}`)),
-        ].slice(0, 4)
-        : isCn
-          ? ['早上：温和清洁', '早上：SPF50+ 防晒', '晚上：屏障修护保湿']
-          : ['AM: Gentle cleanse', 'AM: SPF50+ sunscreen', 'PM: Barrier moisturizer'],
-      avoid_now: routineAware
-        ? routineAware.safety_notes.slice(0, 2)
-        : isCn
-          ? ['避免同一晚叠加多个强活性']
-          : ['Avoid stacking multiple strong actives in the same night'],
+      headline: preferredHeadline,
+      key_points: preferredKeyPoints,
+      actions_now: preferredActionsNow,
+      avoid_now: preferredAvoidNow,
       confidence_label: payload.low_confidence ? (isCn ? '低' : 'low') : (isCn ? '中' : 'medium'),
-      next_checkin: routineAware
-        ? routineAware.timeline.first_4_weeks[0]
+      next_checkin: photoOwnsPrimaryAxis
+        ? preferredTimeline.first_4_weeks[0]
+        : routineAware
+          ? routineAware.timeline.first_4_weeks[0]
         : isCn ? '2 周后复查耐受与稳定度。' : 'Re-check tolerance and stability in 2 weeks.',
     },
-    safety_notes: routineAware
-      ? routineAware.safety_notes
-      : [
-        isCn ? '若持续刺痛/泛红/脱屑，请暂停新增活性并回到修护。' : 'If persistent stinging/redness/peeling occurs, pause new actives and return to barrier repair.',
-      ],
+    safety_notes: preferredSafetyNotes,
     disclaimer_non_medical: true,
   };
 }
 
-function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profile, language, fallbackStory } = {}) {
+function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profile, language, fallbackStory, ingredientPlanPayload = null } = {}) {
   const payload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
   const analysis = isPlainObject(payload.analysis) ? payload.analysis : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
-  const photoContext = buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language });
+  const photoContext = reconcilePhotoContextWithIngredientPlan({
+    photoContext: buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language }),
+    ingredientPlanPayload,
+    photoModulesCard,
+    language,
+  });
   const basePhotoEvidence = Array.isArray(photoContext.finding_evidence) ? photoContext.finding_evidence : [];
   const findingEvidence = [
     ...basePhotoEvidence,
@@ -37628,13 +39195,20 @@ async function applyAnalysisStoryAndRoutineSoftGate(
     const summaryPayload = isPlainObject(analysisSummaryCard.payload) ? analysisSummaryCard.payload : {};
     const routinePreviewCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'routine_products_preview');
     const ingredientPlanCard = list.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'ingredient_plan_v2');
+    const normalizedIngredientPlanPayload = isPlainObject(ingredientPlanCard && ingredientPlanCard.payload)
+      ? (
+        photoModulesCard
+          ? annotateIngredientPlanForPhotoLed(ingredientPlanCard.payload, photoModulesCard, language)
+          : ingredientPlanCard.payload
+      )
+      : null;
     const fallbackStory = buildAnalysisStoryFallbackPayload({
       analysisSummaryPayload: summaryPayload,
       photoModulesCard,
       profile,
       language,
       routinePreviewPayload: isPlainObject(routinePreviewCard && routinePreviewCard.payload) ? routinePreviewCard.payload : null,
-      ingredientPlanPayload: isPlainObject(ingredientPlanCard && ingredientPlanCard.payload) ? ingredientPlanCard.payload : null,
+      ingredientPlanPayload: normalizedIngredientPlanPayload,
     });
     const evidence = buildAnalysisEvidence({
       analysisSummaryPayload: summaryPayload,
@@ -37642,6 +39216,7 @@ async function applyAnalysisStoryAndRoutineSoftGate(
       profile,
       language,
       fallbackStory,
+      ingredientPlanPayload: normalizedIngredientPlanPayload,
     });
     const generated = await generateAnalysisStoryV2JsonWithLlm({
       evidence,
@@ -39057,6 +40632,748 @@ function buildRoutineRulesOnlyFallbackCardsForChat({ ctx, message, profile, rece
   ];
 }
 
+function buildFallbackRecoContextRankedTarget(recoContext) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  if (!normalizedContext) return null;
+  const ingredientQuery = pickFirstTrimmed(normalizedContext.query, normalizedContext.ingredient_query);
+  const resolvedTargetStep = pickFirstTrimmed(
+    normalizedContext.resolved_target_step,
+    normalizedContext.target_step,
+    normalizedContext.step,
+  );
+  if (!ingredientQuery && !resolvedTargetStep) return null;
+  const targetId = buildRecoContextTargetId({
+    ingredientQuery,
+    step: resolvedTargetStep,
+  });
+  if (!targetId) return null;
+  return {
+    target_id: targetId,
+    target_role: 'primary',
+    ...(ingredientQuery ? { ingredient_query: ingredientQuery } : {}),
+    ...(pickFirstTrimmed(normalizedContext.goal) ? { goal: pickFirstTrimmed(normalizedContext.goal) } : {}),
+    ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
+    target_confidence: pickFirstTrimmed(normalizedContext.resolved_target_step_confidence, 'medium') || 'medium',
+    source: pickFirstTrimmed(normalizedContext.context_origin, normalizedContext.source, 'analysis'),
+    ...(Array.isArray(normalizedContext.product_candidates) && normalizedContext.product_candidates.length
+      ? { product_candidates: normalizedContext.product_candidates }
+      : {}),
+  };
+}
+
+function getRecoContentSpineFromContext(recoContext) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    normalizedContext && Array.isArray(normalizedContext.ranked_targets) && normalizedContext.ranked_targets.length
+      ? normalizedContext.ranked_targets
+      : buildFallbackRecoContextRankedTarget(normalizedContext),
+  );
+  let primaryTargetId = pickFirstTrimmed(
+    normalizedContext && normalizedContext.primary_target_id,
+    rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  if (primaryTargetId && rankedTargets.length && !rankedTargets.some((item) => item.target_id === primaryTargetId)) {
+    const canonicalPrimaryTarget = rankedTargets.find((item) => targetsAreSemanticallyAligned(item, {
+      target_id: primaryTargetId,
+      ingredient_query: pickFirstTrimmed(normalizedContext && (normalizedContext.query || normalizedContext.ingredient_query)),
+      ingredient_id: pickFirstTrimmed(normalizedContext && normalizedContext.ingredient_id),
+      resolved_target_step: pickFirstTrimmed(
+        normalizedContext && normalizedContext.resolved_target_step,
+        normalizedContext && normalizedContext.target_step,
+        normalizedContext && normalizedContext.step,
+      ),
+    }));
+    if (canonicalPrimaryTarget && canonicalPrimaryTarget.target_id) {
+      primaryTargetId = canonicalPrimaryTarget.target_id;
+    }
+  }
+  return {
+    normalized_context: normalizedContext,
+    primary_focus: normalizeRecoContextPrimaryFocus(normalizedContext && normalizedContext.primary_focus),
+    confidence_policy: normalizeRecoConfidencePolicy(normalizedContext && normalizedContext.confidence_policy),
+    ranked_targets: rankedTargets,
+    primary_target_id: primaryTargetId,
+    selected_target_ids: normalizeRecoContextTargetIds(normalizedContext && normalizedContext.selected_target_ids),
+  };
+}
+
+function recommendationMatchesRecoContextTarget(row, target) {
+  if (!isPlainObject(row) || !isPlainObject(target)) return false;
+  const targetCandidates = Array.isArray(target.product_candidates) ? target.product_candidates : [];
+  if (targetCandidates.length && rowMatchesIngredientConstraintProductCandidate(row, targetCandidates)) return true;
+  const candidateText = ingredient_query_normalize(buildIngredientRecoConstraintCandidateText(row));
+  if (!candidateText) return false;
+  const targetEntityMatch = ingredientEntityMatchFromText(
+    pickFirstTrimmed(target.ingredient_query, target.ingredient_id),
+  );
+  if (targetEntityMatch && rowMatchesIngredientConstraintEntity(candidateText, targetEntityMatch.entity_key)) return true;
+  const candidateFamilies = collectIngredientRecoConstraintCandidateFamilies(row);
+  const targetFamily = inferIngredientFamilyKeyFromInputName(
+    pickFirstTrimmed(target.ingredient_query, target.ingredient_id),
+  );
+  if (targetFamily && candidateFamilies.includes(targetFamily)) return true;
+  const targetTokens = collectRecoContextTargetTokens(target);
+  if (targetTokens.some((token) => candidateText.includes(token))) return true;
+  const targetStep = normalizeRecoTargetStep(target.resolved_target_step);
+  const candidateStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(row.product_type, row.productType, row.category, row.type, row.step),
+  );
+  return Boolean(targetStep && candidateStep && targetStep === candidateStep && targetTokens.length === 0);
+}
+
+function recommendationStronglyMatchesRecoContextTarget(row, target) {
+  if (!isPlainObject(row) || !isPlainObject(target)) return false;
+  const targetCandidates = Array.isArray(target.product_candidates) ? target.product_candidates : [];
+  if (targetCandidates.length && rowMatchesIngredientConstraintProductCandidate(row, targetCandidates)) return true;
+  const candidateText = ingredient_query_normalize(buildIngredientRecoConstraintCandidateText(row));
+  if (!candidateText) return false;
+  const brand = pickFirstTrimmed(row.brand, row.sku && row.sku.brand);
+  const rawTitle = pickFirstTrimmed(
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    row.sku && (row.sku.display_name || row.sku.displayName || row.sku.name || row.sku.title),
+  );
+  const titleWithoutBrand = stripRecoCandidateBrandPrefix(rawTitle, brand) || rawTitle;
+  const normalizedTitle = ingredient_query_normalize(titleWithoutBrand);
+  const targetIngredientInput = pickFirstTrimmed(target.ingredient_query, target.ingredient_id);
+  const targetEntityMatch = ingredientEntityMatchFromText(targetIngredientInput);
+  const candidateFamilies = collectIngredientRecoConstraintCandidateFamilies(row);
+  const targetFamily = inferIngredientFamilyKeyFromInputName(targetIngredientInput);
+  const matchesEntity =
+    Boolean(targetEntityMatch && targetEntityMatch.entity_key) &&
+    rowMatchesIngredientConstraintEntity(candidateText, targetEntityMatch.entity_key);
+  if (matchesEntity) return true;
+  const matchesFamily = Boolean(targetFamily) && candidateFamilies.includes(targetFamily);
+  if (matchesFamily) return true;
+  const hasStrongIngredientTarget = Boolean(
+    (targetEntityMatch && targetEntityMatch.entity_key) || targetFamily,
+  );
+  if (hasStrongIngredientTarget) {
+    const conflictingFamily = Boolean(
+      candidateFamilies.length &&
+      candidateFamilies.some((familyKey) => familyKey && familyKey !== targetFamily),
+    );
+    if (conflictingFamily) return false;
+    const targetStep = normalizeRecoTargetStep(target.resolved_target_step);
+    const candidateStep = normalizeRecoTargetStep(
+      pickFirstTrimmed(row.product_type, row.productType, row.category, row.type, row.step),
+    );
+    const supportTokens = uniqCaseInsensitiveStrings(
+      [
+        ...tokenizeRecoCandidateTitle(pickFirstTrimmed(target.goal)),
+        ...tokenizeRecoCandidateTitle(pickFirstTrimmed(target.issue_type)),
+      ].filter(Boolean),
+      8,
+    );
+    if (
+      normalizedTitle &&
+      targetStep &&
+      candidateStep &&
+      targetStep === candidateStep &&
+      supportTokens.some((token) => normalizedTitle.includes(token))
+    ) {
+      return true;
+    }
+    return false;
+  }
+  return recommendationMatchesRecoContextTarget(row, target);
+}
+
+function deriveRecoSelectedTargetState({ recommendations, recoContext } = {}) {
+  const spine = getRecoContentSpineFromContext(recoContext);
+  const rankedTargets = Array.isArray(spine.ranked_targets) ? spine.ranked_targets : [];
+  const primaryTargetId = pickFirstTrimmed(spine.primary_target_id);
+  const selectedTargetIds = [];
+  const seen = new Set();
+  for (const target of rankedTargets) {
+    const targetId = pickFirstTrimmed(target.target_id);
+    if (!targetId || seen.has(targetId)) continue;
+    if (!(Array.isArray(recommendations) ? recommendations : []).some((row) => recommendationMatchesRecoContextTarget(row, target))) {
+      continue;
+    }
+    seen.add(targetId);
+    selectedTargetIds.push(targetId);
+  }
+  const displayedTargetIds = selectedTargetIds.length
+    ? selectedTargetIds.slice(0, RECO_CONTEXT_CONTENT_MAX_TARGETS)
+    : normalizeRecoContextTargetIds(primaryTargetId ? [primaryTargetId] : []);
+  const primaryTargetSatisfied = Boolean(primaryTargetId) && displayedTargetIds.includes(primaryTargetId);
+  const secondaryTargetUsed = displayedTargetIds.length > 0 && !primaryTargetSatisfied;
+  const selectionShiftReason = secondaryTargetUsed ? 'primary_target_unavailable_secondary_used' : '';
+  return {
+    ...spine,
+    displayed_target_ids: displayedTargetIds,
+    selected_target_ids: selectedTargetIds,
+    primary_target_satisfied: primaryTargetSatisfied,
+    secondary_target_used: secondaryTargetUsed,
+    selection_shift_reason: selectionShiftReason,
+  };
+}
+
+function applyRecoContentSpineToPayload(payload, recoContext) {
+  if (!isPlainObject(payload)) return payload;
+  const nextPayload = { ...payload };
+  const selectedState = deriveRecoSelectedTargetState({
+    recommendations: Array.isArray(nextPayload.recommendations) ? nextPayload.recommendations : [],
+    recoContext,
+  });
+  const meta = isPlainObject(nextPayload.recommendation_meta) ? { ...nextPayload.recommendation_meta } : {};
+  if (selectedState.primary_focus) meta.primary_focus = selectedState.primary_focus;
+  if (selectedState.confidence_policy) meta.confidence_policy = selectedState.confidence_policy;
+  if (selectedState.ranked_targets.length) meta.ranked_targets = selectedState.ranked_targets;
+  if (selectedState.primary_target_id) meta.primary_target_id = selectedState.primary_target_id;
+  if (selectedState.displayed_target_ids.length) meta.displayed_target_ids = selectedState.displayed_target_ids;
+  if (selectedState.selected_target_ids.length) meta.selected_target_ids = selectedState.selected_target_ids;
+  if (selectedState.selection_shift_reason) meta.selection_shift_reason = selectedState.selection_shift_reason;
+  if (typeof selectedState.primary_target_satisfied === 'boolean') meta.primary_target_satisfied = selectedState.primary_target_satisfied;
+  if (typeof selectedState.secondary_target_used === 'boolean') meta.secondary_target_used = selectedState.secondary_target_used;
+  nextPayload.recommendation_meta = meta;
+  return nextPayload;
+}
+
+function pickRecoMetaTargets(payload) {
+  const meta = isPlainObject(payload && payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const rankedTargets = normalizeRecoContextRankedTargets(meta.ranked_targets);
+  const primaryTargetId = pickFirstTrimmed(
+    meta.primary_target_id,
+    rankedTargets.find((item) => item.target_role === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  const displayedTargetIds = normalizeRecoContextTargetIds(
+    Array.isArray(meta.displayed_target_ids) ? meta.displayed_target_ids : Array.isArray(meta.selected_target_ids) ? meta.selected_target_ids : [],
+  );
+  const displayedTargets = displayedTargetIds.length
+    ? rankedTargets.filter((item) => displayedTargetIds.includes(item.target_id))
+    : rankedTargets;
+  const primaryTarget =
+    displayedTargets.find((item) => item.target_id === primaryTargetId)
+    || rankedTargets.find((item) => item.target_id === primaryTargetId)
+    || displayedTargets[0]
+    || rankedTargets[0]
+    || null;
+  const secondaryTargets = displayedTargets.filter((item) => item && item.target_id !== (primaryTarget && primaryTarget.target_id)).slice(0, 2);
+  return {
+    meta,
+    rankedTargets,
+    displayedTargets,
+    primaryTarget,
+    secondaryTargets,
+    selectionShiftReason: pickFirstTrimmed(meta.selection_shift_reason),
+  };
+}
+
+function buildPayloadBoundRecoAssistantText({ payload, language, profile }) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const profileLine = summarizeProfileForAnswer(profile, lang);
+  const names = pickRecoNames(payload, 3);
+  const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
+  const confidenceLevel = String(
+    pickFirstTrimmed(
+      payload?.recommendation_confidence_level,
+      payload?.recommendation_meta?.recommendation_confidence_level,
+      payload?.recommendation_meta?.resolved_target_step_confidence,
+      'medium',
+    ),
+  ).trim().toLowerCase();
+  const isLowConfidence = confidenceLevel === 'low';
+  const stepLabel = humanizeRecoProductType(
+    pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
+    lang,
+  );
+  const targetLabel = pickFirstTrimmed(primaryTarget && primaryTarget.ingredient_query, primaryTarget && primaryTarget.ingredient_id, stepLabel);
+  const focusWhy = (() => {
+    const primaryFocus = normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus);
+    if (!primaryFocus) return '';
+    const moduleLabel = pickFirstTrimmed(primaryFocus.module_label, primaryFocus.module_id);
+    const issueLabel = pickFirstTrimmed(primaryFocus.issue_label, primaryFocus.issue_type);
+    if (!moduleLabel || !issueLabel) return '';
+    return lang === 'CN'
+      ? `${moduleLabel}的${issueLabel}是这次的主焦点，所以推荐先围绕 ${targetLabel} 这一条线收敛。`
+      : `${moduleLabel} carries the main ${issueLabel} signal here, so the recommendation stays centered on ${targetLabel}.`;
+  })();
+  const selectedProductsLine = names.length
+    ? (lang === 'CN'
+      ? `本次实际选中的商品：${names.join('、')}。`
+      : `Products actually selected this time: ${names.join(', ')}.`)
+    : '';
+  const secondaryLine = secondaryTargets.length
+    ? (lang === 'CN'
+      ? `次方向只保留 ${secondaryTargets.map((item) => item.ingredient_query || item.resolved_target_step).filter(Boolean).join('、')}，不和主方向并列推进。`
+      : `Secondary directions stay limited to ${secondaryTargets.map((item) => item.ingredient_query || item.resolved_target_step).filter(Boolean).join(', ')}, and they remain secondary to the main path.`)
+    : '';
+  const shiftLine = selectionShiftReason
+    ? (lang === 'CN'
+      ? '主方向的可验证候选不足，所以我改用最接近且已验证的次方向来落地。'
+      : 'The primary direction did not have enough verified candidates, so I shifted to the closest verified secondary direction.')
+    : '';
+  if (lang === 'CN') {
+    return [
+      `当前主推荐方向：先围绕 ${targetLabel || stepLabel} 这一条线收敛。`,
+      `背景：${profileLine}`,
+      focusWhy || (isLowConfidence
+        ? `这次照片/上下文信号偏保守，所以我只保留和 ${targetLabel || stepLabel} 最同轴的选择。`
+        : `我优先保留和 ${targetLabel || stepLabel} 最同轴、且已验证的候选。`),
+      selectedProductsLine,
+      shiftLine || secondaryLine,
+      isLowConfidence
+        ? '使用建议：先低频、少量、单一引入，观察 1-2 周再决定是否加频。'
+        : '使用建议：先单一引入主产品，再根据耐受决定是否补充次方向。',
+    ].filter(Boolean).join('\n');
+  }
+  return [
+    `Primary recommendation focus: keep this pass centered on ${targetLabel || stepLabel}.`,
+    `Context: ${profileLine}`,
+    focusWhy || (isLowConfidence
+      ? `Signals are still conservative, so I kept only the most aligned verified option for ${targetLabel || stepLabel}.`
+      : `I kept the recommendation anchored to the most aligned verified option for ${targetLabel || stepLabel}.`),
+    selectedProductsLine,
+    shiftLine || secondaryLine,
+    isLowConfidence
+      ? 'How to use / caution: introduce it slowly, keep the rest of the routine simple, and reassess after 1-2 weeks.'
+      : 'How to use / caution: introduce the primary product first, then add any secondary direction only if tolerance stays stable.',
+  ].filter(Boolean).join('\n');
+}
+
+function looksLikePayloadBoundRecoAssistantText(text, language) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (String(language || '').trim().toUpperCase() === 'CN') {
+    return /^当前主推荐方向[:：]/.test(raw) || /本次实际选中的商品[:：]/.test(raw);
+  }
+  return /^Primary recommendation focus:/i.test(raw) || /Products actually selected this time:/i.test(raw);
+}
+
+const RECO_ASSISTANT_REWRITE_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['assistant_text'],
+  properties: {
+    assistant_text: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 1600,
+    },
+  },
+};
+
+function buildRecoAssistantRewritePrompt({ payload, language, profile, baseText } = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const names = pickRecoNames(payload, 3);
+  const { primaryTarget, secondaryTargets, selectionShiftReason } = pickRecoMetaTargets(payload);
+  const primaryTargetLabel = pickFirstTrimmed(
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    humanizeRecoProductType(
+      pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
+      lang,
+    ),
+  );
+  const context = {
+    language: lang,
+    profile_summary: summarizeProfileForAnswer(profile, lang),
+    primary_target: primaryTarget
+      ? {
+          target_id: pickFirstTrimmed(primaryTarget.target_id),
+          ingredient_query: pickFirstTrimmed(primaryTarget.ingredient_query, primaryTarget.ingredient_id),
+          resolved_target_step: pickFirstTrimmed(primaryTarget.resolved_target_step),
+        }
+      : null,
+    secondary_targets: secondaryTargets.map((target) => ({
+      target_id: pickFirstTrimmed(target && target.target_id),
+      ingredient_query: pickFirstTrimmed(target && target.ingredient_query, target && target.ingredient_id),
+      resolved_target_step: pickFirstTrimmed(target && target.resolved_target_step),
+    })),
+    selected_products: names,
+    selection_shift_reason: selectionShiftReason || null,
+    confidence_level: String(
+      pickFirstTrimmed(
+        payload?.recommendation_confidence_level,
+        payload?.recommendation_meta?.recommendation_confidence_level,
+        payload?.recommendation_meta?.resolved_target_step_confidence,
+        'medium',
+      ),
+    ).trim().toLowerCase(),
+    base_text: String(baseText || '').trim(),
+    primary_focus: normalizeRecoContextPrimaryFocus(payload?.recommendation_meta?.primary_focus),
+    target_label: primaryTargetLabel || null,
+  };
+  return [
+    'Return strict JSON only.',
+    'Rewrite the recommendation explanation so it is natural, specific, concise, and aligned to the final payload.',
+    'Only mention targets, ingredients, steps, and product names that already exist in Context.',
+    'If there is one selected product, keep a single main direction.',
+    'If secondary targets exist, mention them briefly and explicitly as secondary.',
+    'If confidence_level is low, keep the wording conservative and non-definitive.',
+    'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
+    'Schema: { "assistant_text": string }',
+    `Context: ${JSON.stringify(context)}`,
+  ].join('\n');
+}
+
+async function maybeRewriteRecoAssistantTextWithLlm({ payload, language, profile, baseText } = {}) {
+  const fallbackText = String(baseText || '').trim();
+  if (!fallbackText) return { text: '', llm_used: false, reason: 'empty_base_text' };
+  if (!AURORA_RECO_ASSISTANT_REWRITE_ENABLED || USE_AURORA_BFF_MOCK) {
+    return { text: fallbackText, llm_used: false, reason: 'rewrite_disabled' };
+  }
+  const recommendations = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
+  if (!recommendations.length) return { text: fallbackText, llm_used: false, reason: 'no_recommendations' };
+  const names = pickRecoNames(payload, 3);
+  const { primaryTarget, secondaryTargets } = pickRecoMetaTargets(payload);
+  if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
+
+  try {
+    const result = await callStructuredSummaryJson({
+      llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
+      llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
+      systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
+      userPrompt: buildRecoAssistantRewritePrompt({
+        payload,
+        language,
+        profile,
+        baseText: fallbackText,
+      }),
+      responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
+      timeoutMs: AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
+      maxOutputTokens: AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
+      route: 'aurora_reco_assistant_rewrite',
+    });
+    const candidateText = String(result && result.json && result.json.assistant_text || '').trim();
+    if (!candidateText) {
+      return { text: fallbackText, llm_used: false, reason: result && result.failure_reason ? result.failure_reason : 'empty_rewrite' };
+    }
+    const primaryTargetLabel = pickFirstTrimmed(
+      primaryTarget && primaryTarget.ingredient_query,
+      primaryTarget && primaryTarget.ingredient_id,
+      humanizeRecoProductType(
+        pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
+        language === 'CN' ? 'CN' : 'EN',
+      ),
+    );
+    const confidenceLevel = String(
+      pickFirstTrimmed(
+        payload?.recommendation_confidence_level,
+        payload?.recommendation_meta?.recommendation_confidence_level,
+        payload?.recommendation_meta?.resolved_target_step_confidence,
+        'medium',
+      ),
+    ).trim().toLowerCase();
+    const mentionsSelectedProduct = assistantTextMentionsAny(candidateText, names);
+    const mentionsPrimaryTarget = !primaryTargetLabel || assistantTextMentionsAny(candidateText, [
+      primaryTargetLabel,
+      pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step),
+    ]);
+    const mentionsUnknownDirections = /(direction\s*[123]|方向\s*[123])/i.test(candidateText);
+    const overconfident = confidenceLevel === 'low' && assistantTextUsesOverconfidentRecoLanguage(candidateText);
+    const secondaryTargetsMentionedAsTooMany =
+      secondaryTargets.length <= 1
+      ? false
+      : secondaryTargets.length > 2;
+    if (!mentionsSelectedProduct || !mentionsPrimaryTarget || mentionsUnknownDirections || overconfident || secondaryTargetsMentionedAsTooMany) {
+      return { text: fallbackText, llm_used: false, reason: 'rewrite_failed_alignment_guard' };
+    }
+    return {
+      text: candidateText,
+      llm_used: true,
+      provider: result.provider || null,
+      model: result.model || null,
+      parse_status: result.parse_status || null,
+      reason: null,
+    };
+  } catch (err) {
+    return {
+      text: fallbackText,
+      llm_used: false,
+      reason: err && err.code ? String(err.code) : 'rewrite_exception',
+    };
+  }
+}
+
+function getEnvelopeCardByType(envelope, type) {
+  const target = String(type || '').trim().toLowerCase();
+  if (!target) return null;
+  const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
+  return cards.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === target) || null;
+}
+
+function normalizeSemanticAuditText(raw) {
+  return ingredient_query_normalize(String(raw || '').replace(/[_/]+/g, ' '));
+}
+
+function assistantTextMentionsAny(text, values) {
+  const normalizedText = normalizeSemanticAuditText(text);
+  if (!normalizedText) return false;
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalizedValue = normalizeSemanticAuditText(value);
+    if (!normalizedValue || normalizedValue.length < 3) continue;
+    if (normalizedText.includes(normalizedValue)) return true;
+  }
+  return false;
+}
+
+function extractPhotoPrimaryFocusSignal(photoModulesPayload) {
+  const payload = isPlainObject(photoModulesPayload) ? photoModulesPayload : {};
+  const summary = isPlainObject(payload.summary_v1) ? payload.summary_v1 : {};
+  const topFinding = isPlainObject(Array.isArray(summary.top_findings) ? summary.top_findings[0] : null)
+    ? summary.top_findings[0]
+    : null;
+  const confidenceBucket = String(
+    pickFirstTrimmed(
+      topFinding && topFinding.confidence_bucket,
+      normalizePhotoStoryConfidenceBucket(topFinding && topFinding.confidence_0_1, ''),
+      payload.quality_confidence_bucket,
+    ) || '',
+  ).trim().toLowerCase();
+  return {
+    module_id: pickFirstTrimmed(topFinding && topFinding.module_id, summary.top_module_id),
+    module_label: pickFirstTrimmed(
+      topFinding && topFinding.module_label,
+      topFinding && topFinding.region_label,
+      topFinding && topFinding.region,
+      topFinding && topFinding.module_id,
+      summary.top_module_id,
+    ),
+    issue_type: pickFirstTrimmed(topFinding && topFinding.issue_type, summary.top_issue_type),
+    issue_label: pickFirstTrimmed(
+      topFinding && topFinding.issue_label,
+      topFinding && topFinding.title,
+      topFinding && topFinding.issue_type,
+      summary.top_issue_type,
+    ),
+    confidence_bucket: confidenceBucket || '',
+  };
+}
+
+function extractStoryPrimaryFocusSignal(storyPayload) {
+  const payload = isPlainObject(storyPayload) ? storyPayload : {};
+  const uiCard = isPlainObject(payload.ui_card_v1) ? payload.ui_card_v1 : {};
+  const priorityFinding = isPlainObject(Array.isArray(payload.priority_findings) ? payload.priority_findings[0] : null)
+    ? payload.priority_findings[0]
+    : null;
+  return {
+    headline: pickFirstTrimmed(uiCard.headline),
+    finding: pickFirstTrimmed(priorityFinding && priorityFinding.title, priorityFinding && priorityFinding.detail),
+    text: [
+      pickFirstTrimmed(uiCard.headline),
+      pickFirstTrimmed(priorityFinding && priorityFinding.title, priorityFinding && priorityFinding.detail),
+      pickFirstTrimmed(uiCard.actions_now && uiCard.actions_now[0]),
+    ].filter(Boolean).join(' '),
+    confidence_label: String(
+      pickFirstTrimmed(uiCard.confidence_label, payload.confidence_overall && payload.confidence_overall.level) || '',
+    ).trim().toLowerCase(),
+  };
+}
+
+function extractIngredientPlanPrimaryTargetSignal(ingredientPlanPayload) {
+  const payload = isPlainObject(ingredientPlanPayload) ? ingredientPlanPayload : {};
+  const targets = Array.isArray(payload.targets) ? payload.targets.filter((row) => isPlainObject(row)) : [];
+  const target =
+    targets.find((row) => row.displayable !== false)
+    || targets[0]
+    || null;
+  if (!target) return null;
+  return {
+    target_id: pickFirstTrimmed(target.target_id, target.targetId),
+    ingredient_query: pickFirstTrimmed(target.ingredient_query, target.ingredient_name, target.ingredientName, target.ingredient_id, target.ingredientId),
+    ingredient_id: pickFirstTrimmed(target.ingredient_id, target.ingredientId),
+    resolved_target_step: pickFirstTrimmed(target.resolved_target_step, target.target_step_family, target.targetStepFamily),
+    target_role: pickFirstTrimmed(target.target_role, target.targetRole),
+  };
+}
+
+function targetsAreSemanticallyAligned(left, right) {
+  const leftTarget = isPlainObject(left) ? left : {};
+  const rightTarget = isPlainObject(right) ? right : {};
+  const leftTargetId = pickFirstTrimmed(leftTarget.target_id, leftTarget.targetId);
+  const rightTargetId = pickFirstTrimmed(rightTarget.target_id, rightTarget.targetId);
+  if (leftTargetId && rightTargetId && leftTargetId === rightTargetId) return true;
+  const leftStep = normalizeRecoTargetStep(pickFirstTrimmed(leftTarget.resolved_target_step, leftTarget.step));
+  const rightStep = normalizeRecoTargetStep(pickFirstTrimmed(rightTarget.resolved_target_step, rightTarget.step));
+  if (leftStep && rightStep && leftStep !== rightStep) return false;
+  const leftIngredient = normalizeSemanticAuditText(
+    pickFirstTrimmed(leftTarget.ingredient_query, leftTarget.ingredient_id, leftTarget.target_label),
+  );
+  const rightIngredient = normalizeSemanticAuditText(
+    pickFirstTrimmed(rightTarget.ingredient_query, rightTarget.ingredient_id, rightTarget.target_label),
+  );
+  if (leftIngredient && rightIngredient) {
+    if (leftIngredient === rightIngredient) return true;
+    const leftFamily = inferIngredientFamilyKeyFromInputName(leftIngredient);
+    const rightFamily = inferIngredientFamilyKeyFromInputName(rightIngredient);
+    if (leftFamily && rightFamily && leftFamily === rightFamily && (!leftStep || !rightStep || leftStep === rightStep)) {
+      return true;
+    }
+    return false;
+  }
+  return Boolean(leftStep && rightStep ? leftStep === rightStep : leftStep || rightStep);
+}
+
+function focusSignalsAreAligned(photoFocus, primaryFocus) {
+  const left = extractPhotoPrimaryFocusSignal(photoFocus);
+  const right = normalizeRecoContextPrimaryFocus(primaryFocus);
+  if (!right) return true;
+  const leftModuleId = pickFirstTrimmed(left && left.module_id);
+  const rightModuleId = pickFirstTrimmed(right && right.module_id);
+  if (leftModuleId && rightModuleId && leftModuleId !== rightModuleId) return false;
+  const leftIssueType = pickFirstTrimmed(left && left.issue_type);
+  const rightIssueType = pickFirstTrimmed(right && right.issue_type);
+  if (leftIssueType && rightIssueType && leftIssueType !== rightIssueType) return false;
+  return true;
+}
+
+function assistantTextUsesConservativeRecoLanguage(text) {
+  return /(slowly|reassess|cautious|conservative|observe|introduce|low frequency|start at|1-2 weeks|先|保守|观察|低频|逐步|耐受|少量)/i.test(
+    String(text || ''),
+  );
+}
+
+function assistantTextUsesOverconfidentRecoLanguage(text) {
+  return /(definitely|guaranteed|will fix|always works|certainly|一定会|肯定|必然|马上见效)/i.test(String(text || ''));
+}
+
+function buildRecoSemanticQualityAudit({ envelope, assistantText } = {}) {
+  const recoCard = getEnvelopeCardByType(envelope, 'recommendations');
+  const photoModulesCard = getEnvelopeCardByType(envelope, 'photo_modules_v1');
+  const storyCard = getEnvelopeCardByType(envelope, 'analysis_story_v2');
+  const ingredientPlanCard = getEnvelopeCardByType(envelope, 'ingredient_plan_v2');
+  const recoPayload = isPlainObject(recoCard && recoCard.payload) ? recoCard.payload : null;
+  const recommendationMeta = isPlainObject(recoPayload && recoPayload.recommendation_meta) ? recoPayload.recommendation_meta : {};
+  const latestRecoContext = normalizeIngredientRecoContextValue(
+    envelope && envelope.session_patch && envelope.session_patch.state && envelope.session_patch.state.latest_reco_context,
+  );
+  if (!recoPayload && !latestRecoContext) {
+    return {
+      primary_focus_alignment_pass: true,
+      target_bundle_alignment_pass: true,
+      assistant_reco_alignment_pass: true,
+      confidence_consistency_pass: true,
+      selection_shift_explained_pass: true,
+      direction_diversity_discipline_pass: true,
+      audit: { route: 'non_reco' },
+    };
+  }
+
+  const photoFocus = extractPhotoPrimaryFocusSignal(photoModulesCard && photoModulesCard.payload);
+  const storySignal = extractStoryPrimaryFocusSignal(storyCard && storyCard.payload);
+  const ingredientPlanTarget = extractIngredientPlanPrimaryTargetSignal(ingredientPlanCard && ingredientPlanCard.payload);
+  const contextSpine = getRecoContentSpineFromContext(latestRecoContext || recommendationMeta);
+  const metaTargets = pickRecoMetaTargets(recoPayload || { recommendation_meta: recommendationMeta });
+  const contextPrimaryTarget =
+    contextSpine.ranked_targets.find((item) => item.target_id === contextSpine.primary_target_id)
+    || contextSpine.ranked_targets[0]
+    || null;
+  const recoPrimaryTarget = metaTargets.primaryTarget;
+  const recoDisplayTargets = Array.isArray(metaTargets.displayedTargets) ? metaTargets.displayedTargets : [];
+  const selectedProducts = pickRecoNames(recoPayload || {}, 3);
+  const selectionShiftReason = pickFirstTrimmed(recommendationMeta.selection_shift_reason, metaTargets.selectionShiftReason);
+  const primaryFocus = normalizeRecoContextPrimaryFocus(recommendationMeta.primary_focus || contextSpine.primary_focus);
+
+  const storyMatchesPhotoFocus =
+    !pickFirstTrimmed(photoFocus.module_label, photoFocus.issue_label, photoFocus.issue_type)
+    || !String(storySignal.text || '').trim()
+    || assistantTextMentionsAny(storySignal.text, [
+      photoFocus.module_label,
+      photoFocus.module_id,
+      photoFocus.issue_label,
+      photoFocus.issue_type,
+    ]);
+  const primaryFocusAlignmentPass =
+    focusSignalsAreAligned(photoFocus, primaryFocus)
+    && storyMatchesPhotoFocus;
+
+  const primaryTargetAligned =
+    (!ingredientPlanTarget || !contextPrimaryTarget || targetsAreSemanticallyAligned(ingredientPlanTarget, contextPrimaryTarget))
+    && (!contextPrimaryTarget || !recoPrimaryTarget || targetsAreSemanticallyAligned(contextPrimaryTarget, recoPrimaryTarget))
+    && (!ingredientPlanTarget || !recoPrimaryTarget || targetsAreSemanticallyAligned(ingredientPlanTarget, recoPrimaryTarget));
+  const displayedTargetsAligned =
+    !recoDisplayTargets.length
+    || recoDisplayTargets.every((target) =>
+      contextSpine.ranked_targets.some((contextTarget) => targetsAreSemanticallyAligned(contextTarget, target)),
+    );
+  const targetBundleAlignmentPass = primaryTargetAligned || (Boolean(selectionShiftReason) && displayedTargetsAligned);
+
+  const primaryTargetLabel = pickFirstTrimmed(
+    recoPrimaryTarget && recoPrimaryTarget.ingredient_query,
+    recoPrimaryTarget && recoPrimaryTarget.ingredient_id,
+    humanizeRecoProductType(
+      pickFirstTrimmed(
+        recoPrimaryTarget && recoPrimaryTarget.resolved_target_step,
+        recommendationMeta.resolved_target_step,
+      ),
+      'EN',
+    ),
+  );
+  const assistantRecoAlignmentPass =
+    !recoPayload
+    || !Array.isArray(recoPayload.recommendations)
+    || recoPayload.recommendations.length === 0
+    || (
+      (!selectedProducts.length || assistantTextMentionsAny(assistantText, selectedProducts))
+      && (!primaryTargetLabel || assistantTextMentionsAny(assistantText, [
+        primaryTargetLabel,
+        pickFirstTrimmed(recommendationMeta.resolved_target_step),
+      ]))
+    );
+
+  const lowConfidenceExpected = [
+    photoFocus.confidence_bucket,
+    storySignal.confidence_label,
+    pickFirstTrimmed(recommendationMeta.resolved_target_step_confidence, recoPayload && recoPayload.recommendation_confidence_level),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .includes('low');
+  const confidenceConsistencyPass =
+    !lowConfidenceExpected
+    || (
+      assistantTextUsesConservativeRecoLanguage(assistantText)
+      && !assistantTextUsesOverconfidentRecoLanguage(assistantText)
+    );
+
+  const selectionShiftExplainedPass =
+    !selectionShiftReason
+    || /(secondary direction|shifted to|closest verified secondary|次方向|改用|已切到)/i.test(String(assistantText || ''));
+
+  const directionDiversityDisciplinePass =
+    (metaTargets.secondaryTargets.length <= 2)
+    && !/direction\s*[123]|方向\s*[123]/i.test(String(assistantText || ''))
+    && (
+      metaTargets.secondaryTargets.length > 0
+      || !/(secondary direction|次方向)/i.test(String(assistantText || ''))
+    );
+
+  return {
+    primary_focus_alignment_pass: primaryFocusAlignmentPass,
+    target_bundle_alignment_pass: targetBundleAlignmentPass,
+    assistant_reco_alignment_pass: assistantRecoAlignmentPass,
+    confidence_consistency_pass: confidenceConsistencyPass,
+    selection_shift_explained_pass: selectionShiftExplainedPass,
+    direction_diversity_discipline_pass: directionDiversityDisciplinePass,
+    audit: {
+      route: 'reco',
+      photo_focus: photoFocus,
+      story_focus: {
+        headline: storySignal.headline,
+        finding: storySignal.finding,
+        confidence_label: storySignal.confidence_label,
+      },
+      ingredient_plan_primary_target: ingredientPlanTarget,
+      latest_reco_primary_target: contextPrimaryTarget,
+      recommendation_primary_target: recoPrimaryTarget,
+      displayed_target_ids: normalizeRecoContextTargetIds(recommendationMeta.displayed_target_ids),
+      selected_target_ids: normalizeRecoContextTargetIds(recommendationMeta.selected_target_ids),
+      selection_shift_reason: selectionShiftReason || '',
+      selected_products: selectedProducts,
+      llm_vs_deterministic_disagreement: {
+        primary_focus: !primaryFocusAlignmentPass,
+        target_bundle: !targetBundleAlignmentPass,
+      },
+    },
+  };
+}
+
 function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantText, profile } = {}) {
   const cards = Array.isArray(envelope && envelope.cards) ? envelope.cards : [];
   const intent = String(policyMeta && policyMeta.intent_canonical ? policyMeta.intent_canonical : '').trim().toLowerCase();
@@ -39102,12 +41419,33 @@ function evaluateQualityContractForEnvelope({ envelope, policyMeta, assistantTex
     critical.push('entity_miss_fail_seed_profile');
   }
 
+  const semanticAudit = buildRecoSemanticQualityAudit({
+    envelope,
+    assistantText,
+  });
+  const semanticContractPass = [
+    semanticAudit.primary_focus_alignment_pass,
+    semanticAudit.target_bundle_alignment_pass,
+    semanticAudit.assistant_reco_alignment_pass,
+    semanticAudit.confidence_consistency_pass,
+    semanticAudit.selection_shift_explained_pass,
+    semanticAudit.direction_diversity_discipline_pass,
+  ].every(Boolean);
+
   return {
-    version: 'routine_expert.strict_quality_contract.v3',
+    version: 'routine_expert.strict_quality_contract.v4',
     contract_pass: critical.length === 0,
+    semantic_contract_pass: semanticContractPass,
     stall_hit: stallHit,
     missing_modules: Array.from(new Set(missingModules)),
     url_invariant_pass: urlInvariantPass,
+    primary_focus_alignment_pass: semanticAudit.primary_focus_alignment_pass,
+    target_bundle_alignment_pass: semanticAudit.target_bundle_alignment_pass,
+    assistant_reco_alignment_pass: semanticAudit.assistant_reco_alignment_pass,
+    confidence_consistency_pass: semanticAudit.confidence_consistency_pass,
+    selection_shift_explained_pass: semanticAudit.selection_shift_explained_pass,
+    direction_diversity_discipline_pass: semanticAudit.direction_diversity_discipline_pass,
+    semantic_audit: semanticAudit.audit,
     strict_fail_flags: {
       stall_fail_placeholder: placeholderStall,
       stall_fail_gate_only: gateOnlyStall,
@@ -39260,6 +41598,20 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
   }
 
   if (route === 'reco') {
+    const payloadBound = buildPayloadBoundRecoAssistantText({
+      payload: p,
+      language: lang,
+      profile,
+    });
+    const hasRecoSpine = Boolean(
+      (Array.isArray(p.recommendations) && p.recommendations.length > 0)
+      || pickFirstTrimmed(
+        p?.recommendation_meta?.primary_target_id,
+        p?.recommendation_meta?.resolved_target_step,
+      )
+      || (Array.isArray(p?.recommendation_meta?.ranked_targets) && p.recommendation_meta.ranked_targets.length > 0),
+    );
+    if (hasRecoSpine && payloadBound) return payloadBound;
     const names = pickRecoNames(p, 3);
     const topNames = names.length ? names : [lang === 'CN' ? '温和修护类精华' : 'gentle barrier-support serum'];
     if (lang === 'CN') {
@@ -43278,6 +45630,84 @@ function buildConservativeRecoNoticeCard({ ctx, language, confidence, details } 
   };
 }
 
+function findConfidenceNoticePayload(cards, preferredReason = '') {
+  const rows = Array.isArray(cards) ? cards : [];
+  const normalizedPreferredReason = String(preferredReason || '').trim().toLowerCase();
+  let fallbackPayload = null;
+  for (const card of rows) {
+    if (!isPlainObject(card)) continue;
+    if (String(card.type || '').trim().toLowerCase() !== 'confidence_notice') continue;
+    const payload = isPlainObject(card.payload) ? card.payload : null;
+    if (!payload) continue;
+    const reason = String(payload.reason || '').trim().toLowerCase();
+    if (!fallbackPayload) fallbackPayload = payload;
+    if (normalizedPreferredReason && reason === normalizedPreferredReason) return payload;
+  }
+  return fallbackPayload;
+}
+
+function buildRecoNoticeAssistantText({ language, noticePayload, fallbackReason = '' } = {}) {
+  const lang = String(language || 'EN').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const payload = isPlainObject(noticePayload) ? noticePayload : {};
+  const reason = String(pickFirstTrimmed(payload.reason, fallbackReason) || '').trim().toLowerCase();
+  const message = pickFirstTrimmed(payload.message);
+  const leadByReason = {
+    low_confidence:
+      lang === 'CN'
+        ? '这轮 photo-backed 置信度还不够高，所以我先不保留激进产品结论。'
+        : 'The current photo-backed confidence is not high enough, so I am not keeping aggressive product picks in the final answer.',
+    low_confidence_treatment_filtered:
+      lang === 'CN'
+        ? '这轮置信度下，刺激性更强的 treatment 方案已经被过滤掉。'
+        : 'At this confidence level, higher-irritation treatment options were filtered out of the final answer.',
+    needs_more_context:
+      lang === 'CN'
+        ? '我还需要更多与你当前护肤情境直接相关的上下文，才能稳定锁定产品。'
+        : 'I still need more context tied to your current skincare situation before I can lock products confidently.',
+    reco_mainline_empty:
+      lang === 'CN'
+        ? '我已经拿到当前上下文了，但这轮还没有收敛出稳定的可购商品。'
+        : 'I have the current context, but this pass still did not converge on a stable purchasable shortlist.',
+    no_viable_candidates_for_target:
+      lang === 'CN'
+        ? '当前目标方向下还没有验证通过的候选，所以我先不给你硬推商品。'
+        : 'There are no verified candidates for the current target yet, so I am not forcing a product pick.',
+    weak_viable_pool:
+      lang === 'CN'
+        ? '当前只拿到边缘匹配候选，所以我先不把它们当成最终商品推荐。'
+        : 'I only found borderline matches right now, so I am not presenting them as final product recommendations.',
+    ingredient_constraint_no_match:
+      lang === 'CN'
+        ? '当前成分约束下没有确认匹配的商品，所以我先不输出伪精确结果。'
+        : 'Nothing verified matched the current ingredient constraint, so I am not returning a fake-precise product result.',
+  };
+  const lead = leadByReason[reason] || '';
+  if (!lead) return message || '';
+  if (!message) return lead;
+  return normalizeSemanticAuditText(lead) === normalizeSemanticAuditText(message)
+    ? message
+    : `${lead} ${message}`;
+}
+
+function alignAssistantMessageToRecoNotice({ envelope, language, preferredReason = '' } = {}) {
+  const baseEnvelope = isPlainObject(envelope) ? { ...envelope } : envelope;
+  if (!isPlainObject(baseEnvelope)) return baseEnvelope;
+  const cards = Array.isArray(baseEnvelope.cards) ? baseEnvelope.cards : [];
+  if (hasNonEmptyRecommendationsCard(cards)) return baseEnvelope;
+  const noticePayload = findConfidenceNoticePayload(cards, preferredReason);
+  if (!noticePayload) return baseEnvelope;
+  const assistantText = buildRecoNoticeAssistantText({
+    language,
+    noticePayload,
+    fallbackReason: preferredReason,
+  });
+  if (!assistantText) return baseEnvelope;
+  return {
+    ...baseEnvelope,
+    assistant_message: { role: 'assistant', content: assistantText, format: 'markdown' },
+  };
+}
+
 function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
   const baseEnvelope = isPlainObject(envelope)
     ? {
@@ -43398,11 +45828,15 @@ function applyLowOrMediumRecoGuardToEnvelope({ envelope, ctx, language } = {}) {
   }
 
   return {
-    envelope: {
-      ...baseEnvelope,
-      cards: finalCards,
-      events: nextEvents,
-    },
+    envelope: alignAssistantMessageToRecoNotice({
+      envelope: {
+        ...baseEnvelope,
+        cards: finalCards,
+        events: nextEvents,
+      },
+      language,
+      preferredReason: fallbackApplied ? 'low_confidence' : '',
+    }),
     applied: true,
     filteredCount,
     totalCount,
@@ -43515,6 +45949,7 @@ function normalizeRecoPromptCandidates(candidates, region) {
   for (const row of Array.isArray(candidates) ? candidates : []) {
     const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
     if (!item) continue;
+    if (isMockLikeRecoContextCandidate(item)) continue;
     const skuId = pickFirstTrimmed(item.sku_id, item.skuId);
     const productId = pickFirstTrimmed(item.product_id, item.productId);
     const brand = pickFirstTrimmed(item.brand);
@@ -44311,9 +46746,15 @@ function restoreRecoRecommendationsFromVerifiedContextCandidates({
   language = 'EN',
 } = {}) {
   const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
-  const productCandidates = Array.isArray(normalizedContext?.product_candidates)
-    ? normalizedContext.product_candidates
-    : [];
+  const productCandidates = filterRecoContextProductCandidates(
+    Array.isArray(normalizedContext?.product_candidates)
+      ? normalizedContext.product_candidates
+      : [],
+    {
+      target: targetContext || normalizedContext,
+      max: 12,
+    },
+  );
   if (!productCandidates.length) {
     return {
       recommendations: [],
@@ -57886,6 +60327,49 @@ function mountAuroraBffRoutes(app, { logger }) {
         text: requestText,
         entryType: 'direct',
       });
+      const directRecoSpineContext = mergeIngredientRecoContextValue(derivedDirectRecoContext, {
+        query: pickFirstTrimmed(
+          derivedDirectRecoContext && derivedDirectRecoContext.ingredient_query,
+          derivedDirectRecoContext && derivedDirectRecoContext.query,
+          effectiveDirectFocus,
+        ),
+        goal: pickFirstTrimmed(derivedDirectRecoContext && derivedDirectRecoContext.goal),
+        target_step: pickFirstTrimmed(
+          directRecoTargetContext && directRecoTargetContext.resolved_target_step,
+          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step,
+        ),
+        resolved_target_step: pickFirstTrimmed(
+          directRecoTargetContext && directRecoTargetContext.resolved_target_step,
+          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step,
+        ),
+        resolved_target_step_confidence: pickFirstTrimmed(
+          directRecoTargetContext && directRecoTargetContext.resolved_target_step_confidence,
+          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step_confidence,
+        ),
+        resolved_target_step_source: pickFirstTrimmed(
+          directRecoTargetContext && directRecoTargetContext.resolved_target_step_source,
+          derivedDirectRecoContext && derivedDirectRecoContext.resolved_target_step_source,
+          'direct_request',
+        ),
+        primary_focus: derivedDirectRecoContext && derivedDirectRecoContext.primary_focus,
+        confidence_policy: derivedDirectRecoContext && derivedDirectRecoContext.confidence_policy,
+        ranked_targets: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.ranked_targets)
+          ? derivedDirectRecoContext.ranked_targets
+          : [],
+        primary_target_id: pickFirstTrimmed(derivedDirectRecoContext && derivedDirectRecoContext.primary_target_id),
+        selected_target_ids: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.selected_target_ids)
+          ? derivedDirectRecoContext.selected_target_ids
+          : [],
+        product_candidates: Array.isArray(derivedDirectRecoContext && derivedDirectRecoContext.product_candidates)
+          ? derivedDirectRecoContext.product_candidates
+          : [],
+        source: pickFirstTrimmed(
+          derivedDirectRecoContext && derivedDirectRecoContext.context_origin,
+          derivedDirectRecoContext && derivedDirectRecoContext.source,
+          'direct_request',
+        ),
+        updated_at_ms: Date.now(),
+      });
       const hasDirectRecoTarget = Boolean(
         pickFirstTrimmed(
           directRecoTargetContext && directRecoTargetContext.resolved_target_step,
@@ -58179,6 +60663,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(directRecoTargetContext?.resolved_target_step_confidence ? { resolved_target_step_confidence: directRecoTargetContext.resolved_target_step_confidence } : {}),
           ...(directRecoTargetContext?.resolved_target_step_source ? { resolved_target_step_source: directRecoTargetContext.resolved_target_step_source } : {}),
         };
+        Object.assign(payload, applyRecoContentSpineToPayload(payload, directRecoSpineContext));
         if (explicitOnlyNeedsMoreContext) {
           payload.mainline_status = 'needs_more_context';
           payload.products_empty_reason = 'needs_more_context';
@@ -58311,6 +60796,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           final_selected_candidate_count: guardedRecommendations.length,
           post_guardrail_count: guardedRecommendations.length,
         };
+        guardedRecoCard.payload = applyRecoContentSpineToPayload(guardedRecoCard.payload, directRecoSpineContext);
       }
       const hasGuardedRecommendations = guardedRecommendations.length > 0;
       const finalContract = buildRecoMainlineContract({
@@ -62735,8 +65221,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           });
         }
       }
-      applyAnalysisResponseTimingHeaders(res, timedFinalEnvelope);
-      return res.json(timedFinalEnvelope);
+      const syncedFinalEnvelope = refreshLatestRecoContextFromAnalysisEnvelope(timedFinalEnvelope);
+      applyAnalysisResponseTimingHeaders(res, syncedFinalEnvelope);
+      return res.json(syncedFinalEnvelope);
     } catch (err) {
       const status = err.status || 500;
       logger?.error(
@@ -64018,15 +66505,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         logger,
       });
       const guardEligible = statusCode < 400 && shouldApplyRecoOutputGuard({ envelope: dogfoodAugmented, ctx });
-      const lowMediumFiltered = guardEligible
-        ? applyLowOrMediumRecoGuardToEnvelope({ envelope: dogfoodAugmented, ctx, language: ctx.lang })
-        : {
-            envelope: dogfoodAugmented,
-            applied: false,
-            filteredCount: 0,
-            totalCount: 0,
-            fallbackApplied: false,
-          };
+      const lowMediumFiltered = {
+        envelope: dogfoodAugmented,
+        applied: false,
+        filteredCount: 0,
+        totalCount: 0,
+        fallbackApplied: false,
+      };
       const setResponseHeader = (name, value) => {
         if (typeof res.set === 'function') {
           res.set(name, value);
@@ -65175,11 +67660,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         anchorProductId,
         anchorProductUrl,
       });
-      const makeChatAssistantMessage = (content, format = 'text') => {
-        const preambleSeed = `${ctx.request_id || ''}|${ctx.trace_id || ''}|${String(content || '').slice(0, 96)}`;
-        const text = addEmotionalPreambleToAssistantText(content, { language: ctx.lang, profile, seed: preambleSeed });
-        return makeAssistantMessage(text, format);
-      };
       const isAnalysisFollowupAction = ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(actionId || '').trim());
       const analysisFollowupRoutingMode = isAnalysisFollowupAction && !ANALYSIS_FOLLOWUP_ACTION_IDS.has(String(explicitActionId || '').trim())
         ? 'implicit'
@@ -65249,7 +67729,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           'metric',
         );
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(followup.assistant_text),
+          assistant_message: makeAssistantMessage(followup.assistant_text),
           suggested_chips: Array.isArray(followup.suggested_chips) ? followup.suggested_chips : [],
           cards: Array.isArray(followup.cards) ? followup.cards : [],
           session_patch: {},
@@ -65309,7 +67789,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? '需要一个锚点产品（URL/产品名/产品图）才能继续做 follow-up alternatives。'
               : 'An anchor product (URL/name/photo) is required to continue follow-up alternatives.';
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               lang === 'CN'
                 ? '我先保持当前分析，不会乱给替代品。请补一个锚点产品（URL/名称/图片），我再给你 acne-focused 的明确推荐。'
                 : 'I will avoid off-target alternatives for now. Share an anchor product (URL/name/photo), then I can give you a clear acne-focused pick.',
@@ -65627,7 +68107,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           },
         };
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             lang === 'CN'
               ? '我已锁定当前产品并准备了 follow-up 替代分析。你可以继续点 acne-focused / less-drying / pros-cons 方向细化。'
               : 'I anchored the current product and prepared a follow-up alternatives analysis. You can refine with acne-focused / less-drying / pros-cons next.',
@@ -65691,7 +68171,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           language: ctx.lang,
         });
         return buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             lang === 'CN'
               ? 'routine 生成暂时超时。我已切到保守降级，不返回空卡；你可以继续补充当前流程，或直接重试。'
               : 'Routine generation timed out. I switched to a conservative degraded path without returning empty cards; continue intake or retry directly.',
@@ -66183,7 +68663,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const questionText = String(nextQuestion.question || '').trim() ||
             (ctx.lang === 'CN' ? '再补充一个信息就好。' : 'One more quick question.');
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(questionText),
+            assistant_message: makeAssistantMessage(questionText),
             suggested_chips: chips,
             cards: [],
             session_patch: sessionPatch,
@@ -66712,7 +69192,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
         return buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: buildIngredientReportQuickReplyChips({
             language: ctx.lang,
             reportPayload,
@@ -66875,7 +69355,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
         }
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt.prompt),
+          assistant_message: makeAssistantMessage(prompt.prompt),
           suggested_chips: prompt.chips,
           cards: [
             {
@@ -66930,7 +69410,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           policyMeta.safety_gate_mode = 'advisory_only_v1';
           policyMeta.safety_advisory_emitted = false;
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               buildSafetyNoticeText(safetyDecision) ||
                 (ctx.lang === 'CN'
                   ? '这个方向当前存在安全风险，我先给你更安全替代。'
@@ -66979,7 +69459,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : 'Ingredients now starts in query-first mode. You can lookup a specific ingredient or find by goal first; diagnosis is optional.';
         requestMessage = 'ingredient_hub_entry';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
@@ -67042,7 +69522,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
         requestMessage = 'ingredient_goal_match';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
@@ -67078,7 +69558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : 'Which ingredient should I look up? Enter an INCI name or common alias.';
         requestMessage = 'ingredient_lookup_missing_query';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
@@ -67138,7 +69618,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? '我还不知道你要查哪个成分。请先输入成分名（INCI/别名）。'
               : 'I do not have an ingredient target yet. Please enter the ingredient name (INCI/alias).';
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(assistantText),
+            assistant_message: makeAssistantMessage(assistantText),
             suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
             cards: [
               {
@@ -67216,7 +69696,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: suggestedChips,
           cards: [],
           session_patch: {},
@@ -67413,7 +69893,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(assistantText),
+            assistant_message: makeAssistantMessage(assistantText),
             suggested_chips: [],
             cards: [
               {
@@ -67779,7 +70259,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             }
 
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(advice, 'markdown'),
+              assistant_message: makeAssistantMessage(advice, 'markdown'),
               suggested_chips: finalSuggestedChips,
               cards: envStressUi && !pendingTravelClarification
                 ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
@@ -67905,7 +70385,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               travel_pending_clarification: pendingTravelClarification,
             };
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(clarificationText, 'markdown'),
+              assistant_message: makeAssistantMessage(clarificationText, 'markdown'),
               suggested_chips: clarificationChips,
               cards: [],
               session_patch: sessionPatch,
@@ -68060,7 +70540,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(advice, 'markdown'),
+          assistant_message: makeAssistantMessage(advice, 'markdown'),
           suggested_chips: suggestedChips,
           cards: envStressUi
             ? [{ card_id: `env_${ctx.request_id}`, type: 'env_stress', payload: envStressUi }]
@@ -68114,11 +70594,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               : sim.safe
                 ? 'No major conflicts detected (see the heatmap below). If you feel irritation, reduce frequency and moisturize.'
                 : 'Potential conflict detected (see the heatmap below). Safer: alternate nights and start low frequency.');
-          const msgText = addEmotionalPreambleToAssistantText(routeText, {
-            language: ctx.lang,
-            profile,
-            seed: ctx.request_id,
-          });
+          const msgText = routeText;
 
           const events = [
             makeEvent(ctx, 'simulate_conflict', { safe: sim.safe, conflicts: sim.conflicts.length, source: 'local_chat' }),
@@ -68144,7 +70620,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           }
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(msgText, 'markdown'),
+            assistant_message: makeAssistantMessage(msgText, 'markdown'),
             suggested_chips: [],
             cards: [
               { card_id: `sim_${ctx.request_id}`, type: 'routine_simulation', payload: simPayload },
@@ -68157,7 +70633,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           return sendChatEnvelope(envelope);
         }
         const parseFailEnvelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             ctx.lang === 'CN'
               ? '我没能从这句话里稳定识别出两个可比较的步骤。请用“产品A + 产品B 同晚可以吗？”这种格式再发一次。'
               : 'I could not reliably parse two comparable steps from this message. Please retry in this format: "Can I use Product A + Product B in the same night?"',
@@ -68200,7 +70676,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : { profile: profileSummaryForPatch };
         appendDiagnosisStateToSessionPatch(sessionPatch, 'photo_refresh_requested');
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt),
+          assistant_message: makeAssistantMessage(prompt),
           suggested_chips: [
             {
               chip_id: 'chip.intake.upload_photos',
@@ -68241,7 +70717,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (pendingFromGate) sessionPatch.pending_clarification = pendingFromGate;
         appendDiagnosisStateToSessionPatch(sessionPatch, 'update_goals');
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt),
+          assistant_message: makeAssistantMessage(prompt),
           suggested_chips: chips,
           cards: [
             {
@@ -68289,7 +70765,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               : { profile: profileSummaryForPatch };
             appendDiagnosisStateToSessionPatch(sessionPatch, 'progress_requires_baseline');
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(prompt),
+              assistant_message: makeAssistantMessage(prompt),
               suggested_chips: chips,
               cards: [
                 {
@@ -68320,7 +70796,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : { profile: profileSummaryForPatch };
           appendDiagnosisStateToSessionPatch(sessionPatch, 'progress_requires_baseline');
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
+            assistant_message: makeAssistantMessage(prompt),
             suggested_chips: [
               {
                 chip_id: 'chip.intake.upload_photos',
@@ -68400,7 +70876,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         appendLatestArtifactToSessionPatch(sessionPatch, progressBaseline.blueprint_id);
         appendDiagnosisStateToSessionPatch(sessionPatch, diagnosisState);
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             lang === 'CN'
               ? '以下是你最近这段时间的肌肤变化回顾。'
               : 'Here is how your skin has changed recently.',
@@ -68501,7 +70977,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             appendLatestArtifactToSessionPatch(sessionPatch, returningBaseline.blueprint_id);
             appendDiagnosisStateToSessionPatch(sessionPatch, 'returning_triage');
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(
+              assistant_message: makeAssistantMessage(
                 ctx.lang === 'CN'
                   ? '欢迎回来。我先根据你之前的诊断和最近记录，给你一个快速分流。'
                   : 'Welcome back. I’ll start with a quick triage from your previous diagnosis and recent logs.',
@@ -68537,7 +71013,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
+            assistant_message: makeAssistantMessage(prompt),
             suggested_chips: chips,
             cards: [
               {
@@ -68566,7 +71042,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(prompt),
+          assistant_message: makeAssistantMessage(prompt),
           suggested_chips: [
             {
               chip_id: 'chip.intake.upload_photos',
@@ -68606,7 +71082,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         if (ingredientSafetyGate.mode === 'block') {
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               buildSafetyNoticeText(safetyDecision) ||
                 (ctx.lang === 'CN'
                   ? '这个方向当前存在安全风险，我先给你更安全替代。'
@@ -68699,7 +71175,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : 'You can start with a specific ingredient lookup or find by goal first; diagnosis is optional.';
         requestMessage = 'ingredient_text_query_hub';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(assistantText),
+          assistant_message: makeAssistantMessage(assistantText),
           suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
           cards: [
             {
@@ -68740,7 +71216,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? buildSafetyNoticeText(safetyDecision)
             : '';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage([safetyPrefix, kickoff.prompt].filter(Boolean).join('\n\n')),
+          assistant_message: makeAssistantMessage([safetyPrefix, kickoff.prompt].filter(Boolean).join('\n\n')),
           suggested_chips: kickoff.chips,
           cards: [],
           session_patch:
@@ -68752,7 +71228,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (isBudgetOptimizationEntryAction(actionId) && allowRecoCards) {
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
+          assistant_message: makeAssistantMessage(buildBudgetGatePrompt(ctx.lang)),
           suggested_chips: buildBudgetGateChips(ctx.lang),
           cards: [
             {
@@ -68910,7 +71386,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               ctx.lang === 'CN'
                 ? rawBudget
                   ? '已收到预算信息。我生成了一个简洁 AM/PM routine（见下方卡片）。'
@@ -69002,7 +71478,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             !budget
               ? ctx.lang === 'CN'
                 ? '我先按“功效与耐受优先”生成了一个简洁 AM/PM routine（见下方卡片）。如果你愿意，我可以再按预算优化一版。'
@@ -69087,7 +71563,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (budgetChipOutOfFlow) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             lang === 'CN'
               ? '我已记录你的预算。你现在想做哪种帮助？（评估单品 / 获取推荐 / 检查搭配冲突）'
               : 'Budget noted. What should I do next? (evaluate one product / get recommendations / check conflicts)',
@@ -69249,6 +71725,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             target_step: pickFirstTrimmed(latestRecoContextSeed.resolved_target_step),
             query: pickFirstTrimmed(latestRecoContextSeed.ingredient_query),
             goal: pickFirstTrimmed(latestRecoContextSeed.goal),
+            primary_focus: latestRecoContextSeed.primary_focus,
+            confidence_policy: latestRecoContextSeed.confidence_policy,
+            ranked_targets: Array.isArray(latestRecoContextSeed.ranked_targets)
+              ? latestRecoContextSeed.ranked_targets
+              : [],
+            primary_target_id: pickFirstTrimmed(latestRecoContextSeed.primary_target_id),
+            selected_target_ids: Array.isArray(latestRecoContextSeed.selected_target_ids)
+              ? latestRecoContextSeed.selected_target_ids
+              : [],
             product_candidates: Array.isArray(latestRecoContextSeed.product_candidates)
               ? latestRecoContextSeed.product_candidates.slice(0, 12)
               : [],
@@ -69290,7 +71775,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (recoSafetyGate.mode === 'block') {
           const safetyText = buildSafetyNoticeText(safetyDecision);
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(safetyText || (ctx.lang === 'CN' ? '当前存在安全风险，先不输出激进推荐。' : 'Current safety risk detected, so I will not output aggressive recommendations.')),
+            assistant_message: makeAssistantMessage(safetyText || (ctx.lang === 'CN' ? '当前存在安全风险，先不输出激进推荐。' : 'Current safety risk detected, so I will not output aggressive recommendations.')),
             suggested_chips: [
               {
                 chip_id: 'chip.start.ingredients',
@@ -69394,7 +71879,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.safety_block_rate', value: 1 }, 'metric');
           recordAuroraSkinFlowMetric({ stage: 'reco_safety_block', hit: true });
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(safety.assistant_message),
+            assistant_message: makeAssistantMessage(safety.assistant_message),
             suggested_chips: [],
             cards: [
               {
@@ -69441,7 +71926,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (!travelReadiness || !buildTravelRecoPreview) {
             const destinationText = travelRecoContext.destination || null;
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(
+              assistant_message: makeAssistantMessage(
                 ctx.lang === 'CN'
                   ? (destinationText
                     ? `我还缺少 ${destinationText} 这次行程的旅行护肤准备上下文，请先回到旅行建议卡片再点一次“查看完整推荐”。`
@@ -69488,7 +71973,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : [];
           if (!travelRecommendations.length) {
             const envelope = buildEnvelope(ctx, {
-              assistant_message: makeChatAssistantMessage(
+              assistant_message: makeAssistantMessage(
                 ctx.lang === 'CN'
                   ? '我拿到了旅行上下文，但这轮没有形成可展示的旅行护肤候选。请回到旅行卡片补充目的地条件，或稍后重试。'
                   : 'I have the trip context, but this round did not yield a displayable travel-skincare shortlist. Add more trip conditions in the travel card or retry shortly.',
@@ -69553,7 +72038,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             },
           };
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               ctx.lang === 'CN'
                 ? '我按这次旅行环境把候选收紧到防晒、清洁和修护保湿这条主线，优先给你可随行、低跑偏的护肤推荐。'
                 : 'I narrowed this shortlist to travel-relevant sunscreen, cleansing, and barrier-repair products for this trip.',
@@ -69694,6 +72179,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             target_step: pickFirstTrimmed(latestRecoContextForRecommendation.resolved_target_step),
             query: pickFirstTrimmed(latestRecoContextForRecommendation.ingredient_query),
             goal: pickFirstTrimmed(latestRecoContextForRecommendation.goal),
+            primary_focus: latestRecoContextForRecommendation.primary_focus,
+            confidence_policy: latestRecoContextForRecommendation.confidence_policy,
+            ranked_targets: Array.isArray(latestRecoContextForRecommendation.ranked_targets)
+              ? latestRecoContextForRecommendation.ranked_targets
+              : [],
+            primary_target_id: pickFirstTrimmed(latestRecoContextForRecommendation.primary_target_id),
+            selected_target_ids: Array.isArray(latestRecoContextForRecommendation.selected_target_ids)
+              ? latestRecoContextForRecommendation.selected_target_ids
+              : [],
             product_candidates: Array.isArray(latestRecoContextForRecommendation.product_candidates)
               ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
               : [],
@@ -69736,7 +72230,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           text: recoRequestMessageForMainline || message,
           entryType: 'chat',
         });
-        const latestRecoContextPatch = {
+        let latestRecoContextPatch = {
           intent: 'reco_products',
           source_detail: effectiveRecoEntrySourceDetail,
           trigger_source: ctx.trigger_source,
@@ -69781,6 +72275,38 @@ function mountAuroraBffRoutes(app, { logger }) {
               )
               ? latestRecoContextForRecommendation.product_candidates.slice(0, 12)
               : [],
+          primary_focus:
+            normalizeRecoContextPrimaryFocus(
+              recoIngredientContext && recoIngredientContext.primary_focus,
+            )
+            || normalizeRecoContextPrimaryFocus(
+              latestRecoContextForRecommendation && latestRecoContextForRecommendation.primary_focus,
+            ),
+          confidence_policy:
+            normalizeRecoConfidencePolicy(
+              recoIngredientContext && recoIngredientContext.confidence_policy,
+            )
+            || normalizeRecoConfidencePolicy(
+              latestRecoContextForRecommendation && latestRecoContextForRecommendation.confidence_policy,
+            ),
+          ranked_targets: normalizeRecoContextRankedTargets(
+            Array.isArray(recoIngredientContext && recoIngredientContext.ranked_targets)
+              ? recoIngredientContext.ranked_targets
+              : Array.isArray(latestRecoContextForRecommendation && latestRecoContextForRecommendation.ranked_targets)
+                ? latestRecoContextForRecommendation.ranked_targets
+                : [],
+          ),
+          primary_target_id: pickFirstTrimmed(
+            recoIngredientContext && recoIngredientContext.primary_target_id,
+            latestRecoContextForRecommendation && latestRecoContextForRecommendation.primary_target_id,
+          ) || '',
+          selected_target_ids: normalizeRecoContextTargetIds(
+            Array.isArray(recoIngredientContext && recoIngredientContext.selected_target_ids)
+              ? recoIngredientContext.selected_target_ids
+              : Array.isArray(latestRecoContextForRecommendation && latestRecoContextForRecommendation.selected_target_ids)
+                ? latestRecoContextForRecommendation.selected_target_ids
+                : [],
+          ),
         };
         const hasDeterministicRecoTarget = Boolean(
           pickFirstTrimmed(
@@ -69906,7 +72432,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ...buildRecoEntryChips(ctx.lang),
           ].slice(0, 8);
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               ctx.lang === 'CN'
                 ? '我先不硬推商品。当前只有通用画像，还缺少能稳定缩窄候选的上下文。补充当前 routine、明确想找的步骤，或上传 daylight + indoor_white 后，我再继续推荐。'
                 : "I’m not forcing product picks yet. I only have your general profile, but I still need context that can narrow candidates reliably. Add your current routine, name the step you want, or upload daylight + indoor_white photos and I'll continue.",
@@ -70364,7 +72890,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           appendLatestRecoContextToSessionPatch(sessionPatch, latestRecoContextPatch);
           attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(
+            assistant_message: makeAssistantMessage(
               ctx.lang === 'CN'
                 ? '推荐阶段暂时超时了。我先保守降级，不返回商品卡；你可以稍后重试，或补充照片与当前护肤流程后再继续。'
                 : "The recommendation step timed out. I’m degrading safely for now without returning product cards; retry shortly, or add photos/current routine and continue.",
@@ -70591,28 +73117,41 @@ function mountAuroraBffRoutes(app, { logger }) {
             finalRecoContract,
           );
           Object.assign(payload, nextPayload);
-          if (Array.isArray(payload.recommendations) && payload.recommendations.length > 0) {
-            recoContract = buildRecoMainlineContract({
-              recommendations: payload.recommendations,
-              sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              source: payload.source,
-              llmFailureClass: llmFailureClass || recoContract?.failure_class,
-              upstreamFailureCode,
-              promptContractOk: payload.prompt_contract_ok !== false,
-              fieldMissing: norm?.field_missing,
-              structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
-              catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
-              productsEmptyReason: payload.products_empty_reason,
-              groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
-              groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
-              ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
-              mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
-              promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
-              entryType: 'chat',
-              ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
-            });
-            Object.assign(payload, attachRecoContractMeta(payload, recoContract));
-          }
+          recoContract = buildRecoMainlineContract({
+            recommendations: payload.recommendations,
+            sourceMode: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            source: payload.source,
+            llmFailureClass: llmFailureClass || recoContract?.failure_class,
+            upstreamFailureCode,
+            promptContractOk: payload.prompt_contract_ok !== false,
+            fieldMissing: norm?.field_missing,
+            structuredSource: payload.recommendation_meta && payload.recommendation_meta.source_mode,
+            catalogSkipReason: payload.recommendation_meta && payload.recommendation_meta.catalog_skip_reason,
+            productsEmptyReason: payload.products_empty_reason,
+            groundingStatus: payload.recommendation_meta && payload.recommendation_meta.grounding_status,
+            groundedCount: payload.recommendation_meta && payload.recommendation_meta.grounded_count,
+            ungroundedCount: payload.recommendation_meta && payload.recommendation_meta.ungrounded_count,
+            mainlineStatusOverride: payload.recommendation_meta && payload.recommendation_meta.mainline_status,
+            promptTemplateId: payload.recommendation_meta && payload.recommendation_meta.prompt_template_id,
+            entryType: 'chat',
+            ...extractRecoOutcomeContractArgsFromPayload(payload, recoContract),
+          });
+          Object.assign(payload, attachRecoContractMeta(payload, recoContract));
+          Object.assign(
+            payload,
+            applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
+          );
+          latestRecoContextPatch = mergeIngredientRecoContextValue(latestRecoContextPatch, {
+            primary_focus: payload?.recommendation_meta?.primary_focus,
+            confidence_policy: payload?.recommendation_meta?.confidence_policy,
+            ranked_targets: Array.isArray(payload?.recommendation_meta?.ranked_targets)
+              ? payload.recommendation_meta.ranked_targets
+              : [],
+            primary_target_id: pickFirstTrimmed(payload?.recommendation_meta?.primary_target_id),
+            selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
+              ? payload.recommendation_meta.selected_target_ids
+              : [],
+          });
         }
 
         const finalHasRecs = Array.isArray(payload && payload.recommendations)
@@ -70662,18 +73201,18 @@ function mountAuroraBffRoutes(app, { logger }) {
               : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
         const safetyWarnText =
           safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
-        const refinementTail =
-          finalHasRecs
-            ? (ctx.lang === 'CN'
-              ? '如你愿意，可继续补充肤质/敏感度/当前 routine；我会基于本次上下文自动重算并优化推荐。'
-              : 'If you want, add skin type/sensitivity/current routine and I will automatically re-run recommendations with your latest context.')
-            : '';
-        const assistantText = addEmotionalPreambleToAssistantText(assistantTextRaw, {
-          language: ctx.lang,
-          profile,
-          seed: ctx.request_id,
-        });
-        const finalAssistantText = [safetyWarnText, assistantText, refinementTail].filter(Boolean).join('\n\n');
+        const recoAssistantRewrite = finalHasRecs
+          ? await maybeRewriteRecoAssistantTextWithLlm({
+            payload,
+            language: ctx.lang,
+            profile,
+            baseText: assistantTextRaw,
+          })
+          : { text: assistantTextRaw, llm_used: false, reason: 'no_recommendations' };
+        const assistantText = finalHasRecs
+          ? String(recoAssistantRewrite && recoAssistantRewrite.text || assistantTextRaw).trim()
+          : String(assistantTextRaw || '').trim();
+        const finalAssistantText = [safetyWarnText, assistantText].filter(Boolean).join('\n\n');
 
         if (recoTaskMode.startsWith('ingredient_')) {
           logger?.info(
@@ -70860,7 +73399,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(finalAssistantText),
+          assistant_message: makeAssistantMessage(finalAssistantText),
           suggested_chips: refinementChips,
           cards,
           session_patch: sessionPatch,
@@ -70935,7 +73474,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 	          const nextState = stateChangeAllowed(ctx.trigger_source) ? 'S2_DIAGNOSIS' : undefined;
 
           const envelope = buildEnvelope(ctx, {
-            assistant_message: makeChatAssistantMessage(prompt),
+            assistant_message: makeAssistantMessage(prompt),
             suggested_chips: chips,
             cards: [
               {
@@ -70984,7 +73523,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
 
         const envelope = buildEnvelope(ctx, {
-          assistant_message: makeChatAssistantMessage(
+          assistant_message: makeAssistantMessage(
             lang === 'CN'
               ? '已更新你的偏好信息。接下来你想做什么？'
               : 'Got it. What would you like to do next?',
@@ -72143,12 +74682,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           !isRouteStructuredAnswer(safeAnswer, routeHint.route);
         if (shouldUpgrade && routeStructured) safeAnswer = routeStructured;
       }
-      safeAnswer = addEmotionalPreambleToAssistantText(safeAnswer, {
-        language: ctx.lang,
-        profile,
-        seed: ctx.request_id,
-      });
-
       const cardsForEnvelopeRaw = !debugUpstream ? stripInternalRefsDeep(cards) : cards;
       const cardsForEnvelope = Array.isArray(cardsForEnvelopeRaw)
         ? cardsForEnvelopeRaw.map((card) => {
@@ -72320,7 +74853,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           : 'markdown';
 
       const envelope = buildEnvelope(ctx, {
-        assistant_message: makeChatAssistantMessage(finalAssistantText, finalAssistantFormat),
+        assistant_message: makeAssistantMessage(finalAssistantText, finalAssistantFormat),
         suggested_chips: adaptedChips.chips,
         cards: assembledCards,
         session_patch: sessionPatch,
@@ -72430,6 +74963,7 @@ const __internal = {
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
   buildProductCatalogQueryCandidates,
+  filterRecoContextProductCandidates,
   buildRealtimeCompetitorQueryPlan,
   computeAnchorNameSimilarity,
   mapCatalogProductToAnchorProduct,
@@ -72462,6 +74996,9 @@ const __internal = {
   shouldApplyRecoOutputGuard,
   looksLikeStallPhrase,
   evaluateQualityContractForEnvelope,
+  applyRecoContentSpineToPayload,
+  buildPayloadBoundRecoAssistantText,
+  maybeRewriteRecoAssistantTextWithLlm,
   isSkincareCategory,
   isBlacklistedCategoryOrTitle,
   isSearchLikeUrl,
@@ -72469,6 +75006,7 @@ const __internal = {
   coerceRecoCandidateForGuardrail,
   coerceRecoItemForUi,
   sanitizeRecoCandidatesForUi,
+  sanitizeRecoRequestContext,
   collectPurchasableFallbackQueries,
   collectIngredientPlanRecoveryQueryStagesForTarget,
   collectIngredientPlanFallbackQueriesForTarget,
@@ -72478,6 +75016,7 @@ const __internal = {
   recoverProductsWithLlmFallbackFromQueries,
   buildExternalSearchCta,
   normalizeIngredientRecoContextValue,
+  normalizeRecoConfidencePolicy,
   mergeIngredientRecoContextValue,
   buildIngredientRecoUpstreamPrompt,
   resolveRecoMainPromptSpec,
@@ -72576,6 +75115,9 @@ const __internal = {
   shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
   buildLatestRecoContextFromAnalysisArtifacts,
+  refreshLatestRecoContextFromAnalysisEnvelope,
+  buildPhotoRecoConfidencePolicy,
+  canonicalizePhotoRecoTargetBundle,
   deferProfilePatchPersistence,
   deferDiagnosisArtifactPersistence,
   applyAnalysisStoryAndRoutineSoftGate,
