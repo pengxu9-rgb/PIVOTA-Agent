@@ -1526,6 +1526,8 @@ const auroraBeautyOrchestrationRuntime = createAuroraBeautyOrchestrationRuntime(
   normalizeGuidanceDiscoveryProductPdpContract,
   buildGuidanceOnlyHitQualityDecision: buildSharedBeautySkincareHitQualityDecision,
   guidanceDecisionContractVersion: BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
+  uiChatFindLatestScenarioSelection,
+  uiChatFindLatestShoppingIntent,
   normalizeAgentProductsListResponse,
   applyFindProductsMultiPolicyIfNeeded,
   applyDealsToResponse,
@@ -1543,6 +1545,7 @@ const auroraBeautyOrchestrationRuntime = createAuroraBeautyOrchestrationRuntime(
   buildCacheStageSnapshot,
 });
 const {
+  handleAuroraBeautyOrchestration,
   buildAuroraFindProductsMultiPlan,
   buildGuidanceOnlyCacheSearchPlan,
   buildGuidanceOnlyDirectSupplementPlan,
@@ -25549,9 +25552,35 @@ Core rules:
     ];
 
     const assistantMsg = await runAgentWithTools(messages);
+    const orchestrationMeta = await handleAuroraBeautyOrchestration({
+      messages: clientMessages,
+      context: {
+        source_profile: {
+          source: 'aurora-bff',
+          default_entry_layer: 'orchestration',
+        },
+        raw_user_goal:
+          String(
+            Array.isArray(clientMessages)
+              ? [...clientMessages]
+                  .reverse()
+                  .find((item) => String(item?.role || '').trim().toLowerCase() === 'user')
+                  ?.content || ''
+              : '',
+          ).trim() || null,
+      },
+    });
 
     res.json({
       assistantMessage: assistantMsg,
+      meta: {
+        layer: orchestrationMeta.layer,
+        prompt_intent: orchestrationMeta.prompt_intent,
+        conversation_progress: orchestrationMeta.conversation_progress,
+        early_decision: orchestrationMeta.early_decision,
+        decision_owner: orchestrationMeta.decision_owner,
+        next_layer: orchestrationMeta.next_layer,
+      },
     });
   } catch (err) {
     logger.error({ err }, 'Error in /ui/chat');

@@ -13,6 +13,11 @@ COMMERCE_CORE_PROD_SMOKE_BASE_URL="${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-https://
 COMMERCE_CORE_PROD_SMOKE_ENDPOINT="${COMMERCE_CORE_PROD_SMOKE_ENDPOINT:-/agent/shop/v1/invoke}"
 COMMERCE_CORE_PROD_AUTH_TOKEN="${COMMERCE_CORE_PROD_AUTH_TOKEN:-}"
 COMMERCE_CORE_PROD_AGENT_API_KEY="${COMMERCE_CORE_PROD_AGENT_API_KEY:-}"
+COMMERCE_CORE_PROMPT_SMOKE_BASE_URL="${COMMERCE_CORE_PROMPT_SMOKE_BASE_URL:-${BASE_URL}}"
+COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT="${COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT:-/ui/chat}"
+COMMERCE_CORE_PROMPT_AUTH_TOKEN="${COMMERCE_CORE_PROMPT_AUTH_TOKEN:-}"
+COMMERCE_CORE_PROMPT_AGENT_API_KEY="${COMMERCE_CORE_PROMPT_AGENT_API_KEY:-}"
+COMMERCE_CORE_PROMPT_CASES="${COMMERCE_CORE_PROMPT_CASES:-${AGENT_CLEAN_REPO}/scripts/fixtures/celestial_commerce_core_prompt_live_smoke.json}"
 GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH:-}"
 GATEWAY_GOVERNANCE_LOG_INPUT_PATH="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH:-}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/celestial-commerce-core-readiness}"
@@ -241,6 +246,50 @@ elif isinstance(value, str) and value.strip():
 PY
 }
 
+fixture_has_family_aliases() {
+  local file_path="$1"
+  shift
+  python3 - "${file_path}" "$@" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.exists():
+    print("no")
+    raise SystemExit(0)
+
+groups = [arg.split("|") for arg in sys.argv[2:]]
+try:
+    payload = json.loads(path.read_text())
+except Exception:
+    print("no")
+    raise SystemExit(0)
+
+families = set()
+
+def walk(value):
+    if isinstance(value, list):
+        for item in value:
+            walk(item)
+    elif isinstance(value, dict):
+        family = value.get("family")
+        if isinstance(family, str) and family.strip():
+            families.add(family.strip())
+        for nested in value.values():
+            walk(nested)
+
+walk(payload)
+
+for aliases in groups:
+    if not any(alias in families for alias in aliases if alias):
+      print("no")
+      raise SystemExit(0)
+
+print("yes")
+PY
+}
+
 json_file_field() {
   local json_path="$1"
   local field_path="$2"
@@ -344,6 +393,10 @@ run_step \
   "commerce_core_production_smoke" \
   bash -lc "cd '${AGENT_CLEAN_REPO}' && VERIFY_DEPLOY=0 RAIL_MODE=authoritative_commerce BASE_URL='${COMMERCE_CORE_PROD_SMOKE_BASE_URL}' ENDPOINT='${COMMERCE_CORE_PROD_SMOKE_ENDPOINT}' AUTH_TOKEN='${COMMERCE_CORE_PROD_AUTH_TOKEN}' AGENT_API_KEY='${COMMERCE_CORE_PROD_AGENT_API_KEY}' OUT_DIR='${RUN_DIR}/commerce_core_production_smoke' bash scripts/smoke_celestial_commerce_core_prod.sh"
 
+run_step \
+  "commerce_core_prompt_live_smoke" \
+  bash -lc "cd '${AGENT_CLEAN_REPO}' && BASE_URL='${COMMERCE_CORE_PROMPT_SMOKE_BASE_URL}' ENDPOINT='${COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT}' AUTH_TOKEN='${COMMERCE_CORE_PROMPT_AUTH_TOKEN}' AGENT_API_KEY='${COMMERCE_CORE_PROMPT_AGENT_API_KEY}' CASES_PATH='${COMMERCE_CORE_PROMPT_CASES}' OUT_DIR='${RUN_DIR}/commerce_core_prompt_live_smoke' bash scripts/probe_celestial_commerce_core_prompt_live_smoke.sh"
+
 gateway_governance_runtime_input_path="${GATEWAY_GOVERNANCE_SHADOW_SAMPLE_PATH}"
 if [[ -n "${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}" ]]; then
   run_step \
@@ -407,51 +460,84 @@ shopping_local_status="$(step_status shopping_agent_commerce_local_gate)"
 aurora_local_status="$(step_status aurora_commerce_orchestration_local_gate)"
 gateway_governance_local_status="$(step_status gateway_governance_local_gate)"
 prod_smoke_status="$(step_status commerce_core_production_smoke)"
+prompt_live_smoke_status="$(step_status commerce_core_prompt_live_smoke)"
 gateway_governance_extract_status="$(step_status gateway_governance_shadow_extract)"
 gateway_governance_report_status="$(step_status gateway_governance_shadow_report)"
-
-prompt_intent_status="red"
-query_decomposition_status="red"
-commerce_search_status="red"
-merchant_product_status="red"
-fallback_resilience_status="red"
-gateway_governance_status="red"
-provenance_status="amber"
-drift_status="red"
 public_gateway_auth_required="false"
 
 if [[ "${agent_public_contract_status}" == "401" && "${agent_public_contract_error}" == "UNAUTHORIZED" ]]; then
   public_gateway_auth_required="true"
 fi
 
-if [[ "${shopping_local_status}" == "pass" ]]; then
-  prompt_intent_status="amber"
-  query_decomposition_status="amber"
-fi
-
-if [[ "${public_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
-  commerce_search_status="green"
-fi
-if [[ "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
-  merchant_product_status="amber"
-elif [[ "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" ]]; then
-  merchant_product_status="amber"
-fi
-if [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${prod_smoke_status}" == "pass" ]]; then
-  fallback_resilience_status="amber"
-  drift_status="amber"
-elif [[ "${shopping_local_status}" == "pass" && "${aurora_local_status}" == "pass" && "${public_gateway_auth_required}" == "true" ]]; then
-  fallback_resilience_status="amber"
-fi
+gateway_governance_status="red"
 if [[ "${gateway_governance_local_status}" == "pass" && "${gateway_governance_report_status}" == "pass" ]]; then
   gateway_governance_status="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "readiness_status")"
   if [[ -z "${gateway_governance_status}" ]]; then
     gateway_governance_status="amber"
   fi
 fi
-if [[ -n "${agent_prod_commit}" && -n "${backend_prod_commit}" && "${backend_prod_service}" == "pivota-backend" && "${gateway_governance_report_status}" == "pass" ]]; then
-  provenance_status="green"
-fi
+
+readiness_scorecard_json="$(
+  READINESS_LIBRARY_PATH="${AGENT_CLEAN_REPO}/scripts/lib/commerce_readiness_scorecard.js" \
+  PROMPT_CASES_PATH="${COMMERCE_CORE_PROMPT_CASES}" \
+  PROD_GATE_CASES_PATH="${AGENT_CLEAN_REPO}/scripts/fixtures/celestial_commerce_core_shared_acceptance_corpus.json" \
+  STAGING_CASES_PATH="${AGENT_CLEAN_REPO}/scripts/fixtures/celestial_commerce_core_shared_acceptance_corpus.json" \
+  PUBLIC_LOCAL_STATUS="${public_local_status}" \
+  SHOPPING_LOCAL_STATUS="${shopping_local_status}" \
+  AURORA_LOCAL_STATUS="${aurora_local_status}" \
+  GATEWAY_GOVERNANCE_LOCAL_STATUS="${gateway_governance_local_status}" \
+  PROD_SMOKE_STATUS="${prod_smoke_status}" \
+  PROMPT_LIVE_SMOKE_STATUS="${prompt_live_smoke_status}" \
+  GATEWAY_GOVERNANCE_EXTRACT_STATUS="${gateway_governance_extract_status}" \
+  GATEWAY_GOVERNANCE_REPORT_STATUS="${gateway_governance_report_status}" \
+  GATEWAY_GOVERNANCE_READINESS_STATUS="${gateway_governance_status}" \
+  PUBLIC_GATEWAY_AUTH_REQUIRED="${public_gateway_auth_required}" \
+  AGENT_PROD_COMMIT="${agent_prod_commit}" \
+  BACKEND_PROD_COMMIT="${backend_prod_commit}" \
+  GATEWAY_GOVERNANCE_LOG_INPUT_PATH_VALUE="${GATEWAY_GOVERNANCE_LOG_INPUT_PATH}" \
+  "${node_bin}" - <<'JS'
+const fs = require('fs');
+const {
+  evaluateReadinessScorecard,
+} = require(process.env.READINESS_LIBRARY_PATH);
+
+function readJson(path) {
+  if (!path) return {};
+  return JSON.parse(fs.readFileSync(path, 'utf8'));
+}
+
+const payload = evaluateReadinessScorecard({
+  publicLocalStatus: process.env.PUBLIC_LOCAL_STATUS,
+  shoppingLocalStatus: process.env.SHOPPING_LOCAL_STATUS,
+  auroraLocalStatus: process.env.AURORA_LOCAL_STATUS,
+  gatewayGovernanceLocalStatus: process.env.GATEWAY_GOVERNANCE_LOCAL_STATUS,
+  prodSmokeStatus: process.env.PROD_SMOKE_STATUS,
+  promptLiveSmokeStatus: process.env.PROMPT_LIVE_SMOKE_STATUS,
+  gatewayGovernanceExtractStatus: process.env.GATEWAY_GOVERNANCE_EXTRACT_STATUS,
+  gatewayGovernanceReportStatus: process.env.GATEWAY_GOVERNANCE_REPORT_STATUS,
+  gatewayGovernanceReadinessStatus: process.env.GATEWAY_GOVERNANCE_READINESS_STATUS,
+  publicGatewayAuthRequired: process.env.PUBLIC_GATEWAY_AUTH_REQUIRED === 'true',
+  agentProdCommit: process.env.AGENT_PROD_COMMIT,
+  backendProdCommit: process.env.BACKEND_PROD_COMMIT,
+  gatewayGovernanceLogInputPath: process.env.GATEWAY_GOVERNANCE_LOG_INPUT_PATH_VALUE,
+  promptCases: readJson(process.env.PROMPT_CASES_PATH),
+  prodGateCases: readJson(process.env.PROD_GATE_CASES_PATH),
+  stagingCases: readJson(process.env.STAGING_CASES_PATH),
+});
+
+process.stdout.write(JSON.stringify(payload));
+JS
+)"
+
+prompt_fixture_complete="$(json_field "${readiness_scorecard_json}" "prompt_fixture_complete")"
+shared_query_corpus_complete="$(json_field "${readiness_scorecard_json}" "shared_query_corpus_complete")"
+prompt_intent_status="$(json_field "${readiness_scorecard_json}" "scorecard.prompt_intent")"
+query_decomposition_status="$(json_field "${readiness_scorecard_json}" "scorecard.query_decomposition")"
+commerce_search_status="$(json_field "${readiness_scorecard_json}" "scorecard.commerce_search_contract")"
+merchant_product_status="$(json_field "${readiness_scorecard_json}" "scorecard.merchant_product_routing")"
+fallback_resilience_status="$(json_field "${readiness_scorecard_json}" "scorecard.fallback_resilience")"
+provenance_status="$(json_field "${readiness_scorecard_json}" "scorecard.observability_provenance")"
+drift_status="$(json_field "${readiness_scorecard_json}" "scorecard.cross_layer_contract_drift")"
 gateway_governance_total_scenarios="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "total_scenarios")"
 gateway_governance_matched_scenarios="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "matched_scenarios")"
 gateway_governance_would_enforce="$(json_file_field "${GATEWAY_GOVERNANCE_REPORT_JSON}" "coverage.would_enforce_count")"
@@ -542,22 +628,22 @@ gateway_governance_runtime_downgraded="$(json_file_field "${GATEWAY_GOVERNANCE_R
   echo "| Dimension | Status | Primary blocker |"
   echo "| --- | --- | --- |"
   echo "| Prompt/Intent Readiness | ${prompt_intent_status} | $( if [[ "${prompt_intent_status}" == "green" ]]; then echo "none"; elif [[ "${prompt_intent_status}" == "amber" ]]; then echo "shopping-agent prompt/loop-break contract is testable locally, but not yet backed by stable live prompt fixtures"; else echo "shopping_agent helper/query-rewrite gate failing"; fi ) |"
-  echo "| Query Decomposition Readiness | ${query_decomposition_status} | $( if [[ "${query_decomposition_status}" == "green" ]]; then echo "none"; elif [[ "${query_decomposition_status}" == "amber" ]]; then echo "merchant vs product decomposition still lacks a canonical live acceptance corpus"; else echo "scenario clarify/query rewrite contract incomplete"; fi ) |"
+  echo "| Query Decomposition Readiness | ${query_decomposition_status} | $( if [[ "${query_decomposition_status}" == "green" ]]; then echo "none"; elif [[ "${query_decomposition_status}" == "amber" ]]; then echo "merchant/exact/exact-ish/scenario families are not all enforced by the shared live corpus yet"; else echo "scenario clarify/query rewrite contract incomplete"; fi ) |"
   echo "| Commerce Search Contract Readiness | ${commerce_search_status} | $( if [[ "${commerce_search_status}" == "green" ]]; then echo "none"; else echo "supported authenticated invoke smoke or local contract gate failing"; fi ) |"
-  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "authenticated invoke smoke covers merchant-style live routing, but exact product lookup on shopping_agent is still live-flaky and remains local-only"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
-  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "authenticated invoke smoke covers broad and clarify-required behavior, but exact lookup fallback still is not deterministic enough for shared production smoke"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
+  echo "| Merchant/Product Routing Readiness | ${merchant_product_status} | $( if [[ "${merchant_product_status}" == "green" ]]; then echo "none"; elif [[ "${merchant_product_status}" == "amber" ]]; then echo "merchant/exact/exact-ish live routing is not yet fully enforced by the shared corpus"; else echo "aurora-bff downstream routing/source propagation failing"; fi ) |"
+  echo "| Fallback/Resilience Readiness | ${fallback_resilience_status} | $( if [[ "${fallback_resilience_status}" == "green" ]]; then echo "none"; elif [[ "${fallback_resilience_status}" == "amber" ]]; then echo "exact-ish/strict fallback coverage is not yet deterministic in the shared live corpus"; else echo "cross-layer fallback/strict path not fully covered"; fi ) |"
   echo "| Gateway Invocation/Access Governance Readiness | ${gateway_governance_status} | $( if [[ "${gateway_governance_status}" == "green" ]]; then echo "none"; elif [[ "${gateway_governance_status}" == "amber" ]]; then echo "shadow summary exists but baseline mismatches remain"; else echo "gateway governance gate/report missing or failing"; fi ) |"
-  echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "authenticated invoke smoke is instrumented, but public provenance remains auth-gated and daily runtime governance export is not yet automated"; fi ) |"
-  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "L1/L2 semantics are aligned by contract and authenticated smoke today, but still coordinated across multiple modules"; else echo "source contracts and prod semantics still diverge"; fi ) |"
+  echo "| Observability/Provenance Readiness | ${provenance_status} | $( if [[ "${provenance_status}" == "green" ]]; then echo "none"; else echo "authenticated invoke smoke is instrumented, but automated governance export or deploy truth is still incomplete"; fi ) |"
+  echo "| Cross-layer Contract Drift Risk | ${drift_status} | $( if [[ "${drift_status}" == "green" ]]; then echo "none"; elif [[ "${drift_status}" == "amber" ]]; then echo "live routing and staging guidance semantics are not both fully enforced by the shared corpus yet"; else echo "source contracts and prod semantics still diverge"; fi ) |"
   echo
   echo "## Next Fixes"
   echo
   echo "1. Treat authenticated \`/agent/shop/v1/invoke\` as the supported commerce contract and retire public \`/api/gateway\` from shared commerce acceptance."
   echo "2. Keep \`search\`, \`shopping_agent\`, and \`aurora-bff\` contract fixtures in one shared authenticated prod smoke so future drift is visible immediately."
-  echo "3. Add stable live prompt fixtures for \`/ui/chat\` so shopping-agent prompt understanding can graduate from local helper coverage to true end-to-end coverage."
+  echo "3. Keep \`/ui/chat\` prompt smoke green and treat it as the canonical live prompt rail for prompt intent and conversation progress."
   echo "4. Automate daily export of production gateway governance logs and pass the raw file via \`GATEWAY_GOVERNANCE_LOG_INPUT_PATH\` so the readiness report stays on real traffic without manual sample prep."
-  echo "5. Stabilize exact product-lookup routing for \`shopping_agent\` and only then promote product-specific lookup back into the shared live commerce-core smoke."
-  echo "6. If Aurora guidance-only remains unstable, treat it as a dedicated hardening track instead of folding it into general commerce acceptance."
+  echo "5. Keep exact product-lookup routing for \`shopping_agent\` and merchant/product decomposition inside the shared live corpus, not in isolated local-only gates."
+  echo "6. Keep Aurora guidance-only families in the shared corpus so future regressions fail the shared contract instead of drifting into manual-only interpretation."
 } >"${REPORT_MD}"
 
 STEPS_JSONL="${RUN_DIR}/steps.jsonl"

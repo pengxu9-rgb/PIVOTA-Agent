@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 OUT_DIR="${OUT_DIR:-${REPO_ROOT}/reports/celestial-commerce-core-stabilization}"
 STAGING_BASE_URL="${STAGING_BASE_URL:-https://pivota-agent-staging.up.railway.app}"
-STAGING_MATRIX_CASES_PATH="${STAGING_MATRIX_CASES_PATH:-${REPO_ROOT}/scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json}"
+STAGING_MATRIX_CASES_PATH="${STAGING_MATRIX_CASES_PATH:-${REPO_ROOT}/scripts/fixtures/celestial_commerce_core_shared_acceptance_corpus.json}"
 STAGING_TIMEOUT_MS="${STAGING_TIMEOUT_MS:-15000}"
 RUN_STAGING_MATRIX="${RUN_STAGING_MATRIX:-1}"
 STAGING_AUTH_TOKEN="${STAGING_AUTH_TOKEN:-}"

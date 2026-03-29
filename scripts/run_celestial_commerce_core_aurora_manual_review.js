@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
+const { extractSearchDecisionAuthorityState } = require('./lib/commerce_primary_path');
+const { acceptanceFamilyMatches } = require('./lib/commerce_acceptance_family');
+const { loadAuroraManualReviewCases } = require('./lib/commerce_shared_acceptance_corpus');
 
 function parseArgs(argv) {
   const repoRoot = path.resolve(__dirname, '..');
@@ -16,7 +19,7 @@ function parseArgs(argv) {
         repoRoot,
         'scripts',
         'fixtures',
-        'celestial_commerce_core_staging_acceptance_matrix.json',
+        'celestial_commerce_core_shared_acceptance_corpus.json',
       ),
     outDir:
       process.env.OUT_DIR ||
@@ -44,8 +47,7 @@ function utcTimestamp() {
 }
 
 function readCases(casesPath) {
-  const raw = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
-  return (raw.semantic_cases || []).filter((item) => item.execution_mode === 'manual');
+  return loadAuroraManualReviewCases(casesPath);
 }
 
 function titlesFromProducts(products) {
@@ -138,13 +140,12 @@ function summarizeCase(testCase, response) {
     metadata.route_health && typeof metadata.route_health === 'object'
       ? metadata.route_health
       : {};
+  const authorityState = extractSearchDecisionAuthorityState(body);
   const products = Array.isArray(body.products) ? body.products : [];
-  const decisionAuthority =
-    typeof searchDecision.decision_authority === 'string' && searchDecision.decision_authority.trim()
-      ? searchDecision.decision_authority.trim()
-      : typeof metadata.query_source === 'string'
-      ? metadata.query_source
-      : '';
+  const decisionAuthority = String(
+    authorityState.decisionAuthority ||
+      (typeof metadata.query_source === 'string' ? metadata.query_source : ''),
+  ).trim();
 
   return {
     id: testCase.id,
@@ -156,11 +157,8 @@ function summarizeCase(testCase, response) {
     message: typeof body.message === 'string' ? body.message : '',
     query_source: typeof metadata.query_source === 'string' ? metadata.query_source : '',
     decision_authority: decisionAuthority,
-    decision_locked: searchDecision.decision_locked === true,
-    decision_lock_reason:
-      typeof searchDecision.decision_lock_reason === 'string'
-        ? searchDecision.decision_lock_reason
-        : '',
+    decision_locked: authorityState.decisionLocked === true,
+    decision_lock_reason: String(authorityState.decisionLockReason || '').trim(),
     final_decision:
       typeof searchTrace.final_decision === 'string' ? searchTrace.final_decision : '',
     guidance_final_decision:
@@ -182,7 +180,7 @@ function summarizeCase(testCase, response) {
         : {},
     cache_stage: cacheStage,
     gateway_governance: gatewayGovernance,
-    observer_nodes: Array.isArray(routeHealth.observer_nodes) ? routeHealth.observer_nodes : [],
+    observer_nodes: Array.isArray(authorityState.observerNodes) ? authorityState.observerNodes : [],
     request_id:
       response.responseHeaders['x-request-id'] ||
       response.responseHeaders['x-gateway-request-id'] ||
@@ -243,8 +241,29 @@ function isGuidanceLockedCacheMainPathWithoutSupplement(result) {
   );
 }
 
+function isGuidanceCacheHitFamily(result) {
+  return (
+    result.id === 'aurora_guidance_only_cache_hit_manual' ||
+    acceptanceFamilyMatches(result.family, 'aurora_guidance_cache_hit')
+  );
+}
+
+function isGuidanceCacheMissFamily(result) {
+  return (
+    result.id === 'aurora_guidance_only_cache_miss_manual' ||
+    acceptanceFamilyMatches(result.family, 'aurora_guidance_cache_miss')
+  );
+}
+
+function isGuidanceDirectSupplementFamily(result) {
+  return (
+    result.id === 'aurora_guidance_only_direct_supplement_manual' ||
+    acceptanceFamilyMatches(result.family, 'aurora_guidance_direct_supplement')
+  );
+}
+
 function classifyResult(result) {
-  if (result.id === 'aurora_guidance_only_cache_hit_manual') {
+  if (isGuidanceCacheHitFamily(result)) {
     if (isGuidanceCacheHitMainPath(result)) {
       return {
         verdict: 'pass',
@@ -265,7 +284,7 @@ function classifyResult(result) {
     };
   }
 
-  if (result.id === 'aurora_guidance_only_cache_miss_manual') {
+  if (isGuidanceCacheMissFamily(result)) {
     const lockedCacheMainPathWithoutSupplement = isGuidanceLockedCacheMainPathWithoutSupplement(result);
     if (
       result.status === 200 &&
@@ -293,7 +312,7 @@ function classifyResult(result) {
     };
   }
 
-  if (result.id === 'aurora_guidance_only_direct_supplement_manual') {
+  if (isGuidanceDirectSupplementFamily(result)) {
     const cacheStage =
       result.cache_stage && typeof result.cache_stage === 'object'
         ? result.cache_stage
@@ -389,7 +408,7 @@ function buildChecklist(result) {
     Boolean(result.query_source) &&
     Boolean(result.final_decision) &&
     Boolean(result.request_id || Object.keys(result.gateway_governance || {}).length > 0);
-  if (result.id === 'aurora_guidance_only_cache_hit_manual') {
+  if (isGuidanceCacheHitFamily(result)) {
     const cacheLaneHealthy = isGuidanceCacheHitMainPath(result);
     return [
       checklistItem('HTTP 200 returned from invoke rail', result.status === 200, `status=${result.status}`),
@@ -411,7 +430,7 @@ function buildChecklist(result) {
     ];
   }
 
-  if (result.id === 'aurora_guidance_only_cache_miss_manual') {
+  if (isGuidanceCacheMissFamily(result)) {
     const nonCacheLane =
       result.status === 200 &&
       Boolean(result.final_decision) &&
@@ -449,7 +468,7 @@ function buildChecklist(result) {
     ];
   }
 
-  if (result.id === 'aurora_guidance_only_direct_supplement_manual') {
+  if (isGuidanceDirectSupplementFamily(result)) {
     const cacheStage =
       result.cache_stage && typeof result.cache_stage === 'object' ? result.cache_stage : {};
     const supplement =
@@ -658,7 +677,9 @@ async function main() {
 
   const payload = {
     generated_at: new Date().toISOString(),
-    environment: 'staging authenticated invoke',
+    environment: /production/i.test(String(args.baseUrl || ''))
+      ? 'production authenticated invoke'
+      : 'staging authenticated invoke',
     base_url: args.baseUrl,
     endpoint: args.endpoint,
     case_count: results.length,

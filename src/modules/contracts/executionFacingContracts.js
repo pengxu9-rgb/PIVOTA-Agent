@@ -12,6 +12,11 @@ function createExecutionFacingOutput(input = {}) {
   return {
     layer: 'execution_facing',
     status: String(input.status || '').trim() || 'not_resolved',
+    resolution_authority: String(input.resolution_authority || '').trim() || null,
+    fallback_applied: input.fallback_applied === true,
+    fallback_reason_codes: Array.isArray(input.fallback_reason_codes)
+      ? input.fallback_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     updated_context: createShoppingContext(input.updated_context || input.context || {}),
     resolved_product:
       input.resolved_product && typeof input.resolved_product === 'object'

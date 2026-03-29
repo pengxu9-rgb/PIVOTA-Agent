@@ -1,0 +1,1021 @@
+{
+  "schema_version": "celestial.commerce_core.acceptance_corpus.v1",
+  "cases": [
+    {
+      "id": "public_search_serum_default",
+      "family": "public_search_contract",
+      "query": "serum",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "id": "public_search_serum_default",
+          "family": "public_search_contract",
+          "query": "serum",
+          "source": "search",
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "allow_zero_results": false,
+          "must_have_metadata": [
+            "service_version.commit",
+            "query_source",
+            "cache_stage_selected_source",
+            "source_breakdown.internal_count",
+            "source_breakdown.external_seed_count"
+          ],
+          "must_equal_metadata": {
+            "query_source": "cache_cross_merchant_search",
+            "cache_stage_selected_source": "internal_cache",
+            "source_breakdown.external_seed_count": 0
+          },
+          "must_be_positive_metadata": [
+            "source_breakdown.internal_count"
+          ],
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum",
+            "The Ordinary Niacinamide 10% + Zinc 1%"
+          ]
+        }
+      }
+    },
+    {
+      "id": "public_search_serum_ignore_unified_relevance_override",
+      "family": "public_search_contract",
+      "query": "serum",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "id": "public_search_serum_ignore_unified_relevance_override",
+          "family": "public_search_contract",
+          "query": "serum",
+          "source": "search",
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search",
+            "agent_products_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "request_search": {
+            "external_seed_strategy": "unified_relevance"
+          },
+          "allow_zero_results": false,
+          "must_have_metadata": [
+            "service_version.commit",
+            "query_source",
+            "search_trace.final_decision",
+            "search_decision.decision_authority",
+            "search_decision.decision_locked"
+          ],
+          "must_equal_metadata": {
+            "search_decision.decision_locked": true
+          },
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum",
+            "The Ordinary Niacinamide 10% + Zinc 1%"
+          ]
+        }
+      }
+    },
+    {
+      "id": "public_search_serum_ignore_supplement_override",
+      "family": "public_search_contract",
+      "query": "serum",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "id": "public_search_serum_ignore_supplement_override",
+          "family": "public_search_contract",
+          "query": "serum",
+          "source": "search",
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "request_search": {
+            "external_seed_strategy": "supplement_internal_first"
+          },
+          "allow_zero_results": false,
+          "must_have_metadata": [
+            "service_version.commit",
+            "query_source",
+            "cache_stage_selected_source",
+            "source_breakdown.internal_count",
+            "source_breakdown.external_seed_count"
+          ],
+          "must_equal_metadata": {
+            "query_source": "cache_cross_merchant_search",
+            "cache_stage_selected_source": "internal_cache",
+            "source_breakdown.external_seed_count": 0
+          },
+          "must_be_positive_metadata": [
+            "source_breakdown.internal_count"
+          ],
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum",
+            "The Ordinary Niacinamide 10% + Zinc 1%"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_serum_broad",
+      "family": "broad_commerce_search",
+      "query": "serum",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "id": "shopping_agent_serum_broad",
+          "family": "broad_commerce_search",
+          "query": "serum",
+          "source": "shopping_agent",
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search",
+            "cache_cross_merchant_search_supplemented"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "allow_zero_results": false,
+          "must_have_metadata": [
+            "service_version.commit",
+            "query_source",
+            "cache_stage_selected_source",
+            "source_breakdown.internal_count",
+            "search_decision.decision_authority",
+            "search_decision.decision_locked"
+          ],
+          "must_equal_metadata": {
+            "cache_stage_selected_source": "internal_cache",
+            "search_decision.decision_locked": true
+          },
+          "must_be_positive_metadata": [
+            "source_breakdown.internal_count"
+          ],
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum",
+            "The Ordinary Niacinamide 10% + Zinc 1%"
+          ]
+        },
+        "staging_matrix": {
+          "id": "shopping_agent_serum_broad",
+          "title": "shopping_agent broad discovery keeps an internal-first cache lane with optional supplement",
+          "family": "broad_discovery",
+          "blocking": true,
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search",
+            "cache_cross_merchant_search_supplemented"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "default",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200,
+            "allow_zero_results": false,
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum",
+              "The Ordinary Niacinamide 10% + Zinc 1%"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.cache_stage_selected_source": "internal_cache"
+            },
+            "must_be_positive_paths": [
+              "metadata.source_breakdown.internal_count"
+            ]
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.service_version.commit",
+              "metadata.search_trace.final_decision",
+              "metadata.route_health"
+            ]
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_serum_broad",
+      "family": "broad_commerce_search",
+      "query": "serum",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "id": "aurora_bff_serum_broad",
+          "family": "broad_commerce_search",
+          "query": "serum",
+          "source": "aurora-bff",
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "allow_zero_results": false,
+          "must_have_metadata": [
+            "service_version.commit",
+            "query_source",
+            "cache_stage_selected_source",
+            "source_breakdown.internal_count",
+            "source_breakdown.external_seed_count"
+          ],
+          "must_equal_metadata": {
+            "query_source": "cache_cross_merchant_search",
+            "cache_stage_selected_source": "internal_cache",
+            "search_decision.decision_authority": "cache_cross_merchant_search",
+            "search_decision.decision_locked": true
+          },
+          "must_be_positive_metadata": [
+            "source_breakdown.internal_count"
+          ],
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum",
+            "The Ordinary Niacinamide 10% + Zinc 1%"
+          ]
+        },
+        "staging_matrix": {
+          "id": "aurora_bff_serum_broad",
+          "title": "aurora-bff broad discovery keeps the owned cache lane when internal skincare hits are healthy",
+          "family": "broad_discovery",
+          "blocking": true,
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search",
+            "cache_cross_merchant_search_supplemented"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "default",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200,
+            "allow_zero_results": false,
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum",
+              "The Ordinary Niacinamide 10% + Zinc 1%"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.cache_stage_selected_source": "internal_cache"
+            },
+            "must_be_positive_paths": [
+              "metadata.source_breakdown.internal_count"
+            ]
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.service_version.commit",
+              "metadata.search_trace.final_decision",
+              "metadata.route_health"
+            ]
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_strict_niacinamide_serum",
+      "family": "strict_ingredient",
+      "query": "niacinamide serum",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "The Ordinary Niacinamide 10% + Zinc 1%",
+            "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+            "Watch Ya Tone Niacinamide Dark Spot Serum"
+          ]
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_strict_niacinamide_serum",
+      "family": "strict_ingredient",
+      "query": "niacinamide serum",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "The Ordinary Niacinamide 10% + Zinc 1%",
+            "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+            "Watch Ya Tone Niacinamide Dark Spot Serum"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        },
+        "staging_matrix": {
+          "title": "exact IPSA lookup stays on the lookup-grade cache contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_merchant_query_ipsa_products",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_merchant_query_ipsa_products",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_clarify_date_makeup",
+      "family": "scenario_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_have_reason_codes": [
+            "AMBIGUITY_CLARIFY"
+          ]
+        },
+        "staging_matrix": {
+          "title": "clarify-required discovery still resolves to clarify instead of low-quality products",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "有什么适合今晚约会的",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_have_reason_codes": [
+              "AMBIGUITY_CLARIFY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_clarify_date_makeup",
+      "family": "scenario_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_have_reason_codes": [
+            "layer_not_allowed"
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_public_serum_default",
+      "family": "broad_discovery",
+      "query": "serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "id": "search_public_serum_default",
+          "title": "Public search broad discovery stays on the stable search contract",
+          "family": "broad_discovery",
+          "blocking": true,
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "default",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200,
+            "allow_zero_results": false,
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum",
+              "The Ordinary Niacinamide 10% + Zinc 1%"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.query_source": "cache_cross_merchant_search",
+              "metadata.cache_stage_selected_source": "internal_cache",
+              "metadata.source_breakdown.external_seed_count": 0
+            },
+            "must_be_positive_paths": [
+              "metadata.source_breakdown.internal_count"
+            ]
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.service_version.commit",
+              "metadata.search_trace.final_decision",
+              "metadata.route_health"
+            ]
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_strict_niacinamide",
+      "family": "exactish_lookup",
+      "query": "niacinamide serum",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "The Ordinary Niacinamide 10% + Zinc 1%",
+            "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+            "Watch Ya Tone Niacinamide Dark Spot Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "shopping_agent exact-ish ingredient lookup stays on the strict contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "niacinamide serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "The Ordinary Niacinamide 10% + Zinc 1%",
+              "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+              "Watch Ya Tone Niacinamide Dark Spot Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "shopping_agent_merchant_ipsa",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "shopping_agent",
+      "targets": {
+        "staging_matrix": {
+          "title": "merchant-ish query still resolves through shopping_agent routing",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_hit_manual",
+      "family": "aurora_guidance_cache_hit",
+      "query": "hydrating serum",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "id": "aurora_guidance_only_cache_hit_manual",
+          "title": "Aurora guidance-only cache-hit path remains stable",
+          "family": "aurora_guidance_cache_hit",
+          "blocking": false,
+          "execution_mode": "manual",
+          "endpoint": "/agent/shop/v1/invoke",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "hydrating serum",
+                "limit": 6,
+                "in_stock_only": true,
+                "ui_surface": "ingredient_plan_guidance_only"
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff",
+              "ui_surface": "ingredient_plan_guidance_only",
+              "query_target_step_family": "serum",
+              "query_step_strength": "focused",
+              "decision_mode": "guidance_only",
+              "source_policy": "guided_only"
+            }
+          },
+          "manual_review": {
+            "expected_outcome": "Confirm cache-hit products are coherent, guidance-only metadata is present, and diagnostics remain complete.",
+            "notes": "Use this case to confirm cache-hit orchestration stability without relying on brittle title assertions."
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_cache_miss_manual",
+      "family": "aurora_guidance_cache_miss",
+      "query": "repair serum",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "id": "aurora_guidance_only_cache_miss_manual",
+          "title": "Aurora guidance-only cache-miss path still degrades through the owned orchestration lane",
+          "family": "aurora_guidance_cache_miss",
+          "blocking": false,
+          "execution_mode": "manual",
+          "endpoint": "/agent/shop/v1/invoke",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "repair serum",
+                "limit": 6,
+                "in_stock_only": true,
+                "ui_surface": "ingredient_plan_guidance_only"
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff",
+              "ui_surface": "ingredient_plan_guidance_only",
+              "query_target_step_family": "serum",
+              "query_step_strength": "focused",
+              "decision_mode": "guidance_only",
+              "source_policy": "guided_only"
+            }
+          },
+          "manual_review": {
+            "expected_outcome": "Confirm the historical cache-miss candidate either transitions cleanly to strict-empty/clarify/resolver fallback, or now resolves through a coherent locked cache main path with complete diagnostics.",
+            "notes": "This remains manual because catalog/staging data can promote the query into a stable cache main path; either way the owned orchestration path must stay inspectable."
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "aurora_guidance_only_direct_supplement_manual",
+      "family": "aurora_guidance_direct_supplement",
+      "query": "soothing repair serum",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "id": "aurora_guidance_only_direct_supplement_manual",
+          "title": "Aurora guidance-only supplement stays bounded without overturning a healthy cache main path",
+          "family": "aurora_guidance_direct_supplement",
+          "blocking": false,
+          "execution_mode": "manual",
+          "endpoint": "/agent/shop/v1/invoke",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "soothing repair serum",
+                "limit": 6,
+                "in_stock_only": true,
+                "ui_surface": "ingredient_plan_guidance_only"
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff",
+              "ui_surface": "ingredient_plan_guidance_only",
+              "query_target_step_family": "serum",
+              "query_step_strength": "focused",
+              "decision_mode": "guidance_only",
+              "source_policy": "guided_only"
+            }
+          },
+          "manual_review": {
+            "expected_outcome": "Confirm guidance-only supplement stays bounded: either an explicit supplemented lane appears with valid-hit metadata, or a locked cache main path stays authoritative without unnecessary supplement widening.",
+            "notes": "Look for explicit supplement metadata when a supplement lane is needed, or a coherent cache main path with serum-scoped titles when no supplement is needed."
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
+      "id": "public_direct_api_aurora_observed_block",
+      "family": "governance_orchestration_denied",
+      "query": "repair serum",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "id": "public_direct_api_aurora_observed_block",
+          "title": "public direct_api caller still observes orchestration denial in shadow mode",
+          "family": "governance_orchestration_denied",
+          "blocking": true,
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [],
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "public",
+          "headers": {
+            "X-Pivota-Invocation-Surface": "direct_api"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "repair serum",
+                "limit": 5,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200,
+            "must_have_clarification": false
+          },
+          "ownership": {
+            "must_equal_headers": {
+              "x-gateway-governance-observed-action": "block"
+            },
+            "must_have_reason_codes": [
+              "layer_not_allowed"
+            ],
+            "must_have_paths": [
+              "metadata.governance_shadow_contract.observer_only"
+            ]
+          },
+          "observability": {
+            "must_equal_headers": {
+              "x-gateway-governance-mode": "shadow",
+              "x-gateway-governance-would-enforce": "true",
+              "x-gateway-invocation-surface": "direct_api"
+            },
+            "must_have_paths": [
+              "metadata.gateway_governance.mode",
+              "metadata.gateway_governance.query_governance.reason_codes.0",
+              "metadata.gateway_invocation.surface"
+            ],
+            "must_equal_paths": {
+              "metadata.gateway_governance.mode": "shadow",
+              "metadata.gateway_invocation.surface": "direct_api"
+            }
+          },
+          "kind": "governance"
+        }
+      }
+    },
+    {
+      "id": "prompt_clarify_date_makeup",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "ui-chat",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "new shopping request is tagged as a fresh orchestration prompt",
+          "request": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "有什么适合今晚约会的"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "conversation_progress_resume_date_selection",
+      "family": "conversation_progress_resume",
+      "query": "约会",
+      "source": "ui-chat",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "scenario choice resumes the prior shopping goal",
+          "request": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "帮我买一款 serum"
+              },
+              {
+                "role": "assistant",
+                "content": "你更偏哪种场景？"
+              },
+              {
+                "role": "user",
+                "content": "约会"
+              }
+            ]
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "scenario_selection",
+              "meta.conversation_progress": "scenario_selected"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "followup_refinement_lightweight",
+      "family": "conversation_progress_resume",
+      "query": "更轻薄一点",
+      "source": "ui-chat",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "follow-up refinement stays in the same orchestration thread",
+          "request": {
+            "messages": [
+              {
+                "role": "user",
+                "content": "推荐一个 repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "你更在意修护还是保湿？"
+              },
+              {
+                "role": "user",
+                "content": "更轻薄一点"
+              }
+            ]
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "public_direct_api_deep_pagination_blocked",
+      "family": "governance_deep_pagination",
+      "query": "ipsa",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "id": "public_direct_api_deep_pagination_blocked",
+          "title": "public direct_api deep pagination is still blocked in governance shadow mode",
+          "family": "governance_deep_pagination",
+          "blocking": true,
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "public",
+          "headers": {
+            "X-Pivota-Invocation-Surface": "direct_api"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "ipsa",
+                "page": 2,
+                "limit": 5,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200
+          },
+          "ownership": {
+            "must_equal_headers": {
+              "x-gateway-governance-observed-action": "block"
+            },
+            "must_have_reason_codes": [
+              "deep_pagination_blocked"
+            ]
+          },
+          "observability": {
+            "must_equal_headers": {
+              "x-gateway-governance-mode": "shadow",
+              "x-gateway-governance-would-enforce": "true",
+              "x-gateway-invocation-surface": "direct_api"
+            },
+            "must_have_paths": [
+              "metadata.gateway_governance.mode",
+              "metadata.gateway_governance.query_governance.reason_codes.0"
+            ]
+          },
+          "kind": "governance"
+        }
+      }
+    },
+    {
+      "id": "generic_mcp_merchant_sweep_blocked",
+      "family": "governance_merchant_sweep",
+      "query": "serum",
+      "source": "shopping_agent",
+      "targets": {
+        "staging_matrix": {
+          "id": "generic_mcp_merchant_sweep_blocked",
+          "title": "generic MCP merchant sweep is still shadow-blocked with provenance",
+          "family": "governance_merchant_sweep",
+          "blocking": true,
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "generic_mcp",
+          "headers": {
+            "X-Pivota-Invocation-Surface": "mcp"
+          },
+          "request": {
+            "operation": "find_products",
+            "payload": {
+              "search": {
+                "query": "serum"
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent",
+              "merchant_filters": [
+                "merchant_a",
+                "merchant_b"
+              ],
+              "repeated_merchant_queries": 2
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200
+          },
+          "ownership": {
+            "must_equal_headers": {
+              "x-gateway-governance-observed-action": "block"
+            },
+            "must_have_reason_codes": [
+              "merchant_sweep_blocked"
+            ]
+          },
+          "observability": {
+            "must_equal_headers": {
+              "x-gateway-governance-mode": "shadow",
+              "x-gateway-governance-would-enforce": "true",
+              "x-gateway-invocation-surface": "mcp"
+            },
+            "must_equal_paths": {
+              "metadata.gateway_governance.mode": "shadow",
+              "metadata.gateway_invocation.surface": "mcp"
+            },
+            "must_have_paths": [
+              "metadata.gateway_governance.query_governance.reason_codes.0",
+              "metadata.gateway_governance.observed_action",
+              "metadata.gateway_invocation.surface"
+            ]
+          },
+          "kind": "governance"
+        }
+      }
+    }
+  ]
+}

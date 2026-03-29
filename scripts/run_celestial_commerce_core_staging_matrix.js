@@ -8,7 +8,11 @@ const {
   normalizeEndpoint,
   resolveBaseUrl,
 } = require('./lib/commerce_invoke_contract');
-const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
+const {
+  evaluatePrimaryPathContract,
+  extractSearchDecisionAuthorityState,
+} = require('./lib/commerce_primary_path');
+const { loadStagingMatrixPayload } = require('./lib/commerce_shared_acceptance_corpus');
 
 function parseArgs(argv) {
   const args = {
@@ -21,7 +25,7 @@ function parseArgs(argv) {
       path.join(
         __dirname,
         'fixtures',
-        'celestial_commerce_core_staging_acceptance_matrix.json',
+        'celestial_commerce_core_shared_acceptance_corpus.json',
       ),
     outDir:
       process.env.CELESTIAL_COMMERCE_STAGING_MATRIX_OUT_DIR ||
@@ -253,10 +257,11 @@ function normalizeCase(rawCase = {}, kind) {
 }
 
 function loadCases(matrixPath) {
-  const fullPath = path.resolve(matrixPath);
-  const payload = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+  const payload = loadStagingMatrixPayload(matrixPath);
   const semanticCases = Array.isArray(payload.semantic_cases)
-    ? payload.semantic_cases.map((item) => normalizeCase(item, 'semantic')).filter((item) => item.id)
+    ? payload.semantic_cases
+        .map((item) => normalizeCase(item, 'semantic'))
+        .filter((item) => item.id)
     : [];
   const governanceCases = Array.isArray(payload.governance_cases)
     ? payload.governance_cases
@@ -264,7 +269,7 @@ function loadCases(matrixPath) {
         .filter((item) => item.id)
     : [];
   return {
-    matrixPath: fullPath,
+    matrixPath: payload.matrixPath,
     cases: [...semanticCases, ...governanceCases],
   };
 }
@@ -611,6 +616,7 @@ async function runCase(baseUrl, testCase, timeoutMs) {
   const headers = execution.response.headers;
   const infraBlock = detectStagingInfraBlock(execution.response);
   if (infraBlock) {
+    const authorityState = extractSearchDecisionAuthorityState(body);
     return {
       id: testCase.id,
       title: testCase.title,
@@ -641,10 +647,10 @@ async function runCase(baseUrl, testCase, timeoutMs) {
         service_version_commit_present: hasServiceVersionCommit(body),
         fallback_used: primaryPathDegraded(body),
         main_path_pass: false,
-        decision_authority: getPath(body, 'metadata.search_decision.decision_authority') || null,
-        decision_locked: getPath(body, 'metadata.search_decision.decision_locked') === true,
-        decision_lock_reason: getPath(body, 'metadata.search_decision.decision_lock_reason') || null,
-        observer_nodes: getPath(body, 'metadata.route_health.observer_nodes') || [],
+        decision_authority: authorityState.decisionAuthority || null,
+        decision_locked: authorityState.decisionLocked === true,
+        decision_lock_reason: authorityState.decisionLockReason || null,
+        observer_nodes: authorityState.observerNodes || [],
       },
       response_headers: {
         invocation_surface: headers['x-gateway-invocation-surface'] || null,

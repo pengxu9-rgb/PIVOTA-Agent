@@ -18,6 +18,9 @@ describe('Commerce resolution facade', () => {
 
     expect(out.layer).toBe('execution_facing');
     expect(out.status).toBe('not_resolved');
+    expect(out.resolution_authority).toBe('execution_facing');
+    expect(out.fallback_applied).toBe(false);
+    expect(out.fallback_reason_codes).toEqual([]);
     expect(out.blockers).toContain('milestone0_execution_facade_not_yet_bound');
   });
 
@@ -2155,6 +2158,32 @@ describe('Commerce resolution facade', () => {
         decision: 'authority_locked',
         reason: 'cache_main_path',
         querySource: 'cache_cross_merchant_search',
+        resolution_authority: 'cache_cross_merchant_search',
+        fallback_applied: false,
+        fallback_reason_codes: ['cache_main_path'],
+      }),
+    );
+  });
+
+  test('primary fallback outcome marks clarify fallback as execution-facing authority with reason codes', () => {
+    const runtime = createCommerceResolutionRuntime();
+
+    expect(
+      runtime.getPrimaryFallbackOutcomeDecision({
+        shouldFallback: true,
+        primaryUsableCount: 2,
+        primaryLowQualityNonempty: true,
+        semanticRetryApplied: true,
+        fallbackNotBetterReason: 'low_quality_semantic_retry_exhausted',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        decision: 'clarify',
+        reason: 'low_quality_semantic_retry_exhausted',
+        querySource: 'agent_products_semantic_retry_exhausted',
+        resolution_authority: 'agent_products_semantic_retry_exhausted',
+        fallback_applied: true,
+        fallback_reason_codes: ['low_quality_semantic_retry_exhausted'],
       }),
     );
   });
