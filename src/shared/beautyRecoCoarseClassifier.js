@@ -1425,6 +1425,7 @@ function buildBeautySkincareHitQualityDecision({
     mode: decisionMode,
     targetStepFamily: normalizedQueryTargetStepFamily,
     queryStepStrength: normalizedQueryStepStrength,
+    queryText,
     candidateClassCounts: contractCandidateClassCounts,
     topCandidateClasses: candidateClassesTop3,
     qualityGateResult,

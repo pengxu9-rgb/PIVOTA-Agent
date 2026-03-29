@@ -205,11 +205,24 @@ function buildSuccessContractResult({
   mode = null,
   targetStepFamily = '',
   queryStepStrength = '',
+  queryText = '',
   candidateClassCounts = {},
   topCandidateClasses = [],
   qualityGateResult = null,
 } = {}) {
-  const applied = shouldUseSharedTargetRelevancePipeline({ mode, targetStepFamily, queryStepStrength });
+  const normalizedMode = normalizeRecommendationDecisionMode(mode);
+  const normalizedTargetStepFamily = asString(targetStepFamily).toLowerCase();
+  const normalizedIntent = normalizeSharedTargetIntent({
+    queryText,
+    targetStepFamily: normalizedTargetStepFamily,
+    mode: normalizedMode,
+    queryStepStrength,
+  });
+  const applied = shouldUseSharedTargetRelevancePipeline({
+    mode: normalizedMode,
+    targetStepFamily: normalizedTargetStepFamily,
+    queryStepStrength,
+  });
   const normalizedCounts = countTargetRelevanceClasses(
     Object.entries(candidateClassCounts || {}).flatMap(([token, count]) => Array(Math.max(0, Number(count) || 0)).fill(token)),
   );
@@ -243,10 +256,12 @@ function buildSuccessContractResult({
   let stepSuccessClass = null;
   let failureClass = null;
   const explicitQualityGateSatisfied = resolvedQualityGateResult.satisfied === true;
-  const serumGuidanceOnly = normalizeRecommendationDecisionMode(mode) === RECOMMENDATION_DECISION_MODES.guidance_only
-    && asString(targetStepFamily).toLowerCase() === 'serum';
+  const serumCanaryGuidance =
+    normalizedMode === RECOMMENDATION_DECISION_MODES.guidance_only &&
+    normalizedTargetStepFamily === 'serum' &&
+    Boolean(normalizedIntent?.backbone_id);
   const supportiveTop3ShortListSatisfied =
-    !serumGuidanceOnly &&
+    !serumCanaryGuidance &&
     top3Contract.satisfied &&
     normalizedCounts.supportive_family >= 1 &&
     Number(top3Contract.visible_count || 0) > 0 &&

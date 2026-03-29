@@ -5140,6 +5140,92 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.metadata?.query_source).not.toBe('gateway_governance_shadow_block');
   });
 
+  test('invoke find_products_multi keeps a single supportive hydrating serum hit on the guidance fastpath', async () => {
+    process.env.DATABASE_URL = 'postgres://guidance-fastpath-hydration-single-hit-test';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_internal_hydrating_single',
+                merchant_name: 'Internal Hydration Shop',
+                product_data: {
+                  id: 'hydrating_serum_single',
+                  product_id: 'hydrating_serum_single',
+                  merchant_id: 'merch_internal_hydrating_single',
+                  title: 'Hydrating Serum',
+                  description: 'lightweight hydrating serum for dehydrated skin',
+                  product_type: 'Serum',
+                  category: 'skincare',
+                  status: 'published',
+                  inventory_quantity: 9,
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hydrating serum',
+            limit: 6,
+            in_stock_only: true,
+            ui_surface: 'ingredient_plan_guidance_only',
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          ui_surface: 'ingredient_plan_guidance_only',
+          query_target_step_family: 'serum',
+          query_step_strength: 'focused',
+          decision_mode: 'guidance_only',
+          source_policy: 'guided_only',
+        },
+      })
+      .expect(200);
+
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_guidance_fastpath',
+        execution_mode: 'server_owned_ladder',
+        latency_mode: 'guidance_fastpath',
+        final_decision: 'cache_returned',
+      }),
+    );
+    expect(resp.body.metadata?.guidance_direct_external_seed_applied).not.toBe(true);
+    expect(resp.body.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        fallback_triggered: false,
+        primary_path_used: 'guidance_fastpath',
+      }),
+    );
+    expect(resp.body.products).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'hydrating_serum_single',
+          title: 'Hydrating Serum',
+        }),
+      ]),
+    );
+  });
+
   test('invoke find_products_multi does not early-return an empty guidance fastpath response', async () => {
     process.env.DATABASE_URL = 'postgres://guidance-fastpath-empty-fallthrough-test';
 

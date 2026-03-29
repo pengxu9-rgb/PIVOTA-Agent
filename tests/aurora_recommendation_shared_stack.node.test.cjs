@@ -736,6 +736,32 @@ test('guidance-only hydrating serum classifier treats hydration-supportive serum
   );
 });
 
+test('guidance-only hydrating serum accepts a single clean supportive serum shortlist hit', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'hydrating serum',
+    products: [
+      {
+        product_id: 'hydrating_serum_single',
+        merchant_id: 'merchant_hydrating_single',
+        title: 'Hydrating Serum',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.equal(decision.success_contract_result?.satisfied, true);
+  assert.equal(decision.success_contract_result?.step_success_class, 'supportive_family');
+  assert.equal(decision.quality_gate_result?.satisfied, false);
+  assert.equal(decision.valid_products.length, 1);
+  assert.equal(String(decision.valid_products[0]?.product_id || ''), 'hydrating_serum_single');
+});
+
 test('guidance-only serum classifier still promotes explicit barrier-repair serum without panthenol canary overlay', () => {
   const strong = classifyBeautyCoarseCandidate({
     title: 'Soothing Barrier Repair Serum',
@@ -774,6 +800,31 @@ test('guidance-only serum classifier still promotes explicit barrier-repair seru
   assert.equal(Array.isArray(decision.valid_products), true);
   assert.equal(decision.valid_products.length, 1);
   assert.equal(String(decision.valid_products[0]?.product_id || ''), 'serum_1');
+});
+
+test('guidance-only serum panthenol canary still rejects a single supportive-only shortlist hit', () => {
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'panthenol soothing serum',
+    products: [
+      {
+        product_id: 'hydrating_serum_only',
+        merchant_id: 'merchant_hydrating_only',
+        title: 'Hydrating Serum',
+        category: 'serum',
+        product_type: 'serum',
+      },
+    ],
+    queryTargetStepFamily: 'serum',
+    guidanceOnlyDiscovery: true,
+    queryStepStrength: 'supportive_family',
+    mode: 'guidance_only',
+  });
+
+  assert.equal(decision.hit_quality, 'invalid_hit');
+  assert.equal(decision.success_contract_result?.satisfied, false);
+  assert.equal(decision.quality_gate_result?.satisfied, false);
+  assert.equal(decision.success_contract_result?.failure_class, 'no_target_relevant_candidates');
+  assert.deepEqual(decision.valid_products, []);
 });
 
 test('guidance-only serum selection applies session exposure penalty and fill metadata', () => {
