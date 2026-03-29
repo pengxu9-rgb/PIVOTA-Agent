@@ -69195,6 +69195,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             latestRecoContextPatch.goal,
           ),
         );
+        const hasStableRecoTarget = Boolean(
+          pickFirstTrimmed(
+            chatRecoTargetContext && chatRecoTargetContext.resolved_target_step,
+            latestRecoContextPatch.ingredient_query,
+          ),
+        );
 
         let matcherBundle = null;
         let matcherPayload = null;
@@ -69218,7 +69224,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
         const genericGoalDrivenNeedsMoreContext =
-          !hasDeterministicRecoTarget
+          !hasStableRecoTarget
           && !hasExplicitRecoTarget
           && !ingredientDrivenRecommendationRequested
           && !travelRecoHandoff
