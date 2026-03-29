@@ -10843,6 +10843,104 @@ test('latest_artifact photo-fail plan does not auto-anchor generic reco context'
   }
 });
 
+test('analysis-derived reco context prefers displayable ingredient-plan target over photo CTA-only primary', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        summary_v1: {
+          top_module_id: 'under_eye_right',
+          top_action_ingredient_id: 'retinol',
+          top_issue_type: 'texture',
+          top_findings: [
+            {
+              module_id: 'under_eye_right',
+              issue_type: 'texture',
+              confidence_bucket: 'low',
+            },
+          ],
+        },
+        modules: [
+          {
+            module_id: 'under_eye_right',
+            module_rank_score: 0.95,
+            actions: [
+              {
+                ingredient_canonical_id: 'retinol',
+                ingredient_name: 'Retinoid (later stage)',
+                action_rank_score: 0.95,
+                why: 'Retinoid (later stage) helps improve uneven texture in highlighted areas.',
+                evidence_issue_types: ['texture'],
+                products: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const ingredientPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'retinol',
+          ingredient_name: 'Retinol',
+          priority_score_0_100: 91,
+          recommendation_mode: 'cta_only',
+          strict_product_count: 0,
+          presentation_bucket: 'photo_derived',
+          resolved_target_step: 'treatment',
+          source_issue_types: ['texture'],
+          why: ['Start low-frequency as a single active and monitor tolerance.'],
+          products: {
+            competitors: [],
+            products_empty_reason: 'strict_match_miss',
+          },
+        },
+        {
+          ingredient_id: 'salicylic_acid',
+          ingredient_name: 'Salicylic acid (BHA)',
+          priority_score_0_100: 83,
+          recommendation_mode: 'strict_match',
+          strict_product_count: 5,
+          presentation_bucket: 'photo_derived',
+          resolved_target_step: 'serum',
+          source_issue_types: ['texture'],
+          why: ['BHA is tied directly to the texture irregularity signal.'],
+          products: {
+            competitors: [
+              {
+                product_id: 'bha_1',
+                name: 'BHA Clarifying Serum',
+                brand: 'AcidLab',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan,
+      photoModulesCard,
+      artifactId: 'art_photo_displayable',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'pass',
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.context_origin, 'photo_modules_v1');
+    assert.equal(latestRecoContext.ingredient_query, 'Salicylic acid (BHA)');
+    assert.equal(latestRecoContext.resolved_target_step, 'serum');
+    assert.equal(latestRecoContext.artifact_id, 'art_photo_displayable');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo quality fails', async () => {
   await withEnv(
     {

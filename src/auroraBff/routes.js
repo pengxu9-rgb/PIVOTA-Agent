@@ -24563,8 +24563,33 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
   if (previewReason === 'photo_quality_failed') return null;
   const targets = Array.isArray(plan && plan.targets) ? plan.targets.slice() : [];
   if (!targets.length) return null;
-  const rankedTargets = targets
-    .filter((row) => isPlainObject(row))
+  const isDisplayableRecoTarget = (target) => {
+    const row = isPlainObject(target) ? target : null;
+    if (!row) return false;
+    const resolvedTargetStep = pickFirstTrimmed(
+      row.resolved_target_step,
+      row.target_step_family,
+      row.targetStepFamily,
+    );
+    const ingredientName = pickFirstTrimmed(
+      row.ingredient_name,
+      row.ingredientName,
+      row.ingredient_id,
+      row.ingredientId,
+    );
+    if (!resolvedTargetStep || !ingredientName) return false;
+    const strictProductCount = Math.max(0, Number(row.strict_product_count || 0));
+    if (strictProductCount > 0) return true;
+    const products = isPlainObject(row.products) ? row.products : null;
+    const competitors = Array.isArray(products && products.competitors) ? products.competitors : [];
+    const recommendationMode = String(row.recommendation_mode || '').trim().toLowerCase();
+    const productsEmptyReason = pickFirstTrimmed(products && products.products_empty_reason).toLowerCase();
+    return recommendationMode !== 'cta_only' && competitors.length > 0 && productsEmptyReason !== 'strict_match_miss';
+  };
+  const normalizedTargets = targets.filter((row) => isPlainObject(row));
+  const hasDisplayableRecoTarget = normalizedTargets.some((row) => isDisplayableRecoTarget(row));
+  const rankedTargets = normalizedTargets
+    .filter((row) => !hasDisplayableRecoTarget || isDisplayableRecoTarget(row))
     .sort((left, right) => {
       const leftBucket = String(left.presentation_bucket || '').trim().toLowerCase();
       const rightBucket = String(right.presentation_bucket || '').trim().toLowerCase();
@@ -24582,6 +24607,7 @@ function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null
     const ingredientId = pickFirstTrimmed(target.ingredient_id, target.ingredientId);
     const ingredientName = pickFirstTrimmed(target.ingredient_name, target.ingredientName, ingredientId);
     const targetStep = pickFirstTrimmed(
+      target.resolved_target_step,
       target.target_step_family,
       target.targetStepFamily,
       deriveRecoTargetStepFromIngredient(ingredientId, ingredientName),
@@ -24733,11 +24759,42 @@ function buildLatestRecoContextFromAnalysisArtifacts({
   const routineRecoContext = deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary, artifactId });
   if (routineRecoContext) return routineRecoContext;
   if (suppressPhotoDerivedRecoContext) return null;
-  return (
-    derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId })
-    || deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary, artifactId, contextOrigin })
-    || null
-  );
+  const photoRecoContext = derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId });
+  const ingredientPlanContextOrigin =
+    photoModulesCard && isPlainObject(photoModulesCard.payload)
+      ? 'photo_modules_v1'
+      : contextOrigin;
+  const ingredientPlanRecoContext = deriveIngredientPlanRecoContext(ingredientPlan, {
+    profileSummary,
+    artifactId,
+    contextOrigin: ingredientPlanContextOrigin,
+  });
+  const photoRecoHasVerifiedCandidates =
+    Array.isArray(photoRecoContext && photoRecoContext.product_candidates)
+    && photoRecoContext.product_candidates.length > 0;
+  const ingredientPlanHasDisplayableTarget =
+    isPlainObject(ingredientPlan)
+    && Array.isArray(ingredientPlan.targets)
+    && ingredientPlan.targets.some((target) => {
+      if (!isPlainObject(target)) return false;
+      const resolvedTargetStep = pickFirstTrimmed(
+        target.resolved_target_step,
+        target.target_step_family,
+        target.targetStepFamily,
+      );
+      if (!resolvedTargetStep) return false;
+      const strictProductCount = Math.max(0, Number(target.strict_product_count || 0));
+      if (strictProductCount > 0) return true;
+      const products = isPlainObject(target.products) ? target.products : null;
+      const competitors = Array.isArray(products && products.competitors) ? products.competitors : [];
+      const recommendationMode = String(target.recommendation_mode || '').trim().toLowerCase();
+      const productsEmptyReason = pickFirstTrimmed(products && products.products_empty_reason).toLowerCase();
+      return recommendationMode !== 'cta_only' && competitors.length > 0 && productsEmptyReason !== 'strict_match_miss';
+    });
+  if (photoRecoContext && (photoRecoHasVerifiedCandidates || !ingredientPlanHasDisplayableTarget)) {
+    return photoRecoContext;
+  }
+  return ingredientPlanRecoContext || photoRecoContext || null;
 }
 
 function shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
