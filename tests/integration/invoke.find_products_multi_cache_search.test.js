@@ -779,7 +779,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(guardedSearch.isDone()).toBe(true);
   });
 
-  test('aurora source bypasses cache strict-empty on miss and continues upstream search', async () => {
+  test('aurora source bypasses cache strict-empty on miss and continues stable upstream search', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -794,8 +794,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         return (
           String(q.query || '').includes('repair serum') &&
           String(q.search_all_merchants || '') === 'true' &&
-          String(q.fast_mode || '') === 'true' &&
-          String(q.allow_stale_cache || '') === 'false'
+          String(q.limit || '') === '10' &&
+          String(q.offset || '') === '0'
         );
       })
       .reply(200, {
@@ -834,6 +834,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_search');
     expect(resp.body.metadata?.strict_empty).not.toBe(true);
     expect(resp.body.metadata?.strict_empty_reason).toBeUndefined();
     expect(upstreamSearch.isDone()).toBe(true);
@@ -2327,7 +2328,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('aurora-bff serum contract stays internal-first while supplementing external coverage', async () => {
+  test('aurora-bff serum contract stays decision-locked on internal cache hits and suppresses external supplement adoption', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora.test';
 
@@ -2423,23 +2424,31 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.status).toBe(200);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'cache_cross_merchant_search_supplemented',
+        query_source: 'cache_cross_merchant_search',
         source_breakdown: expect.objectContaining({
           internal_count: 2,
-          external_seed_count: 1,
-          strategy_applied: 'unified_relevance',
+          external_seed_count: 0,
+          strategy_applied: 'cache_only',
         }),
         cache_stage_selected_source: 'internal_cache',
+        search_decision: expect.objectContaining({
+          decision_authority: 'cache_cross_merchant_search',
+          decision_locked: true,
+          decision_lock_reason: 'guidance_cache_success_contract',
+        }),
+        route_health: expect.objectContaining({
+          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
+        }),
       }),
     );
     expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
       expect.arrayContaining([
         'Winona Soothing Repair Serum',
         'The Ordinary Niacinamide 10% + Zinc 1%',
-        'UV Filters SPF 45 Serum',
       ]),
     );
-    expect(externalSupplement.isDone()).toBe(true);
+    expect(resp.body.products.map((item) => String(item?.title || ''))).not.toContain('UV Filters SPF 45 Serum');
+    expect(externalSupplement.isDone()).toBe(false);
     expect(auroraExternalSupplement.isDone()).toBe(false);
   });
 
