@@ -10740,6 +10740,109 @@ test('/v1/analysis/skin: qc fail returns retake analysis (no guesses)', async ()
   assert.equal(Boolean(valueMoment?.data?.used_photos), false);
 });
 
+test('photo_quality_failed ingredient plan strips fallback residue and suppresses reco handoff', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rawPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          target_step_family: 'moisturizer',
+          why: ['Barrier support'],
+          products: {
+            competitors: [],
+            dupes: [],
+            external_search_ctas: [{ label: 'Search', url: 'https://example.com/search?q=ceramide' }],
+          },
+        },
+      ],
+      external_fallback_used: true,
+      external_search_ctas: [{ label: 'Search', url: 'https://example.com/search?q=ceramide' }],
+      __missing_catalog_queries: [{ ingredient_id: 'ceramide_np', query: 'ceramide moisturizer' }],
+    };
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'fail',
+        summary_v1: {
+          top_module_id: 'forehead',
+          top_findings: [],
+          quality_caveats: ['photo_quality_failed', 'low_confidence_primary_finding'],
+        },
+        modules: [
+          {
+            module_id: 'forehead',
+            actions: [
+              {
+                ingredient_canonical_id: 'ceramide_np',
+                ingredient_name: 'Ceramide NP',
+                why: 'Barrier support.',
+                evidence_issue_types: ['barrier'],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const annotated = __internal.annotateIngredientPlanForPhotoLed(rawPlan, photoModulesCard, 'EN');
+    assert.deepEqual(annotated?.targets || [], []);
+    assert.equal(annotated?.preview_only, true);
+    assert.equal(annotated?.preview_reason, 'photo_quality_failed');
+    assert.equal(annotated?.products_empty_reason, 'photo_quality_failed');
+    assert.equal(annotated?.external_fallback_used, false);
+    assert.deepEqual(annotated?.external_search_ctas || [], []);
+    assert.equal(Object.prototype.hasOwnProperty.call(annotated || {}, '__missing_catalog_queries'), false);
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan: annotated,
+      photoModulesCard,
+      artifactId: 'art_photo_fail',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo_qc',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'fail',
+    });
+    assert.equal(latestRecoContext, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('latest_artifact photo-fail plan does not auto-anchor generic reco context', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rawPersistedPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          target_step_family: 'moisturizer',
+          why: ['Barrier support'],
+        },
+      ],
+    };
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan: rawPersistedPlan,
+      artifactId: 'art_latest_photo_fail',
+      contextOrigin: 'latest_artifact',
+      analysisSource: 'rule_based_with_photo_qc',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'fail',
+    });
+
+    assert.equal(latestRecoContext, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/analysis/skin: upload->fetch path can downgrade to retake when photo quality fails', async () => {
   await withEnv(
     {

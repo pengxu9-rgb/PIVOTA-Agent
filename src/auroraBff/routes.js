@@ -24473,6 +24473,8 @@ function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummar
 
 function deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary = null, artifactId = '', contextOrigin = 'analysis_summary' } = {}) {
   const plan = isPlainObject(ingredientPlan) ? ingredientPlan : null;
+  const previewReason = pickFirstTrimmed(plan && plan.preview_reason, plan && plan.products_empty_reason).toLowerCase();
+  if (previewReason === 'photo_quality_failed') return null;
   const targets = Array.isArray(plan && plan.targets) ? plan.targets.slice() : [];
   if (!targets.length) return null;
   const rankedTargets = targets
@@ -24544,8 +24546,14 @@ function derivePhotoModulesRecoContext(photoModulesCard, { profileSummary = null
   const payload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : null;
   const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
   const summary = isPlainObject(payload && payload.summary_v1) ? payload.summary_v1 : {};
+  const qualityCaveats = Array.isArray(summary.quality_caveats)
+    ? summary.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (qualityCaveats.includes('photo_quality_failed')) return null;
   const topModuleId = pickFirstTrimmed(summary.top_module_id);
   const topActionIngredientId = normalizePhotoIngredientKey(summary.top_action_ingredient_id);
+  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  if (!topFindings.length && !topActionIngredientId) return null;
   const orderedModules = modules.slice().sort((left, right) => {
     const leftId = pickFirstTrimmed(left && left.module_id);
     const rightId = pickFirstTrimmed(right && right.module_id);
@@ -24623,10 +24631,22 @@ function buildLatestRecoContextFromAnalysisArtifacts({
   profileSummary = null,
   artifactId = '',
   contextOrigin = 'analysis_summary',
+  analysisSource = '',
+  usePhoto = false,
+  usedPhotos = false,
+  photoQualityGrade = '',
 } = {}) {
+  const normalizedPhotoQualityGrade = String(photoQualityGrade || '').trim().toLowerCase();
+  const normalizedAnalysisSource = String(analysisSource || '').trim().toLowerCase();
+  const suppressPhotoDerivedRecoContext =
+    normalizedAnalysisSource === 'retake'
+    || (Boolean(usePhoto) && normalizedPhotoQualityGrade === 'fail')
+    || (Boolean(usePhoto) && !usedPhotos && normalizedPhotoQualityGrade === 'fail');
+  const routineRecoContext = deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary, artifactId });
+  if (routineRecoContext) return routineRecoContext;
+  if (suppressPhotoDerivedRecoContext) return null;
   return (
-    deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary, artifactId })
-    || derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId })
+    derivePhotoModulesRecoContext(photoModulesCard, { profileSummary, artifactId })
     || deriveIngredientPlanRecoContext(ingredientPlan, { profileSummary, artifactId, contextOrigin })
     || null
   );
@@ -24638,11 +24658,25 @@ function shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
   photosProvided = false,
   usedPhotos = false,
   photoQuality = null,
+  photoModulesCard = null,
+  ingredientPlan = null,
 } = {}) {
   const normalizedSource = String(analysisSource || '').trim().toLowerCase();
   const qualityGrade = String(photoQuality && photoQuality.grade || '').trim().toLowerCase();
   if (normalizedSource === 'retake') return true;
   if (userRequestedPhoto && photosProvided && !usedPhotos && qualityGrade === 'fail') return true;
+  if (userRequestedPhoto && qualityGrade === 'fail') return true;
+  if (isPlainObject(photoModulesCard && photoModulesCard.payload)) {
+    const summary = isPlainObject(photoModulesCard.payload.summary_v1) ? photoModulesCard.payload.summary_v1 : {};
+    const qualityCaveats = Array.isArray(summary.quality_caveats)
+      ? summary.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (qualityCaveats.includes('photo_quality_failed')) return true;
+  }
+  if (isPlainObject(ingredientPlan)) {
+    const previewReason = pickFirstTrimmed(ingredientPlan.preview_reason, ingredientPlan.products_empty_reason).toLowerCase();
+    if (previewReason === 'photo_quality_failed') return true;
+  }
   return false;
 }
 
@@ -24960,13 +24994,7 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
   const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
   const primaryIngredientId = resolvePhotoPrimaryTargetIngredientId(photoModulesCard);
   if (qualityGrade === 'fail' || (!topFindings.length && !primaryIngredientId)) {
-    return {
-      ...payload,
-      targets: [],
-      preview_only: true,
-      preview_reason: 'photo_quality_failed',
-      products_empty_reason: 'photo_quality_failed',
-    };
+    return buildPhotoQualityFailedIngredientPlanV2(payload, null);
   }
   const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
   if (!coverageIndex.size) return payload;
@@ -59295,6 +59323,10 @@ function mountAuroraBffRoutes(app, { logger }) {
                 profileSummary,
                 artifactId: latestArtifactId,
                 contextOrigin: 'routine_audit_v1',
+                analysisSource: 'routine_audit_v1',
+                usePhoto: false,
+                usedPhotos: false,
+                photoQualityGrade: '',
               }),
             );
 
@@ -61046,12 +61078,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           delete analysisMeta.routine_product_enrichment_deferred;
         }
 
+        if (!routineAnalysisV2Result && ingredientPlan && photoModulesCard) {
+          ingredientPlan = annotateIngredientPlanForPhotoLed(ingredientPlan, photoModulesCard, ctx.lang);
+        }
+
         const suppressPhotoFailureIngredientPlan = shouldSuppressPhotoFailureIngredientPlanAndRecoHandoff({
           analysisSource: renderedAnalysisSource,
           userRequestedPhoto,
           photosProvided,
           usedPhotos,
           photoQuality,
+          photoModulesCard,
+          ingredientPlan,
         });
         if (suppressPhotoFailureIngredientPlan && ingredientPlan) {
           ingredientPlan = buildPhotoQualityFailedIngredientPlanV2(ingredientPlan, profileSummary || profile || null);
@@ -61418,6 +61456,10 @@ function mountAuroraBffRoutes(app, { logger }) {
               profileSummary,
               artifactId: latestArtifactId,
               contextOrigin: String(analysisMeta.analysis_mode || 'analysis_summary').trim().toLowerCase() || 'analysis_summary',
+              analysisSource: renderedAnalysisSource,
+              usePhoto: userRequestedPhoto,
+              usedPhotos,
+              photoQualityGrade: photoQuality && photoQuality.grade,
             }),
           );
         }
@@ -69049,6 +69091,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             profileSummary: profileSummaryForRecoContext,
             artifactId: pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id),
             contextOrigin: 'latest_artifact',
+            analysisSource: pickFirstTrimmed(latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.analysis_source),
+            usePhoto: latestArtifact && latestArtifact.use_photo === true,
+            usedPhotos: latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.used_photos === true,
+            photoQualityGrade: pickFirstTrimmed(latestArtifact && latestArtifact.analysis_context && latestArtifact.analysis_context.quality_grade),
           });
         const shouldApplyAnalysisDerivedRecoContext =
           Boolean(latestRecoContextForRecommendation)
@@ -71830,11 +71876,14 @@ const __internal = {
   resolveAnalysisProfileFastTimeoutMs,
   shouldUseRoutineOnlyAnalysisArtifactFastPath,
   shouldUseRoutineOnlyAnalysisMemoryFastPath,
+  buildLatestRecoContextFromAnalysisArtifacts,
   deferProfilePatchPersistence,
   deferDiagnosisArtifactPersistence,
   applyAnalysisStoryAndRoutineSoftGate,
   derivePhotoModulesRecoContext,
+  deriveIngredientPlanRecoContext,
   annotateIngredientPlanForPhotoLed,
+  buildPhotoQualityFailedIngredientPlanV2,
   applyProductIntelGuardrailsToEnvelope,
   safelyApplyProductIntelGuardrailsToEnvelope,
   buildPersistableLastAnalysisSnapshot,
