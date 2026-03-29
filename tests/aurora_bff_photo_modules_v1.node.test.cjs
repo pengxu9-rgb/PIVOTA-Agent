@@ -360,6 +360,45 @@ test('photo modules summary_v1: low-confidence primary finding adds conservative
   assert.equal(summary.quality_caveats.includes('conservative_photo_interpretation'), true);
 });
 
+test('photo modules card: diagnostic low-confidence survives even when photo quality passes', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_low_confidence_pass',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_texture_low',
+          issue_type: 'texture',
+          severity: 3,
+          confidence: 0.12,
+          geometry: {
+            bbox: { x: 0.18, y: 0.2, w: 0.34, h: 0.24 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  assert.equal(built.card.payload.quality_grade, 'pass');
+  assert.equal(Boolean(built.card.payload.low_confidence), true);
+  assert.deepEqual(built.card.payload.quality_labels || [], []);
+  assert.equal(
+    Array.isArray(built.card.payload.summary_v1?.quality_caveats)
+      && built.card.payload.summary_v1.quality_caveats.includes('low_confidence_primary_finding'),
+    true,
+  );
+});
+
 test('photo modules summary_v1: top_product_id stays aligned to the primary action instead of borrowing another action product', () => {
   const summary = buildSummaryV1(
     [

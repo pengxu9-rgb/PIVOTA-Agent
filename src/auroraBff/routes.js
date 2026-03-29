@@ -25720,8 +25720,8 @@ function reconcilePhotoContextWithIngredientPlan({
           ),
         }
       : {}),
-    ...(pickFirstTrimmed(primaryTarget.target_confidence, existingFocus.confidence_bucket)
-      ? { confidence_bucket: pickFirstTrimmed(primaryTarget.target_confidence, existingFocus.confidence_bucket) }
+    ...(pickFirstTrimmed(existingFocus.confidence_bucket)
+      ? { confidence_bucket: pickFirstTrimmed(existingFocus.confidence_bucket) }
       : {}),
     ...(pickFirstTrimmed(primaryTarget.ingredient_id, existingFocus.ingredient_id)
       ? { ingredient_id: pickFirstTrimmed(primaryTarget.ingredient_id, existingFocus.ingredient_id) }
@@ -37350,6 +37350,26 @@ function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons, summaryTo
   return Array.from(new Set(out)).slice(0, 8);
 }
 
+function derivePhotoContextConfidenceLevel(photoContext, { fallback = 'medium' } = {}) {
+  const context = isPlainObject(photoContext) ? photoContext : {};
+  const primaryFocus = isPlainObject(context.primary_focus) ? context.primary_focus : null;
+  const primaryBucket = normalizePhotoStoryConfidenceBucket(
+    primaryFocus && primaryFocus.confidence_0_1,
+    primaryFocus && primaryFocus.confidence_bucket,
+  );
+  if (primaryFocus && primaryBucket) return primaryBucket;
+  const qualityCaveats = Array.isArray(context.quality_caveats)
+    ? context.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (qualityCaveats.includes('low_confidence_primary_finding')) return 'low';
+  const qualityGrade = String(context.quality_grade || '').trim().toLowerCase();
+  if (qualityGrade === 'fail' || qualityGrade === 'unknown') return 'low';
+  if (qualityCaveats.includes('conservative_photo_interpretation') || qualityGrade === 'degraded') return 'medium';
+  const fallbackToken = String(fallback || '').trim().toLowerCase();
+  if (fallbackToken === 'high' || fallbackToken === 'medium' || fallbackToken === 'low') return fallbackToken;
+  return 'medium';
+}
+
 function renderPhotoQualityCaveatText(token, isCn) {
   const normalized = String(token || '').trim().toLowerCase();
   if (!normalized) return '';
@@ -38500,6 +38520,29 @@ function buildAnalysisStoryFallbackPayload({
     language,
   });
   const photoOwnsPrimaryAxis = photoContextOwnsPrimaryAnalysisAxis(photoContext);
+  const photoHasPrimaryFocus = Boolean(
+    photoContext && photoContext.used_photos === true
+    && isPlainObject(photoContext.primary_focus)
+    && pickFirstTrimmed(photoContext.primary_focus.module_id)
+    && pickFirstTrimmed(photoContext.primary_focus.issue_type),
+  );
+  const photoContextConfidenceLevel = derivePhotoContextConfidenceLevel(photoContext, {
+    fallback: payload.low_confidence ? 'low' : (routineAware && routineAware.confidence_level) || 'medium',
+  });
+  const analysisConfidence = isPlainObject(analysis.confidence) ? { ...analysis.confidence } : {};
+  const effectiveConfidenceLevel = (photoOwnsPrimaryAxis || photoHasPrimaryFocus)
+    ? photoContextConfidenceLevel
+    : pickFirstString(
+      analysisConfidence.level,
+      routineAware && routineAware.confidence_level,
+      payload.low_confidence ? 'low' : 'medium',
+    ) || 'medium';
+  const effectiveConfidenceOverall = Object.keys(analysisConfidence).length
+    ? { ...analysisConfidence, level: effectiveConfidenceLevel }
+    : { level: effectiveConfidenceLevel };
+  const effectiveConfidenceLabel = isCn
+    ? (effectiveConfidenceLevel === 'low' ? '低' : effectiveConfidenceLevel === 'high' ? '高' : '中')
+    : effectiveConfidenceLevel;
   const skinType = pickFirstString(profile && profile.skinType);
   const sensitivity = pickFirstString(profile && profile.sensitivity);
   const defaultPhotoCurrentStrengths = findings.length > 0
@@ -38643,9 +38686,7 @@ function buildAnalysisStoryFallbackPayload({
 
   return {
     schema_version: 'aurora.analysis_story.v2',
-    confidence_overall: isPlainObject(analysis.confidence)
-      ? analysis.confidence
-      : { level: routineAware ? routineAware.confidence_level : payload.low_confidence ? 'low' : 'medium' },
+    confidence_overall: effectiveConfidenceOverall,
     skin_profile: {
       ...(skinType ? { skin_type_tendency: skinType } : {}),
       ...(sensitivity ? { sensitivity_tendency: sensitivity } : {}),
@@ -38665,7 +38706,7 @@ function buildAnalysisStoryFallbackPayload({
       key_points: preferredKeyPoints,
       actions_now: preferredActionsNow,
       avoid_now: preferredAvoidNow,
-      confidence_label: payload.low_confidence ? (isCn ? '低' : 'low') : (isCn ? '中' : 'medium'),
+      confidence_label: effectiveConfidenceLabel,
       next_checkin: photoOwnsPrimaryAxis
         ? preferredTimeline.first_4_weeks[0]
         : routineAware
@@ -38697,10 +38738,13 @@ function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profi
         rank: idx + 1 + basePhotoEvidence.length,
         observation,
       };
-    }),
+      }),
   ]
     .filter(Boolean)
     .slice(0, 8);
+  const photoContextConfidenceLevel = derivePhotoContextConfidenceLevel(photoContext, {
+    fallback: payload.low_confidence === true ? 'low' : 'medium',
+  });
   return {
     schema_version: 'aurora.analysis_story.evidence.v1',
     language: String(language || 'EN').toUpperCase(),
@@ -38712,7 +38756,7 @@ function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profi
     },
     missing_routine_fields: deriveRoutineMissingFields(profile),
     analysis_source: pickFirstString(payload.analysis_source),
-    low_confidence: payload.low_confidence === true,
+    low_confidence: payload.low_confidence === true || photoContextConfidenceLevel === 'low',
     photo_context: photoContext,
     primary_focus: isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null,
     observed_signals: Array.isArray(photoContext.observed_signals) ? photoContext.observed_signals : [],
@@ -38767,6 +38811,13 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
   const existingProductsOptimization = normalizeExistingProductsOptimization(candidate.existing_products_optimization);
   if (existingProductsOptimization) candidate.existing_products_optimization = existingProductsOptimization;
   else delete candidate.existing_products_optimization;
+  const photoContext = isPlainObject(evidence && evidence.photo_context) ? evidence.photo_context : null;
+  const photoHasPrimaryFocus = Boolean(
+    photoContext && photoContext.used_photos === true
+    && isPlainObject(photoContext.primary_focus)
+    && pickFirstTrimmed(photoContext.primary_focus.module_id)
+    && pickFirstTrimmed(photoContext.primary_focus.issue_type),
+  );
   const primaryFocus = isPlainObject(evidence && evidence.photo_context && evidence.photo_context.primary_focus)
     ? evidence.photo_context.primary_focus
     : null;
@@ -38779,6 +38830,24 @@ function reviewAnalysisStoryV2Json({ story, evidence } = {}) {
       candidate.priority_findings = [deterministicPrimaryFinding, ...remainingFindings].slice(0, 6);
       issues.push('photo_primary_focus_aligned');
     }
+  }
+  if (photoHasPrimaryFocus || photoContextOwnsPrimaryAnalysisAxis(photoContext)) {
+    const alignedConfidenceLevel = derivePhotoContextConfidenceLevel(photoContext, {
+      fallback: pickFirstString(
+        candidate && candidate.confidence_overall && candidate.confidence_overall.level,
+        evidence && evidence.low_confidence ? 'low' : 'medium',
+      ) || 'medium',
+    });
+    const nextConfidenceOverall = isPlainObject(candidate.confidence_overall)
+      ? { ...candidate.confidence_overall }
+      : {};
+    if (String(nextConfidenceOverall.level || '').trim().toLowerCase() !== alignedConfidenceLevel) {
+      issues.push('confidence_overall_aligned_to_photo_focus');
+    }
+    candidate.confidence_overall = {
+      ...nextConfidenceOverall,
+      level: alignedConfidenceLevel,
+    };
   }
 
   if (!Array.isArray(candidate.priority_findings)) {
@@ -39245,10 +39314,17 @@ async function applyAnalysisStoryAndRoutineSoftGate(
       allowOpenAiFallback,
       qaContext,
     });
-    const storyPayload = coerceAnalysisStoryV2(
+    const coercedStoryPayload = coerceAnalysisStoryV2(
       reviewed && reviewed.repaired ? reviewed.repaired : generated,
       fallbackStory,
     );
+    const finalReviewedStory = reviewAnalysisStoryV2Json({
+      story: coercedStoryPayload,
+      evidence,
+    });
+    const storyPayload = finalReviewedStory && finalReviewedStory.repaired
+      ? finalReviewedStory.repaired
+      : coercedStoryPayload;
     const storyCard = existingStory
       ? { ...existingStory, payload: storyPayload }
       : {
@@ -63960,12 +64036,24 @@ function mountAuroraBffRoutes(app, { logger }) {
           ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
           ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
         };
+        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
+          ? diagnosisArtifact.overall_confidence
+          : null;
         const lowConfidenceFromPhotoQuality = Boolean(
           userRequestedPhoto &&
             photosProvided &&
             ['fail', 'unknown'].includes(String(photoQuality && photoQuality.grade || '').trim().toLowerCase()),
         );
-        const lowConfidenceSummary = analysisSource === 'baseline_low_confidence' || lowConfidenceFromPhotoQuality;
+        const lowConfidenceArtifact = Boolean(
+          artifactConfidence &&
+          String(artifactConfidence.level || '').toLowerCase() === 'low',
+        );
+        const lowConfidencePhotoCard = Boolean(photoModulesCard && photoModulesCard.payload && photoModulesCard.payload.low_confidence === true);
+        const lowConfidenceSummary =
+          analysisSource === 'baseline_low_confidence'
+          || lowConfidenceFromPhotoQuality
+          || lowConfidenceArtifact
+          || lowConfidencePhotoCard;
 
         profiler.start('render', { kind: 'envelope' });
         const chatQualityObj = buildQualityObject(photoQuality);
@@ -64034,9 +64122,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         const sessionPatch = { next_state: 'S5_ANALYSIS_SUMMARY' };
         appendLatestArtifactToSessionPatch(sessionPatch, latestArtifactId);
 
-        const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
-          ? diagnosisArtifact.overall_confidence
-          : null;
         const lowConfidenceRuleBased =
           artifactConfidence &&
           String(artifactConfidence.level || '').toLowerCase() === 'low' &&

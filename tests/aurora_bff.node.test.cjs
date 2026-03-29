@@ -11556,7 +11556,7 @@ test('applyAnalysisStoryAndRoutineSoftGate keeps analysis_story_v2 photo-first w
           analysis_source: 'rule_based_with_photo',
           photos_provided: true,
           used_photos: true,
-          low_confidence: true,
+          low_confidence: false,
           quality_report: {
             photo_quality: {
               grade: 'degraded',
@@ -11709,6 +11709,8 @@ test('applyAnalysisStoryAndRoutineSoftGate keeps analysis_story_v2 photo-first w
     assert.match(firstAction, /ceramide/i);
     assert.doesNotMatch(firstAction, /sunscreen/i);
     assert.doesNotMatch(firstAction, /retinoid/i);
+    assert.equal(String(storyPayload?.confidence_overall?.level || ''), 'low');
+    assert.equal(String(storyPayload?.ui_card_v1?.confidence_label || '').toLowerCase(), 'low');
 
     const ingredientPlanCard = findCardByType(nextCards, 'ingredient_plan_v2');
     assert.ok(ingredientPlanCard);

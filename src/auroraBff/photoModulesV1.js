@@ -4409,11 +4409,20 @@ function buildPhotoModulesCard({
     qualityGrade,
     qualityReasons: Array.isArray(photoQuality && photoQuality.reasons) ? photoQuality.reasons : [],
   });
+  const summaryQualityCaveats = Array.isArray(summaryV1 && summaryV1.quality_caveats)
+    ? summaryV1.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const lowConfidence = (
+    qualityGrade === 'fail'
+    || qualityGrade === 'unknown'
+    || summaryQualityCaveats.includes('low_confidence_primary_finding')
+    || summaryQualityCaveats.includes('conservative_photo_interpretation')
+  );
 
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
-    low_confidence: qualityGrade === 'fail' || qualityGrade === 'unknown',
+    low_confidence: lowConfidence,
     quality_labels: qualityGrade === 'fail' || qualityGrade === 'unknown' ? ['quality_low_confidence'] : [],
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
     ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
