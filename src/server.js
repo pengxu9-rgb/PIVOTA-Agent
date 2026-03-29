@@ -6723,34 +6723,6 @@ function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   return Array.from(out);
 }
 
-function buildBeautySupportiveQueryTokens(queryText) {
-  const normalized = normalizeSearchTextForMatch(queryText);
-  const out = new Set();
-  const pushToken = (token) => {
-    const value = normalizeSearchTextForMatch(token);
-    if (!value || BEAUTY_FORM_FACTOR_TOKENS.has(value) || value.length < 3) return;
-    out.add(value);
-  };
-
-  if (!normalized) return Array.from(out);
-
-  if (
-    /\bserum(?:s)?\b/.test(normalized) &&
-    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/.test(normalized)
-  ) {
-    pushToken('hydrat');
-    pushToken('hydration');
-    pushToken('hydrating');
-    pushToken('dehydrated');
-    pushToken('hyalur');
-    pushToken('hyaluronic');
-    pushToken('hyaluronate');
-    pushToken('sodium hyaluronate');
-  }
-
-  return Array.from(out);
-}
-
 function isKnownLookupAliasQuery(queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return false;
@@ -7059,8 +7031,19 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
     : usefulQueryTokens;
   const intentTokens = ingredientIntent ? buildBeautyIngredientIntentTokens(queryText, meaningfulTokens) : [];
   const supportiveTokens =
-    beautyQueryBucket === 'skincare'
-      ? buildBeautySupportiveQueryTokens(queryText)
+    beautyQueryBucket === 'skincare' &&
+    /\bserum(?:s)?\b/.test(normalizedQuery) &&
+    /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate)\b/.test(normalizedQuery)
+      ? [
+          'hydrat',
+          'hydration',
+          'hydrating',
+          'dehydrated',
+          'hyalur',
+          'hyaluronic',
+          'hyaluronate',
+          'sodium hyaluronate',
+        ]
       : [];
   const effectiveTokens = Array.from(
     new Set([...meaningfulTokens, ...intentTokens, ...supportiveTokens]),
@@ -7541,6 +7524,14 @@ async function runGuidanceServerOwnedLadderSearch({
       searchDecision?.applied && searchDecision?.hit_quality === 'valid_hit'
         ? mergedProducts.filter((product) => validProductKeys.has(buildSearchDecisionProductKey(product)))
         : [];
+    const internalDisplayProducts = displayProducts.filter(
+      (product) => !isExternalSeedProduct(product),
+    );
+    const preferredDisplayProducts =
+      searchDecision?.success_contract_result?.satisfied === true &&
+      internalDisplayProducts.length > 0
+        ? internalDisplayProducts
+        : displayProducts;
     const candidateSummary = summarizeGuidanceCandidatePool(mergedProducts, queryText, {
       ui_surface: GUIDANCE_ONLY_UI_SURFACE,
       decision_mode: GUIDANCE_ONLY_DECISION_MODE,
@@ -7580,7 +7571,7 @@ async function runGuidanceServerOwnedLadderSearch({
       selectedAttempt = {
         ...attempt,
         mergedProducts,
-        displayProducts,
+        displayProducts: preferredDisplayProducts,
         searchDecision,
         candidateSummary,
       };
@@ -20776,6 +20767,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             queryText: cacheQueryText,
             effectiveIntent,
             baselineProducts: baselineInternalProducts,
+            internalGuidanceHitDecision,
             rawInternalProductsCount: internalProductsAfterAnchor.length,
             safeResultLimit,
             guidanceTargetStepFamily,
