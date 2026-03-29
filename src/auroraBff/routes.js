@@ -70152,14 +70152,50 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (restoredRecommendations.length > 0) {
               verifiedCandidateRestoreApplied = true;
               verifiedCandidateRestoreCount = restoredRecommendations.length;
+              const restoredRecommendationMeta = isPlainObject(norm.payload?.recommendation_meta)
+                ? { ...norm.payload.recommendation_meta }
+                : {};
+              delete restoredRecommendationMeta.primary_failure_reason;
+              delete restoredRecommendationMeta.telemetry_failure_reason;
+              delete restoredRecommendationMeta.failure_class;
+              delete restoredRecommendationMeta.effective_failure_class;
+              delete restoredRecommendationMeta.failure_origin;
+              delete restoredRecommendationMeta.surface_reason;
+              delete restoredRecommendationMeta.products_empty_reason;
+              delete restoredRecommendationMeta.catalog_skip_reason;
+              delete restoredRecommendationMeta.upstream_status;
               norm.payload = {
                 ...norm.payload,
+                source: 'catalog_grounded_v1',
                 recommendations: restoredRecommendations,
                 grounding_status: 'grounded',
                 grounded_count: restoredRecommendations.length,
                 ungrounded_count: 0,
+                recommendation_meta: {
+                  ...restoredRecommendationMeta,
+                  source_mode: 'catalog_grounded',
+                  contract_status: 'recommendations_ready',
+                  mainline_status: 'grounded_success',
+                  grounding_status: 'grounded',
+                  grounded_count: restoredRecommendations.length,
+                  ungrounded_count: 0,
+                  upstream_status: 'ok',
+                  effective_failure_class: 'none',
+                  failure_origin: 'none',
+                  terminal_success: true,
+                  viable_pool_strength: 'strong',
+                  target_fidelity_level: 'satisfied',
+                  presentation_mode: 'deterministic_degraded',
+                  success_mode: 'degraded_success',
+                  pre_llm_selected_candidate_count: restoredRecommendations.length,
+                  final_selected_candidate_count: restoredRecommendations.length,
+                  post_guardrail_count: restoredRecommendations.length,
+                  verified_candidate_restore_applied: true,
+                  verified_candidate_restore_count: restoredRecommendations.length,
+                },
                 metadata: {
                   ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+                  mainline_status: 'grounded_success',
                   verified_candidate_restore_applied: true,
                   verified_candidate_restore_count: restoredRecommendations.length,
                 },
@@ -70172,6 +70208,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
                 return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
               });
+              recoSource = 'catalog_grounded_v1';
               recoMainlineStatus = 'grounded_success';
               recoTelemetryFailureReason = '';
             } else {
