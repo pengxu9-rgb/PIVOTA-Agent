@@ -2143,6 +2143,110 @@ test('/v1/chat: analysis-handoff verified candidates bypass upstream product sea
     axios.get = originalGet;
   }
 });
+
+test('/v1/chat: ingredient reco restores selected catalog candidates after ingredient constraint drops llm output', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    observedQueries.push(String(config?.params?.query || '').trim().toLowerCase());
+    return {
+      status: 200,
+      data: {
+        metadata: {
+          search_decision: {
+            contract_version: 'beauty_search_decision_v4',
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 2,
+            exact_step_topk_count: 0,
+            raw_result_count: 2,
+            products_returned_count: 2,
+          },
+        },
+        products: [
+          {
+            product_id: 'ceramide_1',
+            merchant_id: 'mid_barrier',
+            brand: 'BarrierLab',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+          },
+          {
+            product_id: 'panthenol_1',
+            merchant_id: 'mid_barrier',
+            brand: 'BarrierLab',
+            name: 'Recovery Lotion',
+            display_name: 'Recovery Lotion',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+          },
+        ],
+      },
+    };
+  };
+
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"invalid reco envelope"}',
+      structured: { summary: 'invalid reco envelope' },
+      context: {},
+    }),
+  });
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set(headersFor('chat_ingredient_restore_uid', 'EN'))
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products',
+            entry_source: 'ingredient_goal_match',
+            goal: 'barrier',
+            sensitivity: 'high',
+            candidates: ['Ceramide NP', 'Panthenol'],
+            profile_patch: {
+              skinType: 'dry',
+              sensitivity: 'high',
+              barrierStatus: 'compromised',
+              goals: ['barrier repair'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      })
+      .expect(200);
+
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendations.some((row) => String(row?.product_id || '') === 'ceramide_1'), true);
+    assert.equal(observedQueries.length > 0, true);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
+    const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
+    assert.ok(latestRecoContext);
+    assert.match(String(latestRecoContext?.context_origin || ''), /ingredient/i);
+    assert.match(String(latestRecoContext?.primary_target_id || ''), /ceramide.*moisturizer/i);
+    assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
+    assert.equal(latestRecoContext.product_candidates.length >= 1, true);
+    assert.equal((payload.ingredient_evidence?.product_candidates_count || 0) >= 2, true);
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
 test('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {

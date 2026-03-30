@@ -16335,3 +16335,108 @@ test('/v1/chat: deep_dive_skin consumes photo refs and diagnosis artifact throug
     },
   );
 });
+
+test('buildAnalysisDeepDiveContentWithLlm prefers canonical analysis_story snapshot over generic rewrite', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI: 'gemini-3-pro-preview',
+    },
+    async () => {
+      const routeModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routeModuleId];
+      const routeModule = require('../src/auroraBff/routes');
+      const { __internal } = routeModule;
+      let llmCalls = 0;
+      __internal.__setCallGeminiJsonObjectForTest(async () => {
+        llmCalls += 1;
+        return {
+          ok: true,
+          json: {
+            conclusion: 'The visible features are more consistent with a baseline state.',
+            key_signals: ['Lighting limits fine detail.'],
+            actions_now: ['AM: Gentle cleanse.'],
+          },
+        };
+      });
+
+      try {
+        const out = await __internal.buildAnalysisDeepDiveContentWithLlm({
+          lastAnalysis: {},
+          diagnosisArtifact: {
+            artifact_id: 'da_snapshot_preferred',
+            use_photo: true,
+            photos: [{ slot: 'daylight', photo_id: 'photo_snapshot_anchor', qc_status: 'passed' }],
+          },
+          profile: {},
+          language: 'EN',
+          requestId: 'req_snapshot_preferred',
+          replyText: 'Tell me more about my skin',
+          actionData: {
+            trigger_source: 'analysis_story_v2',
+          },
+          sessionAnalysisContext: {
+            analysis_origin: 'photo',
+            source_card_type: 'analysis_story_v2',
+            photo_refs: [{ slot_id: 'daylight', photo_id: 'photo_snapshot_anchor', qc_status: 'passed' }],
+            analysis_story_snapshot: {
+              schema_version: 'aurora.analysis_story.v2',
+              confidence_overall: { level: 'medium', score: 0.68 },
+              skin_profile: { skin_type_tendency: 'combination', sensitivity_tendency: 'low' },
+              priority_findings: [
+                {
+                  priority: 1,
+                  title: 'UV filters are the clearest next move right now.',
+                  detail: 'UV filters are the clearest next move right now.',
+                  evidence_region_or_module: [],
+                },
+                {
+                  priority: 2,
+                  title: 'Keep the pass conservative until a clearer retake.',
+                  detail: 'Keep the pass conservative until a clearer retake.',
+                  evidence_region_or_module: [],
+                },
+              ],
+              target_state: ['Keep this pass centered on UV filters in a broad-spectrum sunscreen.'],
+              core_principles: ['Do not widen into several new actives at once.'],
+              am_plan: [{ step: 'Use broad-spectrum sunscreen', purpose: 'UV protection' }],
+              pm_plan: [{ step: 'Barrier moisturizer', purpose: 'Recovery support' }],
+              timeline: {
+                first_4_weeks: ['Re-check in 1 week.'],
+                week_8_12_expectation: ['Stay conservative until a clearer retake.'],
+              },
+              safety_notes: ['Do not widen into multiple strong actives yet.'],
+              disclaimer_non_medical: true,
+              ui_card_v1: {
+                headline: 'Keep this pass centered on UV filters in a broad-spectrum sunscreen',
+                key_points: [
+                  'The clearest next move is UV filters in a broad-spectrum sunscreen.',
+                  'Keep the pass conservative until a clearer retake.',
+                ],
+                actions_now: ['Use one broad-spectrum sunscreen built around UV filters every morning.'],
+                avoid_now: ['Do not widen into multiple strong actives yet.'],
+                confidence_label: 'medium',
+                next_checkin: 'Re-check in 1 week.',
+              },
+            },
+          },
+          logger: null,
+        });
+
+        assert.equal(llmCalls, 0);
+        assert.equal(out?.llm_used, false);
+        assert.equal(out?.llm_failure_reason, 'snapshot_story_preferred');
+        const storyCard = Array.isArray(out?.cards) ? out.cards.find((card) => card && card.type === 'analysis_story_v2') : null;
+        assert.ok(storyCard);
+        assert.match(String(storyCard?.payload?.ui_card_v1?.headline || ''), /uv filters/i);
+        assert.match(String(storyCard?.payload?.summary || ''), /uv filters/i);
+        assert.match(String(out?.assistant_text || ''), /uv filters/i);
+      } finally {
+        __internal.__resetCallGeminiJsonObjectForTest();
+        delete require.cache[routeModuleId];
+      }
+    },
+  );
+});
