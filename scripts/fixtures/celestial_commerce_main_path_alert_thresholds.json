@@ -1,0 +1,42 @@
+{
+  "min_total_records": {
+    "min": 1,
+    "severity": "red",
+    "description": "main-path alert evaluation must see at least one live record"
+  },
+  "min_main_path_pass_rate": {
+    "min": 1,
+    "severity": "red",
+    "description": "main path must stay authoritative for every evaluated live record"
+  },
+  "max_primary_path_degraded_count": {
+    "max": 0,
+    "severity": "red",
+    "description": "primary path must not degrade during release evaluation"
+  },
+  "max_decision_unlocked_count": {
+    "max": 0,
+    "severity": "red",
+    "description": "evaluated live records must keep decision_locked=true"
+  },
+  "max_fallback_authority_count": {
+    "max": 0,
+    "severity": "red",
+    "description": "fallback paths must not become the final authority"
+  },
+  "max_agent_products_error_fallback_count": {
+    "max": 0,
+    "severity": "red",
+    "description": "agent_products_error_fallback must not appear in release evaluation"
+  },
+  "max_service_version_commit_missing_count": {
+    "max": 0,
+    "severity": "red",
+    "description": "service_version.commit must be present for all evaluated live records"
+  },
+  "max_governance_would_enforce_count": {
+    "max": 0,
+    "severity": "amber",
+    "description": "governance shadow should not observe would-enforce drift during evaluation"
+  }
+}

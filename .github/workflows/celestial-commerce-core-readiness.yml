@@ -42,6 +42,7 @@ on:
       - "scripts/extract_celestial_commerce_gateway_governance_shadow_from_search_matrix.js"
       - "scripts/fetch_celestial_commerce_gateway_governance_logs.js"
       - "scripts/evaluate_celestial_commerce_gateway_governance_alerts.js"
+      - "scripts/evaluate_celestial_commerce_main_path_alerts.js"
       - "scripts/run_gateway_governance_daily_summary.sh"
       - "scripts/generate_celestial_commerce_gateway_governance_report.js"
       - "scripts/verify_celestial_commerce_core_boundaries.js"
@@ -57,6 +58,7 @@ on:
       - "scripts/fixtures/celestial_commerce_core_stabilization_snapshot.json"
       - "scripts/fixtures/celestial_commerce_core_milestone0_baseline.json"
       - "scripts/fixtures/celestial_commerce_gateway_governance_alert_thresholds.json"
+      - "scripts/fixtures/celestial_commerce_main_path_alert_thresholds.json"
       - "scripts/fixtures/celestial_commerce_gateway_governance_baseline.json"
       - "scripts/fixtures/celestial_commerce_gateway_governance_raw_log_sample.ndjson"
       - "scripts/fixtures/celestial_commerce_gateway_governance_shadow_runtime_sample.ndjson"
@@ -82,6 +84,7 @@ on:
       - "tests/celestial_commerce_gateway_governance_fetch_script.test.js"
       - "tests/celestial_commerce_gateway_governance_alerts_script.test.js"
       - "tests/celestial_commerce_gateway_daily_summary_script.test.js"
+      - "tests/celestial_commerce_main_path_alerts_script.test.js"
       - "tests/celestial_commerce_core_staging_matrix_script.test.js"
       - "tests/celestial_commerce_core_stabilization_report_script.test.js"
       - "tests/celestial_commerce_core_prod_canary_script.test.js"
@@ -136,6 +139,7 @@ jobs:
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
           node --check scripts/extract_celestial_commerce_gateway_governance_shadow_from_search_matrix.js
           node --check scripts/fetch_celestial_commerce_gateway_governance_logs.js
+          node --check scripts/evaluate_celestial_commerce_main_path_alerts.js
           node scripts/verify_commerce_invoke_rails.js
           node scripts/verify_celestial_commerce_core_boundaries.js
           bash -n scripts/smoke_celestial_commerce_core_prod.sh
@@ -163,6 +167,7 @@ jobs:
             tests/celestial_commerce_gateway_governance_fetch_script.test.js \
             tests/celestial_commerce_gateway_governance_alerts_script.test.js \
             tests/celestial_commerce_gateway_daily_summary_script.test.js \
+            tests/celestial_commerce_main_path_alerts_script.test.js \
             tests/celestial_commerce_core_staging_matrix_script.test.js \
             tests/celestial_commerce_core_stabilization_report_script.test.js \
             tests/celestial_commerce_core_prod_canary_script.test.js \

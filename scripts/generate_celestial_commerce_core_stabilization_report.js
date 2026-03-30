@@ -21,6 +21,8 @@ function parseArgs(argv) {
     gatewayDailyReport: '',
     stagingMatrixSummary: '',
     stagingMatrixReport: '',
+    mainPathAlertsSummary: '',
+    mainPathAlertsReport: '',
     auroraManualReviewSummary: '',
     auroraManualReviewReport: '',
   };
@@ -38,6 +40,8 @@ function parseArgs(argv) {
     if (token === '--gateway-daily-report' && next) args.gatewayDailyReport = path.resolve(String(next));
     if (token === '--staging-matrix-summary' && next) args.stagingMatrixSummary = path.resolve(String(next));
     if (token === '--staging-matrix-report' && next) args.stagingMatrixReport = path.resolve(String(next));
+    if (token === '--main-path-alerts-summary' && next) args.mainPathAlertsSummary = path.resolve(String(next));
+    if (token === '--main-path-alerts-report' && next) args.mainPathAlertsReport = path.resolve(String(next));
     if (token === '--aurora-manual-review-summary' && next) args.auroraManualReviewSummary = path.resolve(String(next));
     if (token === '--aurora-manual-review-report' && next) args.auroraManualReviewReport = path.resolve(String(next));
   }
@@ -152,7 +156,14 @@ function collectStagingReviewBuckets(stagingMatrix = {}) {
   };
 }
 
-function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auroraManualReview }) {
+function decideConclusion({
+  steps,
+  scorecard,
+  gatewayDaily,
+  stagingMatrix,
+  mainPathAlerts,
+  auroraManualReview,
+}) {
   const failedSteps = (steps || []).filter((item) => item.status !== 'pass');
   const scorecardBuckets = collectScorecardBuckets(scorecard);
   const stagingReviewBuckets = collectStagingReviewBuckets({
@@ -195,6 +206,14 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
         gatewayDaily.shadow_summary.readiness_status || 'missing',
       )}`,
     );
+  }
+
+  if (
+    mainPathAlerts &&
+    String(mainPathAlerts.overall_status || '').trim() &&
+    mainPathAlerts.overall_status === 'red'
+  ) {
+    blockingFailures.push('main-path alert status is red');
   }
 
   if (
@@ -241,6 +260,14 @@ function decideConclusion({ steps, scorecard, gatewayDaily, stagingMatrix, auror
 
   if (scorecardBuckets.amber.length > 0) {
     advisories.push(`readiness amber dimensions: ${scorecardBuckets.amber.join(', ')}`);
+  }
+
+  if (
+    mainPathAlerts &&
+    String(mainPathAlerts.overall_status || '').trim() &&
+    mainPathAlerts.overall_status === 'amber'
+  ) {
+    advisories.push('main-path alert status is amber');
   }
 
   if (stagingReviewBuckets.non_manual_review_required > 0) {
@@ -325,6 +352,7 @@ function writeArtifacts(args, payload) {
     `- Readiness report: \`${payload.artifacts.readiness_report || 'missing'}\``,
     `- Gateway daily report: \`${payload.artifacts.gateway_daily_report || 'missing'}\``,
     `- Staging matrix report: \`${payload.artifacts.staging_matrix_report || 'missing'}\``,
+    `- Main-path alerts report: \`${payload.artifacts.main_path_alerts_report || 'missing'}\``,
     `- Aurora manual review report: \`${payload.artifacts.aurora_manual_review_report || 'missing'}\``,
     '',
     '## Candidate Snapshot',
@@ -364,6 +392,47 @@ function writeArtifacts(args, payload) {
     ...Object.entries(payload.readiness.scorecard || {}).map(([key, value]) =>
       markdownTableRow([key, String(value)]),
     ),
+    '',
+    '## Main-Path Alerts',
+    '',
+    markdownTableRow(['Metric', 'Value']),
+    markdownTableRow(['---', '---:']),
+    markdownTableRow([
+      'overall_status',
+      String(payload.main_path_alerts.overall_status || 'missing'),
+    ]),
+    markdownTableRow([
+      'total_records',
+      String(payload.main_path_alerts.metrics.total_records || 0),
+    ]),
+    markdownTableRow([
+      'main_path_pass_rate',
+      String(payload.main_path_alerts.metrics.main_path_pass_rate || 0),
+    ]),
+    markdownTableRow([
+      'primary_path_degraded_count',
+      String(payload.main_path_alerts.metrics.primary_path_degraded_count || 0),
+    ]),
+    markdownTableRow([
+      'decision_unlocked_count',
+      String(payload.main_path_alerts.metrics.decision_unlocked_count || 0),
+    ]),
+    markdownTableRow([
+      'fallback_authority_count',
+      String(payload.main_path_alerts.metrics.fallback_authority_count || 0),
+    ]),
+    markdownTableRow([
+      'agent_products_error_fallback_count',
+      String(payload.main_path_alerts.metrics.agent_products_error_fallback_count || 0),
+    ]),
+    markdownTableRow([
+      'service_version_commit_missing_count',
+      String(payload.main_path_alerts.metrics.service_version_commit_missing_count || 0),
+    ]),
+    markdownTableRow([
+      'governance_would_enforce_count',
+      String(payload.main_path_alerts.metrics.governance_would_enforce_count || 0),
+    ]),
     '',
     '## Staging Matrix Summary',
     '',
@@ -457,6 +526,11 @@ function main() {
     shadow_summary: {},
     alerts: {},
   });
+  const mainPathAlerts = readJsonIfExists(args.mainPathAlertsSummary, {
+    overall_status: '',
+    metrics: {},
+    alerts: [],
+  });
   const staging = readJsonIfExists(args.stagingMatrixSummary, {
     summary: {},
     results: [],
@@ -468,6 +542,7 @@ function main() {
     scorecard: readiness.scorecard || {},
     gatewayDaily,
     stagingMatrix: staging,
+    mainPathAlerts,
     auroraManualReview,
   });
 
@@ -491,6 +566,13 @@ function main() {
       shadow_summary: gatewayDaily.shadow_summary || {},
       alerts: gatewayDaily.alerts || {},
     },
+    main_path_alerts: {
+      summary_path: args.mainPathAlertsSummary || null,
+      report_path: args.mainPathAlertsReport || null,
+      overall_status: mainPathAlerts.overall_status || null,
+      metrics: mainPathAlerts.metrics || {},
+      alerts: Array.isArray(mainPathAlerts.alerts) ? mainPathAlerts.alerts : [],
+    },
     staging: {
       summary_path: args.stagingMatrixSummary || null,
       report_path: args.stagingMatrixReport || null,
@@ -511,6 +593,7 @@ function main() {
       readiness_report: args.readinessReport || null,
       gateway_daily_report: args.gatewayDailyReport || null,
       staging_matrix_report: args.stagingMatrixReport || null,
+      main_path_alerts_report: args.mainPathAlertsReport || null,
       aurora_manual_review_report: args.auroraManualReviewReport || null,
     },
   };

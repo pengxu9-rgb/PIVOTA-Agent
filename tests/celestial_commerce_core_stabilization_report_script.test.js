@@ -369,4 +369,94 @@ describe('Celestial commerce-core stabilization report script', () => {
       expect.arrayContaining([expect.stringContaining('aurora manual review failures: 1')]),
     );
   });
+
+  test('treats red main-path alerts as blocking failures', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-stabilization-report-'));
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'generate_celestial_commerce_core_stabilization_report.js',
+    );
+    const snapshotPath = path.join(outDir, 'snapshot.json');
+    const stepsPath = path.join(outDir, 'steps.json');
+    const readinessSummaryPath = path.join(outDir, 'readiness-summary.json');
+    const gatewayDailySummaryPath = path.join(outDir, 'gateway-daily-summary.json');
+    const stagingMatrixSummaryPath = path.join(outDir, 'staging-matrix.json');
+    const mainPathAlertsSummaryPath = path.join(outDir, 'main-path-alerts.json');
+
+    fs.writeFileSync(snapshotPath, JSON.stringify({ completed: [], incomplete: [], deferred: [] }, null, 2));
+    fs.writeFileSync(
+      stepsPath,
+      JSON.stringify({ steps: [{ name: 'boundary', status: 'pass', log: '/tmp/boundary.log' }] }, null, 2),
+    );
+    fs.writeFileSync(
+      readinessSummaryPath,
+      JSON.stringify({ scorecard: { commerce_search_contract: 'green' } }, null, 2),
+    );
+    fs.writeFileSync(
+      gatewayDailySummaryPath,
+      JSON.stringify({ shadow_summary: { readiness_status: 'green' }, alerts: { overall_status: 'green' } }, null, 2),
+    );
+    fs.writeFileSync(
+      stagingMatrixSummaryPath,
+      JSON.stringify(
+        {
+          summary: { total_cases: 2, pass_count: 2, fail_count: 0, review_required_count: 0, infra_blocked_count: 0, blocking_failures: 0 },
+          results: [],
+        },
+        null,
+        2,
+      ),
+    );
+    fs.writeFileSync(
+      mainPathAlertsSummaryPath,
+      JSON.stringify(
+        {
+          overall_status: 'red',
+          metrics: {
+            total_records: 2,
+            fallback_authority_count: 1,
+          },
+          alerts: [{ key: 'max_fallback_authority_count', status: 'red', observed: 1, comparator: 'max', target: 0 }],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--repo-root',
+        repoRoot,
+        '--out-dir',
+        outDir,
+        '--snapshot',
+        snapshotPath,
+        '--steps',
+        stepsPath,
+        '--readiness-summary',
+        readinessSummaryPath,
+        '--gateway-daily-summary',
+        gatewayDailySummaryPath,
+        '--staging-matrix-summary',
+        stagingMatrixSummaryPath,
+        '--main-path-alerts-summary',
+        mainPathAlertsSummaryPath,
+      ],
+      { cwd: repoRoot, encoding: 'utf8' },
+    );
+
+    const payload = JSON.parse(String(stdout || '').trim());
+    const summary = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+    const report = fs.readFileSync(payload.markdown_path, 'utf8');
+
+    expect(payload.decision).toBe('NO-GO');
+    expect(summary.decision.blocking_failures).toEqual(
+      expect.arrayContaining([expect.stringContaining('main-path alert status is red')]),
+    );
+    expect(report).toContain('## Main-Path Alerts');
+  });
 });

@@ -99,17 +99,29 @@ gateway_daily_summary_path="$(latest_match "${GATEWAY_DAILY_ROOT}" 'summary.json
 STAGING_MATRIX_ROOT="${RUN_DIR}/staging_matrix"
 staging_matrix_report_path=""
 staging_matrix_summary_path=""
+MAIN_PATH_ALERTS_ROOT="${RUN_DIR}/main_path_alerts"
+main_path_alerts_report_path=""
+main_path_alerts_summary_path=""
 if [[ "${RUN_STAGING_MATRIX}" == "1" ]]; then
   run_step \
     "staging_matrix" \
     bash -lc "cd '${REPO_ROOT}' && '${node_bin}' scripts/run_celestial_commerce_core_staging_matrix.js --base-url '${STAGING_BASE_URL}' --cases '${STAGING_MATRIX_CASES_PATH}' --out-dir '${STAGING_MATRIX_ROOT}' --timeout-ms '${STAGING_TIMEOUT_MS}'"
   staging_matrix_report_path="${STAGING_MATRIX_ROOT}/celestial_commerce_core_staging_matrix.md"
   staging_matrix_summary_path="${STAGING_MATRIX_ROOT}/celestial_commerce_core_staging_matrix.json"
+  run_step \
+    "main_path_alerts" \
+    bash -lc "cd '${REPO_ROOT}' && '${node_bin}' scripts/evaluate_celestial_commerce_main_path_alerts.js --staging-matrix-summary '${staging_matrix_summary_path}' --gateway-daily-summary '${gateway_daily_summary_path}' --out-dir '${MAIN_PATH_ALERTS_ROOT}'"
+  main_path_alerts_report_path="${MAIN_PATH_ALERTS_ROOT}/main_path_alerts.md"
+  main_path_alerts_summary_path="${MAIN_PATH_ALERTS_ROOT}/main_path_alerts.json"
 else
   STEP_NAMES+=("staging_matrix")
   STEP_STATUSES+=("skipped")
   STEP_LOGS+=("${RUN_DIR}/staging_matrix_skipped.log")
   printf 'staging matrix skipped (RUN_STAGING_MATRIX=%s)\n' "${RUN_STAGING_MATRIX}" >"${RUN_DIR}/staging_matrix_skipped.log"
+  STEP_NAMES+=("main_path_alerts")
+  STEP_STATUSES+=("skipped")
+  STEP_LOGS+=("${RUN_DIR}/main_path_alerts_skipped.log")
+  printf 'main-path alerts skipped (RUN_STAGING_MATRIX=%s)\n' "${RUN_STAGING_MATRIX}" >"${RUN_DIR}/main_path_alerts_skipped.log"
 fi
 
 AURORA_MANUAL_REVIEW_ROOT="${RUN_DIR}/aurora_manual_review"
@@ -159,6 +171,8 @@ PY
   --gateway-daily-report "${gateway_daily_report_path}" \
   --staging-matrix-summary "${staging_matrix_summary_path}" \
   --staging-matrix-report "${staging_matrix_report_path}" \
+  --main-path-alerts-summary "${main_path_alerts_summary_path}" \
+  --main-path-alerts-report "${main_path_alerts_report_path}" \
   --aurora-manual-review-summary "${aurora_manual_review_summary_path}" \
   --aurora-manual-review-report "${aurora_manual_review_report_path}" >"${RUN_DIR}/stabilization_report.log"
 
