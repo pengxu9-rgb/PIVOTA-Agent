@@ -5,6 +5,11 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
+const { query: runDbQuery } = require('../db');
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildExternalSeedProduct,
+} = require('../services/externalSeedProducts');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -6264,6 +6269,88 @@ function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbac
     ...(row.canonical_product_ref ? { canonical_product_ref: row.canonical_product_ref } : {}),
     category: 'product',
   };
+}
+
+async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
+  const row = productLike && typeof productLike === 'object' && !Array.isArray(productLike) ? productLike : null;
+  const productRef = buildProductAnchorRefFromProductLike(row);
+  const merchantId = pickFirstTrimmed(row?.merchant_id, row?.merchantId, productRef?.merchant_id);
+  const productId = pickFirstTrimmed(row?.product_id, row?.productId, row?.sku_id, row?.skuId, productRef?.product_id);
+  if (!productId || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  try {
+    const res = await runDbQuery(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          attached_product_key,
+          updated_at,
+          created_at,
+          status
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND (
+            external_product_id = $1
+            OR id::text = $1
+          )
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      [productId],
+    );
+    const seedRow = Array.isArray(res?.rows) ? res.rows[0] : null;
+    const hydrated = buildExternalSeedProduct(seedRow);
+    if (!hydrated) return null;
+    const display = buildAnchorDisplayFromCandidate(row) || {};
+    const displayName = pickFirstTrimmed(
+      display.display_name,
+      row?.display_name,
+      row?.displayName,
+      hydrated.display_name,
+      hydrated.title,
+    );
+    const name = pickFirstTrimmed(display.name, row?.name, row?.product_name, hydrated.name, hydrated.title);
+    const brand = pickFirstTrimmed(display.brand, row?.brand, hydrated.brand, hydrated.vendor);
+    const canonicalProductRef =
+      hydrated.canonical_product_ref ||
+      productRef ||
+      {
+        product_id: productId,
+        merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+      };
+    return {
+      ...hydrated,
+      ...(brand ? { brand, vendor: brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(pickFirstTrimmed(display.url, row?.url) && !pickFirstTrimmed(hydrated.url, hydrated.canonical_url, hydrated.destination_url)
+        ? { url: pickFirstTrimmed(display.url, row?.url) }
+        : {}),
+      canonical_product_ref: canonicalProductRef,
+    };
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (
+      error?.code === 'NO_DATABASE' ||
+      /external_product_seeds/i.test(message) ||
+      /does not exist/i.test(message)
+    ) {
+      return null;
+    }
+    if (logger && typeof logger.warn === 'function') {
+      logger.warn({ err: error, product_id: productId }, 'load_external_seed_evidence_product_failed');
+    }
+    return null;
+  }
 }
 
 function evaluateAnchorTrustForProductIntel({
@@ -32001,6 +32088,7 @@ function buildProductDeepScanPromptV2({
   productDescriptor = '',
   strictFormulaIntent = false,
   includeVersionReminder = false,
+  evidenceNotes = [],
 } = {}) {
   const strictLine = strictFormulaIntent
     ? 'If formula_intent is missing or profile-only, rewrite once using product efficacy/mechanism details only.'
@@ -32022,6 +32110,7 @@ function buildProductDeepScanPromptV2({
     `Evidence must include science/social_signals/expert_notes.\n` +
     `${strictLine ? `${strictLine}\n` : ''}` +
     `${versionLine ? `${versionLine}\n` : ''}` +
+    `${Array.isArray(evidenceNotes) && evidenceNotes.length ? `Observed evidence:\n- ${evidenceNotes.join('\n- ')}\n` : ''}` +
     `Product: ${descriptor}`;
 }
 
@@ -32032,6 +32121,7 @@ function buildProductDeepScanPromptV3({
   strictNarrative = false,
   includeVersionReminder = false,
   anchorResolved = true,
+  evidenceNotes = [],
 } = {}) {
   const descriptor = String(productDescriptor || '').trim();
   const systemLines = [
@@ -32116,6 +32206,7 @@ function buildProductDeepScanPromptV3({
 
   return `${String(prefix || '')}[SYSTEM]\n${systemLines.join('\n')}\n[/SYSTEM]\n` +
     `Task: Deep-scan this product for suitability vs the user's profile. Return ONLY a JSON object matching this schema:\n${schemaDescription}\n` +
+    `${Array.isArray(evidenceNotes) && evidenceNotes.length ? `Observed evidence:\n- ${evidenceNotes.join('\n- ')}\n` : ''}` +
     `Product: ${descriptor}`;
 }
 
@@ -32126,6 +32217,7 @@ function buildProductDeepScanPromptV4({
   inciStatus = null,
   usageOverrides = null,
   anchorResolved = true,
+  evidenceNotes = [],
 } = {}) {
   const descriptor = String(productDescriptor || '').trim();
   const pType = String(productType || 'other').trim();
@@ -32209,6 +32301,7 @@ function buildProductDeepScanPromptV4({
     `- Product type: ${pType}\n` +
     (inciContext ? `- ${inciContext}\n` : '') +
     (overridesContext ? `- ${overridesContext}\n` : '') +
+    (Array.isArray(evidenceNotes) && evidenceNotes.length ? `- Observed evidence:\n${evidenceNotes.map((note) => `  - ${note}`).join('\n')}\n` : '') +
     `Product: ${descriptor}`;
 }
 
@@ -32222,6 +32315,7 @@ function buildProductDeepScanPrompt({
   inciStatus = null,
   usageOverrides = null,
   anchorResolved = true,
+  evidenceNotes = [],
 } = {}) {
   if (AURORA_PRODUCT_INTEL_PROMPT_VERSION === 'v2') {
     return buildProductDeepScanPromptV2({
@@ -32239,6 +32333,7 @@ function buildProductDeepScanPrompt({
       inciStatus,
       usageOverrides,
       anchorResolved,
+      evidenceNotes,
     });
   }
   return buildProductDeepScanPromptV3({
@@ -32248,6 +32343,7 @@ function buildProductDeepScanPrompt({
     strictNarrative,
     includeVersionReminder,
     anchorResolved,
+    evidenceNotes,
   });
 }
 
@@ -61768,8 +61864,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
-      const descriptorAnchor = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
-      const productDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
+      const descriptorAnchorBase = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
+      const descriptorAnchor =
+        descriptorAnchorBase && (
+          pickFirstTrimmed(descriptorAnchorBase.merchant_id, descriptorAnchorBase.merchantId) === EXTERNAL_SEED_MERCHANT_ID
+          || pickFirstTrimmed(descriptorAnchorBase.canonical_product_ref?.merchant_id, descriptorAnchorBase.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
+        )
+          ? (await loadExternalSeedEvidenceProduct(descriptorAnchorBase, { logger })) || descriptorAnchorBase
+          : descriptorAnchorBase;
       const collectInciCandidates = (sourceObj) => {
         const src = isPlainObject(sourceObj) ? sourceObj : null;
         if (!src) return [];
@@ -61798,7 +61900,24 @@ function mountAuroraBffRoutes(app, { logger }) {
             pushText(String(item));
           }
         };
+        const pushNested = (value) => {
+          if (!isPlainObject(value)) return;
+          pushText(value.inci);
+          pushText(value.inci_raw);
+          pushText(value.raw_ingredient_text_clean);
+          pushText(value.inci_list);
+          pushText(value.inciList);
+          pushArray(value.inci_list);
+          pushArray(value.inciList);
+          pushArray(value.inci_normalized);
+          pushArray(value.inciNormalized);
+          pushArray(value.active_ingredients);
+          pushArray(value.activeIngredients);
+          pushArray(value.key_ingredients);
+          pushArray(value.keyIngredients);
+        };
         pushText(src.inci);
+        pushText(src.inci_raw);
         pushText(src.ingredients);
         pushText(src.ingredient_list);
         pushText(src.ingredientList);
@@ -61806,11 +61925,25 @@ function mountAuroraBffRoutes(app, { logger }) {
         pushText(src.inciList);
         pushText(src.full_ingredients);
         pushText(src.fullIngredients);
+        pushText(src.raw_ingredient_text_clean);
+        pushText(src.rawIngredientTextClean);
+        pushText(src.pdp_ingredients_raw);
+        pushText(src.pdpIngredientsRaw);
+        pushText(src.pdp_active_ingredients_raw);
+        pushText(src.pdpActiveIngredientsRaw);
         pushArray(src.ingredients);
         pushArray(src.inci_list);
         pushArray(src.inciList);
         pushArray(src.full_ingredients);
         pushArray(src.fullIngredients);
+        pushArray(src.active_ingredients);
+        pushArray(src.activeIngredients);
+        pushArray(src.key_ingredients);
+        pushArray(src.keyIngredients);
+        pushArray(src.ingredient_tokens);
+        pushArray(src.ingredientTokens);
+        pushNested(src.ingredient_intel);
+        pushNested(src.ingredientIntel);
         return canonicalizeIngredientCandidates(out, { max: 180 });
       };
       const collectInciGapCodes = (sourceObj) => {
@@ -61832,20 +61965,32 @@ function mountAuroraBffRoutes(app, { logger }) {
         const src = isPlainObject(sourceObj) ? sourceObj : null;
         if (!src) return [];
         const out = [];
+        const pushSource = (typeRaw, urlRaw, meta = {}) => {
+          const type = String(typeRaw || '').trim();
+          const url = String(urlRaw || '').trim();
+          if (!type && !url) return;
+          out.push({
+            type,
+            url,
+            ...meta,
+          });
+        };
         const pushSources = (items) => {
           for (const row of Array.isArray(items) ? items : []) {
             if (!isPlainObject(row)) continue;
-            const type = String(row.type || row.source_type || '').trim();
-            const url = String(row.url || row.source_url || '').trim();
-            if (!type && !url) continue;
-            out.push({
-              type,
-              url,
+            pushSource(row.type || row.source_type, row.url || row.source_url, {
               confidence: row.confidence,
               ingredient_count: row.ingredient_count,
             });
           }
         };
+        pushSource(
+          src.source || src.source_type || src.retrieval_source || src.merchant_id,
+          src.url || src.canonical_url || src.destination_url || src.product_url,
+          {
+            confidence: src.source_confidence,
+          },
+        );
         pushSources(src.sources);
         if (isPlainObject(src.evidence)) pushSources(src.evidence.sources);
         return out;
@@ -61886,14 +62031,37 @@ function mountAuroraBffRoutes(app, { logger }) {
         url: String(parsed.data.url || descriptorAnchor?.url || ''),
         inciList: queryInciList,
       });
+      const baseProductDescriptor = buildProductInputText(descriptorAnchor, null) || parsed.data.name || input;
+      const deepScanEvidenceNotes = [];
+      if (queryInciList.length > 0) {
+        deepScanEvidenceNotes.push(`Observed ingredient signals: ${queryInciList.slice(0, 24).join(', ')}`);
+      }
+      if (queryEvidenceSources.length > 0) {
+        const sourceSummary = queryEvidenceSources
+          .map((row) => {
+            const type = String(row?.type || '').trim();
+            const url = String(row?.url || '').trim();
+            if (type && url) return `${type}: ${url}`;
+            return type || url;
+          })
+          .filter(Boolean)
+          .slice(0, 3);
+        if (sourceSummary.length > 0) {
+          deepScanEvidenceNotes.push(`Observed product sources: ${sourceSummary.join(' | ')}`);
+        }
+      }
+      if (queryGapCodes.length > 0) {
+        deepScanEvidenceNotes.push(`Known evidence gaps: ${queryGapCodes.slice(0, 8).join(', ')}`);
+      }
       const deepScanPromptOptions = {
         productType: v4ProductClassification.product_type,
         usageOverrides: v4ProductClassification.usage_overrides,
         ...(v4InciStatus ? { inciStatus: v4InciStatus } : {}),
+        ...(deepScanEvidenceNotes.length ? { evidenceNotes: deepScanEvidenceNotes } : {}),
       };
       const query = buildProductDeepScanPrompt({
         prefix,
-        productDescriptor,
+        productDescriptor: baseProductDescriptor,
         ...deepScanPromptOptions,
       });
 
@@ -78658,6 +78826,7 @@ const __internal = {
   buildRealtimeCompetitorQueryPlan,
   computeAnchorNameSimilarity,
   pickBestCatalogSearchCandidateForProductInput,
+  loadExternalSeedEvidenceProduct,
   mapCatalogProductToAnchorProduct,
   inferProductAnchorInputMode,
   buildProductAnchorDecisionSpine,
