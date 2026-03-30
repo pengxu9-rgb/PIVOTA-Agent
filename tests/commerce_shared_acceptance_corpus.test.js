@@ -615,6 +615,8 @@ describe('Commerce shared acceptance corpus', () => {
         'search_exact_ipsa_time_reset_aqua_locale_zh',
         'search_exactish_niacinamide_locale_en',
         'search_exactish_niacinamide_locale_zh',
+        'shopping_agent_merchant_query_ipsa_products_locale_en',
+        'aurora_bff_merchant_query_ipsa_products_locale_zh',
         'search_merchant_query_winona_products',
         'search_merchant_query_winona_products_locale_en',
         'search_merchant_query_winona_products_locale_zh',
@@ -718,6 +720,12 @@ describe('Commerce shared acceptance corpus', () => {
     const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
     const enExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_en');
     const zhExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_zh');
+    const enShoppingAgentMerchant = stagingCases.find(
+      (item) => item.id === 'shopping_agent_merchant_query_ipsa_products_locale_en',
+    );
+    const zhAuroraMerchant = stagingCases.find(
+      (item) => item.id === 'aurora_bff_merchant_query_ipsa_products_locale_zh',
+    );
     const enMerchant = stagingCases.find(
       (item) => item.id === 'search_merchant_query_winona_products_locale_en',
     );
@@ -815,6 +823,34 @@ describe('Commerce shared acceptance corpus', () => {
         locale: 'zh-CN',
       }),
     );
+    expect(enShoppingAgentMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enShoppingAgentMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'shopping_agent',
+        locale: 'en-US',
+      }),
+    );
+    expect(zhAuroraMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhAuroraMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'aurora-bff',
+        locale: 'zh-CN',
+      }),
+    );
     expect(enMerchant).toEqual(
       expect.objectContaining({
         family: 'merchant_query',
@@ -874,6 +910,8 @@ describe('Commerce shared acceptance corpus', () => {
     expect(prodIds.has('search_exact_ipsa_time_reset_aqua_locale_en')).toBe(false);
     expect(prodIds.has('search_exactish_niacinamide_locale_en')).toBe(false);
     expect(prodIds.has('search_exactish_niacinamide_locale_zh')).toBe(false);
+    expect(prodIds.has('shopping_agent_merchant_query_ipsa_products_locale_en')).toBe(false);
+    expect(prodIds.has('aurora_bff_merchant_query_ipsa_products_locale_zh')).toBe(false);
     expect(prodIds.has('search_merchant_query_winona_products_locale_zh')).toBe(false);
     expect(prodIds.has('search_strict_vitamin_c_serum_locale_en')).toBe(false);
     expect(prodIds.has('search_strict_vitamin_c_serum_budget_usd_locale_en')).toBe(false);

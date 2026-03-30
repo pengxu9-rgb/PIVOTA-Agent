@@ -752,6 +752,39 @@
       }
     },
     {
+      "id": "shopping_agent_merchant_query_ipsa_products_locale_en",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "shopping_agent",
+      "targets": {
+        "staging_matrix": {
+          "title": "shopping_agent merchant query preserves explicit en locale while staying on the cache-grade contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "aurora_bff_merchant_query_ipsa_products",
       "family": "merchant_query",
       "query": "IPSA products",
@@ -761,6 +794,39 @@
           "must_return_one_of_titles": [
             "IPSA Time Reset Aqua"
           ]
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_merchant_query_ipsa_products_locale_zh",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "title": "aurora-bff merchant query preserves explicit zh locale while staying on the cache-grade contract",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
         }
       }
     },
