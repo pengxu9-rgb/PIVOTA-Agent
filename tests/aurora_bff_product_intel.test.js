@@ -1333,6 +1333,26 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(String(out.product?.display_name || '')).toContain('The Ordinary UV Filters SPF 45 Serum');
   });
 
+  test('resolveAvailabilityProductByQuery resolves UV Filters through stable alias registry on the main path', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    jest.unmock('../src/services/productGroundingResolver');
+    jest.resetModules();
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.resolveAvailabilityProductByQuery({
+      query: 'The Ordinary UV Filters SPF 45 Serum',
+      lang: 'EN',
+      logger: { info: jest.fn(), warn: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.reason).toBeNull();
+    expect(out.product?.product_id).toBe('ext_bbe1ff8884f06d874bbccbd8');
+    expect(out.product?.merchant_id).toBe('external_seed');
+    expect(String(out.product?.display_name || '')).toContain('The Ordinary UV Filters SPF 45 Serum');
+  });
+
   test('finalizeProductAnchorDecisionSpine keeps first trusted owner and records later conflicts without override', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const spine = __internal.buildProductAnchorDecisionSpine({
