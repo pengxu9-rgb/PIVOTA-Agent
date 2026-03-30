@@ -54,6 +54,9 @@ const {
   applyVerifiedCandidateRestoreToRecoPayload,
 } = require('./recoContract');
 const {
+  extractRecoContextProductCandidatesFromRecommendations,
+} = require('./recoContextCandidates');
+const {
   buildFactLayer,
   finalizeSkinAnalysisContract,
   mergeFinalContractIntoAnalysis,
@@ -48195,27 +48198,6 @@ function extractRecoContextProductCandidatesFromCandidatePoolState(candidatePool
   return out;
 }
 
-function extractRecoContextProductCandidatesFromRecommendations(recommendations, { max = 12 } = {}) {
-  const rows = Array.isArray(recommendations) ? recommendations : [];
-  const out = [];
-  const seen = new Set();
-  for (const raw of rows) {
-    const normalized = normalizeRecoCatalogProduct(raw);
-    if (!isPlainObject(normalized)) continue;
-    const dedupeKey = pickFirstTrimmed(
-      normalized.product_id,
-      normalized.sku_id,
-      normalized.canonical_product_ref && `${normalized.canonical_product_ref.merchant_id}:${normalized.canonical_product_ref.product_id}`,
-      joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name)),
-    ).toLowerCase();
-    if (!dedupeKey || seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    out.push(normalized);
-    if (out.length >= max) break;
-  }
-  return out;
-}
-
 function buildIngredientRecoContextTargetBundle({
   ingredientQuery = '',
   candidates = [],
@@ -75043,7 +75025,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           );
           const finalSelectedProductCandidates = extractRecoContextProductCandidatesFromRecommendations(
             Array.isArray(payload?.recommendations) ? payload.recommendations : [],
-            { max: 12 },
+            {
+              max: 12,
+              normalizeRecoCatalogProduct,
+              pickFirstTrimmed,
+              joinBrandAndName,
+              isPlainObject,
+            },
           );
           latestRecoContextPatch = mergeIngredientRecoContextValue(latestRecoContextPatch, {
             primary_focus: payload?.recommendation_meta?.primary_focus,
