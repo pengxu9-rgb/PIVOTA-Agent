@@ -5914,6 +5914,36 @@ function dedupeCatalogSearchCandidatesForProductAnchor(candidates = []) {
   return out;
 }
 
+function recordCatalogFallbackAttemptsToProductAnchorSpine(spine, attempts = []) {
+  const rows = Array.isArray(attempts) ? attempts : [];
+  for (const rawAttempt of rows) {
+    const attempt = rawAttempt && typeof rawAttempt === 'object' && !Array.isArray(rawAttempt) ? rawAttempt : null;
+    if (!attempt) continue;
+    const mode = String(attempt.mode || '').trim().toLowerCase();
+    const stage =
+      mode === 'resolve'
+        ? 'catalog_resolve'
+        : mode === 'search_internal'
+          ? 'catalog_search_exact'
+          : mode === 'search_external_seed'
+            ? 'external_seed_search_exact'
+            : mode === 'llm_external_match'
+              ? 'llm_external_match'
+              : '';
+    if (!stage) continue;
+    recordProductAnchorDiagnosticAttempt(spine, {
+      stage,
+      source: stage,
+      ok: attempt.ok === true,
+      reasonCodes: [String(attempt.reason || '').trim()].filter(Boolean),
+      latencyMs: attempt.latency_ms,
+      meta: {
+        query: pickFirstTrimmed(attempt.query),
+      },
+    });
+  }
+}
+
 async function resolveOpenWorldExternalProductMatchForProductInput({
   inputText = '',
   inputUrl = '',
@@ -6362,6 +6392,7 @@ function buildProductAnchorDecisionSpine({ route = 'unknown', inputMode = 'name_
     fallback_display_state: null,
     fallback_display_reason_codes: [],
     observations: [],
+    diagnostic_attempts: [],
     conflict_flags: [],
     no_early_trusted_owner: false,
     late_conflict_without_override: false,
@@ -6389,12 +6420,80 @@ function restoreProductAnchorDecisionSpineFromSnapshot(snapshot, { route = 'unkn
   restored.fallback_display_source = pickFirstTrimmed(raw.fallback_display_source, raw.display_source);
   restored.fallback_display_state = pickFirstTrimmed(raw.fallback_display_state, raw.display_state);
   restored.fallback_display_reason_codes = normalizeProductAnchorDecisionReasonCodes(raw.fallback_display_reason_codes);
+  restored.diagnostic_attempts = Array.isArray(raw.diagnostic_attempts_summary)
+    ? raw.diagnostic_attempts_summary
+      .map((item) => {
+        const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+        if (!row) return null;
+        const stage = pickFirstTrimmed(row.stage, row.source);
+        const source = pickFirstTrimmed(row.source, row.stage);
+        if (!stage && !source) return null;
+        return {
+          stage: stage || source,
+          source: source || stage,
+          ok: row.ok === true,
+          reason_codes: normalizeProductAnchorDecisionReasonCodes(row.reason_codes, 8),
+          latency_ms: Number.isFinite(Number(row.latency_ms)) ? Math.trunc(Number(row.latency_ms)) : null,
+          ...(row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? { meta: row.meta } : {}),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 16)
+    : [];
   restored.conflict_flags = Array.isArray(raw.conflict_flags) ? raw.conflict_flags.slice(0, 8) : [];
   restored.no_early_trusted_owner = raw.no_early_trusted_owner === true;
   restored.late_conflict_without_override = raw.late_conflict_without_override === true;
   restored.late_override_bug = raw.late_override_bug === true;
   restored.finalized = true;
   return restored;
+}
+
+function recordProductAnchorDiagnosticAttempt(spine, {
+  stage,
+  source,
+  ok = false,
+  reasonCodes = [],
+  latencyMs = null,
+  meta = null,
+} = {}) {
+  const target = spine && typeof spine === 'object' && !Array.isArray(spine) ? spine : null;
+  if (!target) return null;
+  const stageName = String(stage || source || 'unknown').trim() || 'unknown';
+  const sourceName = String(source || stage || 'unknown').trim() || 'unknown';
+  const diagnostic = {
+    stage: stageName,
+    source: sourceName,
+    ok: ok === true,
+    reason_codes: normalizeProductAnchorDecisionReasonCodes(reasonCodes, 8),
+    latency_ms: Number.isFinite(Number(latencyMs)) ? Math.trunc(Number(latencyMs)) : null,
+    ...(meta && typeof meta === 'object' && !Array.isArray(meta) ? { meta } : {}),
+  };
+  target.diagnostic_attempts = Array.isArray(target.diagnostic_attempts)
+    ? [...target.diagnostic_attempts, diagnostic].slice(0, 16)
+    : [diagnostic];
+  return diagnostic;
+}
+
+function buildProductAnchorDiagnosticAttemptsSummary(spine) {
+  const target = spine && typeof spine === 'object' && !Array.isArray(spine) ? spine : null;
+  const diagnostics = Array.isArray(target?.diagnostic_attempts) ? target.diagnostic_attempts : [];
+  return diagnostics
+    .map((item) => {
+      const row = item && typeof item === 'object' && !Array.isArray(item) ? item : null;
+      if (!row) return null;
+      const stage = pickFirstTrimmed(row.stage, row.source);
+      const source = pickFirstTrimmed(row.source, row.stage);
+      if (!stage && !source) return null;
+      return {
+        stage: stage || source,
+        source: source || stage,
+        ok: row.ok === true,
+        reason_codes: normalizeProductAnchorDecisionReasonCodes(row.reason_codes, 8),
+        latency_ms: Number.isFinite(Number(row.latency_ms)) ? Math.trunc(Number(row.latency_ms)) : null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 16);
 }
 
 function recordProductAnchorDecisionObservation(spine, {
@@ -6565,6 +6664,7 @@ function buildProductAnchorSessionSnapshot(spine) {
     fallback_display_source: finalized.fallback_display_source || null,
     fallback_display_state: finalized.fallback_display_state || null,
     fallback_display_reason_codes: normalizeProductAnchorDecisionReasonCodes(finalized.fallback_display_reason_codes, 8),
+    diagnostic_attempts_summary: buildProductAnchorDiagnosticAttemptsSummary(finalized),
     owner_reason_codes: normalizeProductAnchorDecisionReasonCodes(finalized.owner_reason_codes, 8),
     owner_confidence: Number.isFinite(Number(finalized.owner_confidence)) ? Number(finalized.owner_confidence) : null,
     conflict_flags: Array.isArray(finalized.conflict_flags) ? finalized.conflict_flags.slice(0, 8) : [],
@@ -60198,6 +60298,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           lang: ctx.lang,
           logger,
         });
+        recordCatalogFallbackAttemptsToProductAnchorSpine(parseAnchorSpine, catalogFallback?.attempts);
         const fallbackReasonCode = mapCatalogParseMissingReason(catalogFallback && catalogFallback.reason);
         const catalogRecoveryToken = (() => {
           const reasonToken = String(catalogFallback?.reason || 'fallback_miss').toLowerCase();
@@ -61084,6 +61185,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           lang: ctx.lang,
           logger,
         });
+        recordCatalogFallbackAttemptsToProductAnchorSpine(analyzeAnchorSpine, catalogFallback?.attempts);
         if (catalogFallback.ok && catalogFallback.product) {
           const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
           applyAnchorCandidateGuard(fallbackAnchor, 'catalog_fallback', {
@@ -61516,6 +61618,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           lang: ctx.lang,
           logger,
         });
+        recordCatalogFallbackAttemptsToProductAnchorSpine(analyzeAnchorSpine, catalogFallback?.attempts);
         if (catalogFallback.ok && catalogFallback.product) {
           const fallbackAnchor = mapCatalogProductToAnchorProduct(catalogFallback.product, { fallbackName: String(input || '') });
           applyAnchorCandidateGuard(fallbackAnchor, 'catalog_fallback', {

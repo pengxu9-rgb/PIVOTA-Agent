@@ -266,6 +266,117 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           owner_source: 'local_stable_alias_ref',
           owner_state: 'miss',
           fallback_display_source: 'llm_external_match',
+          diagnostic_attempts_summary: expect.arrayContaining([
+            expect.objectContaining({
+              stage: 'catalog_resolve',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'catalog_search_exact',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'external_seed_search_exact',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'llm_external_match',
+              ok: true,
+            }),
+          ]),
+        }),
+      );
+    } finally {
+      __internal.__resetCallGeminiJsonObjectForTest();
+    }
+  });
+
+  test('/v1/product/parse records catalog fallback attempt diagnostics when all deterministic and llm paths miss', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('http://aurora.test')
+      .post('/api/upstream/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .times(3)
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'false')
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((query) => Number(query.limit) === 8 && String(query.allow_external_seed || '') === 'true')
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        products: [],
+      },
+    }));
+
+    try {
+      const app = require('../src/server');
+      const res = await request(app)
+        .post('/v1/product/parse')
+        .set('X-Aurora-UID', 'uid_test_parse_attempt_diagnostics_1')
+        .send({ text: 'The Ordinary UV Filters SPF 45 Serum' })
+        .expect(200);
+
+      const card = res.body.cards.find((c) => c.type === 'product_parse');
+      expect(card).toBeTruthy();
+      expect(card.payload.product).toBeNull();
+      expect(card.payload.parse_source).toBe('none');
+      expect(card.payload.anchor_owner_source).toBe('local_stable_alias_ref');
+      expect(card.payload.anchor_owner_state).toBe('miss');
+      expect(res.body.session_patch?.meta?.product_anchor_snapshot).toEqual(
+        expect.objectContaining({
+          owner_source: 'local_stable_alias_ref',
+          owner_state: 'miss',
+          no_early_trusted_owner: true,
+          diagnostic_attempts_summary: expect.arrayContaining([
+            expect.objectContaining({
+              stage: 'catalog_resolve',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'catalog_search_exact',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'external_seed_search_exact',
+              ok: false,
+            }),
+            expect.objectContaining({
+              stage: 'llm_external_match',
+              ok: false,
+              reason_codes: ['llm_external_match_empty'],
+            }),
+          ]),
         }),
       );
     } finally {
