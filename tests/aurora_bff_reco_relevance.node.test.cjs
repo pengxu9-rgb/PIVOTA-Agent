@@ -2240,7 +2240,7 @@ test('/v1/chat: ingredient reco restores selected catalog candidates after ingre
     assert.match(String(latestRecoContext?.context_origin || ''), /ingredient/i);
     assert.match(String(latestRecoContext?.primary_target_id || ''), /ceramide.*moisturizer/i);
     assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
-    assert.equal(latestRecoContext.product_candidates.length >= 1, true);
+    assert.equal(latestRecoContext.product_candidates.length >= 2, true);
     assert.equal((payload.ingredient_evidence?.product_candidates_count || 0) >= 2, true);
   } finally {
     axios.get = originalGet;

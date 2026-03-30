@@ -173,7 +173,7 @@ test('extractProfilePatchFromRequestContextPayload reads nested quick-profile si
   }
 });
 
-test('__internal: filterRecoContextProductCandidates drops wrong-family and query-shaped mock-like candidates', () => {
+test('__internal: filterRecoContextProductCandidates drops wrong-family and query-shaped synthetic candidates', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const filtered = __internal.filterRecoContextProductCandidates(

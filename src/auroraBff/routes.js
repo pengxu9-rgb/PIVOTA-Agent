@@ -13590,9 +13590,9 @@ function normalizeRecoContextPrimaryFocus(raw) {
   };
 }
 
-const RECO_CONTEXT_MOCKLIKE_TITLE_NOISE_RE =
+const RECO_CONTEXT_QUERY_SHAPED_TITLE_NOISE_RE =
   /\b(skincare(?:\s+products?)?|skin\s+care\s+products?|best|recommend(?:ed|ation)?|for\s+me|for\s+my\s+skin)\b/i;
-const RECO_CONTEXT_MOCKLIKE_GENERIC_TOKENS = new Set([
+const RECO_CONTEXT_QUERY_SHAPED_GENERIC_TOKENS = new Set([
   'acne',
   'antiaging',
   'barrier',
@@ -13703,10 +13703,15 @@ function buildRecoContextCandidateFilterTarget(targetOrContext) {
     ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
     ...(issueType ? { issue_type: issueType } : {}),
     ...(goal ? { goal } : {}),
+    ...(Array.isArray(row.product_candidates) && row.product_candidates.length
+      ? { product_candidates: row.product_candidates }
+      : Array.isArray(row.productCandidates) && row.productCandidates.length
+        ? { product_candidates: row.productCandidates }
+        : {}),
   };
 }
 
-function isMockLikeRecoContextCandidate(row, { target = null } = {}) {
+function isQueryShapedRecoContextCandidate(row, { target = null } = {}) {
   const candidate = normalizeRecoCatalogProduct(row) || coerceRecoCandidateForGuardrail(row);
   if (!isPlainObject(candidate)) return false;
   const brand = pickFirstTrimmed(candidate.brand);
@@ -13719,7 +13724,7 @@ function isMockLikeRecoContextCandidate(row, { target = null } = {}) {
   if (!titleTokens.length) return false;
 
   const noiseMatchCount = (normalizedTitle.match(/\b(skincare|products?|best|recommend(?:ed|ation)?|for|with|my|skin)\b/g) || []).length;
-  if (RECO_CONTEXT_MOCKLIKE_TITLE_NOISE_RE.test(normalizedTitle) && noiseMatchCount >= 2) {
+  if (RECO_CONTEXT_QUERY_SHAPED_TITLE_NOISE_RE.test(normalizedTitle) && noiseMatchCount >= 2) {
     return true;
   }
 
@@ -13733,7 +13738,7 @@ function isMockLikeRecoContextCandidate(row, { target = null } = {}) {
   ]);
   if (!allowedTokens.size) return false;
   const allTokensAreContextual = titleTokens.every((token) =>
-    allowedTokens.has(token) || RECO_CONTEXT_MOCKLIKE_GENERIC_TOKENS.has(token));
+    allowedTokens.has(token) || RECO_CONTEXT_QUERY_SHAPED_GENERIC_TOKENS.has(token));
   if (!allTokensAreContextual) return false;
   return titleTokens.length >= 3;
 }
@@ -13757,7 +13762,10 @@ function filterRecoContextProductCandidates(candidates, { target = null, max = 1
     );
     if (directUrl && isSearchLikeUrl(directUrl)) continue;
     if (targetStub && !recommendationStronglyMatchesRecoContextTarget(normalized, targetStub)) continue;
-    if (isMockLikeRecoContextCandidate(normalized, { target: targetStub })) continue;
+    const explicitTargetCandidateMatch =
+      Boolean(targetStub && Array.isArray(targetStub.product_candidates) && targetStub.product_candidates.length)
+      && rowMatchesIngredientConstraintProductCandidate(normalized, targetStub.product_candidates);
+    if (!explicitTargetCandidateMatch && isQueryShapedRecoContextCandidate(normalized, { target: targetStub })) continue;
     const dedupeKey = pickFirstTrimmed(
       normalized.product_id,
       normalized.sku_id,
@@ -47232,7 +47240,7 @@ function normalizeRecoPromptCandidates(candidates, region) {
   for (const row of Array.isArray(candidates) ? candidates : []) {
     const item = row && typeof row === 'object' && !Array.isArray(row) ? row : null;
     if (!item) continue;
-    if (isMockLikeRecoContextCandidate(item)) continue;
+    if (isQueryShapedRecoContextCandidate(item)) continue;
     const skuId = pickFirstTrimmed(item.sku_id, item.skuId);
     const productId = pickFirstTrimmed(item.product_id, item.productId);
     const brand = pickFirstTrimmed(item.brand);
@@ -48182,6 +48190,27 @@ function extractRecoContextProductCandidatesFromCandidatePoolState(candidatePool
       retrieval_source: pickFirstTrimmed(normalized.retrieval_source, raw?.retrieval_source, 'catalog') || 'catalog',
       retrieval_reason: pickFirstTrimmed(normalized.retrieval_reason, raw?.retrieval_reason, 'catalog_selected_candidate') || 'catalog_selected_candidate',
     });
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function extractRecoContextProductCandidatesFromRecommendations(recommendations, { max = 12 } = {}) {
+  const rows = Array.isArray(recommendations) ? recommendations : [];
+  const out = [];
+  const seen = new Set();
+  for (const raw of rows) {
+    const normalized = normalizeRecoCatalogProduct(raw);
+    if (!isPlainObject(normalized)) continue;
+    const dedupeKey = pickFirstTrimmed(
+      normalized.product_id,
+      normalized.sku_id,
+      normalized.canonical_product_ref && `${normalized.canonical_product_ref.merchant_id}:${normalized.canonical_product_ref.product_id}`,
+      joinBrandAndName(normalized.brand, pickFirstTrimmed(normalized.display_name, normalized.name)),
+    ).toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(normalized);
     if (out.length >= max) break;
   }
   return out;
@@ -75012,6 +75041,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload,
             applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
           );
+          const finalSelectedProductCandidates = extractRecoContextProductCandidatesFromRecommendations(
+            Array.isArray(payload?.recommendations) ? payload.recommendations : [],
+            { max: 12 },
+          );
           latestRecoContextPatch = mergeIngredientRecoContextValue(latestRecoContextPatch, {
             primary_focus: payload?.recommendation_meta?.primary_focus,
             confidence_policy: payload?.recommendation_meta?.confidence_policy,
@@ -75022,6 +75055,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             selected_target_ids: Array.isArray(payload?.recommendation_meta?.selected_target_ids)
               ? payload.recommendation_meta.selected_target_ids
               : [],
+            ...(finalSelectedProductCandidates.length ? { product_candidates: finalSelectedProductCandidates } : {}),
           });
         }
 
