@@ -18096,7 +18096,19 @@ function softenPhotoQualityFailFromUsablePhotoModules({
   const regionsAvailableCount = Math.max(0, Math.trunc(Number(payload.regions_available_count) || 0));
   const hasModuleIssues = Array.isArray(payload.modules)
     && payload.modules.some((row) => Array.isArray(row && row.issues) && row.issues.length > 0);
-  if (!(fallbackReason === 'ONNX_FAIL' && skinmaskSource === 'none' && regionsAvailableCount > 0 && hasModuleIssues)) {
+  const hasRenderableModuleShell = Array.isArray(payload.modules)
+    && payload.modules.some((row) => {
+      if (!isPlainObject(row)) return false;
+      const box = isPlainObject(row.box) ? row.box : null;
+      const hasFiniteBox = Boolean(
+        box
+        && ['x', 'y', 'w', 'h'].every((key) => Number.isFinite(Number(box[key]))),
+      );
+      const hasMask = typeof row.mask_rle_norm === 'string' && row.mask_rle_norm.trim().length > 0;
+      const modulePixels = Number.isFinite(Number(row.module_pixels)) ? Number(row.module_pixels) : 0;
+      return hasFiniteBox && (hasMask || modulePixels > 0);
+    });
+  if (!(fallbackReason === 'ONNX_FAIL' && skinmaskSource === 'none' && (regionsAvailableCount > 0 || hasModuleIssues || hasRenderableModuleShell))) {
     return { photoQuality, photoModulesCard, applied: false, reason: null };
   }
 
@@ -26682,6 +26694,18 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
     ) || '',
   ).trim().toLowerCase();
   const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  const hasRenderablePhotoModuleShell = Array.isArray(photoPayload && photoPayload.modules)
+    && photoPayload.modules.some((row) => {
+      if (!isPlainObject(row)) return false;
+      const box = isPlainObject(row.box) ? row.box : null;
+      const hasFiniteBox = Boolean(
+        box
+        && ['x', 'y', 'w', 'h'].every((key) => Number.isFinite(Number(box[key]))),
+      );
+      const hasMask = typeof row.mask_rle_norm === 'string' && row.mask_rle_norm.trim().length > 0;
+      const modulePixels = Number.isFinite(Number(row.module_pixels)) ? Number(row.module_pixels) : 0;
+      return hasFiniteBox && (hasMask || modulePixels > 0);
+    });
   const primaryIngredientId = normalizePhotoIngredientKey(
     pickFirstTrimmed(
       canonicalTargets[0] && canonicalTargets[0].ingredient_id,
@@ -26689,8 +26713,11 @@ function annotateIngredientPlanForPhotoLed(payload, photoModulesCard, language) 
       resolvePhotoPrimaryTargetIngredientId(photoModulesCard),
     ),
   );
-  if (qualityGrade === 'fail' || (!topFindings.length && !primaryIngredientId)) {
+  if (qualityGrade === 'fail') {
     return buildPhotoQualityFailedIngredientPlanV2(payload, null);
+  }
+  if (!topFindings.length && !primaryIngredientId) {
+    return hasRenderablePhotoModuleShell ? payload : buildPhotoQualityFailedIngredientPlanV2(payload, null);
   }
   const coverageIndex = buildPhotoIngredientCoverageIndex(photoModulesCard, language);
   if (!coverageIndex.size) return payload;

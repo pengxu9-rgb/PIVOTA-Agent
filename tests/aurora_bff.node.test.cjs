@@ -342,6 +342,60 @@ test('__internal: softenPhotoQualityFailFromUsablePhotoModules downgrades ONNX-o
   }
 });
 
+test('__internal: softenPhotoQualityFailFromUsablePhotoModules downgrades ONNX-only fail when renderable module shells exist without issues', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.softenPhotoQualityFailFromUsablePhotoModules({
+      photoQuality: {
+        grade: 'fail',
+        reasons: ['pixel_diagnosis_failed'],
+      },
+      photoModulesCard: {
+        type: 'photo_modules_v1',
+        payload: {
+          quality_grade: 'fail',
+          low_confidence: true,
+          quality_labels: ['quality_low_confidence'],
+          regions_available_count: 0,
+          modules: [
+            {
+              module_id: 'forehead',
+              issues: [],
+              box: { x: 0.344, y: 0.078, w: 0.313, h: 0.125 },
+              module_pixels: 160,
+              mask_rle_norm: '342,20,44,20,44,20,44,20',
+            },
+          ],
+          module_overlay_debug: {
+            skinmask_source: 'none',
+            skinmask_fallback_reason: 'ONNX_FAIL',
+            degraded_reasons: [],
+          },
+          summary_v1: {
+            top_findings: [],
+            quality_caveats: ['photo_quality_failed', 'low_confidence_primary_finding'],
+          },
+        },
+      },
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.reason, 'skinmask_onnx_fail_softened');
+    assert.equal(out.photoQuality.grade, 'degraded');
+    assert.equal(out.photoModulesCard.payload.quality_grade, 'degraded');
+    assert.equal(
+      out.photoModulesCard.payload.summary_v1.quality_caveats.includes('photo_quality_failed'),
+      false,
+    );
+    assert.equal(
+      out.photoModulesCard.payload.module_overlay_debug.degraded_reasons.includes('skinmask_onnx_fail_softened'),
+      true,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();
@@ -10976,6 +11030,83 @@ test('photo_quality_failed ingredient plan strips fallback residue and suppresse
       photoQualityGrade: 'fail',
     });
     assert.equal(latestRecoContext, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('degraded photo shell without findings preserves baseline ingredient plan and reco handoff', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rawPlan = {
+      schema_version: 'aurora.ingredient_plan.v2',
+      targets: [
+        {
+          ingredient_id: 'ceramide_np',
+          ingredient_name: 'Ceramide NP',
+          target_role: 'primary',
+          target_step_family: 'moisturizer',
+          resolved_target_step: 'moisturizer',
+          recommendation_mode: 'strict_match',
+          strict_product_count: 1,
+          why: ['Barrier support while photo evidence stays sparse.'],
+          products: {
+            competitors: [
+              {
+                product_id: 'prod_barrier_rescue',
+                merchant_id: 'merchant_barrier',
+                name: 'Barrier Rescue Cream',
+                url: 'https://example.com/barrier-rescue',
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const photoModulesCard = {
+      type: 'photo_modules_v1',
+      payload: {
+        quality_grade: 'degraded',
+        summary_v1: {
+          top_module_id: 'forehead',
+          top_findings: [],
+          quality_caveats: ['photo_quality_degraded', 'low_confidence_primary_finding'],
+        },
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [],
+            actions: [],
+            box: { x: 0.344, y: 0.078, w: 0.313, h: 0.125 },
+            module_pixels: 160,
+            mask_rle_norm: '342,20,44,20,44,20,44,20',
+          },
+        ],
+      },
+    };
+
+    const annotated = __internal.annotateIngredientPlanForPhotoLed(rawPlan, photoModulesCard, 'EN');
+    assert.equal(Array.isArray(annotated?.targets), true);
+    assert.equal(annotated.targets.length, 1);
+    assert.equal(annotated.targets[0]?.ingredient_id, 'ceramide_np');
+    assert.equal(annotated?.preview_reason || null, null);
+    assert.equal(annotated?.products_empty_reason || null, null);
+
+    const latestRecoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      ingredientPlan: annotated,
+      photoModulesCard,
+      artifactId: 'art_degraded_shell',
+      contextOrigin: 'analysis_summary',
+      analysisSource: 'rule_based_with_photo',
+      usePhoto: true,
+      usedPhotos: true,
+      photoQualityGrade: 'degraded',
+    });
+
+    assert.ok(latestRecoContext);
+    assert.equal(latestRecoContext.ingredient_query, 'Ceramide NP');
+    assert.equal(latestRecoContext.resolved_target_step, 'moisturizer');
+    assert.match(String(latestRecoContext.primary_target_id || ''), /ceramide_np/i);
   } finally {
     delete require.cache[moduleId];
   }
