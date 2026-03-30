@@ -122,12 +122,16 @@
       "contract_bridge.resolved_contract",
       "strict_constraint_query",
       "strict_constraint_reason",
-      "matched_ingredient_ids.0"
+      "matched_ingredient_ids.0",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
       "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
-      "strict_constraint_reason": "ingredient"
+      "strict_constraint_reason": "ingredient",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true
     },
     "id": "shopping_agent_strict_niacinamide_serum",
     "family": "strict_ingredient",
@@ -159,11 +163,16 @@
       "service_version.commit",
       "query_source",
       "search_trace.query_class",
-      "search_trace.final_decision"
+      "search_trace.final_decision",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
       "search_trace.query_class": "lookup",
-      "search_trace.final_decision": "cache_returned"
+      "search_trace.final_decision": "cache_returned",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true,
+      "search_decision.decision_authority": "cache_cross_merchant_search"
     },
     "id": "shopping_agent_exact_ipsa_time_reset_aqua",
     "family": "exact_product_lookup",
@@ -183,12 +192,16 @@
       "strict_constraint_query",
       "strict_constraint_reason",
       "matched_ingredient_ids.0",
-      "search_trace.final_decision"
+      "search_trace.final_decision",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
       "contract_bridge.resolved_contract": "shop_invoke_strict",
       "strict_constraint_query": true,
-      "strict_constraint_reason": "ingredient"
+      "strict_constraint_reason": "ingredient",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true
     },
     "id": "shopping_agent_strict_niacinamide",
     "family": "exactish_lookup",
@@ -215,10 +228,15 @@
     "must_have_metadata": [
       "service_version.commit",
       "query_source",
-      "search_trace.final_decision"
+      "search_trace.final_decision",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "search_trace.final_decision": "cache_returned"
+      "search_trace.final_decision": "cache_returned",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true,
+      "search_decision.decision_authority": "cache_cross_merchant_search"
     },
     "id": "shopping_agent_merchant_query_ipsa_products",
     "family": "merchant_query",
@@ -246,10 +264,15 @@
     "allow_zero_results": true,
     "must_have_metadata": [
       "service_version.commit",
-      "search_trace.final_decision"
+      "search_trace.final_decision",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked"
     ],
     "must_equal_metadata": {
-      "search_trace.final_decision": "clarify"
+      "search_trace.final_decision": "clarify",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true,
+      "search_decision.decision_authority": "agent_products_search"
     },
     "must_have_clarification": true,
     "id": "shopping_agent_clarify_date_makeup",

@@ -116,6 +116,11 @@ describe('Celestial commerce-core production canary wrapper', () => {
                 primary_path_used: 'cache_stage',
               },
               search_trace: { final_decision: 'cache_returned' },
+              search_decision: {
+                decision_authority: 'cache_cross_merchant_search',
+                decision_locked: true,
+                decision_lock_reason: 'cache_main_path',
+              },
             },
           }),
         );
@@ -165,6 +170,11 @@ describe('Celestial commerce-core production canary wrapper', () => {
               primary_path_used: 'agent_products_search',
             },
             search_trace: { final_decision: 'clarify' },
+            search_decision: {
+              decision_authority: 'agent_products_search',
+              decision_locked: true,
+              decision_lock_reason: 'clarify_contract',
+            },
           },
         }),
       );

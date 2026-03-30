@@ -8,6 +8,47 @@ function normalizeFamily(input) {
   return String(input || '').trim();
 }
 
+function buildPrimaryReliabilityProdDefaults({ decisionAuthority = null } = {}) {
+  return {
+    must_have_metadata: [
+      'route_health.fallback_triggered',
+      'search_decision.decision_locked',
+    ],
+    must_equal_metadata: {
+      'route_health.fallback_triggered': false,
+      'search_decision.decision_locked': true,
+      ...(decisionAuthority
+        ? {
+            'search_decision.decision_authority': decisionAuthority,
+          }
+        : {}),
+    },
+  };
+}
+
+function buildPrimaryReliabilityStagingDefaults({ decisionAuthority = null } = {}) {
+  return {
+    ownership: {
+      must_equal_paths: {
+        'metadata.route_health.fallback_triggered': false,
+        'metadata.search_decision.decision_locked': true,
+        ...(decisionAuthority
+          ? {
+              'metadata.search_decision.decision_authority': decisionAuthority,
+            }
+          : {}),
+      },
+    },
+    observability: {
+      must_have_paths: [
+        'metadata.route_health.fallback_triggered',
+        'metadata.search_decision.decision_locked',
+        ...(decisionAuthority ? ['metadata.search_decision.decision_authority'] : []),
+      ],
+    },
+  };
+}
+
 function buildProdGateFamilyDefaults(family) {
   switch (normalizeFamily(family)) {
     case 'strict_ingredient':
@@ -22,11 +63,13 @@ function buildProdGateFamilyDefaults(family) {
           'strict_constraint_query',
           'strict_constraint_reason',
           'matched_ingredient_ids.0',
+          ...buildPrimaryReliabilityProdDefaults().must_have_metadata,
         ],
         must_equal_metadata: {
           'contract_bridge.resolved_contract': 'shop_invoke_strict',
           strict_constraint_query: true,
           strict_constraint_reason: 'ingredient',
+          ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
         },
       };
     case 'merchant_query':
@@ -40,9 +83,13 @@ function buildProdGateFamilyDefaults(family) {
           'service_version.commit',
           'query_source',
           'search_trace.final_decision',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'cache_cross_merchant_search' })
+            .must_have_metadata,
         ],
         must_equal_metadata: {
           'search_trace.final_decision': 'cache_returned',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'cache_cross_merchant_search' })
+            .must_equal_metadata,
         },
       };
     case 'exact_product_lookup':
@@ -57,10 +104,14 @@ function buildProdGateFamilyDefaults(family) {
           'query_source',
           'search_trace.query_class',
           'search_trace.final_decision',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'cache_cross_merchant_search' })
+            .must_have_metadata,
         ],
         must_equal_metadata: {
           'search_trace.query_class': 'lookup',
           'search_trace.final_decision': 'cache_returned',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'cache_cross_merchant_search' })
+            .must_equal_metadata,
         },
       };
     case 'exactish_lookup':
@@ -75,11 +126,13 @@ function buildProdGateFamilyDefaults(family) {
           'strict_constraint_reason',
           'matched_ingredient_ids.0',
           'search_trace.final_decision',
+          ...buildPrimaryReliabilityProdDefaults().must_have_metadata,
         ],
         must_equal_metadata: {
           'contract_bridge.resolved_contract': 'shop_invoke_strict',
           strict_constraint_query: true,
           strict_constraint_reason: 'ingredient',
+          ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
         },
       };
     case 'scenario_clarify':
@@ -92,9 +145,13 @@ function buildProdGateFamilyDefaults(family) {
         must_have_metadata: [
           'service_version.commit',
           'search_trace.final_decision',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'agent_products_search' })
+            .must_have_metadata,
         ],
         must_equal_metadata: {
           'search_trace.final_decision': 'clarify',
+          ...buildPrimaryReliabilityProdDefaults({ decisionAuthority: 'agent_products_search' })
+            .must_equal_metadata,
         },
         must_have_clarification: true,
       };
@@ -171,6 +228,7 @@ function buildStagingSemanticFamilyDefaults(family) {
             'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
             'metadata.strict_constraint_query': true,
             'metadata.strict_constraint_reason': 'ingredient',
+            ...buildPrimaryReliabilityStagingDefaults().ownership.must_equal_paths,
           },
           must_have_paths: ['metadata.matched_ingredient_ids.0'],
         },
@@ -178,6 +236,7 @@ function buildStagingSemanticFamilyDefaults(family) {
           must_have_paths: [
             'metadata.service_version.commit',
             'metadata.search_trace.final_decision',
+            ...buildPrimaryReliabilityStagingDefaults().observability.must_have_paths,
           ],
         },
         kind: 'semantic',
@@ -201,6 +260,9 @@ function buildStagingSemanticFamilyDefaults(family) {
         ownership: {
           must_equal_paths: {
             'metadata.search_trace.final_decision': 'cache_returned',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'cache_cross_merchant_search',
+            }).ownership.must_equal_paths,
           },
           must_have_paths: ['metadata.query_source'],
         },
@@ -208,6 +270,9 @@ function buildStagingSemanticFamilyDefaults(family) {
           must_have_paths: [
             'metadata.service_version.commit',
             'metadata.search_trace',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'cache_cross_merchant_search',
+            }).observability.must_have_paths,
           ],
         },
         kind: 'semantic',
@@ -232,6 +297,9 @@ function buildStagingSemanticFamilyDefaults(family) {
           must_equal_paths: {
             'metadata.search_trace.query_class': 'lookup',
             'metadata.search_trace.final_decision': 'cache_returned',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'cache_cross_merchant_search',
+            }).ownership.must_equal_paths,
           },
         },
         observability: {
@@ -239,6 +307,9 @@ function buildStagingSemanticFamilyDefaults(family) {
             'metadata.service_version.commit',
             'metadata.query_source',
             'metadata.search_trace.query_class',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'cache_cross_merchant_search',
+            }).observability.must_have_paths,
           ],
         },
         kind: 'semantic',
@@ -262,6 +333,7 @@ function buildStagingSemanticFamilyDefaults(family) {
             'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
             'metadata.strict_constraint_query': true,
             'metadata.strict_constraint_reason': 'ingredient',
+            ...buildPrimaryReliabilityStagingDefaults().ownership.must_equal_paths,
           },
           must_have_paths: ['metadata.matched_ingredient_ids.0'],
         },
@@ -269,6 +341,7 @@ function buildStagingSemanticFamilyDefaults(family) {
           must_have_paths: [
             'metadata.service_version.commit',
             'metadata.search_trace.final_decision',
+            ...buildPrimaryReliabilityStagingDefaults().observability.must_have_paths,
           ],
         },
         kind: 'semantic',
@@ -292,12 +365,18 @@ function buildStagingSemanticFamilyDefaults(family) {
         ownership: {
           must_equal_paths: {
             'metadata.search_trace.final_decision': 'clarify',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'agent_products_search',
+            }).ownership.must_equal_paths,
           },
         },
         observability: {
           must_have_paths: [
             'metadata.service_version.commit',
             'metadata.search_trace.final_decision',
+            ...buildPrimaryReliabilityStagingDefaults({
+              decisionAuthority: 'agent_products_search',
+            }).observability.must_have_paths,
           ],
         },
         kind: 'semantic',

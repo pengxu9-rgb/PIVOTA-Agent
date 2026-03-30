@@ -14,6 +14,23 @@ function deepClone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+const MERGED_ARRAY_KEYS = new Set([
+  'family_aliases',
+  'must_have_metadata',
+  'must_be_positive_metadata',
+  'must_not_match_fallback_sources',
+  'must_have_reason_codes',
+  'must_return_one_of_titles',
+  'must_have_paths',
+  'must_be_positive_paths',
+]);
+
+function mergeUniqueArray(base = [], override = []) {
+  return Array.from(new Set([...base, ...override].map((item) => JSON.stringify(item)))).map((item) =>
+    JSON.parse(item),
+  );
+}
+
 function deepMerge(base, override) {
   if (override === undefined) return deepClone(base);
   if (!isPlainObject(base) || !isPlainObject(override)) {
@@ -25,6 +42,8 @@ function deepMerge(base, override) {
     const baseValue = out[key];
     if (isPlainObject(baseValue) && isPlainObject(value)) {
       out[key] = deepMerge(baseValue, value);
+    } else if (Array.isArray(baseValue) && Array.isArray(value) && MERGED_ARRAY_KEYS.has(key)) {
+      out[key] = mergeUniqueArray(baseValue, value);
     } else {
       out[key] = deepClone(value);
     }
