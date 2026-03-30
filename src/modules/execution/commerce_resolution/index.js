@@ -1372,11 +1372,40 @@ function createCommerceResolutionRuntime(deps = {}) {
             applied: false,
             reason: null,
           },
+      route_health:
+        metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+          ? {
+              ...metadata.route_health,
+              fallback_triggered: false,
+              fallback_reason: null,
+            }
+          : metadata.route_health,
+      search_trace:
+        metadata.search_trace && typeof metadata.search_trace === 'object' && !Array.isArray(metadata.search_trace)
+          ? {
+              ...metadata.search_trace,
+              final_decision: 'clarify',
+              fallback_reason: null,
+            }
+          : metadata.search_trace,
+      search_decision:
+        searchDecision
+          ? {
+              ...searchDecision,
+              final_decision: 'clarify',
+              decision_authority: 'agent_products_search',
+              decision_locked: true,
+              decision_lock_reason: 'primary_clarify_contract',
+              fallback_reason: null,
+            }
+          : metadata.search_decision,
       primary_clarify_contract: {
         normalized: true,
         recovery_reason: 'ambiguity_gate_primary_clarify',
         original_query_source: querySource,
         original_fallback_reason: fallbackReason,
+        primary_authority_retained: true,
+        fallback_adopted: false,
       },
     };
     delete nextMetadata.strict_empty;
@@ -2145,6 +2174,17 @@ function createCommerceResolutionRuntime(deps = {}) {
       };
     }
 
+    if (Number(primaryUsableCount || 0) > 0) {
+      return {
+        decision: 'upstream_returned',
+        reason: shouldFallback ? exhaustedReason : 'not_needed',
+        querySource: 'agent_products_search',
+        resolution_authority: 'primary_upstream',
+        fallback_applied: false,
+        fallback_reason_codes: [],
+      };
+    }
+
     if (clarifyAfterFallback) {
       return {
         decision: 'clarify',
@@ -2164,17 +2204,6 @@ function createCommerceResolutionRuntime(deps = {}) {
         resolution_authority: querySource,
         fallback_applied: true,
         fallback_reason_codes: [exhaustedReason],
-      };
-    }
-
-    if (Number(primaryUsableCount || 0) > 0) {
-      return {
-        decision: 'upstream_returned',
-        reason: shouldFallback ? exhaustedReason : 'not_needed',
-        querySource,
-        resolution_authority: shouldFallback ? querySource : 'primary_upstream',
-        fallback_applied: Boolean(shouldFallback),
-        fallback_reason_codes: shouldFallback ? [exhaustedReason] : [],
       };
     }
 
