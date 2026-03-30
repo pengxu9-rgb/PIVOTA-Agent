@@ -25909,6 +25909,68 @@ function deriveIngredientPlanRecoContext(ingredientPlan, {
   return null;
 }
 
+const ANALYSIS_SUMMARY_SOFTENABLE_PHOTO_ARTIFACT_REASONS = new Set([
+  'photo_download_url_generate_failed',
+  'photo_download_url_fetch_4xx',
+  'photo_download_url_fetch_5xx',
+  'photo_download_url_timeout',
+]);
+
+function shouldSoftenAnalysisSummaryLowConfidence({
+  analysisSource = '',
+  usePhoto = false,
+  photosProvided = false,
+  usedPhotos = false,
+  photoQualityGrade = '',
+  degradeReason = '',
+  ingredientPlan = null,
+  profileSummary = null,
+} = {}) {
+  const normalizedSource = String(analysisSource || '').trim().toLowerCase();
+  if (normalizedSource !== 'rule_based_with_photo_qc') return false;
+  if (!usePhoto || !photosProvided || usedPhotos) return false;
+  if (String(photoQualityGrade || '').trim().toLowerCase() !== 'pass') return false;
+  if (!ANALYSIS_SUMMARY_SOFTENABLE_PHOTO_ARTIFACT_REASONS.has(String(degradeReason || '').trim().toLowerCase())) {
+    return false;
+  }
+  const recoContext = normalizeIngredientRecoContextValue(
+    deriveIngredientPlanRecoContext(ingredientPlan, {
+      profileSummary,
+      artifactId: '',
+      contextOrigin: 'analysis_summary',
+      photoModulesCard: null,
+    }),
+  );
+  if (!recoContext) return false;
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(recoContext.ranked_targets) ? recoContext.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    recoContext.primary_target_id,
+    rankedTargets.find((target) => String(target && target.target_role || '').trim().toLowerCase() === 'primary')?.target_id,
+    rankedTargets[0] && rankedTargets[0].target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((target) => pickFirstTrimmed(target && target.target_id) === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  if (!primaryTarget) return false;
+  const targetStep = pickFirstTrimmed(
+    recoContext.resolved_target_step,
+    primaryTarget.resolved_target_step,
+  );
+  if (!targetStep) return false;
+  const targetConfidence = pickFirstTrimmed(
+    recoContext.resolved_target_step_confidence,
+    primaryTarget.target_confidence,
+  ).toLowerCase();
+  if (targetConfidence === 'low') return false;
+  const verifiedProductCount = Math.max(0, Number(primaryTarget.verified_product_count || 0));
+  const primaryCandidates = Array.isArray(primaryTarget.product_candidates) ? primaryTarget.product_candidates : [];
+  const topLevelCandidates = Array.isArray(recoContext.product_candidates) ? recoContext.product_candidates : [];
+  return Boolean(primaryTargetId && (verifiedProductCount > 0 || primaryCandidates.length > 0 || topLevelCandidates.length > 0));
+}
+
 function reconcilePhotoContextWithIngredientPlan({
   photoContext = null,
   ingredientPlanPayload = null,
@@ -65134,11 +65196,26 @@ function mountAuroraBffRoutes(app, { logger }) {
           String(artifactConfidence.level || '').toLowerCase() === 'low',
         );
         const lowConfidencePhotoCard = Boolean(photoModulesCard && photoModulesCard.payload && photoModulesCard.payload.low_confidence === true);
+        const softenedAnalysisSummaryLowConfidence = shouldSoftenAnalysisSummaryLowConfidence({
+          analysisSource: renderedAnalysisSource,
+          usePhoto: Boolean(userRequestedPhoto),
+          photosProvided,
+          usedPhotos,
+          photoQualityGrade: photoQuality && photoQuality.grade,
+          degradeReason,
+          ingredientPlan,
+          profileSummary,
+        });
+        if (softenedAnalysisSummaryLowConfidence) {
+          analysisMeta.confidence_softened_reason = 'photo_artifact_limited_target_stable';
+        }
         const lowConfidenceSummary =
-          analysisSource === 'baseline_low_confidence'
-          || lowConfidenceFromPhotoQuality
-          || lowConfidenceArtifact
-          || lowConfidencePhotoCard;
+          !softenedAnalysisSummaryLowConfidence && (
+            analysisSource === 'baseline_low_confidence'
+            || lowConfidenceFromPhotoQuality
+            || lowConfidenceArtifact
+            || lowConfidencePhotoCard
+          );
 
         profiler.start('render', { kind: 'envelope' });
         const chatQualityObj = buildQualityObject(photoQuality);
@@ -65151,6 +65228,21 @@ function mountAuroraBffRoutes(app, { logger }) {
           guidance_brief: Array.isArray(chatDedupedAnalysis.guidance_brief) ? chatDedupedAnalysis.guidance_brief : [],
           insufficient_visual_detail: Boolean(chatDedupedAnalysis.insufficient_visual_detail) || detectInsufficientVisualDetail(Array.isArray(chatDedupedAnalysis.findings) ? chatDedupedAnalysis.findings : []),
         } : chatDedupedAnalysis;
+        if (softenedAnalysisSummaryLowConfidence && isPlainObject(chatEnrichedAnalysis)) {
+          const existingConfidence = isPlainObject(chatEnrichedAnalysis.confidence) ? chatEnrichedAnalysis.confidence : {};
+          const rationale = Array.isArray(existingConfidence.rationale) ? existingConfidence.rationale.slice() : [];
+          if (!rationale.includes('photo_artifact_limited_target_stable')) {
+            rationale.push('photo_artifact_limited_target_stable');
+          }
+          chatEnrichedAnalysis = {
+            ...chatEnrichedAnalysis,
+            confidence: {
+              ...existingConfidence,
+              level: 'medium',
+              rationale,
+            },
+          };
+        }
         if (renderedAnalysisSource === 'retake') {
           chatEnrichedAnalysis = ensureRetakeFeatureObservation(chatEnrichedAnalysis, { language: ctx.lang });
         }
@@ -65192,6 +65284,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 photosProvided &&
                 String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
             ),
+            ...(softenedAnalysisSummaryLowConfidence
+              ? { confidence_softened_reason: 'photo_artifact_limited_target_stable' }
+              : {}),
             ...(photoQualitySoftenedReason ? { photo_quality_softened_reason: photoQualitySoftenedReason } : {}),
           },
         };
@@ -65647,6 +65742,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (
           artifactConfidence &&
           String(artifactConfidence.level || '').toLowerCase() === 'low' &&
+          !softenedAnalysisSummaryLowConfidence &&
           !(routineAuditV1Enabled && routineAnalysisV2Result)
         ) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.low_confidence_rate', value: 1 }, 'metric');
@@ -76343,6 +76439,7 @@ const __internal = {
   applyRecoCardContractInvariant,
   attachRecoContractMeta,
   buildConfidenceNoticeCardPayload,
+  shouldSoftenAnalysisSummaryLowConfidence,
   buildRecoMainlineContract,
   buildRecoRequestedEventData,
   deriveRecoEmptyReason,
