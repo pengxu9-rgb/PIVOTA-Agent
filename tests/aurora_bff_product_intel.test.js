@@ -1171,6 +1171,64 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.product?.product_id).toBe('ext_uv_filters_45');
   });
 
+  test('resolveCatalogProductForProductInput prefers local resolver as earliest deterministic owner when it already resolves the product', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setResolveProductRefForTest(async () => ({
+      resolved: true,
+      product_ref: {
+        product_id: 'ext_uv_filters_45',
+        merchant_id: 'external_seed',
+      },
+      candidates: [
+        {
+          product_ref: {
+            product_id: 'ext_uv_filters_45',
+            merchant_id: 'external_seed',
+          },
+          title: 'The Ordinary UV Filters SPF 45 Serum',
+          score: 0.97,
+        },
+      ],
+      metadata: {
+        sources: [
+          {
+            source: 'agent_search_external_seed',
+            ok: true,
+            count: 1,
+          },
+        ],
+      },
+    }));
+
+    try {
+      const out = await __internal.resolveCatalogProductForProductInput({
+        inputText: 'The Ordinary UV Filters SPF 45 Serum',
+        lang: 'EN',
+        logger: { warn: jest.fn(), info: jest.fn() },
+      });
+
+      expect(out.ok).toBe(true);
+      expect(out.source).toBe('resolve_local');
+      expect(out.decision_source).toBe('external_seed_search_exact');
+      expect(out.product?.product_id).toBe('ext_uv_filters_45');
+      expect(Array.isArray(out.attempts)).toBe(true);
+      expect(out.attempts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            mode: 'local_external_seed_search',
+            ok: true,
+          }),
+        ]),
+      );
+    } finally {
+      __internal.__resetResolveProductRefForTest();
+    }
+  });
+
   test('resolveCatalogProductForProductInput falls back to an observation-only llm external match when internal and external searches both miss', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';

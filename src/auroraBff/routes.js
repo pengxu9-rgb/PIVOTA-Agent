@@ -485,6 +485,15 @@ const fetchGroundingAgentSearchCandidates =
   typeof productGroundingResolverInternals.fetchCandidatesViaAgentSearch === 'function'
     ? productGroundingResolverInternals.fetchCandidatesViaAgentSearch
     : null;
+const isGroundingExternalProduct =
+  typeof productGroundingResolverInternals.isExternalProduct === 'function'
+    ? productGroundingResolverInternals.isExternalProduct
+    : (product) => {
+        if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
+        const merchantId = String(product.merchant_id || '').trim().toLowerCase();
+        const source = String(product.retrieval_source || product.source || '').trim().toLowerCase();
+        return merchantId === 'external_seed' || source.includes('external_seed');
+      };
 const normalizeTextForStableResolver =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
     ? productGroundingResolverInternals.normalizeTextForResolver
@@ -5420,22 +5429,72 @@ async function resolveAvailabilityProductByLocalResolver({
     responseError = err;
   }
 
+  const resolverSources = Array.isArray(responseBody?.metadata?.sources)
+    ? responseBody.metadata.sources
+      .map((item) => (item && typeof item === 'object' && !Array.isArray(item) ? item : null))
+      .filter(Boolean)
+    : [];
+  const normalizeLocalResolverDecisionSource = (resolvedProduct) => {
+    const normalizedProduct =
+      normalizeRecoCatalogProduct(resolvedProduct) ||
+      (resolvedProduct && typeof resolvedProduct === 'object' && !Array.isArray(resolvedProduct) ? resolvedProduct : null);
+    const successfulSources = resolverSources.filter((item) => item.ok === true);
+    if (String(responseBody?.reason || '').trim().toLowerCase() === 'stable_alias_match') return 'local_stable_alias_ref';
+    if (isGroundingExternalProduct(normalizedProduct) || successfulSources.some((item) => String(item.source || '').trim().toLowerCase() === 'agent_search_external_seed')) {
+      return 'external_seed_search_exact';
+    }
+    if (successfulSources.some((item) => {
+      const source = String(item.source || '').trim().toLowerCase();
+      return source === 'products_cache' || source === 'products_cache_global' || source === 'agent_search_scoped' || source === 'agent_search_global';
+    })) {
+      return 'catalog_search_exact';
+    }
+    return 'catalog_resolve';
+  };
+  const buildResolverAttempts = () =>
+    resolverSources
+      .map((item) => {
+        const source = String(item?.source || '').trim().toLowerCase();
+        const mode =
+          source === 'stable_alias_ref'
+            ? 'local_stable_alias_ref'
+            : source === 'agent_search_external_seed'
+              ? 'local_external_seed_search'
+              : source === 'products_cache' || source === 'products_cache_global' || source === 'agent_search_scoped' || source === 'agent_search_global'
+                ? 'local_catalog_search'
+                : source === 'hints_product_ref'
+                  ? 'local_catalog_resolve'
+                  : source
+                    ? 'local_catalog_resolve'
+                    : '';
+        if (!mode) return null;
+        return {
+          mode,
+          ok: item.ok === true,
+          reason: item.ok === true ? null : pickFirstTrimmed(item.reason, item.error_code),
+          latency_ms: null,
+        };
+      })
+      .filter(Boolean);
+
   const resolvedRef = normalizeCanonicalProductRef(responseBody?.product_ref, {
     requireMerchant: true,
     allowOpaqueProductId: false,
   });
   if (responseBody?.resolved === true && resolvedRef) {
+    const product = buildAvailabilityResolvedProduct({
+      resolvedRef,
+      resolveBody: responseBody,
+      fallbackQuery: q,
+      fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+    });
     return {
       ok: true,
       reason: null,
-      product: buildAvailabilityResolvedProduct({
-        resolvedRef,
-        resolveBody: responseBody,
-        fallbackQuery: q,
-        fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
-      }),
+      product,
       resolve_reason_code: null,
-      decision_source: 'catalog_resolve',
+      decision_source: normalizeLocalResolverDecisionSource(product),
+      resolver_attempts: buildResolverAttempts(),
       status_code: null,
       latency_ms: Date.now() - startedAt,
     };
@@ -5462,6 +5521,7 @@ async function resolveAvailabilityProductByLocalResolver({
     product: null,
     resolve_reason_code: reasonCode,
     decision_source: null,
+    resolver_attempts: buildResolverAttempts(),
     status_code: null,
     latency_ms: Date.now() - startedAt,
   };
@@ -5925,11 +5985,13 @@ function recordCatalogFallbackAttemptsToProductAnchorSpine(spine, attempts = [])
     if (!attempt) continue;
     const mode = String(attempt.mode || '').trim().toLowerCase();
     const stage =
-      mode === 'resolve'
+      mode === 'resolve' || mode === 'local_catalog_resolve'
         ? 'catalog_resolve'
-        : mode === 'search_internal'
+        : mode === 'local_stable_alias_ref'
+          ? 'local_stable_alias_ref'
+          : mode === 'search_internal' || mode === 'local_catalog_search'
           ? 'catalog_search_exact'
-          : mode === 'search_external_seed'
+          : mode === 'search_external_seed' || mode === 'local_external_seed_search'
             ? 'external_seed_search_exact'
             : mode === 'llm_external_match'
               ? 'llm_external_match'
@@ -6799,10 +6861,35 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   let filteredNonSkincareCount = 0;
   let internalSearchAmbiguous = false;
   let externalSeedSearchAmbiguous = false;
+  const localResolverTimeoutMs = Math.max(1800, Math.min(3200, CATALOG_AVAIL_RESOLVE_TIMEOUT_MS));
   const searchTimeoutMs = Math.max(1200, Math.min(3200, CATALOG_AVAIL_SEARCH_TIMEOUT_MS));
   const externalSeedSearchTimeoutMs = Math.max(2200, searchTimeoutMs);
 
   for (const query of queries) {
+    const localResolved = await resolveAvailabilityProductByLocalResolver({ query, lang, logger, timeoutMs: localResolverTimeoutMs });
+    if (Array.isArray(localResolved?.resolver_attempts) && localResolved.resolver_attempts.length) {
+      attempts.push(...localResolved.resolver_attempts.map((attempt) => ({ ...attempt, query })));
+    }
+    const localResolvedHasProduct = Boolean(localResolved && localResolved.ok && localResolved.product);
+    const localGuard = localResolvedHasProduct
+      ? evaluateAnchorProductSkincareGuard(localResolved.product, {
+        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+      })
+      : null;
+    const localAccepted = Boolean(localResolvedHasProduct && localGuard && localGuard.ok);
+    if (localResolvedHasProduct && localGuard && !localGuard.ok) filteredNonSkincareCount += 1;
+    if (localAccepted) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'resolve_local',
+        decision_source: String(localResolved?.decision_source || 'catalog_resolve'),
+        query_used: query,
+        product: localResolved.product,
+        attempts,
+      };
+    }
+
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
     const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
     const guard = resolvedHasProduct
@@ -7025,7 +7112,32 @@ async function resolvePrimaryAnalyzeAnchorForProductInput({ inputText, inputUrl,
 
   const attempts = [];
   let filteredNonSkincareCount = 0;
+  const localResolverTimeoutMs = Math.max(1800, Math.min(3200, CATALOG_AVAIL_RESOLVE_TIMEOUT_MS));
   for (const query of queries) {
+    const localResolved = await resolveAvailabilityProductByLocalResolver({ query, lang, logger, timeoutMs: localResolverTimeoutMs });
+    if (Array.isArray(localResolved?.resolver_attempts) && localResolved.resolver_attempts.length) {
+      attempts.push(...localResolved.resolver_attempts.map((attempt) => ({ ...attempt, query })));
+    }
+    const localResolvedHasProduct = Boolean(localResolved && localResolved.ok && localResolved.product);
+    const localGuard = localResolvedHasProduct
+      ? evaluateAnchorProductSkincareGuard(localResolved.product, {
+        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+      })
+      : null;
+    const localAccepted = Boolean(localResolvedHasProduct && localGuard && localGuard.ok);
+    if (localResolvedHasProduct && localGuard && !localGuard.ok) filteredNonSkincareCount += 1;
+    if (localAccepted) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'resolve_local',
+        decision_source: String(localResolved?.decision_source || 'catalog_resolve'),
+        query_used: query,
+        product: localResolved.product,
+        attempts,
+      };
+    }
+
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
     const resolvedHasProduct = Boolean(resolved && resolved.ok && resolved.product);
     const guard = resolvedHasProduct
