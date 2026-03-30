@@ -1824,7 +1824,7 @@ test('/v1/chat: photo contextual generic reco restores verified context candidat
   }
 });
 
-test('/v1/chat: analysis-summary baseline handoff restores verified context candidates when mainline returns empty', async () => {
+test('/v1/chat: analysis-summary baseline handoff surfaces verified context candidates in catalog-first mainline', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1908,8 +1908,9 @@ test('/v1/chat: analysis-summary baseline handoff restores verified context cand
     assert.ok(payload);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
-    assert.equal(payload.recommendation_meta?.verified_candidate_restore_applied, true);
-    assert.equal(payload.recommendation_meta?.verified_candidate_restore_count, 1);
+    assert.equal(payload.recommendation_meta?.contract_status, 'recommendations_ready');
+    assert.equal(payload.recommendation_meta?.terminal_success, true);
+    assert.equal(payload.recommendation_meta?.selected_candidate_count, 1);
     assert.equal(Array.isArray(payload.recommendations), true);
     assert.equal(payload.recommendations.some((row) => String(row?.product_id || '') === 'uv_verified_1'), true);
     assert.equal(
@@ -1921,6 +1922,125 @@ test('/v1/chat: analysis-summary baseline handoff restores verified context cand
   }
 });
 
+test('/v1/chat: analysis-summary external-seed sunscreen handoff surfaces verified candidate in catalog-first mainline', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'catalog_generic_serum_2',
+            merchant_id: 'mid_catalog',
+            brand: 'AcidLab',
+            name: 'Clarifying Serum',
+            display_name: 'Clarifying Serum',
+            category: 'serum',
+            product_type: 'serum',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_analysis_external_restore_uid', briefId: 'chat_analysis_external_restore_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_analysis_external_restore_uid',
+        'X-Trace-ID': 'trace_chat_analysis_external_restore',
+        'X-Brief-ID': 'chat_analysis_external_restore_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products now',
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: {
+          state: {
+            latest_reco_context: {
+              intent: 'reco_products',
+              source_detail: 'goal_driven',
+              trigger_source: 'analysis_handoff',
+              context_origin: 'analysis_summary',
+              goal: 'texture',
+              ingredient_query: 'UV filters',
+              resolved_target_step: 'sunscreen',
+              resolved_target_step_confidence: 'high',
+              resolved_target_step_source: 'explicit_target_step',
+              primary_target_id: 'sunscreen_filters__sunscreen',
+              ranked_targets: [
+                {
+                  target_id: 'sunscreen_filters_sunscreen',
+                  target_role: 'primary',
+                  ingredient_query: 'UV filters',
+                  goal: 'texture',
+                  resolved_target_step: 'sunscreen',
+                  target_confidence: 'high',
+                  source: 'analysis_summary',
+                  verified_product_count: 1,
+                },
+              ],
+              product_candidates: [
+                {
+                  product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+                  merchant_id: 'external_seed',
+                  brand: 'the ordinary',
+                  name: 'UV Filters SPF 45 Serum',
+                  display_name: 'UV Filters SPF 45 Serum',
+                  category: 'external',
+                  source: 'external_seed',
+                  retrieval_source: 'external_seed',
+                  retrieval_reason: 'external_seed_supplement',
+                  url: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  pdp_url: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  product_url: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  purchase_path: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  canonical_product_ref: {
+                    product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+                    merchant_id: 'external_seed',
+                  },
+                },
+              ],
+            },
+          },
+        },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload.recommendation_meta?.contract_status, 'recommendations_ready');
+    assert.equal(payload.recommendation_meta?.terminal_success, true);
+    assert.equal(payload.recommendation_meta?.selected_candidate_count, 1);
+    assert.equal(Array.isArray(payload.recommendations), true);
+    assert.equal(
+      payload.recommendations.some((row) => String(row?.product_id || '') === 'ext_bbe1ff8884f06d874bbccbd8'),
+      true,
+    );
+    assert.equal(
+      payload.recommendations.some((row) => /uv filters spf 45 serum/i.test(JSON.stringify(row))),
+      true,
+    );
+  } finally {
+    axios.get = originalGet;
+  }
+});
 test('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {

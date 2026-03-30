@@ -15241,9 +15241,30 @@ async function buildRecoGenerateFromCatalog({
     externalSeedStrategy: 'on_empty_only',
   });
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
-  const candidateState = isPlainObject(collected.candidateState)
+  let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
+  let candidateState = isPlainObject(collected.candidateState)
     ? collected.candidateState
     : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+  const verifiedContextCandidates = buildVerifiedRecoContextCandidates({
+    recoContext: ingredientContext,
+    targetContext,
+    max: 12,
+    retrievalLadderLevel: 'verified_context',
+  });
+  const contextCandidateSupplementApplied =
+    Array.isArray(verifiedContextCandidates.normalizedCandidates)
+    && verifiedContextCandidates.normalizedCandidates.length > 0
+    && !candidateState.terminal_success;
+  if (contextCandidateSupplementApplied) {
+    rawCandidates = [
+      ...verifiedContextCandidates.normalizedCandidates,
+      ...rawCandidates,
+    ];
+    candidateState = finalizeRecommendationCandidatePools(rawCandidates, {
+      targetContext: verifiedContextCandidates.effectiveTargetContext,
+      recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
+    });
+  }
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
@@ -15349,6 +15370,10 @@ async function buildRecoGenerateFromCatalog({
     resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
     artifact_context_applied: Boolean(candidateState.artifact_context_applied),
+    verified_context_candidate_count: Array.isArray(verifiedContextCandidates.normalizedCandidates)
+      ? verifiedContextCandidates.normalizedCandidates.length
+      : 0,
+    verified_context_supplement_applied: contextCandidateSupplementApplied,
     step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
     viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     candidate_pool_signature: candidateState.candidate_pool_signature,
@@ -47560,28 +47585,98 @@ function applyIngredientRecoConstraint(payload, context) {
   };
 }
 
-function restoreRecoRecommendationsFromVerifiedContextCandidates({
+function buildEffectiveRecoContextTargetContext(recoContext, targetContext) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  const effectiveTargetContext = {
+    ...(isPlainObject(normalizedContext) ? normalizedContext : {}),
+    ...(isPlainObject(targetContext) ? targetContext : {}),
+    ...(pickFirstTrimmed(
+      targetContext?.query,
+      targetContext?.ingredient_query,
+      normalizedContext?.query,
+      normalizedContext?.ingredient_query,
+    )
+      ? {
+          query: pickFirstTrimmed(
+            targetContext?.query,
+            targetContext?.ingredient_query,
+            normalizedContext?.query,
+            normalizedContext?.ingredient_query,
+          ),
+        }
+      : {}),
+    ...(pickFirstTrimmed(
+      targetContext?.ingredient_query,
+      targetContext?.query,
+      normalizedContext?.ingredient_query,
+      normalizedContext?.query,
+    )
+      ? {
+          ingredient_query: pickFirstTrimmed(
+            targetContext?.ingredient_query,
+            targetContext?.query,
+            normalizedContext?.ingredient_query,
+            normalizedContext?.query,
+          ),
+        }
+      : {}),
+    ...(pickFirstTrimmed(targetContext?.goal, normalizedContext?.goal)
+      ? { goal: pickFirstTrimmed(targetContext?.goal, normalizedContext?.goal) }
+      : {}),
+    ...(pickFirstTrimmed(targetContext?.primary_target_id, normalizedContext?.primary_target_id)
+      ? { primary_target_id: pickFirstTrimmed(targetContext?.primary_target_id, normalizedContext?.primary_target_id) }
+      : {}),
+    ...(Array.isArray(targetContext?.ranked_targets) && targetContext.ranked_targets.length
+      ? { ranked_targets: targetContext.ranked_targets }
+      : Array.isArray(normalizedContext?.ranked_targets) && normalizedContext.ranked_targets.length
+        ? { ranked_targets: normalizedContext.ranked_targets }
+        : {}),
+    ...(normalizeRecoTargetStep(
+      pickFirstTrimmed(
+        targetContext?.resolved_target_step,
+        targetContext?.target_step,
+        targetContext?.step,
+        normalizedContext?.resolved_target_step,
+        normalizedContext?.target_step,
+        normalizedContext?.step,
+      ),
+    )
+      ? {
+          resolved_target_step: normalizeRecoTargetStep(
+            pickFirstTrimmed(
+              targetContext?.resolved_target_step,
+              targetContext?.target_step,
+              targetContext?.step,
+              normalizedContext?.resolved_target_step,
+              normalizedContext?.target_step,
+              normalizedContext?.step,
+            ),
+          ),
+        }
+      : {}),
+  };
+  return { normalizedContext, effectiveTargetContext };
+}
+
+function buildVerifiedRecoContextCandidates({
   recoContext,
   targetContext,
-  language = 'EN',
+  max = 12,
+  retrievalLadderLevel = 'verified_context',
 } = {}) {
-  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  const { normalizedContext, effectiveTargetContext } = buildEffectiveRecoContextTargetContext(
+    recoContext,
+    targetContext,
+  );
   const productCandidates = filterRecoContextProductCandidates(
     Array.isArray(normalizedContext?.product_candidates)
       ? normalizedContext.product_candidates
       : [],
     {
-      target: targetContext || normalizedContext,
-      max: 12,
+      target: effectiveTargetContext,
+      max,
     },
   );
-  if (!productCandidates.length) {
-    return {
-      recommendations: [],
-      candidateState: finalizeRecommendationCandidatePools([], { targetContext, recoContext: normalizedContext }),
-    };
-  }
-
   const normalizedCandidates = [];
   for (const raw of productCandidates) {
     const normalized = normalizeRecoCatalogProduct(raw);
@@ -47598,11 +47693,59 @@ function restoreRecoRecommendationsFromVerifiedContextCandidates({
       ? normalizeCandidateWithDirectUrl(normalized, directUrl)
       : normalized;
     if (!isPlainObject(repaired)) continue;
-    normalizedCandidates.push(repaired);
+    normalizedCandidates.push({
+      ...repaired,
+      retrieval_query: pickFirstTrimmed(
+        repaired.retrieval_query,
+        normalizedContext?.query,
+        normalizedContext?.ingredient_query,
+        '__verified_context__',
+      ),
+      retrieval_step: pickFirstTrimmed(
+        repaired.retrieval_step,
+        effectiveTargetContext?.resolved_target_step,
+        effectiveTargetContext?.target_step,
+        effectiveTargetContext?.step,
+      ),
+      retrieval_slot: pickFirstTrimmed(repaired.retrieval_slot, 'other'),
+      retrieval_ladder_level: pickFirstTrimmed(repaired.retrieval_ladder_level, retrievalLadderLevel),
+      retrieval_reason: pickFirstTrimmed(
+        repaired.retrieval_reason,
+        raw?.retrieval_reason,
+        'verified_context_handoff',
+      ),
+    });
+  }
+  return {
+    normalizedContext,
+    effectiveTargetContext,
+    normalizedCandidates,
+  };
+}
+
+function restoreRecoRecommendationsFromVerifiedContextCandidates({
+  recoContext,
+  targetContext,
+  language = 'EN',
+} = {}) {
+  const {
+    normalizedContext,
+    effectiveTargetContext,
+    normalizedCandidates,
+  } = buildVerifiedRecoContextCandidates({
+    recoContext,
+    targetContext,
+    max: 12,
+  });
+  if (!normalizedCandidates.length) {
+    return {
+      recommendations: [],
+      candidateState: finalizeRecommendationCandidatePools([], { targetContext: effectiveTargetContext, recoContext: normalizedContext }),
+    };
   }
 
   const candidateState = finalizeRecommendationCandidatePools(normalizedCandidates, {
-    targetContext,
+    targetContext: effectiveTargetContext,
     recoContext: normalizedContext,
   });
   const selectedCandidates = Array.isArray(candidateState?.selected_recommendations)
