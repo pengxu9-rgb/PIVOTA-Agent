@@ -14592,6 +14592,19 @@ async function buildProductAnalysisFromUrlIngredients({
           },
         }
         : {}),
+      ...(externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok
+        ? {
+          external_seed_snapshot: {
+            provider: 'external_seed',
+            url: String(externalSeedSnapshotEvidence.source_url || ''),
+            ingredient_count: authoritativeSeedInci.length || externalSeedSnapshotEvidence.ingredients.length,
+            authoritative: externalSeedSnapshotEvidence.authoritative === true,
+            source_page_type: externalSeedSnapshotEvidence.source_page_type || null,
+            content_quality: externalSeedSnapshotEvidence.content_quality || null,
+          },
+          external_seed_snapshot_authoritative: externalSeedSnapshotEvidence.authoritative === true,
+        }
+        : {}),
       ...(competitorSnapshotMeta
         ? {
           competitor_meta: {

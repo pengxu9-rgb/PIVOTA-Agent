@@ -6467,6 +6467,13 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(queryMock).toHaveBeenCalled();
     expect(sourceTypes).toContain('external_seed_snapshot');
     expect(out?.payload?.provenance?.source_chain || []).toContain('external_seed_snapshot');
+    expect(out?.payload?.provenance?.external_seed_snapshot).toEqual(
+      expect.objectContaining({
+        provider: 'external_seed',
+        authoritative: true,
+      }),
+    );
+    expect(out?.payload?.provenance?.external_seed_snapshot_authoritative).toBe(true);
     expect(out?.source_meta?.external_seed_snapshot).toEqual(
       expect.objectContaining({
         provider: 'external_seed',
