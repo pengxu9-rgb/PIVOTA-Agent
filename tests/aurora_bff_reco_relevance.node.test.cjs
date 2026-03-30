@@ -2247,6 +2247,109 @@ test('/v1/chat: ingredient reco restores selected catalog candidates after ingre
     harness.restore();
   }
 });
+
+test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream returns empty structured reco payload', async () => {
+  const originalGet = axios.get;
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    return {
+      status: 200,
+      data: {
+        metadata: {
+          search_decision: {
+            contract_version: 'beauty_search_decision_v4',
+            hit_quality: 'valid_hit',
+            query_bucket: 'skincare',
+            query_target_step_family: 'moisturizer',
+            same_family_topk_count: 2,
+            exact_step_topk_count: 0,
+            raw_result_count: 2,
+            products_returned_count: 2,
+          },
+        },
+        products: [
+          {
+            product_id: 'ceramide_1',
+            merchant_id: 'mid_barrier',
+            brand: 'BarrierLab',
+            name: 'Barrier Repair Cream',
+            display_name: 'Barrier Repair Cream',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+          },
+          {
+            product_id: 'panthenol_1',
+            merchant_id: 'mid_barrier',
+            brand: 'BarrierLab',
+            name: 'Recovery Lotion',
+            display_name: 'Recovery Lotion',
+            category: 'moisturizer',
+            product_type: 'moisturizer',
+          },
+        ],
+      },
+    };
+  };
+
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set(headersFor('chat_ingredient_empty_structured_uid', 'EN'))
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'Recommend products',
+            entry_source: 'ingredient_goal_match',
+            goal: 'barrier',
+            sensitivity: 'high',
+            candidates: ['Ceramide NP', 'Panthenol'],
+            profile_patch: {
+              skinType: 'dry',
+              sensitivity: 'high',
+              barrierStatus: 'compromised',
+              goals: ['barrier repair'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      })
+      .expect(200);
+
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(Array.isArray(payload.recommendations), true);
+    assert.equal(payload.recommendations.length >= 2, true);
+    const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
+    assert.ok(latestRecoContext);
+    assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
+    assert.equal(latestRecoContext.product_candidates.length >= 2, true);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {

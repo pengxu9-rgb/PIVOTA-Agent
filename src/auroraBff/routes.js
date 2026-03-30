@@ -25592,6 +25592,38 @@ function buildAutoAnchoredRecoRequestText({
     : `Recommend ${humanStep} options for me.`;
 }
 
+function buildIngredientOptInRecoRequestText({
+  recoContext = null,
+  language = 'EN',
+} = {}) {
+  const lang = String(language || '').trim().toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const context = normalizeIngredientRecoContextValue(recoContext) || {};
+  const candidateList = normalizeIngredientCandidateList(
+    [
+      pickFirstTrimmed(context.query, context.ingredient_query),
+      ...(Array.isArray(context.candidates) ? context.candidates : []),
+      ...(Array.isArray(context.ingredient_candidates) ? context.ingredient_candidates : []),
+    ],
+    3,
+  );
+  const goal = pickFirstTrimmed(context.goal);
+  const fallbackQuery = candidateList[0] || '';
+  const targetStep =
+    normalizeRecoTargetStep(context.resolved_target_step)
+    || deriveRecoTargetStepFromIngredient('', fallbackQuery)
+    || normalizeRecoTargetStep(context.target_step)
+    || 'serum';
+  const humanStep = humanizeRecoProductType(targetStep, lang);
+  if (lang === 'CN') {
+    const ingredientLabel = candidateList.length ? `，重点围绕${candidateList.join('、')}` : '';
+    const goalLabel = goal ? `，目标是${goal}` : '';
+    return `给我推荐适合${humanStep}的产品${goalLabel}${ingredientLabel}。`;
+  }
+  const goalLabel = goal ? ` for ${goal}` : '';
+  const ingredientLabel = candidateList.length ? ` centered on ${candidateList.join(' / ')}` : '';
+  return `Recommend ${humanStep} options${goalLabel}${ingredientLabel}.`;
+}
+
 function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary = null, artifactId = '' } = {}) {
   if (!isPlainObject(routineAnalysisResult)) return null;
   const cards = Array.isArray(routineAnalysisResult.cards) ? routineAnalysisResult.cards : [];
@@ -27479,6 +27511,16 @@ function buildRecoLlmTraceRef(llmTrace) {
     prompt_hash: promptHash || null,
     ...(Number.isFinite(latencyMs) ? { latency_ms: Math.max(0, Math.trunc(latencyMs)) } : {}),
   };
+}
+
+function hasEmptyStructuredRecommendations(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Array.isArray(value.recommendations) &&
+      value.recommendations.length === 0
+  );
 }
 
 function normalizeRecoFailureClass(value) {
@@ -55492,6 +55534,7 @@ async function runRecoLlmPrimary({
       llmStructured = structuredFallback;
       llmStructuredSource = structuredFallback ? 'llm_structured_fallback' : null;
     }
+    const llmStructuredRecoEmpty = hasEmptyStructuredRecommendations(llmStructured);
     if (
       promptContract.ok &&
       !llmFailureClass &&
@@ -55503,6 +55546,10 @@ async function runRecoLlmPrimary({
       llmFailureClass = 'schema_invalid';
       initialLlmOutcome = 'schema_invalid';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'schema_invalid' });
+    } else if (!llmFailureClass && llmStructuredRecoEmpty) {
+      llmFailureClass = 'empty_structured';
+      initialLlmOutcome = 'empty_structured';
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
@@ -55783,8 +55830,12 @@ async function generateProductRecommendations({
     llmInvoked = llmPrimary.llmInvoked;
     initialLlmOutcome = llmPrimary.initialLlmOutcome;
     const normalizedNonStepAwareLlmFailure = normalizeRecoFailureClass(llmFailureClass || '');
-    const shouldAttemptCatalogRecovery = !llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid';
-    const shouldAllowCatalogTransientFallback = !llmStructured;
+    const llmStructuredRecoEmpty = hasEmptyStructuredRecommendations(llmStructured);
+    const shouldAttemptCatalogRecovery =
+      !llmStructured ||
+      normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
+      llmStructuredRecoEmpty;
+    const shouldAllowCatalogTransientFallback = !llmStructured || llmStructuredRecoEmpty;
     if (shouldAttemptCatalogRecovery) {
       const catalogOut = await buildRecoGenerateFromCatalog({
         ctx,
@@ -55818,30 +55869,40 @@ async function generateProductRecommendations({
         ? buildRecoCatalogTransientFallbackStructured({ ctx })
         : null;
     }
-    const catalogRecoveredFromInvalidLlm =
-      normalizedNonStepAwareLlmFailure === 'schema_invalid'
+    const catalogRecoveredFromLlmGap =
+      (normalizedNonStepAwareLlmFailure === 'schema_invalid' || llmStructuredRecoEmpty)
       && catalogStructured
       && Array.isArray(catalogStructured.recommendations)
       && catalogStructured.recommendations.length > 0;
-    structured = catalogRecoveredFromInvalidLlm
+    structured = catalogRecoveredFromLlmGap
       ? catalogStructured
-      : llmStructured || catalogStructured || catalogTransientFallbackStructured;
-    structuredSource = catalogRecoveredFromInvalidLlm
+      : llmStructuredRecoEmpty
+        ? (catalogStructured || catalogTransientFallbackStructured || llmStructured)
+        : llmStructured || catalogStructured || catalogTransientFallbackStructured;
+    structuredSource = catalogRecoveredFromLlmGap
       ? 'catalog_grounded'
-      : llmStructured
-      ? 'llm_primary'
-      : catalogStructured
-        ? 'catalog_grounded'
-        : catalogTransientFallbackStructured
-          ? 'catalog_transient_fallback'
-          : null;
+      : llmStructuredRecoEmpty
+        ? (catalogStructured
+          ? 'catalog_grounded'
+          : catalogTransientFallbackStructured
+            ? 'catalog_transient_fallback'
+            : llmStructured
+              ? 'llm_primary'
+              : null)
+        : llmStructured
+          ? 'llm_primary'
+          : catalogStructured
+            ? 'catalog_grounded'
+            : catalogTransientFallbackStructured
+              ? 'catalog_transient_fallback'
+              : null;
   if (
     !stepAwareCatalogFirstEnabled
     && promptContract.ok
     && catalogStructured
     && Array.isArray(catalogStructured.recommendations)
     && catalogStructured.recommendations.length > 0
-    && (!llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid')
+    && (!llmStructured || normalizedNonStepAwareLlmFailure === 'schema_invalid' || llmStructuredRecoEmpty)
   ) {
     if ((llmFailureClass === 'empty_structured' || llmFailureClass === 'schema_invalid') && isPlainObject(llmTrace)) {
       const { error_class: _ignoredErrorClass, ...nextTrace } = llmTrace;
@@ -55849,6 +55910,8 @@ async function generateProductRecommendations({
     }
     if (normalizedNonStepAwareLlmFailure === 'schema_invalid') {
       initialLlmOutcome = 'catalog_recovered_schema_invalid';
+    } else if (llmStructuredRecoEmpty) {
+      initialLlmOutcome = 'catalog_recovered_empty_structured';
     }
     llmFailureClass = '';
     recordAuroraRecoLlmCall({ stage: 'main', outcome: 'catalog_grounded_primary' });
@@ -73980,20 +74043,32 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
         }
         const recoAutoAnchoredByAnalysis = shouldApplyAnalysisDerivedRecoContext;
+        const ingredientOptInRecoRequestText =
+          ingredientRecoOptInRequested && !recoRequestMessage
+            ? buildIngredientOptInRecoRequestText({
+              recoContext: recoIngredientContext,
+              language: ctx.lang,
+            })
+            : '';
         const recoRequestMessageForMainline = recoAutoAnchoredByAnalysis
           ? buildAutoAnchoredRecoRequestText({
             rawMessage: recoRequestMessage,
             recoContext: latestRecoContextForRecommendation,
             language: ctx.lang,
           })
-          : recoRequestMessage;
+          : ingredientOptInRecoRequestText || recoRequestMessage;
         const recoFocusForMainline = recoAutoAnchoredByAnalysis
           ? pickFirstTrimmed(
             latestRecoContextForRecommendation && latestRecoContextForRecommendation.resolved_target_step,
             latestRecoContextForRecommendation && latestRecoContextForRecommendation.ingredient_query,
             latestRecoContextForRecommendation && latestRecoContextForRecommendation.goal,
           )
-          : '';
+          : pickFirstTrimmed(
+            recoIngredientContext && recoIngredientContext.resolved_target_step,
+            recoIngredientContext && recoIngredientContext.ingredient_query,
+            recoIngredientContext && recoIngredientContext.query,
+            recoIngredientContext && recoIngredientContext.goal,
+          );
         const chatRecoTargetContext = resolveRecommendationTargetContext({
           explicitStep: pickFirstTrimmed(
             recoIngredientContext && recoIngredientContext.target_step,
@@ -74346,7 +74421,16 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoTelemetryFailureReason = '';
           }
         }
-        if (!norm && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)) {
+        const normHasRecommendations = Array.isArray(norm?.payload?.recommendations) && norm.payload.recommendations.length > 0;
+        const shouldAttemptIngredientOptInCatalogRecovery =
+          ingredientRecoOptInRequested
+          && !travelRecoHandoff
+          && Boolean(pickFirstTrimmed(recoContextIngredientQuery, recoContextGoal) || recoIngredientCandidates.length > 0)
+          && !normHasRecommendations;
+        if (
+          (!norm || shouldAttemptIngredientOptInCatalogRecovery)
+          && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)
+        ) {
           try {
             upstreamReco = await generateProductRecommendations({
               ctx,
