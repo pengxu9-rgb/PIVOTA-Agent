@@ -5185,11 +5185,40 @@ async function resolveAvailabilityProductByQuery({
 } = {}) {
   const q = String(query || '').trim();
   if (!q) return { ok: false, reason: 'query_missing', product: null, resolve_reason_code: 'no_candidates', latency_ms: 0 };
+  const startedAt = Date.now();
+
+  const stableAliasMatch = resolveRecoStableAliasRefByQuery(q);
+  if (stableAliasMatch?.canonicalProductRef) {
+    const product = buildAvailabilityResolvedProduct({
+      resolvedRef: stableAliasMatch.canonicalProductRef,
+      resolveBody: null,
+      fallbackQuery: q,
+      fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+    });
+    if (product) {
+      logger?.info?.(
+        {
+          event: 'aurora_product_anchor_resolved_via_local_stable_alias',
+          query: q,
+          match_id: stableAliasMatch.matchId,
+          matched_alias: stableAliasMatch.matchedAlias,
+          score: stableAliasMatch.score,
+        },
+      );
+      return {
+        ok: true,
+        reason: null,
+        product,
+        resolve_reason_code: null,
+        status_code: 200,
+        latency_ms: Date.now() - startedAt,
+      };
+    }
+  }
+
   if (!PIVOTA_BACKEND_BASE_URL) {
     return { ok: false, reason: 'pivota_backend_not_configured', product: null, resolve_reason_code: 'db_error', latency_ms: 0 };
   }
-
-  const startedAt = Date.now();
   const resolveTimeoutMs = Math.max(
     250,
     Math.min(

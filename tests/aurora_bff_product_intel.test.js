@@ -905,6 +905,45 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.product?.product_id).toBe('uv_filters_45');
   });
 
+  test('resolveAvailabilityProductByQuery short-circuits through local stable alias before backend resolve', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    jest.doMock('../src/services/productGroundingResolver', () => ({
+      resolveProductRef: null,
+      _internals: {
+        resolveKnownStableProductRef: jest.fn(({ query }) => {
+          if (!/uv filters spf 45 serum/i.test(String(query || ''))) return null;
+          return {
+            id: 'stable_alias_uv_filters',
+            matched_alias: 'The Ordinary UV Filters SPF 45 Serum',
+            reason: 'stable_alias_ref',
+            score: 0.99,
+            product_ref: {
+              merchant_id: 'merch_efbc46b4619cfbdf',
+              product_id: 'prod_uv_filters_45',
+            },
+          };
+        }),
+        normalizeTextForResolver: (value) => String(value || '').trim().toLowerCase(),
+        tokenizeNormalizedResolverQuery: (value) => String(value || '').trim().toLowerCase().split(/\s+/).filter(Boolean),
+      },
+    }));
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.resolveAvailabilityProductByQuery({
+      query: 'The Ordinary UV Filters SPF 45 Serum',
+      lang: 'EN',
+      logger: { info: jest.fn(), warn: jest.fn() },
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.reason).toBeNull();
+    expect(out.product?.product_id).toBe('prod_uv_filters_45');
+    expect(out.product?.merchant_id).toBe('merch_efbc46b4619cfbdf');
+    expect(String(out.product?.display_name || '')).toContain('The Ordinary UV Filters SPF 45 Serum');
+  });
+
   test('buildProductCatalogQueryCandidates can keep inputText as first query candidate when requested', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const candidates = __internal.buildProductCatalogQueryCandidates({
