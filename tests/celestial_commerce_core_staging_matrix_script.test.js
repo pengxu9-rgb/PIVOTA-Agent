@@ -372,4 +372,129 @@ describe('Celestial commerce-core staging matrix script', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('preserves explicit locale headers for live staging commerce cases', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-staging-locale-'));
+    const casesPath = path.join(outDir, 'matrix.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'run_celestial_commerce_core_staging_matrix.js');
+
+    const matrix = {
+      semantic_cases: [
+        {
+          id: 'locale_live_case',
+          title: 'locale aware exact lookup',
+          family: 'exact_product_lookup',
+          rail_mode: 'authoritative_commerce',
+          require_primary_path: true,
+          allow_strict_empty: false,
+          endpoint: '/agent/shop/v1/invoke',
+          requires_auth: true,
+          auth_profile: 'default',
+          headers: {
+            'X-Lang': 'CN',
+          },
+          request: {
+            operation: 'find_products_multi',
+            payload: { search: { query: 'IPSA Time Reset Aqua', limit: 5, in_stock_only: true } },
+            metadata: { source: 'search', locale: 'zh-CN' },
+          },
+          correctness: {
+            mode: 'auto',
+            expect_http_status: 200,
+            allow_zero_results: false,
+            must_return_one_of_titles: ['IPSA Time Reset Aqua'],
+          },
+          ownership: {
+            must_equal_paths: {
+              'metadata.search_trace.query_class': 'lookup',
+              'metadata.search_trace.final_decision': 'cache_returned',
+              'metadata.search_decision.decision_authority': 'cache_cross_merchant_search',
+              'metadata.search_decision.decision_locked': true,
+              'metadata.route_health.fallback_triggered': false,
+            },
+          },
+          observability: {
+            must_have_paths: ['metadata.service_version.commit', 'metadata.query_source'],
+          },
+        },
+      ],
+      governance_cases: [],
+    };
+    fs.writeFileSync(casesPath, JSON.stringify(matrix, null, 2));
+
+    const server = http.createServer(async (req, res) => {
+      const body = await readJsonBody(req);
+      if (req.url !== '/agent/shop/v1/invoke') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      expect(String(req.headers.authorization || '')).toBe('Bearer ak_live_stage_key');
+      expect(String(req.headers['x-lang'] || '')).toBe('CN');
+      expect(body?.metadata?.locale).toBe('zh-CN');
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          products: [{ title: 'IPSA Time Reset Aqua' }],
+          metadata: {
+            query_source: 'cache_cross_merchant_search',
+            service_version: {
+              commit: 'abc123',
+            },
+            route_health: {
+              fallback_triggered: false,
+              primary_path_used: 'cache_stage',
+            },
+            search_trace: {
+              query_class: 'lookup',
+              final_decision: 'cache_returned',
+            },
+            search_decision: {
+              decision_authority: 'cache_cross_merchant_search',
+              decision_locked: true,
+            },
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [scriptPath, '--base-url', baseUrl, '--cases', casesPath, '--out-dir', outDir],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            STAGING_AUTH_TOKEN: 'ak_live_stage_key',
+          },
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      const json = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(json.summary.total_cases).toBe(1);
+      expect(json.summary.pass_count).toBe(1);
+      expect(json.summary.blocking_failures).toBe(0);
+      expect(json.results[0]).toEqual(
+        expect.objectContaining({
+          id: 'locale_live_case',
+          overall_status: 'pass',
+          outcome_kind: 'products_nonempty',
+        }),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

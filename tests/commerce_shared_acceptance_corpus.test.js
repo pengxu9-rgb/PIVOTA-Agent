@@ -610,7 +610,9 @@ describe('Commerce shared acceptance corpus', () => {
     expect(Array.from(stagingIds)).toEqual(
       expect.arrayContaining([
         'search_exact_ipsa_time_reset_aqua',
+        'search_exact_ipsa_time_reset_aqua_locale_zh',
         'search_merchant_query_winona_products',
+        'search_merchant_query_winona_products_locale_en',
         'shopping_agent_strict_vitamin_c_serum',
         'search_strict_vitamin_c_serum_budget_eur',
         'search_strict_vitamin_c_serum_budget_usd',
@@ -651,6 +653,51 @@ describe('Commerce shared acceptance corpus', () => {
     expect(englishResume?.request?.headers).toEqual(
       expect.objectContaining({
         'X-Lang': 'EN',
+      }),
+    );
+  });
+
+  test('actual shared corpus expands locale-aware commerce query staging coverage without changing prod authority rules', () => {
+    const corpusPath = path.join(
+      __dirname,
+      '..',
+      'scripts',
+      'fixtures',
+      'celestial_commerce_core_shared_acceptance_corpus.json',
+    );
+
+    const stagingCases = loadStagingMatrixPayload(corpusPath).semantic_cases;
+    const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
+    const enMerchant = stagingCases.find(
+      (item) => item.id === 'search_merchant_query_winona_products_locale_en',
+    );
+
+    expect(zhExact).toEqual(
+      expect.objectContaining({
+        family: 'exact_product_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhExact?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(enMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
       }),
     );
   });
