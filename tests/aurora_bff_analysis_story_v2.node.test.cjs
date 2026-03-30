@@ -620,6 +620,85 @@ test('analysis_story_v2: photo modules make fallback story ui card photo-first',
   );
 });
 
+test('analysis_story_v2: conservative pass-quality medium photo context stays medium instead of hard low', () => {
+  const internal = loadInternalWithFlags({});
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      used_photos: true,
+      analysis_source: 'vision_gemini',
+      low_confidence: false,
+      analysis: { features: [] },
+    },
+    photoModulesCard: {
+      type: 'photo_modules_v1',
+      payload: {
+        used_photos: true,
+        quality_grade: 'pass',
+        low_confidence: false,
+        diagnostic_confidence_level: 'medium',
+        modules: [
+          {
+            module_id: 'nose',
+            issues: [
+              {
+                issue_type: 'redness',
+                severity_0_4: 3.3,
+                confidence_0_1: 0.38,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['nose_redness_heatmap'],
+                explanation_short: 'Redness is visible around the nose.',
+              },
+            ],
+            actions: [],
+          },
+          {
+            module_id: 'right_cheek',
+            issues: [
+              {
+                issue_type: 'texture',
+                severity_0_4: 3.1,
+                confidence_0_1: 0.31,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['right_cheek_texture_heatmap'],
+                explanation_short: 'Texture is visible on the right cheek.',
+              },
+            ],
+            actions: [],
+          },
+        ],
+        summary_v1: {
+          top_findings: [
+            {
+              module_id: 'nose',
+              issue_type: 'redness',
+              severity_0_4: 3.3,
+              confidence_0_1: 0.38,
+              confidence_bucket: 'medium',
+              evidence_region_ids: ['nose_redness_heatmap'],
+            },
+            {
+              module_id: 'right_cheek',
+              issue_type: 'texture',
+              severity_0_4: 3.1,
+              confidence_0_1: 0.31,
+              confidence_bucket: 'medium',
+              evidence_region_ids: ['right_cheek_texture_heatmap'],
+            },
+          ],
+          quality_caveats: ['conservative_photo_interpretation'],
+        },
+      },
+    },
+    profile: {},
+    language: 'EN',
+    fallbackStory: null,
+  });
+
+  assert.equal(evidence.photo_context.quality_grade, 'pass');
+  assert.equal(evidence.photo_context.quality_caveats.includes('conservative_photo_interpretation'), true);
+  assert.equal(evidence.low_confidence, false);
+});
+
 test('analysis_story_v2: photo-led ingredient plan is annotated with provenance and strict-match miss', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',

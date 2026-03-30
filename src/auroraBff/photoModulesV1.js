@@ -653,6 +653,34 @@ function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons, topFind
   return Array.from(new Set(caveats)).slice(0, 6);
 }
 
+function derivePhotoModulesDiagnosticConfidence(summaryV1, qualityGrade) {
+  const summary = summaryV1 && typeof summaryV1 === 'object' ? summaryV1 : {};
+  const qualityCaveats = Array.isArray(summary.quality_caveats)
+    ? summary.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const normalizedGrade = String(qualityGrade || '').trim().toLowerCase();
+  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  const primaryFinding = topFindings[0] || null;
+  const primaryBucket = String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
+    || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1);
+
+  if (
+    normalizedGrade === 'fail'
+    || normalizedGrade === 'unknown'
+    || qualityCaveats.includes('low_confidence_primary_finding')
+    || primaryBucket === 'low'
+  ) {
+    return { level: 'low', lowConfidence: true };
+  }
+  if (normalizedGrade === 'degraded' || qualityCaveats.includes('conservative_photo_interpretation')) {
+    return { level: 'medium', lowConfidence: false };
+  }
+  if (primaryBucket === 'high' || primaryBucket === 'medium') {
+    return { level: primaryBucket, lowConfidence: false };
+  }
+  return { level: 'medium', lowConfidence: false };
+}
+
 function buildSummaryV1(modules, { qualityGrade = null, qualityReasons = [] } = {}) {
   const safeModules = Array.isArray(modules) ? modules : [];
   if (!safeModules.length) return null;
@@ -4409,20 +4437,13 @@ function buildPhotoModulesCard({
     qualityGrade,
     qualityReasons: Array.isArray(photoQuality && photoQuality.reasons) ? photoQuality.reasons : [],
   });
-  const summaryQualityCaveats = Array.isArray(summaryV1 && summaryV1.quality_caveats)
-    ? summaryV1.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
-    : [];
-  const lowConfidence = (
-    qualityGrade === 'fail'
-    || qualityGrade === 'unknown'
-    || summaryQualityCaveats.includes('low_confidence_primary_finding')
-    || summaryQualityCaveats.includes('conservative_photo_interpretation')
-  );
+  const diagnosticConfidence = derivePhotoModulesDiagnosticConfidence(summaryV1, qualityGrade);
 
   const payload = {
     used_photos: true,
     quality_grade: qualityGrade,
-    low_confidence: lowConfidence,
+    low_confidence: diagnosticConfidence.lowConfidence,
+    diagnostic_confidence_level: diagnosticConfidence.level,
     quality_labels: qualityGrade === 'fail' || qualityGrade === 'unknown' ? ['quality_low_confidence'] : [],
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
     ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),

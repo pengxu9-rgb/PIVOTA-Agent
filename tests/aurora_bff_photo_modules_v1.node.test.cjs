@@ -397,6 +397,59 @@ test('photo modules card: diagnostic low-confidence survives even when photo qua
       && built.card.payload.summary_v1.quality_caveats.includes('low_confidence_primary_finding'),
     true,
   );
+  assert.equal(built.card.payload.diagnostic_confidence_level, 'low');
+});
+
+test('photo modules card: conservative pass-quality medium findings do not force hard low-confidence', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_medium_conservative_pass',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_texture_medium_1',
+          issue_type: 'texture',
+          severity: 3,
+          confidence: 0.31,
+          geometry: {
+            bbox: { x: 0.18, y: 0.2, w: 0.34, h: 0.24 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+        {
+          finding_id: 'pf_redness_medium_2',
+          issue_type: 'redness',
+          severity: 2,
+          confidence: 0.38,
+          geometry: {
+            bbox: { x: 0.54, y: 0.22, w: 0.28, h: 0.22 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  assert.equal(built.card.payload.quality_grade, 'pass');
+  assert.equal(Boolean(built.card.payload.low_confidence), false);
+  assert.equal(built.card.payload.diagnostic_confidence_level, 'medium');
+  assert.equal(
+    Array.isArray(built.card.payload.summary_v1?.quality_caveats)
+      && built.card.payload.summary_v1.quality_caveats.includes('conservative_photo_interpretation'),
+    true,
+  );
 });
 
 test('photo modules summary_v1: top_product_id stays aligned to the primary action instead of borrowing another action product', () => {

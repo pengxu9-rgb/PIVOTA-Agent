@@ -172,6 +172,46 @@ function makeVisionAnalysisFixture() {
   };
 }
 
+function makeVisionMediumConservativeFixture() {
+  return {
+    features: [
+      { feature: 'redness', severity: 2, observation: 'Moderate visible redness around the nose.' },
+      { feature: 'texture', severity: 2, observation: 'Moderate texture visibility on the right cheek.' },
+    ],
+    strategy: 'Keep the plan conservative and focus on low-risk texture and tone support.',
+    ask_3_questions: ['Have these changes repeated across photos?', 'Any recent irritation from strong actives?', 'How stable is your current routine?'],
+    confidence: { score: 0.62, level: 'medium' },
+    photo_findings: [
+      {
+        finding_id: 'pf_redness_medium',
+        issue_type: 'redness',
+        severity: 3,
+        confidence: 0.38,
+        geometry: {
+          bbox: { x: 0.4, y: 0.28, w: 0.2, h: 0.24 },
+          heatmap: {
+            grid: { w: 8, h: 8 },
+            values: makeHeatmapValues(8, 8),
+          },
+        },
+      },
+      {
+        finding_id: 'pf_texture_medium',
+        issue_type: 'texture',
+        severity: 3,
+        confidence: 0.31,
+        geometry: {
+          bbox: { x: 0.56, y: 0.3, w: 0.22, h: 0.2 },
+          heatmap: {
+            grid: { w: 8, h: 8 },
+            values: makeHeatmapValues(8, 8),
+          },
+        },
+      },
+    ],
+  };
+}
+
 function buildRecoChatBody(latestRecoContext = null) {
   return {
     action: {
@@ -328,6 +368,10 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
           headers: commonHeaders,
           body: {
             use_photo: true,
+            skinType: 'combination',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['texture', 'redness'],
             photos: [{ photo_id: photoId, slot_id: 'daylight', qc_status: 'passed' }],
           },
         });
@@ -465,6 +509,166 @@ test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendatio
         if (routes && routes.__internal) {
           routes.__internal.__resetVisionRunnersForTest();
         }
+        axios.get = originalGet;
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('photo full chain e2e: pass-quality conservative medium photo stays medium instead of hard low-confidence', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'true',
+      AURORA_SKIN_FORCE_VISION_CALL: 'true',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      DIAG_PHOTO_MODULES_CARD: 'true',
+      DIAG_PRODUCT_REC: 'true',
+      AURORA_PRODUCT_MATCHER_ENABLED: 'false',
+      AURORA_BFF_RECO_CATALOG_GROUNDED: 'true',
+      AURORA_BFF_RECO_CATALOG_QUERIES: 'ceramide soothing serum',
+      AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_RESOLVE_ENABLED: 'false',
+      AURORA_BFF_RECO_PDP_ENRICH_MAX_NETWORK_ITEMS: '4',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      let routes = null;
+
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+        const q = String(config && config.params && config.params.query ? config.params.query : '').trim() || 'fallback';
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: `prod_${q.replace(/[^a-z0-9]+/gi, '_').toLowerCase().slice(0, 24) || 'fallback'}`,
+                merchant_id: 'mid_test',
+                brand: 'TestBrand',
+                name: q,
+                display_name: `TestBrand ${q}`,
+                category: 'serum',
+              },
+            ],
+          },
+        };
+      };
+      axios.post = async (url) => {
+        if (String(url).includes('/agent/shop/v1/invoke')) {
+          return {
+            status: 200,
+            data: { status: 'error', reason: 'no_candidates', reason_code: 'no_candidates' },
+          };
+        }
+        if (String(url).includes('/agent/v1/products/resolve')) {
+          return {
+            status: 200,
+            data: {
+              resolved: true,
+              product_ref: { product_id: 'prod_resolved', merchant_id: 'mid_test' },
+              reason_code: null,
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        routes = loadRoutesFresh();
+        routes.__internal.__setVisionRunnersForTest({
+          gemini: async () => ({
+            ok: true,
+            provider: 'gemini',
+            analysis: makeVisionMediumConservativeFixture(),
+            upstream_status_code: null,
+            latency_ms: 12,
+            retry: { attempted: 0, final: 'success', last_reason: null },
+          }),
+        });
+
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        routes.mountAuroraBffRoutes(app, { logger: null });
+
+        const commonHeaders = {
+          'X-Aurora-UID': 'photo_chain_medium_uid',
+          'X-Trace-ID': 'photo_chain_medium_trace',
+          'X-Brief-ID': 'photo_chain_medium_brief',
+        };
+        const photoBuffer = await buildQualityPassPhotoBuffer();
+
+        const presign = await invokeRoute(app, 'POST', '/v1/photos/presign', {
+          headers: commonHeaders,
+          body: {
+            slot_id: 'daylight',
+            content_type: 'image/png',
+            bytes: photoBuffer.length,
+          },
+        });
+        const presignCard = getCard(presign.body, 'photo_presign');
+        const photoId = String(presignCard?.payload?.photo_id || '');
+        assert.ok(photoId);
+
+        routes.__internal.setPhotoBytesCache({
+          photoId,
+          auroraUid: 'photo_chain_medium_uid',
+          buffer: photoBuffer,
+          contentType: 'image/png',
+        });
+
+        const confirm = await invokeRoute(app, 'POST', '/v1/photos/confirm', {
+          headers: commonHeaders,
+          body: { photo_id: photoId, slot_id: 'daylight' },
+        });
+        assert.equal(confirm.status, 200);
+
+        const analysis = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+          headers: commonHeaders,
+          body: {
+            use_photo: true,
+            skinType: 'combination',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['texture', 'redness'],
+            photos: [{ photo_id: photoId, slot_id: 'daylight', qc_status: 'passed' }],
+          },
+        });
+        assert.equal(analysis.status, 200);
+
+        const analysisSummary = getCard(analysis.body, 'analysis_summary');
+        const photoModules = getCard(analysis.body, 'photo_modules_v1');
+        const story = getCard(analysis.body, 'analysis_story_v2');
+        const notice = getCard(analysis.body, 'confidence_notice');
+        const latestRecoContext = analysis.body?.session_patch?.state?.latest_reco_context || null;
+
+        assert.ok(photoModules);
+        assert.ok(story);
+        assert.ok(latestRecoContext);
+        if (analysisSummary) {
+          assert.equal(Boolean(analysisSummary.payload?.low_confidence), false);
+        }
+        assert.equal(Boolean(photoModules.payload?.low_confidence), false);
+        assert.equal(String(photoModules.payload?.diagnostic_confidence_level || ''), 'medium');
+        assert.equal(
+          Array.isArray(photoModules.payload?.summary_v1?.quality_caveats)
+            && photoModules.payload.summary_v1.quality_caveats.includes('conservative_photo_interpretation'),
+          true,
+        );
+        assert.equal(String(story.payload?.confidence_overall?.level || ''), 'medium');
+        assert.equal(String(latestRecoContext?.confidence_policy?.confidence_level || ''), 'medium');
+        assert.equal(String(latestRecoContext?.confidence_policy?.max_target_step || ''), 'serum');
+        if (notice) {
+          assert.notEqual(String(notice.payload?.reason || '').trim(), 'low_confidence');
+        }
+      } finally {
+        if (routes && routes.__internal) routes.__internal.__resetVisionRunnersForTest();
         axios.get = originalGet;
         axios.post = originalPost;
       }
