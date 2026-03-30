@@ -2821,6 +2821,43 @@ function buildPivotaBackendAgentHeaders() {
   return {};
 }
 
+function derivePhotoIoStageFailureCode({ flow, stage, err, fallbackCode } = {}) {
+  const errorCode = String((err && err.code) || '').trim().toUpperCase();
+  const passthroughCodes = new Set([
+    'MISSING_FIELD',
+    'INVALID_MULTIPART',
+    'MULTIPART_PARSE_TIMEOUT',
+    'UNSUPPORTED_CONTENT_TYPE',
+    'UPLOAD_TOO_LARGE',
+    'REQUEST_ABORTED',
+    'PHOTO_UPLOAD_BYTES_FAILED',
+    'PHOTO_CONFIRM_UPSTREAM_FAILED',
+    'UPSTREAM_MISSING_UPLOAD_URL',
+    'PHOTO_UPLOAD_NOT_CONFIGURED',
+    'PHOTO_UPLOAD_AUTH_NOT_CONFIGURED',
+    'PHOTO_CONFIRM_NOT_CONFIGURED',
+    'PHOTO_CONFIRM_AUTH_NOT_CONFIGURED',
+  ]);
+  if (passthroughCodes.has(errorCode)) return errorCode;
+
+  const flowToken = String(flow || '').trim().toLowerCase();
+  const stageToken = String(stage || '').trim().toLowerCase();
+  if (flowToken === 'photo_upload') {
+    if (stageToken === 'parse_multipart') return 'PHOTO_MULTIPART_PARSE_FAILED';
+    if (stageToken === 'presign_request') return 'PHOTO_PRESIGN_REQUEST_FAILED';
+    if (stageToken === 'upload_bytes') return 'PHOTO_UPLOAD_STREAM_FAILED';
+    if (stageToken === 'confirm_request') return 'PHOTO_CONFIRM_REQUEST_FAILED';
+    if (stageToken === 'qc_poll') return 'PHOTO_QC_POLL_FAILED';
+    return fallbackCode || 'PHOTO_UPLOAD_FAILED';
+  }
+  if (flowToken === 'photo_confirm') {
+    if (stageToken === 'confirm_request') return 'PHOTO_CONFIRM_REQUEST_FAILED';
+    if (stageToken === 'qc_poll') return 'PHOTO_QC_POLL_FAILED';
+    return fallbackCode || 'PHOTO_CONFIRM_FAILED';
+  }
+  return fallbackCode || 'PHOTO_IO_FAILED';
+}
+
 function extractAgentProductsFromSearchResponse(raw) {
   if (!raw) return [];
   const obj = raw && typeof raw === 'object' ? raw : null;
@@ -62442,6 +62479,7 @@ function mountAuroraBffRoutes(app, { logger }) {
   app.post('/v1/photos/upload', async (req, res) => {
     const ctx = buildRequestContext(req, {});
     let tmpDir = null;
+    let uploadStage = 'initialize';
     try {
       requireAuroraUid(ctx);
 
@@ -62520,6 +62558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
+      uploadStage = 'parse_multipart';
       const { fields, files, tmpDir: parsedTmpDir } = await parseMultipart(req, {
         maxBytes: PHOTO_UPLOAD_PROXY_MAX_BYTES,
         parseTimeoutMs: PHOTO_UPLOAD_PARSE_TIMEOUT_MS,
@@ -62569,6 +62608,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const byteSize = Number.isFinite(stat.size) ? stat.size : null;
       const contentType = fileEntry.contentType || 'image/jpeg';
 
+      uploadStage = 'presign_request';
       const presignResp = await axios.post(
         `${PIVOTA_BACKEND_BASE_URL}/photos/presign`,
         {
@@ -62639,6 +62679,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         finalUploadHeaders['Content-Type'] = contentType;
       }
 
+      uploadStage = 'upload_bytes';
       const uploadResp = await axios.request({
         method: uploadMethod,
         url: uploadUrl,
@@ -62673,6 +62714,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(502).json(envelope);
       }
 
+      uploadStage = 'confirm_request';
       const confirmResp = await axios.post(
         `${PIVOTA_BACKEND_BASE_URL}/photos/confirm`,
         { upload_id: uploadId, ...(byteSize ? { byte_size: byteSize } : {}) },
@@ -62711,6 +62753,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const waitMs = Math.min(1200, Math.max(400, nextPollMs || 1000));
         await sleep(waitMs);
 
+        uploadStage = 'qc_poll';
         const qcResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/qc`, {
           timeout: 12000,
           validateStatus: () => true,
@@ -62796,11 +62839,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.json(envelope);
     } catch (err) {
       const status = Number(err?.statusCode || err?.status || 500);
-      const code = err?.code || 'PHOTO_UPLOAD_FAILED';
+      const code = derivePhotoIoStageFailureCode({
+        flow: 'photo_upload',
+        stage: uploadStage,
+        err,
+        fallbackCode: 'PHOTO_UPLOAD_FAILED',
+      });
       logger?.error(
         {
           err: err && err.message ? err.message : String(err),
           code,
+          stage: uploadStage,
           request_id: ctx.request_id,
           trace_id: ctx.trace_id,
           aurora_uid: ctx.aurora_uid,
@@ -62810,9 +62859,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to upload photo.'),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code, stage: uploadStage } }],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code })],
+        events: [makeEvent(ctx, 'error', { code, stage: uploadStage })],
       });
       return res.status(status).json(envelope);
     } finally {
@@ -62822,6 +62871,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
   app.post('/v1/photos/confirm', async (req, res) => {
     const ctx = buildRequestContext(req, {});
+    let confirmStage = 'initialize';
     try {
       requireAuroraUid(ctx);
       const parsed = PhotosConfirmRequestSchema.safeParse(req.body || {});
@@ -62890,6 +62940,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const uploadId = parsed.data.photo_id;
+      confirmStage = 'confirm_request';
       const confirmResp = await axios.post(
         `${PIVOTA_BACKEND_BASE_URL}/photos/confirm`,
         { upload_id: uploadId },
@@ -62932,6 +62983,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const waitMs = Math.min(1200, Math.max(400, nextPollMs || 1000));
         await sleep(waitMs);
 
+        confirmStage = 'qc_poll';
         const qcResp = await axios.get(`${PIVOTA_BACKEND_BASE_URL}/photos/qc`, {
           timeout: 12000,
           validateStatus: () => true,
@@ -63005,11 +63057,17 @@ function mountAuroraBffRoutes(app, { logger }) {
       return res.json(envelope);
     } catch (err) {
       const status = Number(err?.statusCode || err?.status || 500);
-      const code = err?.code || 'PHOTO_CONFIRM_FAILED';
+      const code = derivePhotoIoStageFailureCode({
+        flow: 'photo_confirm',
+        stage: confirmStage,
+        err,
+        fallbackCode: 'PHOTO_CONFIRM_FAILED',
+      });
       logger?.error(
         {
           err: err && err.message ? err.message : String(err),
           code,
+          stage: confirmStage,
           request_id: ctx.request_id,
           trace_id: ctx.trace_id,
           aurora_uid: ctx.aurora_uid,
@@ -63019,9 +63077,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const envelope = buildEnvelope(ctx, {
         assistant_message: makeAssistantMessage('Failed to confirm upload.'),
         suggested_chips: [],
-        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code } }],
+        cards: [{ card_id: `err_${ctx.request_id}`, type: 'error', payload: { error: code, stage: confirmStage } }],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code })],
+        events: [makeEvent(ctx, 'error', { code, stage: confirmStage })],
       });
       return res.status(status).json(envelope);
     }
