@@ -783,14 +783,7 @@ test('analysis_story_v2: usable ONNX fallback shell softens hard-low photo card 
               ingredient_name: 'UV filters',
               evidence_issue_types: ['texture'],
               action_rank_score: 0.92,
-              products: [
-                {
-                  product_id: 'prod_uv_filters',
-                  merchant_id: 'external_seed',
-                  name: 'UV Filters SPF 45 Serum',
-                  pdp_url: 'https://example.com/p/uv-filters-spf45',
-                },
-              ],
+              products: [],
             },
           ],
           box: { x: 0.344, y: 0.078, w: 0.313, h: 0.125 },
@@ -809,6 +802,17 @@ test('analysis_story_v2: usable ONNX fallback shell softens hard-low photo card 
 
   const softened = internal.softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
     photoModulesCard,
+    ingredientPlanPayload: {
+      targets: [
+        {
+          ingredient_id: 'sunscreen_filters',
+          ingredient_name: 'UV filters',
+          target_role: 'primary',
+          resolved_target_step: 'sunscreen',
+          target_confidence: 'high',
+        },
+      ],
+    },
     language: 'EN',
   });
 
@@ -833,9 +837,6 @@ test('analysis_story_v2: usable ONNX fallback shell softens hard-low photo card 
           target_role: 'primary',
           resolved_target_step: 'sunscreen',
           target_confidence: 'high',
-          products: {
-            competitors: [{ name: 'UV Filters SPF 45 Serum', pdp_url: 'https://example.com/p/uv-filters-spf45' }],
-          },
         },
       ],
     },

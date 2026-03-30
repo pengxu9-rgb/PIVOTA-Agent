@@ -518,6 +518,43 @@ test('__internal: shouldSoftenAnalysisSummaryLowConfidence accepts passed qc whe
   }
 });
 
+test('__internal: shouldSoftenAnalysisSummaryLowConfidence returns true for used-photo ONNX fallback after photo card softening', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.shouldSoftenAnalysisSummaryLowConfidence({
+      analysisSource: 'rule_based_with_photo_qc',
+      usePhoto: true,
+      photosProvided: true,
+      usedPhotos: true,
+      photoQualityGrade: 'degraded',
+      degradeReason: 'skinmask_onnx_fail_softened',
+      photoModulesCard: {
+        type: 'photo_modules_v1',
+        payload: {
+          quality_grade: 'degraded',
+          low_confidence: false,
+          diagnostic_confidence_level: 'medium',
+          confidence_softened_reason: 'skinmask_onnx_fail_target_stable',
+          summary_v1: {
+            top_findings: [],
+            quality_caveats: ['photo_quality_degraded'],
+            confidence_softened_reason: 'skinmask_onnx_fail_target_stable',
+          },
+          module_overlay_debug: {
+            skinmask_source: 'none',
+            skinmask_fallback_reason: 'ONNX_FAIL',
+            skinmask_model_loaded: true,
+            confidence_softened_reason: 'skinmask_onnx_fail_target_stable',
+          },
+        },
+      },
+    });
+    assert.equal(out, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();

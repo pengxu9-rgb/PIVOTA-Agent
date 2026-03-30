@@ -18293,13 +18293,11 @@ function softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
   const confidencePolicy = normalizeRecoConfidencePolicy(photoContext && photoContext.confidence_policy);
   const policyLevel = pickFirstTrimmed(confidencePolicy && confidencePolicy.confidence_level).toLowerCase();
   const targetConfidence = pickFirstTrimmed(primaryTarget && primaryTarget.target_confidence).toLowerCase();
-  const primaryCandidates = Array.isArray(primaryTarget && primaryTarget.product_candidates) ? primaryTarget.product_candidates : [];
-  const topLevelCandidates = Array.isArray(photoContext && photoContext.product_candidates) ? photoContext.product_candidates : [];
-  const verifiedProductCount = Math.max(0, Number(primaryTarget && primaryTarget.verified_product_count || 0));
-  if (!primaryTargetId || policyLevel === 'low' || targetConfidence === 'low') {
-    return { photoModulesCard, applied: false, reason: null };
-  }
-  if (!(verifiedProductCount > 0 || primaryCandidates.length > 0 || topLevelCandidates.length > 0)) {
+  const targetStep = pickFirstTrimmed(
+    primaryTarget && primaryTarget.resolved_target_step,
+    photoContext && photoContext.resolved_target_step,
+  ).toLowerCase();
+  if (!primaryTargetId || !targetStep || policyLevel === 'low' || targetConfidence === 'low') {
     return { photoModulesCard, applied: false, reason: null };
   }
 
@@ -26075,10 +26073,19 @@ function shouldSoftenAnalysisSummaryLowConfidence({
   degradeReason = '',
   ingredientPlan = null,
   profileSummary = null,
+  photoModulesCard = null,
 } = {}) {
   const normalizedSource = String(analysisSource || '').trim().toLowerCase();
   if (normalizedSource !== 'rule_based_with_photo_qc') return false;
-  if (!usePhoto || !photosProvided || usedPhotos) return false;
+  if (!usePhoto || !photosProvided) return false;
+  const photoCardPayload = isPlainObject(photoModulesCard && photoModulesCard.payload) ? photoModulesCard.payload : {};
+  const photoCardSoftenedReason = pickFirstTrimmed(
+    photoCardPayload.confidence_softened_reason,
+    isPlainObject(photoCardPayload.summary_v1) ? photoCardPayload.summary_v1.confidence_softened_reason : '',
+    isPlainObject(photoCardPayload.module_overlay_debug) ? photoCardPayload.module_overlay_debug.confidence_softened_reason : '',
+  ).toLowerCase();
+  if (photoCardSoftenedReason === 'skinmask_onnx_fail_target_stable') return true;
+  if (usedPhotos) return false;
   const normalizedGrade = String(photoQualityGrade || '').trim().toLowerCase();
   if (normalizedGrade === 'fail' || normalizedGrade === 'degraded') return false;
   const hasPassedPhotoQc = Array.isArray(photos) && photos.some((row) => String(row && row.qc_status || '').trim().toLowerCase() === 'passed');
@@ -65401,6 +65408,17 @@ function mountAuroraBffRoutes(app, { logger }) {
         const artifactConfidence = diagnosisArtifact && diagnosisArtifact.overall_confidence && typeof diagnosisArtifact.overall_confidence === 'object'
           ? diagnosisArtifact.overall_confidence
           : null;
+        if (photoModulesCard && ingredientPlan) {
+          const softenedPhotoModulesConfidenceLate = softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
+            photoModulesCard,
+            ingredientPlanPayload: ingredientPlan,
+            language: ctx.lang,
+          });
+          photoModulesCard = softenedPhotoModulesConfidenceLate.photoModulesCard || photoModulesCard;
+          if (softenedPhotoModulesConfidenceLate.applied) {
+            photoModulesConfidenceSoftenedReason = softenedPhotoModulesConfidenceLate.reason;
+          }
+        }
         const lowConfidenceFromPhotoQuality = Boolean(
           userRequestedPhoto &&
             photosProvided &&
@@ -65421,9 +65439,17 @@ function mountAuroraBffRoutes(app, { logger }) {
           degradeReason,
           ingredientPlan,
           profileSummary,
+          photoModulesCard,
         });
-        if (softenedAnalysisSummaryLowConfidence) {
-          analysisMeta.confidence_softened_reason = 'photo_artifact_limited_target_stable';
+        const analysisSummaryConfidenceSoftenedReason = softenedAnalysisSummaryLowConfidence
+          ? (
+              photoModulesConfidenceSoftenedReason === 'skinmask_onnx_fail_target_stable'
+                ? 'skinmask_onnx_fail_target_stable'
+                : 'photo_artifact_limited_target_stable'
+            )
+          : '';
+        if (analysisSummaryConfidenceSoftenedReason) {
+          analysisMeta.confidence_softened_reason = analysisSummaryConfidenceSoftenedReason;
         }
         const lowConfidenceSummary =
           !softenedAnalysisSummaryLowConfidence && (
@@ -65447,8 +65473,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (softenedAnalysisSummaryLowConfidence && isPlainObject(chatEnrichedAnalysis)) {
           const existingConfidence = isPlainObject(chatEnrichedAnalysis.confidence) ? chatEnrichedAnalysis.confidence : {};
           const rationale = Array.isArray(existingConfidence.rationale) ? existingConfidence.rationale.slice() : [];
-          if (!rationale.includes('photo_artifact_limited_target_stable')) {
-            rationale.push('photo_artifact_limited_target_stable');
+          if (analysisSummaryConfidenceSoftenedReason && !rationale.includes(analysisSummaryConfidenceSoftenedReason)) {
+            rationale.push(analysisSummaryConfidenceSoftenedReason);
           }
           chatEnrichedAnalysis = {
             ...chatEnrichedAnalysis,
@@ -65500,8 +65526,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 photosProvided &&
                 String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
             ),
-            ...(softenedAnalysisSummaryLowConfidence
-              ? { confidence_softened_reason: 'photo_artifact_limited_target_stable' }
+            ...(analysisSummaryConfidenceSoftenedReason
+              ? { confidence_softened_reason: analysisSummaryConfidenceSoftenedReason }
               : {}),
             ...(photoQualitySoftenedReason ? { photo_quality_softened_reason: photoQualitySoftenedReason } : {}),
           },
