@@ -823,6 +823,72 @@
       "kind": "semantic"
     },
     {
+      "id": "search_public_serum_default_locale_zh",
+      "family": "broad_discovery",
+      "query": "serum",
+      "source": "search",
+      "title": "Public search broad discovery preserves explicit zh locale while staying on the stable search contract",
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "headers": {
+        "X-Lang": "CN"
+      },
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "serum",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search",
+          "locale": "zh-CN"
+        }
+      },
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "Winona Soothing Repair Serum",
+          "The Ordinary Niacinamide 10% + Zinc 1%"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.query_source": "cache_cross_merchant_search",
+          "metadata.cache_stage_selected_source": "internal_cache",
+          "metadata.source_breakdown.external_seed_count": 0
+        },
+        "must_be_positive_paths": [
+          "metadata.source_breakdown.internal_count"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health"
+        ]
+      },
+      "kind": "semantic"
+    },
+    {
       "blocking": true,
       "rail_mode": "authoritative_commerce",
       "require_primary_path": true,

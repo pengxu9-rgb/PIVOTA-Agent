@@ -175,6 +175,47 @@
           }
         ]
       }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
+      "id": "followup_refinement_lightweight_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "更轻薄一点",
+      "source": "aurora-bff",
+      "title": "follow-up refinement preserves explicit zh locale while staying in the same orchestration thread",
+      "request": {
+        "message": "更轻薄一点",
+        "messages": [
+          {
+            "role": "user",
+            "content": "推荐一个 repair serum"
+          },
+          {
+            "role": "assistant",
+            "content": "你更在意修护还是保湿？"
+          }
+        ],
+        "headers": {
+          "X-Lang": "CN"
+        }
+      }
     }
   ]
 }
