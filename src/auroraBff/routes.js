@@ -481,6 +481,10 @@ const resolveKnownStableProductRef =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
+const fetchGroundingAgentSearchCandidates =
+  typeof productGroundingResolverInternals.fetchCandidatesViaAgentSearch === 'function'
+    ? productGroundingResolverInternals.fetchCandidatesViaAgentSearch
+    : null;
 const normalizeTextForStableResolver =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
     ? productGroundingResolverInternals.normalizeTextForResolver
@@ -6795,6 +6799,8 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   let filteredNonSkincareCount = 0;
   let internalSearchAmbiguous = false;
   let externalSeedSearchAmbiguous = false;
+  const searchTimeoutMs = Math.max(1200, Math.min(3200, CATALOG_AVAIL_SEARCH_TIMEOUT_MS));
+  const externalSeedSearchTimeoutMs = Math.max(2200, searchTimeoutMs);
 
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
@@ -6841,19 +6847,42 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
         query,
         limit: 8,
         logger,
-        timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
+        timeoutMs: searchTimeoutMs,
         allowExternalSeed: false,
         externalSeedStrategy: 'legacy',
       }),
       AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true
-        ? searchPivotaBackendProducts({
-            query,
-            limit: 8,
-            logger,
-            timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
-            allowExternalSeed: true,
-            externalSeedStrategy: 'supplement_internal_first',
-          })
+        ? (async () => {
+            const startedAt = Date.now();
+            if (fetchGroundingAgentSearchCandidates) {
+              const out = await fetchGroundingAgentSearchCandidates({
+                pivotaApiBase: PIVOTA_BACKEND_BASE_URL,
+                pivotaApiKey: PIVOTA_BACKEND_AGENT_API_KEY,
+                query,
+                merchantIds: undefined,
+                searchAllMerchants: true,
+                limit: 8,
+                timeoutMs: externalSeedSearchTimeoutMs,
+                maxRetries: externalSeedSearchTimeoutMs >= 2400 ? 1 : 0,
+                retryBackoffMs: 90,
+                allowExternalSeed: true,
+                externalSeedStrategy: 'supplement_internal_first',
+                fastMode: true,
+              });
+              return {
+                ...out,
+                latency_ms: Math.max(0, Date.now() - startedAt),
+              };
+            }
+            return searchPivotaBackendProducts({
+              query,
+              limit: 8,
+              logger,
+              timeoutMs: externalSeedSearchTimeoutMs,
+              allowExternalSeed: true,
+              externalSeedStrategy: 'supplement_internal_first',
+            });
+          })()
         : Promise.resolve(null),
     ]);
     const pickedInternal = pickBestCatalogSearchCandidateForProductInput({
