@@ -524,6 +524,39 @@
       }
     },
     {
+      "id": "search_strict_vitamin_c_serum_budget_usd_locale_en",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under $30",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup preserves explicit locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under $30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "shopping_agent_exact_ipsa_time_reset_aqua",
       "family": "exact_product_lookup",
       "query": "IPSA Time Reset Aqua",
@@ -871,6 +904,41 @@
             },
             "metadata": {
               "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "The Ordinary Niacinamide 10% + Zinc 1%",
+              "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+              "Watch Ya Tone Niacinamide Dark Spot Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_exactish_niacinamide_locale_en",
+      "family": "exactish_lookup",
+      "query": "niacinamide serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact-ish niacinamide lookup preserves explicit locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "niacinamide serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
             }
           },
           "correctness": {

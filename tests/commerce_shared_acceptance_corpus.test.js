@@ -611,11 +611,13 @@ describe('Commerce shared acceptance corpus', () => {
       expect.arrayContaining([
         'search_exact_ipsa_time_reset_aqua',
         'search_exact_ipsa_time_reset_aqua_locale_zh',
+        'search_exactish_niacinamide_locale_en',
         'search_merchant_query_winona_products',
         'search_merchant_query_winona_products_locale_en',
         'shopping_agent_strict_vitamin_c_serum',
         'search_strict_vitamin_c_serum_budget_eur',
         'search_strict_vitamin_c_serum_budget_usd',
+        'search_strict_vitamin_c_serum_budget_usd_locale_en',
       ]),
     );
   });
@@ -667,9 +669,14 @@ describe('Commerce shared acceptance corpus', () => {
     );
 
     const stagingCases = loadStagingMatrixPayload(corpusPath).semantic_cases;
+    const prodIds = new Set(loadProdGateCases(corpusPath).map((item) => item.id));
     const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
+    const enExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_en');
     const enMerchant = stagingCases.find(
       (item) => item.id === 'search_merchant_query_winona_products_locale_en',
+    );
+    const enBudget = stagingCases.find(
+      (item) => item.id === 'search_strict_vitamin_c_serum_budget_usd_locale_en',
     );
 
     expect(zhExact).toEqual(
@@ -686,6 +693,20 @@ describe('Commerce shared acceptance corpus', () => {
         locale: 'zh-CN',
       }),
     );
+    expect(enExactish).toEqual(
+      expect.objectContaining({
+        family: 'exactish_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enExactish?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
     expect(enMerchant).toEqual(
       expect.objectContaining({
         family: 'merchant_query',
@@ -700,5 +721,21 @@ describe('Commerce shared acceptance corpus', () => {
         locale: 'en-US',
       }),
     );
+    expect(enBudget).toEqual(
+      expect.objectContaining({
+        family: 'strict_ingredient_budget',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enBudget?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(prodIds.has('search_exactish_niacinamide_locale_en')).toBe(false);
+    expect(prodIds.has('search_strict_vitamin_c_serum_budget_usd_locale_en')).toBe(false);
   });
 });
