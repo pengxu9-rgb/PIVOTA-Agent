@@ -699,6 +699,64 @@ test('analysis_story_v2: conservative pass-quality medium photo context stays me
   assert.equal(evidence.low_confidence, false);
 });
 
+test('analysis_story_v2: degraded shell without findings stays medium when photo reco context is still usable', () => {
+  const internal = loadInternalWithFlags({});
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      used_photos: true,
+      analysis_source: 'vision_gemini',
+      low_confidence: false,
+      analysis: { features: [] },
+    },
+    photoModulesCard: {
+      type: 'photo_modules_v1',
+      payload: {
+        used_photos: true,
+        quality_grade: 'degraded',
+        low_confidence: false,
+        diagnostic_confidence_level: 'medium',
+        modules: [
+          {
+            module_id: 'forehead',
+            issues: [],
+            actions: [],
+            box: { x: 0.344, y: 0.078, w: 0.313, h: 0.125 },
+            module_pixels: 160,
+            mask_rle_norm: '342,20,44,20,44,20,44,20',
+          },
+        ],
+        summary_v1: {
+          top_findings: [],
+          quality_caveats: ['photo_quality_degraded'],
+        },
+      },
+    },
+    ingredientPlanPayload: {
+      targets: [
+        {
+          ingredient_id: 'sunscreen_filters',
+          ingredient_name: 'UV filters',
+          target_role: 'primary',
+          resolved_target_step: 'sunscreen',
+          target_confidence: 'high',
+        },
+      ],
+    },
+    profile: {},
+    language: 'EN',
+    fallbackStory: null,
+  });
+
+  assert.equal(evidence.photo_context.quality_grade, 'degraded');
+  assert.equal(evidence.photo_context.quality_caveats.includes('photo_quality_degraded'), true);
+  assert.equal(evidence.low_confidence, false);
+
+  const story = internal.generateAnalysisStoryV2Json({ evidence, fallbackStory: null });
+  const reviewed = internal.reviewAnalysisStoryV2Json({ story, evidence });
+  assert.equal(reviewed.repaired?.ui_card_v1?.confidence_label, 'medium');
+  assert.match(String(reviewed.repaired?.ui_card_v1?.headline || ''), /uv filters|sunscreen/i);
+});
+
 test('analysis_story_v2: analysis-summary target handoff keeps headline and assistant copy target-bound', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',

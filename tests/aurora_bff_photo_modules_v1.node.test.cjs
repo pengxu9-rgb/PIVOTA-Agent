@@ -493,6 +493,46 @@ test('photo modules card: strong pass-quality texture evidence gets a conservati
   );
 });
 
+test('photo modules card: degraded shell without findings stays medium instead of inventing a low primary finding', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_degraded_shell_no_findings',
+    analysis: {
+      photo_findings: [],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'degraded', reasons: ['skinmask_onnx_fail_softened'] },
+    diagnosisInternal: makeDiagnosisInternalWithFaceCropFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+    skinMask: {
+      ok: false,
+      skinmask_source: 'none',
+      skinmask_fallback_reason: 'ONNX_FAIL',
+      skinmask_reliable: false,
+      onnx_infer_ms: 12.5,
+      skinmask_model_loaded: true,
+    },
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  assert.equal(built.card.payload.quality_grade, 'degraded');
+  assert.equal(Boolean(built.card.payload.low_confidence), false);
+  assert.equal(built.card.payload.diagnostic_confidence_level, 'medium');
+  assert.equal(Array.isArray(built.card.payload.summary_v1?.top_findings), true);
+  assert.equal(built.card.payload.summary_v1.top_findings.length, 0);
+  assert.equal(
+    Array.isArray(built.card.payload.summary_v1?.quality_caveats)
+      && built.card.payload.summary_v1.quality_caveats.includes('low_confidence_primary_finding'),
+    false,
+  );
+  assert.equal(
+    Array.isArray(built.card.payload.summary_v1?.quality_caveats)
+      && built.card.payload.summary_v1.quality_caveats.includes('photo_quality_degraded'),
+    true,
+  );
+});
+
 test('photo modules summary_v1: top_product_id stays aligned to the primary action instead of borrowing another action product', () => {
   const summary = buildSummaryV1(
     [

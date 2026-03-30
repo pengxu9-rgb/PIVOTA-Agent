@@ -37697,11 +37697,13 @@ function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons, summaryTo
   }
   const findings = Array.isArray(topFindings) ? topFindings : [];
   const primaryFinding = findings[0] || null;
-  const primaryBucket = normalizePhotoStoryConfidenceBucket(
-    primaryFinding && primaryFinding.confidence_0_1,
-    primaryFinding && primaryFinding.confidence_bucket,
-  );
-  if (primaryBucket === 'low') out.push('low_confidence_primary_finding');
+  const primaryBucket = primaryFinding
+    ? normalizePhotoStoryConfidenceBucket(
+      primaryFinding && primaryFinding.confidence_0_1,
+      primaryFinding && primaryFinding.confidence_bucket,
+    )
+    : '';
+  if (primaryFinding && primaryBucket === 'low') out.push('low_confidence_primary_finding');
   if (
     findings.length > 0 &&
     findings.every((row) => {
@@ -37717,11 +37719,19 @@ function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons, summaryTo
 function derivePhotoContextConfidenceLevel(photoContext, { fallback = 'medium' } = {}) {
   const context = isPlainObject(photoContext) ? photoContext : {};
   const primaryFocus = isPlainObject(context.primary_focus) ? context.primary_focus : null;
-  const primaryBucket = normalizePhotoStoryConfidenceBucket(
-    primaryFocus && primaryFocus.confidence_0_1,
-    primaryFocus && primaryFocus.confidence_bucket,
+  const primaryFocusHasVisualSignal = Boolean(
+    primaryFocus && (
+      pickFirstTrimmed(primaryFocus.module_id, primaryFocus.issue_type, primaryFocus.confidence_bucket)
+      || Number.isFinite(Number(primaryFocus.confidence_0_1))
+    ),
   );
-  if (primaryFocus && primaryBucket) return primaryBucket;
+  const primaryBucket = primaryFocusHasVisualSignal
+    ? normalizePhotoStoryConfidenceBucket(
+      primaryFocus && primaryFocus.confidence_0_1,
+      primaryFocus && primaryFocus.confidence_bucket,
+    )
+    : '';
+  if (primaryFocusHasVisualSignal && primaryBucket) return primaryBucket;
   const qualityCaveats = Array.isArray(context.quality_caveats)
     ? context.quality_caveats.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
     : [];

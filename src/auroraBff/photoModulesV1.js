@@ -687,9 +687,13 @@ function buildPhotoModulesQualityCaveats({ qualityGrade, qualityReasons, topFind
   }
   const findings = Array.isArray(topFindings) ? topFindings : [];
   const primaryFinding = findings[0] || null;
-  const primaryBucket = String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
-    || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1);
-  if (primaryBucket === 'low') caveats.push('low_confidence_primary_finding');
+  const primaryBucket = primaryFinding
+    ? (
+      String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
+      || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1)
+    )
+    : '';
+  if (primaryFinding && primaryBucket === 'low') caveats.push('low_confidence_primary_finding');
   if (
     findings.length > 0 &&
     findings.every((row) => {
@@ -711,8 +715,12 @@ function derivePhotoModulesDiagnosticConfidence(summaryV1, qualityGrade) {
   const normalizedGrade = String(qualityGrade || '').trim().toLowerCase();
   const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
   const primaryFinding = topFindings[0] || null;
-  const primaryBucket = String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
-    || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1);
+  const primaryBucket = primaryFinding
+    ? (
+      String(primaryFinding && primaryFinding.confidence_bucket || '').trim().toLowerCase()
+      || normalizeConfidenceBucket(primaryFinding && primaryFinding.confidence_0_1)
+    )
+    : '';
 
   if (
     normalizedGrade === 'fail'
