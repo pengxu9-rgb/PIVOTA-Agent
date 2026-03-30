@@ -25676,6 +25676,50 @@ function seedIngredientRecoContextFromCandidates(recoContext, {
   });
 }
 
+function buildPrimaryIngredientRecoSearchContext(recoContext) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  if (!normalizedContext) return normalizedContext;
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(normalizedContext.ranked_targets) ? normalizedContext.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    normalizedContext.primary_target_id,
+    rankedTargets.find((item) => String(item && item.target_role || '').trim().toLowerCase() === 'primary')?.target_id,
+    rankedTargets[0]?.target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((item) => pickFirstTrimmed(item && item.target_id) === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  const primaryQuery = pickFirstTrimmed(
+    primaryTarget && primaryTarget.ingredient_query,
+    normalizedContext.ingredient_query,
+    normalizedContext.query,
+  );
+  const primaryStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      primaryTarget && primaryTarget.resolved_target_step,
+      normalizedContext.resolved_target_step,
+      normalizedContext.target_step,
+      normalizedContext.step,
+    ),
+  );
+  return normalizeIngredientRecoContextValue({
+    ...normalizedContext,
+    ...(primaryQuery ? { query: primaryQuery, ingredient_query: primaryQuery } : {}),
+    ...(primaryQuery ? { candidates: [primaryQuery], ingredient_candidates: [primaryQuery] } : {}),
+    ...(primaryStep
+      ? {
+          resolved_target_step: primaryStep,
+          target_step: primaryStep,
+          step: primaryStep,
+        }
+      : {}),
+    ...(primaryTarget ? { ranked_targets: [primaryTarget] } : {}),
+    ...(primaryTargetId ? { primary_target_id: primaryTargetId, selected_target_ids: [primaryTargetId] } : {}),
+  });
+}
+
 function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary = null, artifactId = '' } = {}) {
   if (!isPlainObject(routineAnalysisResult)) return null;
   const cards = Array.isArray(routineAnalysisResult.cards) ? routineAnalysisResult.cards : [];
@@ -74101,10 +74145,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           recoIngredientCandidates = Array.isArray(recoIngredientContext?.candidates) ? recoIngredientContext.candidates : [];
         }
         const recoAutoAnchoredByAnalysis = shouldApplyAnalysisDerivedRecoContext;
+        const recoIngredientContextForMainline =
+          ingredientRecoOptInRequested && !recoAutoAnchoredByAnalysis
+            ? (buildPrimaryIngredientRecoSearchContext(recoIngredientContext) || recoIngredientContext)
+            : recoIngredientContext;
         const ingredientOptInRecoRequestText =
           ingredientRecoOptInRequested && !recoRequestMessage
             ? buildIngredientOptInRecoRequestText({
-              recoContext: recoIngredientContext,
+              recoContext: recoIngredientContextForMainline,
               language: ctx.lang,
             })
             : '';
@@ -74122,15 +74170,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             latestRecoContextForRecommendation && latestRecoContextForRecommendation.goal,
           )
           : pickFirstTrimmed(
-            recoIngredientContext && recoIngredientContext.resolved_target_step,
-            recoIngredientContext && recoIngredientContext.ingredient_query,
-            recoIngredientContext && recoIngredientContext.query,
-            recoIngredientContext && recoIngredientContext.goal,
-            Array.isArray(recoIngredientContext && recoIngredientContext.candidates)
-              ? recoIngredientContext.candidates[0]
+            recoIngredientContextForMainline && recoIngredientContextForMainline.resolved_target_step,
+            recoIngredientContextForMainline && recoIngredientContextForMainline.ingredient_query,
+            recoIngredientContextForMainline && recoIngredientContextForMainline.query,
+            recoIngredientContextForMainline && recoIngredientContextForMainline.goal,
+            Array.isArray(recoIngredientContextForMainline && recoIngredientContextForMainline.candidates)
+              ? recoIngredientContextForMainline.candidates[0]
               : '',
-            Array.isArray(recoIngredientContext && recoIngredientContext.ingredient_candidates)
-              ? recoIngredientContext.ingredient_candidates[0]
+            Array.isArray(recoIngredientContextForMainline && recoIngredientContextForMainline.ingredient_candidates)
+              ? recoIngredientContextForMainline.ingredient_candidates[0]
               : '',
           );
         const chatRecoTargetContext = resolveRecommendationTargetContext({
@@ -74502,7 +74550,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               recentLogs,
               message: recoRequestMessageForMainline || message,
               focus: recoFocusForMainline,
-              ingredientContext: recoIngredientContext,
+              ingredientContext: recoIngredientContextForMainline,
               analysisContextSnapshot: analysisContextSnapshotForConversation,
               requestOverride: requestScopedProfileOverride,
               includeAlternatives,
