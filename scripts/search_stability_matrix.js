@@ -544,6 +544,20 @@ function classifyRow(row) {
     metadata && typeof metadata.route_trace === 'object' && !Array.isArray(metadata.route_trace)
       ? metadata.route_trace
       : {};
+  const gatewayGovernance =
+    metadata && typeof metadata.gateway_governance === 'object' && !Array.isArray(metadata.gateway_governance)
+      ? metadata.gateway_governance
+      : {};
+  const gatewayInvocation =
+    metadata && typeof metadata.gateway_invocation === 'object' && !Array.isArray(metadata.gateway_invocation)
+      ? metadata.gateway_invocation
+      : {};
+  const gatewayQueryGovernance =
+    gatewayGovernance.query_governance &&
+    typeof gatewayGovernance.query_governance === 'object' &&
+    !Array.isArray(gatewayGovernance.query_governance)
+      ? gatewayGovernance.query_governance
+      : {};
   const products = Array.isArray(data.products) ? data.products : [];
   const primaryPath = evaluatePrimaryPathContract(data, {
     require_primary_path: false,
@@ -562,6 +576,25 @@ function classifyRow(row) {
   const queryClass = String(
     searchTrace.query_class || metadata?.search_decision?.query_class || inferQueryClassFromQuery(row.query),
   );
+  const gatewayGovernanceMode = String(gatewayGovernance.mode || '').trim() || null;
+  const gatewayObservedAction =
+    String(
+      gatewayGovernance.observed_action ||
+        gatewayQueryGovernance.action ||
+        '',
+    ).trim() || 'allow';
+  const gatewayEffectiveAction =
+    String(gatewayGovernance.effective_action || '').trim() ||
+    (gatewayGovernanceMode === 'shadow' ? 'allow' : gatewayObservedAction);
+  const gatewayInvocationSurface = String(gatewayInvocation.surface || '').trim() || null;
+  const gatewayReasonCodes = Array.isArray(gatewayGovernance.reason_codes)
+    ? gatewayGovernance.reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
+    : Array.isArray(gatewayQueryGovernance.reason_codes)
+      ? gatewayQueryGovernance.reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+  const gatewayObservedPhase = String(gatewayGovernance.observed_phase || '').trim() || null;
+  const gatewayEntryLayer = String(gatewayGovernance.entry_layer || '').trim() || null;
+  const gatewayWouldEnforce = gatewayGovernance.would_enforce === true;
   return {
     timeout,
     strictEmpty,
@@ -619,6 +652,19 @@ function classifyRow(row) {
     observerNodes: Array.isArray(primaryPath.observerNodes) ? primaryPath.observerNodes : [],
     primaryPathUsed: primaryPath.primaryPathUsed,
     fallbackReason: primaryPath.fallbackReason,
+    gatewayGovernanceEvent:
+      gatewayGovernanceMode || gatewayInvocationSurface || gatewayReasonCodes.length > 0
+        ? {
+            mode: gatewayGovernanceMode || 'unknown',
+            invocation_surface: gatewayInvocationSurface,
+            observed_action: gatewayObservedAction,
+            effective_action: gatewayEffectiveAction,
+            would_enforce: gatewayWouldEnforce,
+            reason_codes: gatewayReasonCodes,
+            observed_phase: gatewayObservedPhase,
+            entry_layer: gatewayEntryLayer,
+          }
+        : null,
   };
 }
 
@@ -874,6 +920,7 @@ async function main() {
           observer_nodes: row.metrics.observerNodes,
           primary_path_used: row.metrics.primaryPathUsed,
           fallback_reason: row.metrics.fallbackReason,
+          gateway_governance: row.metrics.gatewayGovernanceEvent,
           failure_stage: row.metrics.failureStage,
           node_timings_ms: row.metrics.nodeTimingsMs,
           strict_empty: row.metrics.strictEmpty,

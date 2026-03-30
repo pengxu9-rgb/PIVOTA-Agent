@@ -177,4 +177,47 @@ describe('Commerce readiness scorecard', () => {
     expect(result.scorecard.cross_layer_contract_drift).toBe('amber');
     expect(result.scorecard.observability_provenance).toBe('green');
   });
+
+  test('accepts automated runtime governance handoff when raw export is unavailable', () => {
+    const result = evaluateReadinessScorecard({
+      publicLocalStatus: 'pass',
+      shoppingLocalStatus: 'pass',
+      auroraLocalStatus: 'pass',
+      gatewayGovernanceLocalStatus: 'pass',
+      prodSmokeStatus: 'pass',
+      promptLiveSmokeStatus: 'pass',
+      gatewayGovernanceExtractStatus: 'missing',
+      gatewayGovernanceReportStatus: 'pass',
+      gatewayGovernanceReadinessStatus: 'green',
+      publicGatewayAuthRequired: false,
+      authoritativeProdCommit: 'abc123',
+      gatewayGovernanceRuntimeHandoffStatus: 'pass',
+      promptCases: {
+        prompt_cases: [
+          { family: 'prompt_clarify' },
+          { family: 'conversation_progress_resume' },
+        ],
+      },
+      prodGateCases: [
+        { family: 'merchant_query' },
+        { family: 'exact_product_lookup' },
+        { family: 'exactish_lookup' },
+        { family: 'strict_ingredient' },
+        { family: 'scenario_clarify' },
+      ],
+      stagingCases: {
+        semantic_cases: [
+          { family: 'merchant_query' },
+          { family: 'exact_product_lookup' },
+          { family: 'exactish_lookup' },
+          { family: 'scenario_clarify' },
+          { family: 'aurora_guidance_cache_hit' },
+          { family: 'aurora_guidance_cache_miss' },
+          { family: 'aurora_guidance_direct_supplement' },
+        ],
+      },
+    });
+
+    expect(result.scorecard.observability_provenance).toBe('green');
+  });
 });

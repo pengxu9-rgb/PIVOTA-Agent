@@ -202,8 +202,8 @@ describe('Commerce shared acceptance corpus', () => {
                   },
                   observability: {
                     must_equal_paths: {
-                      'meta.prompt_intent': 'scenario_selection',
-                      'meta.conversation_progress': 'scenario_selected',
+                      'meta.prompt_intent': 'follow_up_refinement',
+                      'meta.conversation_progress': 'follow_up',
                     },
                   },
                 },
@@ -244,8 +244,8 @@ describe('Commerce shared acceptance corpus', () => {
         family: 'conversation_progress_resume',
         observability: expect.objectContaining({
           must_equal_paths: expect.objectContaining({
-            'meta.prompt_intent': 'scenario_selection',
-            'meta.conversation_progress': 'scenario_selected',
+            'meta.prompt_intent': 'follow_up_refinement',
+            'meta.conversation_progress': 'follow_up',
             'meta.early_decision': 'resume_prior_goal',
             'meta.decision_owner': 'aurora_orchestration',
           }),

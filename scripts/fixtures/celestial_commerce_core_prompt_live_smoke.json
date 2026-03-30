@@ -43,15 +43,15 @@
         "must_equal_paths": {
           "meta.early_decision": "resume_prior_goal",
           "meta.decision_owner": "aurora_orchestration",
-          "meta.prompt_intent": "scenario_selection",
-          "meta.conversation_progress": "scenario_selected"
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
         }
       },
       "id": "conversation_progress_resume_date_selection",
       "family": "conversation_progress_resume",
       "query": "约会",
       "source": "aurora-bff",
-      "title": "scenario choice resumes the prior shopping goal",
+      "title": "scenario reply continues the current orchestration thread",
       "request": {
         "message": "约会",
         "messages": [

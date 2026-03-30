@@ -19,7 +19,12 @@ function parseArgs(argv) {
     authToken: process.env.AUTH_TOKEN || process.env.CELESTIAL_COMMERCE_PROMPT_AUTH_TOKEN || '',
     agentApiKey:
       process.env.AGENT_API_KEY || process.env.CELESTIAL_COMMERCE_PROMPT_AGENT_API_KEY || '',
-    timeoutMs: Math.max(500, Number(process.env.CELESTIAL_COMMERCE_PROMPT_TIMEOUT_MS || 15000) || 15000),
+    timeoutMs: Math.max(500, Number(process.env.CELESTIAL_COMMERCE_PROMPT_TIMEOUT_MS || 25000) || 25000),
+    retries: Math.max(0, Number(process.env.CELESTIAL_COMMERCE_PROMPT_RETRIES || 1) || 0),
+    retryBackoffMs: Math.max(
+      0,
+      Number(process.env.CELESTIAL_COMMERCE_PROMPT_RETRY_BACKOFF_MS || 500) || 500,
+    ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -32,7 +37,13 @@ function parseArgs(argv) {
     if (token === '--auth-token' && next) args.authToken = String(next);
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
     if (token === '--timeout-ms' && next) {
-      args.timeoutMs = Math.max(500, Number(next) || 15000);
+      args.timeoutMs = Math.max(500, Number(next) || 25000);
+    }
+    if (token === '--retries' && next) {
+      args.retries = Math.max(0, Number(next) || 0);
+    }
+    if (token === '--retry-backoff-ms' && next) {
+      args.retryBackoffMs = Math.max(0, Number(next) || 500);
     }
   }
 
@@ -255,6 +266,50 @@ async function requestJson(url, payload, headers, timeoutMs) {
   };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetryResponse(response) {
+  const status = Number(response?.status || 0) || 0;
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+async function requestJsonWithRetries(url, payload, headers, options = {}) {
+  const timeoutMs = Math.max(500, Number(options.timeoutMs || 25000) || 25000);
+  const retries = Math.max(0, Number(options.retries || 0) || 0);
+  const retryBackoffMs = Math.max(0, Number(options.retryBackoffMs || 500) || 500);
+  let lastError = null;
+  let lastResponse = null;
+
+  for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+    try {
+      const response = await requestJson(url, payload, headers, timeoutMs);
+      lastResponse = response;
+      if (attempt <= retries && shouldRetryResponse(response)) {
+        if (retryBackoffMs > 0) await sleep(retryBackoffMs * attempt);
+        continue;
+      }
+      return {
+        response,
+        attemptsUsed: attempt,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt > retries) throw error;
+      if (retryBackoffMs > 0) await sleep(retryBackoffMs * attempt);
+    }
+  }
+
+  if (lastResponse) {
+    return {
+      response: lastResponse,
+      attemptsUsed: retries + 1,
+    };
+  }
+  throw lastError || new Error('request_failed');
+}
+
 function renderMarkdown(report) {
   const lines = ['# Celestial Commerce Core Prompt Live Smoke', ''];
   lines.push(`- Generated at: ${report.generated_at}`);
@@ -279,6 +334,9 @@ function renderMarkdown(report) {
     lines.push(`- Verdict: ${result.verdict}`);
     if (result.reasons.length > 0) {
       lines.push(`- Reasons: ${result.reasons.join(', ')}`);
+    }
+    if (Number(result.attempts_used || 1) > 1) {
+      lines.push(`- Attempts: ${result.attempts_used}`);
     }
     lines.push('');
   }
@@ -323,13 +381,17 @@ async function main() {
       headers['X-Agent-API-Key'] = args.agentApiKey;
     }
 
-    let response;
+    let requestOutcome;
     try {
-      response = await requestJson(
+      requestOutcome = await requestJsonWithRetries(
         `${String(args.baseUrl || '').replace(/\/+$/, '')}${String(args.endpoint || '')}`,
         requestPayload,
         headers,
-        args.timeoutMs,
+        {
+          timeoutMs: args.timeoutMs,
+          retries: args.retries,
+          retryBackoffMs: args.retryBackoffMs,
+        },
       );
     } catch (error) {
       results.push({
@@ -341,11 +403,14 @@ async function main() {
         conversation_progress: null,
         early_decision: null,
         decision_owner: null,
+        attempts_used: args.retries + 1,
         verdict: 'fail',
         reasons: [`request_failed:${error?.message || String(error)}`],
       });
       continue;
     }
+
+    const response = requestOutcome.response;
 
     const correctness = evaluateRules(response.body, testCase.correctness);
     const observability = evaluateRules(response.body, testCase.observability);
@@ -367,6 +432,7 @@ async function main() {
       conversation_progress: String(meta.conversation_progress || '').trim() || null,
       early_decision: String(meta.early_decision || '').trim() || null,
       decision_owner: String(meta.decision_owner || '').trim() || null,
+      attempts_used: Number(requestOutcome.attemptsUsed || 1) || 1,
       verdict: reasons.length === 0 ? 'pass' : 'fail',
       reasons,
     });
