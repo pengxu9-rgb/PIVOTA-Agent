@@ -60471,7 +60471,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         return trust;
       };
       syncAnalyzeAnchorFromSpine();
-      applyAnchorCandidateGuard(parsed.data.product || null, 'client_payload', { preferDisplay: true });
+      if (!analyzeConsumesUpstreamAnchorOwner) {
+        applyAnchorCandidateGuard(parsed.data.product || null, 'client_payload', { preferDisplay: true });
+      }
       const getAnchorReasonCodes = () => uniqCaseInsensitiveStrings(
         anchorTrustDiagnostics.flatMap((item) => {
           const reasonCodes = Array.isArray(item?.reason_codes) ? item.reason_codes : [];
