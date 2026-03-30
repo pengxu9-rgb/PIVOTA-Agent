@@ -197,6 +197,72 @@
         "expect_http_status": 200,
         "allow_zero_results": false,
         "must_return_one_of_titles": [
+          "Banana Bright 15% Vitamin C Dark Spot Serum",
+          "Vitamin-C Serum",
+          "Truth Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "ingredient",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true
+        },
+        "must_have_paths": [
+          "metadata.matched_ingredient_ids.0"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_strict_vitamin_c_serum_locale_en",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "search",
+      "title": "public vitamin c strict lookup preserves explicit locale while staying on the strict contract",
+      "headers": {
+        "X-Lang": "EN"
+      },
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "vitamin c serum",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search",
+          "locale": "en-US"
+        }
+      },
+      "family_aliases": [
+        "strict_ingredient",
+        "strict_consistency"
+      ]
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
           "Vitamin-C Serum"
         ]
       },
@@ -1213,6 +1279,68 @@
         "metadata": {
           "source": "search",
           "locale": "en-US"
+        }
+      }
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "The Ordinary Niacinamide 10% + Zinc 1%",
+          "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+          "Watch Ya Tone Niacinamide Dark Spot Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "ingredient",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true
+        },
+        "must_have_paths": [
+          "metadata.matched_ingredient_ids.0"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_exactish_niacinamide_locale_zh",
+      "family": "exactish_lookup",
+      "query": "niacinamide serum",
+      "source": "search",
+      "title": "public exact-ish niacinamide lookup preserves explicit zh locale while staying on the strict contract",
+      "headers": {
+        "X-Lang": "CN"
+      },
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "niacinamide serum",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search",
+          "locale": "zh-CN"
         }
       }
     },
