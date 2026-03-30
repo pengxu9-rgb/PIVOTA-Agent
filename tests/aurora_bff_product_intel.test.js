@@ -1390,6 +1390,9 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         owner_state: 'trusted',
         owner_display_anchor: expect.objectContaining({
           url: expect.stringContaining('uv-filters-spf-45-serum'),
+          source_url: expect.stringContaining('uv-filters-spf-45-serum'),
+          source_page_type: 'product',
+          content_quality: 'high',
         }),
       }),
     );
@@ -6397,7 +6400,44 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(200, '<html><body>no matches</body></html>');
 
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'seed_row_uv_filters_blocked_1',
+          external_product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+          destination_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+          canonical_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+          source_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+          source_page_type: 'product',
+          content_quality: 'high',
+          domain: 'theordinary.com',
+          title: 'UV Filters SPF 45 Serum',
+          image_url: 'https://cdn.theordinary.com/uv-filters.jpg',
+          price_amount: '19.90',
+          price_currency: 'USD',
+          availability: 'in stock',
+          status: 'active',
+          seed_data: {
+            brand: 'The Ordinary',
+            active_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+            key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+            ingredient_intel: {
+              raw_ingredient_text_clean: 'Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water',
+              inci_list: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene', 'Glycerin', 'Water'],
+            },
+            snapshot: {
+              title: 'UV Filters SPF 45 Serum',
+              canonical_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+              destination_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+              source_page_type: 'product',
+              content_quality: 'high',
+            },
+          },
+        },
+      ],
+    }));
     jest.resetModules();
+    jest.doMock('../src/db', () => ({ query: queryMock }));
     const { __internal } = require('../src/auroraBff/routes');
     const out = await __internal.buildProductAnalysisFromUrlIngredients({
       productUrl: 'https://blocked-brand.test/product-x',
@@ -6413,16 +6453,6 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         name: 'UV Filters SPF 45 Serum',
         display_name: 'The Ordinary UV Filters SPF 45 Serum',
         url: 'https://blocked-brand.test/product-x',
-        canonical_url: 'https://blocked-brand.test/product-x',
-        destination_url: 'https://blocked-brand.test/product-x',
-        source_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-        source_page_type: 'product',
-        content_quality: 'high',
-        pdp_field_capture_status: { ingredients: true },
-        raw_ingredient_text_clean: 'Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water',
-        inci_list: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene', 'Glycerin', 'Water'],
-        active_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
-        key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
       },
       profileSummary: {
         skinType: 'oily',
@@ -6436,6 +6466,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(String(out?.payload?.assessment?.verdict || '')).not.toMatch(/^Unknown|未知$/i);
     const evidenceSources = Array.isArray(out?.payload?.evidence?.sources) ? out.payload.evidence.sources : [];
     const sourceTypes = evidenceSources.map((item) => String(item?.type || '').toLowerCase());
+    expect(queryMock).toHaveBeenCalled();
     expect(sourceTypes).toContain('external_seed_snapshot');
     expect(out?.payload?.provenance?.source_chain || []).toContain('external_seed_snapshot');
     expect(out?.source_meta?.external_seed_snapshot).toEqual(

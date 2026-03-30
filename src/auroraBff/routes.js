@@ -6301,9 +6301,10 @@ function extractUrlAnchorSignals(inputUrl) {
 }
 
 function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbackUrl = '' } = {}) {
+  const rawCandidate = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null;
   const row =
     normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+    rawCandidate;
   if (!row || typeof row !== 'object') return null;
   const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
   const name = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title, fallbackName);
@@ -6324,6 +6325,21 @@ function buildAnchorDisplayFromCandidate(candidate, { fallbackName = '', fallbac
     ...(name ? { name } : {}),
     ...(displayName ? { display_name: displayName } : {}),
     ...(directUrl ? { url: directUrl } : {}),
+    ...(pickFirstTrimmed(row.canonical_url, row.canonicalUrl, rawCandidate?.canonical_url, rawCandidate?.canonicalUrl)
+      ? { canonical_url: pickFirstTrimmed(row.canonical_url, row.canonicalUrl, rawCandidate?.canonical_url, rawCandidate?.canonicalUrl) }
+      : {}),
+    ...(pickFirstTrimmed(row.destination_url, row.destinationUrl, rawCandidate?.destination_url, rawCandidate?.destinationUrl)
+      ? { destination_url: pickFirstTrimmed(row.destination_url, row.destinationUrl, rawCandidate?.destination_url, rawCandidate?.destinationUrl) }
+      : {}),
+    ...(pickFirstTrimmed(row.source_url, row.sourceUrl, rawCandidate?.source_url, rawCandidate?.sourceUrl)
+      ? { source_url: pickFirstTrimmed(row.source_url, row.sourceUrl, rawCandidate?.source_url, rawCandidate?.sourceUrl) }
+      : {}),
+    ...(pickFirstTrimmed(row.source_page_type, row.sourcePageType, rawCandidate?.source_page_type, rawCandidate?.sourcePageType)
+      ? { source_page_type: pickFirstTrimmed(row.source_page_type, row.sourcePageType, rawCandidate?.source_page_type, rawCandidate?.sourcePageType) }
+      : {}),
+    ...(pickFirstTrimmed(row.content_quality, row.contentQuality, rawCandidate?.content_quality, rawCandidate?.contentQuality)
+      ? { content_quality: pickFirstTrimmed(row.content_quality, row.contentQuality, rawCandidate?.content_quality, rawCandidate?.contentQuality) }
+      : {}),
     ...(pickFirstTrimmed(row.image_url, row.imageUrl) ? { image_url: pickFirstTrimmed(row.image_url, row.imageUrl) } : {}),
     ...(pickFirstTrimmed(row.product_group_id, row.productGroupId) ? { product_group_id: pickFirstTrimmed(row.product_group_id, row.productGroupId) } : {}),
     ...(pickFirstTrimmed(row.merchant_id, row.merchantId) ? { merchant_id: pickFirstTrimmed(row.merchant_id, row.merchantId) } : {}),
@@ -6425,9 +6441,10 @@ function evaluateAnchorTrustForProductIntel({
   strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
   policy = PRODUCT_INTEL_URL_ANCHOR_TRUST_POLICY,
 } = {}) {
+  const rawCandidate = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null;
   const row =
     normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
+    rawCandidate;
   if (!row || typeof row !== 'object') {
     return {
       trusted_anchor: null,
@@ -6441,7 +6458,7 @@ function evaluateAnchorTrustForProductIntel({
     };
   }
 
-  const displayAnchor = buildAnchorDisplayFromCandidate(row, {
+  const displayAnchor = buildAnchorDisplayFromCandidate(rawCandidate || row, {
     fallbackName: String(inputText || '').trim(),
     fallbackUrl: String(inputUrl || '').trim(),
   });
@@ -13545,7 +13562,16 @@ async function buildProductAnalysisFromUrlIngredients({
     return null;
   }
 
-  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  if (
+    parsedProductObj &&
+    (
+      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
+      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
+    )
+  ) {
+    parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
+  }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
   const fetchOut = await fetchProductHtmlWithFallback({
     productUrl: parsedUrl.toString(),
