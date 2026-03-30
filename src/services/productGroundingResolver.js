@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 const { withClient } = require('../db');
 
@@ -57,7 +59,7 @@ const CJK_GENERIC_QUERY_TOKENS_RE =
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
 const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|有什么|有什麼|有啥|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
-const KNOWN_STABLE_PRODUCT_REFS = [
+const BUILTIN_STABLE_PRODUCT_REFS = [
   {
     id: 'the_ordinary_niacinamide_10_zinc_1',
     product_ref: {
@@ -113,6 +115,23 @@ const KNOWN_STABLE_PRODUCT_REFS = [
     ],
   },
 ];
+
+function loadStableProductRegistry() {
+  const overridePath = String(process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH || '').trim();
+  const defaultPath = path.join(__dirname, 'data', 'productGroundingStableAliases.json');
+  const targetPath = overridePath || defaultPath;
+  try {
+    if (!fs.existsSync(targetPath)) return BUILTIN_STABLE_PRODUCT_REFS;
+    const raw = fs.readFileSync(targetPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch (_) {
+    // Fall through to builtin registry.
+  }
+  return BUILTIN_STABLE_PRODUCT_REFS;
+}
+
+const KNOWN_STABLE_PRODUCT_REFS = loadStableProductRegistry();
 
 function compactNoSpaces(s) {
   return String(s || '').replace(/\s+/g, '');

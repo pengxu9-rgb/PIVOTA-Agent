@@ -944,6 +944,73 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(String(out.product?.display_name || '')).toContain('The Ordinary UV Filters SPF 45 Serum');
   });
 
+  test('finalizeProductAnchorDecisionSpine keeps first trusted owner and records later conflicts without override', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const spine = __internal.buildProductAnchorDecisionSpine({
+      route: 'unit_test',
+      inputMode: 'name_only',
+    });
+
+    __internal.recordProductAnchorDecisionObservation(spine, {
+      stage: 'client_payload_anchor',
+      source: 'client_payload_anchor',
+      state: 'trusted',
+      ownerEligible: true,
+      displayAnchor: {
+        product_id: 'p_client_1',
+        merchant_id: 'm_client_1',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'The Ordinary UV Filters SPF 45 Serum',
+        category: 'sunscreen',
+      },
+      productRef: {
+        product_id: 'p_client_1',
+        merchant_id: 'm_client_1',
+      },
+      reasonCodes: [],
+      confidence: 1,
+    });
+    __internal.recordProductAnchorDecisionObservation(spine, {
+      stage: 'catalog_search_exact',
+      source: 'catalog_search_exact',
+      state: 'trusted',
+      ownerEligible: true,
+      displayAnchor: {
+        product_id: 'p_conflict_1',
+        merchant_id: 'm_catalog_1',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+      },
+      productRef: {
+        product_id: 'p_conflict_1',
+        merchant_id: 'm_catalog_1',
+      },
+      reasonCodes: [],
+      confidence: 1,
+    });
+
+    const finalized = __internal.finalizeProductAnchorDecisionSpine(spine);
+    const summary = __internal.buildProductAnchorCompactSummary(spine);
+
+    expect(finalized.owner_source).toBe('client_payload_anchor');
+    expect(finalized.owner_product_ref).toEqual({
+      product_id: 'p_client_1',
+      merchant_id: 'm_client_1',
+    });
+    expect(finalized.late_conflict_without_override).toBe(true);
+    expect(finalized.conflict_flags[0]).toEqual(
+      expect.objectContaining({
+        type: 'late_conflict_without_override',
+        source: 'catalog_search_exact',
+      }),
+    );
+    expect(summary.anchor_owner_source).toBe('client_payload_anchor');
+    expect(summary.anchor_conflict_present).toBe(true);
+  });
+
   test('buildProductCatalogQueryCandidates can keep inputText as first query candidate when requested', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const candidates = __internal.buildProductCatalogQueryCandidates({
@@ -2555,9 +2622,24 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
         usable_for_anchor_id: true,
       }),
     );
+    expect(card.payload.anchor_owner_source).toBe('catalog_resolve');
+    expect(card.payload.anchor_owner_state).toBe('trusted');
+    expect(card.payload.anchor_owner_reason_codes).toEqual([]);
+    expect(card.payload.anchor_conflict_present).toBe(false);
     expect(Array.isArray(card.payload.missing_info)).toBe(true);
     expect(card.payload.missing_info).toContain('catalog_fallback_used');
     expect(card.payload.missing_info).not.toContain('anchor_soft_blocked_ambiguous');
+    expect(res.body.session_patch?.meta?.product_anchor_snapshot).toEqual(
+      expect.objectContaining({
+        owner_source: 'catalog_resolve',
+        owner_state: 'trusted',
+        owner_product_ref: {
+          product_id: 'p_cerave_1',
+          merchant_id: 'm_catalog_1',
+        },
+        no_early_trusted_owner: false,
+      }),
+    );
   });
 
   test('/v1/product/parse enforces non-skincare block even when global strict filter is disabled', async () => {
@@ -2743,6 +2825,401 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(card.payload?.assessment?.anchor_product).toEqual(
       expect.objectContaining({
         product_id: 'p_catalog_1',
+      }),
+    );
+  });
+
+  test('/v1/product/analyze reuses parse owner snapshot and skips deterministic re-grounding', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const spine = __internal.buildProductAnchorDecisionSpine({
+      route: 'product_parse',
+      inputMode: 'name_only',
+    });
+    __internal.recordProductAnchorDecisionObservation(spine, {
+      stage: 'catalog_resolve',
+      source: 'catalog_resolve',
+      state: 'trusted',
+      ownerEligible: true,
+      displayAnchor: {
+        product_id: 'p_catalog_1',
+        sku_id: 'p_catalog_1',
+        merchant_id: 'm_catalog_1',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'The Ordinary UV Filters SPF 45 Serum',
+        category: 'sunscreen',
+      },
+      productRef: {
+        product_id: 'p_catalog_1',
+        merchant_id: 'm_catalog_1',
+      },
+      reasonCodes: [],
+      confidence: 1,
+    });
+    const snapshot = __internal.buildProductAnchorSessionSnapshot(spine);
+
+    let parseCalls = 0;
+    let deepScanCalls = 0;
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/upstream/chat')
+      .reply(200, (_uri, body) => {
+        const query = typeof body?.query === 'string' ? body.query : '';
+        if (/Task:\s*Parse\b/i.test(query)) {
+          parseCalls += 1;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              parse: {
+                anchor_product: {
+                  brand: 'Wrong Brand',
+                  name: 'Wrong Product',
+                },
+              },
+            },
+          };
+        }
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          deepScanCalls += 1;
+          deepScanBody = body;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              analyze: {
+                verdict: 'Suitable',
+                confidence: 0.88,
+                reasons: ['Snapshot owner reused for analysis.'],
+                science_evidence: {
+                  key_ingredients: ['uv filters'],
+                  mechanisms: ['uv protection'],
+                },
+                social_signals: {
+                  typical_positive: ['lightweight'],
+                  typical_negative: [],
+                },
+                expert_notes: ['Use daily.'],
+              },
+            },
+          };
+        }
+        return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
+      });
+
+    const resolveScope = nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'p_conflict_1', merchant_id: 'm_catalog_1' },
+        candidates: [
+          {
+            product_id: 'p_conflict_1',
+            sku_id: 'p_conflict_1',
+            merchant_id: 'm_catalog_1',
+            brand: 'Conflict Brand',
+            name: 'Conflicting Product',
+            display_name: 'Conflict Brand Conflicting Product',
+            category: 'skincare',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_snapshot_owner_1')
+      .send({
+        name: 'Completely Different Product Name',
+        session: {
+          meta: {
+            product_anchor_snapshot: snapshot,
+          },
+        },
+      })
+      .expect(200);
+
+    expect(parseCalls).toBe(0);
+    expect(deepScanCalls).toBeGreaterThanOrEqual(1);
+    expect(deepScanBody?.anchor_product_id).toBe('p_catalog_1');
+    expect(resolveScope.isDone()).toBe(false);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(card.payload?.assessment?.anchor_product).toEqual(
+      expect.objectContaining({
+        product_id: 'p_catalog_1',
+      }),
+    );
+    expect(card.payload?.provenance?.anchor_owner).toEqual(
+      expect.objectContaining({
+        anchor_owner_source: 'catalog_resolve',
+        anchor_owner_state: 'trusted',
+        anchor_conflict_present: false,
+      }),
+    );
+    expect(res.body.session_patch?.meta?.product_anchor_snapshot).toEqual(
+      expect.objectContaining({
+        owner_source: 'catalog_resolve',
+        owner_state: 'trusted',
+      }),
+    );
+  });
+
+  test('/v1/product/analyze preserves no-early-trusted-owner snapshot and does not silently re-elect a new owner', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const spine = __internal.buildProductAnchorDecisionSpine({
+      route: 'product_parse',
+      inputMode: 'name_only',
+    });
+    __internal.recordProductAnchorDecisionObservation(spine, {
+      stage: 'catalog_search_exact',
+      source: 'catalog_search_exact',
+      state: 'soft_blocked',
+      ownerEligible: true,
+      displayAnchor: {
+        brand: 'Conflict Brand',
+        name: 'Conflict Product',
+        display_name: 'Conflict Brand Conflict Product',
+        category: 'product',
+      },
+      reasonCodes: ['catalog_search_ambiguous'],
+      confidence: 0.4,
+    });
+    const snapshot = __internal.buildProductAnchorSessionSnapshot(spine);
+
+    let parseCalls = 0;
+    let deepScanCalls = 0;
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/upstream/chat')
+      .reply(200, (_uri, body) => {
+        const query = typeof body?.query === 'string' ? body.query : '';
+        if (/Task:\s*Parse\b/i.test(query)) {
+          parseCalls += 1;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              parse: {
+                anchor_product: {
+                  brand: 'Should Not Win',
+                  name: 'Late Parse Candidate',
+                },
+              },
+            },
+          };
+        }
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          deepScanCalls += 1;
+          deepScanBody = body;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              analyze: {
+                verdict: 'Unknown',
+                confidence: 0.31,
+                reasons: ['No trusted anchor was available upstream.'],
+                science_evidence: {
+                  key_ingredients: [],
+                  mechanisms: [],
+                },
+                social_signals: {
+                  typical_positive: [],
+                  typical_negative: [],
+                },
+                expert_notes: ['Need a trusted anchor first.'],
+              },
+            },
+          };
+        }
+        return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
+      });
+
+    const resolveScope = nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'p_should_not_win', merchant_id: 'm_catalog_1' },
+        candidates: [
+          {
+            product_id: 'p_should_not_win',
+            sku_id: 'p_should_not_win',
+            merchant_id: 'm_catalog_1',
+            brand: 'Should Not Win',
+            name: 'Late Resolve Candidate',
+            display_name: 'Should Not Win Late Resolve Candidate',
+            category: 'skincare',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_snapshot_no_owner_1')
+      .send({
+        name: 'Ambiguous Product Name',
+        session: {
+          meta: {
+            product_anchor_snapshot: snapshot,
+          },
+        },
+      })
+      .expect(200);
+
+    expect(parseCalls).toBe(0);
+    expect(deepScanCalls).toBeGreaterThanOrEqual(1);
+    expect(resolveScope.isDone()).toBe(false);
+    expect(deepScanBody?.anchor_product_id).toBeUndefined();
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(card.payload?.provenance?.anchor_owner).toEqual(
+      expect.objectContaining({
+        anchor_owner_source: 'catalog_search_exact',
+        anchor_owner_state: 'soft_blocked',
+        anchor_conflict_present: false,
+        no_early_trusted_owner: true,
+      }),
+    );
+    expect(res.body.session_patch?.meta?.product_anchor_snapshot).toEqual(
+      expect.objectContaining({
+        owner_source: 'catalog_search_exact',
+        owner_state: 'soft_blocked',
+        no_early_trusted_owner: true,
+      }),
+    );
+  });
+
+  test('/v1/product/analyze keeps explicit client payload as first owner without rerunning conflicting catalog resolution', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'false';
+
+    let parseCalls = 0;
+    let deepScanBody = null;
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/upstream/chat')
+      .reply(200, (_uri, body) => {
+        const query = typeof body?.query === 'string' ? body.query : '';
+        if (/Task:\s*Parse\b/i.test(query)) {
+          parseCalls += 1;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              parse: {
+                anchor_product: {
+                  brand: 'Conflict Brand',
+                  name: 'Conflict Product',
+                },
+              },
+            },
+          };
+        }
+        if (/Task:\s*Deep-scan\b/i.test(query)) {
+          deepScanBody = body;
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              analyze: {
+                verdict: 'Suitable',
+                confidence: 0.84,
+                reasons: ['Explicit payload owner preserved.'],
+                science_evidence: {
+                  key_ingredients: ['glycerin'],
+                  mechanisms: ['hydration'],
+                },
+                social_signals: {
+                  typical_positive: ['comfortable'],
+                  typical_negative: [],
+                },
+                expert_notes: ['Use as directed.'],
+              },
+            },
+          };
+        }
+        return { schema_version: 'aurora.chat.v1', intent: 'chat', answer: 'stub' };
+      });
+
+    const resolveScope = nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: true,
+        product_ref: { product_id: 'p_conflict_2', merchant_id: 'm_catalog_1' },
+        candidates: [
+          {
+            product_id: 'p_conflict_2',
+            sku_id: 'p_conflict_2',
+            merchant_id: 'm_catalog_1',
+            brand: 'Conflict Brand',
+            name: 'Conflict Product',
+            display_name: 'Conflict Brand Conflict Product',
+            category: 'skincare',
+          },
+        ],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_client_owner_1')
+      .send({
+        name: 'Conflicting Name That Should Not Reground',
+        product: {
+          product_id: 'p_client_1',
+          sku_id: 'p_client_1',
+          merchant_id: 'm_client_1',
+          brand: 'Client Brand',
+          name: 'Client Payload Moisturizer',
+          display_name: 'Client Brand Client Payload Moisturizer',
+          category: 'skincare',
+        },
+      })
+      .expect(200);
+
+    expect(parseCalls).toBe(0);
+    expect(resolveScope.isDone()).toBe(false);
+    expect(deepScanBody?.anchor_product_id).toBe('p_client_1');
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(card.payload?.assessment?.anchor_product).toEqual(
+      expect.objectContaining({
+        product_id: 'p_client_1',
+      }),
+    );
+    expect(card.payload?.provenance?.anchor_owner).toEqual(
+      expect.objectContaining({
+        anchor_owner_source: 'client_payload_anchor',
+        anchor_owner_state: 'trusted',
+        anchor_conflict_present: false,
       }),
     );
   });
