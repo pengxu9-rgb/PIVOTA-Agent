@@ -74176,7 +74176,54 @@ function mountAuroraBffRoutes(app, { logger }) {
         let recoTelemetryFailureReason = '';
         let recoMetaPromptTemplateId = '';
         let upstreamReco = null;
-        if (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0) {
+        const shouldShortCircuitVerifiedContextRestore =
+          !ingredientRecoOptInRequested
+          && !travelRecoHandoff
+          && Boolean(shouldApplySessionRecoContext || recoAutoAnchoredByAnalysis || effectiveRecoEntrySourceDetail === 'analysis_handoff')
+          && hasStableRecoTarget
+          && Array.isArray((recoIngredientContext || latestRecoContextPatch)?.product_candidates)
+          && (recoIngredientContext || latestRecoContextPatch).product_candidates.length > 0;
+        if (shouldShortCircuitVerifiedContextRestore) {
+          const restoredFromVerifiedCandidates = restoreRecoRecommendationsFromVerifiedContextCandidates({
+            recoContext: recoIngredientContext || latestRecoContextPatch,
+            targetContext: chatRecoTargetContext,
+            language: ctx.lang,
+          });
+          const restoredRecommendations = Array.isArray(restoredFromVerifiedCandidates?.recommendations)
+            ? restoredFromVerifiedCandidates.recommendations
+            : [];
+          if (restoredRecommendations.length > 0) {
+            verifiedCandidateRestoreApplied = true;
+            verifiedCandidateRestoreCount = restoredRecommendations.length;
+            const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload({
+              intent: 'reco_products',
+              profile: summarizeProfileForContext(profile),
+              recommendations: [],
+              source: 'catalog_grounded_v1',
+              task_mode: recoTaskMode,
+              recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
+              recommendation_confidence_level:
+                artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
+                  ? artifactConfidenceLevel
+                  : 'medium',
+              recommendation_meta: {
+                task_mode: recoTaskMode,
+                trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
+                used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
+                used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
+                used_safety_flags: lowConfidenceArtifact,
+              },
+            }, restoredRecommendations);
+            norm = {
+              payload: restoredPayload.payload,
+              field_missing: [],
+            };
+            recoSource = 'catalog_grounded_v1';
+            recoMainlineStatus = 'grounded_success';
+            recoTelemetryFailureReason = '';
+          }
+        }
+        if (!norm && (!matcherPayload || !Array.isArray(matcherPayload.recommendations) || matcherPayload.recommendations.length === 0)) {
           try {
             upstreamReco = await generateProductRecommendations({
               ctx,
