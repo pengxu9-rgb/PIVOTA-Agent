@@ -379,6 +379,151 @@
       }
     },
     {
+      "id": "shopping_agent_strict_vitamin_c_serum",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Banana Bright 15% Vitamin C Dark Spot Serum",
+            "Vitamin-C Serum",
+            "Truth Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "shopping_agent vitamin c strict lookup stays on the strict contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Banana Bright 15% Vitamin C Dark Spot Serum",
+              "Vitamin-C Serum",
+              "Truth Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_strict_vitamin_c_serum",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Banana Bright 15% Vitamin C Dark Spot Serum",
+            "Vitamin-C Serum",
+            "Truth Serum"
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_budget_eur",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under €30",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_have_metadata": [
+            "budget_fx_applied",
+            "budget_fx_rate",
+            "budget_fx_source"
+          ],
+          "must_equal_metadata": {
+            "budget_fx_applied": true,
+            "budget_fx_candidate_currency": "USD",
+            "budget_fx_unresolved": false
+          },
+          "must_return_one_of_titles": [
+            "Vitamin-C Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup applies fx while staying on the strict contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under €30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.budget_fx_applied": true,
+              "metadata.budget_fx_candidate_currency": "USD",
+              "metadata.budget_fx_unresolved": false
+            }
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.budget_fx_applied",
+              "metadata.budget_fx_rate",
+              "metadata.budget_fx_source"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_budget_usd",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under $30",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Vitamin-C Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup stays on the strict contract without fallback adoption",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under $30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "shopping_agent_exact_ipsa_time_reset_aqua",
       "family": "exact_product_lookup",
       "query": "IPSA Time Reset Aqua",
@@ -413,6 +558,53 @@
       }
     },
     {
+      "id": "search_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public exact IPSA lookup stays on the lookup-grade cache contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        }
+      }
+    },
+    {
       "id": "shopping_agent_merchant_query_ipsa_products",
       "family": "merchant_query",
       "query": "IPSA products",
@@ -435,6 +627,40 @@
           "must_return_one_of_titles": [
             "IPSA Time Reset Aqua"
           ]
+        }
+      }
+    },
+    {
+      "id": "search_merchant_query_winona_products",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public merchant query stays on the cross-merchant cache contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Winona products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum"
+            ]
+          }
         }
       }
     },
@@ -824,6 +1050,23 @@
       }
     },
     {
+      "id": "prompt_clarify_date_night_en",
+      "family": "prompt_clarify",
+      "query": "What should I get for date night?",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "english shopping request is tagged as a fresh orchestration prompt",
+          "request": {
+            "message": "What should I get for date night?",
+            "headers": {
+              "X-Lang": "EN"
+            }
+          }
+        }
+      }
+    },
+    {
       "id": "conversation_progress_resume_date_selection",
       "family": "conversation_progress_resume",
       "query": "约会",
@@ -843,6 +1086,39 @@
                 "content": "你更偏哪种场景？"
               }
             ]
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "conversation_progress_resume_date_night_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "english follow-up refinement resumes the current orchestration thread",
+          "request": {
+            "message": "Something lighter",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Help me buy a repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "Do you care more about repair or hydration?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN"
+            }
           },
           "observability": {
             "must_equal_paths": {

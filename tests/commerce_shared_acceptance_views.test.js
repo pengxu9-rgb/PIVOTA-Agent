@@ -124,6 +124,10 @@ describe('Commerce shared acceptance views', () => {
           family: 'exactish_lookup',
           source: 'shopping_agent',
         }),
+        expect.objectContaining({
+          family: 'strict_ingredient_budget',
+          source: 'search',
+        }),
       ]),
     );
     expect(PROD_CANARY_CASE_IDS).toContain('public_search_serum_default');

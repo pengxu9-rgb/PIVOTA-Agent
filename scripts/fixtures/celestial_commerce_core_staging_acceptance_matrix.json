@@ -127,6 +127,186 @@
       "rail_mode": "authoritative_commerce",
       "require_primary_path": true,
       "allow_strict_empty": false,
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "Banana Bright 15% Vitamin C Dark Spot Serum",
+          "Vitamin-C Serum",
+          "Truth Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "ingredient",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true
+        },
+        "must_have_paths": [
+          "metadata.matched_ingredient_ids.0"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked"
+        ]
+      },
+      "kind": "semantic",
+      "id": "shopping_agent_strict_vitamin_c_serum",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "shopping_agent",
+      "title": "shopping_agent vitamin c strict lookup stays on the strict contract",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "vitamin c serum",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "shopping_agent"
+        }
+      },
+      "family_aliases": [
+        "strict_ingredient",
+        "strict_consistency"
+      ]
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "Vitamin-C Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "multi_constraint",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.budget_fx_applied": true,
+          "metadata.budget_fx_candidate_currency": "USD",
+          "metadata.budget_fx_unresolved": false
+        },
+        "must_have_paths": [
+          "metadata.matched_ingredient_ids.0"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.budget_fx_applied",
+          "metadata.budget_fx_rate",
+          "metadata.budget_fx_source"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_strict_vitamin_c_serum_budget_eur",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under €30",
+      "source": "search",
+      "title": "public vitamin c budget strict lookup applies fx while staying on the strict contract",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "vitamin c serum under €30",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search"
+        }
+      }
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "Vitamin-C Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
+          "metadata.strict_constraint_query": true,
+          "metadata.strict_constraint_reason": "multi_constraint",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true
+        },
+        "must_have_paths": [
+          "metadata.matched_ingredient_ids.0"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_strict_vitamin_c_serum_budget_usd",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under $30",
+      "source": "search",
+      "title": "public vitamin c budget strict lookup stays on the strict contract without fallback adoption",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "vitamin c serum under $30",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search"
+        }
+      }
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
       "allowed_query_sources": [
         "cache_cross_merchant_search"
       ],
@@ -184,6 +364,137 @@
           "source": "shopping_agent"
         }
       }
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "IPSA Time Reset Aqua"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.query_class": "lookup",
+          "metadata.search_trace.final_decision": "cache_returned",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "cache_cross_merchant_search"
+        }
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.query_source",
+          "metadata.search_trace.query_class",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "title": "public exact IPSA lookup stays on the lookup-grade cache contract",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "IPSA Time Reset Aqua",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search"
+        }
+      }
+    },
+    {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "cache_cross_merchant_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "allow_zero_results": false,
+        "must_return_one_of_titles": [
+          "Winona Soothing Repair Serum"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.final_decision": "cache_returned",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "cache_cross_merchant_search"
+        },
+        "must_have_paths": [
+          "metadata.query_source"
+        ]
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_merchant_query_winona_products",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "title": "public merchant query stays on the cross-merchant cache contract",
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "Winona products",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search"
+        }
+      },
+      "family_aliases": [
+        "merchant_query",
+        "merchant_product_split"
+      ]
     },
     {
       "blocking": true,

@@ -273,4 +273,110 @@ describe('Celestial commerce-core prompt live smoke script', () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  test('preserves explicit prompt locale headers from shared corpus cases', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prompt-smoke-locale-'));
+    const casesPath = path.join(outDir, 'prompt-smoke-locale.json');
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'probe_celestial_commerce_core_prompt_live_smoke.sh',
+    );
+
+    fs.writeFileSync(
+      casesPath,
+      JSON.stringify(
+        {
+          prompt_cases: [
+            {
+              id: 'locale_case',
+              family: 'prompt_clarify',
+              request: {
+                message: 'What should I get for date night?',
+                headers: {
+                  'X-Lang': 'EN',
+                },
+              },
+              correctness: {
+                expect_http_status: 200,
+                min_assistant_message_length: 4,
+              },
+              observability: {
+                must_equal_paths: {
+                  'meta.prompt_intent': 'shopping_request',
+                  'meta.conversation_progress': 'new_request',
+                  'meta.early_decision': 'delegate_to_decisioning',
+                  'meta.decision_owner': 'aurora_orchestration',
+                },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const server = http.createServer(async (req, res) => {
+      if (req.url !== '/v1/chat') {
+        res.statusCode = 404;
+        res.end('not found');
+        return;
+      }
+
+      await readJsonBody(req);
+      expect(String(req.headers['x-lang'] || '')).toBe('EN');
+      expect(String(req.headers['x-aurora-uid'] || '')).toContain('commerce_prompt_smoke_locale_case');
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          assistant_text: 'I will keep it date-night focused and narrow the choices.',
+          meta: {
+            prompt_intent: 'shopping_request',
+            conversation_progress: 'new_request',
+            early_decision: 'delegate_to_decisioning',
+            decision_owner: 'aurora_orchestration',
+          },
+        }),
+      );
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync('bash', [scriptPath], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BASE_URL: baseUrl,
+          ENDPOINT: '/v1/chat',
+          CASES_PATH: casesPath,
+          OUT_DIR: outDir,
+          TIMEOUT_MS: '5000',
+        },
+      });
+      const payload = JSON.parse(String(stdout || '').trim());
+      const report = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+
+      expect(payload.ok).toBe(true);
+      expect(report.summary.case_count).toBe(1);
+      expect(report.summary.pass_count).toBe(1);
+      expect(report.summary.fail_count).toBe(0);
+      expect(report.results[0]).toEqual(
+        expect.objectContaining({
+          id: 'locale_case',
+          family: 'prompt_clarify',
+          verdict: 'pass',
+        }),
+      );
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

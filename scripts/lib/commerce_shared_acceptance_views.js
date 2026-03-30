@@ -34,6 +34,11 @@ const PROD_CANARY_SELECTORS = Object.freeze([
     preferred_case_ids: ['shopping_agent_strict_niacinamide_serum'],
   },
   {
+    family: 'strict_ingredient_budget',
+    source: 'search',
+    preferred_case_ids: ['search_strict_vitamin_c_serum_budget_eur'],
+  },
+  {
     family: 'exact_product_lookup',
     source: 'shopping_agent',
     preferred_case_ids: ['shopping_agent_exact_ipsa_time_reset_aqua'],
