@@ -15224,6 +15224,7 @@ async function buildRecoGenerateFromCatalog({
   ingredientContext,
   recommendationTaskContext = null,
   targetContext = null,
+  externalSeedStrategyOverride = '',
   debug,
   logger,
 } = {}) {
@@ -15233,12 +15234,14 @@ async function buildRecoGenerateFromCatalog({
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
   const fallbackEnabled = AURORA_PURCHASABLE_FALLBACK_ENABLED === true;
   const allowExternalSeedSupplement = fallbackEnabled && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
+  const effectiveExternalSeedStrategy = pickFirstTrimmed(externalSeedStrategyOverride, 'on_empty_only') || 'on_empty_only';
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
     search_concurrency: RECO_CATALOG_SEARCH_CONCURRENCY,
     purchasable_fallback_enabled: fallbackEnabled,
     external_seed_supplement_enabled: allowExternalSeedSupplement,
+    external_seed_strategy: effectiveExternalSeedStrategy,
     fail_fast: failFastBefore,
   };
 
@@ -15286,7 +15289,7 @@ async function buildRecoGenerateFromCatalog({
     limit: 6,
     usePurchasableFallback: fallbackEnabled,
     allowExternalSeed: allowExternalSeedSupplement,
-    externalSeedStrategy: 'on_empty_only',
+    externalSeedStrategy: effectiveExternalSeedStrategy,
   });
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
@@ -55699,6 +55702,7 @@ async function generateProductRecommendations({
   recomputeFromProfileUpdate = false,
   budgetMs = null,
   entryType = 'chat',
+  catalogExternalSeedStrategy = '',
 }) {
   const profileSummary = summarizeProfileForContext(profile);
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
@@ -55804,6 +55808,7 @@ async function generateProductRecommendations({
       ingredientContext: normalizedIngredientContext,
       recommendationTaskContext,
       targetContext,
+      externalSeedStrategyOverride: catalogExternalSeedStrategy,
       debug,
       logger,
     });
@@ -55939,6 +55944,7 @@ async function generateProductRecommendations({
         ingredientContext: normalizedIngredientContext,
         recommendationTaskContext,
         targetContext,
+        externalSeedStrategyOverride: catalogExternalSeedStrategy,
         debug,
         logger,
       });
@@ -74149,6 +74155,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredientRecoOptInRequested && !recoAutoAnchoredByAnalysis
             ? (buildPrimaryIngredientRecoSearchContext(recoIngredientContext) || recoIngredientContext)
             : recoIngredientContext;
+        const catalogExternalSeedStrategyForMainline =
+          ingredientRecoOptInRequested && !recoAutoAnchoredByAnalysis
+            ? 'supplement_internal_first'
+            : '';
         const ingredientOptInRecoRequestText =
           ingredientRecoOptInRequested && !recoRequestMessage
             ? buildIngredientOptInRecoRequestText({
@@ -74558,6 +74568,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger,
               budgetMs: AURORA_BFF_CHAT_RECO_BUDGET_MS,
               entryType: 'chat',
+              catalogExternalSeedStrategy: catalogExternalSeedStrategyForMainline,
             });
             norm = upstreamReco.norm;
             upstreamDebug = upstreamReco.upstreamDebug;

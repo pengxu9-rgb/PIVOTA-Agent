@@ -2251,9 +2251,14 @@ test('/v1/chat: ingredient reco restores selected catalog candidates after ingre
 test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream returns empty structured reco payload', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
+  const observedSearchParams = [];
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
     observedQueries.push(String(config?.params?.query || '').trim().toLowerCase());
+    observedSearchParams.push({
+      allow_external_seed: config?.params?.allow_external_seed,
+      external_seed_strategy: config?.params?.external_seed_strategy,
+    });
     return {
       status: 200,
       data: {
@@ -2346,6 +2351,12 @@ test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream
     assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
     assert.equal(latestRecoContext.product_candidates.length >= 2, true);
     assert.equal(observedQueries.some((query) => query.includes('ceramide') || query.includes('panthenol')), true);
+    assert.equal(
+      observedSearchParams.some(
+        (params) => params.allow_external_seed === true && params.external_seed_strategy === 'supplement_internal_first',
+      ),
+      true,
+    );
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
   } finally {
