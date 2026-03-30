@@ -235,10 +235,6 @@ function createCommerceResolutionRuntime(deps = {}) {
     typeof deps.resolverFirstStrongOnly === 'function'
       ? deps.resolverFirstStrongOnly
       : () => deps.resolverFirstStrongOnly === true;
-  const getAuroraRelaxPrimaryIrrelevantAdopt =
-    typeof deps.auroraRelaxPrimaryIrrelevantAdopt === 'function'
-      ? deps.auroraRelaxPrimaryIrrelevantAdopt
-      : () => deps.auroraRelaxPrimaryIrrelevantAdopt === true;
   const getResolverMinRemainingBudgetMs =
     typeof deps.resolverMinRemainingBudgetMs === 'function'
       ? deps.resolverMinRemainingBudgetMs
@@ -490,15 +486,11 @@ function createCommerceResolutionRuntime(deps = {}) {
 
   function getFallbackAdoptUsableThreshold({
     operation,
-    source,
     primaryUsableCount,
-    primaryIrrelevant,
   } = {}) {
     const baseThreshold = Math.max(1, Number(primaryUsableCount || 0));
     const op = String(operation || '').trim();
     if (op !== 'find_products_multi') return baseThreshold;
-    if (!primaryIrrelevant) return baseThreshold;
-    if (isAuroraSourceImpl(source) && getAuroraRelaxPrimaryIrrelevantAdopt()) return 1;
     return baseThreshold;
   }
 

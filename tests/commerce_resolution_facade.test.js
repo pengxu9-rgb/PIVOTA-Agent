@@ -1338,12 +1338,11 @@ describe('Commerce resolution facade', () => {
     ).toBe(true);
   });
 
-  test('fallback adopt usable threshold is owned by execution facade', () => {
+  test('fallback adopt usable threshold preserves the primary bar even for aurora', () => {
     const auroraRuntime = createCommerceResolutionRuntime({
       isAuroraSource(source) {
         return source === 'aurora-bff';
       },
-      auroraRelaxPrimaryIrrelevantAdopt: true,
     });
     const genericRuntime = createCommerceResolutionRuntime({
       isAuroraSource() {
@@ -1358,7 +1357,7 @@ describe('Commerce resolution facade', () => {
         primaryUsableCount: 3,
         primaryIrrelevant: true,
       }),
-    ).toBe(1);
+    ).toBe(3);
     expect(
       genericRuntime.getFallbackAdoptUsableThreshold({
         operation: 'find_products_multi',
@@ -1367,6 +1366,55 @@ describe('Commerce resolution facade', () => {
         primaryIrrelevant: true,
       }),
     ).toBe(3);
+  });
+
+  test('secondary fallback does not relax the adopt threshold for aurora irrelevant lookup results', () => {
+    const runtime = createCommerceResolutionRuntime({
+      isAuroraSource(source) {
+        return source === 'aurora-bff';
+      },
+      extractSearchAnchorTokens() {
+        return ['ipsa', 'toner'];
+      },
+      isLookupStyleSearchQuery() {
+        return true;
+      },
+      isProxySearchFallbackRelevant() {
+        return true;
+      },
+    });
+
+    expect(
+      runtime.getSecondaryFallbackOutcomeDecision({
+        fallback: {
+          status: 200,
+          usableCount: 1,
+          relevanceMatched: true,
+          targetRelevantCount: 1,
+          top3QualityScore: 120,
+          selectedAttemptNo: 1,
+          selectedQuery: 'ipsa toner',
+          attempts: [{ query: 'ipsa toner' }],
+          data: {
+            products: [{ product_id: 'p1', title: 'IPSA toner refill' }],
+          },
+        },
+        queryText: 'ipsa toner',
+        queryClass: 'lookup',
+        source: 'aurora-bff',
+        primaryUsableCount: 3,
+        primaryIrrelevant: true,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        decision: 'clarify',
+        reason: 'primary_irrelevant_no_fallback',
+        rejectionReason: 'secondary_below_usable_threshold',
+        adoptUsableThreshold: 3,
+        fallbackRelevant: true,
+        strongAdoptionEvidence: true,
+      }),
+    );
   });
 
   test('fallback overlap preview is owned by execution facade', () => {
