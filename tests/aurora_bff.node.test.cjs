@@ -477,6 +477,47 @@ test('__internal: shouldSoftenAnalysisSummaryLowConfidence stays false without s
   }
 });
 
+test('__internal: shouldSoftenAnalysisSummaryLowConfidence accepts passed qc when photo quality grade is unknown', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.shouldSoftenAnalysisSummaryLowConfidence({
+      analysisSource: 'rule_based_with_photo_qc',
+      usePhoto: true,
+      photosProvided: true,
+      photos: [{ slot_id: 'daylight', photo_id: 'photo_1', qc_status: 'passed' }],
+      usedPhotos: false,
+      photoQualityGrade: 'unknown',
+      degradeReason: 'photo_download_url_generate_failed',
+      profileSummary: {
+        skinType: 'combination',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['texture', 'redness'],
+      },
+      ingredientPlan: {
+        targets: [
+          {
+            target_role: 'primary',
+            ingredient_id: 'sunscreen_filters',
+            ingredient_name: 'UV filters',
+            resolved_target_step: 'sunscreen',
+            priority_score_0_100: 76,
+            strict_product_count: 1,
+            products: {
+              competitors: [
+                { product_id: 'ext_bbe1ff8884f06d874bbccbd8', merchant_id: 'external_seed', name: 'UV Filters SPF 45 Serum' },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    assert.equal(out, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();

@@ -25920,6 +25920,7 @@ function shouldSoftenAnalysisSummaryLowConfidence({
   analysisSource = '',
   usePhoto = false,
   photosProvided = false,
+  photos = null,
   usedPhotos = false,
   photoQualityGrade = '',
   degradeReason = '',
@@ -25929,7 +25930,10 @@ function shouldSoftenAnalysisSummaryLowConfidence({
   const normalizedSource = String(analysisSource || '').trim().toLowerCase();
   if (normalizedSource !== 'rule_based_with_photo_qc') return false;
   if (!usePhoto || !photosProvided || usedPhotos) return false;
-  if (String(photoQualityGrade || '').trim().toLowerCase() !== 'pass') return false;
+  const normalizedGrade = String(photoQualityGrade || '').trim().toLowerCase();
+  if (normalizedGrade === 'fail' || normalizedGrade === 'degraded') return false;
+  const hasPassedPhotoQc = Array.isArray(photos) && photos.some((row) => String(row && row.qc_status || '').trim().toLowerCase() === 'passed');
+  if (normalizedGrade !== 'pass' && !hasPassedPhotoQc) return false;
   if (!ANALYSIS_SUMMARY_SOFTENABLE_PHOTO_ARTIFACT_REASONS.has(String(degradeReason || '').trim().toLowerCase())) {
     return false;
   }
@@ -65200,6 +65204,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           analysisSource: renderedAnalysisSource,
           usePhoto: Boolean(userRequestedPhoto),
           photosProvided,
+          photos,
           usedPhotos,
           photoQualityGrade: photoQuality && photoQuality.grade,
           degradeReason,
