@@ -773,6 +773,75 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.score === 0 || out.score === 1).toBe(true);
   });
 
+  test('pickBestCatalogSearchCandidateForProductInput prefers the strongest exact-name candidate over same-brand drift', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const picked = __internal.pickBestCatalogSearchCandidateForProductInput({
+      query: 'The Ordinary UV Filters SPF 45 Serum',
+      candidates: [
+        {
+          product_id: 'niacinamide_1',
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          category: 'serum',
+        },
+        {
+          product_id: 'uv_filters_45',
+          brand: 'The Ordinary',
+          name: 'UV Filters SPF 45 Serum',
+          display_name: 'The Ordinary UV Filters SPF 45 Serum',
+          category: 'sunscreen',
+        },
+      ],
+    });
+
+    expect(picked.candidate).toBeTruthy();
+    expect(picked.candidate.product_id).toBe('uv_filters_45');
+    expect(picked.ambiguousRejectedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('resolveCatalogProductForProductInput rejects weak same-brand search drift as ambiguous', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+
+    nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .times(3)
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'niacinamide_1',
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'serum',
+          },
+        ],
+      });
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.resolveCatalogProductForProductInput({
+      inputText: 'The Ordinary UV Filters SPF 45 Serum',
+      lang: 'EN',
+      logger: { warn: jest.fn(), info: jest.fn() },
+    });
+
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBe('catalog_search_ambiguous');
+    expect(out.product).toBeNull();
+  });
+
   test('buildProductCatalogQueryCandidates can keep inputText as first query candidate when requested', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const candidates = __internal.buildProductCatalogQueryCandidates({

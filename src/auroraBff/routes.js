@@ -5726,6 +5726,81 @@ function computeAnchorNameSimilarity({ inputText = '', candidate = null } = {}) 
   return { score, overlap, total: inputTokens.length };
 }
 
+function pickBestCatalogSearchCandidateForProductInput({
+  query = '',
+  candidates = [],
+  strictFilter = AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+} = {}) {
+  const normalizedQuery = normalizeAnchorCompareText(query);
+  const ranked = [];
+  let filteredNonSkincareCount = 0;
+  let ambiguousRejectedCount = 0;
+
+  for (const rawCandidate of Array.isArray(candidates) ? candidates : []) {
+    const candidate =
+      normalizeRecoCatalogProduct(rawCandidate) ||
+      (rawCandidate && typeof rawCandidate === 'object' && !Array.isArray(rawCandidate) ? rawCandidate : null);
+    if (!candidate) continue;
+    if (!String(candidate.product_id || '').trim()) continue;
+
+    const guard = evaluateAnchorProductSkincareGuard(candidate, { strictFilter });
+    if (!guard.ok) {
+      if (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category') {
+        filteredNonSkincareCount += 1;
+      }
+      continue;
+    }
+
+    const similarity = computeAnchorNameSimilarity({ inputText: query, candidate });
+    const candidateName = normalizeAnchorCompareText(
+      pickFirstTrimmed(candidate.name, candidate.display_name, candidate.displayName, candidate.title),
+    );
+    const candidateDisplay = normalizeAnchorCompareText(
+      joinBrandAndName(
+        pickFirstTrimmed(candidate.brand, candidate.brand_name, candidate.brandName),
+        pickFirstTrimmed(candidate.name, candidate.display_name, candidate.displayName, candidate.title),
+      ),
+    );
+    const exactTextMatch = Boolean(
+      normalizedQuery &&
+      (candidateName === normalizedQuery || candidateDisplay === normalizedQuery)
+    );
+    const accepted =
+      exactTextMatch ||
+      (
+        similarity.total >= 2 &&
+        (similarity.score >= 0.55 || (similarity.overlap >= 2 && similarity.score >= 0.34))
+      );
+
+    if (!accepted) {
+      ambiguousRejectedCount += 1;
+      continue;
+    }
+
+    ranked.push({
+      candidate,
+      exactTextMatch,
+      similarity,
+      rankScore:
+        (exactTextMatch ? 1000 : 0) +
+        Math.round(similarity.score * 100) +
+        (similarity.overlap * 10),
+    });
+  }
+
+  ranked.sort((a, b) => {
+    if (b.rankScore !== a.rankScore) return b.rankScore - a.rankScore;
+    if (b.similarity.overlap !== a.similarity.overlap) return b.similarity.overlap - a.similarity.overlap;
+    return b.similarity.score - a.similarity.score;
+  });
+
+  return {
+    candidate: ranked[0]?.candidate || null,
+    filteredNonSkincareCount,
+    ambiguousRejectedCount,
+  };
+}
+
 function extractUrlAnchorSignals(inputUrl) {
   const urlText = String(inputUrl || '').trim();
   if (!/^https?:\/\//i.test(urlText)) return null;
@@ -6005,23 +6080,13 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
       logger,
       timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
     });
-    let first = null;
-    if (Array.isArray(searched && searched.products)) {
-      for (const candidate of searched.products) {
-        if (!candidate || typeof candidate !== 'object') continue;
-        if (!String(candidate.product_id || '').trim()) continue;
-        const guard = evaluateAnchorProductSkincareGuard(candidate, {
-          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
-        });
-        if (guard.ok) {
-          first = candidate;
-          break;
-        }
-        if (guard.reason === 'non_skincare_blacklist' || guard.reason === 'non_skincare_category') {
-          filteredNonSkincareCount += 1;
-        }
-      }
-    }
+    const picked = pickBestCatalogSearchCandidateForProductInput({
+      query,
+      candidates: Array.isArray(searched && searched.products) ? searched.products : [],
+      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+    });
+    const first = picked.candidate;
+    filteredNonSkincareCount += Number(picked.filteredNonSkincareCount || 0);
     attempts.push({
       mode: 'search',
       query,
@@ -6030,6 +6095,8 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
         ? null
         : filteredNonSkincareCount > 0
           ? 'catalog_non_skincare_match'
+          : Number(picked.ambiguousRejectedCount || 0) > 0
+            ? 'catalog_search_ambiguous'
           : searched && searched.reason
             ? String(searched.reason)
             : null,
@@ -6049,7 +6116,12 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
 
   return {
     ok: false,
-    reason: filteredNonSkincareCount > 0 ? 'catalog_non_skincare_match' : 'catalog_no_match',
+    reason:
+      filteredNonSkincareCount > 0
+        ? 'catalog_non_skincare_match'
+        : attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous')
+          ? 'catalog_search_ambiguous'
+          : 'catalog_no_match',
     source: null,
     query_used: queries[0] || null,
     product: null,
@@ -77117,6 +77189,7 @@ const __internal = {
   filterRecoContextProductCandidates,
   buildRealtimeCompetitorQueryPlan,
   computeAnchorNameSimilarity,
+  pickBestCatalogSearchCandidateForProductInput,
   mapCatalogProductToAnchorProduct,
   evaluateAnchorTrustForProductIntel,
   normalizeRoutineInputWithPmShortcut,
