@@ -66,6 +66,8 @@ function evaluateReadinessScorecard(input = {}) {
   const gatewayGovernanceAutomationStatus =
     String(input.gatewayGovernanceAutomationStatus || '').trim() || 'missing';
   const gatewayGovernanceLogInputAutomated = input.gatewayGovernanceLogInputAutomated === true;
+  const gatewayGovernanceRuntimeHandoffStatus =
+    String(input.gatewayGovernanceRuntimeHandoffStatus || '').trim() || 'missing';
 
   const promptFixtureComplete = fixtureHasFamilyAliases(input.promptCases, [
     'prompt_clarify',
@@ -176,9 +178,11 @@ function evaluateReadinessScorecard(input = {}) {
   if (
     (authoritativeProdCommit || agentProdCommit) &&
     gatewayGovernanceReportStatus === 'pass' &&
-    gatewayGovernanceExtractStatus === 'pass' &&
+    (gatewayGovernanceExtractStatus === 'pass' ||
+      gatewayGovernanceRuntimeHandoffStatus === 'pass') &&
     (gatewayGovernanceAutomationStatus === 'pass' ||
-      (gatewayGovernanceLogInputAutomated && Boolean(gatewayGovernanceLogInputPath)))
+      (gatewayGovernanceLogInputAutomated && Boolean(gatewayGovernanceLogInputPath)) ||
+      gatewayGovernanceRuntimeHandoffStatus === 'pass')
   ) {
     observabilityProvenance = 'green';
   }

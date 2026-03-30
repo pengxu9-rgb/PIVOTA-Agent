@@ -8,7 +8,9 @@ BASE_URL="${BASE_URL:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-https://pivota-agent-
 ENDPOINT="${ENDPOINT:-/v1/chat}"
 CASES_PATH="${CASES_PATH:-${SCRIPT_DIR}/fixtures/celestial_commerce_core_prompt_live_smoke.json}"
 OUT_DIR="${OUT_DIR:-reports/celestial-commerce-core-prompt-live-smoke}"
-TIMEOUT_MS="${TIMEOUT_MS:-15000}"
+TIMEOUT_MS="${TIMEOUT_MS:-25000}"
+RETRIES="${RETRIES:-1}"
+RETRY_BACKOFF_MS="${RETRY_BACKOFF_MS:-500}"
 AUTH_TOKEN="${AUTH_TOKEN:-${CELESTIAL_COMMERCE_PROMPT_AUTH_TOKEN:-}}"
 AGENT_API_KEY="${AGENT_API_KEY:-${CELESTIAL_COMMERCE_PROMPT_AGENT_API_KEY:-}}"
 
@@ -20,6 +22,8 @@ args=(
   --cases "${CASES_PATH}"
   --out-dir "${OUT_DIR}"
   --timeout-ms "${TIMEOUT_MS}"
+  --retries "${RETRIES}"
+  --retry-backoff-ms "${RETRY_BACKOFF_MS}"
 )
 
 if [[ -n "${AUTH_TOKEN}" ]]; then
