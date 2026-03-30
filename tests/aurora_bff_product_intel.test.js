@@ -6400,42 +6400,40 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
       .query(true)
       .reply(200, '<html><body>no matches</body></html>');
 
-    const queryMock = jest.fn(async () => ({
-      rows: [
-        {
-          id: 'seed_row_uv_filters_blocked_1',
-          external_product_id: 'ext_bbe1ff8884f06d874bbccbd8',
-          destination_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-          canonical_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-          source_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-          source_page_type: 'product',
-          content_quality: 'high',
-          domain: 'theordinary.com',
-          title: 'UV Filters SPF 45 Serum',
-          image_url: 'https://cdn.theordinary.com/uv-filters.jpg',
-          price_amount: '19.90',
-          price_currency: 'USD',
-          availability: 'in stock',
-          status: 'active',
-          seed_data: {
-            brand: 'The Ordinary',
-            active_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
-            key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
-            ingredient_intel: {
-              raw_ingredient_text_clean: 'Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water',
-              inci_list: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene', 'Glycerin', 'Water'],
-            },
-            snapshot: {
-              title: 'UV Filters SPF 45 Serum',
-              canonical_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-              destination_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
-              source_page_type: 'product',
-              content_quality: 'high',
+    const queryMock = jest.fn(async (text) => {
+      const sql = String(text || '');
+      expect(sql).not.toMatch(/\bsource_url\b/i);
+      expect(sql).not.toMatch(/\bsource_page_type\b/i);
+      expect(sql).not.toMatch(/\bcontent_quality\b/i);
+      expect(sql).not.toMatch(/\bdestination_url\b/i);
+      expect(sql).not.toMatch(/\bcanonical_url\b/i);
+      return {
+        rows: [
+          {
+            id: 'seed_row_uv_filters_blocked_1',
+            external_product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+            title: 'UV Filters SPF 45 Serum',
+            status: 'active',
+            seed_data: {
+              brand: 'The Ordinary',
+              active_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+              key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+              ingredient_intel: {
+                raw_ingredient_text_clean: 'Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water',
+                inci_list: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene', 'Glycerin', 'Water'],
+              },
+              snapshot: {
+                title: 'UV Filters SPF 45 Serum',
+                canonical_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+                destination_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+                source_page_type: 'product',
+                content_quality: 'high',
+              },
             },
           },
-        },
-      ],
-    }));
+        ],
+      };
+    });
     jest.resetModules();
     jest.doMock('../src/db', () => ({ query: queryMock }));
     const { __internal } = require('../src/auroraBff/routes');
