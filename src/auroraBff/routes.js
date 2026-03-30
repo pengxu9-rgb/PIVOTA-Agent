@@ -38115,7 +38115,7 @@ function buildAnalysisStoryAnalysisTargetUiHints(recoContext, { language, confid
   const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
   if (!normalizedContext) return null;
   const contextOrigin = String(normalizedContext.context_origin || '').trim().toLowerCase();
-  if (contextOrigin !== 'analysis_summary') return null;
+  if (contextOrigin && !['analysis_summary', 'photo_modules_v1', 'photo_modules_v2', 'photo_modules'].includes(contextOrigin)) return null;
   const isCn = String(language || '').toUpperCase() === 'CN';
   const rankedTargets = normalizeRecoContextRankedTargets(
     Array.isArray(normalizedContext.ranked_targets) ? normalizedContext.ranked_targets : [],
@@ -38228,6 +38228,7 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       ),
     },
   );
+  const preferAnalysisTargetUi = Boolean(analysisTargetUi);
   const photoUsed = photoContext.used_photos === true;
   const primaryFocus = isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null;
   const lowConfidencePrimaryFocus = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
@@ -38285,6 +38286,7 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   const keyPoints = photoUsed
     ? asStringArray(
         [
+          ...(preferAnalysisTargetUi ? analysisTargetUi.key_points : []),
           ...interpretationPoints,
           ...(Array.isArray(photoContext.quality_caveat_texts) ? photoContext.quality_caveat_texts : []),
           ...fallbackEvidence,
@@ -38332,7 +38334,11 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
     })
     .slice(0, 3);
   const actionsNow = asStringArray(
-    photoUsed
+    preferAnalysisTargetUi
+      ? [
+          ...analysisTargetUi.actions_now,
+        ]
+      : photoUsed
       ? [
           primaryActionLine,
           ...secondaryTopActions.map((action) => {
@@ -38387,7 +38393,7 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       ? '照片分析未能完成，请在自然光下重新拍照以获取准确结果。'
       : 'Photo analysis could not be completed. Please retake photos in natural daylight for accurate results.')
     : (pickFirstString(
-        !photoUsed && analysisTargetUi ? analysisTargetUi.headline : '',
+        preferAnalysisTargetUi ? analysisTargetUi.headline : '',
         photoUsed ? photoContext.headline_hint : '',
         Array.isArray(row.target_state) ? row.target_state[0] : '',
         photoEvidence[0],

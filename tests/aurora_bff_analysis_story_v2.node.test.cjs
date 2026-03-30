@@ -785,6 +785,129 @@ test('analysis_story_v2: analysis-summary target handoff keeps headline and assi
 }
 );
 
+test('analysis_story_v2: photo target handoff keeps headline and assistant copy target-bound', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+    AURORA_LLM_QA_MODE: 'off',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'pm_photo',
+        type: 'photo_modules_v1',
+        payload: {
+          used_photos: true,
+          quality_grade: 'pass',
+          modules: [
+            {
+              module_id: 'full_face',
+              issues: [
+                {
+                  issue_type: 'texture',
+                  severity_0_4: 2.6,
+                  confidence_0_1: 0.52,
+                  confidence_bucket: 'medium',
+                  evidence_region_ids: ['full_face_texture_bbox'],
+                  explanation_short: 'Texture is visible across the face.',
+                },
+              ],
+              actions: [],
+            },
+          ],
+          summary_v1: {
+            top_findings: [
+              {
+                module_id: 'full_face',
+                issue_type: 'texture',
+                severity_0_4: 2.6,
+                confidence_0_1: 0.52,
+                confidence_bucket: 'medium',
+                evidence_region_ids: ['full_face_texture_bbox'],
+              },
+            ],
+            quality_caveats: ['conservative_photo_interpretation'],
+          },
+        },
+      },
+      {
+        card_id: 'analysis_1',
+        type: 'analysis_summary',
+        payload: {
+          used_photos: true,
+          analysis_source: 'vision_gemini',
+          low_confidence: true,
+          analysis: {
+            features: [
+              { observation: 'Keep the plan narrow and sunscreen-led.' },
+            ],
+          },
+        },
+      },
+      {
+        card_id: 'plan_1',
+        type: 'ingredient_plan_v2',
+        payload: {
+          targets: [
+            {
+              ingredient_id: 'sunscreen_filters',
+              ingredient_name: 'UV filters',
+              priority_score_0_100: 76,
+              priority_level: 'high',
+              usage_guidance: ['Daily AM final step'],
+              products: {
+                competitors: [
+                  {
+                    product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+                    merchant_id: 'external_seed',
+                    brand: 'the ordinary',
+                    name: 'UV Filters SPF 45 Serum',
+                    pdp_url: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  },
+                ],
+              },
+              external_fallback_used: true,
+            },
+            {
+              ingredient_id: 'panthenol',
+              ingredient_name: 'Panthenol (B5)',
+              priority_score_0_100: 67,
+              priority_level: 'medium',
+              usage_guidance: ['AM/PM soothing support'],
+              products: {
+                competitors: [],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'photo_target_story' },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['texture', 'redness'],
+      },
+      language: 'EN',
+    },
+  );
+
+  const storyCard = out.find((card) => card && card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'Expected analysis_story_v2 card');
+  assert.match(String(storyCard.payload?.ui_card_v1?.headline || ''), /UV filters/i);
+  assert.match(
+    String((storyCard.payload?.ui_card_v1?.actions_now || [])[0] || ''),
+    /UV filters|broad-spectrum sunscreen/i,
+  );
+
+  const assistantText = internal.buildAssistantMessageFromStoryV2(storyCard.payload, { language: 'EN' });
+  assert.match(assistantText, /UV filters/i);
+  assert.doesNotMatch(assistantText, /Stabilize barrier first/i);
+});
+
 test('analysis_story_v2: photo-led ingredient plan is annotated with provenance and strict-match miss', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
