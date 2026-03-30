@@ -452,6 +452,47 @@ test('photo modules card: conservative pass-quality medium findings do not force
   );
 });
 
+test('photo modules card: strong pass-quality texture evidence gets a conservative confidence floor', () => {
+  const built = buildPhotoModulesCard({
+    requestId: 'req_photo_modules_texture_floor_pass',
+    analysis: {
+      photo_findings: [
+        {
+          finding_id: 'pf_texture_floor_1',
+          issue_type: 'texture',
+          severity: 3,
+          confidence: 0,
+          geometry: {
+            bbox: { x: 0.18, y: 0.2, w: 0.34, h: 0.24 },
+            heatmap: {
+              grid: { w: 8, h: 8 },
+              values: makeHeatmapValues(8, 8),
+            },
+          },
+        },
+      ],
+    },
+    usedPhotos: true,
+    photoQuality: { grade: 'pass', reasons: [] },
+    diagnosisInternal: makeDiagnosisInternalFixture(),
+    language: 'EN',
+    ingredientRecEnabled: true,
+    productRecEnabled: false,
+  });
+
+  assert.ok(built && built.card && built.card.payload);
+  assert.equal(built.card.payload.quality_grade, 'pass');
+  assert.equal(Boolean(built.card.payload.low_confidence), false);
+  assert.equal(built.card.payload.diagnostic_confidence_level, 'medium');
+  assert.equal(built.card.payload.summary_v1?.top_findings?.[0]?.confidence_bucket, 'medium');
+  assert.equal(built.card.payload.summary_v1?.top_findings?.[0]?.confidence_0_1, 0.18);
+  assert.equal(
+    Array.isArray(built.card.payload.summary_v1?.quality_caveats)
+      && built.card.payload.summary_v1.quality_caveats.includes('low_confidence_primary_finding'),
+    false,
+  );
+});
+
 test('photo modules summary_v1: top_product_id stays aligned to the primary action instead of borrowing another action product', () => {
   const summary = buildSummaryV1(
     [

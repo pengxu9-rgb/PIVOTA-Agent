@@ -279,6 +279,30 @@ const PHOTO_MODULES_CONFIDENCE_MEDIUM_THRESHOLD = parseEnvNumber(
   0.05,
   0.9,
 );
+const PHOTO_MODULES_STRONG_TEXTURE_CONFIDENCE_FLOOR = parseEnvNumber(
+  process.env.PHOTO_MODULES_STRONG_TEXTURE_CONFIDENCE_FLOOR,
+  0.18,
+  0.05,
+  0.35,
+);
+const PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SEVERITY = parseEnvNumber(
+  process.env.PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SEVERITY,
+  2.4,
+  0.5,
+  4,
+);
+const PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SIGNAL = parseEnvNumber(
+  process.env.PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SIGNAL,
+  0.6,
+  0.05,
+  1,
+);
+const PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_OVERLAP = parseEnvNumber(
+  process.env.PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_OVERLAP,
+  0.08,
+  0.01,
+  1,
+);
 
 function clamp01(value) {
   const number = Number(value);
@@ -356,6 +380,32 @@ function computeIssueRankScore({ severity0to4, confidence0to1 } = {}) {
   const severityScore = clamp01(normalizeSeverity0to4(severity0to4) / 4);
   const confidenceScore = clamp01(confidence0to1);
   return round3(clamp01(severityScore * 0.72 + confidenceScore * 0.28));
+}
+
+function deriveEvidenceAwareConfidenceFloor({
+  issueType,
+  qualityGrade,
+  confidenceRaw,
+  severity0to4,
+  evidenceRows,
+  regionMeta,
+} = {}) {
+  const normalizedIssueType = String(issueType || '').trim().toLowerCase();
+  const normalizedGrade = normalizeQualityGrade(qualityGrade);
+  if (normalizedGrade !== 'pass' || normalizedIssueType !== 'texture') return 0;
+  if (clamp01(confidenceRaw) > 0.02) return 0;
+  if (normalizeSeverity0to4(severity0to4) < PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SEVERITY) return 0;
+  const rows = Array.isArray(evidenceRows) ? evidenceRows : [];
+  const safeRegionMeta = regionMeta instanceof Map ? regionMeta : new Map();
+  const hasStrongHeatmapEvidence = rows.some((row) => {
+    const meta = safeRegionMeta.get(row && row.region_id);
+    const regionType = String(meta && meta.region_type || '').trim().toLowerCase();
+    return regionType === 'heatmap'
+      && Number(row && row.signalScore || 0) >= PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_SIGNAL
+      && Number(row && row.overlap || 0) >= PHOTO_MODULES_STRONG_TEXTURE_FLOOR_MIN_OVERLAP;
+  });
+  if (!hasStrongHeatmapEvidence) return 0;
+  return PHOTO_MODULES_STRONG_TEXTURE_CONFIDENCE_FLOOR;
 }
 
 function actionDedupeKey(action) {
@@ -1761,7 +1811,15 @@ function buildModuleIssues({
     const severity0to4 = round3(clamp01(severityScore) * 4);
 
     const confidenceRaw = Math.max(...list.map((item) => item.confidence));
-    const confidence0to1 = round3(clamp01(confidenceRaw * qualityFactor));
+    const evidenceConfidenceFloor = deriveEvidenceAwareConfidenceFloor({
+      issueType,
+      qualityGrade,
+      confidenceRaw,
+      severity0to4,
+      evidenceRows: list,
+      regionMeta,
+    });
+    const confidence0to1 = round3(clamp01(Math.max(confidenceRaw * qualityFactor, evidenceConfidenceFloor)));
     const evidenceRows = list
       .slice()
       .sort((a, b) => {

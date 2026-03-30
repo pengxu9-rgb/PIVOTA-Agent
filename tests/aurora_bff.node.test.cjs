@@ -291,6 +291,57 @@ test('__internal: sanitizeRecoRequestContext keeps only aligned non-query-shaped
   }
 });
 
+test('__internal: softenPhotoQualityFailFromUsablePhotoModules downgrades ONNX-only fail to degraded when modules are usable', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.softenPhotoQualityFailFromUsablePhotoModules({
+      photoQuality: {
+        grade: 'fail',
+        reasons: ['pixel_diagnosis_failed'],
+      },
+      photoModulesCard: {
+        type: 'photo_modules_v1',
+        payload: {
+          quality_grade: 'fail',
+          low_confidence: true,
+          quality_labels: ['quality_low_confidence'],
+          regions_available_count: 5,
+          modules: [
+            {
+              module_id: 'under_eye_right',
+              issues: [{ issue_type: 'texture', confidence_0_1: 0, confidence_bucket: 'low' }],
+            },
+          ],
+          module_overlay_debug: {
+            skinmask_source: 'none',
+            skinmask_fallback_reason: 'ONNX_FAIL',
+            degraded_reasons: [],
+          },
+          summary_v1: {
+            quality_caveats: ['photo_quality_failed', 'low_confidence_primary_finding'],
+          },
+        },
+      },
+    });
+
+    assert.equal(out.applied, true);
+    assert.equal(out.reason, 'skinmask_onnx_fail_softened');
+    assert.equal(out.photoQuality.grade, 'degraded');
+    assert.equal(out.photoModulesCard.payload.quality_grade, 'degraded');
+    assert.deepEqual(out.photoModulesCard.payload.quality_labels, []);
+    assert.equal(
+      out.photoModulesCard.payload.summary_v1.quality_caveats.includes('photo_quality_failed'),
+      false,
+    );
+    assert.equal(
+      out.photoModulesCard.payload.summary_v1.quality_caveats.includes('photo_quality_degraded'),
+      true,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 function findCardByType(cards, type) {
   if (!Array.isArray(cards)) return null;
   const expected = String(type || '').trim().toLowerCase();

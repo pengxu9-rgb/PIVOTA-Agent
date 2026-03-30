@@ -18075,6 +18075,77 @@ function maybeBuildPhotoModulesCardForAnalysis({
   return built.card;
 }
 
+function softenPhotoQualityFailFromUsablePhotoModules({
+  photoQuality = null,
+  photoModulesCard = null,
+} = {}) {
+  const quality = isPlainObject(photoQuality) ? { ...photoQuality } : null;
+  if (!quality) return { photoQuality, photoModulesCard, applied: false, reason: null };
+  if (String(quality.grade || '').trim().toLowerCase() !== 'fail') {
+    return { photoQuality, photoModulesCard, applied: false, reason: null };
+  }
+  if (!isPlainObject(photoModulesCard) || String(photoModulesCard.type || '').trim().toLowerCase() !== 'photo_modules_v1') {
+    return { photoQuality, photoModulesCard, applied: false, reason: null };
+  }
+
+  const payload = isPlainObject(photoModulesCard.payload) ? { ...photoModulesCard.payload } : null;
+  if (!payload) return { photoQuality, photoModulesCard, applied: false, reason: null };
+  const overlay = isPlainObject(payload.module_overlay_debug) ? { ...payload.module_overlay_debug } : {};
+  const fallbackReason = String(overlay.skinmask_fallback_reason || '').trim().toUpperCase();
+  const skinmaskSource = String(overlay.skinmask_source || '').trim().toLowerCase();
+  const regionsAvailableCount = Math.max(0, Math.trunc(Number(payload.regions_available_count) || 0));
+  const hasModuleIssues = Array.isArray(payload.modules)
+    && payload.modules.some((row) => Array.isArray(row && row.issues) && row.issues.length > 0);
+  if (!(fallbackReason === 'ONNX_FAIL' && skinmaskSource === 'none' && regionsAvailableCount > 0 && hasModuleIssues)) {
+    return { photoQuality, photoModulesCard, applied: false, reason: null };
+  }
+
+  const nextQuality = {
+    ...quality,
+    grade: 'degraded',
+    reasons: Array.from(new Set([
+      ...(Array.isArray(quality.reasons) ? quality.reasons : []),
+      'skinmask_onnx_fail_softened',
+    ])).slice(0, 10),
+  };
+  const summary = isPlainObject(payload.summary_v1) ? { ...payload.summary_v1 } : null;
+  const nextQualityCaveats = Array.from(
+    new Set([
+      ...((summary && Array.isArray(summary.quality_caveats))
+        ? summary.quality_caveats
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter((value) => value && value !== 'photo_quality_failed')
+        : []),
+      'photo_quality_degraded',
+    ]),
+  ).slice(0, 6);
+  const nextPayload = {
+    ...payload,
+    quality_grade: 'degraded',
+    quality_labels: Array.isArray(payload.quality_labels)
+      ? payload.quality_labels.filter((value) => String(value || '').trim().toLowerCase() !== 'quality_low_confidence')
+      : [],
+    module_overlay_debug: {
+      ...overlay,
+      degraded_reasons: Array.from(new Set([
+        ...(Array.isArray(overlay.degraded_reasons) ? overlay.degraded_reasons : []),
+        'skinmask_onnx_fail_softened',
+      ])).slice(0, 8),
+    },
+    ...(summary ? { summary_v1: { ...summary, quality_caveats: nextQualityCaveats } } : {}),
+  };
+
+  return {
+    photoQuality: nextQuality,
+    photoModulesCard: {
+      ...photoModulesCard,
+      payload: nextPayload,
+    },
+    applied: true,
+    reason: 'skinmask_onnx_fail_softened',
+  };
+}
+
 function derivePhotoModulesMarket({ profileSummary, language } = {}) {
   const profileMarket = pickFirstString(profileSummary && profileSummary.region).toUpperCase();
   if (profileMarket) return profileMarket;
@@ -64397,6 +64468,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
 
         let photoModulesCard = null;
+        let photoQualitySoftenedReason = null;
         profiler.start('photo_modules', { kind: 'analysis_photo_modules' });
         try {
           const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
@@ -64444,6 +64516,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             language: ctx.lang,
             skinMask: photoModulesSkinMask,
           });
+          if (photoModulesCard) {
+            const softenedPhotoQuality = softenPhotoQualityFailFromUsablePhotoModules({
+              photoQuality,
+              photoModulesCard,
+            });
+            photoQuality = softenedPhotoQuality.photoQuality || photoQuality;
+            photoModulesCard = softenedPhotoQuality.photoModulesCard || photoModulesCard;
+            photoQualitySoftenedReason = softenedPhotoQuality.applied ? softenedPhotoQuality.reason : null;
+          }
           if (photoModulesCard && photoModulesSourceResolved) {
             const payloadObj =
               photoModulesCard.payload && typeof photoModulesCard.payload === 'object' && !Array.isArray(photoModulesCard.payload)
@@ -64728,6 +64809,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               photosProvided &&
               String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
           ),
+          ...(photoQualitySoftenedReason ? { photo_quality_softened_reason: photoQualitySoftenedReason } : {}),
           ...(degradeReason ? { degrade_reason: degradeReason } : {}),
           ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
           ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
@@ -64803,6 +64885,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 photosProvided &&
                 String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
             ),
+            ...(photoQualitySoftenedReason ? { photo_quality_softened_reason: photoQualitySoftenedReason } : {}),
           },
         };
         if (!shadowRun && persistLastAnalysis) {
@@ -76060,6 +76143,7 @@ const __internal = {
   buildRoutineRulesOnlyFallbackCardsForChat,
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
+  softenPhotoQualityFailFromUsablePhotoModules,
   enrichPhotoModulesCardWithIngredientProducts,
   enrichPhotoModulesCardWithIngredientProductsBounded,
   isTreatmentLikeRecommendationForLowConfidence,
