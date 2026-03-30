@@ -1351,6 +1351,48 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.product?.product_id).toBe('ext_bbe1ff8884f06d874bbccbd8');
     expect(out.product?.merchant_id).toBe('external_seed');
     expect(String(out.product?.display_name || '')).toContain('The Ordinary UV Filters SPF 45 Serum');
+    expect(String(out.product?.url || '')).toContain('uv-filters-spf-45-serum');
+    expect(String(out.product?.source_url || '')).toContain('uv-filters-spf-45-serum');
+    expect(String(out.product?.source_page_type || '')).toBe('product');
+    expect(String(out.product?.content_quality || '')).toBe('high');
+  });
+
+  test('/v1/product/parse preserves trusted stable-alias URL metadata in the owner snapshot', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('http://aurora.test')
+      .post('/api/upstream/chat')
+      .reply(200, {
+        schema_version: 'aurora.chat.v1',
+        intent: 'product',
+        answer: 'not json payload',
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/parse')
+      .set('X-Aurora-UID', 'uid_test_parse_stable_alias_url_snapshot_1')
+      .send({ text: 'The Ordinary UV Filters SPF 45 Serum' })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_parse');
+    expect(card).toBeTruthy();
+    expect(card.payload.parse_source).toBe('local_stable_alias_ref');
+    expect(card.payload.anchor_owner_source).toBe('local_stable_alias_ref');
+    expect(card.payload.anchor_owner_state).toBe('trusted');
+    expect(String(card.payload.product?.url || '')).toContain('uv-filters-spf-45-serum');
+    expect(res.body.session_patch?.meta?.product_anchor_snapshot).toEqual(
+      expect.objectContaining({
+        owner_source: 'local_stable_alias_ref',
+        owner_state: 'trusted',
+        owner_display_anchor: expect.objectContaining({
+          url: expect.stringContaining('uv-filters-spf-45-serum'),
+        }),
+      }),
+    );
   });
 
   test('finalizeProductAnchorDecisionSpine keeps first trusted owner and records later conflicts without override', () => {

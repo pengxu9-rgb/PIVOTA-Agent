@@ -5140,6 +5140,7 @@ function buildAvailabilityResolvedProduct({
   resolveBody,
   fallbackQuery = '',
   fallbackBrand = '',
+  fallbackProduct = null,
 } = {}) {
   const normalizedRef = normalizeCanonicalProductRef(resolvedRef, {
     requireMerchant: true,
@@ -5155,6 +5156,8 @@ function buildAvailabilityResolvedProduct({
       ? resolveBody.candidates[0]
       : null;
   const normalizedCandidate = normalizeRecoCatalogProduct(firstCandidate);
+  const fallbackProductObj =
+    fallbackProduct && typeof fallbackProduct === 'object' && !Array.isArray(fallbackProduct) ? fallbackProduct : null;
   const queryFallbackName = String(fallbackQuery || '').trim();
   const safeQueryFallbackName = (() => {
     const token = normalizeProductCatalogQuery(queryFallbackName);
@@ -5168,21 +5171,61 @@ function buildAvailabilityResolvedProduct({
     normalizedCandidate?.name,
     firstCandidate?.title,
     firstCandidate?.name,
+    fallbackProductObj?.display_name,
+    fallbackProductObj?.name,
     safeQueryFallbackName,
   );
-  const name = pickFirstTrimmed(normalizedCandidate?.name, firstCandidate?.title, safeQueryFallbackName, displayName);
+  const name = pickFirstTrimmed(
+    normalizedCandidate?.name,
+    firstCandidate?.title,
+    fallbackProductObj?.name,
+    safeQueryFallbackName,
+    displayName,
+  );
   const brand = pickFirstTrimmed(
     normalizedCandidate?.brand,
     firstCandidate?.vendor,
     firstCandidate?.brand,
+    fallbackProductObj?.brand,
     fallbackBrand,
   );
   const imageUrl = pickFirstTrimmed(
     normalizedCandidate?.image_url,
     firstCandidate?.image_url,
     firstCandidate?.thumbnail_url,
+    fallbackProductObj?.image_url,
+  );
+  const productUrl = pickFirstTrimmed(
+    normalizedCandidate?.url,
+    normalizedCandidate?.canonical_url,
+    normalizedCandidate?.destination_url,
+    firstCandidate?.url,
+    fallbackProductObj?.url,
+    fallbackProductObj?.canonical_url,
+    fallbackProductObj?.destination_url,
+  );
+  const canonicalUrl = pickFirstTrimmed(
+    normalizedCandidate?.canonical_url,
+    fallbackProductObj?.canonical_url,
+  );
+  const destinationUrl = pickFirstTrimmed(
+    normalizedCandidate?.destination_url,
+    fallbackProductObj?.destination_url,
+  );
+  const sourceUrl = pickFirstTrimmed(
+    normalizedCandidate?.source_url,
+    fallbackProductObj?.source_url,
+  );
+  const sourcePageType = pickFirstTrimmed(
+    normalizedCandidate?.source_page_type,
+    fallbackProductObj?.source_page_type,
+  );
+  const contentQuality = pickFirstTrimmed(
+    normalizedCandidate?.content_quality,
+    fallbackProductObj?.content_quality,
   );
   return {
+    ...(fallbackProductObj ? fallbackProductObj : {}),
     ...(normalizedCandidate && typeof normalizedCandidate === 'object' ? normalizedCandidate : {}),
     product_id: normalizedRef.product_id,
     merchant_id: normalizedRef.merchant_id,
@@ -5191,6 +5234,12 @@ function buildAvailabilityResolvedProduct({
     ...(name ? { name } : {}),
     ...(displayName ? { display_name: displayName } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(productUrl ? { url: productUrl } : {}),
+    ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
+    ...(destinationUrl ? { destination_url: destinationUrl } : {}),
+    ...(sourceUrl ? { source_url: sourceUrl } : {}),
+    ...(sourcePageType ? { source_page_type: sourcePageType } : {}),
+    ...(contentQuality ? { content_quality: contentQuality } : {}),
   };
 }
 
@@ -5212,6 +5261,7 @@ async function resolveAvailabilityProductByQuery({
       resolveBody: null,
       fallbackQuery: q,
       fallbackBrand: hints && typeof hints === 'object' ? hints.brand : '',
+      fallbackProduct: stableAliasMatch.stableAnchorProduct,
     });
     if (product) {
       logger?.info?.(
@@ -5668,6 +5718,7 @@ function resolveLocalStableAliasProductForProductInput({ inputText, inputUrl, pa
       resolveBody: null,
       fallbackQuery: query,
       fallbackBrand: '',
+      fallbackProduct: stableAliasMatch.stableAnchorProduct,
     });
     if (!product) continue;
     logger?.info?.(
@@ -6048,7 +6099,16 @@ async function resolveOpenWorldExternalProductMatchForProductInput({
   }
 
   const attempts = [];
-  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  if (
+    parsedProductObj &&
+    (
+      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
+      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
+    )
+  ) {
+    parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
+  }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
   const promptLang = String(lang || 'EN').trim().toUpperCase() === 'CN' ? 'ZH' : 'EN';
 
@@ -6892,6 +6952,7 @@ function extractProductAnchorSessionSnapshot(session) {
 }
 
 function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}) {
+  const raw = rawProduct && typeof rawProduct === 'object' && !Array.isArray(rawProduct) ? rawProduct : null;
   const normalized = normalizeRecoCatalogProduct(rawProduct);
   if (!normalized || typeof normalized !== 'object') return null;
   const productId = pickFirstTrimmed(normalized.product_id, normalized.sku_id);
@@ -6909,6 +6970,26 @@ function mapCatalogProductToAnchorProduct(rawProduct, { fallbackName = '' } = {}
     ...(normalized.product_group_id ? { product_group_id: normalized.product_group_id } : {}),
     ...(normalized.merchant_id ? { merchant_id: normalized.merchant_id } : {}),
     ...(normalized.canonical_product_ref ? { canonical_product_ref: normalized.canonical_product_ref } : {}),
+    ...(pickFirstTrimmed(normalized.url, raw?.url) ? { url: pickFirstTrimmed(normalized.url, raw?.url) } : {}),
+    ...(pickFirstTrimmed(normalized.canonical_url, raw?.canonical_url) ? { canonical_url: pickFirstTrimmed(normalized.canonical_url, raw?.canonical_url) } : {}),
+    ...(pickFirstTrimmed(normalized.destination_url, raw?.destination_url) ? { destination_url: pickFirstTrimmed(normalized.destination_url, raw?.destination_url) } : {}),
+    ...(pickFirstTrimmed(normalized.source_url, raw?.source_url) ? { source_url: pickFirstTrimmed(normalized.source_url, raw?.source_url) } : {}),
+    ...(pickFirstTrimmed(normalized.source_page_type, raw?.source_page_type) ? { source_page_type: pickFirstTrimmed(normalized.source_page_type, raw?.source_page_type) } : {}),
+    ...(pickFirstTrimmed(normalized.content_quality, raw?.content_quality) ? { content_quality: pickFirstTrimmed(normalized.content_quality, raw?.content_quality) } : {}),
+    ...(pickFirstTrimmed(normalized.raw_ingredient_text_clean, raw?.raw_ingredient_text_clean) ? { raw_ingredient_text_clean: pickFirstTrimmed(normalized.raw_ingredient_text_clean, raw?.raw_ingredient_text_clean) } : {}),
+    ...(Array.isArray(normalized.inci_list) && normalized.inci_list.length
+      ? { inci_list: normalized.inci_list }
+      : (Array.isArray(raw?.inci_list) && raw.inci_list.length ? { inci_list: raw.inci_list } : {})),
+    ...(Array.isArray(normalized.active_ingredients) && normalized.active_ingredients.length
+      ? { active_ingredients: normalized.active_ingredients }
+      : (Array.isArray(raw?.active_ingredients) && raw.active_ingredients.length ? { active_ingredients: raw.active_ingredients } : {})),
+    ...(Array.isArray(normalized.key_ingredients) && normalized.key_ingredients.length
+      ? { key_ingredients: normalized.key_ingredients }
+      : (Array.isArray(raw?.key_ingredients) && raw.key_ingredients.length ? { key_ingredients: raw.key_ingredients } : {})),
+    ...(pickFirstTrimmed(normalized.pdp_ingredients_raw, raw?.pdp_ingredients_raw) ? { pdp_ingredients_raw: pickFirstTrimmed(normalized.pdp_ingredients_raw, raw?.pdp_ingredients_raw) } : {}),
+    ...(pickFirstTrimmed(normalized.pdp_active_ingredients_raw, raw?.pdp_active_ingredients_raw) ? { pdp_active_ingredients_raw: pickFirstTrimmed(normalized.pdp_active_ingredients_raw, raw?.pdp_active_ingredients_raw) } : {}),
+    ...((normalized.pdp_field_capture_status || raw?.pdp_field_capture_status) ? { pdp_field_capture_status: normalized.pdp_field_capture_status || raw?.pdp_field_capture_status } : {}),
+    ...((normalized.ingredient_intel || raw?.ingredient_intel) ? { ingredient_intel: normalized.ingredient_intel || raw?.ingredient_intel } : {}),
     category: 'product',
   };
 }
@@ -46083,6 +46164,10 @@ function resolveRecoStableAliasRefByQuery(queryText) {
     matchedAlias: String(match.matched_alias || '').trim() || null,
     reason: String(match.reason || '').trim() || 'stable_alias_ref',
     score: Number.isFinite(Number(match.score)) ? Number(match.score) : null,
+    stableAnchorProduct:
+      match.anchor_product && typeof match.anchor_product === 'object' && !Array.isArray(match.anchor_product)
+        ? { ...match.anchor_product }
+        : null,
   };
 }
 
@@ -61482,12 +61567,12 @@ function mountAuroraBffRoutes(app, { logger }) {
       let catalogFallback = null;
       let realtimeUrlNormMeta = null;
       let kbQuarantineMeta = { hit: false, reason: '', reasons: [], refreshed: false };
-      const realtimeUrlInput = String(parsed.data.url || '').trim();
+      const requestUrlInput = String(parsed.data.url || '').trim();
       const forceRefresh = parsed.data.force_refresh === true;
-      if (!analyzeConsumesUpstreamAnchorOwner && !anchorTrustContext.usable_for_anchor_id && realtimeUrlInput) {
+      if (!analyzeConsumesUpstreamAnchorOwner && !anchorTrustContext.usable_for_anchor_id && requestUrlInput) {
         const heuristicAnchor = buildHeuristicProductFromInput({
           inputText: analyzeInputText || input,
-          inputUrl: realtimeUrlInput,
+          inputUrl: requestUrlInput,
         });
         if (heuristicAnchor) {
           applyAnchorCandidateGuard(heuristicAnchor, 'heuristic_url', { preferDisplay: true });
@@ -61506,7 +61591,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!analyzeConsumesUpstreamAnchorOwner && !anchorTrustContext.usable_for_anchor_id && input) {
         const localStableAliasResolution = resolveLocalStableAliasProductForProductInput({
           inputText: input,
-          inputUrl: realtimeUrlInput || null,
+          inputUrl: requestUrlInput || null,
           parsedProduct: parsed.data.product || null,
           logger,
         });
@@ -61533,7 +61618,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!analyzeConsumesUpstreamAnchorOwner && !anchorTrustContext.usable_for_anchor_id && input) {
         primaryAnchorResolution = await resolvePrimaryAnalyzeAnchorForProductInput({
           inputText: input,
-          inputUrl: parsed.data.url || null,
+          inputUrl: requestUrlInput || null,
           parsedProduct: parsedProduct,
           lang: ctx.lang,
           logger,
@@ -61562,7 +61647,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (!analyzeConsumesUpstreamAnchorOwner && !anchorTrustContext.usable_for_anchor_id && PRODUCT_INTEL_CATALOG_FALLBACK_ENABLED && input) {
         catalogFallback = await resolveCatalogProductForProductInput({
           inputText: input,
-          inputUrl: parsed.data.url || null,
+          inputUrl: requestUrlInput || null,
           parsedProduct: parsedProduct,
           lang: ctx.lang,
           logger,
@@ -61594,7 +61679,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           syncAnalyzeAnchorFromSpine();
         }
       }
-      const shouldRunRealtimeUrlFirst = PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
+      const realtimeUrlInput = pickFirstTrimmed(
+        requestUrlInput,
+        parsedProduct?.url,
+        parsedProduct?.canonical_url,
+        parsedProduct?.destination_url,
+      );
+      const shouldRunRealtimeUrlFirst =
+        PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && /^https?:\/\//i.test(realtimeUrlInput);
 
       if (shouldRunRealtimeUrlFirst) {
         const kbAnchorProductHint = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;

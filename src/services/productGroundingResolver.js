@@ -189,6 +189,30 @@ function buildKnownStableAliasEntries() {
           }
         : null;
     if (!id || !productRef?.product_id || !productRef?.merchant_id) continue;
+    const brand = firstNonEmptyString(item.brand);
+    const name = firstNonEmptyString(item.name, title);
+    const displayName = firstNonEmptyString(item.display_name, title, [brand, name].filter(Boolean).join(' ').trim());
+    const anchorProduct = {
+      product_id: productRef.product_id,
+      merchant_id: productRef.merchant_id,
+      canonical_product_ref: productRef,
+      ...(brand ? { brand } : {}),
+      ...(name ? { name } : {}),
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(firstNonEmptyString(item.url) ? { url: firstNonEmptyString(item.url) } : {}),
+      ...(firstNonEmptyString(item.canonical_url) ? { canonical_url: firstNonEmptyString(item.canonical_url) } : {}),
+      ...(firstNonEmptyString(item.destination_url) ? { destination_url: firstNonEmptyString(item.destination_url) } : {}),
+      ...(firstNonEmptyString(item.source_url) ? { source_url: firstNonEmptyString(item.source_url) } : {}),
+      ...(firstNonEmptyString(item.source_page_type) ? { source_page_type: firstNonEmptyString(item.source_page_type) } : {}),
+      ...(firstNonEmptyString(item.content_quality) ? { content_quality: firstNonEmptyString(item.content_quality) } : {}),
+      ...(firstNonEmptyString(item.category) ? { category: firstNonEmptyString(item.category) } : {}),
+      ...(typeof item.raw_ingredient_text_clean === 'string' && item.raw_ingredient_text_clean.trim()
+        ? { raw_ingredient_text_clean: item.raw_ingredient_text_clean.trim() }
+        : {}),
+      ...(Array.isArray(item.inci_list) && item.inci_list.length ? { inci_list: item.inci_list } : {}),
+      ...(Array.isArray(item.active_ingredients) && item.active_ingredients.length ? { active_ingredients: item.active_ingredients } : {}),
+      ...(Array.isArray(item.key_ingredients) && item.key_ingredients.length ? { key_ingredients: item.key_ingredients } : {}),
+    };
     const aliases = Array.isArray(item.aliases) ? item.aliases : [];
     for (const alias of aliases) {
       const normalized = normalizeTextForResolver(alias);
@@ -200,6 +224,7 @@ function buildKnownStableAliasEntries() {
         alias: String(alias || '').trim(),
         title: title || String(alias || '').trim(),
         product_ref: productRef,
+        anchor_product: anchorProduct,
         normalized,
         compact: compactNoSpaces(normalized),
         token_set: new Set(tokens),
@@ -287,6 +312,9 @@ function resolveKnownStableProductRef({ query, normalizedQuery, queryTokens }) {
       product_id: best.product_ref.product_id,
       merchant_id: best.product_ref.merchant_id,
     },
+    ...(best.anchor_product && typeof best.anchor_product === 'object'
+      ? { anchor_product: { ...best.anchor_product } }
+      : {}),
     score: best.score,
     reason: best.reason,
   };
