@@ -18221,6 +18221,118 @@ function softenPhotoQualityFailFromUsablePhotoModules({
   };
 }
 
+function softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
+  photoModulesCard = null,
+  ingredientPlanPayload = null,
+  language = 'EN',
+} = {}) {
+  if (!isPlainObject(photoModulesCard) || String(photoModulesCard.type || '').trim().toLowerCase() !== 'photo_modules_v1') {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+  const payload = isPlainObject(photoModulesCard.payload) ? { ...photoModulesCard.payload } : null;
+  if (!payload) return { photoModulesCard, applied: false, reason: null };
+  if (payload.low_confidence !== true) return { photoModulesCard, applied: false, reason: null };
+  if (String(payload.quality_grade || '').trim().toLowerCase() !== 'degraded') {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+  if (String(payload.diagnostic_confidence_level || '').trim().toLowerCase() !== 'low') {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+
+  const summary = isPlainObject(payload.summary_v1) ? { ...payload.summary_v1 } : {};
+  const topFindings = Array.isArray(summary.top_findings) ? summary.top_findings : [];
+  if (topFindings.length > 0) return { photoModulesCard, applied: false, reason: null };
+
+  const overlay = isPlainObject(payload.module_overlay_debug) ? { ...payload.module_overlay_debug } : {};
+  const fallbackReason = String(overlay.skinmask_fallback_reason || '').trim().toUpperCase();
+  const skinmaskSource = String(overlay.skinmask_source || '').trim().toLowerCase();
+  const modelLoaded = overlay.skinmask_model_loaded === true;
+  if (!(fallbackReason === 'ONNX_FAIL' && skinmaskSource === 'none' && modelLoaded)) {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+
+  const regionsAvailableCount = Math.max(0, Math.trunc(Number(payload.regions_available_count) || 0));
+  const hasRenderableModuleShell = Array.isArray(payload.modules)
+    && payload.modules.some((row) => {
+      if (!isPlainObject(row)) return false;
+      const box = isPlainObject(row.box) ? row.box : null;
+      const hasFiniteBox = Boolean(
+        box
+        && ['x', 'y', 'w', 'h'].every((key) => Number.isFinite(Number(box[key]))),
+      );
+      const hasMask = typeof row.mask_rle_norm === 'string' && row.mask_rle_norm.trim().length > 0;
+      const modulePixels = Number.isFinite(Number(row.module_pixels)) ? Number(row.module_pixels) : 0;
+      return hasFiniteBox && (hasMask || modulePixels > 0);
+    });
+  if (!(regionsAvailableCount > 0 || hasRenderableModuleShell)) {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+
+  const photoContext = reconcilePhotoContextWithIngredientPlan({
+    photoContext: buildPhotoStoryContext({
+      analysisSummaryPayload: {},
+      photoModulesCard,
+      language,
+    }),
+    ingredientPlanPayload,
+    photoModulesCard,
+    language,
+  });
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(photoContext && photoContext.ranked_targets) ? photoContext.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    photoContext && photoContext.display_policy && photoContext.display_policy.primary_target_id,
+    rankedTargets.find((target) => String(target && target.target_role || '').trim().toLowerCase() === 'primary')?.target_id,
+    rankedTargets[0] && rankedTargets[0].target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((target) => pickFirstTrimmed(target && target.target_id) === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  const confidencePolicy = normalizeRecoConfidencePolicy(photoContext && photoContext.confidence_policy);
+  const policyLevel = pickFirstTrimmed(confidencePolicy && confidencePolicy.confidence_level).toLowerCase();
+  const targetConfidence = pickFirstTrimmed(primaryTarget && primaryTarget.target_confidence).toLowerCase();
+  const primaryCandidates = Array.isArray(primaryTarget && primaryTarget.product_candidates) ? primaryTarget.product_candidates : [];
+  const topLevelCandidates = Array.isArray(photoContext && photoContext.product_candidates) ? photoContext.product_candidates : [];
+  const verifiedProductCount = Math.max(0, Number(primaryTarget && primaryTarget.verified_product_count || 0));
+  if (!primaryTargetId || policyLevel === 'low' || targetConfidence === 'low') {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+  if (!(verifiedProductCount > 0 || primaryCandidates.length > 0 || topLevelCandidates.length > 0)) {
+    return { photoModulesCard, applied: false, reason: null };
+  }
+
+  const confidenceSoftenedReason = 'skinmask_onnx_fail_target_stable';
+  const nextPayload = {
+    ...payload,
+    low_confidence: false,
+    diagnostic_confidence_level: 'medium',
+    confidence_softened_reason: confidenceSoftenedReason,
+    module_overlay_debug: {
+      ...overlay,
+      confidence_softened_reason: confidenceSoftenedReason,
+      degraded_reasons: Array.from(new Set([
+        ...(Array.isArray(overlay.degraded_reasons) ? overlay.degraded_reasons : []),
+        confidenceSoftenedReason,
+      ])).slice(0, 8),
+    },
+    summary_v1: {
+      ...summary,
+      confidence_softened_reason: confidenceSoftenedReason,
+    },
+  };
+
+  return {
+    photoModulesCard: {
+      ...photoModulesCard,
+      payload: nextPayload,
+    },
+    applied: true,
+    reason: confidenceSoftenedReason,
+  };
+}
+
 function derivePhotoModulesMarket({ profileSummary, language } = {}) {
   const profileMarket = pickFirstString(profileSummary && profileSummary.region).toUpperCase();
   if (profileMarket) return profileMarket;
@@ -37718,6 +37830,14 @@ function buildPhotoQualityCaveatTokens({ qualityGrade, qualityReasons, summaryTo
 
 function derivePhotoContextConfidenceLevel(photoContext, { fallback = 'medium' } = {}) {
   const context = isPlainObject(photoContext) ? photoContext : {};
+  const softenedReason = String(context.confidence_softened_reason || '').trim().toLowerCase();
+  const diagnosticLevel = String(context.diagnostic_confidence_level || '').trim().toLowerCase();
+  if (
+    softenedReason === 'skinmask_onnx_fail_target_stable'
+    && (diagnosticLevel === 'medium' || diagnosticLevel === 'high')
+  ) {
+    return diagnosticLevel;
+  }
   const primaryFocus = isPlainObject(context.primary_focus) ? context.primary_focus : null;
   const primaryFocusHasVisualSignal = Boolean(
     primaryFocus && (
@@ -38136,6 +38256,13 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
     photo_notice: photoNotice || null,
     quality_grade: qualityGrade || null,
     quality_reasons: qualityReasons,
+    low_confidence: photoCardPayload.low_confidence === true,
+    diagnostic_confidence_level: pickFirstTrimmed(photoCardPayload.diagnostic_confidence_level).toLowerCase() || null,
+    confidence_softened_reason: pickFirstTrimmed(
+      photoCardPayload.confidence_softened_reason,
+      summaryV1.confidence_softened_reason,
+      isPlainObject(photoCardPayload.module_overlay_debug) ? photoCardPayload.module_overlay_debug.confidence_softened_reason : '',
+    ) || null,
     quality_caveats: qualityCaveatTokens,
     quality_caveat_texts: qualityCaveatTexts,
     modules_count: modules.length,
@@ -64916,6 +65043,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         let photoModulesCard = null;
         let photoQualitySoftenedReason = null;
+        let photoModulesConfidenceSoftenedReason = null;
         profiler.start('photo_modules', { kind: 'analysis_photo_modules' });
         try {
           const photoModulesSkinMask = await maybeInferSkinMaskForPhotoModules({
@@ -65027,6 +65155,14 @@ function mountAuroraBffRoutes(app, { logger }) {
               language: ctx.lang,
               logger,
             });
+            const softenedPhotoModulesConfidence = softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
+              photoModulesCard,
+              language: ctx.lang,
+            });
+            photoModulesCard = softenedPhotoModulesConfidence.photoModulesCard || photoModulesCard;
+            photoModulesConfidenceSoftenedReason = softenedPhotoModulesConfidence.applied
+              ? softenedPhotoModulesConfidence.reason
+              : null;
           }
         } catch (err) {
           profiler.fail('photo_modules', err, { kind: 'analysis_photo_modules', has_analysis: Boolean(analysis) });
@@ -65257,6 +65393,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               String(photoQuality && photoQuality.grade || '').trim().toLowerCase() === 'fail',
           ),
           ...(photoQualitySoftenedReason ? { photo_quality_softened_reason: photoQualitySoftenedReason } : {}),
+          ...(photoModulesConfidenceSoftenedReason ? { photo_modules_confidence_softened_reason: photoModulesConfidenceSoftenedReason } : {}),
           ...(degradeReason ? { degrade_reason: degradeReason } : {}),
           ...(degradeMeta.visionFailureReason ? { vision_failure_reason: degradeMeta.visionFailureReason } : {}),
           ...(degradeMeta.reportFailureReason ? { report_failure_reason: degradeMeta.reportFailureReason } : {}),
@@ -76610,6 +76747,7 @@ const __internal = {
   buildExecutablePlanForAnalysis,
   maybeBuildPhotoModulesCardForAnalysis,
   softenPhotoQualityFailFromUsablePhotoModules,
+  softenPhotoModulesLowConfidenceFromUsableOnnxFallback,
   enrichPhotoModulesCardWithIngredientProducts,
   enrichPhotoModulesCardWithIngredientProductsBounded,
   isTreatmentLikeRecommendationForLowConfidence,

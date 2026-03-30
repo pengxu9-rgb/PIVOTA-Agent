@@ -757,6 +757,101 @@ test('analysis_story_v2: degraded shell without findings stays medium when photo
   assert.match(String(reviewed.repaired?.ui_card_v1?.headline || ''), /uv filters|sunscreen/i);
 });
 
+test('analysis_story_v2: usable ONNX fallback shell softens hard-low photo card to medium when the target spine is stable', () => {
+  const internal = loadInternalWithFlags({});
+  const photoModulesCard = {
+    type: 'photo_modules_v1',
+    payload: {
+      used_photos: true,
+      quality_grade: 'degraded',
+      low_confidence: true,
+      diagnostic_confidence_level: 'low',
+      regions_available_count: 0,
+      module_overlay_debug: {
+        skinmask_source: 'none',
+        skinmask_fallback_reason: 'ONNX_FAIL',
+        skinmask_model_loaded: true,
+        degraded_reasons: ['skinmask_onnx_fail_softened'],
+      },
+      modules: [
+        {
+          module_id: 'forehead',
+          issues: [],
+          actions: [
+            {
+              ingredient_canonical_id: 'sunscreen_filters',
+              ingredient_name: 'UV filters',
+              evidence_issue_types: ['texture'],
+              action_rank_score: 0.92,
+              products: [
+                {
+                  product_id: 'prod_uv_filters',
+                  merchant_id: 'external_seed',
+                  name: 'UV Filters SPF 45 Serum',
+                  pdp_url: 'https://example.com/p/uv-filters-spf45',
+                },
+              ],
+            },
+          ],
+          box: { x: 0.344, y: 0.078, w: 0.313, h: 0.125 },
+          module_pixels: 160,
+          mask_rle_norm: '342,20,44,20,44,20,44,20',
+        },
+      ],
+      summary_v1: {
+        top_module_id: 'forehead',
+        top_action_ingredient_id: 'sunscreen_filters',
+        top_findings: [],
+        quality_caveats: ['photo_quality_degraded'],
+      },
+    },
+  };
+
+  const softened = internal.softenPhotoModulesLowConfidenceFromUsableOnnxFallback({
+    photoModulesCard,
+    language: 'EN',
+  });
+
+  assert.equal(softened.applied, true);
+  assert.equal(Boolean(softened.photoModulesCard?.payload?.low_confidence), false);
+  assert.equal(String(softened.photoModulesCard?.payload?.diagnostic_confidence_level || ''), 'medium');
+  assert.equal(String(softened.photoModulesCard?.payload?.confidence_softened_reason || ''), 'skinmask_onnx_fail_target_stable');
+
+  const evidence = internal.buildAnalysisEvidence({
+    analysisSummaryPayload: {
+      used_photos: true,
+      analysis_source: 'vision_gemini',
+      low_confidence: false,
+      analysis: { features: [] },
+    },
+    photoModulesCard: softened.photoModulesCard,
+    ingredientPlanPayload: {
+      targets: [
+        {
+          ingredient_id: 'sunscreen_filters',
+          ingredient_name: 'UV filters',
+          target_role: 'primary',
+          resolved_target_step: 'sunscreen',
+          target_confidence: 'high',
+          products: {
+            competitors: [{ name: 'UV Filters SPF 45 Serum', pdp_url: 'https://example.com/p/uv-filters-spf45' }],
+          },
+        },
+      ],
+    },
+    profile: {},
+    language: 'EN',
+    fallbackStory: null,
+  });
+
+  assert.equal(evidence.low_confidence, false);
+
+  const story = internal.generateAnalysisStoryV2Json({ evidence, fallbackStory: null });
+  const reviewed = internal.reviewAnalysisStoryV2Json({ story, evidence });
+  assert.equal(reviewed.repaired?.ui_card_v1?.confidence_label, 'medium');
+  assert.match(String(reviewed.repaired?.ui_card_v1?.headline || ''), /uv filters|sunscreen/i);
+});
+
 test('analysis_story_v2: analysis-summary target handoff keeps headline and assistant copy target-bound', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
