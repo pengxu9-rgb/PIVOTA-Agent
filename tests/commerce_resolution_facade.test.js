@@ -665,6 +665,78 @@ describe('Commerce resolution facade', () => {
     });
   });
 
+  test('primary clarify normalization preserves primary authority when fallback was not adopted', () => {
+    const runtime = createCommerceResolutionRuntime();
+
+    expect(
+      runtime.normalizePrimaryClarifyContract({
+        products: [],
+        clarification: {
+          question: 'What kind of date-night look do you want?',
+        },
+        metadata: {
+          query_source: 'agent_products_error_fallback',
+          upstream_status: 200,
+          search_decision: {
+            final_decision: 'clarify',
+            clarify_triggered: true,
+          },
+          search_trace: {
+            final_decision: 'clarify',
+            fallback_reason: 'primary_unusable_no_fallback',
+          },
+          route_health: {
+            fallback_triggered: true,
+            fallback_reason: 'primary_unusable_no_fallback',
+          },
+          proxy_search_fallback: {
+            applied: true,
+            reason: 'primary_unusable_no_fallback',
+            route: 'proxy_search_primary_unusable',
+          },
+        },
+      }),
+    ).toEqual({
+      products: [],
+      clarification: {
+        question: 'What kind of date-night look do you want?',
+      },
+      metadata: {
+        query_source: 'agent_products_search',
+        upstream_status: 200,
+        search_decision: {
+          final_decision: 'clarify',
+          clarify_triggered: true,
+          decision_authority: 'agent_products_search',
+          decision_locked: true,
+          decision_lock_reason: 'primary_clarify_contract',
+          fallback_reason: null,
+        },
+        search_trace: {
+          final_decision: 'clarify',
+          fallback_reason: null,
+        },
+        route_health: {
+          fallback_triggered: false,
+          fallback_reason: null,
+        },
+        proxy_search_fallback: {
+          applied: false,
+          reason: null,
+          route: 'proxy_search_primary_unusable',
+        },
+        primary_clarify_contract: {
+          normalized: true,
+          recovery_reason: 'ambiguity_gate_primary_clarify',
+          original_query_source: 'agent_products_error_fallback',
+          original_fallback_reason: 'primary_unusable_no_fallback',
+          primary_authority_retained: true,
+          fallback_adopted: false,
+        },
+      },
+    });
+  });
+
   test('resolver reference-only result is built through execution facade', () => {
     const runtime = createCommerceResolutionRuntime();
 
@@ -2184,6 +2256,36 @@ describe('Commerce resolution facade', () => {
         resolution_authority: 'agent_products_semantic_retry_exhausted',
         fallback_applied: true,
         fallback_reason_codes: ['low_quality_semantic_retry_exhausted'],
+      }),
+    );
+  });
+
+  test('primary fallback outcome preserves primary authority when fallback is only evaluated', () => {
+    const runtime = createCommerceResolutionRuntime();
+
+    expect(
+      runtime.getPrimaryFallbackOutcomeDecision({
+        shouldFallback: true,
+        primaryUsableCount: 2,
+        primaryUnusable: false,
+        primaryIrrelevant: false,
+        primaryLowQualityNonempty: false,
+        skipSecondaryFallback: false,
+        secondaryFallbackOutcome: {
+          decision: 'strict_empty',
+          querySource: 'agent_products_error_fallback',
+        },
+        semanticRetryApplied: false,
+        fallbackNotBetterReason: 'fallback_not_better',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        decision: 'upstream_returned',
+        reason: 'fallback_not_better',
+        querySource: 'agent_products_search',
+        resolution_authority: 'primary_upstream',
+        fallback_applied: false,
+        fallback_reason_codes: [],
       }),
     );
   });

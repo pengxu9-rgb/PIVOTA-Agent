@@ -14762,8 +14762,10 @@ async function proxyAgentSearchToBackend(req, res) {
       {
         finalDecision: primaryOutcomeDecision.decision,
         primaryPathUsed: 'proxy_search_primary',
-        fallbackTriggered: Boolean(shouldFallback),
-        fallbackReason: shouldFallback ? primaryOutcomeDecision.reason : null,
+        fallbackTriggered: Boolean(primaryOutcomeDecision.fallback_applied),
+        fallbackReason: primaryOutcomeDecision.fallback_applied
+          ? primaryOutcomeDecision.reason
+          : null,
         upstreamStage,
         strictEmptyReason:
           primaryOutcomeDecision.decision === 'strict_empty'
