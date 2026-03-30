@@ -13765,11 +13765,18 @@ async function buildProductAnalysisFromUrlIngredients({
   })();
   const anchorProduct = {
     ...(parsedProductObj?.product_id ? { product_id: String(parsedProductObj.product_id).trim() } : {}),
+    ...(parsedProductObj?.merchant_id ? { merchant_id: String(parsedProductObj.merchant_id).trim() } : {}),
     ...(parsedProductObj?.sku_id ? { sku_id: String(parsedProductObj.sku_id).trim() } : {}),
+    ...(parsedProductObj?.canonical_product_ref &&
+    typeof parsedProductObj.canonical_product_ref === 'object' &&
+    !Array.isArray(parsedProductObj.canonical_product_ref)
+      ? { canonical_product_ref: parsedProductObj.canonical_product_ref }
+      : {}),
     ...(anchorBrand ? { brand: anchorBrand } : {}),
     ...(anchorName ? { name: anchorName } : {}),
     ...(anchorDisplayName ? { display_name: anchorDisplayName } : {}),
     ...(anchorPrice ? { price: anchorPrice } : {}),
+    ...(parsedProductObj?.category ? { category: String(parsedProductObj.category).trim() } : {}),
     url: parsedUrl.toString(),
   };
 
@@ -61872,6 +61879,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         )
           ? (await loadExternalSeedEvidenceProduct(descriptorAnchorBase, { logger })) || descriptorAnchorBase
           : descriptorAnchorBase;
+      const productUrlForIngredientAnalysis = String(
+        parsed.data.url ||
+        pickFirstTrimmed(
+          descriptorAnchor?.url,
+          descriptorAnchor?.canonical_url,
+          descriptorAnchor?.destination_url,
+          parsedProduct?.url,
+        ),
+      ).trim();
       const collectInciCandidates = (sourceObj) => {
         const src = isPlainObject(sourceObj) ? sourceObj : null;
         if (!src) return [];
@@ -62292,12 +62308,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         const verdict = String(assessment.verdict || '').trim().toLowerCase();
         return !verdict || verdict === 'unknown' || verdict === '未知';
       })();
-      if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && parsed.data.url) {
+      if (PRODUCT_URL_INGREDIENT_ANALYSIS_ENABLED && needsUrlIngredientAnalysis && productUrlForIngredientAnalysis) {
         const urlNorm = await buildProductAnalysisFromUrlIngredients({
-          productUrl: parsed.data.url,
+          productUrl: productUrlForIngredientAnalysis,
           lang: ctx.lang,
           profileSummary,
-          parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null,
+          parsedProduct: anchorTrustContext.usable_for_anchor_id === true ? (descriptorAnchor || parsedProduct) : null,
           logger,
         });
         if (urlNorm && urlNorm.payload && urlNorm.payload.assessment) {
@@ -62345,7 +62361,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestId: ctx.request_id,
         mode: 'main_path',
       });
-      if (realtimeUrlNormMeta && parsed.data.url) {
+      if (realtimeUrlNormMeta && productUrlForIngredientAnalysis) {
         payload = applyProductAnalysisSocialProvenance(payload, {
           social_fetch_mode: 'async_refresh',
         });
@@ -62363,18 +62379,18 @@ function mountAuroraBffRoutes(app, { logger }) {
             ? assessment.anchor_product
             : (anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null);
         scheduleProductIntelKbBackfill({
-          productUrl: parsed.data.url || '',
+          productUrl: productUrlForIngredientAnalysis || '',
           parsedProduct: kbBackfillAnchor,
           productHint: String(input || ''),
           payload,
           lang: ctx.lang,
-          source: parsed.data.url ? 'url_realtime_product_intel' : 'product_analyze_structured',
+          source: productUrlForIngredientAnalysis ? 'url_realtime_product_intel' : 'product_analyze_structured',
           sourceMeta: realtimeUrlNormMeta,
           logger,
         });
-        if (parsed.data.url) {
+        if (productUrlForIngredientAnalysis) {
           scheduleProductIntelCompetitorEnrichBackfill({
-            productUrl: parsed.data.url,
+            productUrl: productUrlForIngredientAnalysis,
             parsedProduct: kbBackfillAnchor,
             payload,
             lang: ctx.lang,
@@ -62404,7 +62420,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         session_patch: {},
         events: [makeEvent(ctx, 'value_moment', { kind: 'product_analyze' })],
       });
-      if (realtimeUrlNormMeta && parsed.data.url) {
+      if (realtimeUrlNormMeta && productUrlForIngredientAnalysis) {
         const socialAnchorAssessment =
           payload && typeof payload === 'object' && payload.assessment && typeof payload.assessment === 'object'
             ? payload.assessment
@@ -62419,13 +62435,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         social_enrich_async({
           logger,
           mode: 'main_path',
-          product_url: String(parsed.data.url || '').trim(),
+          product_url: productUrlForIngredientAnalysis,
           payload,
           lang: ctx.lang,
           profile_summary: profileSummary,
           anchor_product: socialAnchorProduct,
           kb_key: buildProductIntelKbKey({
-            productUrl: String(parsed.data.url || '').trim(),
+            productUrl: productUrlForIngredientAnalysis,
             parsedProduct: socialAnchorProduct,
             lang: ctx.lang,
           }),

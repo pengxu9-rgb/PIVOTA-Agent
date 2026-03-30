@@ -3602,6 +3602,144 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
   });
 
+  test('/v1/product/analyze reuses trusted anchor URL for realtime ingredient analysis when name-only deep-scan stays unknown', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
+    process.env.AURORA_BFF_PRODUCT_URL_REALTIME_INTEL = 'true';
+    process.env.AURORA_BFF_PRODUCT_URL_INGREDIENT_ANALYSIS = 'true';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
+    process.env.AURORA_BFF_RECO_BLOCKS_DAG_ENABLED = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'shopping-agent';
+    jest.resetModules();
+
+    const { __internal } = require('../src/auroraBff/routes');
+    const spine = __internal.buildProductAnchorDecisionSpine({
+      route: 'product_parse',
+      inputMode: 'name_only',
+    });
+    __internal.recordProductAnchorDecisionObservation(spine, {
+      stage: 'local_stable_alias_ref',
+      source: 'local_stable_alias_ref',
+      state: 'trusted',
+      ownerEligible: true,
+      displayAnchor: {
+        product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'The Ordinary UV Filters SPF 45 Serum',
+        url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum',
+        category: 'product',
+      },
+      productRef: {
+        product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+        merchant_id: 'external_seed',
+      },
+      confidence: 1,
+    });
+    const snapshot = __internal.buildProductAnchorSessionSnapshot(spine);
+
+    nock('http://aurora.test')
+      .persist()
+      .post('/api/upstream/chat')
+      .reply(200, (_uri, body) => {
+        const query = typeof body?.query === 'string' ? body.query : '';
+        if (/Task:\s*Parse\b/i.test(query)) {
+          return {
+            schema_version: 'aurora.chat.v1',
+            intent: 'product',
+            structured: {
+              schema_version: 'aurora.structured.v1',
+              parse: {},
+            },
+          };
+        }
+        return {
+          schema_version: 'aurora.chat.v1',
+          intent: 'product',
+          structured: {
+            schema_version: 'aurora.structured.v1',
+            analyze: {
+              verdict: 'Unknown',
+              confidence: 0.22,
+              reasons: ['Need more evidence.'],
+              science_evidence: {
+                key_ingredients: [],
+                mechanisms: [],
+              },
+              social_signals: {
+                typical_positive: [],
+                typical_negative: [],
+              },
+              expert_notes: [],
+            },
+          },
+        };
+      });
+
+    nock('https://theordinary.com')
+      .persist()
+      .get('/en-us/uv-filters-spf-45-serum')
+      .reply(
+        200,
+        '<html><head><title>The Ordinary UV Filters SPF 45 Serum</title></head><body><p class=\"ingredients\">Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water</p></body></html>',
+        { 'Content-Type': 'text/html' },
+      );
+
+    nock('http://catalog.test')
+      .persist()
+      .post('/agent/v1/products/resolve')
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    nock('http://catalog.test')
+      .persist()
+      .get(/\/agent\/v1\/(?:beauty\/)?products\/search/)
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [],
+      });
+
+    const app = require('../src/server');
+    const res = await request(app)
+      .post('/v1/product/analyze')
+      .set('X-Aurora-UID', 'uid_test_analyze_anchor_url_realtime_1')
+      .send({
+        name: 'The Ordinary UV Filters SPF 45 Serum',
+        session: {
+          meta: {
+            product_anchor_snapshot: snapshot,
+          },
+        },
+      })
+      .expect(200);
+
+    const card = res.body.cards.find((c) => c.type === 'product_analysis');
+    expect(card).toBeTruthy();
+    expect(String(card.payload?.assessment?.verdict || '')).not.toMatch(/^Unknown|未知$/i);
+    expect(card.payload?.assessment?.anchor_product).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+        merchant_id: 'external_seed',
+      }),
+    );
+    expect(card.payload?.provenance?.anchor_owner).toEqual(
+      expect.objectContaining({
+        anchor_owner_source: 'local_stable_alias_ref',
+        anchor_owner_state: 'trusted',
+      }),
+    );
+    expect(card.payload?.provenance?.source).toBe('url_realtime_product_intel');
+    expect(card.payload?.provenance?.source_chain || []).toEqual(
+      expect.arrayContaining(['official_page', 'llm_extraction']),
+    );
+  });
+
   test('/v1/product/analyze preserves no-early-trusted-owner snapshot and does not silently re-elect a new owner', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_DECISION_BASE_URL = 'http://aurora.test';
