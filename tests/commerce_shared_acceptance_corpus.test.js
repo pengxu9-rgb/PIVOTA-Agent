@@ -91,11 +91,18 @@ describe('Commerce shared acceptance corpus', () => {
         family: 'merchant_query',
         query: 'IPSA products',
         source: 'shopping_agent',
-        must_have_metadata: ['service_version.commit'],
+        must_have_metadata: expect.arrayContaining([
+          'service_version.commit',
+          'route_health.fallback_triggered',
+          'search_decision.decision_locked',
+        ]),
         allowed_query_sources: ['cache_cross_merchant_search'],
-        must_equal_metadata: {
+        must_equal_metadata: expect.objectContaining({
           'search_trace.final_decision': 'cache_returned',
-        },
+          'search_decision.decision_authority': 'cache_cross_merchant_search',
+          'search_decision.decision_locked': true,
+          'route_health.fallback_triggered': false,
+        }),
       }),
     ]);
 
@@ -107,17 +114,23 @@ describe('Commerce shared acceptance corpus', () => {
           family: 'exact_product_lookup',
           source: 'shopping_agent',
           ownership: {
-            must_equal_paths: {
+            must_equal_paths: expect.objectContaining({
               'metadata.search_trace.query_class': 'lookup',
               'metadata.search_trace.final_decision': 'cache_returned',
-            },
+              'metadata.search_decision.decision_authority': 'cache_cross_merchant_search',
+              'metadata.search_decision.decision_locked': true,
+              'metadata.route_health.fallback_triggered': false,
+            }),
           },
           observability: {
-            must_have_paths: [
+            must_have_paths: expect.arrayContaining([
               'metadata.service_version.commit',
               'metadata.query_source',
               'metadata.search_trace.query_class',
-            ],
+              'metadata.search_decision.decision_authority',
+              'metadata.search_decision.decision_locked',
+              'metadata.route_health.fallback_triggered',
+            ]),
           },
         }),
         expect.objectContaining({
@@ -283,11 +296,15 @@ describe('Commerce shared acceptance corpus', () => {
         must_have_metadata: expect.arrayContaining([
           'contract_bridge.resolved_contract',
           'matched_ingredient_ids.0',
+          'route_health.fallback_triggered',
+          'search_decision.decision_locked',
         ]),
         must_equal_metadata: expect.objectContaining({
           'contract_bridge.resolved_contract': 'shop_invoke_strict',
           strict_constraint_query: true,
           strict_constraint_reason: 'ingredient',
+          'route_health.fallback_triggered': false,
+          'search_decision.decision_locked': true,
         }),
       }),
     ]);
@@ -297,18 +314,22 @@ describe('Commerce shared acceptance corpus', () => {
         id: 'exactish_case',
         family: 'exactish_lookup',
         ownership: expect.objectContaining({
-          must_equal_paths: {
+          must_equal_paths: expect.objectContaining({
             'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
             'metadata.strict_constraint_query': true,
             'metadata.strict_constraint_reason': 'ingredient',
-          },
+            'metadata.route_health.fallback_triggered': false,
+            'metadata.search_decision.decision_locked': true,
+          }),
           must_have_paths: ['metadata.matched_ingredient_ids.0'],
         }),
         observability: expect.objectContaining({
-          must_have_paths: [
+          must_have_paths: expect.arrayContaining([
             'metadata.service_version.commit',
             'metadata.search_trace.final_decision',
-          ],
+            'metadata.route_health.fallback_triggered',
+            'metadata.search_decision.decision_locked',
+          ]),
         }),
       }),
     ]);
@@ -405,6 +426,9 @@ describe('Commerce shared acceptance corpus', () => {
         allowed_query_sources: ['agent_products_search'],
         must_equal_metadata: expect.objectContaining({
           'search_trace.final_decision': 'clarify',
+          'search_decision.decision_authority': 'agent_products_search',
+          'search_decision.decision_locked': true,
+          'route_health.fallback_triggered': false,
         }),
         must_have_clarification: true,
         must_have_reason_codes: ['AMBIGUITY_CLARIFY'],
@@ -416,15 +440,21 @@ describe('Commerce shared acceptance corpus', () => {
         id: 'clarify_case',
         family: 'scenario_clarify',
         ownership: expect.objectContaining({
-          must_equal_paths: {
+          must_equal_paths: expect.objectContaining({
             'metadata.search_trace.final_decision': 'clarify',
-          },
+            'metadata.search_decision.decision_authority': 'agent_products_search',
+            'metadata.search_decision.decision_locked': true,
+            'metadata.route_health.fallback_triggered': false,
+          }),
         }),
         observability: expect.objectContaining({
-          must_have_paths: [
+          must_have_paths: expect.arrayContaining([
             'metadata.service_version.commit',
             'metadata.search_trace.final_decision',
-          ],
+            'metadata.search_decision.decision_authority',
+            'metadata.search_decision.decision_locked',
+            'metadata.route_health.fallback_triggered',
+          ]),
         }),
         correctness: expect.objectContaining({
           must_have_clarification: true,

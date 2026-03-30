@@ -149,14 +149,20 @@
       "ownership": {
         "must_equal_paths": {
           "metadata.search_trace.query_class": "lookup",
-          "metadata.search_trace.final_decision": "cache_returned"
+          "metadata.search_trace.final_decision": "cache_returned",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "cache_cross_merchant_search"
         }
       },
       "observability": {
         "must_have_paths": [
           "metadata.service_version.commit",
           "metadata.query_source",
-          "metadata.search_trace.query_class"
+          "metadata.search_trace.query_class",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
         ]
       },
       "kind": "semantic",
@@ -205,13 +211,19 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.search_trace.final_decision": "clarify"
+          "metadata.search_trace.final_decision": "clarify",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "agent_products_search"
         }
       },
       "observability": {
         "must_have_paths": [
           "metadata.service_version.commit",
-          "metadata.search_trace.final_decision"
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
         ]
       },
       "kind": "semantic",
@@ -322,7 +334,9 @@
         "must_equal_paths": {
           "metadata.contract_bridge.resolved_contract": "shop_invoke_strict",
           "metadata.strict_constraint_query": true,
-          "metadata.strict_constraint_reason": "ingredient"
+          "metadata.strict_constraint_reason": "ingredient",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true
         },
         "must_have_paths": [
           "metadata.matched_ingredient_ids.0"
@@ -331,7 +345,9 @@
       "observability": {
         "must_have_paths": [
           "metadata.service_version.commit",
-          "metadata.search_trace.final_decision"
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked"
         ]
       },
       "kind": "semantic",
@@ -380,7 +396,10 @@
       },
       "ownership": {
         "must_equal_paths": {
-          "metadata.search_trace.final_decision": "cache_returned"
+          "metadata.search_trace.final_decision": "cache_returned",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "cache_cross_merchant_search"
         },
         "must_have_paths": [
           "metadata.query_source"
@@ -389,7 +408,10 @@
       "observability": {
         "must_have_paths": [
           "metadata.service_version.commit",
-          "metadata.search_trace"
+          "metadata.search_trace",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
         ]
       },
       "kind": "semantic",
