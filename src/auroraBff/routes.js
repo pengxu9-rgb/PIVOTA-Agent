@@ -51,6 +51,7 @@ const {
   getRecommendationTaskMode,
   isExplicitIngredientRecoEmptyMode,
   hasNonEmptyRecommendationsCard,
+  applyVerifiedCandidateRestoreToRecoPayload,
 } = require('./recoContract');
 const {
   buildFactLayer,
@@ -47655,87 +47656,6 @@ function restoreRecoRecommendationsFromVerifiedContextCandidates({
   return { recommendations, candidateState };
 }
 
-function applyVerifiedCandidateRestoreToRecoNorm(norm, restoredRecommendations) {
-  if (!isPlainObject(norm?.payload)) {
-    return { norm, applied: false, count: 0 };
-  }
-  const restored = Array.isArray(restoredRecommendations) ? restoredRecommendations.filter((row) => isPlainObject(row)) : [];
-  if (!restored.length) {
-    return { norm, applied: false, count: 0 };
-  }
-  const restoredRecommendationMeta = isPlainObject(norm.payload?.recommendation_meta)
-    ? { ...norm.payload.recommendation_meta }
-    : {};
-  delete restoredRecommendationMeta.primary_failure_reason;
-  delete restoredRecommendationMeta.telemetry_failure_reason;
-  delete restoredRecommendationMeta.failure_class;
-  delete restoredRecommendationMeta.effective_failure_class;
-  delete restoredRecommendationMeta.failure_origin;
-  delete restoredRecommendationMeta.surface_reason;
-  delete restoredRecommendationMeta.products_empty_reason;
-  delete restoredRecommendationMeta.catalog_skip_reason;
-  delete restoredRecommendationMeta.upstream_status;
-  delete restoredRecommendationMeta.weak_viable_pool;
-  delete restoredRecommendationMeta.same_family_success_threshold_met;
-  delete restoredRecommendationMeta.overall_target_fidelity_satisfied;
-  delete restoredRecommendationMeta.selected_candidate_count;
-  delete restoredRecommendationMeta.candidate_pool_signature;
-  norm.payload = {
-    ...norm.payload,
-    source: 'catalog_grounded_v1',
-    recommendations: restored,
-    grounding_status: 'grounded',
-    grounded_count: restored.length,
-    ungrounded_count: 0,
-    recommendation_confidence_level: pickFirstTrimmed(norm.payload?.recommendation_confidence_level, 'medium') || 'medium',
-    recommendation_confidence_score:
-      Number.isFinite(Number(norm.payload?.recommendation_confidence_score))
-        ? Number(norm.payload.recommendation_confidence_score)
-        : 0.61,
-    recommendation_meta: {
-      ...restoredRecommendationMeta,
-      source_mode: 'catalog_grounded',
-      contract_status: 'recommendations_ready',
-      mainline_status: 'grounded_success',
-      grounding_status: 'grounded',
-      grounded_count: restored.length,
-      ungrounded_count: 0,
-      upstream_status: 'ok',
-      effective_failure_class: 'none',
-      failure_origin: 'none',
-      terminal_success: true,
-      viable_pool_strength: 'strong',
-      target_fidelity_level: 'satisfied',
-      presentation_mode: 'deterministic_degraded',
-      success_mode: 'degraded_success',
-      same_family_success_threshold_met: true,
-      overall_target_fidelity_satisfied: true,
-      pre_llm_selected_candidate_count: restored.length,
-      final_selected_candidate_count: restored.length,
-      post_guardrail_count: restored.length,
-      selected_candidate_count: restored.length,
-      verified_candidate_restore_applied: true,
-      verified_candidate_restore_count: restored.length,
-    },
-    metadata: {
-      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-      mainline_status: 'grounded_success',
-      contract_status: 'recommendations_ready',
-      verified_candidate_restore_applied: true,
-      verified_candidate_restore_count: restored.length,
-    },
-  };
-  delete norm.payload.products_empty_reason;
-  delete norm.payload.failure_reason;
-  delete norm.payload.telemetry_reason;
-  delete norm.payload.mainline_status;
-  norm.field_missing = (Array.isArray(norm.field_missing) ? norm.field_missing : []).filter((row) => {
-    const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
-    return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
-  });
-  return { norm, applied: true, count: restored.length };
-}
-
 function normalizeIngredientGoalToken(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (!token) return '';
@@ -73792,7 +73712,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             if (restoredRecommendations.length > 0) {
               verifiedCandidateRestoreApplied = true;
               verifiedCandidateRestoreCount = restoredRecommendations.length;
-              ({ norm } = applyVerifiedCandidateRestoreToRecoNorm(norm, restoredRecommendations));
+              const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload(norm.payload, restoredRecommendations);
+              norm.payload = restoredPayload.payload;
+              norm.field_missing = (Array.isArray(norm.field_missing) ? norm.field_missing : []).filter((row) => {
+                const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
+                return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
+              });
               recoSource = 'catalog_grounded_v1';
               recoMainlineStatus = 'grounded_success';
               recoTelemetryFailureReason = '';
@@ -73846,7 +73771,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (restoredRecommendations.length > 0) {
             verifiedCandidateRestoreApplied = true;
             verifiedCandidateRestoreCount = restoredRecommendations.length;
-            ({ norm } = applyVerifiedCandidateRestoreToRecoNorm(norm, restoredRecommendations));
+            const restoredPayload = applyVerifiedCandidateRestoreToRecoPayload(norm.payload, restoredRecommendations);
+            norm.payload = restoredPayload.payload;
+            norm.field_missing = (Array.isArray(norm.field_missing) ? norm.field_missing : []).filter((row) => {
+              const reason = String(row && row.reason ? row.reason : '').trim().toLowerCase();
+              return reason !== 'ingredient_constraint_filtered' && reason !== 'ingredient_constraint_no_match';
+            });
             recoSource = 'catalog_grounded_v1';
             recoMainlineStatus = 'grounded_success';
             recoTelemetryFailureReason = '';
