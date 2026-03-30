@@ -2342,6 +2342,7 @@ test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream
     assert.equal(payload.recommendations.length >= 2, true);
     const latestRecoContext = response.body?.session_patch?.state?.latest_reco_context || null;
     assert.ok(latestRecoContext);
+    assert.match(String(latestRecoContext?.primary_target_id || ''), /ceramide.*moisturizer/i);
     assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
     assert.equal(latestRecoContext.product_candidates.length >= 2, true);
     assert.equal(observedQueries.some((query) => query.includes('ceramide') || query.includes('panthenol')), true);

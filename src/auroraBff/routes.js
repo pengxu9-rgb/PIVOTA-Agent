@@ -25624,6 +25624,58 @@ function buildIngredientOptInRecoRequestText({
   return `Recommend ${humanStep} options${goalLabel}${ingredientLabel}.`;
 }
 
+function seedIngredientRecoContextFromCandidates(recoContext, {
+  language = 'EN',
+  contextOrigin = 'ingredient_driven',
+} = {}) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  if (!normalizedContext) return normalizedContext;
+  const candidateList = normalizeIngredientCandidateList(
+    [
+      pickFirstTrimmed(normalizedContext.query, normalizedContext.ingredient_query),
+      ...(Array.isArray(normalizedContext.candidates) ? normalizedContext.candidates : []),
+      ...(Array.isArray(normalizedContext.ingredient_candidates) ? normalizedContext.ingredient_candidates : []),
+    ],
+    4,
+  );
+  if (!candidateList.length) return normalizedContext;
+
+  const primaryCandidate = candidateList[0];
+  const primaryMatch = ingredientEntityMatchFromText(primaryCandidate, language);
+  const primaryEntityKey = pickFirstTrimmed(primaryMatch && primaryMatch.entity_key);
+  const inferredStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      normalizedContext.resolved_target_step,
+      normalizedContext.target_step,
+      normalizedContext.step,
+      deriveRecoTargetStepFromIngredient(primaryEntityKey, primaryCandidate),
+    ),
+  );
+  const inferredTargetBundle = buildIngredientRecoContextTargetBundle({
+    ingredientQuery: pickFirstTrimmed(normalizedContext.query, normalizedContext.ingredient_query, primaryCandidate),
+    candidates: candidateList,
+    goal: normalizedContext.goal,
+    resolvedTargetStep: inferredStep,
+    source: pickFirstTrimmed(normalizedContext.context_origin, contextOrigin, 'ingredient_driven'),
+    targetConfidence: primaryMatch && primaryMatch.entity_confidence >= 0.88 ? 'high' : 'medium',
+  });
+  return mergeIngredientRecoContextValue(normalizedContext, {
+    query: pickFirstTrimmed(normalizedContext.query, normalizedContext.ingredient_query, primaryCandidate),
+    ingredient_query: pickFirstTrimmed(normalizedContext.ingredient_query, normalizedContext.query, primaryCandidate),
+    context_origin: pickFirstTrimmed(normalizedContext.context_origin, contextOrigin, 'ingredient_driven'),
+    ...inferredTargetBundle,
+    ...(inferredStep
+      ? {
+          resolved_target_step: inferredStep,
+          target_step: inferredStep,
+          step: inferredStep,
+          resolved_target_step_confidence: primaryMatch && primaryMatch.entity_confidence >= 0.88 ? 'high' : 'medium',
+          resolved_target_step_source: primaryEntityKey ? 'ingredient_candidate_hint' : 'ingredient_candidate_fallback',
+        }
+      : {}),
+  });
+}
+
 function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary = null, artifactId = '' } = {}) {
   if (!isPlainObject(routineAnalysisResult)) return null;
   const cards = Array.isArray(routineAnalysisResult.cards) ? routineAnalysisResult.cards : [];
@@ -70659,6 +70711,12 @@ function mountAuroraBffRoutes(app, { logger }) {
           ingredientRecoContext,
           ingredientAnalysisTaskContext,
         );
+      }
+      if (ingredientRecoOptInRequested) {
+        ingredientRecoContext = seedIngredientRecoContextFromCandidates(ingredientRecoContext, {
+          language: ctx.lang,
+          contextOrigin: 'ingredient_driven',
+        });
       }
       ingredientReplayContext = {
         intent_requested: Boolean(ingredientScienceIntentEffective),
