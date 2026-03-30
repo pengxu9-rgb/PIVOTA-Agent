@@ -6049,6 +6049,7 @@ async function resolveOpenWorldExternalProductMatchForProductInput({
 
   const attempts = [];
   const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
   const promptLang = String(lang || 'EN').trim().toUpperCase() === 'CN' ? 'ZH' : 'EN';
 
   for (const query of queries) {
@@ -6285,6 +6286,9 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
           external_product_id,
           destination_url,
           canonical_url,
+          source_url,
+          source_page_type,
+          content_quality,
           domain,
           title,
           image_url,
@@ -10614,7 +10618,20 @@ function shouldPersistProductIntelKb(payload, sourceMeta = null) {
   }
   const sourceTypes = collectProductIntelEvidenceSourceTypes(p);
   const hasInciDecoder = sourceTypes.includes('inci_decoder');
-  const hasAuthoritativeEvidence = sourceTypes.includes('official_page') || sourceTypes.includes('regulatory');
+  const hasExternalSeedAuthoritativeSnapshot =
+    p.provenance &&
+    typeof p.provenance === 'object' &&
+    !Array.isArray(p.provenance) &&
+    p.provenance.external_seed_snapshot &&
+    typeof p.provenance.external_seed_snapshot === 'object' &&
+    !Array.isArray(p.provenance.external_seed_snapshot) &&
+    p.provenance.external_seed_snapshot.authoritative === true;
+  const sourceMetaObj = isPlainObject(sourceMeta) ? sourceMeta : {};
+  const hasAuthoritativeEvidence =
+    sourceTypes.includes('official_page') ||
+    sourceTypes.includes('regulatory') ||
+    hasExternalSeedAuthoritativeSnapshot ||
+    sourceMetaObj.external_seed_snapshot_authoritative === true;
   let blockedReason = null;
   if (!hasAuthoritativeEvidence) {
     blockedReason = hasInciDecoder ? 'incidecoder_unverified_not_persisted' : 'authoritative_source_missing';
@@ -13360,6 +13377,76 @@ async function maybeSyncRepairLowCoverageCompetitors({
   return { payload: mergedPayload, enhanced: true, reason: null };
 }
 
+function extractExternalSeedSnapshotEvidence(parsedProduct = null) {
+  const product = isPlainObject(parsedProduct) ? parsedProduct : null;
+  if (!product) return null;
+  if (String(product.merchant_id || '').trim() !== EXTERNAL_SEED_MERCHANT_ID) return null;
+
+  const captureStatus =
+    product.pdp_field_capture_status && typeof product.pdp_field_capture_status === 'object' && !Array.isArray(product.pdp_field_capture_status)
+      ? product.pdp_field_capture_status
+      : null;
+  const seedSnapshot =
+    product.seed_data && typeof product.seed_data === 'object' && !Array.isArray(product.seed_data)
+      ? (
+        product.seed_data.snapshot && typeof product.seed_data.snapshot === 'object' && !Array.isArray(product.seed_data.snapshot)
+          ? product.seed_data.snapshot
+          : null
+      )
+      : null;
+  const sourcePageType = pickFirstTrimmed(product.source_page_type, seedSnapshot?.source_page_type).toLowerCase();
+  const contentQuality = pickFirstTrimmed(product.content_quality, seedSnapshot?.content_quality).toLowerCase();
+  const seedDescriptionOrigin = pickFirstTrimmed(product.seed_description_origin, seedSnapshot?.seed_description_origin).toLowerCase();
+  const sourceUrl = pickFirstTrimmed(
+    product.source_url,
+    seedSnapshot?.source_url,
+    product.canonical_url,
+    product.destination_url,
+    product.url,
+  );
+
+  const ingredients = canonicalizeIngredientCandidates(
+    [
+      ...(Array.isArray(product.inci_list) ? product.inci_list : []),
+      ...(Array.isArray(product.active_ingredients) ? product.active_ingredients : []),
+      ...(Array.isArray(product.key_ingredients) ? product.key_ingredients : []),
+      ...splitInciList(
+        [
+          product.raw_ingredient_text_clean,
+          product.pdp_ingredients_raw,
+          product.pdp_active_ingredients_raw,
+          product.ingredient_intel?.raw_ingredient_text_clean,
+          product.ingredient_intel?.inci_raw,
+        ]
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .join(', '),
+      ),
+    ],
+    { max: 220 },
+  );
+  if (!ingredients.length) return null;
+
+  const sourceLooksOfficial = /(official|product|pdp)/i.test(sourcePageType || '') || /(catalog|pdp|official)/i.test(seedDescriptionOrigin || '');
+  const captureLooksStrong =
+    captureStatus?.ingredients === true ||
+    captureStatus?.ingredient_list === true ||
+    captureStatus?.inci === true;
+  const qualityLooksStrong = /^(high|verified|reviewed|strong)$/i.test(contentQuality || '');
+  const authoritative = ingredients.length >= 5 && (sourceLooksOfficial || captureLooksStrong || qualityLooksStrong);
+
+  return {
+    ok: true,
+    ingredients,
+    authoritative,
+    confidence: authoritative ? 0.76 : 0.58,
+    source_url: sourceUrl,
+    source_page_type: sourcePageType || null,
+    content_quality: contentQuality || null,
+    seed_description_origin: seedDescriptionOrigin || null,
+  };
+}
+
 async function buildProductAnalysisFromUrlIngredients({
   productUrl,
   lang = 'EN',
@@ -13378,6 +13465,7 @@ async function buildProductAnalysisFromUrlIngredients({
   }
 
   const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
   const fetchOut = await fetchProductHtmlWithFallback({
     productUrl: parsedUrl.toString(),
     timeoutMs: PRODUCT_URL_INGREDIENT_ANALYSIS_TIMEOUT_MS,
@@ -13405,6 +13493,10 @@ async function buildProductAnalysisFromUrlIngredients({
 
   const inciList = extractInciListFromHtml(html);
   const keyHints = extractKeyIngredientsFromHtml(html);
+  const authoritativeSeedInci =
+    externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.authoritative && (!html || !inciList.length)
+      ? externalSeedSnapshotEvidence.ingredients
+      : [];
 
   let regulatorySupplement = null;
   let incidecoderSupplement = null;
@@ -13495,7 +13587,7 @@ async function buildProductAnalysisFromUrlIngredients({
     llmVerificationResult = await fetchLlmIngredientVerification({
       brand: descriptor.brand,
       productName: descriptor.name,
-      extractedInci: [...inciList, ...regulatoryActiveInci, ...retailInci, ...incidecoderInci],
+      extractedInci: [...inciList, ...authoritativeSeedInci, ...regulatoryActiveInci, ...retailInci, ...incidecoderInci],
       timeoutMs: 6000,
       logger,
     });
@@ -13511,7 +13603,7 @@ async function buildProductAnalysisFromUrlIngredients({
     llmVerificationResult && llmVerificationResult.ok ? (llmVerificationResult.match_score || 0) : 0;
 
   const ingredientConsensus = buildIngredientConsensus({
-    official: inciList,
+    official: [...inciList, ...authoritativeSeedInci],
     regulatory: regulatoryActiveInci,
     retail: retailInci,
     inciDecoder: incidecoderInci,
@@ -13519,11 +13611,15 @@ async function buildProductAnalysisFromUrlIngredients({
     llmMatchScore,
   });
   const normalizedInci = ingredientConsensus.merged;
-  const officialInciNormalized = canonicalizeIngredientCandidates([...inciList, ...regulatoryActiveInci], { max: 140 });
+  const officialInciNormalized = canonicalizeIngredientCandidates(
+    [...inciList, ...authoritativeSeedInci, ...regulatoryActiveInci],
+    { max: 140 },
+  );
   const incidecoderOverlapCount = Number(ingredientConsensus?.stats?.overlap_inci_official || 0);
   const ingredientConfidenceTier = String(ingredientConsensus?.confidence_tier || 'none').toLowerCase();
   const inciStatusGapCodes = [
     ...(!html && !fetchOut.ok ? ['on_page_fetch_blocked'] : []),
+    ...(externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok ? ['external_seed_snapshot_used'] : []),
     ...(regulatorySupplement && regulatorySupplement.ok ? ['regulatory_source_used'] : []),
     ...(retailSupplement && retailSupplement.ok ? ['retail_source_used'] : []),
     ...(incidecoderSupplement && incidecoderSupplement.ok ? ['incidecoder_source_used'] : []),
@@ -13537,6 +13633,14 @@ async function buildProductAnalysisFromUrlIngredients({
         url: parsedUrl.toString(),
         confidence: 0.78,
         ingredient_count: canonicalizeIngredientCandidates(inciList, { max: 260 }).length,
+      }]
+      : []),
+    ...(externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok
+      ? [{
+        type: 'external_seed_snapshot',
+        url: String(externalSeedSnapshotEvidence.source_url || ''),
+        confidence: Number(externalSeedSnapshotEvidence.confidence || 0.58),
+        ingredient_count: canonicalizeIngredientCandidates(externalSeedSnapshotEvidence.ingredients, { max: 220 }).length,
       }]
       : []),
     ...(regulatorySupplement && regulatorySupplement.ok
@@ -13675,6 +13779,10 @@ async function buildProductAnalysisFromUrlIngredients({
         ? isCn
           ? `已从产品页解析到 INCI 成分表（共 ${normalizedInci.length} 项），用于本次评估。`
           : `I extracted the INCI list directly from the product page (${normalizedInci.length} entries) for this assessment.`
+        : externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.authoritative
+          ? isCn
+            ? `官网页面抓取受限，已复用 trusted external seed 的 PDP 成分快照（${authoritativeSeedInci.length} 项）作为主证据。`
+            : `Official-page fetch was blocked, so a trusted external-seed PDP ingredient snapshot (${authoritativeSeedInci.length} entries) was used as primary evidence.`
         : regulatorySupplement && regulatorySupplement.ok
           ? isCn
             ? `官网成分抓取受限，已改用监管源（DailyMed）补充活性信息（${regulatoryActiveInci.length} 项）。`
@@ -13993,7 +14101,11 @@ async function buildProductAnalysisFromUrlIngredients({
       ),
     ).toFixed(3),
   );
-  const hasAuthoritativeSource = Boolean(html || (regulatorySupplement && regulatorySupplement.ok));
+  const hasAuthoritativeSource = Boolean(
+    html ||
+    (externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.authoritative) ||
+    (regulatorySupplement && regulatorySupplement.ok),
+  );
   if (!hasAuthoritativeSource && retailSupplement && retailSupplement.ok && incidecoderSupplement && incidecoderSupplement.ok) {
     confidence = Number(Math.min(confidence, 0.62).toFixed(3));
   }
@@ -14136,6 +14248,14 @@ async function buildProductAnalysisFromUrlIngredients({
       confidence: 0.78,
     });
   }
+  if (externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok && /^https?:\/\//i.test(String(externalSeedSnapshotEvidence.source_url || ''))) {
+    evidenceSources.push({
+      type: 'external_seed_snapshot',
+      url: String(externalSeedSnapshotEvidence.source_url || ''),
+      label: 'Seed snapshot',
+      confidence: Number(externalSeedSnapshotEvidence.confidence || 0.58),
+    });
+  }
   if (regulatorySupplement && regulatorySupplement.ok) {
     evidenceSources.push({
       type: 'regulatory',
@@ -14195,6 +14315,7 @@ async function buildProductAnalysisFromUrlIngredients({
   const sourceChain = uniqCaseInsensitiveStrings(
     [
       html ? 'official_page' : '',
+      externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok ? 'external_seed_snapshot' : '',
       regulatorySupplement && regulatorySupplement.ok ? 'regulatory' : '',
       retailSupplement && retailSupplement.ok ? 'retail_page' : '',
       incidecoderSupplement && incidecoderSupplement.ok ? 'inci_decoder' : '',
@@ -14236,6 +14357,10 @@ async function buildProductAnalysisFromUrlIngredients({
             ? isCn
               ? `证据来源：${hostName || 'product page'} 官方产品页成分表抓取。`
               : `Evidence source: ingredient list parsed from ${hostName || 'product page'}.`
+            : externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok
+              ? isCn
+                ? '证据来源：trusted external seed 的 PDP 成分快照。'
+                : 'Evidence source: trusted external-seed PDP ingredient snapshot.'
             : isCn
               ? '官网页面抓取受站点策略限制（403/反爬），本次走了可诊断降级。'
               : 'Official-page extraction was blocked by site policy (403/anti-bot); a diagnosable degraded path was used.',
@@ -14574,6 +14699,19 @@ async function buildProductAnalysisFromUrlIngredients({
             ingredient_count: incidecoderInci.length,
           },
           inci_decoder_overlap_count: incidecoderOverlapCount,
+        }
+        : {}),
+      ...(externalSeedSnapshotEvidence && externalSeedSnapshotEvidence.ok
+        ? {
+          external_seed_snapshot: {
+            provider: 'external_seed',
+            url: String(externalSeedSnapshotEvidence.source_url || ''),
+            ingredient_count: authoritativeSeedInci.length || externalSeedSnapshotEvidence.ingredients.length,
+            authoritative: externalSeedSnapshotEvidence.authoritative === true,
+            source_page_type: externalSeedSnapshotEvidence.source_page_type || null,
+            content_quality: externalSeedSnapshotEvidence.content_quality || null,
+          },
+          external_seed_snapshot_authoritative: externalSeedSnapshotEvidence.authoritative === true,
         }
         : {}),
       competitor_snapshot_meta: competitorSnapshotMeta

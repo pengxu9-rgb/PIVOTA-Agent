@@ -6231,6 +6231,34 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
   });
 
+  test('shouldPersistProductIntelKb allows KB write when authoritative external seed snapshot exists', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const decision = __internal.shouldPersistProductIntelKb({
+      assessment: { verdict: 'Likely Suitable' },
+      evidence: {
+        science: {
+          key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+        },
+        sources: [
+          { type: 'external_seed_snapshot', url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html' },
+        ],
+      },
+      provenance: {
+        external_seed_snapshot: {
+          authoritative: true,
+          url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+        },
+      },
+    });
+    expect(decision).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        persisted: true,
+        blocked_reason: null,
+      }),
+    );
+  });
+
   test('URL realtime analysis uses INCIDecoder supplement when official page is blocked', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'true';
@@ -6302,6 +6330,76 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out?.source_meta?.incidecoder_source).toEqual(
       expect.objectContaining({
         provider: 'incidecoder',
+      }),
+    );
+  });
+
+  test('URL realtime analysis uses trusted external seed snapshot when official page is blocked', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_INCIDECODER_ENABLED = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_RETAIL_FALLBACK_ENABLED = 'false';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+
+    nock('https://blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+    nock('https://www.blocked-brand.test')
+      .persist()
+      .get('/product-x')
+      .reply(403, '<html><body>forbidden</body></html>');
+
+    nock('https://dailymed.nlm.nih.gov')
+      .persist()
+      .get('/dailymed/search.cfm')
+      .query(true)
+      .reply(200, '<html><body>no matches</body></html>');
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = await __internal.buildProductAnalysisFromUrlIngredients({
+      productUrl: 'https://blocked-brand.test/product-x',
+      lang: 'EN',
+      parsedProduct: {
+        product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+        merchant_id: 'external_seed',
+        canonical_product_ref: {
+          product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+          merchant_id: 'external_seed',
+        },
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'The Ordinary UV Filters SPF 45 Serum',
+        url: 'https://blocked-brand.test/product-x',
+        canonical_url: 'https://blocked-brand.test/product-x',
+        destination_url: 'https://blocked-brand.test/product-x',
+        source_url: 'https://theordinary.com/en-us/uv-filters-spf-45-serum-100720.html',
+        source_page_type: 'product',
+        content_quality: 'high',
+        pdp_field_capture_status: { ingredients: true },
+        raw_ingredient_text_clean: 'Avobenzone, Homosalate, Octisalate, Octocrylene, Glycerin, Water',
+        inci_list: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene', 'Glycerin', 'Water'],
+        active_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+        key_ingredients: ['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene'],
+      },
+      profileSummary: {
+        skinType: 'oily',
+        sensitivity: 'medium',
+        barrierStatus: 'healthy',
+      },
+      logger: { warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
+    });
+
+    expect(out).toBeTruthy();
+    expect(String(out?.payload?.assessment?.verdict || '')).not.toMatch(/^Unknown|未知$/i);
+    const evidenceSources = Array.isArray(out?.payload?.evidence?.sources) ? out.payload.evidence.sources : [];
+    const sourceTypes = evidenceSources.map((item) => String(item?.type || '').toLowerCase());
+    expect(sourceTypes).toContain('external_seed_snapshot');
+    expect(out?.payload?.provenance?.source_chain || []).toContain('external_seed_snapshot');
+    expect(out?.source_meta?.external_seed_snapshot).toEqual(
+      expect.objectContaining({
+        provider: 'external_seed',
+        authoritative: true,
       }),
     );
   });

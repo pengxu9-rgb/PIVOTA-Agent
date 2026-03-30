@@ -685,6 +685,23 @@ function buildExternalSeedProduct(row) {
     seedData.seed_description_origin,
     snapshot.seed_description_origin,
   );
+  const sourcePageType = firstNonEmptyString(
+    seedData.source_page_type,
+    snapshot.source_page_type,
+    row.source_page_type,
+  );
+  const contentQuality = firstNonEmptyString(
+    seedData.content_quality,
+    snapshot.content_quality,
+    row.content_quality,
+  );
+  const sourceUrl = firstNonEmptyString(
+    seedData.source_url,
+    snapshot.source_url,
+    row.source_url,
+    canonicalUrl,
+    destinationUrl,
+  );
   const brand = String(seedData.brand || snapshot.brand || '').trim() || undefined;
   const explicitCategory =
     normalizeExplicitSkincareCategory(seedData.category) ||
@@ -810,6 +827,9 @@ function buildExternalSeedProduct(row) {
     ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : {}),
     ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : {}),
     ...(seedDescriptionOrigin ? { seed_description_origin: seedDescriptionOrigin } : {}),
+    ...(sourcePageType ? { source_page_type: sourcePageType } : {}),
+    ...(contentQuality ? { content_quality: contentQuality } : {}),
+    ...(sourceUrl ? { source_url: sourceUrl } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
