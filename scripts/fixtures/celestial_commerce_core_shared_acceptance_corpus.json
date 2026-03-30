@@ -658,6 +658,39 @@
       }
     },
     {
+      "id": "search_exact_ipsa_time_reset_aqua_locale_en",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact IPSA lookup keeps the cache-grade contract under explicit en locale headers",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "aurora_bff_exact_ipsa_time_reset_aqua",
       "family": "exact_product_lookup",
       "query": "IPSA Time Reset Aqua",
@@ -792,6 +825,39 @@
           "correctness": {
             "must_have_reason_codes": [
               "AMBIGUITY_CLARIFY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_merchant_query_winona_products_locale_zh",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public merchant query keeps the cache-grade contract under explicit zh locale headers",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Winona products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum"
             ]
           }
         }

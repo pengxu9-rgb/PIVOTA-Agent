@@ -610,11 +610,13 @@ describe('Commerce shared acceptance corpus', () => {
     expect(Array.from(stagingIds)).toEqual(
       expect.arrayContaining([
         'search_clarify_date_makeup_locale_zh',
+        'search_exact_ipsa_time_reset_aqua_locale_en',
         'search_exact_ipsa_time_reset_aqua',
         'search_exact_ipsa_time_reset_aqua_locale_zh',
         'search_exactish_niacinamide_locale_en',
         'search_merchant_query_winona_products',
         'search_merchant_query_winona_products_locale_en',
+        'search_merchant_query_winona_products_locale_zh',
         'search_public_serum_default_locale_zh',
         'shopping_agent_strict_vitamin_c_serum',
         'search_strict_vitamin_c_serum_budget_eur',
@@ -692,15 +694,33 @@ describe('Commerce shared acceptance corpus', () => {
     const prodIds = new Set(loadProdGateCases(corpusPath).map((item) => item.id));
     const zhClarify = stagingCases.find((item) => item.id === 'search_clarify_date_makeup_locale_zh');
     const zhBroad = stagingCases.find((item) => item.id === 'search_public_serum_default_locale_zh');
+    const enExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_en');
     const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
     const enExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_en');
     const enMerchant = stagingCases.find(
       (item) => item.id === 'search_merchant_query_winona_products_locale_en',
     );
+    const zhMerchant = stagingCases.find(
+      (item) => item.id === 'search_merchant_query_winona_products_locale_zh',
+    );
     const enBudget = stagingCases.find(
       (item) => item.id === 'search_strict_vitamin_c_serum_budget_usd_locale_en',
     );
 
+    expect(enExact).toEqual(
+      expect.objectContaining({
+        family: 'exact_product_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enExact?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
     expect(zhExact).toEqual(
       expect.objectContaining({
         family: 'exact_product_lookup',
@@ -771,6 +791,20 @@ describe('Commerce shared acceptance corpus', () => {
         locale: 'en-US',
       }),
     );
+    expect(zhMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
     expect(enBudget).toEqual(
       expect.objectContaining({
         family: 'strict_ingredient_budget',
@@ -785,7 +819,9 @@ describe('Commerce shared acceptance corpus', () => {
         locale: 'en-US',
       }),
     );
+    expect(prodIds.has('search_exact_ipsa_time_reset_aqua_locale_en')).toBe(false);
     expect(prodIds.has('search_exactish_niacinamide_locale_en')).toBe(false);
+    expect(prodIds.has('search_merchant_query_winona_products_locale_zh')).toBe(false);
     expect(prodIds.has('search_strict_vitamin_c_serum_budget_usd_locale_en')).toBe(false);
     expect(prodIds.has('search_public_serum_default_locale_zh')).toBe(false);
     expect(prodIds.has('search_clarify_date_makeup_locale_zh')).toBe(false);
