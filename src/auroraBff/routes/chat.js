@@ -1,6 +1,7 @@
 const { SkillRouter } = require('../orchestrator/skill_router');
 const LlmGateway = require('../services/llm_gateway');
 const { mapSkillResponseToChatCardsV1, mapSkillResponseToStreamEnvelope } = require('../mappers/card_mapper');
+const { buildPromptMetaForChatRequest, mergePromptMeta } = require('../../modules/contracts/auroraPromptMeta');
 const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
@@ -1228,16 +1229,25 @@ async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
+    let promptMeta = null;
+    try {
+      promptMeta = await buildPromptMetaForChatRequest(skillRequest);
+    } catch (_error) {
+      promptMeta = null;
+    }
     const skillResponse = await getRouter().route(skillRequest);
-    const responsePayload = applyRolloutMeta(
-      mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta),
-      {
-        req,
-        ctx: auth.ctx,
-        body: req.body || {},
-        identity: req._identity || null,
-        res,
-      },
+    const responsePayload = mergePromptMeta(
+      applyRolloutMeta(
+        mergeResponseMeta(mapSkillResponseToChatCardsV1(skillResponse), auth.ctx.auth_meta),
+        {
+          req,
+          ctx: auth.ctx,
+          body: req.body || {},
+          identity: req._identity || null,
+          res,
+        },
+      ),
+      promptMeta,
     );
     res.json(responsePayload);
   } catch (error) {

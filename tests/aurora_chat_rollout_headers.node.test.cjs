@@ -156,6 +156,90 @@ test('handleChat adds rollout meta and headers for skill-router responses', asyn
   );
 });
 
+test('handleChat appends orchestration prompt meta for new shopping requests', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        body: {
+          message: '有什么适合今晚约会的',
+          language: 'CN',
+        },
+        headers: {
+          'x-lang': 'CN',
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          return makeSkillResult();
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.meta.prompt_intent, 'shopping_request');
+      assert.equal(res.body.meta.conversation_progress, 'new_request');
+      assert.equal(res.body.meta.early_decision, 'delegate_to_decisioning');
+      assert.equal(res.body.meta.decision_owner, 'aurora_orchestration');
+    },
+  );
+});
+
+test('handleChat appends orchestration prompt meta for follow-up scenario selection', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'true',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        body: {
+          message: '约会',
+          messages: [
+            { role: 'user', content: '帮我买一款 serum' },
+            { role: 'assistant', content: '你更偏哪种场景？' },
+          ],
+          language: 'CN',
+        },
+        headers: {
+          'x-lang': 'CN',
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          return makeSkillResult();
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.meta.prompt_intent, 'follow_up_refinement');
+      assert.equal(res.body.meta.conversation_progress, 'follow_up');
+      assert.equal(res.body.meta.early_decision, 'resume_prior_goal');
+      assert.equal(res.body.meta.decision_owner, 'aurora_orchestration');
+    },
+  );
+});
+
 test('handleChatStream mirrors rollout meta into result envelope', async () => {
   await withEnv(
     {

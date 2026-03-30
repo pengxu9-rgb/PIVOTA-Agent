@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BASE_URL="${BASE_URL:-https://agent.pivota.cc}"
-ENDPOINT="${ENDPOINT:-/ui/chat}"
+BASE_URL="${BASE_URL:-${COMMERCE_CORE_PROD_SMOKE_BASE_URL:-https://pivota-agent-production.up.railway.app}}"
+ENDPOINT="${ENDPOINT:-/v1/chat}"
 CASES_PATH="${CASES_PATH:-${SCRIPT_DIR}/fixtures/celestial_commerce_core_prompt_live_smoke.json}"
 OUT_DIR="${OUT_DIR:-reports/celestial-commerce-core-prompt-live-smoke}"
 TIMEOUT_MS="${TIMEOUT_MS:-15000}"

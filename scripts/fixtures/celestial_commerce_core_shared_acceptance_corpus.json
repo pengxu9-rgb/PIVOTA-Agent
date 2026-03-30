@@ -813,17 +813,12 @@
       "id": "prompt_clarify_date_makeup",
       "family": "prompt_clarify",
       "query": "有什么适合今晚约会的",
-      "source": "ui-chat",
+      "source": "aurora-bff",
       "targets": {
         "prompt_live_smoke": {
           "title": "new shopping request is tagged as a fresh orchestration prompt",
           "request": {
-            "messages": [
-              {
-                "role": "user",
-                "content": "有什么适合今晚约会的"
-              }
-            ]
+            "message": "有什么适合今晚约会的"
           }
         }
       }
@@ -832,11 +827,12 @@
       "id": "conversation_progress_resume_date_selection",
       "family": "conversation_progress_resume",
       "query": "约会",
-      "source": "ui-chat",
+      "source": "aurora-bff",
       "targets": {
         "prompt_live_smoke": {
           "title": "scenario choice resumes the prior shopping goal",
           "request": {
+            "message": "约会",
             "messages": [
               {
                 "role": "user",
@@ -845,10 +841,6 @@
               {
                 "role": "assistant",
                 "content": "你更偏哪种场景？"
-              },
-              {
-                "role": "user",
-                "content": "约会"
               }
             ]
           },
@@ -865,11 +857,12 @@
       "id": "followup_refinement_lightweight",
       "family": "conversation_progress_resume",
       "query": "更轻薄一点",
-      "source": "ui-chat",
+      "source": "aurora-bff",
       "targets": {
         "prompt_live_smoke": {
           "title": "follow-up refinement stays in the same orchestration thread",
           "request": {
+            "message": "更轻薄一点",
             "messages": [
               {
                 "role": "user",
@@ -878,10 +871,6 @@
               {
                 "role": "assistant",
                 "content": "你更在意修护还是保湿？"
-              },
-              {
-                "role": "user",
-                "content": "更轻薄一点"
               }
             ]
           },
