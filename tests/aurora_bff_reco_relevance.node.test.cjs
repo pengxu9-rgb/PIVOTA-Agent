@@ -2250,8 +2250,10 @@ test('/v1/chat: ingredient reco restores selected catalog candidates after ingre
 
 test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream returns empty structured reco payload', async () => {
   const originalGet = axios.get;
+  const observedQueries = [];
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    observedQueries.push(String(config?.params?.query || '').trim().toLowerCase());
     return {
       status: 200,
       data: {
@@ -2342,6 +2344,7 @@ test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream
     assert.ok(latestRecoContext);
     assert.equal(Array.isArray(latestRecoContext?.product_candidates), true);
     assert.equal(latestRecoContext.product_candidates.length >= 2, true);
+    assert.equal(observedQueries.some((query) => query.includes('ceramide') || query.includes('panthenol')), true);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
   } finally {

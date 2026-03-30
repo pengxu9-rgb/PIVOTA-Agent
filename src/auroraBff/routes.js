@@ -74068,6 +74068,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoIngredientContext && recoIngredientContext.ingredient_query,
             recoIngredientContext && recoIngredientContext.query,
             recoIngredientContext && recoIngredientContext.goal,
+            Array.isArray(recoIngredientContext && recoIngredientContext.candidates)
+              ? recoIngredientContext.candidates[0]
+              : '',
+            Array.isArray(recoIngredientContext && recoIngredientContext.ingredient_candidates)
+              ? recoIngredientContext.ingredient_candidates[0]
+              : '',
           );
         const chatRecoTargetContext = resolveRecommendationTargetContext({
           explicitStep: pickFirstTrimmed(
