@@ -609,6 +609,7 @@ describe('Commerce shared acceptance corpus', () => {
 
     expect(Array.from(stagingIds)).toEqual(
       expect.arrayContaining([
+        'search_clarify_date_makeup_locale_zh',
         'search_exact_ipsa_time_reset_aqua',
         'search_exact_ipsa_time_reset_aqua_locale_zh',
         'search_exactish_niacinamide_locale_en',
@@ -642,6 +643,7 @@ describe('Commerce shared acceptance corpus', () => {
     expect(Array.from(promptIds)).toEqual(
       expect.arrayContaining([
         'prompt_clarify_date_makeup',
+        'prompt_clarify_date_makeup_locale_zh',
         'prompt_clarify_date_night_en',
         'conversation_progress_resume_date_selection',
         'conversation_progress_resume_date_night_en',
@@ -667,6 +669,14 @@ describe('Commerce shared acceptance corpus', () => {
         'X-Lang': 'CN',
       }),
     );
+    expect(
+      promptCases.find((item) => item.id === 'prompt_clarify_date_makeup_locale_zh')?.request
+        ?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'CN',
+      }),
+    );
   });
 
   test('actual shared corpus expands locale-aware commerce query staging coverage without changing prod authority rules', () => {
@@ -680,6 +690,7 @@ describe('Commerce shared acceptance corpus', () => {
 
     const stagingCases = loadStagingMatrixPayload(corpusPath).semantic_cases;
     const prodIds = new Set(loadProdGateCases(corpusPath).map((item) => item.id));
+    const zhClarify = stagingCases.find((item) => item.id === 'search_clarify_date_makeup_locale_zh');
     const zhBroad = stagingCases.find((item) => item.id === 'search_public_serum_default_locale_zh');
     const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
     const enExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_en');
@@ -713,6 +724,20 @@ describe('Commerce shared acceptance corpus', () => {
       }),
     );
     expect(zhBroad?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(zhClarify).toEqual(
+      expect.objectContaining({
+        family: 'scenario_clarify',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhClarify?.request?.metadata).toEqual(
       expect.objectContaining({
         source: 'search',
         locale: 'zh-CN',
@@ -763,5 +788,6 @@ describe('Commerce shared acceptance corpus', () => {
     expect(prodIds.has('search_exactish_niacinamide_locale_en')).toBe(false);
     expect(prodIds.has('search_strict_vitamin_c_serum_budget_usd_locale_en')).toBe(false);
     expect(prodIds.has('search_public_serum_default_locale_zh')).toBe(false);
+    expect(prodIds.has('search_clarify_date_makeup_locale_zh')).toBe(false);
   });
 });

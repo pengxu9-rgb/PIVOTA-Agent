@@ -798,6 +798,39 @@
       }
     },
     {
+      "id": "search_clarify_date_makeup_locale_zh",
+      "family": "scenario_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public clarify-required discovery preserves explicit zh locale while resolving to clarify",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "有什么适合今晚约会的",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_have_reason_codes": [
+              "AMBIGUITY_CLARIFY"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "aurora_bff_clarify_date_makeup",
       "family": "scenario_clarify",
       "query": "有什么适合今晚约会的",
@@ -1251,6 +1284,23 @@
           "title": "new shopping request is tagged as a fresh orchestration prompt",
           "request": {
             "message": "有什么适合今晚约会的"
+          }
+        }
+      }
+    },
+    {
+      "id": "prompt_clarify_date_makeup_locale_zh",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "zh shopping request preserves explicit locale while staying a fresh orchestration prompt",
+          "request": {
+            "message": "有什么适合今晚约会的",
+            "headers": {
+              "X-Lang": "CN"
+            }
           }
         }
       }

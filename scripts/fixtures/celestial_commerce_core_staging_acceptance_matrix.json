@@ -761,6 +761,75 @@
       ]
     },
     {
+      "blocking": true,
+      "rail_mode": "authoritative_commerce",
+      "require_primary_path": true,
+      "allow_strict_empty": false,
+      "allowed_query_sources": [
+        "agent_products_search"
+      ],
+      "must_not_match_fallback_sources": [
+        "agent_products_error_fallback",
+        "agent_products_resolver_fallback",
+        "agent_products_resolver_ref_fallback"
+      ],
+      "endpoint": "/agent/shop/v1/invoke",
+      "requires_auth": true,
+      "auth_profile": "default",
+      "correctness": {
+        "mode": "auto",
+        "expect_http_status": 200,
+        "must_have_clarification": true,
+        "must_have_reason_codes": [
+          "AMBIGUITY_CLARIFY"
+        ]
+      },
+      "ownership": {
+        "must_equal_paths": {
+          "metadata.search_trace.final_decision": "clarify",
+          "metadata.route_health.fallback_triggered": false,
+          "metadata.search_decision.decision_locked": true,
+          "metadata.search_decision.decision_authority": "agent_products_search"
+        }
+      },
+      "observability": {
+        "must_have_paths": [
+          "metadata.service_version.commit",
+          "metadata.search_trace.final_decision",
+          "metadata.route_health.fallback_triggered",
+          "metadata.search_decision.decision_locked",
+          "metadata.search_decision.decision_authority"
+        ]
+      },
+      "kind": "semantic",
+      "id": "search_clarify_date_makeup_locale_zh",
+      "family": "scenario_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "search",
+      "title": "public clarify-required discovery preserves explicit zh locale while resolving to clarify",
+      "headers": {
+        "X-Lang": "CN"
+      },
+      "request": {
+        "operation": "find_products_multi",
+        "payload": {
+          "search": {
+            "query": "有什么适合今晚约会的",
+            "limit": 10,
+            "in_stock_only": true
+          }
+        },
+        "metadata": {
+          "source": "search",
+          "locale": "zh-CN"
+        }
+      },
+      "family_aliases": [
+        "scenario_clarify",
+        "clarify_required"
+      ]
+    },
+    {
       "id": "search_public_serum_default",
       "family": "broad_discovery",
       "query": "serum",

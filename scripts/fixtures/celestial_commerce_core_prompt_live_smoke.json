@@ -47,6 +47,37 @@
           "meta.decision_owner": "aurora_orchestration"
         }
       },
+      "id": "prompt_clarify_date_makeup_locale_zh",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "aurora-bff",
+      "title": "zh shopping request preserves explicit locale while staying a fresh orchestration prompt",
+      "request": {
+        "message": "有什么适合今晚约会的",
+        "headers": {
+          "X-Lang": "CN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.prompt_intent": "shopping_request",
+          "meta.conversation_progress": "new_request",
+          "meta.early_decision": "delegate_to_decisioning",
+          "meta.decision_owner": "aurora_orchestration"
+        }
+      },
       "id": "prompt_clarify_date_night_en",
       "family": "prompt_clarify",
       "query": "What should I get for date night?",
