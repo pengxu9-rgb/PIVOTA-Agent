@@ -5887,6 +5887,222 @@ function pickBestCatalogSearchCandidateForProductInput({
   };
 }
 
+function dedupeCatalogSearchCandidatesForProductAnchor(candidates = []) {
+  const out = [];
+  const seen = new Set();
+  for (const rawCandidate of Array.isArray(candidates) ? candidates : []) {
+    const candidate =
+      normalizeRecoCatalogProduct(rawCandidate) ||
+      (rawCandidate && typeof rawCandidate === 'object' && !Array.isArray(rawCandidate) ? rawCandidate : null);
+    if (!candidate) continue;
+    const dedupeKey = (
+      buildProductAnchorIdentityFromProductLike(candidate) ||
+      pickFirstTrimmed(extractCandidateOpenUrl(candidate)) ||
+      [
+        pickFirstTrimmed(candidate.brand, candidate.brand_name, candidate.brandName),
+        pickFirstTrimmed(candidate.name, candidate.display_name, candidate.displayName, candidate.title),
+      ]
+        .filter(Boolean)
+        .join(':')
+    )
+      .trim()
+      .toLowerCase();
+    if (!dedupeKey || seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(candidate);
+  }
+  return out;
+}
+
+async function resolveOpenWorldExternalProductMatchForProductInput({
+  inputText = '',
+  inputUrl = '',
+  parsedProduct = null,
+  lang = 'EN',
+  logger,
+} = {}) {
+  if (!AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_ENABLED) {
+    return {
+      ok: false,
+      reason: 'llm_external_match_disabled',
+      source: null,
+      decision_source: null,
+      query_used: null,
+      product: null,
+      attempts: [],
+    };
+  }
+
+  const queries = buildProductCatalogQueryCandidates({ inputText, inputUrl, parsedProduct }).slice(0, 2);
+  if (!queries.length) {
+    return {
+      ok: false,
+      reason: 'query_missing',
+      source: null,
+      decision_source: null,
+      query_used: null,
+      product: null,
+      attempts: [],
+    };
+  }
+
+  const attempts = [];
+  const parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
+  const promptLang = String(lang || 'EN').trim().toUpperCase() === 'CN' ? 'ZH' : 'EN';
+
+  for (const query of queries) {
+    const q = String(query || '').trim();
+    if (!q) continue;
+
+    let llmResp = null;
+    try {
+      llmResp = await callGeminiJsonObjectImpl({
+        model: AURORA_DIAG_FORCE_GEMINI_MODEL,
+        systemPrompt: [
+          'You are a strict skincare product grounding assistant.',
+          'Output STRICT JSON only.',
+          'Return real skincare products only.',
+          'Prefer an exact product match for the user input.',
+          'If an exact match is unclear, return the closest real external skincare PDP candidates.',
+          'Never invent product IDs or URLs.',
+          'Use HTTPS PDP URLs only. No search result URLs, no category pages, no homepages.',
+        ].join('\n'),
+        userPrompt: JSON.stringify({
+          task: 'product_anchor_open_world_match',
+          language: promptLang,
+          input: {
+            query: q,
+            raw_text: String(inputText || '').trim() || null,
+            raw_url: String(inputUrl || '').trim() || null,
+            parsed_product:
+              parsedProductObj && typeof parsedProductObj === 'object'
+                ? {
+                    brand: pickFirstTrimmed(parsedProductObj.brand, parsedProductObj.brand_name, parsedProductObj.brandName),
+                    name: pickFirstTrimmed(parsedProductObj.name, parsedProductObj.display_name, parsedProductObj.displayName, parsedProductObj.title),
+                    category: pickFirstTrimmed(parsedProductObj.category, parsedProductObj.category_name, parsedProductObj.product_type),
+                  }
+                : null,
+          },
+          constraints: {
+            max_products: 2,
+            allowed_categories: ['cleanser', 'serum', 'moisturizer', 'sunscreen', 'treatment'],
+            require_https_pdp: true,
+            reject_search_urls: true,
+          },
+        }, null, 2),
+        timeoutMs: AURORA_PRODUCT_LOOKUP_LLM_FALLBACK_TIMEOUT_MS,
+        temperature: 0.2,
+        maxOutputTokens: 400,
+        responseJsonSchema: buildProductRetrieverJsonSchema(2),
+        route: 'aurora_product_anchor_open_world',
+      });
+    } catch (err) {
+      logger?.warn?.(
+        { err: err?.message || String(err), query: q },
+        'aurora bff: product anchor open-world match failed',
+      );
+      attempts.push({
+        mode: 'llm_external_match',
+        query: q,
+        ok: false,
+        reason: classifyLlmFallbackErrorReason(err) === 'timeout' ? 'llm_external_match_timeout' : 'llm_external_match_error',
+        latency_ms: null,
+      });
+      continue;
+    }
+
+    if (!llmResp || llmResp.ok !== true || !isPlainObject(llmResp.json)) {
+      const respError = pickFirstString(llmResp?.error, llmResp?.reason).toLowerCase();
+      attempts.push({
+        mode: 'llm_external_match',
+        query: q,
+        ok: false,
+        reason: respError.includes('timeout') ? 'llm_external_match_timeout' : 'llm_external_match_invalid_json',
+        latency_ms: Number.isFinite(Number(llmResp?.total_ms)) ? Math.trunc(Number(llmResp.total_ms)) : null,
+      });
+      continue;
+    }
+
+    const rowsRaw = Array.isArray(llmResp.json.products)
+      ? llmResp.json.products
+      : Array.isArray(llmResp.json.items)
+        ? llmResp.json.items
+        : [];
+    const candidates = rowsRaw
+      .map((row, index) => normalizeLlmFallbackCandidate(row, { query: q, index }))
+      .map((row) =>
+        row
+          ? normalizeCandidateWithDirectUrl(
+              {
+                ...row,
+                source: 'llm_external_match',
+                source_type: 'llm_external_match',
+                retrieval_source: 'llm_external_match',
+                retrieval_reason: 'product_anchor_open_world_match',
+              },
+              extractCandidateOpenUrl(row),
+            )
+          : null,
+      )
+      .filter((row) => {
+        if (!isPlainObject(row)) return false;
+        const directUrl = extractCandidateOpenUrl(row);
+        if (!directUrl || !hasOpenableUrl(row) || isSearchLikeUrl(directUrl) || !isHttpsUrl(directUrl)) return false;
+        const guard = evaluateAnchorProductSkincareGuard(row, {
+          strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+        });
+        return guard.ok;
+      });
+
+    const picked = pickBestCatalogSearchCandidateForProductInput({
+      query: q,
+      candidates,
+      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+    });
+    attempts.push({
+      mode: 'llm_external_match',
+      query: q,
+      ok: Boolean(picked.candidate),
+      reason: picked.candidate
+        ? null
+        : Number(picked.ambiguousRejectedCount || 0) > 0
+          ? 'llm_external_match_ambiguous'
+          : rowsRaw.length
+            ? 'llm_external_match_filtered'
+            : 'llm_external_match_empty',
+      latency_ms: Number.isFinite(Number(llmResp?.total_ms)) ? Math.trunc(Number(llmResp.total_ms)) : null,
+    });
+    if (picked.candidate) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'llm_external_match',
+        decision_source: 'llm_external_match',
+        query_used: q,
+        product: picked.candidate,
+        attempts,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    reason:
+      attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'llm_external_match_ambiguous')
+        ? 'llm_external_match_ambiguous'
+        : attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'llm_external_match_timeout')
+          ? 'llm_external_match_timeout'
+          : attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'llm_external_match_error')
+            ? 'llm_external_match_error'
+            : 'llm_external_match_empty',
+    source: null,
+    decision_source: null,
+    query_used: queries[0] || null,
+    product: null,
+    attempts,
+  };
+}
+
 function extractUrlAnchorSignals(inputUrl) {
   const urlText = String(inputUrl || '').trim();
   if (!/^https?:\/\//i.test(urlText)) return null;
@@ -6062,11 +6278,16 @@ function evaluateAnchorTrustForProductIntel({
 }
 
 const PRODUCT_ANCHOR_DECISION_STAGE_ORDER = {
-  explicit_product: ['client_payload_anchor', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'upstream_parse_llm'],
-  name_only: ['client_payload_anchor', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'upstream_parse_llm'],
-  url_only: ['client_payload_anchor', 'url_heuristic', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'upstream_parse_llm'],
-  name_and_url: ['client_payload_anchor', 'url_heuristic', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'upstream_parse_llm'],
+  explicit_product: ['client_payload_anchor', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'external_seed_search_exact', 'upstream_parse_llm', 'llm_external_match'],
+  name_only: ['client_payload_anchor', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'external_seed_search_exact', 'upstream_parse_llm', 'llm_external_match'],
+  url_only: ['client_payload_anchor', 'url_heuristic', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'external_seed_search_exact', 'upstream_parse_llm', 'llm_external_match'],
+  name_and_url: ['client_payload_anchor', 'url_heuristic', 'local_stable_alias_ref', 'catalog_resolve', 'catalog_search_exact', 'external_seed_search_exact', 'upstream_parse_llm', 'llm_external_match'],
 };
+
+function isProductAnchorOwnerEligibleStage(stage) {
+  const normalized = String(stage || '').trim().toLowerCase();
+  return normalized !== 'upstream_parse_llm' && normalized !== 'llm_external_match';
+}
 
 function inferProductAnchorInputMode({ explicitProduct = null, inputText = '', inputUrl = '' } = {}) {
   const hasExplicitProduct = isPlainObject(explicitProduct) && Object.keys(explicitProduct).length > 0;
@@ -6136,6 +6357,10 @@ function buildProductAnchorDecisionSpine({ route = 'unknown', inputMode = 'name_
     owner_reason_codes: [],
     owner_confidence: null,
     owner_identity: '',
+    fallback_display_anchor: null,
+    fallback_display_source: null,
+    fallback_display_state: null,
+    fallback_display_reason_codes: [],
     observations: [],
     conflict_flags: [],
     no_early_trusted_owner: false,
@@ -6160,6 +6385,10 @@ function restoreProductAnchorDecisionSpineFromSnapshot(snapshot, { route = 'unkn
   restored.owner_reason_codes = normalizeProductAnchorDecisionReasonCodes(raw.owner_reason_codes);
   restored.owner_confidence = Number.isFinite(Number(raw.owner_confidence)) ? Number(raw.owner_confidence) : null;
   restored.owner_identity = buildProductAnchorIdentityFromProductLike(restored.owner_display_anchor || restored.owner_product_ref);
+  restored.fallback_display_anchor = buildAnchorDisplayFromCandidate(raw.fallback_display_anchor || raw.display_anchor) || null;
+  restored.fallback_display_source = pickFirstTrimmed(raw.fallback_display_source, raw.display_source);
+  restored.fallback_display_state = pickFirstTrimmed(raw.fallback_display_state, raw.display_state);
+  restored.fallback_display_reason_codes = normalizeProductAnchorDecisionReasonCodes(raw.fallback_display_reason_codes);
   restored.conflict_flags = Array.isArray(raw.conflict_flags) ? raw.conflict_flags.slice(0, 8) : [];
   restored.no_early_trusted_owner = raw.no_early_trusted_owner === true;
   restored.late_conflict_without_override = raw.late_conflict_without_override === true;
@@ -6257,11 +6486,17 @@ function finalizeProductAnchorDecisionSpine(spine) {
     if (a.stage_rank !== b.stage_rank) return a.stage_rank - b.stage_rank;
     return a.order - b.order;
   });
-  const trustedOwner = observations.find((observation) => observation.owner_eligible !== false && observation.state === 'trusted') || null;
+  const ownerEligibleObservations = observations.filter((observation) => observation.owner_eligible !== false);
+  const trustedOwner = ownerEligibleObservations.find((observation) => observation.state === 'trusted') || null;
   const fallbackOwner =
     trustedOwner ||
-    observations.find((observation) => observation.state === 'soft_blocked') ||
-    observations.find((observation) => observation.state === 'miss') ||
+    ownerEligibleObservations.find((observation) => observation.state === 'soft_blocked') ||
+    ownerEligibleObservations.find((observation) => observation.state === 'miss') ||
+    null;
+  const displayObservation =
+    observations.find((observation) => observation.state === 'trusted' && observation.display_anchor) ||
+    observations.find((observation) => observation.state === 'soft_blocked' && observation.display_anchor) ||
+    observations.find((observation) => observation.display_anchor) ||
     null;
   target.no_early_trusted_owner = !trustedOwner;
   target.owner_stage = trustedOwner?.stage || fallbackOwner?.stage || null;
@@ -6279,6 +6514,10 @@ function finalizeProductAnchorDecisionSpine(spine) {
       ? Number(fallbackOwner.confidence)
       : null;
   target.owner_identity = buildProductAnchorIdentityFromProductLike(target.owner_display_anchor || target.owner_product_ref);
+  target.fallback_display_anchor = displayObservation?.display_anchor || null;
+  target.fallback_display_source = displayObservation?.source || null;
+  target.fallback_display_state = displayObservation?.state || null;
+  target.fallback_display_reason_codes = normalizeProductAnchorDecisionReasonCodes(displayObservation?.reason_codes || [], 8);
   target.conflict_flags = observations
     .filter((observation) =>
       trustedOwner &&
@@ -6322,6 +6561,10 @@ function buildProductAnchorSessionSnapshot(spine) {
     owner_identity: finalized.owner_identity || '',
     owner_product_ref: finalized.owner_product_ref || null,
     owner_display_anchor: finalized.owner_display_anchor || null,
+    fallback_display_anchor: finalized.fallback_display_anchor || null,
+    fallback_display_source: finalized.fallback_display_source || null,
+    fallback_display_state: finalized.fallback_display_state || null,
+    fallback_display_reason_codes: normalizeProductAnchorDecisionReasonCodes(finalized.fallback_display_reason_codes, 8),
     owner_reason_codes: normalizeProductAnchorDecisionReasonCodes(finalized.owner_reason_codes, 8),
     owner_confidence: Number.isFinite(Number(finalized.owner_confidence)) ? Number(finalized.owner_confidence) : null,
     conflict_flags: Array.isArray(finalized.conflict_flags) ? finalized.conflict_flags.slice(0, 8) : [],
@@ -6343,7 +6586,7 @@ function buildProductAnchorContextFromDecisionSpine(spine) {
     observations.find((observation) => observation.state === 'soft_blocked' && observation.display_anchor) ||
     observations.find((observation) => observation.display_anchor) ||
     null;
-  const displayAnchor = finalized.owner_display_anchor || displayObservation?.display_anchor || null;
+  const displayAnchor = finalized.owner_display_anchor || finalized.fallback_display_anchor || displayObservation?.display_anchor || null;
   const trustedAnchor = finalized.owner_state === 'trusted' ? (finalized.owner_display_anchor || null) : null;
   const anchorId = pickFirstTrimmed(
     trustedAnchor?.sku_id,
@@ -6367,6 +6610,8 @@ function buildProductAnchorContextFromDecisionSpine(spine) {
         : null,
     },
     displayAnchor,
+    displaySource: finalized.fallback_display_source || displayObservation?.source || finalized.owner_source || null,
+    displayState: finalized.fallback_display_state || displayObservation?.state || finalized.owner_state || 'miss',
   };
 }
 
@@ -6448,6 +6693,8 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
 
   const attempts = [];
   let filteredNonSkincareCount = 0;
+  let internalSearchAmbiguous = false;
+  let externalSeedSearchAmbiguous = false;
 
   for (const query of queries) {
     const resolved = await resolveAvailabilityProductByQuery({ query, lang, logger });
@@ -6489,45 +6736,128 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   }
 
   for (const query of queries) {
-    const searched = await searchPivotaBackendProducts({
+    const [searchedInternal, searchedWithExternalSeed] = await Promise.all([
+      searchPivotaBackendProducts({
+        query,
+        limit: 8,
+        logger,
+        timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
+        allowExternalSeed: false,
+        externalSeedStrategy: 'legacy',
+      }),
+      AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true
+        ? searchPivotaBackendProducts({
+            query,
+            limit: 8,
+            logger,
+            timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
+            allowExternalSeed: true,
+            externalSeedStrategy: 'supplement_internal_first',
+          })
+        : Promise.resolve(null),
+    ]);
+    const pickedInternal = pickBestCatalogSearchCandidateForProductInput({
       query,
-      limit: 8,
-      logger,
-      timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
-    });
-    const picked = pickBestCatalogSearchCandidateForProductInput({
-      query,
-      candidates: Array.isArray(searched && searched.products) ? searched.products : [],
+      candidates: Array.isArray(searchedInternal?.products) ? searchedInternal.products : [],
       strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
     });
-    const first = picked.candidate;
-    filteredNonSkincareCount += Number(picked.filteredNonSkincareCount || 0);
-    attempts.push({
-      mode: 'search',
+    const externalSeedCandidates = dedupeCatalogSearchCandidatesForProductAnchor(
+      (Array.isArray(searchedWithExternalSeed?.products) ? searchedWithExternalSeed.products : []).filter((rawCandidate) => {
+        const candidate =
+          normalizeRecoCatalogProduct(rawCandidate) ||
+          (rawCandidate && typeof rawCandidate === 'object' && !Array.isArray(rawCandidate) ? rawCandidate : null);
+        return String(candidate?.retrieval_source || '').trim().toLowerCase() === 'external_seed';
+      }),
+    );
+    const pickedExternalSeed = pickBestCatalogSearchCandidateForProductInput({
       query,
-      ok: Boolean(first),
-      reason: first
+      candidates: externalSeedCandidates,
+      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+    });
+    const firstInternal = pickedInternal.candidate;
+    const firstExternalSeed = pickedExternalSeed.candidate;
+    filteredNonSkincareCount += Number(pickedInternal.filteredNonSkincareCount || 0);
+    filteredNonSkincareCount += Number(pickedExternalSeed.filteredNonSkincareCount || 0);
+    if (Number(pickedInternal.ambiguousRejectedCount || 0) > 0) internalSearchAmbiguous = true;
+    if (Number(pickedExternalSeed.ambiguousRejectedCount || 0) > 0) externalSeedSearchAmbiguous = true;
+    attempts.push({
+      mode: 'search_internal',
+      query,
+      ok: Boolean(firstInternal),
+      reason: firstInternal
         ? null
         : filteredNonSkincareCount > 0
           ? 'catalog_non_skincare_match'
-          : Number(picked.ambiguousRejectedCount || 0) > 0
+          : Number(pickedInternal.ambiguousRejectedCount || 0) > 0
             ? 'catalog_search_ambiguous'
-          : searched && searched.reason
-            ? String(searched.reason)
+          : searchedInternal && searchedInternal.reason
+            ? String(searchedInternal.reason)
             : null,
-      latency_ms: Number.isFinite(Number(searched?.latency_ms)) ? Math.trunc(Number(searched?.latency_ms)) : null,
+      latency_ms: Number.isFinite(Number(searchedInternal?.latency_ms)) ? Math.trunc(Number(searchedInternal?.latency_ms)) : null,
     });
-    if (first) {
+    if (AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true) {
+      attempts.push({
+        mode: 'search_external_seed',
+        query,
+        ok: Boolean(firstExternalSeed),
+        reason: firstExternalSeed
+          ? null
+          : filteredNonSkincareCount > 0
+            ? 'catalog_non_skincare_match'
+            : Number(pickedExternalSeed.ambiguousRejectedCount || 0) > 0
+              ? 'external_seed_search_ambiguous'
+              : searchedWithExternalSeed && searchedWithExternalSeed.reason
+                ? String(searchedWithExternalSeed.reason)
+                : null,
+        latency_ms: Number.isFinite(Number(searchedWithExternalSeed?.latency_ms))
+          ? Math.trunc(Number(searchedWithExternalSeed?.latency_ms))
+          : null,
+      });
+    }
+    if (firstInternal) {
       return {
         ok: true,
         reason: null,
         source: 'search',
         decision_source: 'catalog_search_exact',
         query_used: query,
-        product: first,
+        product: firstInternal,
         attempts,
       };
     }
+    if (firstExternalSeed) {
+      return {
+        ok: true,
+        reason: null,
+        source: 'search',
+        decision_source: 'external_seed_search_exact',
+        query_used: query,
+        product: firstExternalSeed,
+        attempts,
+      };
+    }
+  }
+
+  const llmExternalMatch = await resolveOpenWorldExternalProductMatchForProductInput({
+    inputText,
+    inputUrl,
+    parsedProduct,
+    lang,
+    logger,
+  });
+  if (Array.isArray(llmExternalMatch?.attempts) && llmExternalMatch.attempts.length) {
+    attempts.push(...llmExternalMatch.attempts);
+  }
+  if (llmExternalMatch?.ok && llmExternalMatch.product) {
+    return {
+      ok: true,
+      reason: null,
+      source: 'llm_external_match',
+      decision_source: 'llm_external_match',
+      query_used: llmExternalMatch.query_used || queries[0] || null,
+      product: llmExternalMatch.product,
+      attempts,
+    };
   }
 
   return {
@@ -6535,9 +6865,15 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
     reason:
       filteredNonSkincareCount > 0
         ? 'catalog_non_skincare_match'
-        : attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous')
+        : internalSearchAmbiguous
           ? 'catalog_search_ambiguous'
-          : 'catalog_no_match',
+          : externalSeedSearchAmbiguous
+            ? 'external_seed_search_ambiguous'
+            : String(llmExternalMatch?.reason || '').trim()
+              ? String(llmExternalMatch.reason).trim()
+              : attempts.some((attempt) => String(attempt?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous')
+                ? 'catalog_search_ambiguous'
+                : 'catalog_no_match',
     source: null,
     query_used: queries[0] || null,
     product: null,
@@ -32628,6 +32964,8 @@ function mapCatalogParseMissingReason(reasonCode) {
   if (!reason) return '';
   if (reason === 'catalog_fallback_disabled') return 'catalog_fallback_disabled';
   if (reason === 'pivota_backend_not_configured' || reason === 'catalog_backend_not_configured') return 'catalog_backend_not_configured';
+  if (reason === 'external_seed_search_ambiguous') return 'external_seed_search_ambiguous';
+  if (reason.startsWith('llm_external_match_')) return reason;
   if (
     reason === 'catalog_no_match' ||
     reason === 'catalog_search_empty' ||
@@ -59681,20 +60019,24 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (normalized === 'upstream_parse') return 'upstream_parse_llm';
         if (normalized === 'heuristic_url') return 'url_heuristic';
         if (normalized === 'local_stable_alias_ref') return 'local_stable_alias_ref';
+        if (normalized === 'external_seed_search') return 'external_seed_search_exact';
+        if (normalized === 'llm_external_match') return 'llm_external_match';
         if (normalized === 'catalog_search') return 'catalog_search_exact';
         if (normalized === 'catalog_resolve') return 'catalog_resolve';
         return normalized || 'unknown';
       };
-      const recordParseAnchorMiss = ({ source = 'unknown', reasonCodes = [], meta = null } = {}) =>
-        recordProductAnchorDecisionObservation(parseAnchorSpine, {
-          stage: resolveParseAnchorStage(source),
-          source: resolveParseAnchorStage(source),
+      const recordParseAnchorMiss = ({ source = 'unknown', reasonCodes = [], meta = null } = {}) => {
+        const stageName = resolveParseAnchorStage(source);
+        return recordProductAnchorDecisionObservation(parseAnchorSpine, {
+          stage: stageName,
+          source: stageName,
           state: 'miss',
-          ownerEligible: resolveParseAnchorStage(source) !== 'upstream_parse_llm',
+          ownerEligible: isProductAnchorOwnerEligibleStage(stageName),
           reasonCodes,
           confidence: 0,
           meta,
         });
+      };
       let parseAnchorTrust = {
         trusted_anchor: null,
         display_anchor: null,
@@ -59720,7 +60062,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           trust: parseAnchorTrust,
           stage: resolveParseAnchorStage(source),
           source: resolveParseAnchorStage(source),
-          ownerEligible: resolveParseAnchorStage(source) !== 'upstream_parse_llm',
+          ownerEligible: isProductAnchorOwnerEligibleStage(resolveParseAnchorStage(source)),
         });
         const existingMissing = Array.isArray(payload.missing_info) ? payload.missing_info : [];
         const stableMissing = existingMissing.filter((token) => {
@@ -59870,6 +60212,10 @@ function mountAuroraBffRoutes(app, { logger }) {
             const parseFallbackSource =
               fallbackDecisionSource === 'local_stable_alias_ref'
                 ? 'local_stable_alias_ref'
+                : fallbackDecisionSource === 'external_seed_search_exact'
+                  ? 'external_seed_search'
+                  : fallbackDecisionSource === 'llm_external_match'
+                    ? 'llm_external_match'
                 : fallbackDecisionSource === 'catalog_search_exact'
                   ? 'catalog_search'
                   : 'catalog_resolve';
@@ -59892,11 +60238,17 @@ function mountAuroraBffRoutes(app, { logger }) {
             fieldMissing.push({ field: 'parse.fallback', reason: fallbackReasonCode });
           }
         } else {
+          const catalogMissReason = String(catalogFallback?.reason || '').trim().toLowerCase();
+          const catalogMissSource =
+            catalogMissReason === 'external_seed_search_ambiguous'
+              ? 'external_seed_search'
+              : catalogMissReason.startsWith('llm_external_match')
+                ? 'llm_external_match'
+                : catalogMissReason === 'catalog_search_ambiguous'
+                  ? 'catalog_search'
+                  : 'catalog_resolve';
           recordParseAnchorMiss({
-            source:
-              String(catalogFallback?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous'
-                ? 'catalog_search'
-                : 'catalog_resolve',
+            source: catalogMissSource,
             reasonCodes: [fallbackReasonCode || String(catalogFallback?.reason || 'catalog_no_match')],
           });
           recoveryPath.push(catalogRecoveryToken);
@@ -59968,9 +60320,14 @@ function mountAuroraBffRoutes(app, { logger }) {
       } else if (parseAnchorFinalContext.anchorTrustContext?.usable_for_anchor_id === true) {
         const ownerSource = String(parseAnchorSummary.anchor_owner_source || '').trim().toLowerCase();
         if (ownerSource === 'catalog_search_exact') parseSource = 'catalog_search';
+        else if (ownerSource === 'external_seed_search_exact') parseSource = 'external_seed_search';
         else if (ownerSource === 'catalog_resolve') parseSource = 'catalog_resolve';
         else if (ownerSource === 'url_heuristic') parseSource = 'heuristic_url';
         else if (ownerSource === 'local_stable_alias_ref') parseSource = 'local_stable_alias_ref';
+      } else if (finalParseDisplayAnchor) {
+        const displaySource = String(parseAnchorFinalContext.displaySource || '').trim().toLowerCase();
+        if (displaySource === 'llm_external_match') parseSource = 'llm_external_match';
+        else if (displaySource === 'external_seed_search_exact') parseSource = 'external_seed_search';
       }
       payload = {
         ...payload,
@@ -60373,6 +60730,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         const normalizedDecisionSource = String(decisionSource || '').trim().toLowerCase();
         if (normalizedDecisionSource === 'local_stable_alias_ref') return 'local_stable_alias_ref';
         if (normalizedDecisionSource === 'catalog_search_exact') return 'catalog_search_exact';
+        if (normalizedDecisionSource === 'external_seed_search_exact') return 'external_seed_search_exact';
+        if (normalizedDecisionSource === 'llm_external_match') return 'llm_external_match';
         if (normalizedDecisionSource === 'catalog_resolve') return 'catalog_resolve';
         const normalized = String(source || '').trim().toLowerCase();
         if (normalized === 'client_payload') return 'client_payload_anchor';
@@ -60380,6 +60739,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (normalized === 'upstream_parse') return 'upstream_parse_llm';
         if (normalized === 'heuristic_url') return 'url_heuristic';
         if (normalized === 'local_stable_alias_ref') return 'local_stable_alias_ref';
+        if (normalized === 'external_seed_search') return 'external_seed_search_exact';
+        if (normalized === 'llm_external_match') return 'llm_external_match';
         if (normalized === 'catalog_primary_resolve') return 'catalog_resolve';
         if (normalized === 'catalog_fallback') return 'catalog_search_exact';
         return normalized || 'unknown';
@@ -60396,11 +60757,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         url_consistency: null,
       };
       if (analyzeAnchorSnapshot?.owner_source) {
+        const restoredOwnerStage = String(analyzeAnchorSnapshot.owner_stage || analyzeAnchorSnapshot.owner_source || 'unknown');
         recordProductAnchorDecisionObservation(analyzeAnchorSpine, {
-          stage: String(analyzeAnchorSnapshot.owner_stage || analyzeAnchorSnapshot.owner_source || 'unknown'),
+          stage: restoredOwnerStage,
           source: String(analyzeAnchorSnapshot.owner_source || analyzeAnchorSnapshot.owner_stage || 'unknown'),
           state: String(analyzeAnchorSnapshot.owner_state || 'miss'),
-          ownerEligible: String(analyzeAnchorSnapshot.owner_state || '').trim().toLowerCase() === 'trusted',
+          ownerEligible: isProductAnchorOwnerEligibleStage(restoredOwnerStage),
           displayAnchor: analyzeAnchorSnapshot.owner_display_anchor || null,
           productRef: analyzeAnchorSnapshot.owner_product_ref || null,
           reasonCodes: analyzeAnchorSnapshot.owner_reason_codes || [],
@@ -60423,14 +60785,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
         return finalAnchorContext;
       };
-      const applyAnchorCandidateGuard = (candidate, source, { preferDisplay = false, ownerEligible = true, decisionSource = '' } = {}) => {
+      const applyAnchorCandidateGuard = (candidate, source, { preferDisplay = false, ownerEligible = undefined, decisionSource = '' } = {}) => {
         const candidateObj = candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null;
+        const stageName = resolveAnalyzeAnchorStage(source, decisionSource);
+        const effectiveOwnerEligible = ownerEligible === undefined ? isProductAnchorOwnerEligibleStage(stageName) : ownerEligible !== false;
         if (!candidateObj) {
           recordProductAnchorDecisionObservation(analyzeAnchorSpine, {
-            stage: resolveAnalyzeAnchorStage(source, decisionSource),
-            source: resolveAnalyzeAnchorStage(source, decisionSource),
+            stage: stageName,
+            source: stageName,
             state: 'miss',
-            ownerEligible,
+            ownerEligible: effectiveOwnerEligible,
             reasonCodes: [],
             confidence: 0,
             ...(decisionSource ? { meta: { decision_source: decisionSource } } : {}),
@@ -60462,9 +60826,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         appendProductAnchorTrustObservation(analyzeAnchorSpine, {
           trust,
-          stage: resolveAnalyzeAnchorStage(source, decisionSource),
-          source: resolveAnalyzeAnchorStage(source, decisionSource),
-          ownerEligible,
+          stage: stageName,
+          source: stageName,
+          ownerEligible: effectiveOwnerEligible,
           meta: decisionSource ? { decision_source: decisionSource } : null,
         });
         syncAnalyzeAnchorFromSpine();
@@ -60726,15 +61090,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             decisionSource: catalogFallback.decision_source || (catalogFallback.source === 'search' ? 'catalog_search_exact' : 'catalog_resolve'),
           });
         } else {
+          const catalogMissReason = String(catalogFallback?.reason || '').trim().toLowerCase();
+          const catalogMissStage =
+            catalogMissReason === 'external_seed_search_ambiguous'
+              ? 'external_seed_search_exact'
+              : catalogMissReason.startsWith('llm_external_match')
+                ? 'llm_external_match'
+                : catalogMissReason === 'catalog_search_ambiguous'
+                  ? 'catalog_search_exact'
+                  : 'catalog_resolve';
           recordProductAnchorDecisionObservation(analyzeAnchorSpine, {
-            stage: String(catalogFallback?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous'
-              ? 'catalog_search_exact'
-              : 'catalog_resolve',
-            source: String(catalogFallback?.reason || '').trim().toLowerCase() === 'catalog_search_ambiguous'
-              ? 'catalog_search_exact'
-              : 'catalog_resolve',
+            stage: catalogMissStage,
+            source: catalogMissStage,
             state: 'miss',
-            ownerEligible: true,
+            ownerEligible: isProductAnchorOwnerEligibleStage(catalogMissStage),
             reasonCodes: [String(catalogFallback?.reason || 'catalog_no_match')],
             confidence: 0,
           });
@@ -78048,6 +78417,7 @@ const __internal = {
   mapCatalogProductToAnchorProduct,
   inferProductAnchorInputMode,
   buildProductAnchorDecisionSpine,
+  restoreProductAnchorDecisionSpineFromSnapshot,
   recordProductAnchorDecisionObservation,
   appendProductAnchorTrustObservation,
   finalizeProductAnchorDecisionSpine,
@@ -78057,6 +78427,7 @@ const __internal = {
   extractProductAnchorSessionSnapshot,
   resolveLocalStableAliasProductForProductInput,
   evaluateAnchorTrustForProductIntel,
+  resolveOpenWorldExternalProductMatchForProductInput,
   normalizeRoutineInputWithPmShortcut,
   resolveCatalogProductForProductInput,
   extractRoutineProductCandidatesForDeepScan,
