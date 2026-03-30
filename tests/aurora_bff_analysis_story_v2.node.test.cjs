@@ -699,6 +699,92 @@ test('analysis_story_v2: conservative pass-quality medium photo context stays me
   assert.equal(evidence.low_confidence, false);
 });
 
+test('analysis_story_v2: analysis-summary target handoff keeps headline and assistant copy target-bound', async () => {
+  const internal = loadInternalWithFlags({
+    AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+    AURORA_ROUTINE_SOFT_GATE_DELAY_RECO: 'false',
+    AURORA_LLM_QA_MODE: 'off',
+  });
+
+  const out = await internal.applyAnalysisStoryAndRoutineSoftGate(
+    [
+      {
+        card_id: 'analysis_1',
+        type: 'analysis_summary',
+        payload: {
+          analysis_source: 'aurora_text',
+          low_confidence: true,
+          analysis: {
+            features: [
+              { observation: 'Texture looks uneven and still needs a narrow routine.' },
+            ],
+          },
+        },
+      },
+      {
+        card_id: 'plan_1',
+        type: 'ingredient_plan_v2',
+        payload: {
+          targets: [
+            {
+              ingredient_id: 'sunscreen_filters',
+              ingredient_name: 'UV filters',
+              priority_score_0_100: 76,
+              priority_level: 'high',
+              usage_guidance: ['Daily AM final step'],
+              products: {
+                competitors: [
+                  {
+                    product_id: 'ext_bbe1ff8884f06d874bbccbd8',
+                    merchant_id: 'external_seed',
+                    brand: 'the ordinary',
+                    name: 'UV Filters SPF 45 Serum',
+                    pdp_url: 'https://agent.pivota.cc/products/ext_bbe1ff8884f06d874bbccbd8?merchant_id=external_seed&entry=creator_agent',
+                  },
+                ],
+              },
+              external_fallback_used: true,
+            },
+            {
+              ingredient_id: 'panthenol',
+              ingredient_name: 'Panthenol (B5)',
+              priority_score_0_100: 67,
+              priority_level: 'medium',
+              usage_guidance: ['AM/PM soothing support'],
+              products: {
+                competitors: [],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    {
+      ctx: { request_id: 'analysis_target_story' },
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['texture', 'redness'],
+      },
+      language: 'EN',
+    },
+  );
+
+  const storyCard = out.find((card) => card && card.type === 'analysis_story_v2');
+  assert.ok(storyCard, 'Expected analysis_story_v2 card');
+  assert.match(String(storyCard.payload?.ui_card_v1?.headline || ''), /UV filters/i);
+  assert.match(
+    String((storyCard.payload?.ui_card_v1?.actions_now || [])[0] || ''),
+    /UV filters|broad-spectrum sunscreen/i,
+  );
+
+  const assistantText = internal.buildAssistantMessageFromStoryV2(storyCard.payload, { language: 'EN' });
+  assert.match(assistantText, /UV filters/i);
+  assert.doesNotMatch(assistantText, /Stabilize first/i);
+}
+);
+
 test('analysis_story_v2: photo-led ingredient plan is annotated with provenance and strict-match miss', async () => {
   const internal = loadInternalWithFlags({
     AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',

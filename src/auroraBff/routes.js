@@ -38045,10 +38045,123 @@ function buildPhotoStoryContext({ analysisSummaryPayload, photoModulesCard, lang
   };
 }
 
+function buildAnalysisStoryAnalysisTargetUiHints(recoContext, { language, confidenceLevel } = {}) {
+  const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  if (!normalizedContext) return null;
+  const contextOrigin = String(normalizedContext.context_origin || '').trim().toLowerCase();
+  if (contextOrigin !== 'analysis_summary') return null;
+  const isCn = String(language || '').toUpperCase() === 'CN';
+  const rankedTargets = normalizeRecoContextRankedTargets(
+    Array.isArray(normalizedContext.ranked_targets) ? normalizedContext.ranked_targets : [],
+  );
+  const primaryTargetId = pickFirstTrimmed(
+    normalizedContext.primary_target_id,
+    rankedTargets.find((item) => String(item && item.target_role || '').trim().toLowerCase() === 'primary')?.target_id,
+    rankedTargets[0] && rankedTargets[0].target_id,
+  );
+  const primaryTarget =
+    rankedTargets.find((item) => pickFirstTrimmed(item && item.target_id) === primaryTargetId)
+    || rankedTargets[0]
+    || null;
+  if (!primaryTarget) return null;
+  const secondaryTarget =
+    rankedTargets.find((item) => {
+      if (!isPlainObject(item)) return false;
+      return pickFirstTrimmed(item.target_id) && pickFirstTrimmed(item.target_id) !== primaryTargetId;
+    })
+    || null;
+  const ingredientLabel = pickFirstTrimmed(
+    primaryTarget.ingredient_query,
+    primaryTarget.ingredient_name,
+    primaryTarget.ingredient_id,
+  );
+  const resolvedTargetStep = pickFirstTrimmed(
+    primaryTarget.resolved_target_step,
+    normalizedContext.resolved_target_step,
+  );
+  if (!ingredientLabel || !resolvedTargetStep) return null;
+  const stepLabel = humanizeRecoProductType(resolvedTargetStep, isCn ? 'CN' : 'EN');
+  const secondaryIngredientLabel = pickFirstTrimmed(
+    secondaryTarget && secondaryTarget.ingredient_query,
+    secondaryTarget && secondaryTarget.ingredient_name,
+    secondaryTarget && secondaryTarget.ingredient_id,
+  );
+  const lowConfidence = String(confidenceLevel || '').trim().toLowerCase() === 'low';
+  return {
+    headline: isCn
+      ? (
+        lowConfidence
+          ? `这一轮先围绕以${ingredientLabel}为核心的${stepLabel}做保守调整`
+          : `这一轮先把重点放在以${ingredientLabel}为核心的${stepLabel}上`
+      )
+      : (
+        lowConfidence
+          ? `Keep this pass centered on ${ingredientLabel} in a ${stepLabel}, while the read stays conservative`
+          : `Keep this pass centered on ${ingredientLabel} in a ${stepLabel}`
+      ),
+    key_points: asStringArray(
+      [
+        isCn
+          ? (
+            lowConfidence
+              ? `当前信号仍偏保守，所以先围绕${ingredientLabel}收窄方案，不要同时铺开多个新活性。`
+              : `当前最值得先做的调整，是把主步骤收束到以${ingredientLabel}为核心的${stepLabel}上，而不是一次铺开多个方向。`
+          )
+          : (
+            lowConfidence
+              ? `Signals are still conservative, so keep the plan narrow around ${ingredientLabel} before widening into multiple new actives.`
+              : `The clearest next move is ${ingredientLabel} in a ${stepLabel}, instead of widening into several new actives at once.`
+          ),
+        secondaryIngredientLabel
+          ? (
+            isCn
+              ? `把${secondaryIngredientLabel}留作次方向，等主步骤稳定后再考虑。`
+              : `Keep ${secondaryIngredientLabel} as a secondary support direction only after the primary step settles.`
+          )
+          : '',
+      ],
+      2,
+    ),
+    actions_now: asStringArray(
+      [
+        isCn
+          ? (
+            resolvedTargetStep === 'sunscreen'
+              ? `先固定每天早上使用以${ingredientLabel}为核心的${stepLabel}。`
+              : `先从一个以${ingredientLabel}为核心的${stepLabel}开始。`
+          )
+          : (
+            resolvedTargetStep === 'sunscreen'
+              ? `Use one ${stepLabel} built around ${ingredientLabel} every morning.`
+              : `Start with one ${stepLabel} built around ${ingredientLabel}.`
+          ),
+        secondaryIngredientLabel
+          ? (
+            isCn
+              ? `把${secondaryIngredientLabel}留作次方向，等主步骤稳定后再补。`
+              : `Add ${secondaryIngredientLabel} only after the primary step feels stable.`
+          )
+          : '',
+      ],
+      2,
+    ),
+  };
+}
+
 function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
   const isCn = String(language || '').toUpperCase() === 'CN';
   const row = isPlainObject(story) ? story : {};
   const photoContext = isPlainObject(evidence && evidence.photo_context) ? evidence.photo_context : {};
+  const analysisTargetUi = buildAnalysisStoryAnalysisTargetUiHints(
+    isPlainObject(evidence && evidence.analysis_reco_context) ? evidence.analysis_reco_context : null,
+    {
+      language,
+      confidenceLevel: pickFirstString(
+        row && row.confidence_overall && row.confidence_overall.level,
+        evidence && evidence.low_confidence ? 'low' : 'medium',
+      ),
+    },
+  );
   const photoUsed = photoContext.used_photos === true;
   const primaryFocus = isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null;
   const lowConfidencePrimaryFocus = String(primaryFocus && primaryFocus.confidence_bucket || '').trim().toLowerCase() === 'low';
@@ -38112,7 +38225,16 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
         ],
         3,
       )
-    : findingTitles.length ? findingTitles : fallbackEvidence;
+    : analysisTargetUi
+      ? asStringArray(
+        [
+          ...analysisTargetUi.key_points,
+          ...findingTitles,
+          ...fallbackEvidence,
+        ],
+        3,
+      )
+      : findingTitles.length ? findingTitles : fallbackEvidence;
   const amActions = asStringArray(
     Array.isArray(row.am_plan) ? row.am_plan.map((step) => pickFirstString(step && step.step)) : [],
     2,
@@ -38166,10 +38288,12 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
           ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
           ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
         ]
-      : [
-          ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
-          ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
-        ],
+      : analysisTargetUi
+        ? analysisTargetUi.actions_now
+        : [
+            ...amActions.map((step) => (isCn ? `早上：${step}` : `AM: ${step}`)),
+            ...pmActions.map((step) => (isCn ? `晚上：${step}` : `PM: ${step}`)),
+          ],
     3,
   );
   const avoidNow = asStringArray(
@@ -38197,6 +38321,7 @@ function buildAnalysisStoryUiCardV1({ story, evidence, language } = {}) {
       ? '照片分析未能完成，请在自然光下重新拍照以获取准确结果。'
       : 'Photo analysis could not be completed. Please retake photos in natural daylight for accurate results.')
     : (pickFirstString(
+        !photoUsed && analysisTargetUi ? analysisTargetUi.headline : '',
         photoUsed ? photoContext.headline_hint : '',
         Array.isArray(row.target_state) ? row.target_state[0] : '',
         photoEvidence[0],
@@ -38983,6 +39108,16 @@ function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profi
   const payload = isPlainObject(analysisSummaryPayload) ? analysisSummaryPayload : {};
   const analysis = isPlainObject(payload.analysis) ? payload.analysis : {};
   const features = Array.isArray(analysis.features) ? analysis.features : [];
+  const analysisRecoContext = normalizeIngredientRecoContextValue(
+    deriveIngredientPlanRecoContext(ingredientPlanPayload, {
+      profileSummary: profile,
+      artifactId: pickFirstTrimmed(payload.artifact_id),
+      contextOrigin: photoModulesCard && isPlainObject(photoModulesCard.payload)
+        ? 'photo_modules_v1'
+        : 'analysis_summary',
+      photoModulesCard,
+    }),
+  );
   const photoContext = reconcilePhotoContextWithIngredientPlan({
     photoContext: buildPhotoStoryContext({ analysisSummaryPayload: payload, photoModulesCard, language }),
     ingredientPlanPayload,
@@ -39019,6 +39154,7 @@ function buildAnalysisEvidence({ analysisSummaryPayload, photoModulesCard, profi
     analysis_source: pickFirstString(payload.analysis_source),
     low_confidence: payload.low_confidence === true || photoContextConfidenceLevel === 'low',
     photo_context: photoContext,
+    ...(analysisRecoContext ? { analysis_reco_context: analysisRecoContext } : {}),
     primary_focus: isPlainObject(photoContext.primary_focus) ? photoContext.primary_focus : null,
     observed_signals: Array.isArray(photoContext.observed_signals) ? photoContext.observed_signals : [],
     quality_caveats: Array.isArray(photoContext.quality_caveats) ? photoContext.quality_caveats : [],
