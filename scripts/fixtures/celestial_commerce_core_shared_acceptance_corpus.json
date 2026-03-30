@@ -1522,6 +1522,39 @@
       }
     },
     {
+      "id": "conversation_progress_resume_date_selection_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "约会",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "zh scenario reply preserves explicit locale while continuing the current orchestration thread",
+          "request": {
+            "message": "约会",
+            "messages": [
+              {
+                "role": "user",
+                "content": "帮我买一款 serum"
+              },
+              {
+                "role": "assistant",
+                "content": "你更偏哪种场景？"
+              }
+            ],
+            "headers": {
+              "X-Lang": "CN"
+            }
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
       "id": "followup_refinement_lightweight",
       "family": "conversation_progress_resume",
       "query": "更轻薄一点",
@@ -1541,6 +1574,39 @@
                 "content": "你更在意修护还是保湿？"
               }
             ]
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "followup_refinement_lightweight_locale_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "follow-up refinement preserves explicit en locale while staying in the same orchestration thread",
+          "request": {
+            "message": "Something lighter",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Recommend a repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "Do you care more about repair or hydration?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN"
+            }
           },
           "observability": {
             "must_equal_paths": {

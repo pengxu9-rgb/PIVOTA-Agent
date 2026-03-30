@@ -650,8 +650,10 @@ describe('Commerce shared acceptance corpus', () => {
         'prompt_clarify_date_makeup_locale_zh',
         'prompt_clarify_date_night_en',
         'conversation_progress_resume_date_selection',
+        'conversation_progress_resume_date_selection_locale_zh',
         'conversation_progress_resume_date_night_en',
         'followup_refinement_lightweight',
+        'followup_refinement_lightweight_locale_en',
         'followup_refinement_lightweight_locale_zh',
       ]),
     );
@@ -661,6 +663,22 @@ describe('Commerce shared acceptance corpus', () => {
       }),
     );
     expect(englishResume?.request?.headers).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'EN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'conversation_progress_resume_date_selection_locale_zh')
+        ?.request?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'CN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'followup_refinement_lightweight_locale_en')?.request
+        ?.headers,
+    ).toEqual(
       expect.objectContaining({
         'X-Lang': 'EN',
       }),
