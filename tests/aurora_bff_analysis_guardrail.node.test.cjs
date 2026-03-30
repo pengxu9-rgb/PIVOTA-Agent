@@ -1295,6 +1295,74 @@ test('buildPurchasableFallbackCandidates retries external seed only after intern
   }
 });
 
+test('buildPurchasableFallbackCandidates demotes eye-specific external-seed products for generic moisturizer recovery', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.buildPurchasableFallbackCandidates({
+      query: 'moisturizer barrier repair ceramide',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      searchFn: async ({ allowExternalSeed }) => {
+        if (allowExternalSeed === true) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'eye_ext_1',
+                merchant_id: 'external_seed',
+                name: 'Barrier Repair Eye Cream',
+                brand: 'https://byoma.com/products/barrier-repair-eye-cream',
+                category: 'external',
+                pdp_url: 'https://agent.pivota.cc/products/eye_ext_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/eye_ext_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+              {
+                product_id: 'balm_ext_1',
+                merchant_id: 'external_seed',
+                name: 'Ultra Repair Rescue Barrier Balm',
+                brand: 'First Aid Beauty',
+                category: 'external',
+                pdp_url: 'https://agent.pivota.cc/products/balm_ext_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/balm_ext_1?merchant_id=external_seed',
+                source: 'external_seed',
+              },
+            ],
+            reason: null,
+          };
+        }
+        return { ok: true, products: [], reason: 'empty' };
+      },
+    });
+
+    assert.equal(out.selected_source, 'external_seed');
+    assert.deepEqual(
+      out.products.map((row) => row.name),
+      ['Ultra Repair Rescue Barrier Balm', 'Barrier Repair Eye Cream'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: normalizeRecoCatalogProduct sanitizes url-like external-seed brand fields', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.normalizeRecoCatalogProduct({
+      product_id: 'ext_brand_url_1',
+      merchant_id: 'external_seed',
+      name: 'Barrier Repair Eye Cream',
+      display_name: 'Barrier Repair Eye Cream',
+      brand: 'https://byoma.com/products/barrier-repair-eye-cream',
+      category: 'external',
+      source: 'external_seed',
+    });
+    assert.equal(out?.brand, 'Byoma');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('recoverPurchasableProductsFromQueries keeps one best bundle-like product when no better single-product candidate exists', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

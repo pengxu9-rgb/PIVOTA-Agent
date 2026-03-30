@@ -3217,6 +3217,23 @@ function extractCandidateSocialReference(base) {
 function normalizeRecoCatalogProduct(raw) {
   const base = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 
+  const sanitizeRecoCatalogBrand = (value) => {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+    if (!PRODUCT_INTEL_HTTP_URL_RE.test(trimmed)) return trimmed;
+    try {
+      const hostname = new URL(trimmed).hostname.replace(/^www\./i, '').trim().toLowerCase();
+      const firstLabel = String(hostname.split('.').find(Boolean) || '').trim().toLowerCase();
+      if (/^[a-z][a-z-]{1,11}$/.test(firstLabel)) {
+        return firstLabel
+          .split('-')
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ');
+      }
+    } catch {}
+    return '';
+  };
+
   const productId =
     (typeof base.product_id === 'string' && base.product_id) ||
     (typeof base.productId === 'string' && base.productId) ||
@@ -3232,10 +3249,12 @@ function normalizeRecoCatalogProduct(raw) {
     '';
 
   const brand =
-    (typeof base.brand === 'string' && base.brand) ||
-    (typeof base.brand_name === 'string' && base.brand_name) ||
-    (typeof base.brandName === 'string' && base.brandName) ||
-    '';
+    sanitizeRecoCatalogBrand(
+      (typeof base.brand === 'string' && base.brand) ||
+      (typeof base.brand_name === 'string' && base.brand_name) ||
+      (typeof base.brandName === 'string' && base.brandName) ||
+      '',
+    );
 
   const name =
     (typeof base.name === 'string' && base.name) ||
@@ -35311,6 +35330,32 @@ function isBundleLikePurchasableRecoveryCandidate(candidate) {
   return PURCHASE_RECOVERY_BUNDLE_LIKE_RE.test(buildPurchasableRecoveryCandidateText(candidate));
 }
 
+function isEyeSpecificPurchasableRecoveryCandidate(candidate) {
+  return /\b(under[\s_-]*eye|eye[\s_-]*(cream|serum|gel|balm|treatment)?)\b|眼霜|眼部/.test(
+    buildPurchasableRecoveryCandidateText(candidate),
+  );
+}
+
+function targetRequestsEyeAreaPurchasableRecovery(query, target) {
+  const haystack = [
+    String(query || '').trim(),
+    pickFirstTrimmed(
+      target && target.target_id,
+      target && target.module_id,
+      target && target.issue_type,
+      target && target.ingredient_query,
+      target && target.ingredient_name,
+      target && target.goal,
+      target && target.focus,
+      target && target.text,
+    ),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return /\b(under[\s_-]*eye|eye[\s_-]*(cream|serum|gel|balm|treatment)?)\b|眼霜|眼部/.test(haystack);
+}
+
 function computePurchasableRecoveryQueryOverlap(candidate, queryTokens) {
   const tokens = Array.isArray(queryTokens) ? queryTokens : [];
   if (!tokens.length) return 0;
@@ -35331,9 +35376,11 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
   const normalizedPrecisionMode = String(precisionMode || 'query_overlap').trim().toLowerCase();
   const targetId = resolveIngredientRecoveryTargetId(target);
   const queryEvidence = buildIngredientRecoveryQueryEvidence(query, target);
+  const eyeAreaTarget = targetRequestsEyeAreaPurchasableRecovery(query, target);
   const scored = rows.map((row, index) => {
     const text = buildPurchasableRecoveryCandidateText(row);
     const bundleLike = isBundleLikePurchasableRecoveryCandidate(row);
+    const eyeSpecific = !eyeAreaTarget && isEyeSpecificPurchasableRecoveryCandidate(row);
     const overlap = computePurchasableRecoveryQueryOverlap(row, queryTokens);
     const focusedSingle =
       !bundleLike &&
@@ -35342,6 +35389,7 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
       row,
       index,
       bundleLike,
+      eyeSpecific,
       overlap,
       focusedSingle,
       evidence: buildIngredientRecoveryEvidence(row, target),
@@ -35395,11 +35443,12 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
         if (aExact !== bExact) return bExact - aExact;
         const aAlias = Number(a.evidence?.alias_count || 0);
         const bAlias = Number(b.evidence?.alias_count || 0);
-        if (aAlias !== bAlias) return bAlias - aAlias;
-        const aFamily = Number(a.evidence?.family_count || 0);
-        const bFamily = Number(b.evidence?.family_count || 0);
-        if (aFamily !== bFamily) return bFamily - aFamily;
-      }
+      if (aAlias !== bAlias) return bAlias - aAlias;
+      const aFamily = Number(a.evidence?.family_count || 0);
+      const bFamily = Number(b.evidence?.family_count || 0);
+      if (aFamily !== bFamily) return bFamily - aFamily;
+    }
+      if (a.eyeSpecific !== b.eyeSpecific) return a.eyeSpecific ? 1 : -1;
       if (a.overlap !== b.overlap) return b.overlap - a.overlap;
       if (a.focusedSingle !== b.focusedSingle) return a.focusedSingle ? -1 : 1;
       if (a.bundleLike !== b.bundleLike) return a.bundleLike ? 1 : -1;
