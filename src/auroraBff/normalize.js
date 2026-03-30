@@ -729,8 +729,24 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
 
   const assessment = asPlainObject(p.assessment);
   const anchor = asPlainObject(assessment?.anchor_product ?? assessment?.anchorProduct);
+  const anchorTrust = asPlainObject(asPlainObject(p.provenance)?.anchor_trust ?? asPlainObject(p.provenance)?.anchorTrust);
+  const anchorSoftBlockTokens = uniqueStrings(
+    [
+      ...asStringArray(p.missing_info),
+      ...asStringArray(p.user_facing_gaps),
+      ...asStringArray(p.internal_debug_codes),
+      ...asStringArray(p.missing_info_internal),
+      ...asStringArray(asPlainObject(p.evidence)?.missing_info),
+      ...asStringArray(anchorTrust?.reasons),
+    ].filter((token) => {
+      const normalized = String(token || '').trim().toLowerCase();
+      return normalized.startsWith('anchor_soft_blocked_') || normalized.includes('_anchor_soft_blocked_');
+    }),
+  );
+  const anchorSoftBlocked = anchorSoftBlockTokens.length > 0;
   const hasAnchor =
     !!anchor &&
+    !anchorSoftBlocked &&
     !!String(
       anchor.product_id ||
       anchor.sku_id ||
@@ -755,6 +771,24 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
       ),
     };
   }
+  if (anchorSoftBlocked) {
+    const provenanceObj = asPlainObject(next.provenance) || {};
+    const nextAnchorTrust = asPlainObject(provenanceObj.anchor_trust ?? provenanceObj.anchorTrust);
+    if (nextAnchorTrust) {
+      next.provenance = {
+        ...provenanceObj,
+        anchor_trust: {
+          ...nextAnchorTrust,
+          level: 'soft_blocked',
+          usable_for_anchor_id: false,
+          reasons: uniqueStrings([
+            ...asStringArray(nextAnchorTrust.reasons),
+            ...anchorSoftBlockTokens,
+          ]),
+        },
+      };
+    }
+  }
   if (hasAnchor) {
     next = {
       ...next,
@@ -774,7 +808,7 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
 
   const currentAssessment = asPlainObject(next.assessment);
   if (!currentAssessment) {
-    const fallbackAnchor = hasAnchor ? anchor : asPlainObject(next.product);
+    const fallbackAnchor = hasAnchor ? anchor : (anchorSoftBlocked ? null : asPlainObject(next.product));
     next.assessment = {
       verdict: String(lang).toUpperCase() === 'CN' ? '未知' : 'Unknown',
       reasons: buildDiagnosticUnknownReasons(next, { lang, fieldMissing }),
@@ -789,6 +823,10 @@ function reconcileProductAnalysisConsistency(payload, { lang = 'EN', fieldMissin
       ...currentAssessment,
       ...(normalizedHowToUse ? { how_to_use: normalizedHowToUse } : {}),
     };
+    if (anchorSoftBlocked) {
+      delete normalizedAssessment.anchor_product;
+      delete normalizedAssessment.anchorProduct;
+    }
     const verdictToken = String(normalizedAssessment.verdict || '').trim().toLowerCase();
     const isUnknownVerdict = verdictToken === 'unknown' || verdictToken === '未知';
     if (isUnknownVerdict) {

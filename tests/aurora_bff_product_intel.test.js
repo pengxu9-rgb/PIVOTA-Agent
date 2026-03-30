@@ -3795,6 +3795,55 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out?.evidence?.missing_info || []).not.toContain('anchor_product_missing');
   });
 
+  test('reconcileProductAnalysisConsistency strips soft-blocked ambiguous anchor_product from product analysis payloads', () => {
+    const { reconcileProductAnalysisConsistency } = require('../src/auroraBff/normalize');
+    const out = reconcileProductAnalysisConsistency({
+      assessment: {
+        verdict: 'Unknown',
+        summary: 'Fit signal: improve hydration and moisture retention.',
+        anchor_product: {
+          product_id: '9886499864904',
+          name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          category: 'product',
+        },
+      },
+      evidence: {
+        science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+        social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+        expert_notes: [],
+        missing_info: [],
+      },
+      missing_info: [
+        'analysis_limited',
+        'anchor_soft_blocked_ambiguous',
+        'anchor_filtered_client_payload_anchor_soft_blocked_ambiguous',
+      ],
+      provenance: {
+        anchor_trust: {
+          level: 'trusted',
+          usable_for_anchor_id: true,
+          reasons: ['anchor_soft_blocked_ambiguous'],
+          source: 'catalog_fallback',
+          candidate_quality: 'strong',
+          url_consistency: 0,
+        },
+      },
+    }, { lang: 'EN' });
+
+    expect(out?.assessment?.anchor_product).toBeUndefined();
+    expect(out?.assessment?.anchorProduct).toBeUndefined();
+    expect(out?.provenance?.anchor_trust).toEqual(
+      expect.objectContaining({
+        level: 'soft_blocked',
+        usable_for_anchor_id: false,
+      }),
+    );
+    expect(out?.provenance?.anchor_trust?.reasons || []).toContain('anchor_soft_blocked_ambiguous');
+    expect(out?.missing_info || []).toContain('anchor_soft_blocked_ambiguous');
+  });
+
   test('/v1/product/parse soft-blocks non-skincare anchor candidates from URL input', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'false';
