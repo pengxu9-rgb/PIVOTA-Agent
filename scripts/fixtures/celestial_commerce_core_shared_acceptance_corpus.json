@@ -379,6 +379,219 @@
       }
     },
     {
+      "id": "shopping_agent_strict_vitamin_c_serum",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "shopping_agent",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Banana Bright 15% Vitamin C Dark Spot Serum",
+            "Vitamin-C Serum",
+            "Truth Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "shopping_agent vitamin c strict lookup stays on the strict contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Banana Bright 15% Vitamin C Dark Spot Serum",
+              "Vitamin-C Serum",
+              "Truth Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_strict_vitamin_c_serum",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Banana Bright 15% Vitamin C Dark Spot Serum",
+            "Vitamin-C Serum",
+            "Truth Serum"
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_locale_en",
+      "family": "strict_ingredient",
+      "query": "vitamin c serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public vitamin c strict lookup preserves explicit locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Banana Bright 15% Vitamin C Dark Spot Serum",
+              "Vitamin-C Serum",
+              "Truth Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_budget_eur",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under €30",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_have_metadata": [
+            "budget_fx_applied",
+            "budget_fx_rate",
+            "budget_fx_source"
+          ],
+          "must_equal_metadata": {
+            "budget_fx_applied": true,
+            "budget_fx_candidate_currency": "USD",
+            "budget_fx_unresolved": false
+          },
+          "must_return_one_of_titles": [
+            "Vitamin-C Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup applies fx while staying on the strict contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under €30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.budget_fx_applied": true,
+              "metadata.budget_fx_candidate_currency": "USD",
+              "metadata.budget_fx_unresolved": false
+            }
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.budget_fx_applied",
+              "metadata.budget_fx_rate",
+              "metadata.budget_fx_source"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_budget_usd",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under $30",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Vitamin-C Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup stays on the strict contract without fallback adoption",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under $30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_strict_vitamin_c_serum_budget_usd_locale_en",
+      "family": "strict_ingredient_budget",
+      "query": "vitamin c serum under $30",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public vitamin c budget strict lookup preserves explicit locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "vitamin c serum under $30",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Vitamin-C Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "shopping_agent_exact_ipsa_time_reset_aqua",
       "family": "exact_product_lookup",
       "query": "IPSA Time Reset Aqua",
@@ -413,6 +626,119 @@
       }
     },
     {
+      "id": "search_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public exact IPSA lookup stays on the lookup-grade cache contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_exact_ipsa_time_reset_aqua_locale_zh",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact IPSA lookup keeps the cache-grade contract under zh locale headers",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_exact_ipsa_time_reset_aqua_locale_en",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact IPSA lookup keeps the cache-grade contract under explicit en locale headers",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA Time Reset Aqua",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_exact_ipsa_time_reset_aqua",
+      "family": "exact_product_lookup",
+      "query": "IPSA Time Reset Aqua",
+      "source": "aurora-bff",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "IPSA Time Reset Aqua"
+          ]
+        }
+      }
+    },
+    {
       "id": "shopping_agent_merchant_query_ipsa_products",
       "family": "merchant_query",
       "query": "IPSA products",
@@ -426,6 +752,39 @@
       }
     },
     {
+      "id": "shopping_agent_merchant_query_ipsa_products_locale_en",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "shopping_agent",
+      "targets": {
+        "staging_matrix": {
+          "title": "shopping_agent merchant query preserves explicit en locale while staying on the cache-grade contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "shopping_agent",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
       "id": "aurora_bff_merchant_query_ipsa_products",
       "family": "merchant_query",
       "query": "IPSA products",
@@ -435,6 +794,106 @@
           "must_return_one_of_titles": [
             "IPSA Time Reset Aqua"
           ]
+        }
+      }
+    },
+    {
+      "id": "aurora_bff_merchant_query_ipsa_products_locale_zh",
+      "family": "merchant_query",
+      "query": "IPSA products",
+      "source": "aurora-bff",
+      "targets": {
+        "staging_matrix": {
+          "title": "aurora-bff merchant query preserves explicit zh locale while staying on the cache-grade contract",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "IPSA products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "aurora-bff",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "IPSA Time Reset Aqua"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_merchant_query_winona_products",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "targets": {
+        "prod_gate": {
+          "must_return_one_of_titles": [
+            "Winona Soothing Repair Serum"
+          ]
+        },
+        "staging_matrix": {
+          "title": "public merchant query stays on the cross-merchant cache contract",
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Winona products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_merchant_query_winona_products_locale_en",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public merchant query keeps the cache-grade contract under explicit en locale headers",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Winona products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum"
+            ]
+          }
         }
       }
     },
@@ -462,6 +921,72 @@
             },
             "metadata": {
               "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_have_reason_codes": [
+              "AMBIGUITY_CLARIFY"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_merchant_query_winona_products_locale_zh",
+      "family": "merchant_query",
+      "query": "Winona products",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public merchant query keeps the cache-grade contract under explicit zh locale headers",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Winona products",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_clarify_date_makeup_locale_zh",
+      "family": "scenario_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public clarify-required discovery preserves explicit zh locale while resolving to clarify",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "有什么适合今晚约会的",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
             }
           },
           "correctness": {
@@ -554,6 +1079,78 @@
       }
     },
     {
+      "id": "search_public_serum_default_locale_zh",
+      "family": "broad_discovery",
+      "query": "serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "id": "search_public_serum_default_locale_zh",
+          "title": "Public search broad discovery preserves explicit zh locale while staying on the stable search contract",
+          "family": "broad_discovery",
+          "blocking": true,
+          "rail_mode": "authoritative_commerce",
+          "require_primary_path": true,
+          "allow_strict_empty": false,
+          "allowed_query_sources": [
+            "cache_cross_merchant_search"
+          ],
+          "must_not_match_fallback_sources": [
+            "agent_products_error_fallback",
+            "agent_products_resolver_fallback",
+            "agent_products_resolver_ref_fallback"
+          ],
+          "endpoint": "/agent/shop/v1/invoke",
+          "requires_auth": true,
+          "auth_profile": "default",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
+            }
+          },
+          "correctness": {
+            "mode": "auto",
+            "expect_http_status": 200,
+            "allow_zero_results": false,
+            "must_return_one_of_titles": [
+              "Winona Soothing Repair Serum",
+              "The Ordinary Niacinamide 10% + Zinc 1%"
+            ]
+          },
+          "ownership": {
+            "must_equal_paths": {
+              "metadata.query_source": "cache_cross_merchant_search",
+              "metadata.cache_stage_selected_source": "internal_cache",
+              "metadata.source_breakdown.external_seed_count": 0
+            },
+            "must_be_positive_paths": [
+              "metadata.source_breakdown.internal_count"
+            ]
+          },
+          "observability": {
+            "must_have_paths": [
+              "metadata.service_version.commit",
+              "metadata.search_trace.final_decision",
+              "metadata.route_health"
+            ]
+          },
+          "kind": "semantic"
+        }
+      }
+    },
+    {
       "id": "shopping_agent_strict_niacinamide",
       "family": "exactish_lookup",
       "query": "niacinamide serum",
@@ -579,6 +1176,76 @@
             },
             "metadata": {
               "source": "shopping_agent"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "The Ordinary Niacinamide 10% + Zinc 1%",
+              "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+              "Watch Ya Tone Niacinamide Dark Spot Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_exactish_niacinamide_locale_en",
+      "family": "exactish_lookup",
+      "query": "niacinamide serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact-ish niacinamide lookup preserves explicit locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "EN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "niacinamide serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "en-US"
+            }
+          },
+          "correctness": {
+            "must_return_one_of_titles": [
+              "The Ordinary Niacinamide 10% + Zinc 1%",
+              "Watch Ya Tone Niacinamide Dark Spot Serum Refill",
+              "Watch Ya Tone Niacinamide Dark Spot Serum"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search_exactish_niacinamide_locale_zh",
+      "family": "exactish_lookup",
+      "query": "niacinamide serum",
+      "source": "search",
+      "targets": {
+        "staging_matrix": {
+          "title": "public exact-ish niacinamide lookup preserves explicit zh locale while staying on the strict contract",
+          "headers": {
+            "X-Lang": "CN"
+          },
+          "request": {
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "niacinamide serum",
+                "limit": 10,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "source": "search",
+              "locale": "zh-CN"
             }
           },
           "correctness": {
@@ -824,6 +1491,40 @@
       }
     },
     {
+      "id": "prompt_clarify_date_makeup_locale_zh",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "zh shopping request preserves explicit locale while staying a fresh orchestration prompt",
+          "request": {
+            "message": "有什么适合今晚约会的",
+            "headers": {
+              "X-Lang": "CN"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "prompt_clarify_date_night_en",
+      "family": "prompt_clarify",
+      "query": "What should I get for date night?",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "english shopping request is tagged as a fresh orchestration prompt",
+          "request": {
+            "message": "What should I get for date night?",
+            "headers": {
+              "X-Lang": "EN"
+            }
+          }
+        }
+      }
+    },
+    {
       "id": "conversation_progress_resume_date_selection",
       "family": "conversation_progress_resume",
       "query": "约会",
@@ -854,6 +1555,72 @@
       }
     },
     {
+      "id": "conversation_progress_resume_date_night_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "english follow-up refinement resumes the current orchestration thread",
+          "request": {
+            "message": "Something lighter",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Help me buy a repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "Do you care more about repair or hydration?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN"
+            }
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "conversation_progress_resume_date_selection_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "约会",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "zh scenario reply preserves explicit locale while continuing the current orchestration thread",
+          "request": {
+            "message": "约会",
+            "messages": [
+              {
+                "role": "user",
+                "content": "帮我买一款 serum"
+              },
+              {
+                "role": "assistant",
+                "content": "你更偏哪种场景？"
+              }
+            ],
+            "headers": {
+              "X-Lang": "CN"
+            }
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
       "id": "followup_refinement_lightweight",
       "family": "conversation_progress_resume",
       "query": "更轻薄一点",
@@ -873,6 +1640,72 @@
                 "content": "你更在意修护还是保湿？"
               }
             ]
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "followup_refinement_lightweight_locale_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "follow-up refinement preserves explicit en locale while staying in the same orchestration thread",
+          "request": {
+            "message": "Something lighter",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Recommend a repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "Do you care more about repair or hydration?"
+              }
+            ],
+            "headers": {
+              "X-Lang": "EN"
+            }
+          },
+          "observability": {
+            "must_equal_paths": {
+              "meta.prompt_intent": "follow_up_refinement",
+              "meta.conversation_progress": "follow_up"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "followup_refinement_lightweight_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "更轻薄一点",
+      "source": "aurora-bff",
+      "targets": {
+        "prompt_live_smoke": {
+          "title": "follow-up refinement preserves explicit zh locale while staying in the same orchestration thread",
+          "request": {
+            "message": "更轻薄一点",
+            "messages": [
+              {
+                "role": "user",
+                "content": "推荐一个 repair serum"
+              },
+              {
+                "role": "assistant",
+                "content": "你更在意修护还是保湿？"
+              }
+            ],
+            "headers": {
+              "X-Lang": "CN"
+            }
           },
           "observability": {
             "must_equal_paths": {

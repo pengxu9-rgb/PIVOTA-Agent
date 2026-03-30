@@ -150,6 +150,41 @@
   {
     "require_primary_path": true,
     "allow_strict_empty": false,
+    "expected_contract_path": "shop_invoke_strict",
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "service_version.commit",
+      "contract_bridge.resolved_contract",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "matched_ingredient_ids.0",
+      "route_health.fallback_triggered",
+      "search_decision.decision_locked",
+      "budget_fx_applied",
+      "budget_fx_rate",
+      "budget_fx_source"
+    ],
+    "must_equal_metadata": {
+      "contract_bridge.resolved_contract": "shop_invoke_strict",
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "multi_constraint",
+      "route_health.fallback_triggered": false,
+      "search_decision.decision_locked": true,
+      "budget_fx_applied": true,
+      "budget_fx_candidate_currency": "USD",
+      "budget_fx_unresolved": false
+    },
+    "id": "search_strict_vitamin_c_serum_budget_eur",
+    "family": "strict_ingredient_budget",
+    "query": "vitamin c serum under €30",
+    "source": "search",
+    "must_return_one_of_titles": [
+      "Vitamin-C Serum"
+    ]
+  },
+  {
+    "require_primary_path": true,
+    "allow_strict_empty": false,
     "allowed_query_sources": [
       "cache_cross_merchant_search"
     ],

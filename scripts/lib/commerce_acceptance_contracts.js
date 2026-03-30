@@ -72,6 +72,27 @@ function buildProdGateFamilyDefaults(family) {
           ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
         },
       };
+    case 'strict_ingredient_budget':
+      return {
+        require_primary_path: true,
+        allow_strict_empty: false,
+        expected_contract_path: 'shop_invoke_strict',
+        allow_zero_results: false,
+        must_have_metadata: [
+          'service_version.commit',
+          'contract_bridge.resolved_contract',
+          'strict_constraint_query',
+          'strict_constraint_reason',
+          'matched_ingredient_ids.0',
+          ...buildPrimaryReliabilityProdDefaults().must_have_metadata,
+        ],
+        must_equal_metadata: {
+          'contract_bridge.resolved_contract': 'shop_invoke_strict',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'multi_constraint',
+          ...buildPrimaryReliabilityProdDefaults().must_equal_metadata,
+        },
+      };
     case 'merchant_query':
       return {
         require_primary_path: true,
@@ -228,6 +249,38 @@ function buildStagingSemanticFamilyDefaults(family) {
             'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
             'metadata.strict_constraint_query': true,
             'metadata.strict_constraint_reason': 'ingredient',
+            ...buildPrimaryReliabilityStagingDefaults().ownership.must_equal_paths,
+          },
+          must_have_paths: ['metadata.matched_ingredient_ids.0'],
+        },
+        observability: {
+          must_have_paths: [
+            'metadata.service_version.commit',
+            'metadata.search_trace.final_decision',
+            ...buildPrimaryReliabilityStagingDefaults().observability.must_have_paths,
+          ],
+        },
+        kind: 'semantic',
+      };
+    case 'strict_ingredient_budget':
+      return {
+        blocking: true,
+        rail_mode: 'authoritative_commerce',
+        require_primary_path: true,
+        allow_strict_empty: false,
+        endpoint: '/agent/shop/v1/invoke',
+        requires_auth: true,
+        auth_profile: 'default',
+        correctness: {
+          mode: 'auto',
+          expect_http_status: 200,
+          allow_zero_results: false,
+        },
+        ownership: {
+          must_equal_paths: {
+            'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
+            'metadata.strict_constraint_query': true,
+            'metadata.strict_constraint_reason': 'multi_constraint',
             ...buildPrimaryReliabilityStagingDefaults().ownership.must_equal_paths,
           },
           must_have_paths: ['metadata.matched_ingredient_ids.0'],

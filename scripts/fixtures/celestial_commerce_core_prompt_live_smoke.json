@@ -41,6 +41,68 @@
           "meta.decision_owner"
         ],
         "must_equal_paths": {
+          "meta.prompt_intent": "shopping_request",
+          "meta.conversation_progress": "new_request",
+          "meta.early_decision": "delegate_to_decisioning",
+          "meta.decision_owner": "aurora_orchestration"
+        }
+      },
+      "id": "prompt_clarify_date_makeup_locale_zh",
+      "family": "prompt_clarify",
+      "query": "有什么适合今晚约会的",
+      "source": "aurora-bff",
+      "title": "zh shopping request preserves explicit locale while staying a fresh orchestration prompt",
+      "request": {
+        "message": "有什么适合今晚约会的",
+        "headers": {
+          "X-Lang": "CN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.prompt_intent": "shopping_request",
+          "meta.conversation_progress": "new_request",
+          "meta.early_decision": "delegate_to_decisioning",
+          "meta.decision_owner": "aurora_orchestration"
+        }
+      },
+      "id": "prompt_clarify_date_night_en",
+      "family": "prompt_clarify",
+      "query": "What should I get for date night?",
+      "source": "aurora-bff",
+      "title": "english shopping request is tagged as a fresh orchestration prompt",
+      "request": {
+        "message": "What should I get for date night?",
+        "headers": {
+          "X-Lang": "EN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
           "meta.early_decision": "resume_prior_goal",
           "meta.decision_owner": "aurora_orchestration",
           "meta.prompt_intent": "follow_up_refinement",
@@ -85,6 +147,88 @@
           "meta.conversation_progress": "follow_up"
         }
       },
+      "id": "conversation_progress_resume_date_night_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "title": "english follow-up refinement resumes the current orchestration thread",
+      "request": {
+        "message": "Something lighter",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Help me buy a repair serum"
+          },
+          {
+            "role": "assistant",
+            "content": "Do you care more about repair or hydration?"
+          }
+        ],
+        "headers": {
+          "X-Lang": "EN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
+      "id": "conversation_progress_resume_date_selection_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "约会",
+      "source": "aurora-bff",
+      "title": "zh scenario reply preserves explicit locale while continuing the current orchestration thread",
+      "request": {
+        "message": "约会",
+        "messages": [
+          {
+            "role": "user",
+            "content": "帮我买一款 serum"
+          },
+          {
+            "role": "assistant",
+            "content": "你更偏哪种场景？"
+          }
+        ],
+        "headers": {
+          "X-Lang": "CN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
       "id": "followup_refinement_lightweight",
       "family": "conversation_progress_resume",
       "query": "更轻薄一点",
@@ -102,6 +246,88 @@
             "content": "你更在意修护还是保湿？"
           }
         ]
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
+      "id": "followup_refinement_lightweight_locale_en",
+      "family": "conversation_progress_resume",
+      "query": "Something lighter",
+      "source": "aurora-bff",
+      "title": "follow-up refinement preserves explicit en locale while staying in the same orchestration thread",
+      "request": {
+        "message": "Something lighter",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Recommend a repair serum"
+          },
+          {
+            "role": "assistant",
+            "content": "Do you care more about repair or hydration?"
+          }
+        ],
+        "headers": {
+          "X-Lang": "EN"
+        }
+      }
+    },
+    {
+      "correctness": {
+        "expect_http_status": 200,
+        "min_assistant_message_length": 1
+      },
+      "observability": {
+        "must_have_paths": [
+          "meta.prompt_intent",
+          "meta.conversation_progress",
+          "meta.early_decision",
+          "meta.decision_owner"
+        ],
+        "must_equal_paths": {
+          "meta.early_decision": "resume_prior_goal",
+          "meta.decision_owner": "aurora_orchestration",
+          "meta.prompt_intent": "follow_up_refinement",
+          "meta.conversation_progress": "follow_up"
+        }
+      },
+      "id": "followup_refinement_lightweight_locale_zh",
+      "family": "conversation_progress_resume",
+      "query": "更轻薄一点",
+      "source": "aurora-bff",
+      "title": "follow-up refinement preserves explicit zh locale while staying in the same orchestration thread",
+      "request": {
+        "message": "更轻薄一点",
+        "messages": [
+          {
+            "role": "user",
+            "content": "推荐一个 repair serum"
+          },
+          {
+            "role": "assistant",
+            "content": "你更在意修护还是保湿？"
+          }
+        ],
+        "headers": {
+          "X-Lang": "CN"
+        }
       }
     }
   ]

@@ -5,6 +5,7 @@ const CANONICAL_FAMILY_ALIASES = Object.freeze({
   exact_product_lookup: ['exact_product_lookup'],
   exactish_lookup: ['exactish_lookup'],
   strict_ingredient: ['strict_ingredient', 'strict_consistency'],
+  strict_ingredient_budget: ['strict_ingredient_budget'],
   scenario_clarify: ['scenario_clarify', 'clarify_required'],
   aurora_guidance_cache_hit: ['aurora_guidance_cache_hit', 'aurora_guidance_only_cache_hit'],
   aurora_guidance_cache_miss: ['aurora_guidance_cache_miss', 'aurora_guidance_only_cache_miss'],

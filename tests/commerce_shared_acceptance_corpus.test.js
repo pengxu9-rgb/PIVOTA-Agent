@@ -381,6 +381,120 @@ describe('Commerce shared acceptance corpus', () => {
     ]);
   });
 
+  test('applies strict ingredient budget defaults to minimal prod and staging cases', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-shared-corpus-budget-'));
+    const corpusPath = path.join(outDir, 'shared-corpus-budget.json');
+
+    fs.writeFileSync(
+      corpusPath,
+      JSON.stringify(
+        {
+          schema_version: 'celestial.commerce_core.acceptance_corpus.v1',
+          cases: [
+            {
+              id: 'budget_case',
+              family: 'strict_ingredient_budget',
+              query: 'vitamin c serum under €30',
+              source: 'search',
+              targets: {
+                prod_gate: {
+                  must_have_metadata: ['budget_fx_applied', 'budget_fx_rate', 'budget_fx_source'],
+                  must_equal_metadata: {
+                    budget_fx_applied: true,
+                    budget_fx_candidate_currency: 'USD',
+                    budget_fx_unresolved: false,
+                  },
+                  must_return_one_of_titles: ['Vitamin-C Serum'],
+                },
+                staging_matrix: {
+                  request: {
+                    operation: 'find_products_multi',
+                    payload: { search: { query: 'vitamin c serum under €30' } },
+                    metadata: { source: 'search' },
+                  },
+                  observability: {
+                    must_have_paths: [
+                      'metadata.budget_fx_applied',
+                      'metadata.budget_fx_rate',
+                      'metadata.budget_fx_source',
+                    ],
+                  },
+                  ownership: {
+                    must_equal_paths: {
+                      'metadata.budget_fx_applied': true,
+                      'metadata.budget_fx_candidate_currency': 'USD',
+                      'metadata.budget_fx_unresolved': false,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    expect(loadProdGateCases(corpusPath)).toEqual([
+      expect.objectContaining({
+        id: 'budget_case',
+        family: 'strict_ingredient_budget',
+        expected_contract_path: 'shop_invoke_strict',
+        must_have_metadata: expect.arrayContaining([
+          'contract_bridge.resolved_contract',
+          'matched_ingredient_ids.0',
+          'budget_fx_applied',
+          'budget_fx_rate',
+          'budget_fx_source',
+          'route_health.fallback_triggered',
+          'search_decision.decision_locked',
+        ]),
+        must_equal_metadata: expect.objectContaining({
+          'contract_bridge.resolved_contract': 'shop_invoke_strict',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'multi_constraint',
+          budget_fx_applied: true,
+          budget_fx_candidate_currency: 'USD',
+          budget_fx_unresolved: false,
+          'route_health.fallback_triggered': false,
+          'search_decision.decision_locked': true,
+        }),
+      }),
+    ]);
+
+    expect(loadStagingMatrixPayload(corpusPath).semantic_cases).toEqual([
+      expect.objectContaining({
+        id: 'budget_case',
+        family: 'strict_ingredient_budget',
+        ownership: expect.objectContaining({
+          must_equal_paths: expect.objectContaining({
+            'metadata.contract_bridge.resolved_contract': 'shop_invoke_strict',
+            'metadata.strict_constraint_query': true,
+            'metadata.strict_constraint_reason': 'multi_constraint',
+            'metadata.budget_fx_applied': true,
+            'metadata.budget_fx_candidate_currency': 'USD',
+            'metadata.budget_fx_unresolved': false,
+            'metadata.route_health.fallback_triggered': false,
+            'metadata.search_decision.decision_locked': true,
+          }),
+          must_have_paths: ['metadata.matched_ingredient_ids.0'],
+        }),
+        observability: expect.objectContaining({
+          must_have_paths: expect.arrayContaining([
+            'metadata.service_version.commit',
+            'metadata.search_trace.final_decision',
+            'metadata.budget_fx_applied',
+            'metadata.budget_fx_rate',
+            'metadata.budget_fx_source',
+            'metadata.route_health.fallback_triggered',
+            'metadata.search_decision.decision_locked',
+          ]),
+        }),
+      }),
+    ]);
+  });
+
   test('applies scenario clarify defaults to minimal prod and staging cases', () => {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-shared-corpus-clarify-'));
     const corpusPath = path.join(outDir, 'shared-corpus-clarify.json');
@@ -462,5 +576,346 @@ describe('Commerce shared acceptance corpus', () => {
         }),
       }),
     ]);
+  });
+
+  test('actual shared corpus expands canonical main-path coverage across search, shopping_agent, and aurora-bff surfaces', () => {
+    const corpusPath = path.join(
+      __dirname,
+      '..',
+      'scripts',
+      'fixtures',
+      'celestial_commerce_core_shared_acceptance_corpus.json',
+    );
+
+    const prodIds = new Set(loadProdGateCases(corpusPath).map((item) => item.id));
+    const stagingIds = new Set(
+      loadStagingMatrixPayload(corpusPath).semantic_cases.map((item) => item.id),
+    );
+
+    expect(Array.from(prodIds)).toEqual(
+      expect.arrayContaining([
+        'shopping_agent_exact_ipsa_time_reset_aqua',
+        'search_exact_ipsa_time_reset_aqua',
+        'aurora_bff_exact_ipsa_time_reset_aqua',
+        'shopping_agent_merchant_query_ipsa_products',
+        'aurora_bff_merchant_query_ipsa_products',
+        'search_merchant_query_winona_products',
+        'shopping_agent_strict_vitamin_c_serum',
+        'aurora_bff_strict_vitamin_c_serum',
+        'search_strict_vitamin_c_serum_budget_eur',
+        'search_strict_vitamin_c_serum_budget_usd',
+      ]),
+    );
+
+    expect(Array.from(stagingIds)).toEqual(
+      expect.arrayContaining([
+        'search_clarify_date_makeup_locale_zh',
+        'search_exact_ipsa_time_reset_aqua_locale_en',
+        'search_exact_ipsa_time_reset_aqua',
+        'search_exact_ipsa_time_reset_aqua_locale_zh',
+        'search_exactish_niacinamide_locale_en',
+        'search_exactish_niacinamide_locale_zh',
+        'shopping_agent_merchant_query_ipsa_products_locale_en',
+        'aurora_bff_merchant_query_ipsa_products_locale_zh',
+        'search_merchant_query_winona_products',
+        'search_merchant_query_winona_products_locale_en',
+        'search_merchant_query_winona_products_locale_zh',
+        'search_public_serum_default_locale_zh',
+        'search_strict_vitamin_c_serum_locale_en',
+        'shopping_agent_strict_vitamin_c_serum',
+        'search_strict_vitamin_c_serum_budget_eur',
+        'search_strict_vitamin_c_serum_budget_usd',
+        'search_strict_vitamin_c_serum_budget_usd_locale_en',
+      ]),
+    );
+  });
+
+  test('actual shared corpus expands bilingual prompt coverage across fresh and resume orchestration turns', () => {
+    const corpusPath = path.join(
+      __dirname,
+      '..',
+      'scripts',
+      'fixtures',
+      'celestial_commerce_core_shared_acceptance_corpus.json',
+    );
+
+    const promptCases = loadPromptLiveSmokeCases(corpusPath);
+    const promptIds = new Set(promptCases.map((item) => item.id));
+    const englishPrompt = promptCases.find((item) => item.id === 'prompt_clarify_date_night_en');
+    const englishResume = promptCases.find(
+      (item) => item.id === 'conversation_progress_resume_date_night_en',
+    );
+
+    expect(Array.from(promptIds)).toEqual(
+      expect.arrayContaining([
+        'prompt_clarify_date_makeup',
+        'prompt_clarify_date_makeup_locale_zh',
+        'prompt_clarify_date_night_en',
+        'conversation_progress_resume_date_selection',
+        'conversation_progress_resume_date_selection_locale_zh',
+        'conversation_progress_resume_date_night_en',
+        'followup_refinement_lightweight',
+        'followup_refinement_lightweight_locale_en',
+        'followup_refinement_lightweight_locale_zh',
+      ]),
+    );
+    expect(englishPrompt?.request?.headers).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'EN',
+      }),
+    );
+    expect(englishResume?.request?.headers).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'EN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'conversation_progress_resume_date_selection_locale_zh')
+        ?.request?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'CN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'followup_refinement_lightweight_locale_en')?.request
+        ?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'EN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'followup_refinement_lightweight_locale_zh')?.request
+        ?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'CN',
+      }),
+    );
+    expect(
+      promptCases.find((item) => item.id === 'prompt_clarify_date_makeup_locale_zh')?.request
+        ?.headers,
+    ).toEqual(
+      expect.objectContaining({
+        'X-Lang': 'CN',
+      }),
+    );
+  });
+
+  test('actual shared corpus expands locale-aware commerce query staging coverage without changing prod authority rules', () => {
+    const corpusPath = path.join(
+      __dirname,
+      '..',
+      'scripts',
+      'fixtures',
+      'celestial_commerce_core_shared_acceptance_corpus.json',
+    );
+
+    const stagingCases = loadStagingMatrixPayload(corpusPath).semantic_cases;
+    const prodIds = new Set(loadProdGateCases(corpusPath).map((item) => item.id));
+    const zhClarify = stagingCases.find((item) => item.id === 'search_clarify_date_makeup_locale_zh');
+    const zhBroad = stagingCases.find((item) => item.id === 'search_public_serum_default_locale_zh');
+    const enExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_en');
+    const zhExact = stagingCases.find((item) => item.id === 'search_exact_ipsa_time_reset_aqua_locale_zh');
+    const enExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_en');
+    const zhExactish = stagingCases.find((item) => item.id === 'search_exactish_niacinamide_locale_zh');
+    const enShoppingAgentMerchant = stagingCases.find(
+      (item) => item.id === 'shopping_agent_merchant_query_ipsa_products_locale_en',
+    );
+    const zhAuroraMerchant = stagingCases.find(
+      (item) => item.id === 'aurora_bff_merchant_query_ipsa_products_locale_zh',
+    );
+    const enMerchant = stagingCases.find(
+      (item) => item.id === 'search_merchant_query_winona_products_locale_en',
+    );
+    const zhMerchant = stagingCases.find(
+      (item) => item.id === 'search_merchant_query_winona_products_locale_zh',
+    );
+    const enStrict = stagingCases.find(
+      (item) => item.id === 'search_strict_vitamin_c_serum_locale_en',
+    );
+    const enBudget = stagingCases.find(
+      (item) => item.id === 'search_strict_vitamin_c_serum_budget_usd_locale_en',
+    );
+
+    expect(enExact).toEqual(
+      expect.objectContaining({
+        family: 'exact_product_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enExact?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(zhExact).toEqual(
+      expect.objectContaining({
+        family: 'exact_product_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhExact?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(zhBroad).toEqual(
+      expect.objectContaining({
+        family: 'broad_discovery',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhBroad?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(zhClarify).toEqual(
+      expect.objectContaining({
+        family: 'scenario_clarify',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhClarify?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(enExactish).toEqual(
+      expect.objectContaining({
+        family: 'exactish_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enExactish?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(zhExactish).toEqual(
+      expect.objectContaining({
+        family: 'exactish_lookup',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhExactish?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(enShoppingAgentMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enShoppingAgentMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'shopping_agent',
+        locale: 'en-US',
+      }),
+    );
+    expect(zhAuroraMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhAuroraMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'aurora-bff',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(enMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(zhMerchant).toEqual(
+      expect.objectContaining({
+        family: 'merchant_query',
+        headers: expect.objectContaining({
+          'X-Lang': 'CN',
+        }),
+      }),
+    );
+    expect(zhMerchant?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'zh-CN',
+      }),
+    );
+    expect(enStrict).toEqual(
+      expect.objectContaining({
+        family: 'strict_ingredient',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enStrict?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(enBudget).toEqual(
+      expect.objectContaining({
+        family: 'strict_ingredient_budget',
+        headers: expect.objectContaining({
+          'X-Lang': 'EN',
+        }),
+      }),
+    );
+    expect(enBudget?.request?.metadata).toEqual(
+      expect.objectContaining({
+        source: 'search',
+        locale: 'en-US',
+      }),
+    );
+    expect(prodIds.has('search_exact_ipsa_time_reset_aqua_locale_en')).toBe(false);
+    expect(prodIds.has('search_exactish_niacinamide_locale_en')).toBe(false);
+    expect(prodIds.has('search_exactish_niacinamide_locale_zh')).toBe(false);
+    expect(prodIds.has('shopping_agent_merchant_query_ipsa_products_locale_en')).toBe(false);
+    expect(prodIds.has('aurora_bff_merchant_query_ipsa_products_locale_zh')).toBe(false);
+    expect(prodIds.has('search_merchant_query_winona_products_locale_zh')).toBe(false);
+    expect(prodIds.has('search_strict_vitamin_c_serum_locale_en')).toBe(false);
+    expect(prodIds.has('search_strict_vitamin_c_serum_budget_usd_locale_en')).toBe(false);
+    expect(prodIds.has('search_public_serum_default_locale_zh')).toBe(false);
+    expect(prodIds.has('search_clarify_date_makeup_locale_zh')).toBe(false);
   });
 });
