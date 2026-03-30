@@ -49,6 +49,8 @@ on:
       - "scripts/lib/**"
       - "scripts/fixtures/celestial_commerce_core_prod_gate.json"
       - "scripts/fixtures/celestial_commerce_core_prod_canary.json"
+      - "scripts/fixtures/celestial_commerce_core_prompt_live_smoke.json"
+      - "scripts/fixtures/celestial_commerce_core_shared_acceptance_corpus.json"
       - "scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json"
       - "scripts/fixtures/commerce_invoke_rail_inventory.json"
       - "scripts/fixtures/celestial_commerce_core_stabilization_snapshot.json"
@@ -60,6 +62,7 @@ on:
       - "src/api/gateway/**"
       - "src/modules/**"
       - "src/server.js"
+      - "src/auroraBff/routes/chat.js"
       - "src/auroraBff/routes.js"
       - "tests/celestial_commerce_core_contracts.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
@@ -80,6 +83,7 @@ on:
       - "tests/celestial_commerce_core_staging_matrix_script.test.js"
       - "tests/celestial_commerce_core_stabilization_report_script.test.js"
       - "tests/celestial_commerce_core_prod_canary_script.test.js"
+      - "tests/aurora_chat_rollout_headers.node.test.cjs"
       - "tests/commerce_invoke_rail_inventory.test.js"
       - "tests/commerce_primary_path_contract.test.js"
       - "tests/shopping_agent_loop_break.test.js"
@@ -124,6 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check src/server.js
+          node --check src/auroraBff/routes/chat.js
           node --check scripts/search_stability_matrix.js
           node --check scripts/run_celestial_commerce_core_staging_matrix.js
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
@@ -157,6 +162,7 @@ jobs:
             tests/celestial_commerce_core_staging_matrix_script.test.js \
             tests/celestial_commerce_core_stabilization_report_script.test.js \
             tests/celestial_commerce_core_prod_canary_script.test.js \
+            tests/aurora_chat_rollout_headers.node.test.cjs \
             tests/commerce_invoke_rail_inventory.test.js \
             tests/commerce_primary_path_contract.test.js \
             tests/shopping_agent_loop_break.test.js \
@@ -179,6 +185,8 @@ jobs:
       COMMERCE_CORE_PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
       COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
       COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+      COMMERCE_CORE_PROMPT_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT: /v1/chat
       RAILWAY_API_TOKEN: ${{ secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN || '' }}
       RAILWAY_TOKEN: ${{ secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN || '' }}
       GATEWAY_GOVERNANCE_AUTO_FETCH: ${{ (secrets.GATEWAY_GOVERNANCE_RAILWAY_API_TOKEN || secrets.PIVOTA_AGENT_RAILWAY_API_TOKEN || secrets.RAILWAY_API_TOKEN) != '' && '1' || '0' }}
@@ -227,6 +235,8 @@ jobs:
           COMMERCE_CORE_PROD_SMOKE_ENDPOINT="$COMMERCE_CORE_PROD_SMOKE_ENDPOINT" \
           COMMERCE_CORE_PROD_AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
           COMMERCE_CORE_PROD_AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          COMMERCE_CORE_PROMPT_SMOKE_BASE_URL="$COMMERCE_CORE_PROMPT_SMOKE_BASE_URL" \
+          COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT="$COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT" \
           GATEWAY_GOVERNANCE_AUTO_FETCH="$GATEWAY_GOVERNANCE_AUTO_FETCH" \
           GATEWAY_GOVERNANCE_RAILWAY_PROJECT="$GATEWAY_GOVERNANCE_RAILWAY_PROJECT" \
           GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT="$GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT" \

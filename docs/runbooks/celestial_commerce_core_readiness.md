@@ -110,6 +110,16 @@ Supported override envs:
 
 `Observability/Provenance Readiness` should only be treated as `green` when the report has both deploy truth and an automated raw-log export path. A manually supplied `GATEWAY_GOVERNANCE_LOG_INPUT_PATH` is still supported for diagnosis, but should not be used to claim the dimension is fully green.
 
+The prompt live smoke should use the direct Aurora BFF rail instead of the public web origin:
+
+```bash
+COMMERCE_CORE_PROMPT_SMOKE_BASE_URL=https://pivota-agent-production.up.railway.app \
+COMMERCE_CORE_PROMPT_SMOKE_ENDPOINT=/v1/chat \
+npm run audit:readiness:commerce-core
+```
+
+`https://agent.pivota.cc` is still a useful public-surface probe, but it is not the authoritative live prompt rail for readiness.
+
 For a lighter daily governance-only report, use:
 
 ```bash

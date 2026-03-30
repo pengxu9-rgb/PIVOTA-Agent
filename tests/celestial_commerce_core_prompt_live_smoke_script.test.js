@@ -22,7 +22,7 @@ function readJsonBody(req) {
 }
 
 describe('Celestial commerce-core prompt live smoke script', () => {
-  test('validates prompt-intent and conversation-progress meta on /ui/chat', async () => {
+  test('validates prompt-intent and conversation-progress meta on /v1/chat chatcards responses', async () => {
     const repoRoot = path.join(__dirname, '..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commerce-core-prompt-smoke-'));
     const casesPath = path.join(outDir, 'prompt-smoke.json');
@@ -38,7 +38,7 @@ describe('Celestial commerce-core prompt live smoke script', () => {
           id: 'prompt_case',
           family: 'prompt_clarify',
           request: {
-            messages: [{ role: 'user', content: '有什么适合今晚约会的' }],
+            message: '有什么适合今晚约会的',
           },
           correctness: {
             expect_http_status: 200,
@@ -63,10 +63,10 @@ describe('Celestial commerce-core prompt live smoke script', () => {
           id: 'resume_case',
           family: 'conversation_progress_resume',
           request: {
+            message: '约会',
             messages: [
               { role: 'user', content: '帮我买一款 serum' },
               { role: 'assistant', content: '你更偏哪种场景？' },
-              { role: 'user', content: '约会' },
             ],
           },
           correctness: {
@@ -87,25 +87,27 @@ describe('Celestial commerce-core prompt live smoke script', () => {
     fs.writeFileSync(casesPath, JSON.stringify(fixture, null, 2));
 
     const server = http.createServer(async (req, res) => {
-      if (req.url !== '/ui/chat') {
+      if (req.url !== '/v1/chat') {
         res.statusCode = 404;
         res.end('not found');
         return;
       }
 
       const body = await readJsonBody(req);
-      const lastUserMessage =
-        Array.isArray(body?.messages) && body.messages.length > 0
-          ? [...body.messages].reverse().find((item) => item?.role === 'user')
-          : null;
-      const content = String(lastUserMessage?.content || '');
+      const content = String(body?.message || '');
+
+      expect(String(req.headers['x-aurora-uid'] || '')).toContain('commerce_prompt_smoke_');
 
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       if (content === '约会') {
         res.end(
           JSON.stringify({
-            assistantMessage: '好的，我按约会场景继续给你筛选。',
+            assistant_text: '好的，我按约会场景继续给你筛选。',
+            assistant_message: {
+              role: 'assistant',
+              content: '好的，我按约会场景继续给你筛选。',
+            },
             meta: {
               prompt_intent: 'scenario_selection',
               conversation_progress: 'scenario_selected',
@@ -119,7 +121,11 @@ describe('Celestial commerce-core prompt live smoke script', () => {
 
       res.end(
         JSON.stringify({
-          assistantMessage: '我先帮你理解需求，再继续推荐。',
+          assistant_text: '我先帮你理解需求，再继续推荐。',
+          assistant_message: {
+            role: 'assistant',
+            content: '我先帮你理解需求，再继续推荐。',
+          },
           meta: {
             prompt_intent: 'shopping_request',
             conversation_progress: 'new_request',
@@ -141,7 +147,7 @@ describe('Celestial commerce-core prompt live smoke script', () => {
         env: {
           ...process.env,
           BASE_URL: baseUrl,
-          ENDPOINT: '/ui/chat',
+          ENDPOINT: '/v1/chat',
           CASES_PATH: casesPath,
           OUT_DIR: outDir,
           TIMEOUT_MS: '5000',

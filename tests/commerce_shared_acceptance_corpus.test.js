@@ -165,11 +165,11 @@ describe('Commerce shared acceptance corpus', () => {
             {
               id: 'prompt_case',
               family: 'prompt_clarify',
-              source: 'ui-chat',
+              source: 'aurora-bff',
               targets: {
                 prompt_live_smoke: {
                   request: {
-                    messages: [{ role: 'user', content: '有什么适合今晚约会的' }],
+                    message: '有什么适合今晚约会的',
                   },
                 },
               },
@@ -177,14 +177,14 @@ describe('Commerce shared acceptance corpus', () => {
             {
               id: 'resume_case',
               family: 'conversation_progress_resume',
-              source: 'ui-chat',
+              source: 'aurora-bff',
               targets: {
                 prompt_live_smoke: {
                   request: {
+                    message: '约会',
                     messages: [
                       { role: 'user', content: '帮我买一款 serum' },
                       { role: 'assistant', content: '你更偏哪种场景？' },
-                      { role: 'user', content: '约会' },
                     ],
                   },
                   observability: {

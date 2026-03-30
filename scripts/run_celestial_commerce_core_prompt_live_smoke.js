@@ -66,6 +66,39 @@ function valuesEqual(left, right) {
   return String(left) === String(right);
 }
 
+function extractAssistantMessage(body) {
+  const direct = String(body?.assistantMessage || '').trim();
+  if (direct) return direct;
+
+  const assistantMessage =
+    body?.assistant_message && typeof body.assistant_message === 'object'
+      ? String(body.assistant_message.content || '').trim()
+      : '';
+  if (assistantMessage) return assistantMessage;
+
+  const assistantText = String(body?.assistant_text || '').trim();
+  if (assistantText) return assistantText;
+
+  const cards = Array.isArray(body?.cards) ? body.cards : [];
+  for (const card of cards) {
+    if (!card || typeof card !== 'object') continue;
+    if (String(card.card_type || '').trim().toLowerCase() !== 'text_response') continue;
+    const sections = Array.isArray(card.sections) ? card.sections : [];
+    for (const section of sections) {
+      const text = String(
+        section?.text ||
+          section?.text_zh ||
+          section?.text_en ||
+          section?.content ||
+          '',
+      ).trim();
+      if (text) return text;
+    }
+  }
+
+  return '';
+}
+
 function evaluateRules(body, rules = {}) {
   const reasons = [];
   const mustHavePaths = Array.isArray(rules.must_have_paths) ? rules.must_have_paths : [];
@@ -88,7 +121,7 @@ function evaluateRules(body, rules = {}) {
 
   const minAssistantMessageLength = Number(rules.min_assistant_message_length || 0) || 0;
   if (minAssistantMessageLength > 0) {
-    const assistantMessage = String(body?.assistantMessage || '').trim();
+    const assistantMessage = extractAssistantMessage(body);
     if (assistantMessage.length < minAssistantMessageLength) {
       reasons.push(
         `assistant_message_too_short:expected>=${minAssistantMessageLength} actual=${assistantMessage.length}`,
@@ -121,6 +154,80 @@ function readCases(casesPath) {
         ? item.observability
         : {},
   })).filter((item) => item.id);
+}
+
+function normalizeHeaderMap(headers) {
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) return {};
+  return Object.fromEntries(
+    Object.entries(headers)
+      .map(([key, value]) => [String(key || '').trim(), String(value || '').trim()])
+      .filter(([key, value]) => key && value),
+  );
+}
+
+function hasHeader(headers, name) {
+  const expected = String(name || '').trim().toLowerCase();
+  return Object.keys(headers || {}).some((key) => String(key || '').trim().toLowerCase() === expected);
+}
+
+function inferPromptSmokeLanguage(payload) {
+  const texts = [];
+  if (typeof payload?.message === 'string') texts.push(payload.message);
+  if (typeof payload?.text === 'string') texts.push(payload.text);
+  if (Array.isArray(payload?.messages)) {
+    for (const item of payload.messages) {
+      if (typeof item?.content === 'string') texts.push(item.content);
+    }
+  }
+  const combined = texts.join(' ');
+  return /[\u3400-\u9fff]/u.test(combined) ? 'CN' : 'EN';
+}
+
+function normalizePromptMessages(messages) {
+  return (Array.isArray(messages) ? messages : [])
+    .map((item) => ({
+      role: String(item?.role || '').trim() || 'user',
+      content: String(item?.content || '').trim(),
+    }))
+    .filter((item) => item.content);
+}
+
+function normalizeRequestPayload(endpoint, payload) {
+  const next =
+    payload && typeof payload === 'object' && !Array.isArray(payload) ? { ...payload } : {};
+  if (String(endpoint || '').trim() !== '/v1/chat') return next;
+
+  const messages = normalizePromptMessages(next.messages);
+  let message = String(next.message || next.text || '').trim();
+  if (!message && messages.length > 0) {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((item) => String(item.role || '').trim().toLowerCase() === 'user');
+    if (lastUserMessage) {
+      message = String(lastUserMessage.content || '').trim();
+      const lastMessage = messages[messages.length - 1];
+      if (
+        lastMessage &&
+        String(lastMessage.role || '').trim().toLowerCase() === 'user' &&
+        String(lastMessage.content || '').trim() === message
+      ) {
+        next.messages = messages.slice(0, -1);
+      } else {
+        next.messages = messages;
+      }
+    }
+  } else if (messages.length > 0) {
+    next.messages = messages;
+  }
+
+  if (message) next.message = message;
+  else delete next.message;
+
+  if (!Array.isArray(next.messages) || next.messages.length === 0) {
+    delete next.messages;
+  }
+
+  return next;
 }
 
 async function requestJson(url, payload, headers, timeoutMs) {
@@ -186,7 +293,29 @@ async function main() {
   const results = [];
 
   for (const testCase of cases) {
-    const headers = { 'Content-Type': 'application/json' };
+    const rawRequestPayload =
+      testCase.request && typeof testCase.request === 'object' && !Array.isArray(testCase.request)
+        ? { ...testCase.request }
+        : {};
+    const requestHeaders = normalizeHeaderMap(rawRequestPayload.headers);
+    delete rawRequestPayload.headers;
+    const requestPayload = normalizeRequestPayload(args.endpoint, rawRequestPayload);
+
+    const headers = { 'Content-Type': 'application/json', ...requestHeaders };
+    if (String(args.endpoint || '').trim() === '/v1/chat') {
+      if (!hasHeader(headers, 'X-Aurora-UID')) {
+        headers['X-Aurora-UID'] = `commerce_prompt_smoke_${testCase.id}`;
+      }
+      if (!hasHeader(headers, 'X-Trace-ID')) {
+        headers['X-Trace-ID'] = `trace_${testCase.id}`;
+      }
+      if (!hasHeader(headers, 'X-Brief-ID')) {
+        headers['X-Brief-ID'] = `brief_${testCase.id}`;
+      }
+      if (!hasHeader(headers, 'X-Lang')) {
+        headers['X-Lang'] = inferPromptSmokeLanguage(requestPayload);
+      }
+    }
     if (testCase.requires_auth && args.authToken) {
       headers.Authorization = /^Bearer\s+/i.test(args.authToken) ? args.authToken : `Bearer ${args.authToken}`;
     }
@@ -198,7 +327,7 @@ async function main() {
     try {
       response = await requestJson(
         `${String(args.baseUrl || '').replace(/\/+$/, '')}${String(args.endpoint || '')}`,
-        testCase.request,
+        requestPayload,
         headers,
         args.timeoutMs,
       );

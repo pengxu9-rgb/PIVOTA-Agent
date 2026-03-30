@@ -70,11 +70,11 @@ describe('Commerce shared acceptance views', () => {
             {
               id: 'prompt_clarify_date_makeup',
               family: 'prompt_clarify',
-              source: 'ui-chat',
+              source: 'aurora-bff',
               targets: {
                 prompt_live_smoke: {
                   request: {
-                    messages: [{ role: 'user', content: '有什么适合今晚约会的' }],
+                    message: '有什么适合今晚约会的',
                   },
                 },
               },
