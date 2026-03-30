@@ -6076,7 +6076,7 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   for (const query of queries) {
     const searched = await searchPivotaBackendProducts({
       query,
-      limit: 3,
+      limit: 8,
       logger,
       timeoutMs: CATALOG_AVAIL_SEARCH_TIMEOUT_MS,
     });
