@@ -51,6 +51,18 @@ test('direct focus negatives do not escalate to high-confidence hard target', ()
   }
 });
 
+test('generic single-product chat asks default to moisturizer without broadening into sunscreen', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    text: 'im oily skin, what product should i use?',
+    entryType: 'chat',
+  });
+
+  assert.equal(targetContext.resolved_target_step, 'moisturizer');
+  assert.equal(targetContext.resolved_target_step_confidence, 'medium');
+  assert.equal(targetContext.resolved_target_step_source, 'generic_single_product_default');
+  assert.equal(targetContext.mainline_mode, 'soft_target');
+});
+
 test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {
   const targetContext = resolveRecommendationTargetContext({
     focus: 'moisturizer',
