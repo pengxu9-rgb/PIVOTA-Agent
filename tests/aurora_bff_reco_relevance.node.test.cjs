@@ -1416,6 +1416,85 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
   }
 });
 
+test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
+  const originalGet = axios.get;
+  let inFlight = 0;
+  let maxInFlight = 0;
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    inFlight -= 1;
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: `prod_${String(config?.params?.query || '').replace(/\s+/g, '_')}`,
+            merchant_id: 'mid_concurrency',
+            brand: 'Clarity Lab',
+            name: 'Oil Balance Serum',
+            display_name: 'Oil Balance Serum',
+            category: 'serum',
+            product_type: 'serum',
+            ingredient_tokens: ['niacinamide'],
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const { __internal } = loadRoutesFresh();
+    const targetContext = {
+      framework_id: 'framework_oily_skin_v1',
+      primary_role_id: 'oil_control_treatment',
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+        },
+      ],
+      framework_owner_source: 'generic_concern_framework_resolver',
+      framework_owner_state: 'trusted',
+      framework_summary: {
+        concern_text: 'im oily skin, what product should i use?',
+      },
+    };
+    const queryLevels = [
+      {
+        level_index: 0,
+        ladder_level: 'framework_oil_control_treatment',
+        queries: [
+          { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+          { query: 'niacinamide serum oily skin', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+          { query: 'lightweight treatment oily skin', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+        ],
+      },
+    ];
+
+    const out = await __internal.collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext,
+      recommendationTaskContext: null,
+      logger: null,
+      timeoutMs: 800,
+      limit: 6,
+      usePurchasableFallback: false,
+      allowExternalSeed: false,
+    });
+
+    assert.ok(Array.isArray(out.searchResults));
+    assert.equal(out.searchResults.length, 3);
+    assert.ok(maxInFlight >= 2);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: profile-driven generic reco without explicit focus returns needs_more_context and skips catalog search', async () => {
   const originalGet = axios.get;
   const observedQueries = [];

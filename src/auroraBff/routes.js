@@ -16319,24 +16319,37 @@ async function collectRecoCandidatesFromQueryLevels({
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
-    for (const queryEntry of queries) {
-      const out = usePurchasableFallback
-        ? await buildPurchasableFallbackCandidates({
-            query: queryEntry.query,
-            limit,
-            logger,
-            timeoutMs,
-            allowExternalSeed,
-            externalSeedStrategy,
-          })
-        : await searchPivotaBackendProducts({
-            query: queryEntry.query,
-            limit,
-            logger,
-            timeoutMs,
-            allowExternalSeed: false,
-            fastMode: true,
-          });
+    const levelResults = await mapWithConcurrency(
+      queries,
+      RECO_CATALOG_SEARCH_CONCURRENCY,
+      async (queryEntry) => {
+        const out = usePurchasableFallback
+          ? await buildPurchasableFallbackCandidates({
+              query: queryEntry.query,
+              limit,
+              logger,
+              timeoutMs,
+              allowExternalSeed,
+              externalSeedStrategy,
+            })
+          : await searchPivotaBackendProducts({
+              query: queryEntry.query,
+              limit,
+              logger,
+              timeoutMs,
+              allowExternalSeed: false,
+              fastMode: true,
+            });
+        return {
+          queryEntry,
+          out,
+        };
+      },
+    );
+    for (const row of levelResults) {
+      const queryEntry = row && row.queryEntry ? row.queryEntry : null;
+      const out = row && row.out ? row.out : null;
+      if (!queryEntry) continue;
       searchResults.push({
         ...queryEntry,
         ...out,
@@ -79755,6 +79768,8 @@ const __internal = {
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
+  buildRecoCatalogQueryLevels,
+  collectRecoCandidatesFromQueryLevels,
   buildProductCatalogQueryCandidates,
   filterRecoContextProductCandidates,
   buildRealtimeCompetitorQueryPlan,
