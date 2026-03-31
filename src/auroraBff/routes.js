@@ -69,6 +69,9 @@ const {
   renderDeepeningCanonicalLayer,
 } = require('./skinAnalysisContract');
 const {
+  shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
+} = require('./recoOwnershipPolicy');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -1450,36 +1453,8 @@ async function shouldDelegateV1ChatToV2(body) {
   ) || isPlainObject(payload.params);
 }
 
-function buildDelegationProfileSummary(body) {
-  const payload = isPlainObject(body) ? body : {};
-  const context = isPlainObject(payload.context) ? payload.context : {};
-  const contextProfile = isPlainObject(context.profile) ? context.profile : {};
-  const session = isPlainObject(payload.session) ? payload.session : {};
-  const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
-  return {
-    ...contextProfile,
-    ...sessionProfile,
-  };
-}
-
 function shouldKeepTypedRecoRequestOnV1Mainline(body) {
-  const payload = isPlainObject(body) ? body : {};
-  const message = pickFirstTrimmed(payload.message, payload.text);
-  if (!message) return false;
-
-  try {
-    const targetContext = resolveRecommendationTargetContext({
-      explicitStep: '',
-      focus: '',
-      text: message,
-      entryType: 'chat',
-      profileSummary: buildDelegationProfileSummary(payload),
-    });
-    const hasFrameworkRoles = Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
-    return Boolean(hasFrameworkRoles || targetContext?.step_aware_intent);
-  } catch {
-    return false;
-  }
+  return shouldKeepTypedRecoRequestOnV1MainlinePolicy(body);
 }
 
 function extractLastUserMessageFromChatRequestMessages(messages) {
@@ -16155,6 +16130,31 @@ function buildFrameworkRecommendationNotes({
   return notes.filter(Boolean).slice(0, 2);
 }
 
+function scoreConcernFrameworkCandidateTiebreak(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  const socialRefScore = Number.isFinite(Number(candidate.social_ref_score)) ? Number(candidate.social_ref_score) : 0;
+  const ingredientSignalCount = Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens.length : 0;
+  const tagSignalCount = Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens.length : 0;
+  const retrievalSource = String(candidate.retrieval_source || candidate.retrievalSource || '').trim().toLowerCase();
+  const directUrl = pickFirstTrimmed(
+    candidate.canonical_pdp_url,
+    candidate.canonicalPdpUrl,
+    candidate.pdp_url,
+    candidate.pdpUrl,
+    candidate.product_url,
+    candidate.productUrl,
+    candidate.url,
+  );
+  let score = 0;
+  score += Math.max(0, Math.min(0.06, socialRefScore * 0.03));
+  if (directUrl) score += 0.014;
+  if (ingredientSignalCount > 0) score += Math.min(0.018, ingredientSignalCount * 0.004);
+  if (tagSignalCount > 0) score += Math.min(0.012, tagSignalCount * 0.0025);
+  // Neutralize insertion-order bias when internal and external candidates land with the same role score.
+  if (retrievalSource === 'external_seed') score += 0.01;
+  return Number(score.toFixed(4));
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -16221,6 +16221,14 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       else if (candidateStep && alternateSteps.includes(candidateStep)) score += 0.62;
       else if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') score += 0.6;
       if (retrievalRoleId && retrievalRoleId === roleId) score += 0.18;
+      for (const keyword of Array.isArray(role?.fit_keywords) ? role.fit_keywords : []) {
+        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+        if (!normalizedKeyword) continue;
+        if (candidateText.includes(normalizedKeyword)) {
+          score += 0.12;
+          break;
+        }
+      }
       for (const term of Array.isArray(role?.query_terms) ? role.query_terms : []) {
         const normalizedTerm = String(term || '').trim().toLowerCase();
         if (!normalizedTerm) continue;
@@ -16245,6 +16253,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_label: String(bestRole.label || '').trim() || null,
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: Number(bestScore.toFixed(4)),
+      framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       candidate_step: candidateStep || null,
     };
     if (bestScore >= 0.72) {
@@ -16258,7 +16267,15 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   for (const bucket of roleBuckets.values()) {
-    bucket.sort((left, right) => Number(right.framework_score || 0) - Number(left.framework_score || 0));
+    bucket.sort((left, right) => {
+      const scoreDiff = Number(right.framework_score || 0) - Number(left.framework_score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      const tieBreakDiff = Number(right.framework_tiebreak_score || 0) - Number(left.framework_tiebreak_score || 0);
+      if (tieBreakDiff !== 0) return tieBreakDiff;
+      const leftName = String(pickFirstTrimmed(left.display_name, left.displayName, left.name, left.title) || '').trim().toLowerCase();
+      const rightName = String(pickFirstTrimmed(right.display_name, right.displayName, right.name, right.title) || '').trim().toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
   }
 
   const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
@@ -17095,7 +17112,8 @@ async function buildRecoGenerateFromCatalog({
   let probeWhileOpen = false;
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
   const fallbackEnabled = AURORA_PURCHASABLE_FALLBACK_ENABLED === true;
-  const allowExternalSeedSupplement = fallbackEnabled && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
+  const allowExternalSeedSupplement = AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
+  const useParallelSupplementedSearch = fallbackEnabled || allowExternalSeedSupplement;
   const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   const effectiveExternalSeedStrategy = pickFirstTrimmed(
     externalSeedStrategyOverride,
@@ -17153,7 +17171,7 @@ async function buildRecoGenerateFromCatalog({
     logger,
     timeoutMs: searchTimeoutEffectiveMs,
     limit: 6,
-    usePurchasableFallback: fallbackEnabled,
+    usePurchasableFallback: useParallelSupplementedSearch,
     allowExternalSeed: allowExternalSeedSupplement,
     externalSeedStrategy: effectiveExternalSeedStrategy,
   });
@@ -43441,9 +43459,66 @@ function hasDegradedModuleFailSignal(envelope) {
   return false;
 }
 
+function collectVisibleCardTextForKnownFieldReask(cards) {
+  const fragments = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!isPlainObject(card)) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    const payload = getCardPayload(card);
+    const push = (...values) => {
+      for (const value of values) {
+        const normalized = String(value || '').trim();
+        if (normalized) fragments.push(normalized);
+      }
+    };
+
+    push(card.title, card.subtitle, card.summary, card.message);
+    if (!isPlainObject(payload)) continue;
+
+    push(payload.title, payload.subtitle, payload.summary, payload.message, payload.detail, payload.headline, payload.note);
+
+    const frameworkSummary = isPlainObject(payload.framework_summary) ? payload.framework_summary : null;
+    if (frameworkSummary) {
+      push(
+        frameworkSummary.concern_text,
+        frameworkSummary.headline,
+        frameworkSummary.primary_role_label,
+        frameworkSummary.top_pick_role_label,
+      );
+    }
+
+    for (const role of Array.isArray(payload.roles) ? payload.roles : []) {
+      if (!isPlainObject(role)) continue;
+      push(role.label, role.why_this_role);
+    }
+    for (const reco of Array.isArray(payload.recommendations) ? payload.recommendations : []) {
+      if (!isPlainObject(reco)) continue;
+      push(
+        reco.display_name,
+        reco.displayName,
+        reco.name,
+        reco.title,
+        ...(Array.isArray(reco.notes) ? reco.notes : []),
+      );
+    }
+    if (type === 'confidence_notice') {
+      push(payload.reason_user_visible, payload.user_visible_reason);
+    }
+    for (const action of Array.isArray(payload.actions) ? payload.actions : []) {
+      if (!isPlainObject(action)) continue;
+      push(action.label, action.text, action.title);
+    }
+    for (const followup of Array.isArray(payload.follow_ups) ? payload.follow_ups : []) {
+      if (!isPlainObject(followup)) continue;
+      push(followup.label, followup.text, followup.title);
+    }
+  }
+  return fragments.join('\n');
+}
+
 function hasKnownFieldReaskInText({ profile, text, cards }) {
   const p = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
-  const composite = `${String(text || '')}\n${JSON.stringify(Array.isArray(cards) ? cards : [])}`;
+  const composite = `${String(text || '')}\n${collectVisibleCardTextForKnownFieldReask(cards)}`;
   const hasQuestionHint = /(\?|which|what|是否|还是|哪种|确认|how)/i.test(composite);
   if (!hasQuestionHint) return false;
   if (typeof p.skinType === 'string' && p.skinType.trim() && /(skin type|肤质|油皮|混油|混干|干皮)/i.test(composite)) return true;
@@ -80136,6 +80211,7 @@ const __internal = {
   __resetLoadDeterministicExternalSeedCandidatesBatchForTest() {
     loadDeterministicExternalSeedCandidatesBatchImpl = productRecV1.loadDeterministicExternalSeedCandidatesBatch;
   },
+  shouldKeepTypedRecoRequestOnV1Mainline,
 };
 
 module.exports = { mountAuroraBffRoutes, __internal };

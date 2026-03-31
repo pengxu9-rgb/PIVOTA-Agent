@@ -7,6 +7,7 @@ const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
+const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -16,6 +17,7 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
 ]);
 
 let routerSingleton = null;
+let invokeV1MainlineChatImpl = invokeV1MainlineChat;
 
 function toBool(value, fallback = false) {
   const raw = String(value || '').trim().toLowerCase();
@@ -76,6 +78,64 @@ function getRoutesInternal() {
     return routes && routes.__internal ? routes.__internal : {};
   } catch {
     return {};
+  }
+}
+
+function buildLoopbackChatBaseUrl(req) {
+  const forwardedProto = typeof req?.get === 'function' ? req.get('x-forwarded-proto') : null;
+  const proto = pickFirstTrimmed(forwardedProto, req?.protocol, 'http') || 'http';
+  const forwardedHost = typeof req?.get === 'function' ? req.get('x-forwarded-host') : null;
+  const host = pickFirstTrimmed(forwardedHost, typeof req?.get === 'function' ? req.get('host') : null, req?.headers?.host);
+  if (host) return `${proto}://${host}`;
+  const port = pickFirstTrimmed(process.env.PORT);
+  return port ? `http://127.0.0.1:${port}` : null;
+}
+
+function buildLoopbackChatHeaders(req) {
+  const out = {};
+  const source = req?.headers && typeof req.headers === 'object' ? req.headers : {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = String(rawKey || '').trim();
+    if (!key) continue;
+    const lowered = key.toLowerCase();
+    if (
+      lowered === 'host' ||
+      lowered === 'content-length' ||
+      lowered === 'connection' ||
+      lowered === 'accept-encoding'
+    ) {
+      continue;
+    }
+    out[key] = rawValue;
+  }
+  out.accept = 'application/json';
+  out['content-type'] = 'application/json';
+  return out;
+}
+
+async function invokeV1MainlineChat({ req, body } = {}) {
+  const baseUrl = buildLoopbackChatBaseUrl(req);
+  if (!baseUrl) throw new Error('loopback_chat_base_missing');
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutMs = 45000;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const resp = await fetch(`${baseUrl}/v1/chat`, {
+      method: 'POST',
+      headers: buildLoopbackChatHeaders(req),
+      body: JSON.stringify(body || {}),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const payload = await resp.json().catch(() => null);
+    if (!resp.ok || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const error = new Error(`v1_chat_loopback_failed_${Number(resp?.status) || 500}`);
+      error.status = Number(resp?.status) || 500;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -1228,6 +1288,20 @@ async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
 async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
+    const body = isPlainObject(req.body) ? req.body : {};
+    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal)) {
+      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      res.json(
+        applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
+          req,
+          ctx: auth.ctx,
+          body,
+          identity: req._identity || null,
+          res,
+        }),
+      );
+      return;
+    }
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
     let promptMeta = null;
     try {
@@ -1307,12 +1381,30 @@ async function handleChatStream(req, res) {
 
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
+    const body = isPlainObject(req.body) ? req.body : {};
     const internal = auth.internal;
+    if (shouldProxyFrameworkRecoToV1Mainline(body, internal)) {
+      sendEvent('thinking', {
+        step: 'routing_framework_mainline',
+        message: 'Preparing framework-first recommendations...',
+      });
+      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      sendEvent(
+        'result',
+        applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
+          req,
+          ctx: auth.ctx,
+          body,
+          identity: req._identity || null,
+        }),
+      );
+      sendEvent('done', {});
+      return;
+    }
     const followupResolution = resolveAnalysisFollowupActionId(req, internal);
     const analysisFollowupActionId = followupResolution.actionId;
     if (analysisFollowupActionId) {
       sendEvent('thinking', { step: 'routing', message: 'Preparing follow-up analysis...' });
-      const body = req.body || {};
       const action = isPlainObject(body.action) ? body.action : {};
       const actionData = isPlainObject(action.data) ? action.data : {};
       const session = isPlainObject(body.session) ? body.session : {};
@@ -1576,4 +1668,10 @@ module.exports = {
   handleChatStream,
   __setRouterForTests,
   __resetRouterForTests,
+  __setInvokeV1MainlineChatForTests(fn) {
+    invokeV1MainlineChatImpl = typeof fn === 'function' ? fn : invokeV1MainlineChat;
+  },
+  __resetInvokeV1MainlineChatForTests() {
+    invokeV1MainlineChatImpl = invokeV1MainlineChat;
+  },
 };

@@ -290,7 +290,7 @@ function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary 
 function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = null } = {}) {
   const signals = collectConcernFrameworkSignals({ text, focus, profileSummary });
   const isCn = /[\u4e00-\u9fff]/.test(`${text} ${focus}`);
-  const role = (roleId, rank, preferredStep, labelEn, labelZh, whyEn, whyZh, queryTerms, alternateSteps = []) => ({
+  const role = (roleId, rank, preferredStep, labelEn, labelZh, whyEn, whyZh, queryTerms, alternateSteps = [], fitKeywords = []) => ({
     role_id: roleId,
     rank,
     preferred_step: preferredStep,
@@ -299,6 +299,7 @@ function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = nu
     label: isCn ? labelZh : labelEn,
     why_this_role: isCn ? whyZh : whyEn,
     query_terms: uniqCaseInsensitiveStrings(queryTerms, 6),
+    fit_keywords: uniqCaseInsensitiveStrings(fitKeywords, 8),
   });
 
   let roles;
@@ -312,8 +313,9 @@ function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = nu
         '控油功效产品',
         'Start with a targeted oil-control step to manage shine, congestion, or clogged pores.',
         '先用针对控油和毛孔的功效产品，把出油和堵塞问题压住。',
-        ['oil control serum', 'niacinamide serum oily skin', 'lightweight treatment oily skin', 'blemish treatment'],
+        ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
         ['serum'],
+        ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
       ),
       role(
         'lightweight_moisturizer',
@@ -324,6 +326,8 @@ function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = nu
         'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
         '保湿需要轻薄透气，维持水油平衡但不要厚重闷脸。',
         ['lightweight moisturizer oily skin', 'gel cream oily skin', 'barrier lotion oily skin'],
+        [],
+        ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion'],
       ),
       role(
         'daily_sunscreen',
@@ -334,6 +338,8 @@ function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = nu
         'Daytime UV protection still matters, but it is supporting care rather than the first fix.',
         '白天防晒仍然重要，但它是支持步骤，不是第一优先修复点。',
         ['oil control sunscreen', 'lightweight sunscreen oily skin', 'spf oily skin'],
+        [],
+        ['oil control', 'lightweight', 'uv filters', 'spf', 'non-greasy'],
       ),
     ];
   } else if (signals.barrier || signals.sensitive || signals.redness || signals.dry) {

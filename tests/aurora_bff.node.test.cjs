@@ -5580,6 +5580,63 @@ test('quality contract ignores missing purchase path for ungrounded editorial re
   }
 });
 
+test('quality contract does not treat framework recommendation payload keys as a seed-profile reask', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const result = __internal.evaluateQualityContractForEnvelope({
+      envelope: {
+        assistant_message: {
+          role: 'assistant',
+          content: 'For oily skin, start with Oil-control treatment, then keep Lightweight moisturizer and Daily sunscreen as support roles.',
+        },
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              framework_summary: {
+                concern_text: 'im oily skin, what product should i use?',
+                headline: 'Start with Oil-control treatment, then layer the supporting roles',
+                primary_role_label: 'Oil-control treatment',
+              },
+              roles: [
+                {
+                  role_id: 'oil_control_treatment',
+                  label: 'Oil-control treatment',
+                  why_this_role: 'Start with a targeted oil-control step to manage shine, congestion, or clogged pores.',
+                },
+                {
+                  role_id: 'lightweight_moisturizer',
+                  label: 'Lightweight moisturizer',
+                  why_this_role: 'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
+                },
+              ],
+              recommendations: [
+                {
+                  product_id: 'serum_1',
+                  display_name: 'Oil Balance Serum',
+                  matched_role_id: 'oil_control_treatment',
+                  notes: ['Start with a targeted oil-control step to manage shine, congestion, or clogged pores.'],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      policyMeta: { intent_canonical: 'reco_products' },
+      assistantText: 'For oily skin, what product should i use? Start with Oil-control treatment first.',
+      profile: {
+        skinType: 'oily',
+        goals: ['oil control'],
+      },
+    });
+
+    assert.equal(result.strict_fail_flags.entity_miss_fail_seed_profile, false);
+    assert.equal(result.critical_fail_reasons.includes('entity_miss_fail_seed_profile'), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco warning visibility contract hides internal-only warning codes from user-visible warnings', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

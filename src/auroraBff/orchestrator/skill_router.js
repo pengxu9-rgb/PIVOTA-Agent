@@ -17,7 +17,10 @@ const TravelApplyModeSkill = require('../skills/travel_apply_mode');
 const ExploreAddToRoutineSkill = require('../skills/explore_add_to_routine');
 const QualityGateEngine = require('./quality_gate_engine');
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('../recoTargetStep');
-const { resolveRecommendationTargetContext } = require('../recommendationSharedStack');
+const {
+  extractRecoUserMessage,
+  shouldKeepFrameworkRecoOffLegacySkill,
+} = require('../recoOwnershipPolicy');
 
 const SKILL_MAP = Object.freeze({
   'diagnosis_v2.start': DiagnosisStartSkill,
@@ -104,44 +107,6 @@ function resolveSkillId({ intent, threadState, entrySource }) {
   return null;
 }
 
-function extractUserMessage(request) {
-  return (
-    request?.params?.user_message ||
-    request?.params?.message ||
-    request?.params?.text ||
-    null
-  );
-}
-
-function buildRecoProfileSummary(request) {
-  const profile = request && request.context && request.context.profile;
-  return profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
-}
-
-function shouldKeepFrameworkRecoOffLegacySkill({ request, classification, baseSkillId }) {
-  if (baseSkillId !== 'reco.step_based') return false;
-  if (classification?.intent !== 'recommend_products') return false;
-
-  const explicitStep = deriveTargetStep(request, classification);
-  if (explicitStep) return false;
-
-  const userMessage = extractUserMessage(request) || classification?.entities?.user_question || '';
-  if (!String(userMessage || '').trim()) return false;
-
-  try {
-    const targetContext = resolveRecommendationTargetContext({
-      explicitStep: '',
-      focus: '',
-      text: userMessage,
-      entryType: 'chat',
-      profileSummary: buildRecoProfileSummary(request),
-    });
-    return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 function extractDupeCompareProductsFromText(text) {
   const raw = String(text || '').trim();
   if (!raw) return [];
@@ -177,7 +142,7 @@ function deriveTargetStep(request, classification) {
   );
   if (explicit) return explicit;
 
-  const userMessage = extractUserMessage(request);
+  const userMessage = extractRecoUserMessage(request);
   return extractRecoTargetStepFromText(userMessage);
 }
 
@@ -267,7 +232,7 @@ class SkillRouter {
       threadState: request.thread_state,
       entrySource: request.params?.entry_source,
     });
-    const userMessage = extractUserMessage(request);
+    const userMessage = extractRecoUserMessage(request);
 
     if (!skillId && userMessage) {
       const classification = await this._classifyIntent(userMessage);
@@ -336,7 +301,7 @@ class SkillRouter {
       classification?.intent === 'dupe_compare'
       && extractedProducts.length < 2
     )
-      ? extractDupeCompareProductsFromText(entities.user_question || extractUserMessage(request))
+      ? extractDupeCompareProductsFromText(entities.user_question || extractRecoUserMessage(request))
       : [];
     const normalizedProducts = extractedProducts.length >= 2 ? extractedProducts : fallbackProducts;
 

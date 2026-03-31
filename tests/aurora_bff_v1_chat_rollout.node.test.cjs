@@ -853,6 +853,25 @@ test('/v1/chat keeps typed skincare reco questions on the v1 framework-first mai
         true,
       );
       assert.equal(
+        routes.__internal.shouldKeepTypedRecoRequestOnV1Mainline({
+          action: {
+            action_id: 'chip.start.reco_products',
+            kind: 'chip',
+            data: {
+              reply_text: 'im oily skin, what product should i use?',
+              profile_patch: {
+                skinType: 'oily',
+                goals: ['oil control'],
+              },
+            },
+          },
+          context: {
+            locale: 'en',
+          },
+        }),
+        true,
+      );
+      assert.equal(
         await routes.__internal.shouldDelegateV1ChatToV2({
           message: 'what sunscreen for oily skin should i use?',
           context: {
