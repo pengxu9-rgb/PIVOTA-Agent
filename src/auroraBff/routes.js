@@ -1434,6 +1434,7 @@ async function shouldDelegateV1ChatToV2(body) {
     const localMessage = pickFirstTrimmed(payload.message, payload.text) || '';
     if (looksLikeDiagnosisStart(localMessage)) return false;
     if (looksLikeProgressCheckRequest(localMessage, actionId)) return false;
+    if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return false;
   }
   if (hasMessage) return true;
 
@@ -1447,6 +1448,38 @@ async function shouldDelegateV1ChatToV2(body) {
       payload.canonical_intent,
     ),
   ) || isPlainObject(payload.params);
+}
+
+function buildDelegationProfileSummary(body) {
+  const payload = isPlainObject(body) ? body : {};
+  const context = isPlainObject(payload.context) ? payload.context : {};
+  const contextProfile = isPlainObject(context.profile) ? context.profile : {};
+  const session = isPlainObject(payload.session) ? payload.session : {};
+  const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  return {
+    ...contextProfile,
+    ...sessionProfile,
+  };
+}
+
+function shouldKeepTypedRecoRequestOnV1Mainline(body) {
+  const payload = isPlainObject(body) ? body : {};
+  const message = pickFirstTrimmed(payload.message, payload.text);
+  if (!message) return false;
+
+  try {
+    const targetContext = resolveRecommendationTargetContext({
+      explicitStep: '',
+      focus: '',
+      text: message,
+      entryType: 'chat',
+      profileSummary: buildDelegationProfileSummary(payload),
+    });
+    const hasFrameworkRoles = Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
+    return Boolean(hasFrameworkRoles || targetContext?.step_aware_intent);
+  } catch {
+    return false;
+  }
 }
 
 function extractLastUserMessageFromChatRequestMessages(messages) {
@@ -79985,6 +80018,7 @@ const __internal = {
   FIT_CHECK_ANCHOR_PROMPT_VERSION,
   buildFitCheckAnchorPrompt,
   shouldDelegateV1ChatToV2,
+  shouldKeepTypedRecoRequestOnV1Mainline,
   isRecoKnownTestSeedItem,
   limitRecoKnownTestSeedRecommendations,
   buildRecoDiversityToken,

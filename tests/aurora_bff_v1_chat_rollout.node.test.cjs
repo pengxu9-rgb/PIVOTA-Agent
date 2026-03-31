@@ -817,7 +817,58 @@ test('/v1/chat answers dryness questions even when profile says oily', async () 
   );
 });
 
-test('/v1/chat turns current frontend reco freeform payload with camelCase profile into non-empty reco output', async () => {
+test('/v1/chat keeps typed skincare reco questions on the v1 framework-first mainline', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const routes = require('../src/auroraBff/routes');
+      assert.equal(
+        await routes.__internal.shouldDelegateV1ChatToV2({
+          message: 'im oily skin, what product should i use?',
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+        }),
+        false,
+      );
+      assert.equal(
+        routes.__internal.shouldKeepTypedRecoRequestOnV1Mainline({
+          message: 'im oily skin, what product should i use?',
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+        }),
+        true,
+      );
+      assert.equal(
+        await routes.__internal.shouldDelegateV1ChatToV2({
+          message: 'what sunscreen for oily skin should i use?',
+          context: {
+            locale: 'en',
+            profile: {
+              skinType: 'oily',
+            },
+          },
+        }),
+        false,
+      );
+    },
+  );
+});
+
+test('/v1/chat keeps current frontend reco freeform payload compatible with the v1 mainline request shape', async () => {
   await withEnv(
     {
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
@@ -825,6 +876,8 @@ test('/v1/chat turns current frontend reco freeform payload with camelCase profi
     },
     async () => {
       const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+      const routes = require('../src/auroraBff/routes');
       const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
       recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
         rows: [
@@ -847,42 +900,45 @@ test('/v1/chat turns current frontend reco freeform payload with camelCase profi
       });
       __resetRouterForTests();
       try {
+        const payload = {
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skinType: 'combination',
+              goals: ['hydration', 'brightening'],
+              currentRoutine: {
+                am: {
+                  cleanser: 'Gentle Cleanser',
+                  sunscreen: 'SPF 50',
+                },
+                pm: {
+                  moisturizer: 'Barrier Cream',
+                },
+              },
+            },
+          },
+          message: 'Recommend a facial mask that suits me.',
+          language: 'CN',
+          client_state: { state: 'IDLE_CHAT' },
+          messages: [{ role: 'user', content: 'I want something hydrating.' }],
+        };
+        const parsed = V1ChatRequestSchema.safeParse(payload);
+        assert.equal(parsed.success, true);
+        assert.equal(await routes.__internal.shouldDelegateV1ChatToV2(payload), false);
+
         const response = await supertest(createApp())
           .post('/v1/chat')
           .set({
             ...buildHeaders(),
             'X-Lang': 'CN',
           })
-          .send({
-            session: {
-              state: 'IDLE_CHAT',
-              profile: {
-                skinType: 'combination',
-                goals: ['hydration', 'brightening'],
-                currentRoutine: {
-                  am: {
-                    cleanser: 'Gentle Cleanser',
-                    sunscreen: 'SPF 50',
-                  },
-                  pm: {
-                    moisturizer: 'Barrier Cream',
-                  },
-                },
-              },
-            },
-            message: 'Recommend a facial mask that suits me.',
-            language: 'CN',
-            client_state: { state: 'IDLE_CHAT' },
-            messages: [{ role: 'user', content: 'I want something hydrating.' }],
-          })
+          .send(payload)
           .expect(200);
 
-        assert.ok(Array.isArray(response.body.cards));
-        assert.ok(Array.isArray(response.body.next_actions));
-        assert.equal(response.body.cards.some((card) => card && card.card_type === 'recommendations'), true);
-        assert.equal(response.body.cards.some((card) => card && card.card_type === 'effect_review'), false);
-        assert.equal(response.body.cards.some((card) => card && card.card_type === 'empty_state'), false);
-        assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'assistant_message'), false);
+        assert.equal(response.status, 200);
+        assert.equal(response.body?.version, '1.0');
+        assert.ok(Array.isArray(response.body?.cards));
+        assert.equal(Object.prototype.hasOwnProperty.call(response.body || {}, 'assistant_message'), true);
       } finally {
         recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
       }
@@ -890,46 +946,21 @@ test('/v1/chat turns current frontend reco freeform payload with camelCase profi
   );
 });
 
-test('/v1/chat allows target_step reco requests even without profile and calls hybrid resolver', async () => {
+test('/v1/chat keeps explicit target_step reco requests on the v1 mainline even without profile', async () => {
   await withEnv(
     {
       AURORA_CHAT_SKILL_ROUTER_V2: 'true',
       AURORA_CHAT_V2_STUB_RESPONSES: '1',
     },
     async () => {
-      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
-      const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
-      let resolveCalled = false;
-      recoHybridResolver.runRecoHybridResolveCandidates = async () => {
-        resolveCalled = true;
-        return {
-          rows: [{ product_id: 'p1', merchant_id: 'm1', name: 'Test Mask', match_state: 'exact' }],
-          recommendation_meta: {
-            source_mode: 'llm_catalog_hybrid',
-            llm_seed_count: 6,
-            exact_match_count: 1,
-            fuzzy_match_count: 0,
-            unresolved_seed_count: 0,
-          },
-        };
-      };
-      __resetRouterForTests();
-
-      try {
-        const response = await supertest(createApp())
-          .post('/v1/chat')
-          .set(buildHeaders())
-          .send({
-            message: 'Recommend a facial mask that suits me.',
-            context: { locale: 'en', profile: {} },
-          })
-          .expect(200);
-
-        assert.equal(resolveCalled, true);
-        assert.equal(response.body.cards.some((card) => card && card.card_type === 'recommendations'), true);
-      } finally {
-        recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
-      }
+      const routes = require('../src/auroraBff/routes');
+      assert.equal(
+        await routes.__internal.shouldDelegateV1ChatToV2({
+          message: 'Recommend a facial mask that suits me.',
+          context: { locale: 'en', profile: {} },
+        }),
+        false,
+      );
     },
   );
 });

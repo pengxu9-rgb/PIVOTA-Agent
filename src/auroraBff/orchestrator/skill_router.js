@@ -17,6 +17,7 @@ const TravelApplyModeSkill = require('../skills/travel_apply_mode');
 const ExploreAddToRoutineSkill = require('../skills/explore_add_to_routine');
 const QualityGateEngine = require('./quality_gate_engine');
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('../recoTargetStep');
+const { resolveRecommendationTargetContext } = require('../recommendationSharedStack');
 
 const SKILL_MAP = Object.freeze({
   'diagnosis_v2.start': DiagnosisStartSkill,
@@ -110,6 +111,35 @@ function extractUserMessage(request) {
     request?.params?.text ||
     null
   );
+}
+
+function buildRecoProfileSummary(request) {
+  const profile = request && request.context && request.context.profile;
+  return profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
+}
+
+function shouldKeepFrameworkRecoOffLegacySkill({ request, classification, baseSkillId }) {
+  if (baseSkillId !== 'reco.step_based') return false;
+  if (classification?.intent !== 'recommend_products') return false;
+
+  const explicitStep = deriveTargetStep(request, classification);
+  if (explicitStep) return false;
+
+  const userMessage = extractUserMessage(request) || classification?.entities?.user_question || '';
+  if (!String(userMessage || '').trim()) return false;
+
+  try {
+    const targetContext = resolveRecommendationTargetContext({
+      explicitStep: '',
+      focus: '',
+      text: userMessage,
+      entryType: 'chat',
+      profileSummary: buildRecoProfileSummary(request),
+    });
+    return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function extractDupeCompareProductsFromText(text) {
@@ -285,6 +315,9 @@ class SkillRouter {
 
     const baseSkillId = INTENT_TO_SKILL[intent] || null;
     if (!baseSkillId) return null;
+    if (shouldKeepFrameworkRecoOffLegacySkill({ request, classification, baseSkillId })) {
+      return null;
+    }
     if (baseSkillId === 'diagnosis_v2.start' && Array.isArray(request?.thread_state?.diagnosis_goals) && request.thread_state.diagnosis_goals.length > 0) {
       return 'diagnosis_v2.answer';
     }

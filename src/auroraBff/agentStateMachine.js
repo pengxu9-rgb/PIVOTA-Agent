@@ -18,7 +18,10 @@ const CHIP_ALIASES = {
 };
 
 function normalizeAgentState(raw) {
-  const s = String(raw == null ? '' : raw).trim();
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw.state || raw.current_state || raw.next_state || '')
+    : raw;
+  const s = String(source == null ? '' : source).trim();
   return Array.isArray(spec.states) && spec.states.includes(s) ? s : DEFAULT_AGENT_STATE;
 }
 

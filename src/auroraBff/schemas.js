@@ -232,7 +232,12 @@ const V1ChatRequestSchema = z
   .object({
     message: z.string().min(1).optional(),
     query: z.string().min(1).optional(),
-    client_state: z.string().min(1).optional(),
+    client_state: z
+      .union([
+        z.string().min(1),
+        z.record(z.string(), z.any()),
+      ])
+      .optional(),
     requested_transition: z
       .object({
         trigger_source: z.enum(['chip', 'action', 'text_explicit']),
