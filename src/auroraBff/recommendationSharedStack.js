@@ -142,17 +142,57 @@ function getStepPolicy(step) {
   return STEP_THRESHOLDS[normalized] || STEP_THRESHOLDS.default;
 }
 
+function looksLikeGenericSingleProductAsk(text) {
+  const normalized = normalizeQueryToken(text).toLowerCase();
+  if (!normalized) return false;
+  if (
+    /\b(cleanser|face wash|serum|essence|toner|sunscreen|sun screen|spf|sunblock|moisturizer|moisturiser|cream|lotion|gel cream|mask|retinol|retinoid|acid|treatment|oil)\b/.test(normalized)
+    || /(防晒|洁面|洗面奶|精华|面霜|乳液|面膜|刷酸|维a|护肤油)/.test(normalized)
+  ) {
+    return false;
+  }
+  if (
+    /\b(products|routine|regimen|steps|kit|set|compare|alternatives?)\b/.test(normalized)
+    || /(套装|流程|步骤|routine|平替|替代)/.test(normalized)
+  ) {
+    return false;
+  }
+  return (
+    /\bwhat product should i use\b/.test(normalized)
+    || /\bwhich product should i use\b/.test(normalized)
+    || /\bwhat should i use\b/.test(normalized)
+    || /\bwhat do you recommend\b/.test(normalized)
+    || /\bwhat should i get\b/.test(normalized)
+    || /\bwhat should i buy\b/.test(normalized)
+    || /\bwhat can i use\b/.test(normalized)
+  );
+}
+
 function resolveRecommendationTargetContext({
   explicitStep = '',
   focus = '',
   text = '',
   entryType = 'chat',
 } = {}) {
-  const resolved = resolveRecoTargetStepIntent({
+  let resolved = resolveRecoTargetStepIntent({
     explicitStep,
     focus,
     text,
   });
+  const normalizedEntryType = String(entryType || 'chat').trim().toLowerCase() || 'chat';
+  if (
+    normalizedEntryType === 'chat'
+    && String(resolved.resolved_target_step_confidence || 'none').trim().toLowerCase() === 'none'
+    && !normalizeRecoTargetStep(explicitStep)
+    && looksLikeGenericSingleProductAsk(text)
+  ) {
+    resolved = {
+      ...resolved,
+      resolved_target_step: 'moisturizer',
+      resolved_target_step_confidence: 'medium',
+      resolved_target_step_source: 'generic_single_product_default',
+    };
+  }
   const confidence = String(resolved.resolved_target_step_confidence || 'none').trim().toLowerCase() || 'none';
   const step = normalizeRecoTargetStep(resolved.resolved_target_step);
   const stepAwareIntent = Boolean(step) && (confidence === 'high' || confidence === 'medium');
@@ -165,7 +205,7 @@ function resolveRecommendationTargetContext({
   return {
     ...resolved,
     resolved_target_step: step,
-    entry_type: String(entryType || 'chat').trim().toLowerCase() || 'chat',
+    entry_type: normalizedEntryType,
     step_aware_intent: stepAwareIntent,
     mainline_mode: stepAwareIntent ? mainlineMode : 'generic',
   };
