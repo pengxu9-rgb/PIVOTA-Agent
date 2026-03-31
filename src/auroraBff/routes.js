@@ -69,6 +69,9 @@ const {
   renderDeepeningCanonicalLayer,
 } = require('./skinAnalysisContract');
 const {
+  shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
+} = require('./recoOwnershipPolicy');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -1450,47 +1453,8 @@ async function shouldDelegateV1ChatToV2(body) {
   ) || isPlainObject(payload.params);
 }
 
-function buildDelegationProfileSummary(body) {
-  const payload = isPlainObject(body) ? body : {};
-  const context = isPlainObject(payload.context) ? payload.context : {};
-  const contextProfile = isPlainObject(context.profile) ? context.profile : {};
-  const session = isPlainObject(payload.session) ? payload.session : {};
-  const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
-  const action = isPlainObject(payload.action) ? payload.action : {};
-  const actionData = isPlainObject(action.data) ? action.data : {};
-  const actionProfilePatch = isPlainObject(actionData.profile_patch) ? actionData.profile_patch : {};
-  return {
-    ...contextProfile,
-    ...sessionProfile,
-    ...actionProfilePatch,
-  };
-}
 function shouldKeepTypedRecoRequestOnV1Mainline(body) {
-  const payload = isPlainObject(body) ? body : {};
-  const action = isPlainObject(payload.action) ? payload.action : {};
-  const actionData = isPlainObject(action.data) ? action.data : {};
-  const message = pickFirstTrimmed(
-    payload.message,
-    payload.text,
-    actionData.reply_text,
-    actionData.replyText,
-    extractLastUserMessageFromChatRequestMessages(payload.messages),
-  );
-  if (!message) return false;
-
-  try {
-    const targetContext = resolveRecommendationTargetContext({
-      explicitStep: '',
-      focus: '',
-      text: message,
-      entryType: 'chat',
-      profileSummary: buildDelegationProfileSummary(payload),
-    });
-    const hasFrameworkRoles = Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
-    return Boolean(hasFrameworkRoles || targetContext?.step_aware_intent);
-  } catch {
-    return false;
-  }
+  return shouldKeepTypedRecoRequestOnV1MainlinePolicy(body);
 }
 
 function extractLastUserMessageFromChatRequestMessages(messages) {

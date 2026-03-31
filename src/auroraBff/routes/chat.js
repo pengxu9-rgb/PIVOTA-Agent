@@ -7,6 +7,7 @@ const { buildChatCardsResponse } = require('../chatCardsAssembler');
 const { buildRequestContext } = require('../requestContext');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
+const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -136,35 +137,6 @@ async function invokeV1MainlineChat({ req, body } = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function shouldProxyFrameworkRecoToV1Mainline(body, internal = {}) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
-  const action = isPlainObject(body.action) ? body.action : {};
-  const actionData = isPlainObject(action.data) ? action.data : {};
-  const effectiveMessage = pickFirstTrimmed(
-    body.message,
-    body.text,
-    actionData.reply_text,
-    actionData.replyText,
-    extractLastUserMessageFromMessages(body.messages),
-  );
-  if (
-    typeof internal.shouldKeepTypedRecoRequestOnV1Mainline === 'function'
-    && internal.shouldKeepTypedRecoRequestOnV1Mainline({
-      ...body,
-      ...(effectiveMessage ? { message: effectiveMessage } : {}),
-    }) === true
-  ) {
-    return true;
-  }
-  const hasAction = Boolean(pickFirstTrimmed(body.action_id, action.action_id));
-  if (hasAction) return false;
-  if (!effectiveMessage) return false;
-  const normalized = String(effectiveMessage).trim().toLowerCase();
-  const hasConcernSignal = /\b(oily|dry|dehydrated|sensitive|combination|acne|breakout|redness|pores?|dark spots?)\b/.test(normalized);
-  const hasProductAskSignal = /\b(product|products|routine|use|recommend|should i use|what should i use)\b/.test(normalized);
-  return hasConcernSignal && hasProductAskSignal;
 }
 
 function mergeResponseMeta(payload, authMeta) {
