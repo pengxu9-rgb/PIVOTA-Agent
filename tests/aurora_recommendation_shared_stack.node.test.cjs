@@ -51,16 +51,25 @@ test('direct focus negatives do not escalate to high-confidence hard target', ()
   }
 });
 
-test('generic single-product chat asks default to moisturizer without broadening into sunscreen', () => {
+test('generic single-product chat asks resolve into a framework-first role plan instead of a single default family', () => {
   const targetContext = resolveRecommendationTargetContext({
     text: 'im oily skin, what product should i use?',
     entryType: 'chat',
+    profileSummary: { skinType: 'oily' },
   });
 
-  assert.equal(targetContext.resolved_target_step, 'moisturizer');
-  assert.equal(targetContext.resolved_target_step_confidence, 'medium');
-  assert.equal(targetContext.resolved_target_step_source, 'generic_single_product_default');
-  assert.equal(targetContext.mainline_mode, 'soft_target');
+  assert.equal(targetContext.resolved_target_step, null);
+  assert.equal(targetContext.resolved_target_step_confidence, 'none');
+  assert.equal(targetContext.resolved_target_step_source, 'generic_concern_framework');
+  assert.equal(targetContext.mainline_mode, 'framework');
+  assert.equal(targetContext.intent_mode, 'generic_concern');
+  assert.equal(targetContext.framework_owner_source, 'generic_concern_framework_resolver');
+  assert.equal(targetContext.framework_owner_state, 'trusted');
+  assert.equal(targetContext.primary_role_id, 'oil_control_treatment');
+  assert.deepEqual(
+    targetContext.framework_roles.map((role) => role.role_id),
+    ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  );
 });
 
 test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {

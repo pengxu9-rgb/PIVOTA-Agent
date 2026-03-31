@@ -21,6 +21,7 @@ const isSkincareCandidate =
 const RECOMMENDATION_STEP_QUERY_POLICY_V1 = 'recommendation_step_query_policy_v1';
 const RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1 = 'recommendation_viable_threshold_policy_v1';
 const RECOMMENDATION_RECO_POLICY_V1 = 'recommendation_step_aware_reco_policy_v1';
+const CONCERN_FRAMEWORK_POLICY_V1 = 'recommendation_concern_framework_policy_v1';
 const CANDIDATE_POOL_SIGNATURE_VERSION = 'recommendation_viable_pool_signature_v1';
 const RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION = 'recommendation_raw_pool_debug_signature_v1';
 const GROUP_SEMANTICS_VERSION = 'recommendation_group_semantics_v1';
@@ -269,11 +270,175 @@ function looksLikeGenericSingleProductAsk(text) {
   );
 }
 
+function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary = null } = {}) {
+  const normalized = `${normalizeQueryToken(text)} ${normalizeQueryToken(focus)}`.trim().toLowerCase();
+  const goals = Array.isArray(profileSummary?.goals) ? profileSummary.goals.map((item) => normalizeQueryToken(item).toLowerCase()) : [];
+  const skinType = normalizeQueryToken(profileSummary?.skin_type || profileSummary?.skinType || profileSummary?.skin_type_tendency).toLowerCase();
+  const sensitivity = normalizeQueryToken(profileSummary?.sensitivity || profileSummary?.sensitivity_tendency).toLowerCase();
+  const barrier = normalizeQueryToken(profileSummary?.barrier_status || profileSummary?.barrierStatus).toLowerCase();
+  const haystack = [normalized, skinType, sensitivity, barrier, ...goals].filter(Boolean).join(' ');
+  return {
+    oily: /\boily\b|出油|油皮|控油|sebum|shine|greasy/.test(haystack),
+    acne: /\bacne\b|\bbreakout\b|blemish|spot|pore|痘|闭口|粉刺|毛孔/.test(haystack),
+    dry: /\bdry\b|dehydrat|干燥|缺水|起皮|脱皮/.test(haystack),
+    redness: /redness|flush|泛红|发红|红血丝/.test(haystack),
+    sensitive: /\bsensitive\b|敏感|刺激|stinging|reactive/.test(haystack),
+    barrier: /barrier|repair|修护|屏障|受损|impaired/.test(haystack),
+  };
+}
+
+function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = null } = {}) {
+  const signals = collectConcernFrameworkSignals({ text, focus, profileSummary });
+  const isCn = /[\u4e00-\u9fff]/.test(`${text} ${focus}`);
+  const role = (roleId, rank, preferredStep, labelEn, labelZh, whyEn, whyZh, queryTerms, alternateSteps = []) => ({
+    role_id: roleId,
+    rank,
+    preferred_step: preferredStep,
+    alternate_steps: alternateSteps,
+    slot: inferSlotForStep(preferredStep),
+    label: isCn ? labelZh : labelEn,
+    why_this_role: isCn ? whyZh : whyEn,
+    query_terms: uniqCaseInsensitiveStrings(queryTerms, 6),
+  });
+
+  let roles;
+  if (signals.oily || signals.acne) {
+    roles = [
+      role(
+        'oil_control_treatment',
+        1,
+        'treatment',
+        'Oil-control treatment',
+        '控油功效产品',
+        'Start with a targeted oil-control step to manage shine, congestion, or clogged pores.',
+        '先用针对控油和毛孔的功效产品，把出油和堵塞问题压住。',
+        ['oil control serum', 'niacinamide serum oily skin', 'lightweight treatment oily skin', 'blemish treatment'],
+        ['serum'],
+      ),
+      role(
+        'lightweight_moisturizer',
+        2,
+        'moisturizer',
+        'Lightweight moisturizer',
+        '轻薄保湿',
+        'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
+        '保湿需要轻薄透气，维持水油平衡但不要厚重闷脸。',
+        ['lightweight moisturizer oily skin', 'gel cream oily skin', 'barrier lotion oily skin'],
+      ),
+      role(
+        'daily_sunscreen',
+        3,
+        'sunscreen',
+        'Daily sunscreen',
+        '日常防晒',
+        'Daytime UV protection still matters, but it is supporting care rather than the first fix.',
+        '白天防晒仍然重要，但它是支持步骤，不是第一优先修复点。',
+        ['oil control sunscreen', 'lightweight sunscreen oily skin', 'spf oily skin'],
+      ),
+    ];
+  } else if (signals.barrier || signals.sensitive || signals.redness || signals.dry) {
+    roles = [
+      role(
+        'barrier_moisturizer',
+        1,
+        'moisturizer',
+        'Barrier-support moisturizer',
+        '屏障修护保湿',
+        'Use a barrier-first moisturizer to reduce irritation and improve baseline comfort.',
+        '先用屏障修护保湿把耐受和舒适度稳住。',
+        ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+      ),
+      role(
+        'soothing_treatment',
+        2,
+        'treatment',
+        'Soothing treatment',
+        '舒缓功效产品',
+        'Add a gentle soothing treatment if redness or reactivity is still active.',
+        '如果泛红和敏感还在，补一个温和舒缓的功效步骤。',
+        ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+        ['serum'],
+      ),
+      role(
+        'daily_sunscreen',
+        3,
+        'sunscreen',
+        'Daily sunscreen',
+        '日常防晒',
+        'Protect the routine during the day while the barrier is recovering.',
+        '在白天保护修护流程，避免恢复期继续受刺激。',
+        ['sensitive skin sunscreen', 'barrier sunscreen', 'spf sensitive skin'],
+      ),
+    ];
+  } else {
+    roles = [
+      role(
+        'targeted_treatment',
+        1,
+        'treatment',
+        'Targeted treatment',
+        '针对性功效产品',
+        'Start with the role that addresses the main skin concern directly.',
+        '先上最针对当前问题的功效步骤。',
+        ['targeted treatment skincare', 'skin concern serum', 'treatment skincare'],
+        ['serum'],
+      ),
+      role(
+        'supporting_moisturizer',
+        2,
+        'moisturizer',
+        'Supporting moisturizer',
+        '配套保湿',
+        'Pair the active step with a moisturizer that keeps the routine tolerable.',
+        '搭配一个能稳住耐受的保湿步骤。',
+        ['supporting moisturizer skincare', 'barrier moisturizer', 'light moisturizer'],
+      ),
+      role(
+        'daily_sunscreen',
+        3,
+        'sunscreen',
+        'Daily sunscreen',
+        '日常防晒',
+        'Protect the routine during the day so the treatment work is not undermined.',
+        '白天用防晒把前面的护理效果保住。',
+        ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+      ),
+    ];
+  }
+
+  return {
+    framework_id: makeSignature('recofw', {
+      version: CONCERN_FRAMEWORK_POLICY_V1,
+      roles: roles.map((item) => item.role_id),
+      text: normalizeQueryToken(text).toLowerCase(),
+      focus: normalizeQueryToken(focus).toLowerCase(),
+    }),
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+    roles,
+    primary_role_id: roles[0]?.role_id || null,
+    concern_signals: signals,
+    framework_summary: {
+      concern_text: normalizeQueryToken(text || focus),
+      headline: isCn
+        ? '先明确护理角色，再匹配对应商品'
+        : 'Start with product roles, then match products inside each role',
+      prioritized_roles: roles.map((item) => ({
+        role_id: item.role_id,
+        label: item.label,
+        why_this_role: item.why_this_role,
+        rank: item.rank,
+      })),
+    },
+  };
+}
+
 function resolveRecommendationTargetContext({
   explicitStep = '',
   focus = '',
   text = '',
   entryType = 'chat',
+  profileSummary = null,
 } = {}) {
   let resolved = resolveRecoTargetStepIntent({
     explicitStep,
@@ -287,18 +452,34 @@ function resolveRecommendationTargetContext({
     && !normalizeRecoTargetStep(explicitStep)
     && looksLikeGenericSingleProductAsk(text)
   ) {
+    const framework = buildConcernFrameworkRoles({
+      text,
+      focus,
+      profileSummary,
+    });
     resolved = {
       ...resolved,
-      resolved_target_step: 'moisturizer',
-      resolved_target_step_confidence: 'medium',
-      resolved_target_step_source: 'generic_single_product_default',
+      resolved_target_step: null,
+      resolved_target_step_confidence: 'none',
+      resolved_target_step_source: 'generic_concern_framework',
+      framework_id: framework.framework_id,
+      framework_owner_source: framework.framework_owner_source,
+      framework_owner_state: framework.framework_owner_state,
+      framework_roles: framework.roles,
+      primary_role_id: framework.primary_role_id,
+      framework_summary: framework.framework_summary,
+      concern_signals: framework.concern_signals,
+      intent_mode: 'generic_concern',
     };
   }
   const confidence = String(resolved.resolved_target_step_confidence || 'none').trim().toLowerCase() || 'none';
   const step = normalizeRecoTargetStep(resolved.resolved_target_step);
-  const stepAwareIntent = Boolean(step) && (confidence === 'high' || confidence === 'medium');
+  const hasFrameworkRoles = Array.isArray(resolved.framework_roles) && resolved.framework_roles.length > 0;
+  const stepAwareIntent = !hasFrameworkRoles && Boolean(step) && (confidence === 'high' || confidence === 'medium');
   const mainlineMode =
-    confidence === 'high'
+    hasFrameworkRoles
+      ? 'framework'
+      : confidence === 'high'
       ? 'hard_target'
       : confidence === 'medium'
         ? 'soft_target'
@@ -308,7 +489,15 @@ function resolveRecommendationTargetContext({
     resolved_target_step: step,
     entry_type: normalizedEntryType,
     step_aware_intent: stepAwareIntent,
-    mainline_mode: stepAwareIntent ? mainlineMode : 'generic',
+    mainline_mode: hasFrameworkRoles ? 'framework' : stepAwareIntent ? mainlineMode : 'generic',
+    intent_mode: pickFirstTrimmed(resolved.intent_mode, hasFrameworkRoles ? 'generic_concern' : '') || (stepAwareIntent ? 'explicit_role' : 'generic'),
+    framework_roles: hasFrameworkRoles ? resolved.framework_roles : [],
+    primary_role_id: hasFrameworkRoles ? resolved.primary_role_id || resolved.framework_roles[0]?.role_id || null : null,
+    framework_id: hasFrameworkRoles ? resolved.framework_id || null : null,
+    framework_owner_source: hasFrameworkRoles ? resolved.framework_owner_source || 'generic_concern_framework_resolver' : null,
+    framework_owner_state: hasFrameworkRoles ? resolved.framework_owner_state || 'trusted' : null,
+    framework_summary: hasFrameworkRoles ? resolved.framework_summary || null : null,
+    concern_framework_policy_version: hasFrameworkRoles ? CONCERN_FRAMEWORK_POLICY_V1 : null,
   };
 }
 
@@ -868,11 +1057,14 @@ module.exports = {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
   RECOMMENDATION_RECO_POLICY_V1,
+  CONCERN_FRAMEWORK_POLICY_V1,
   CANDIDATE_POOL_SIGNATURE_VERSION,
   RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION,
   GROUP_SEMANTICS_VERSION,
   STEP_THRESHOLDS,
+  isSkincareCandidate,
   resolveRecommendationTargetContext,
+  buildConcernFrameworkRoles,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
   shouldStopStepAwareBroadening,

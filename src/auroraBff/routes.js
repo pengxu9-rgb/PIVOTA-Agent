@@ -241,6 +241,7 @@ const {
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,
+  isSkincareCandidate,
 } = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
@@ -15895,6 +15896,34 @@ function buildRecoCatalogQueryLevels({
   lang,
   seedTerms = [],
 } = {}) {
+  if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
+    const concernText = String(targetContext?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
+    return targetContext.framework_roles.map((role, index) => {
+      const preferredStep = normalizeRecoTargetStep(role && role.preferred_step) || 'treatment';
+      const queries = [
+        ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+        concernText ? `${concernText} ${preferredStep}` : '',
+        concernText,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .slice(0, 6);
+      return {
+        level_index: index,
+        ladder_level: `framework_${String(role?.role_id || index).trim() || index}`,
+        queries: queries.map((query) => ({
+          query,
+          step: preferredStep,
+          slot: inferSlotForStep(preferredStep),
+          ladder_level: `framework_${String(role?.role_id || index).trim() || index}`,
+          role_id: String(role?.role_id || '').trim() || null,
+          role_rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : index + 1,
+          role_label: String(role?.label || '').trim() || null,
+          preferred_step: preferredStep,
+        })),
+      };
+    });
+  }
   if (targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step) {
     return buildSameFamilyQueryLevels({
       targetContext,
@@ -15915,6 +15944,323 @@ function buildRecoCatalogQueryLevels({
         },
       ]
     : [];
+}
+
+function buildConcernFrameworkSummary({
+  targetContext,
+  recommendations,
+  language = 'EN',
+} = {}) {
+  if (!targetContext || !Array.isArray(targetContext.framework_roles) || targetContext.framework_roles.length === 0) return null;
+  const primaryRoleId = String(targetContext.primary_role_id || '').trim();
+  const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
+  const primaryReco = (Array.isArray(recommendations) ? recommendations : []).find((item) => {
+    const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
+    return matchedRoleId && matchedRoleId === primaryRoleId;
+  }) || (Array.isArray(recommendations) ? recommendations[0] : null);
+  const primaryName = pickFirstTrimmed(
+    primaryReco?.display_name,
+    primaryReco?.displayName,
+    primaryReco?.name,
+    primaryReco?.title,
+    primaryReco?.sku?.display_name,
+    primaryReco?.sku?.displayName,
+    primaryReco?.sku?.name,
+  );
+  return {
+    concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
+    headline: primaryRole
+      ? (String(language || '').toUpperCase() === 'CN'
+        ? `先围绕 ${primaryRole.label} 建立护理框架，再补充其它支持步骤`
+        : `Start with ${primaryRole.label}, then layer the supporting roles`)
+      : (String(language || '').toUpperCase() === 'CN'
+        ? '先明确护理角色，再匹配对应商品'
+        : 'Start with product roles, then match products inside each role'),
+    primary_role_id: primaryRoleId || null,
+    primary_role_label: primaryRole ? String(primaryRole.label || '').trim() || null : null,
+    primary_recommendation_name: primaryName || null,
+    prioritized_roles: targetContext.framework_roles.map((role) => ({
+      role_id: String(role?.role_id || '').trim() || null,
+      label: String(role?.label || '').trim() || null,
+      why_this_role: String(role?.why_this_role || '').trim() || null,
+      rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+      preferred_step: String(role?.preferred_step || '').trim() || null,
+    })),
+  };
+}
+
+function buildConcernFrameworkDecisionTrace({
+  targetContext,
+  queryLevels,
+  candidateState,
+} = {}) {
+  if (!targetContext || !Array.isArray(targetContext.framework_roles) || targetContext.framework_roles.length === 0) return null;
+  const queriedRoles = [];
+  for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
+    for (const query of Array.isArray(level?.queries) ? level.queries : []) {
+      const roleId = String(query?.role_id || '').trim();
+      if (!roleId || queriedRoles.includes(roleId)) continue;
+      queriedRoles.push(roleId);
+    }
+  }
+  const selectedProducts = (Array.isArray(candidateState?.selected_recommendations) ? candidateState.selected_recommendations : [])
+    .map((item) => ({
+      product_id: pickFirstString(item?.product_id, item?.productId) || null,
+      matched_role_id: pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) || null,
+      framework_score: Number.isFinite(Number(item?.framework_score)) ? Number(item.framework_score) : null,
+    }));
+  return [
+    {
+      node: 'early_generic_concern_parse',
+      selected_role: targetContext.primary_role_id || null,
+      selected_role_source: targetContext.framework_owner_source || null,
+      selected_role_state: targetContext.framework_owner_state || null,
+      owner_conflict: false,
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+    {
+      node: 'framework_resolver',
+      selected_role: targetContext.primary_role_id || null,
+      selected_role_source: targetContext.framework_owner_source || null,
+      candidate_roles: targetContext.framework_roles.map((role) => ({
+        role_id: String(role?.role_id || '').trim() || null,
+        rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+        preferred_step: String(role?.preferred_step || '').trim() || null,
+      })),
+      owner_conflict: false,
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+    {
+      node: 'target_role_normalization',
+      selected_role: targetContext.primary_role_id || null,
+      selected_role_source: targetContext.framework_owner_source || null,
+      candidate_roles: targetContext.framework_roles.map((role) => ({
+        role_id: String(role?.role_id || '').trim() || null,
+        preferred_step: String(role?.preferred_step || '').trim() || null,
+      })),
+      owner_conflict: false,
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+    {
+      node: 'catalog_query_build',
+      selected_role: targetContext.primary_role_id || null,
+      candidate_roles: queriedRoles,
+      owner_conflict: false,
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+    {
+      node: 'candidate_filtering',
+      selected_role: targetContext.primary_role_id || null,
+      selected_products: selectedProducts,
+      owner_conflict: Boolean(candidateState?.role_conflict_present),
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+    {
+      node: 'final_recommendation_selection',
+      selected_role: targetContext.primary_role_id || null,
+      selected_products: selectedProducts,
+      owner_conflict: Boolean(candidateState?.role_conflict_present),
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+    },
+  ];
+}
+
+function buildFrameworkRecommendationNotes({
+  language = 'EN',
+  role = null,
+  isPrimary = false,
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const roleObj = isPlainObject(role) ? role : null;
+  const roleLabel = String(roleObj?.label || '').trim();
+  const roleWhy = String(roleObj?.why_this_role || '').trim();
+  const notes = [];
+  if (roleWhy) notes.push(roleWhy);
+  if (roleLabel) {
+    notes.push(
+      isCn
+        ? (isPrimary
+          ? `这是当前护理框架里的主推角色：${roleLabel}。`
+          : `这是当前护理框架里的支持角色：${roleLabel}。`)
+        : (isPrimary
+          ? `This is the mainline top pick inside the ${roleLabel} role.`
+          : `This stays inside the ${roleLabel} support role.`),
+    );
+  }
+  return notes.filter(Boolean).slice(0, 2);
+}
+
+function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
+  const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
+  const deduped = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
+    const row = isPlainObject(raw) ? raw : null;
+    if (!row) continue;
+    const key = [
+      pickFirstTrimmed(row.product_id, row.productId, row.id),
+      pickFirstTrimmed(row.merchant_id, row.merchantId),
+      pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+    ].join('::').toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(row);
+  }
+
+  const viable = [];
+  const softMismatch = [];
+  const hardReject = [];
+  const roleBuckets = new Map();
+  for (const role of roles) {
+    roleBuckets.set(String(role?.role_id || '').trim(), []);
+  }
+
+  for (const row of deduped) {
+    if (!isSkincareCandidate(row)) {
+      hardReject.push({ product: row, reason: 'non_skincare_or_blacklisted' });
+      continue;
+    }
+    const candidateStep = normalizeRecoTargetStep(
+      pickFirstTrimmed(
+        row.product_type,
+        row.productType,
+        row.category,
+        row.category_name,
+        row.categoryName,
+        row.step,
+        row.type,
+        row.retrieval_step,
+      ),
+    );
+    const retrievalRoleId = pickFirstTrimmed(row.retrieval_role_id, row.role_id);
+    const candidateText = [
+      pickFirstTrimmed(row.brand),
+      pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+      pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType),
+      ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+      ...(Array.isArray(row.tags) ? row.tags : []),
+      ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ].join(' ').toLowerCase();
+
+    let bestRole = null;
+    let bestScore = 0;
+    for (const role of roles) {
+      const roleId = String(role?.role_id || '').trim();
+      if (!roleId) continue;
+      const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
+      const alternateSteps = Array.isArray(role?.alternate_steps)
+        ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
+        : [];
+      let score = 0;
+      if (candidateStep && preferredStep && candidateStep === preferredStep) score += 0.72;
+      else if (candidateStep && alternateSteps.includes(candidateStep)) score += 0.62;
+      else if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') score += 0.6;
+      if (retrievalRoleId && retrievalRoleId === roleId) score += 0.18;
+      for (const term of Array.isArray(role?.query_terms) ? role.query_terms : []) {
+        const normalizedTerm = String(term || '').trim().toLowerCase();
+        if (!normalizedTerm) continue;
+        if (candidateText.includes(normalizedTerm)) {
+          score += 0.08;
+          break;
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestRole = role;
+      }
+    }
+
+    if (!bestRole) {
+      hardReject.push({ product: row, reason: 'framework_role_unmatched' });
+      continue;
+    }
+    const annotated = {
+      ...row,
+      matched_role_id: String(bestRole.role_id || '').trim() || null,
+      matched_role_label: String(bestRole.label || '').trim() || null,
+      matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
+      framework_score: Number(bestScore.toFixed(4)),
+      candidate_step: candidateStep || null,
+    };
+    if (bestScore >= 0.72) {
+      viable.push(annotated);
+      roleBuckets.get(annotated.matched_role_id)?.push(annotated);
+    } else if (bestScore >= 0.5) {
+      softMismatch.push({ product: annotated, reason: 'framework_soft_mismatch' });
+    } else {
+      hardReject.push({ product: annotated, reason: 'framework_hard_mismatch' });
+    }
+  }
+
+  for (const bucket of roleBuckets.values()) {
+    bucket.sort((left, right) => Number(right.framework_score || 0) - Number(left.framework_score || 0));
+  }
+
+  const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
+  const usedProductIds = new Set();
+  const selected = [];
+  for (const role of orderedRoles) {
+    const bucket = roleBuckets.get(String(role?.role_id || '').trim()) || [];
+    const picked = bucket.find((item) => {
+      const productId = pickFirstString(item.product_id, item.productId, item.id);
+      if (!productId || usedProductIds.has(productId)) return false;
+      return true;
+    });
+    if (!picked) continue;
+    usedProductIds.add(pickFirstString(picked.product_id, picked.productId, picked.id));
+    selected.push(picked);
+    if (selected.length >= 3) break;
+  }
+
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
+  const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || selected[0] || null;
+
+  return {
+    raw_candidate_pool: deduped,
+    viable_candidate_pool: viable,
+    selected_recommendations: selected,
+    primary_recommendation_id: primaryRecommendation ? pickFirstString(primaryRecommendation.product_id, primaryRecommendation.productId) : null,
+    primary_role_id: primaryRoleId || null,
+    raw_candidate_count: deduped.length,
+    viable_candidate_count: viable.length,
+    exact_step_viable_count: primaryRoleMatched ? 1 : 0,
+    same_family_viable_count: viable.length,
+    soft_mismatch_count: softMismatch.length,
+    hard_reject_count: hardReject.length,
+    pre_llm_selected_candidate_count: selected.length,
+    final_selected_candidate_count: selected.length,
+    selected_candidate_count: selected.length,
+    hard_reject: hardReject,
+    soft_mismatch: softMismatch,
+    viable,
+    viable_pool_strength: primaryRoleMatched ? 'strong' : selected.length > 0 ? 'weak' : 'empty',
+    weak_viable_pool: selected.length > 0 && !primaryRoleMatched,
+    family_match_type: primaryRoleMatched ? 'framework_exact' : selected.length > 0 ? 'framework_partial' : 'framework_failed',
+    item_target_fidelity: selected.map((item) => Number(item.framework_score || 0)),
+    group_target_fidelity: primaryRecommendation ? [Number(primaryRecommendation.framework_score || 0)] : [],
+    target_fidelity_level: primaryRoleMatched ? 'satisfied' : selected.length > 0 ? 'partial' : 'failed',
+    overall_target_fidelity_satisfied: primaryRoleMatched,
+    target_fidelity_satisfied: primaryRoleMatched,
+    top_candidates_converged: primaryRoleMatched,
+    same_family_strong_viable_exists: primaryRoleMatched,
+    same_family_success_threshold_met: primaryRoleMatched,
+    hard_constraint_conflict: false,
+    constraint_conflict: false,
+    average_context_fit_score: 0,
+    artifact_context_applied: false,
+    terminal_success: primaryRoleMatched && selected.length > 0,
+    reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
+    role_conflict_present: selected.length > 0 && !primaryRoleMatched,
+    candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${selected.length}_${viable.length}`,
+    raw_candidate_pool_debug_signature: `framework_raw_${String(targetContext?.framework_id || '').slice(0, 12)}_${deduped.length}`,
+  };
 }
 
 async function collectRecoCandidatesFromQueryLevels({
@@ -15967,13 +16313,19 @@ async function collectRecoCandidatesFromQueryLevels({
           retrieval_step: queryEntry.step,
           retrieval_slot: queryEntry.slot,
           retrieval_ladder_level: queryEntry.ladder_level,
+          retrieval_role_id: queryEntry.role_id || null,
         });
       }
     }
-    candidateState = finalizeRecommendationCandidatePools(rawCandidates, {
-      targetContext,
-      recoContext: recommendationTaskContext,
-    });
+    candidateState =
+      targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
+        ? finalizeConcernFrameworkCandidatePools(rawCandidates, {
+            targetContext,
+          })
+        : finalizeRecommendationCandidatePools(rawCandidates, {
+            targetContext,
+            recoContext: recommendationTaskContext,
+          });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
       break;
@@ -16721,7 +17073,11 @@ async function buildRecoGenerateFromCatalog({
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
   let candidateState = isPlainObject(collected.candidateState)
     ? collected.candidateState
-    : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+    : (
+      targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
+        ? finalizeConcernFrameworkCandidatePools([], { targetContext })
+        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext })
+    );
   const verifiedContextCandidates = buildVerifiedRecoContextCandidates({
     recoContext: ingredientContext,
     targetContext,
@@ -16737,17 +17093,48 @@ async function buildRecoGenerateFromCatalog({
       ...verifiedContextCandidates.normalizedCandidates,
       ...rawCandidates,
     ];
-    candidateState = finalizeRecommendationCandidatePools(rawCandidates, {
-      targetContext: verifiedContextCandidates.effectiveTargetContext,
-      recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
-    });
+    const effectiveTargetContext = verifiedContextCandidates.effectiveTargetContext;
+    candidateState =
+      effectiveTargetContext && Array.isArray(effectiveTargetContext.framework_roles) && effectiveTargetContext.framework_roles.length > 0
+        ? finalizeConcernFrameworkCandidatePools(rawCandidates, {
+            targetContext: effectiveTargetContext,
+          })
+        : finalizeRecommendationCandidatePools(rawCandidates, {
+            targetContext: effectiveTargetContext,
+            recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
+          });
   }
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
+  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
+  const frameworkSummary = frameworkMode
+    ? buildConcernFrameworkSummary({
+        targetContext,
+        recommendations: selectedCandidates,
+        language: ctx && ctx.lang ? ctx.lang : 'EN',
+      })
+    : null;
+  const frameworkTrace = frameworkMode
+    ? buildConcernFrameworkDecisionTrace({
+        targetContext,
+        queryLevels,
+        candidateState,
+      })
+    : null;
 
   const recos = selectedCandidates.map((picked, index) => {
+    const matchedRole = frameworkMode
+      ? (targetContext.framework_roles || []).find((role) => String(role?.role_id || '').trim() === String(picked.matched_role_id || '').trim()) || null
+      : null;
     const stepToken = pickFirstTrimmed(
+      frameworkMode
+        ? pickFirstTrimmed(
+            matchedRole?.preferred_step,
+            picked.candidate_step,
+          )
+        : '',
+      frameworkMode ? picked.matched_role_label : '',
       targetContext && targetContext.resolved_target_step,
       picked.product_type,
       picked.category,
@@ -16785,15 +17172,30 @@ async function buildRecoGenerateFromCatalog({
       ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
       ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
       ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
-      sku: picked,
-      ...(debug
+      ...(frameworkMode
         ? {
-            notes:
-              ctx && ctx.lang === 'CN'
-                ? ['来自 Pivota 商品库（step-aware viable pool）']
-                : ['From Pivota catalog (step-aware viable pool)'],
+            matched_role_id: pickFirstTrimmed(picked.matched_role_id, picked.matchedRoleId) || null,
+            matched_role_label: pickFirstTrimmed(picked.matched_role_label, picked.matchedRoleLabel) || null,
+            matched_role_rank: Number.isFinite(Number(picked.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
           }
         : {}),
+      sku: picked,
+      notes: [
+        ...(frameworkMode
+          ? buildFrameworkRecommendationNotes({
+              language: ctx && ctx.lang ? ctx.lang : 'EN',
+              role: matchedRole,
+              isPrimary: index === 0,
+            })
+          : []),
+        ...(debug
+          ? (
+            ctx && ctx.lang === 'CN'
+              ? [frameworkMode ? '来自 Pivota 商品库（framework 主链）' : '来自 Pivota 商品库（step-aware viable pool）']
+              : [frameworkMode ? 'From Pivota catalog (framework-first mainline)' : 'From Pivota catalog (step-aware viable pool)']
+          )
+          : []),
+      ].filter(Boolean),
     };
   });
 
@@ -16846,6 +17248,13 @@ async function buildRecoGenerateFromCatalog({
     resolved_target_step_confidence: targetContext && targetContext.resolved_target_step_confidence ? targetContext.resolved_target_step_confidence : 'none',
     resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
+    framework_id: frameworkMode ? targetContext.framework_id || null : null,
+    framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
+    framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
+    primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
+    primary_recommendation_id: frameworkMode ? candidateState.primary_recommendation_id || null : null,
+    role_conflict_present: frameworkMode ? Boolean(candidateState.role_conflict_present) : false,
+    reco_framework_decision_trace: frameworkTrace,
     artifact_context_applied: Boolean(candidateState.artifact_context_applied),
     verified_context_candidate_count: Array.isArray(verifiedContextCandidates.normalizedCandidates)
       ? verifiedContextCandidates.normalizedCandidates.length
@@ -16877,7 +17286,7 @@ async function buildRecoGenerateFromCatalog({
     ? candidateState.viable_candidate_pool.slice(0, 24)
     : [];
 
-  if (!recos.length || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
+  if (!recos.length || (frameworkMode && !candidateState.terminal_success) || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
     return {
       structured: null,
       candidate_pool: candidatePool,
@@ -16889,6 +17298,20 @@ async function buildRecoGenerateFromCatalog({
   return {
     structured: {
       recommendations: recos,
+      ...(frameworkMode
+        ? {
+            framework_summary: frameworkSummary,
+            roles: Array.isArray(targetContext.framework_roles) ? targetContext.framework_roles.map((role) => ({
+              role_id: String(role?.role_id || '').trim() || null,
+              label: String(role?.label || '').trim() || null,
+              why_this_role: String(role?.why_this_role || '').trim() || null,
+              rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+              preferred_step: String(role?.preferred_step || '').trim() || null,
+            })) : [],
+            primary_role_id: targetContext.primary_role_id || null,
+            primary_recommendation_id: candidateState.primary_recommendation_id || null,
+          }
+        : {}),
       evidence: null,
       confidence: 0.9,
       missing_info: [],
@@ -29987,10 +30410,27 @@ function attachRecoContractMeta(payload, contract) {
   if (!isPlainObject(payload)) return payload;
   const contractObj = isPlainObject(contract) ? contract : {};
   const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
+  const hasRecommendations = Array.isArray(payload.recommendations) && payload.recommendations.length > 0;
+  const payloadForFailureResolution = hasRecommendations
+    ? {
+        ...payload,
+        products_empty_reason: '',
+        recommendation_meta: {
+          ...metaExisting,
+          primary_failure_reason: '',
+          telemetry_failure_reason: '',
+          failure_class: '',
+          effective_failure_class: '',
+          failure_origin: '',
+          surface_reason: '',
+          products_empty_reason: '',
+        },
+      }
+    : payload;
   const resolvedFailure = resolveRecoFailureReasonContract({
-    payload,
+    payload: payloadForFailureResolution,
     contract: contractObj,
-    allowEmpty: Array.isArray(payload.recommendations) && payload.recommendations.length > 0,
+    allowEmpty: hasRecommendations,
   });
   const failureClass = sanitizeRecoClientVisibleFailureClass(contractObj.failure_class);
   const effectiveFailureClass = sanitizeRecoClientVisibleFailureClass(contractObj.effective_failure_class);
@@ -30005,8 +30445,15 @@ function attachRecoContractMeta(payload, contract) {
   delete nextRecommendationMeta.failure_origin;
   delete nextRecommendationMeta.surface_reason;
   delete nextRecommendationMeta.products_empty_reason;
-  return {
+  const nextPayloadRoot = {
     ...payload,
+  };
+  if (hasRecommendations) {
+    delete nextPayloadRoot.products_empty_reason;
+    delete nextPayloadRoot.surface_reason;
+  }
+  return {
+    ...nextPayloadRoot,
     ...(contractObj.mainline_status ? { mainline_status: contractObj.mainline_status } : {}),
     ...(contractObj.grounding_status ? { grounding_status: contractObj.grounding_status } : {}),
     ...(Number.isFinite(Number(contractObj.grounded_count)) ? { grounded_count: Number(contractObj.grounded_count) } : {}),
@@ -44500,6 +44947,88 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
   }
 
   if (route === 'reco') {
+    const frameworkSummary = isPlainObject(p.framework_summary) ? p.framework_summary : null;
+    const frameworkRoles = Array.isArray(p.roles) ? p.roles.filter((item) => isPlainObject(item)) : [];
+    if (frameworkSummary && frameworkRoles.length) {
+      const recommendationMeta = isPlainObject(p.recommendation_meta) ? p.recommendation_meta : {};
+      const recommendations = Array.isArray(p.recommendations) ? p.recommendations : [];
+      const primaryRoleId = pickFirstTrimmed(
+        p.primary_role_id,
+        recommendationMeta.primary_role_id,
+        frameworkSummary.primary_role_id,
+      );
+      const primaryRecommendationId = pickFirstTrimmed(
+        p.primary_recommendation_id,
+        recommendationMeta.primary_recommendation_id,
+      );
+      const primaryRole =
+        frameworkRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId)
+        || frameworkRoles[0]
+        || null;
+      const primaryRecommendation =
+        recommendations.find((item) => {
+          const productId = pickFirstString(item?.product_id, item?.productId, item?.sku?.product_id, item?.sku?.productId);
+          return Boolean(primaryRecommendationId) && productId === primaryRecommendationId;
+        })
+        || recommendations.find((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) === primaryRoleId)
+        || recommendations[0]
+        || null;
+      const primaryRecommendationName = pickFirstTrimmed(
+        primaryRecommendation?.display_name,
+        primaryRecommendation?.displayName,
+        primaryRecommendation?.name,
+        primaryRecommendation?.title,
+        primaryRecommendation?.sku?.display_name,
+        primaryRecommendation?.sku?.displayName,
+        primaryRecommendation?.sku?.name,
+      );
+      const concernText = pickFirstTrimmed(frameworkSummary.concern_text);
+      const orderedRoleLabels = frameworkRoles
+        .slice()
+        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
+        .map((role) => String(role?.label || '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      const supportingRoleLabels = frameworkRoles
+        .slice()
+        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
+        .filter((role) => String(role?.role_id || '').trim() !== primaryRoleId)
+        .map((role) => String(role?.label || '').trim())
+        .filter(Boolean)
+        .slice(0, 2);
+      const primaryWhy = String(primaryRole?.why_this_role || '').trim();
+
+      if (lang === 'CN') {
+        return [
+          concernText
+            ? `针对“${concernText}”，先用护理框架定优先级，再在每个角色里挑商品。`
+            : '先用护理框架定优先级，再在每个角色里挑商品。',
+          orderedRoleLabels.length ? `优先顺序：${orderedRoleLabels.join(' → ')}。` : '',
+          primaryRole && primaryWhy ? `第一优先是“${primaryRole.label}”：${primaryWhy}` : '',
+          primaryRecommendationName
+            ? `当前主推对应第一角色：${primaryRecommendationName}。`
+            : '当前还没有足够强的第一角色商品命中，所以不会硬塞一个跑偏的产品。',
+          supportingRoleLabels.length ? `其他推荐仍会限制在同一框架内：${supportingRoleLabels.join('、')}。` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+      }
+
+      return [
+        concernText
+          ? `For ${concernText}, start with a care framework first, then match products inside each role.`
+          : 'Start with a care framework first, then match products inside each role.',
+        orderedRoleLabels.length ? `Priority order: ${orderedRoleLabels.join(' -> ')}.` : '',
+        primaryRole && primaryWhy ? `Start with ${primaryRole.label}: ${primaryWhy}` : '',
+        primaryRecommendationName
+          ? `Top pick for that first role: ${primaryRecommendationName}.`
+          : 'I do not have a strong mainline match for the first role yet, so I will not force an off-framework product.',
+        supportingRoleLabels.length ? `Other options stay inside the same framework: ${supportingRoleLabels.join(', ')}.` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+
     const payloadBound = buildPayloadBoundRecoAssistantText({
       payload: p,
       language: lang,
@@ -57610,13 +58139,31 @@ async function generateProductRecommendations({
     mapped.recommendations = mapped.recommendations.map((r) => coerceRecoItemForUi(r, { lang: ctx.lang }));
   }
 
+  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   const norm = normalizeRecoGenerate(mapped);
   const viablePoolState = isPlainObject(catalogCandidateState)
     ? catalogCandidateState
-    : finalizeRecommendationCandidatePools(
-        Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
-        { targetContext, recoContext: recommendationTaskContext },
-      );
+    : frameworkMode
+      ? finalizeConcernFrameworkCandidatePools(
+          Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
+          { targetContext },
+        )
+      : finalizeRecommendationCandidatePools(
+          Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
+          { targetContext, recoContext: recommendationTaskContext },
+        );
+  const frameworkTraceId = frameworkMode ? `recofw_trace_${String(targetContext.framework_id || '').slice(0, 12)}` : null;
+  const frameworkDecisionTrace = frameworkMode
+    ? (
+      Array.isArray(catalogDebug?.reco_framework_decision_trace)
+        ? catalogDebug.reco_framework_decision_trace
+        : buildConcernFrameworkDecisionTrace({
+          targetContext,
+          queryLevels: [],
+          candidateState: viablePoolState,
+        })
+    )
+    : null;
   if (!Number.isFinite(Number(preLlmSelectedCandidateCount))) {
     preLlmSelectedCandidateCount = Number.isFinite(Number(viablePoolState.pre_llm_selected_candidate_count))
       ? Math.max(0, Math.trunc(Number(viablePoolState.pre_llm_selected_candidate_count)))
@@ -57643,6 +58190,9 @@ async function generateProductRecommendations({
     norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
     norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
     norm.payload.mainline_status = stepAwareMainlineFailure.mainlineStatus;
+  } else if (frameworkMode && !viablePoolState.terminal_success) {
+    norm.payload.recommendations = [];
+    norm.payload.products_empty_reason = 'no_mainline_match_for_framework';
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.products_empty_reason = 'prompt_contract_mismatch';
   } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
@@ -57674,6 +58224,7 @@ async function generateProductRecommendations({
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
     stepAwareMainlineFailure ? stepAwareMainlineFailure.mainlineStatus : '',
+    frameworkMode && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     promptContract.ok === false ? 'severe_parse_or_prompt_failure' : '',
     targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     structuredSource === 'catalog_grounded'
@@ -57703,6 +58254,33 @@ async function generateProductRecommendations({
     ...norm.payload,
     intent: 'reco_products',
     profile: profileSummary || null,
+    ...(frameworkMode
+      ? {
+          framework_summary: mapped && mapped.framework_summary ? mapped.framework_summary : buildConcernFrameworkSummary({
+            targetContext,
+            recommendations: Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
+            language: ctx.lang,
+          }),
+          roles: Array.isArray(mapped?.roles) ? mapped.roles : Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles.map((role) => ({
+            role_id: String(role?.role_id || '').trim() || null,
+            label: String(role?.label || '').trim() || null,
+            why_this_role: String(role?.why_this_role || '').trim() || null,
+            rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
+            preferred_step: String(role?.preferred_step || '').trim() || null,
+          })) : [],
+          primary_role_id: targetContext.primary_role_id || null,
+          primary_recommendation_id: viablePoolState.primary_recommendation_id || null,
+        }
+      : {}),
+    metadata: {
+      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+      ...(frameworkMode
+        ? {
+            reco_framework_trace_id: frameworkTraceId,
+            reco_framework_decision_trace: frameworkDecisionTrace,
+          }
+        : {}),
+    },
     grounding_status: effectiveGroundingStatus,
     grounded_count: effectiveGroundedCount,
     ungrounded_count: effectiveUngroundedCount,
@@ -58071,7 +58649,15 @@ async function generateProductRecommendations({
       resolved_target_step: targetContext.resolved_target_step || null,
       resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
       resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      framework_id: frameworkMode ? targetContext.framework_id || null : null,
+      framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
+      framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
+      primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
+      primary_recommendation_id: frameworkMode ? viablePoolState.primary_recommendation_id || null : null,
+      role_conflict_present: frameworkMode ? Boolean(viablePoolState.role_conflict_present) : false,
+      reco_framework_trace_id: frameworkTraceId,
       step_resolution_version: targetContext.step_resolution_version || null,
+      ...(frameworkMode ? { concern_framework_policy_version: targetContext.concern_framework_policy_version || null } : {}),
       step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
       candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
@@ -76351,7 +76937,13 @@ function mountAuroraBffRoutes(app, { logger }) {
           !hasStableRecoTarget
           && !hasExplicitRecoTarget
           && !ingredientDrivenRecommendationRequested
-          && !travelRecoHandoff;
+          && !travelRecoHandoff
+          && !(
+            chatRecoTargetContext
+            && Array.isArray(chatRecoTargetContext.framework_roles)
+            && chatRecoTargetContext.framework_roles.length > 0
+            && String(chatRecoTargetContext.framework_owner_state || '').trim().toLowerCase() === 'trusted'
+          );
 
         if (genericGoalDrivenNeedsMoreContext) {
           const recommendationContextState = {
