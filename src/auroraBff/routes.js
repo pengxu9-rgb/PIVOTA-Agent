@@ -15954,10 +15954,12 @@ function buildConcernFrameworkSummary({
   if (!targetContext || !Array.isArray(targetContext.framework_roles) || targetContext.framework_roles.length === 0) return null;
   const primaryRoleId = String(targetContext.primary_role_id || '').trim();
   const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
-  const primaryReco = (Array.isArray(recommendations) ? recommendations : []).find((item) => {
+  const recommendationList = Array.isArray(recommendations) ? recommendations : [];
+  const primaryReco = recommendationList.find((item) => {
     const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
     return matchedRoleId && matchedRoleId === primaryRoleId;
-  }) || (Array.isArray(recommendations) ? recommendations[0] : null);
+  }) || null;
+  const topPick = recommendationList[0] || null;
   const primaryName = pickFirstTrimmed(
     primaryReco?.display_name,
     primaryReco?.displayName,
@@ -15967,6 +15969,17 @@ function buildConcernFrameworkSummary({
     primaryReco?.sku?.displayName,
     primaryReco?.sku?.name,
   );
+  const topPickName = pickFirstTrimmed(
+    topPick?.display_name,
+    topPick?.displayName,
+    topPick?.name,
+    topPick?.title,
+    topPick?.sku?.display_name,
+    topPick?.sku?.displayName,
+    topPick?.sku?.name,
+  );
+  const topPickRoleId = pickFirstTrimmed(topPick?.matched_role_id, topPick?.matchedRoleId);
+  const topPickRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === topPickRoleId) || null;
   return {
     concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
     headline: primaryRole
@@ -15979,6 +15992,10 @@ function buildConcernFrameworkSummary({
     primary_role_id: primaryRoleId || null,
     primary_role_label: primaryRole ? String(primaryRole.label || '').trim() || null : null,
     primary_recommendation_name: primaryName || null,
+    primary_role_matched: Boolean(primaryReco),
+    top_pick_recommendation_name: topPickName || null,
+    top_pick_role_id: topPickRoleId || null,
+    top_pick_role_label: topPickRole ? String(topPickRole.label || '').trim() || null : null,
     prioritized_roles: targetContext.framework_roles.map((role) => ({
       role_id: String(role?.role_id || '').trim() || null,
       label: String(role?.label || '').trim() || null,
@@ -16067,6 +16084,15 @@ function buildConcernFrameworkDecisionTrace({
       owner_conflict: Boolean(candidateState?.role_conflict_present),
       assistant_payload_mismatch: false,
       legacy_interference: false,
+    },
+    {
+      node: 'card_assembly',
+      selected_role: targetContext.primary_role_id || null,
+      selected_products: selectedProducts,
+      owner_conflict: Boolean(candidateState?.late_conflict_without_override),
+      assistant_payload_mismatch: false,
+      legacy_interference: false,
+      conflict_classification: candidateState?.late_conflict_without_override ? 'late_conflict_without_override' : 'none',
     },
   ];
 }
@@ -16220,14 +16246,25 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
-  const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || selected[0] || null;
+  const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  const bestAvailableRecommendation = selected[0] || null;
 
   return {
     raw_candidate_pool: deduped,
     viable_candidate_pool: viable,
     selected_recommendations: selected,
-    primary_recommendation_id: primaryRecommendation ? pickFirstString(primaryRecommendation.product_id, primaryRecommendation.productId) : null,
+    primary_recommendation_id: pickFirstString(
+      primaryRecommendation?.product_id,
+      primaryRecommendation?.productId,
+      bestAvailableRecommendation?.product_id,
+      bestAvailableRecommendation?.productId,
+    ) || null,
     primary_role_id: primaryRoleId || null,
+    primary_role_matched: primaryRoleMatched,
+    best_available_role_id: pickFirstTrimmed(
+      bestAvailableRecommendation?.matched_role_id,
+      bestAvailableRecommendation?.matchedRoleId,
+    ) || null,
     raw_candidate_count: deduped.length,
     viable_candidate_count: viable.length,
     exact_step_viable_count: primaryRoleMatched ? 1 : 0,
@@ -16258,6 +16295,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     terminal_success: primaryRoleMatched && selected.length > 0,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: selected.length > 0 && !primaryRoleMatched,
+    late_conflict_without_override: selected.length > 0 && !primaryRoleMatched,
     candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${selected.length}_${viable.length}`,
     raw_candidate_pool_debug_signature: `framework_raw_${String(targetContext?.framework_id || '').slice(0, 12)}_${deduped.length}`,
   };
@@ -17286,7 +17324,7 @@ async function buildRecoGenerateFromCatalog({
     ? candidateState.viable_candidate_pool.slice(0, 24)
     : [];
 
-  if (!recos.length || (frameworkMode && !candidateState.terminal_success) || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
+  if (!recos.length || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
     return {
       structured: null,
       candidate_pool: candidatePool,
@@ -17310,6 +17348,9 @@ async function buildRecoGenerateFromCatalog({
             })) : [],
             primary_role_id: targetContext.primary_role_id || null,
             primary_recommendation_id: candidateState.primary_recommendation_id || null,
+            primary_role_matched: Boolean(candidateState.primary_role_matched),
+            best_available_role_id: candidateState.best_available_role_id || null,
+            late_conflict_without_override: Boolean(candidateState.late_conflict_without_override),
           }
         : {}),
       evidence: null,
@@ -44973,6 +45014,13 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
         || recommendations.find((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId) === primaryRoleId)
         || recommendations[0]
         || null;
+      const primaryRoleMatched = pickFirstTrimmed(
+        primaryRecommendation?.matched_role_id,
+        primaryRecommendation?.matchedRoleId,
+      ) === primaryRoleId;
+      const topPickRoleLabel = String(
+        frameworkRoles.find((role) => String(role?.role_id || '').trim() === pickFirstTrimmed(primaryRecommendation?.matched_role_id, primaryRecommendation?.matchedRoleId))?.label || '',
+      ).trim();
       const primaryRecommendationName = pickFirstTrimmed(
         primaryRecommendation?.display_name,
         primaryRecommendation?.displayName,
@@ -45020,8 +45068,12 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
           : 'Start with a care framework first, then match products inside each role.',
         orderedRoleLabels.length ? `Priority order: ${orderedRoleLabels.join(' -> ')}.` : '',
         primaryRole && primaryWhy ? `Start with ${primaryRole.label}: ${primaryWhy}` : '',
-        primaryRecommendationName
+        primaryRecommendationName && primaryRoleMatched
           ? `Top pick for that first role: ${primaryRecommendationName}.`
+          : primaryRecommendationName && topPickRoleLabel
+            ? `I do not have a strong mainline match for the first role yet. Best available inside the same framework right now: ${primaryRecommendationName} for ${topPickRoleLabel}.`
+            : primaryRecommendationName
+              ? `I do not have a strong mainline match for the first role yet. Best available inside the same framework right now: ${primaryRecommendationName}.`
           : 'I do not have a strong mainline match for the first role yet, so I will not force an off-framework product.',
         supportingRoleLabels.length ? `Other options stay inside the same framework: ${supportingRoleLabels.join(', ')}.` : '',
       ]
@@ -58152,6 +58204,10 @@ async function generateProductRecommendations({
           Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
           { targetContext, recoContext: recommendationTaskContext },
         );
+  const frameworkPartialSurface = frameworkMode
+    && Array.isArray(norm.payload?.recommendations)
+    && norm.payload.recommendations.length > 0
+    && !viablePoolState.terminal_success;
   const frameworkTraceId = frameworkMode ? `recofw_trace_${String(targetContext.framework_id || '').slice(0, 12)}` : null;
   const frameworkDecisionTrace = frameworkMode
     ? (
@@ -58190,7 +58246,7 @@ async function generateProductRecommendations({
     norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
     norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
     norm.payload.mainline_status = stepAwareMainlineFailure.mainlineStatus;
-  } else if (frameworkMode && !viablePoolState.terminal_success) {
+  } else if (frameworkMode && !viablePoolState.terminal_success && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = 'no_mainline_match_for_framework';
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
@@ -58202,6 +58258,8 @@ async function generateProductRecommendations({
   const effectiveGroundingStatus =
     stepAwareMainlineFailure
       ? ''
+      : frameworkPartialSurface
+        ? 'partially_grounded'
       : normalizeRecoGroundingStatus(mapped && mapped.grounding_status)
         || (structuredSource === 'catalog_grounded'
           ? 'grounded'
@@ -58224,6 +58282,7 @@ async function generateProductRecommendations({
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
     stepAwareMainlineFailure ? stepAwareMainlineFailure.mainlineStatus : '',
+    frameworkPartialSurface ? 'partially_grounded' : '',
     frameworkMode && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     promptContract.ok === false ? 'severe_parse_or_prompt_failure' : '',
     targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
@@ -58270,6 +58329,9 @@ async function generateProductRecommendations({
           })) : [],
           primary_role_id: targetContext.primary_role_id || null,
           primary_recommendation_id: viablePoolState.primary_recommendation_id || null,
+          primary_role_matched: Boolean(viablePoolState.primary_role_matched),
+          best_available_role_id: viablePoolState.best_available_role_id || null,
+          late_conflict_without_override: Boolean(viablePoolState.late_conflict_without_override),
         }
       : {}),
     metadata: {
@@ -58654,7 +58716,10 @@ async function generateProductRecommendations({
       framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
       primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
       primary_recommendation_id: frameworkMode ? viablePoolState.primary_recommendation_id || null : null,
+      primary_role_matched: frameworkMode ? Boolean(viablePoolState.primary_role_matched) : false,
+      best_available_role_id: frameworkMode ? viablePoolState.best_available_role_id || null : null,
       role_conflict_present: frameworkMode ? Boolean(viablePoolState.role_conflict_present) : false,
+      late_conflict_without_override: frameworkMode ? Boolean(viablePoolState.late_conflict_without_override) : false,
       reco_framework_trace_id: frameworkTraceId,
       step_resolution_version: targetContext.step_resolution_version || null,
       ...(frameworkMode ? { concern_framework_policy_version: targetContext.concern_framework_policy_version || null } : {}),

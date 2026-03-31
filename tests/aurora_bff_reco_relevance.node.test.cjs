@@ -1286,6 +1286,127 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
   }
 });
 
+test('/v1/chat: generic oily-skin ask preserves framework recommendations when the primary role is unmatched', async () => {
+  const originalGet = axios.get;
+  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
+  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+  const originalAuroraChat = decisionModule.auroraChat;
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'spf_partial_1',
+              merchant_id: 'mid_spf_partial',
+              brand: 'SunGuard',
+              name: 'Daily UV Fluid SPF 50',
+              display_name: 'Daily UV Fluid SPF 50',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+            },
+          ],
+        },
+      };
+    }
+    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'moist_partial_1',
+              merchant_id: 'mid_moist_partial',
+              brand: 'LightLab',
+              name: 'Air Gel Cream',
+              display_name: 'Air Gel Cream',
+              category: 'moisturizer',
+              product_type: 'gel cream',
+            },
+          ],
+        },
+      };
+    }
+    return {
+      status: 200,
+      data: { products: [] },
+    };
+  };
+  decisionModule.auroraChat = async () => ({
+    answer: JSON.stringify({
+      recommendations: [
+        {
+          step: 'sunscreen',
+          reasons: ['This fallback answer should not override the framework-first mainline.'],
+          sku: { brand: 'SunGuard', display_name: 'Daily UV Fluid SPF 50' },
+        },
+      ],
+    }),
+  });
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_partial_uid', briefId: 'chat_framework_partial_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_framework_partial_uid',
+        'X-Trace-ID': 'trace_chat_framework_partial',
+        'X-Brief-ID': 'chat_framework_partial_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 2);
+    assert.equal(payload.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
+    assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
+    assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.primary_role_matched, false);
+    assert.equal(payload.recommendation_meta?.late_conflict_without_override, true);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'partially_grounded');
+    assert.equal(payload.recommendation_meta?.products_empty_reason ?? null, null);
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.primary_role_matched, false);
+    assert.equal(payload.late_conflict_without_override, true);
+    assert.equal(payload.recommendations[0]?.product_id, 'moist_partial_1');
+    assert.equal(payload.recommendations[0]?.matched_role_id, 'lightweight_moisturizer');
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
+    assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet\./i);
+    assert.match(String(response.body?.assistant_text || ''), /Best available inside the same framework right now: Air Gel Cream for Lightweight moisturizer\./i);
+  } finally {
+    decisionModule.auroraChat = originalAuroraChat;
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: profile-driven generic reco without explicit focus returns needs_more_context and skips catalog search', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
