@@ -278,13 +278,19 @@ test('POST /v1/chat/stream proxies generic skincare reco requests to the v1 main
   const response = await request(app)
     .post('/v1/chat/stream')
     .send({
-      message: 'im oily skin, what product should i use?',
+      action: {
+        action_id: 'chip.start.reco_products',
+        kind: 'chip',
+        data: {
+          reply_text: 'im oily skin, what product should i use?',
+          profile_patch: {
+            skinType: 'oily',
+            goals: ['oil control'],
+          },
+        },
+      },
       context: {
         locale: 'en',
-        profile: {
-          skinType: 'oily',
-          goals: ['oil control'],
-        },
       },
       client_state: { state: 'IDLE_CHAT' },
     })

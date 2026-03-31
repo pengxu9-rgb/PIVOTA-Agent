@@ -140,17 +140,28 @@ async function invokeV1MainlineChat({ req, body } = {}) {
 
 function shouldProxyFrameworkRecoToV1Mainline(body, internal = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const action = isPlainObject(body.action) ? body.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const effectiveMessage = pickFirstTrimmed(
+    body.message,
+    body.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromMessages(body.messages),
+  );
   if (
     typeof internal.shouldKeepTypedRecoRequestOnV1Mainline === 'function'
-    && internal.shouldKeepTypedRecoRequestOnV1Mainline(body) === true
+    && internal.shouldKeepTypedRecoRequestOnV1Mainline({
+      ...body,
+      ...(effectiveMessage ? { message: effectiveMessage } : {}),
+    }) === true
   ) {
     return true;
   }
-  const hasAction = Boolean(pickFirstTrimmed(body.action_id, isPlainObject(body.action) ? body.action.action_id : null));
+  const hasAction = Boolean(pickFirstTrimmed(body.action_id, action.action_id));
   if (hasAction) return false;
-  const message = pickFirstTrimmed(body.message, body.text);
-  if (!message) return false;
-  const normalized = String(message).trim().toLowerCase();
+  if (!effectiveMessage) return false;
+  const normalized = String(effectiveMessage).trim().toLowerCase();
   const hasConcernSignal = /\b(oily|dry|dehydrated|sensitive|combination|acne|breakout|redness|pores?|dark spots?)\b/.test(normalized);
   const hasProductAskSignal = /\b(product|products|routine|use|recommend|should i use|what should i use)\b/.test(normalized);
   return hasConcernSignal && hasProductAskSignal;

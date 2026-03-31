@@ -1456,14 +1456,26 @@ function buildDelegationProfileSummary(body) {
   const contextProfile = isPlainObject(context.profile) ? context.profile : {};
   const session = isPlainObject(payload.session) ? payload.session : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const actionProfilePatch = isPlainObject(actionData.profile_patch) ? actionData.profile_patch : {};
   return {
     ...contextProfile,
     ...sessionProfile,
+    ...actionProfilePatch,
   };
 }
 function shouldKeepTypedRecoRequestOnV1Mainline(body) {
   const payload = isPlainObject(body) ? body : {};
-  const message = pickFirstTrimmed(payload.message, payload.text);
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  const message = pickFirstTrimmed(
+    payload.message,
+    payload.text,
+    actionData.reply_text,
+    actionData.replyText,
+    extractLastUserMessageFromChatRequestMessages(payload.messages),
+  );
   if (!message) return false;
 
   try {
