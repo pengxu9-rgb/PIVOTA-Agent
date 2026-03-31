@@ -3381,6 +3381,37 @@ function normalizeRecoCatalogProduct(raw) {
 
   const ingredientTokens = collectCandidateIngredientTokens(base);
   const skinTypeTags = collectCandidateSkinTypeTags(base);
+  const searchAliases = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(base.search_aliases) ? base.search_aliases : []),
+      ...(Array.isArray(base.searchAliases) ? base.searchAliases : []),
+      ...(Array.isArray(base.aliases) ? base.aliases : []),
+    ].map((item) => String(item || '').trim()).filter(Boolean),
+    12,
+  );
+  const benefitTokens = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(base.benefit_tags) ? base.benefit_tags : []),
+      ...(Array.isArray(base.benefitTags) ? base.benefitTags : []),
+      ...(Array.isArray(base.benefit_tags_list) ? base.benefit_tags_list : []),
+      ...(Array.isArray(base.benefitTagsList) ? base.benefitTagsList : []),
+      ...(Array.isArray(base.key_benefits) ? base.key_benefits : []),
+      ...(Array.isArray(base.keyBenefits) ? base.keyBenefits : []),
+    ].map((item) => String(item || '').trim()).filter(Boolean),
+    12,
+  );
+  const descriptionTokens = uniqCaseInsensitiveStrings(
+    [
+      base.short_description,
+      base.shortDescription,
+      base.description,
+      base.summary,
+      base.subtitle,
+      base.seed_description,
+      base.seedDescription,
+    ].map((item) => String(item || '').trim()).filter(Boolean).map((item) => item.slice(0, 160)),
+    4,
+  );
   const tagTokens = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.tags) ? base.tags : []),
@@ -3412,6 +3443,9 @@ function normalizeRecoCatalogProduct(raw) {
     ...(pdpOpen ? { pdp_open: pdpOpen } : {}),
     ...(price ? { price } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
+    ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
+    ...(benefitTokens.length ? { benefit_tokens: benefitTokens } : {}),
+    ...(descriptionTokens.length ? { description_tokens: descriptionTokens } : {}),
     ...(tagTokens.length ? { tag_tokens: tagTokens } : {}),
     ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
     ...(socialRef.score != null ? { social_ref_score: Number(socialRef.score.toFixed(3)) } : {}),
@@ -16203,6 +16237,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
       pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType),
       ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
+      ...(Array.isArray(row.search_aliases) ? row.search_aliases : []),
+      ...(Array.isArray(row.benefit_tokens) ? row.benefit_tokens : []),
+      ...(Array.isArray(row.description_tokens) ? row.description_tokens : []),
       ...(Array.isArray(row.tags) ? row.tags : []),
       ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
     ].join(' ').toLowerCase();

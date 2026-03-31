@@ -1641,6 +1641,47 @@ test('__internal: framework pool rejects generic ingredient serum as an oil-cont
   assert.ok(Number(state.hard_reject_count || 0) >= 1);
 });
 
+test('__internal: framework pool accepts external seed semantic evidence from benefit tags and aliases', async () => {
+  const { __internal } = loadRoutesFresh();
+  const normalized = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_oil_semantic_1',
+    merchant_id: 'merchant_ext_oil_semantic',
+    brand: 'Fenty Skin',
+    name: 'Gloss Bomb Control Serum',
+    display_name: 'Fenty Skin Gloss Bomb Control Serum',
+    category: 'serum',
+    product_type: 'serum',
+    source: 'external_seed',
+    search_aliases: ['Fenty Skin Oil Control Serum'],
+    benefit_tags: ['oil control', 'shine control'],
+    short_description: 'A mattifying balancing serum for oily skin.',
+  });
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [normalized],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_semantic',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_id, 'oil_control_treatment');
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'ext_oil_semantic_1');
+  assert.equal(state.selected_recommendations[0]?.framework_semantic_fit, true);
+});
+
 test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
   const originalGet = axios.get;
   let inFlight = 0;
