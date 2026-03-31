@@ -58021,12 +58021,18 @@ async function generateProductRecommendations({
     itinerary_provided: hasItineraryContextForReco(profileSummary),
     recent_logs_provided: Array.isArray(recentLogs) && recentLogs.length > 0,
   };
-  const stepAwareCatalogFirstEnabled = Boolean(
+  const frameworkCatalogFirstEnabled = Boolean(
+    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
+  );
+  const deterministicCatalogFirstEnabled = Boolean(
     AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
-      && targetContext.step_aware_intent,
+      && (targetContext.step_aware_intent || frameworkCatalogFirstEnabled),
+  );
+  const stepAwareFailurePolicyEnabled = Boolean(
+    deterministicCatalogFirstEnabled && targetContext.step_aware_intent && !frameworkCatalogFirstEnabled,
   );
 
-  if (stepAwareCatalogFirstEnabled) {
+  if (deterministicCatalogFirstEnabled) {
     const catalogOut = await buildRecoGenerateFromCatalog({
       ctx,
       profileSummary,
@@ -58224,7 +58230,7 @@ async function generateProductRecommendations({
               ? 'catalog_transient_fallback'
               : null;
   if (
-    !stepAwareCatalogFirstEnabled
+    !deterministicCatalogFirstEnabled
     && promptContract.ok
     && catalogStructured
     && Array.isArray(catalogStructured.recommendations)
@@ -58400,7 +58406,7 @@ async function generateProductRecommendations({
         ? Math.max(0, Math.trunc(Number(viablePoolState.selected_candidate_count)))
         : 0;
   }
-  const stepAwareMainlineFailure = stepAwareCatalogFirstEnabled
+  const stepAwareMainlineFailure = stepAwareFailurePolicyEnabled
     ? deriveRecoFailureFromStepAwareLlmFallback({
         initialLlmOutcome,
         llmFailureClass,
@@ -58757,7 +58763,7 @@ async function generateProductRecommendations({
   const finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   finalSelectedCandidateCount = finalRecommendations.length;
   postGuardrailCount = finalSelectedCandidateCount;
-  if (stepAwareCatalogFirstEnabled && !stepAwareMainlineFailure) {
+  if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailure) {
     const failureSignals = resolveRecoEffectiveFailure({
       targetContext,
       viablePoolState: {
@@ -58854,7 +58860,7 @@ async function generateProductRecommendations({
         AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') !== 'none'
           ? effectiveFailureClass
           : llmFailureClass || null,
-      ...(stepAwareCatalogFirstEnabled
+      ...(deterministicCatalogFirstEnabled
         ? {
           effective_failure_class: normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') || 'none',
           failure_origin: normalizeRecoFailureOrigin(failureOrigin || 'none'),
@@ -58907,7 +58913,7 @@ async function generateProductRecommendations({
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
       candidate_pool_signature_version: CANDIDATE_POOL_SIGNATURE_VERSION,
       group_semantics_version: GROUP_SEMANTICS_VERSION,
-      ...(stepAwareCatalogFirstEnabled
+      ...(deterministicCatalogFirstEnabled
         ? { reco_policy_version: pickFirstTrimmed(viablePoolState.reco_policy_version, RECOMMENDATION_RECO_POLICY_V1) || null }
         : {}),
       raw_candidate_count: Number(viablePoolState.raw_candidate_count || 0),
@@ -58916,7 +58922,7 @@ async function generateProductRecommendations({
       same_family_viable_count: Number(viablePoolState.same_family_viable_count || 0),
       soft_mismatch_count: Number(viablePoolState.soft_mismatch_count || 0),
       hard_reject_count: Number(viablePoolState.hard_reject_count || 0),
-      ...(stepAwareCatalogFirstEnabled
+      ...(deterministicCatalogFirstEnabled
         ? {
           pre_llm_selected_candidate_count: Number(preLlmSelectedCandidateCount || 0),
           final_selected_candidate_count: Number(finalSelectedCandidateCount || 0),
@@ -58924,7 +58930,7 @@ async function generateProductRecommendations({
         }
         : {}),
       selected_candidate_count: Number(viablePoolState.selected_candidate_count || 0),
-      ...(stepAwareCatalogFirstEnabled
+      ...(deterministicCatalogFirstEnabled
         ? {
           llm_invoked: llmInvoked,
           initial_llm_outcome: initialLlmOutcome,

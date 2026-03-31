@@ -1286,6 +1286,137 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
   }
 });
 
+test('/v1/chat: generic oily-skin ask keeps framework recommendations when the llm primary returns schema-invalid output', async () => {
+  const originalGet = axios.get;
+  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
+  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+  const originalAuroraChat = decisionModule.auroraChat;
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'spf_schema_1',
+              merchant_id: 'mid_spf_schema',
+              brand: 'SunGuard',
+              name: 'Daily UV Fluid SPF 50',
+              display_name: 'Daily UV Fluid SPF 50',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+            },
+          ],
+        },
+      };
+    }
+    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'moist_schema_1',
+              merchant_id: 'mid_moist_schema',
+              brand: 'LightLab',
+              name: 'Air Gel Cream',
+              display_name: 'Air Gel Cream',
+              category: 'moisturizer',
+              product_type: 'gel cream',
+            },
+          ],
+        },
+      };
+    }
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'serum_schema_1',
+            merchant_id: 'mid_serum_schema',
+            brand: 'Clarity Lab',
+            name: 'Oil Balance Serum',
+            display_name: 'Oil Balance Serum',
+            category: 'serum',
+            product_type: 'serum',
+            benefit_tags: ['oil control', 'shine control'],
+          },
+        ],
+      },
+    };
+  };
+  decisionModule.auroraChat = async () => ({
+    structured: {
+      note: 'schema invalid for reco mainline because recommendations is missing',
+    },
+    answer: JSON.stringify({
+      note: 'schema invalid for reco mainline because recommendations is missing',
+    }),
+  });
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_schema_uid', briefId: 'chat_framework_schema_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_framework_schema_uid',
+        'X-Trace-ID': 'trace_chat_framework_schema',
+        'X-Brief-ID': 'chat_framework_schema_brief',
+      },
+      body: {
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 3);
+    assert.equal(payload.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
+    assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload.recommendation_meta?.llm_invoked, true);
+    assert.ok(
+      ['schema_invalid', 'empty_structured'].includes(String(payload.recommendation_meta?.initial_llm_outcome || '')),
+    );
+    assert.equal(payload.recommendation_meta?.success_mode, 'degraded_success');
+    assert.ok(
+      ['schema_invalid', 'empty_structured'].includes(String(payload.recommendation_meta?.non_blocking_llm_issue || '')),
+    );
+    assert.equal(payload.recommendations[0]?.product_id, 'serum_schema_1');
+    assert.equal(payload.recommendations[0]?.matched_role_id, 'oil_control_treatment');
+    assert.match(String(response.body?.assistant_text || ''), /Top pick for that first role: Oil Balance Serum\./i);
+  } finally {
+    decisionModule.auroraChat = originalAuroraChat;
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: generic oily-skin ask preserves framework recommendations when the primary role is unmatched', async () => {
   const originalGet = axios.get;
   delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
@@ -1397,8 +1528,9 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
     assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendation_meta?.primary_role_matched, false);
     assert.equal(payload.recommendation_meta?.late_conflict_without_override, true);
-    assert.equal(payload.recommendation_meta?.mainline_status, 'partially_grounded');
-    assert.equal(payload.recommendation_meta?.products_empty_reason ?? null, null);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'needs_more_context');
+    assert.equal(payload.recommendation_meta?.surface_reason, 'weak_viable_pool');
+    assert.equal(payload.recommendation_meta?.products_empty_reason, 'weak_viable_pool');
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.primary_role_matched, false);
     assert.equal(payload.late_conflict_without_override, true);
