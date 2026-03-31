@@ -16209,6 +16209,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
     let bestRole = null;
     let bestScore = 0;
+    let bestSemanticFit = false;
     for (const role of roles) {
       const roleId = String(role?.role_id || '').trim();
       if (!roleId) continue;
@@ -16216,15 +16217,16 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       const alternateSteps = Array.isArray(role?.alternate_steps)
         ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
         : [];
+      let fitKeywordMatched = false;
+      let queryTermMatched = false;
       let score = 0;
       if (candidateStep && preferredStep && candidateStep === preferredStep) score += 0.72;
       else if (candidateStep && alternateSteps.includes(candidateStep)) score += 0.62;
-      else if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') score += 0.6;
-      if (retrievalRoleId && retrievalRoleId === roleId) score += 0.18;
       for (const keyword of Array.isArray(role?.fit_keywords) ? role.fit_keywords : []) {
         const normalizedKeyword = String(keyword || '').trim().toLowerCase();
         if (!normalizedKeyword) continue;
         if (candidateText.includes(normalizedKeyword)) {
+          fitKeywordMatched = true;
           score += 0.12;
           break;
         }
@@ -16233,13 +16235,20 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
         const normalizedTerm = String(term || '').trim().toLowerCase();
         if (!normalizedTerm) continue;
         if (candidateText.includes(normalizedTerm)) {
+          queryTermMatched = true;
           score += 0.08;
           break;
         }
       }
+      const semanticFitMatched = fitKeywordMatched || queryTermMatched;
+      if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') {
+        score += semanticFitMatched ? 0.6 : 0.38;
+      }
+      if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.12 : 0.02;
       if (score > bestScore) {
         bestScore = score;
         bestRole = role;
+        bestSemanticFit = semanticFitMatched;
       }
     }
 
@@ -16254,6 +16263,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: Number(bestScore.toFixed(4)),
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
+      framework_semantic_fit: bestSemanticFit,
       candidate_step: candidateStep || null,
     };
     if (bestScore >= 0.72) {
@@ -79886,6 +79896,7 @@ const __internal = {
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
   buildRecoCatalogQueryLevels,
+  finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromQueryLevels,
   buildProductCatalogQueryCandidates,
   filterRecoContextProductCandidates,

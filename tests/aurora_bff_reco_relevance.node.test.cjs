@@ -1599,6 +1599,48 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
   }
 });
 
+test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'int_niac_1',
+        merchant_id: 'merchant_int_niac',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'oil_control_treatment',
+        ingredient_tokens: ['niacinamide', 'zinc'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_id, 'oil_control_treatment');
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.viable_candidate_count, 0);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
 test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
   const originalGet = axios.get;
   let inFlight = 0;
