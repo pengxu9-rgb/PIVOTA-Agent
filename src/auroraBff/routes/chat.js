@@ -1316,6 +1316,20 @@ async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
 async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
+    const body = isPlainObject(req.body) ? req.body : {};
+    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal)) {
+      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      res.json(
+        applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
+          req,
+          ctx: auth.ctx,
+          body,
+          identity: req._identity || null,
+          res,
+        }),
+      );
+      return;
+    }
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
     let promptMeta = null;
     try {

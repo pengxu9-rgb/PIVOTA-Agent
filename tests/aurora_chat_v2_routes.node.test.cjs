@@ -305,3 +305,70 @@ test('POST /v1/chat/stream proxies generic skincare reco requests to the v1 main
   const thinkingSteps = parsed.filter((event) => event.event === 'thinking').map((event) => event.data?.step);
   assert.ok(thinkingSteps.includes('routing_framework_mainline'));
 });
+
+test('POST /v2/chat proxies generic skincare reco chip payloads to the v1 mainline envelope', async () => {
+  __setInvokeV1MainlineChatForTests(async () => ({
+    request_id: 'req_v2_framework',
+    trace_id: 'trace_v2_framework',
+    assistant_message: {
+      role: 'assistant',
+      content: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen.',
+      format: 'markdown',
+    },
+    suggested_chips: [],
+    cards: [
+      {
+        card_id: 'card_v2_framework_reco',
+        type: 'recommendations',
+        payload: {
+          framework_summary: {
+            concern_text: 'oily skin',
+          },
+          primary_role_id: 'oil_control_treatment',
+          recommendations: [
+            {
+              product_id: 'prod_serum_1',
+              matched_role_id: 'oil_control_treatment',
+              display_name: 'Oil Balance Serum',
+            },
+          ],
+          recommendation_meta: {
+            framework_owner_source: 'generic_concern_framework_resolver',
+            framework_owner_state: 'trusted',
+            primary_role_id: 'oil_control_treatment',
+            primary_recommendation_id: 'prod_serum_1',
+          },
+        },
+      },
+    ],
+    session_patch: {},
+    events: [],
+  }));
+
+  const app = createApp();
+  const response = await request(app)
+    .post('/v2/chat')
+    .send({
+      action: {
+        action_id: 'chip.start.reco_products',
+        kind: 'chip',
+        data: {
+          reply_text: 'im oily skin, what product should i use?',
+          profile_patch: {
+            skinType: 'oily',
+            goals: ['oil control'],
+          },
+        },
+      },
+      context: {
+        locale: 'en',
+      },
+      client_state: { state: 'IDLE_CHAT' },
+    })
+    .expect(200);
+
+  assert.equal(response.body.request_id, 'req_v2_framework');
+  assert.equal(response.body.cards?.[0]?.type, 'recommendations');
+  assert.equal(response.body.cards?.[0]?.payload?.primary_role_id, 'oil_control_treatment');
+  assert.equal(response.body.cards?.[0]?.payload?.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
+});
