@@ -70,6 +70,13 @@ test('generic single-product chat asks resolve into a framework-first role plan 
     targetContext.framework_roles.map((role) => role.role_id),
     ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
   );
+  const primaryRole = targetContext.framework_roles[0];
+  assert.equal(primaryRole.role_id, 'oil_control_treatment');
+  assert.equal(primaryRole.query_terms.includes('niacinamide serum oily skin'), false);
+  assert.ok(primaryRole.query_terms.includes('oil control serum'));
+  assert.ok(primaryRole.query_terms.includes('shine control serum'));
+  assert.ok(primaryRole.fit_keywords.includes('oil control'));
+  assert.ok(primaryRole.fit_keywords.includes('mattifying'));
 });
 
 test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {

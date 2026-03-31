@@ -16245,6 +16245,14 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       else if (candidateStep && alternateSteps.includes(candidateStep)) score += 0.62;
       else if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') score += 0.6;
       if (retrievalRoleId && retrievalRoleId === roleId) score += 0.18;
+      for (const keyword of Array.isArray(role?.fit_keywords) ? role.fit_keywords : []) {
+        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+        if (!normalizedKeyword) continue;
+        if (candidateText.includes(normalizedKeyword)) {
+          score += 0.12;
+          break;
+        }
+      }
       for (const term of Array.isArray(role?.query_terms) ? role.query_terms : []) {
         const normalizedTerm = String(term || '').trim().toLowerCase();
         if (!normalizedTerm) continue;
@@ -43475,9 +43483,66 @@ function hasDegradedModuleFailSignal(envelope) {
   return false;
 }
 
+function collectVisibleCardTextForKnownFieldReask(cards) {
+  const fragments = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!isPlainObject(card)) continue;
+    const type = String(card.type || '').trim().toLowerCase();
+    const payload = getCardPayload(card);
+    const push = (...values) => {
+      for (const value of values) {
+        const normalized = String(value || '').trim();
+        if (normalized) fragments.push(normalized);
+      }
+    };
+
+    push(card.title, card.subtitle, card.summary, card.message);
+    if (!isPlainObject(payload)) continue;
+
+    push(payload.title, payload.subtitle, payload.summary, payload.message, payload.detail, payload.headline, payload.note);
+
+    const frameworkSummary = isPlainObject(payload.framework_summary) ? payload.framework_summary : null;
+    if (frameworkSummary) {
+      push(
+        frameworkSummary.concern_text,
+        frameworkSummary.headline,
+        frameworkSummary.primary_role_label,
+        frameworkSummary.top_pick_role_label,
+      );
+    }
+
+    for (const role of Array.isArray(payload.roles) ? payload.roles : []) {
+      if (!isPlainObject(role)) continue;
+      push(role.label, role.why_this_role);
+    }
+    for (const reco of Array.isArray(payload.recommendations) ? payload.recommendations : []) {
+      if (!isPlainObject(reco)) continue;
+      push(
+        reco.display_name,
+        reco.displayName,
+        reco.name,
+        reco.title,
+        ...(Array.isArray(reco.notes) ? reco.notes : []),
+      );
+    }
+    if (type === 'confidence_notice') {
+      push(payload.reason_user_visible, payload.user_visible_reason);
+    }
+    for (const action of Array.isArray(payload.actions) ? payload.actions : []) {
+      if (!isPlainObject(action)) continue;
+      push(action.label, action.text, action.title);
+    }
+    for (const followup of Array.isArray(payload.follow_ups) ? payload.follow_ups : []) {
+      if (!isPlainObject(followup)) continue;
+      push(followup.label, followup.text, followup.title);
+    }
+  }
+  return fragments.join('\n');
+}
+
 function hasKnownFieldReaskInText({ profile, text, cards }) {
   const p = profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
-  const composite = `${String(text || '')}\n${JSON.stringify(Array.isArray(cards) ? cards : [])}`;
+  const composite = `${String(text || '')}\n${collectVisibleCardTextForKnownFieldReask(cards)}`;
   const hasQuestionHint = /(\?|which|what|是否|还是|哪种|确认|how)/i.test(composite);
   if (!hasQuestionHint) return false;
   if (typeof p.skinType === 'string' && p.skinType.trim() && /(skin type|肤质|油皮|混油|混干|干皮)/i.test(composite)) return true;

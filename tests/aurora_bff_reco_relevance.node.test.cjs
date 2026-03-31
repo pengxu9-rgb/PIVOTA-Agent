@@ -1649,8 +1649,8 @@ test('__internal: framework reco query collection runs per-level catalog searche
         ladder_level: 'framework_oil_control_treatment',
         queries: [
           { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
-          { query: 'niacinamide serum oily skin', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
-          { query: 'lightweight treatment oily skin', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+          { query: 'shine control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
+          { query: 'mattifying serum', step: 'treatment', slot: 'other', ladder_level: 'framework_oil_control_treatment', role_id: 'oil_control_treatment' },
         ],
       },
     ];
