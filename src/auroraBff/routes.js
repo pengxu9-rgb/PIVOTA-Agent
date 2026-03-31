@@ -14079,6 +14079,31 @@ function buildFrameworkRecommendationNotes({
   return notes.filter(Boolean).slice(0, 2);
 }
 
+function scoreConcernFrameworkCandidateTiebreak(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  const socialRefScore = Number.isFinite(Number(candidate.social_ref_score)) ? Number(candidate.social_ref_score) : 0;
+  const ingredientSignalCount = Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens.length : 0;
+  const tagSignalCount = Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens.length : 0;
+  const retrievalSource = String(candidate.retrieval_source || candidate.retrievalSource || '').trim().toLowerCase();
+  const directUrl = pickFirstTrimmed(
+    candidate.canonical_pdp_url,
+    candidate.canonicalPdpUrl,
+    candidate.pdp_url,
+    candidate.pdpUrl,
+    candidate.product_url,
+    candidate.productUrl,
+    candidate.url,
+  );
+  let score = 0;
+  score += Math.max(0, Math.min(0.06, socialRefScore * 0.03));
+  if (directUrl) score += 0.014;
+  if (ingredientSignalCount > 0) score += Math.min(0.018, ingredientSignalCount * 0.004);
+  if (tagSignalCount > 0) score += Math.min(0.012, tagSignalCount * 0.0025);
+  // Neutralize insertion-order bias when internal and external candidates land with the same role score.
+  if (retrievalSource === 'external_seed') score += 0.01;
+  return Number(score.toFixed(4));
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -14169,6 +14194,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_label: String(bestRole.label || '').trim() || null,
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: Number(bestScore.toFixed(4)),
+      framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       candidate_step: candidateStep || null,
     };
     if (bestScore >= 0.72) {
@@ -14182,7 +14208,15 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   for (const bucket of roleBuckets.values()) {
-    bucket.sort((left, right) => Number(right.framework_score || 0) - Number(left.framework_score || 0));
+    bucket.sort((left, right) => {
+      const scoreDiff = Number(right.framework_score || 0) - Number(left.framework_score || 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      const tieBreakDiff = Number(right.framework_tiebreak_score || 0) - Number(left.framework_tiebreak_score || 0);
+      if (tieBreakDiff !== 0) return tieBreakDiff;
+      const leftName = String(pickFirstTrimmed(left.display_name, left.displayName, left.name, left.title) || '').trim().toLowerCase();
+      const rightName = String(pickFirstTrimmed(right.display_name, right.displayName, right.name, right.title) || '').trim().toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
   }
 
   const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
@@ -14977,7 +15011,8 @@ async function buildRecoGenerateFromCatalog({
   let probeWhileOpen = false;
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
   const fallbackEnabled = AURORA_PURCHASABLE_FALLBACK_ENABLED === true;
-  const allowExternalSeedSupplement = fallbackEnabled && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
+  const allowExternalSeedSupplement = AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
+  const useParallelSupplementedSearch = fallbackEnabled || allowExternalSeedSupplement;
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
@@ -15018,6 +15053,7 @@ async function buildRecoGenerateFromCatalog({
     recommendationTaskContext,
     lang: ctx && ctx.lang ? ctx.lang : 'EN',
   });
+  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   if (!queryLevels.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
@@ -15029,9 +15065,9 @@ async function buildRecoGenerateFromCatalog({
     logger,
     timeoutMs: searchTimeoutEffectiveMs,
     limit: 6,
-    usePurchasableFallback: fallbackEnabled,
+    usePurchasableFallback: useParallelSupplementedSearch,
     allowExternalSeed: allowExternalSeedSupplement,
-    externalSeedStrategy: 'on_empty_only',
+    externalSeedStrategy: frameworkMode ? 'supplement_internal_first' : 'on_empty_only',
   });
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   const candidateState = isPlainObject(collected.candidateState)
@@ -15040,7 +15076,6 @@ async function buildRecoGenerateFromCatalog({
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
-  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,

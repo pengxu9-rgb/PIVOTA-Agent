@@ -5,6 +5,7 @@ const { normalizeRoutineInputWithPmShortcut } = require('../routineState');
 const { buildRequestContext } = require('../requestContext');
 
 let routerSingleton = null;
+let invokeV1MainlineChatImpl = invokeV1MainlineChat;
 
 function toBool(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -43,6 +44,70 @@ function getRoutesInternal() {
   } catch {
     return {};
   }
+}
+
+function buildLoopbackChatBaseUrl(req) {
+  const forwardedProto = typeof req?.get === 'function' ? req.get('x-forwarded-proto') : null;
+  const proto = pickFirstTrimmed(forwardedProto, req?.protocol, 'http') || 'http';
+  const forwardedHost = typeof req?.get === 'function' ? req.get('x-forwarded-host') : null;
+  const host = pickFirstTrimmed(forwardedHost, typeof req?.get === 'function' ? req.get('host') : null, req?.headers?.host);
+  if (host) return `${proto}://${host}`;
+  const port = pickFirstTrimmed(process.env.PORT);
+  return port ? `http://127.0.0.1:${port}` : null;
+}
+
+function buildLoopbackChatHeaders(req) {
+  const out = {};
+  const source = req?.headers && typeof req.headers === 'object' ? req.headers : {};
+  for (const [rawKey, rawValue] of Object.entries(source)) {
+    const key = String(rawKey || '').trim();
+    if (!key) continue;
+    const lowered = key.toLowerCase();
+    if (
+      lowered === 'host' ||
+      lowered === 'content-length' ||
+      lowered === 'connection' ||
+      lowered === 'accept-encoding'
+    ) {
+      continue;
+    }
+    out[key] = rawValue;
+  }
+  out.accept = 'application/json';
+  out['content-type'] = 'application/json';
+  return out;
+}
+
+async function invokeV1MainlineChat({ req, body } = {}) {
+  const baseUrl = buildLoopbackChatBaseUrl(req);
+  if (!baseUrl) throw new Error('loopback_chat_base_missing');
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutMs = 45000;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const resp = await fetch(`${baseUrl}/v1/chat`, {
+      method: 'POST',
+      headers: buildLoopbackChatHeaders(req),
+      body: JSON.stringify(body || {}),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const payload = await resp.json().catch(() => null);
+    if (!resp.ok || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const error = new Error(`v1_chat_loopback_failed_${Number(resp?.status) || 500}`);
+      error.status = Number(resp?.status) || 500;
+      error.payload = payload;
+      throw error;
+    }
+    return payload;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function shouldProxyFrameworkRecoToV1Mainline(body, internal = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  return typeof internal.shouldKeepTypedRecoRequestOnV1Mainline === 'function'
+    && internal.shouldKeepTypedRecoRequestOnV1Mainline(body) === true;
 }
 
 function mergeResponseMeta(payload, authMeta) {
@@ -341,6 +406,18 @@ async function handleChatStream(req, res) {
 
   try {
     const auth = await resolveRequestIdentity(req);
+    const body = isPlainObject(req.body) ? req.body : {};
+    const internal = getRoutesInternal();
+    if (shouldProxyFrameworkRecoToV1Mainline(body, internal)) {
+      sendEvent('thinking', {
+        step: 'routing_framework_mainline',
+        message: 'Preparing framework-first recommendations...',
+      });
+      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      sendEvent('result', mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta));
+      sendEvent('done', {});
+      return;
+    }
     const skillRequest = buildSkillRequest(req);
     const thinkingSteps = [];
     let resultSent = false;
@@ -461,4 +538,10 @@ module.exports = {
   handleChat,
   handleChatStream,
   __resetRouterForTests,
+  __setInvokeV1MainlineChatForTests(fn) {
+    invokeV1MainlineChatImpl = typeof fn === 'function' ? fn : invokeV1MainlineChat;
+  },
+  __resetInvokeV1MainlineChatForTests() {
+    invokeV1MainlineChatImpl = invokeV1MainlineChat;
+  },
 };

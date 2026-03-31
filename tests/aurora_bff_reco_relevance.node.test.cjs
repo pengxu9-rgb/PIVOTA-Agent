@@ -636,6 +636,183 @@ test('/v1/chat: typed generic oily-skin ask bypasses v2 delegation and stays fra
   }
 });
 
+test('/v1/chat: framework retrieval supplements internal hits with external seeds and can surface an external top pick', async () => {
+  const originalGet = axios.get;
+  const originalFallbackEnabled = process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
+  const originalExternalSeedEnabled = process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
+  process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = 'false';
+  process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
+  const decisionModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+  delete require.cache[decisionModuleId];
+  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
+  const originalAuroraChat = decisionModule.auroraChat;
+  const observedQueries = [];
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const allowExternalSeed = config?.params?.allow_external_seed === true;
+    const externalSeedStrategy = String(config?.params?.external_seed_strategy || '').trim().toLowerCase();
+    observedQueries.push({ query, allowExternalSeed, externalSeedStrategy });
+
+    if (query.includes('oil control')) {
+      if (allowExternalSeed) {
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_oil_1',
+                merchant_id: 'merchant_ext_oil',
+                brand: 'Fenty Skin',
+                name: 'Oil Control Serum',
+                display_name: 'Fenty Skin Oil Control Serum',
+                category: 'serum',
+                product_type: 'serum',
+                source: 'external_seed',
+                url: 'https://example.com/fenty-oil-control-serum',
+                ingredient_tokens: ['niacinamide', 'green tea'],
+                tag_tokens: ['oil control', 'shine control'],
+              },
+            ],
+          },
+        };
+      }
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'int_oil_1',
+              merchant_id: 'merchant_int_oil',
+              brand: 'The Ordinary',
+              name: 'Oil Control Serum',
+              display_name: 'The Ordinary Oil Control Serum',
+              category: 'serum',
+              product_type: 'serum',
+              ingredient_tokens: ['niacinamide'],
+            },
+          ],
+        },
+      };
+    }
+
+    if (query.includes('lightweight moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      if (allowExternalSeed) {
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_moist_1',
+                merchant_id: 'merchant_ext_moist',
+                brand: 'Laneige',
+                name: 'Water Bank Gel Cream',
+                display_name: 'Laneige Water Bank Gel Cream',
+                category: 'moisturizer',
+                product_type: 'gel cream',
+                source: 'external_seed',
+                url: 'https://example.com/laneige-gel-cream',
+                ingredient_tokens: ['glycerin', 'squalane'],
+                tag_tokens: ['lightweight moisturizer'],
+              },
+            ],
+          },
+        };
+      }
+      return { status: 200, data: { products: [] } };
+    }
+
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      if (allowExternalSeed) {
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_spf_1',
+                merchant_id: 'merchant_ext_spf',
+                brand: 'Supergoop',
+                name: 'Unseen Sunscreen SPF 40',
+                display_name: 'Supergoop Unseen Sunscreen SPF 40',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                source: 'external_seed',
+                url: 'https://example.com/supergoop-unseen',
+                ingredient_tokens: ['uv filters'],
+                tag_tokens: ['daily sunscreen'],
+              },
+            ],
+          },
+        };
+      }
+      return { status: 200, data: { products: [] } };
+    }
+
+    return { status: 200, data: { products: [] } };
+  };
+
+  decisionModule.auroraChat = async () => ({
+    answer: JSON.stringify({
+      recommendations: [
+        {
+          step: 'treatment',
+          reasons: ['A framework-first oily-skin ask should prioritize oil control first.'],
+          sku: { brand: 'Fenty Skin', display_name: 'Oil Control Serum' },
+        },
+      ],
+    }),
+  });
+
+  try {
+    const express = require('express');
+    const { mountAuroraBffRoutes } = loadRoutesFresh();
+    const app = express();
+    app.use(express.json({ limit: '1mb' }));
+    mountAuroraBffRoutes(app, { logger: null });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_seed_uid', briefId: 'chat_framework_seed_brief' });
+    const response = await invokeRoute(app, 'POST', '/v1/chat', {
+      headers: {
+        'X-Aurora-UID': 'chat_framework_seed_uid',
+        'X-Trace-ID': 'trace_chat_framework_seed',
+        'X-Brief-ID': 'chat_framework_seed_brief',
+      },
+      body: {
+        message: 'im oily skin, what product should i use?',
+        context: {
+          locale: 'en',
+          profile: {
+            skinType: 'oily',
+            sensitivity: 'low',
+            barrierStatus: 'stable',
+            goals: ['oil control'],
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendations[0]?.product_id, 'ext_oil_1');
+    assert.equal(payload.recommendations[0]?.retrieval_source, 'external_seed');
+    assert.ok(payload.recommendations.some((item) => item?.retrieval_source === 'external_seed'));
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.externalSeedStrategy === 'supplement_internal_first'));
+  } finally {
+    if (originalFallbackEnabled == null) delete process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
+    else process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = originalFallbackEnabled;
+    if (originalExternalSeedEnabled == null) delete process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
+    else process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = originalExternalSeedEnabled;
+    decisionModule.auroraChat = originalAuroraChat;
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline recommendations', async () => {
   const originalGet = axios.get;
   const originalPromptMismatch = process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
