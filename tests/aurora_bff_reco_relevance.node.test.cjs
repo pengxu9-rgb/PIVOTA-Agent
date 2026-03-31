@@ -1291,10 +1291,16 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
   delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
   const decisionModule = require('../src/auroraBff/auroraDecisionClient');
   const originalAuroraChat = decisionModule.auroraChat;
+  const observedSearchParams = [];
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
     const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedSearchParams.push({
+      query,
+      allow_external_seed: config?.params?.allow_external_seed === true,
+      external_seed_strategy: String(config?.params?.external_seed_strategy || '').trim().toLowerCase() || null,
+    });
     if (query.includes('sunscreen') || query.includes('spf')) {
       return {
         status: 200,
@@ -1401,6 +1407,9 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
     assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
     assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet\./i);
     assert.match(String(response.body?.assistant_text || ''), /Best available inside the same framework right now: Air Gel Cream for Lightweight moisturizer\./i);
+    assert.ok(
+      observedSearchParams.some((row) => row.allow_external_seed === true && row.external_seed_strategy === 'supplement_internal_first'),
+    );
   } finally {
     decisionModule.auroraChat = originalAuroraChat;
     axios.get = originalGet;

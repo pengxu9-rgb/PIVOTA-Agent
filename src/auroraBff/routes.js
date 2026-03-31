@@ -17050,7 +17050,11 @@ async function buildRecoGenerateFromCatalog({
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
   const fallbackEnabled = AURORA_PURCHASABLE_FALLBACK_ENABLED === true;
   const allowExternalSeedSupplement = fallbackEnabled && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true;
-  const effectiveExternalSeedStrategy = pickFirstTrimmed(externalSeedStrategyOverride, 'on_empty_only') || 'on_empty_only';
+  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
+  const effectiveExternalSeedStrategy = pickFirstTrimmed(
+    externalSeedStrategyOverride,
+    frameworkMode ? 'supplement_internal_first' : 'on_empty_only',
+  ) || (frameworkMode ? 'supplement_internal_first' : 'on_empty_only');
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
@@ -17145,7 +17149,6 @@ async function buildRecoGenerateFromCatalog({
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
-  const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,
