@@ -17015,7 +17015,9 @@ async function buildPurchasableFallbackCandidates({
         deadlineMs,
         allowExternalSeed: true,
         externalSeedStrategy,
-        fastMode: true,
+        // External-seed supplementation should not be constrained by the same
+        // fast-path budget we use for internal catalog recall.
+        fastMode: false,
       });
     }
   }
@@ -58835,6 +58837,13 @@ async function generateProductRecommendations({
       resolved_target_step: targetContext.resolved_target_step || null,
       resolved_target_step_confidence: targetContext.resolved_target_step_confidence || 'none',
       resolved_target_step_source: targetContext.resolved_target_step_source || 'none',
+      selected_source_counts:
+        isPlainObject(catalogDebug?.selected_source_counts)
+          ? catalogDebug.selected_source_counts
+          : {},
+      external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
+        ? Number(catalogDebug.external_seed_used_count)
+        : 0,
       framework_id: frameworkMode ? targetContext.framework_id || null : null,
       framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
       framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,

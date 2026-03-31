@@ -1432,7 +1432,8 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     const query = String(config?.params?.query || '').trim().toLowerCase();
     const allowExternalSeed = config?.params?.allow_external_seed === true;
     const externalSeedStrategy = String(config?.params?.external_seed_strategy || '').trim().toLowerCase();
-    observedQueries.push({ query, allowExternalSeed, externalSeedStrategy });
+    const fastMode = config?.params?.fast_mode;
+    observedQueries.push({ query, allowExternalSeed, externalSeedStrategy, fastMode });
 
     if (query.includes('oil control')) {
       if (allowExternalSeed) {
@@ -1585,6 +1586,9 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     assert.equal(payload.recommendations[0]?.retrieval_source, 'external_seed');
     assert.ok(payload.recommendations.some((item) => item?.retrieval_source === 'external_seed'));
     assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.externalSeedStrategy === 'supplement_internal_first'));
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.fastMode === false));
+    assert.ok(Number(payload.recommendation_meta?.external_seed_used_count || 0) > 0);
+    assert.ok(Number(payload.recommendation_meta?.selected_source_counts?.external_seed || 0) > 0);
   } finally {
     if (originalFallbackEnabled == null) delete process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
     else process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = originalFallbackEnabled;
