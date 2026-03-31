@@ -37,16 +37,25 @@ test('direct focus negatives do not escalate to high-confidence hard target', ()
   }
 });
 
-test('generic single-product chat asks default to moisturizer without broadening into sunscreen', () => {
+test('generic single-product chat asks resolve into a framework-first role plan instead of a single default family', () => {
   const targetContext = resolveRecommendationTargetContext({
     text: 'im oily skin, what product should i use?',
     entryType: 'chat',
+    profileSummary: { skinType: 'oily' },
   });
 
-  assert.equal(targetContext.resolved_target_step, 'moisturizer');
-  assert.equal(targetContext.resolved_target_step_confidence, 'medium');
-  assert.equal(targetContext.resolved_target_step_source, 'generic_single_product_default');
-  assert.equal(targetContext.mainline_mode, 'soft_target');
+  assert.equal(targetContext.resolved_target_step, null);
+  assert.equal(targetContext.resolved_target_step_confidence, 'none');
+  assert.equal(targetContext.resolved_target_step_source, 'generic_concern_framework');
+  assert.equal(targetContext.mainline_mode, 'framework');
+  assert.equal(targetContext.intent_mode, 'generic_concern');
+  assert.equal(targetContext.framework_owner_source, 'generic_concern_framework_resolver');
+  assert.equal(targetContext.framework_owner_state, 'trusted');
+  assert.equal(targetContext.primary_role_id, 'oil_control_treatment');
+  assert.deepEqual(
+    targetContext.framework_roles.map((role) => role.role_id),
+    ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  );
 });
 
 test('same-family ladder never broadens moisturizer into cleanser or sunscreen family', () => {
@@ -81,8 +90,7 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
         brand: 'GoodSkin',
         name: 'Barrier Cream',
         display_name: 'Barrier Cream',
-        category: 'face cream',
-        product_type: 'cream',
+        category: 'skincare',
       },
       {
         product_id: 'brush_1',
@@ -103,10 +111,65 @@ test('viability stage rejects non-skincare and preserves moisturizer candidates'
   assert.equal(pool.pre_llm_selected_candidate_count, 1);
   assert.equal(pool.final_selected_candidate_count, 1);
   assert.equal(pool.selected_recommendations[0].product_id, 'face_cream_1');
+  assert.equal(pool.viable[0].candidate_step, 'moisturizer');
+  assert.equal(pool.viable[0].candidate_step_source, 'title_or_tag_alias');
   assert.equal(pool.terminal_success, true);
   assert.equal(pool.viable_pool_strength, 'strong');
   assert.equal(pool.target_fidelity_level, 'satisfied');
   assert.equal(pool.reco_policy_version, 'recommendation_step_aware_reco_policy_v1');
+});
+
+test('artifact-backed context-fit ordering prioritizes barrier-friendly moisturizer and rejects hard avoid conflicts', () => {
+  const targetContext = resolveRecommendationTargetContext({
+    focus: 'moisturizer',
+    text: 'Recommend a moisturizer for barrier repair',
+    entryType: 'chat',
+  });
+  const pool = finalizeRecommendationCandidatePools(
+    [
+      {
+        product_id: 'generic_cream',
+        merchant_id: 'm1',
+        brand: 'GoodSkin',
+        display_name: 'Daily Moisture Cream',
+        category: 'skincare',
+      },
+      {
+        product_id: 'barrier_cream',
+        merchant_id: 'm2',
+        brand: 'BarrierLab',
+        display_name: 'Barrier Repair Cream',
+        category: 'skincare',
+        ingredient_tokens: ['ceramide', 'panthenol'],
+      },
+      {
+        product_id: 'retinol_cream',
+        merchant_id: 'm3',
+        brand: 'ActiveSkin',
+        display_name: 'Retinol Night Cream',
+        category: 'skincare',
+        ingredient_tokens: ['retinol'],
+      },
+    ],
+    {
+      targetContext,
+      recoContext: {
+        task_hard_context: {
+          barrier_status: 'impaired',
+          sensitivity: 'high',
+          active_goals: ['barrier repair'],
+          ingredient_avoid: ['retinol'],
+          ingredient_targets: ['ceramide'],
+        },
+        task_soft_context: {},
+      },
+    },
+  );
+
+  assert.equal(pool.selected_recommendations[0].product_id, 'barrier_cream');
+  assert.equal(pool.hard_reject.some((row) => row.product.product_id === 'retinol_cream'), true);
+  assert.equal(pool.viable[0].context_fit_score > pool.viable[1].context_fit_score, true);
+  assert.equal(pool.artifact_context_applied, true);
 });
 
 test('medium-confidence target only succeeds when same-family viable candidates exist', () => {
