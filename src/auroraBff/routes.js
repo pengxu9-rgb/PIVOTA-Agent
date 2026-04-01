@@ -16270,6 +16270,27 @@ function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = 
   const primaryExternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed') || null;
   if (!primaryInternal || !primaryExternal) return '';
   if (candidateState?.primary_role_matched === true) return '';
+  const internalExecuted = Number.isFinite(Number(primaryInternal.executed_query_count))
+    ? Math.max(0, Math.trunc(Number(primaryInternal.executed_query_count)))
+    : 0;
+  const externalExecuted = Number.isFinite(Number(primaryExternal.executed_query_count))
+    ? Math.max(0, Math.trunc(Number(primaryExternal.executed_query_count)))
+    : 0;
+  const internalTimeout = Number.isFinite(Number(primaryInternal.timeout_count))
+    ? Math.max(0, Math.trunc(Number(primaryInternal.timeout_count)))
+    : 0;
+  const externalTimeout = Number.isFinite(Number(primaryExternal.timeout_count))
+    ? Math.max(0, Math.trunc(Number(primaryExternal.timeout_count)))
+    : 0;
+  const internalSelected = Number.isFinite(Number(primaryInternal.selected_count))
+    ? Math.max(0, Math.trunc(Number(primaryInternal.selected_count)))
+    : 0;
+  const externalSelected = Number.isFinite(Number(primaryExternal.selected_count))
+    ? Math.max(0, Math.trunc(Number(primaryExternal.selected_count)))
+    : 0;
+  const noPrimarySelection = internalSelected <= 0 && externalSelected <= 0;
+  const externalFullyTimedOut = externalExecuted > 0 && externalTimeout >= externalExecuted;
+  if (noPrimarySelection && externalFullyTimedOut) return 'transient_timeout';
   const internalTimedOut = primaryInternal.transient_only === true && Number(primaryInternal.timeout_count || 0) > 0;
   const externalTimedOut = primaryExternal.transient_only === true && Number(primaryExternal.timeout_count || 0) > 0;
   return internalTimedOut && externalTimedOut ? 'transient_timeout' : '';

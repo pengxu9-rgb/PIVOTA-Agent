@@ -1881,6 +1881,77 @@ test('__internal: framework recall stops before support stages after primary tra
   }
 });
 
+test('__internal: framework recall skips support stages when primary external stage fully times out after empty primary internal recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const observedQueries = [];
+  let callCount = 0;
+  axios.get = async (url, config) => {
+    callCount += 1;
+    observedQueries.push(String(config?.params?.query || ''));
+    if (callCount === 1) {
+      return {
+        status: 200,
+        data: { items: [] },
+      };
+    }
+    return {
+      status: 504,
+      data: {},
+    };
+  };
+
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'oil balance serum', 'mattifying serum'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        query_terms: ['lightweight moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        query_terms: ['oil control sunscreen'],
+      },
+    ],
+  };
+
+  try {
+    const out = await __internal.collectRecoCandidatesFromRecallPlan({
+      recallPlan: __internal.buildRecoRecallPlan({
+        mode: 'framework_generic',
+        targetContext,
+      }),
+      targetContext,
+      logger: null,
+      timeoutMs: 300,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+
+    assert.equal(out.executedQueryCount, 4);
+    assert.equal(out.actualHttpAttemptCount, 4);
+    assert.equal(out.primaryStageTimeoutClass, 'transient_timeout');
+    assert.equal(out.plannerStopReason, 'primary_transient_timeout');
+    assert.equal(out.candidateDropStage, 'upstream_timeout_primary_role');
+    assert.equal(observedQueries.some((query) => /lightweight moisturizer|oil control sunscreen/i.test(query)), false);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('__internal: tri-state skincare classifier only hard rejects explicit non-skincare', () => {
   const recoShared = require('../src/auroraBff/recommendationSharedStack');
 
