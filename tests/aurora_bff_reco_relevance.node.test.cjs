@@ -18,6 +18,7 @@ process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = 'true';
 process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
 
 const axios = require('axios');
+const dbModule = require('../src/db');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
@@ -1550,6 +1551,7 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
 
 test('/v1/chat: framework retrieval supplements internal hits with external seeds and can surface an external top pick', async () => {
   const originalGet = axios.get;
+  const originalDbQuery = dbModule.query;
   const originalFallbackEnabled = process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
   const originalExternalSeedEnabled = process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
   process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = 'false';
@@ -1568,28 +1570,6 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     observedQueries.push({ query, allowExternalSeed, externalSeedStrategy, fastMode });
 
     if (query.includes('oil control')) {
-      if (allowExternalSeed) {
-        return {
-          status: 200,
-          data: {
-            products: [
-              {
-                product_id: 'ext_oil_1',
-                merchant_id: 'merchant_ext_oil',
-                brand: 'Fenty Skin',
-                name: 'Oil Control Serum',
-                display_name: 'Fenty Skin Oil Control Serum',
-                category: 'serum',
-                product_type: 'serum',
-                source: 'external_seed',
-                url: 'https://example.com/fenty-oil-control-serum',
-                ingredient_tokens: ['niacinamide', 'green tea'],
-                tag_tokens: ['oil control', 'shine control'],
-              },
-            ],
-          },
-        };
-      }
       return {
         status: 200,
         data: {
@@ -1663,6 +1643,35 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
 
     return { status: 200, data: { products: [] } };
   };
+  dbModule.query = async () => ({
+    rows: [
+      {
+        id: 'seed_ext_oil_1',
+        external_product_id: 'ext_oil_1',
+        destination_url: 'https://example.com/fenty-oil-control-serum',
+        canonical_url: 'https://example.com/fenty-oil-control-serum',
+        domain: 'example.com',
+        title: 'Fenty Skin Oil Control Serum',
+        image_url: 'https://example.com/fenty-oil-control-serum.jpg',
+        price_amount: '38',
+        price_currency: 'USD',
+        availability: 'in_stock',
+        seed_data: {
+          brand: 'Fenty Skin',
+          category: 'Serum',
+          search_aliases: ['oil control serum', 'shine control serum'],
+          benefit_tags: ['oil control', 'shine control', 'mattifying'],
+          short_description: 'Mattifying oil control serum for oily skin.',
+          skin_type_tags: ['oily'],
+          snapshot: {
+            title: 'Fenty Skin Oil Control Serum',
+            canonical_url: 'https://example.com/fenty-oil-control-serum',
+            destination_url: 'https://example.com/fenty-oil-control-serum',
+          },
+        },
+      },
+    ],
+  });
 
   decisionModule.auroraChat = async () => ({
     answer: JSON.stringify({
@@ -1717,11 +1726,10 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     assert.equal(payload.recommendations[0]?.product_id, 'ext_oil_1');
     assert.equal(payload.recommendations[0]?.retrieval_source, 'external_seed');
     assert.ok(payload.recommendations.some((item) => item?.retrieval_source === 'external_seed'));
-    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.externalSeedStrategy === 'supplement_internal_first'));
-    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.fastMode === false));
-    assert.ok(observedQueries.filter((entry) => entry.allowExternalSeed === true).length <= 3);
+    assert.ok(observedQueries.length <= 4);
+    assert.ok(observedQueries.every((entry) => entry.allowExternalSeed === false));
     assert.ok(Number(payload.recommendation_meta?.executed_query_count || 0) <= 6);
-    assert.ok(Number(payload.recommendation_meta?.executed_upstream_attempt_count || 0) <= 8);
+    assert.ok(Number(payload.recommendation_meta?.executed_upstream_attempt_count || 0) <= 4);
     assert.ok(Number(payload.recommendation_meta?.external_seed_used_count || 0) > 0);
     assert.ok(Number(payload.recommendation_meta?.selected_source_counts?.external_seed || 0) > 0);
   } finally {
@@ -1730,6 +1738,7 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     if (originalExternalSeedEnabled == null) delete process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
     else process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = originalExternalSeedEnabled;
     decisionModule.auroraChat = originalAuroraChat;
+    dbModule.query = originalDbQuery;
     axios.get = originalGet;
   }
 });

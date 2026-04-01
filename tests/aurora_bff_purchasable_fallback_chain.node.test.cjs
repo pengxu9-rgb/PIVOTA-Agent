@@ -89,6 +89,13 @@ test('purchasable fallback: explicit external sourceScope runs only the external
         fastMode: params.fastMode === true,
         externalSeedStrategy: params.externalSeedStrategy,
       });
+      return { ok: false, products: [], reason: 'should_not_call' };
+    },
+    externalSeedSearchFn: async ({ query, transportPolicyMode }) => {
+      calls.push({
+        externalSeedQuery: query,
+        transportPolicyMode,
+      });
       return {
         ok: true,
         products: [
@@ -113,10 +120,11 @@ test('purchasable fallback: explicit external sourceScope runs only the external
     },
   });
 
-  assert.deepEqual(calls, [{ allowExternalSeed: true, fastMode: false, externalSeedStrategy: 'supplement_internal_first' }]);
+  assert.deepEqual(calls, [{ externalSeedQuery: 'oil control serum', transportPolicyMode: 'default' }]);
   assert.equal(out.selected_source, 'external_seed');
   assert.equal(out.products.length, 1);
   assert.equal(out.products[0].retrieval_source, 'external_seed');
+  assert.equal(out.actual_http_attempt_count, 0);
 });
 
 test('purchasable fallback: supplements from external seed when catalog is empty', async () => {
@@ -130,6 +138,10 @@ test('purchasable fallback: supplements from external seed when catalog is empty
       if (params.allowExternalSeed === false) {
         return { ok: true, products: [], reason: 'empty' };
       }
+      return { ok: false, products: [], reason: 'should_not_call' };
+    },
+    externalSeedSearchFn: async ({ query, transportPolicyMode }) => {
+      calls.push({ externalSeedQuery: query, transportPolicyMode });
       return {
         ok: true,
         products: [
@@ -147,8 +159,7 @@ test('purchasable fallback: supplements from external seed when catalog is empty
 
   assert.equal(calls.length, 2);
   assert.equal(calls[0].allowExternalSeed, false);
-  assert.equal(calls[1].allowExternalSeed, true);
-  assert.equal(calls[1].externalSeedStrategy, 'supplement_internal_first');
+  assert.equal(calls[1].externalSeedQuery, 'azelaic acid serum');
   assert.equal(out.ok, true);
   assert.equal(out.selected_source, 'external_seed');
   assert.equal(out.products.length, 1);
@@ -169,6 +180,10 @@ test('purchasable fallback: still supplements from external seed when catalog tr
       if (params.allowExternalSeed === false) {
         return { ok: false, products: [], reason: 'upstream_timeout' };
       }
+      return { ok: false, products: [], reason: 'should_not_call' };
+    },
+    externalSeedSearchFn: async ({ query }) => {
+      calls.push({ externalSeedQuery: query });
       return {
         ok: true,
         products: [
@@ -188,7 +203,7 @@ test('purchasable fallback: still supplements from external seed when catalog tr
 
   assert.deepEqual(calls, [
     { allowExternalSeed: false, fastMode: true },
-    { allowExternalSeed: true, fastMode: false },
+    { externalSeedQuery: 'oil control serum' },
   ]);
   assert.equal(out.ok, true);
   assert.equal(out.selected_source, 'external_seed');
@@ -213,30 +228,33 @@ test('purchasable fallback: supplement_internal_first runs catalog and external 
       maxInFlight = Math.max(maxInFlight, inFlight);
       await new Promise((resolve) => setTimeout(resolve, 30));
       inFlight -= 1;
-      if (params.allowExternalSeed === true) {
-        return {
-          ok: true,
-          products: [
-            {
-              product_id: 'prod_external_parallel_1',
-              merchant_id: 'm_ext_parallel_1',
-              name: 'External Oil Control Serum',
-              canonical_pdp_url: 'https://example.com/pdp/ext-oil-parallel',
-              source: 'external_seed',
-              search_aliases: ['oil control serum'],
-              benefit_tags: ['oil control', 'shine control'],
-            },
-          ],
-        };
-      }
       return { ok: true, products: [], reason: 'empty' };
+    },
+    externalSeedSearchFn: async ({ query }) => {
+      calls.push({ externalSeedQuery: query });
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      inFlight -= 1;
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_external_parallel_1',
+            merchant_id: 'm_ext_parallel_1',
+            name: 'External Oil Control Serum',
+            canonical_pdp_url: 'https://example.com/pdp/ext-oil-parallel',
+            source: 'external_seed',
+            search_aliases: ['oil control serum'],
+            benefit_tags: ['oil control', 'shine control'],
+          },
+        ],
+      };
     },
   });
 
-  assert.deepEqual(
-    calls.map((row) => row.allowExternalSeed).sort(),
-    [false, true],
-  );
+  assert.equal(calls.filter((row) => row.allowExternalSeed === false).length, 1);
+  assert.equal(calls.filter((row) => row.externalSeedQuery === 'oil control serum').length, 1);
   assert.ok(maxInFlight >= 2);
   assert.equal(out.selected_source, 'external_seed');
 });
@@ -261,7 +279,9 @@ test('purchasable fallback: merges catalog + external and de-duplicates by produ
           ],
         };
       }
-      return {
+      return { ok: false, products: [], reason: 'should_not_call' };
+    },
+    externalSeedSearchFn: async () => ({
         ok: true,
         products: [
           {
@@ -279,8 +299,7 @@ test('purchasable fallback: merges catalog + external and de-duplicates by produ
             source: 'external_seed',
           },
         ],
-      };
-    },
+      }),
   });
 
   assert.equal(out.ok, true);

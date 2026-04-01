@@ -9,6 +9,7 @@ const { query: runDbQuery } = require('../db');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
+  ensureJsonObject,
 } = require('../services/externalSeedProducts');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
@@ -6555,6 +6556,260 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
   }
 }
 
+function collectExternalSeedTextValues(...values) {
+  const flattened = [];
+  const append = (value) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      for (const item of value) append(item);
+      return;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) flattened.push(trimmed);
+    }
+  };
+  for (const value of values) append(value);
+  return uniqCaseInsensitiveStrings(flattened, 24);
+}
+
+function buildLocalExternalSeedSearchPatterns(query) {
+  const raw = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const tokens = tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true }).length > 0
+    ? tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true })
+    : tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: false });
+  const bigrams = [];
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const left = String(tokens[index] || '').trim();
+    const right = String(tokens[index + 1] || '').trim();
+    if (left && right) bigrams.push(`${left} ${right}`);
+  }
+  const phrases = uniqCaseInsensitiveStrings(
+    [
+      raw,
+      ...bigrams,
+      ...tokens,
+    ].map((value) => String(value || '').trim()).filter((value) => value.length >= 3),
+    10,
+  );
+  return phrases.map((value) => `%${value}%`);
+}
+
+function buildLocalExternalSeedSurfacingCandidate(row) {
+  const baseProduct = buildExternalSeedProduct(row);
+  if (!baseProduct) return null;
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const seedProduct = ensureJsonObject(seedData.product);
+  const snapshotProduct = ensureJsonObject(snapshot.product);
+  const seedScience = ensureJsonObject(seedData.science);
+  const snapshotScience = ensureJsonObject(snapshot.science);
+
+  const searchAliases = collectExternalSeedTextValues(
+    seedData.search_aliases,
+    seedData.searchAliases,
+    snapshot.search_aliases,
+    snapshot.searchAliases,
+    seedProduct.search_aliases,
+    seedProduct.searchAliases,
+    snapshotProduct.search_aliases,
+    snapshotProduct.searchAliases,
+    seedData.aliases,
+    snapshot.aliases,
+    seedProduct.aliases,
+    snapshotProduct.aliases,
+  );
+  const benefitTags = collectExternalSeedTextValues(
+    seedData.benefit_tags,
+    seedData.benefitTags,
+    seedData.benefit_tags_list,
+    seedData.benefitTagsList,
+    seedData.key_benefits,
+    seedData.keyBenefits,
+    snapshot.benefit_tags,
+    snapshot.benefitTags,
+    snapshot.key_benefits,
+    snapshot.keyBenefits,
+    seedScience.key_ingredients,
+    seedScience.keyIngredients,
+    snapshotScience.key_ingredients,
+    snapshotScience.keyIngredients,
+  );
+  const skinTypeTags = collectExternalSeedTextValues(
+    seedData.skin_type_tags,
+    seedData.skinTypeTags,
+    snapshot.skin_type_tags,
+    snapshot.skinTypeTags,
+    seedProduct.skin_type_tags,
+    seedProduct.skinTypeTags,
+    snapshotProduct.skin_type_tags,
+    snapshotProduct.skinTypeTags,
+  );
+  const shortDescription = pickFirstTrimmed(
+    seedData.short_description,
+    seedData.shortDescription,
+    snapshot.short_description,
+    snapshot.shortDescription,
+    seedProduct.short_description,
+    seedProduct.shortDescription,
+    snapshotProduct.short_description,
+    snapshotProduct.shortDescription,
+    seedData.seed_description,
+    snapshot.seed_description,
+  );
+  const description = pickFirstTrimmed(
+    seedData.description,
+    snapshot.description,
+    seedProduct.description,
+    snapshotProduct.description,
+    baseProduct.description,
+  );
+
+  return {
+    ...baseProduct,
+    source: 'external_seed',
+    retrieval_source: 'external_seed',
+    retrieval_reason: 'external_seed_local_search',
+    ...(searchAliases.length ? { search_aliases: searchAliases } : {}),
+    ...(benefitTags.length ? { benefit_tags: benefitTags } : {}),
+    ...(skinTypeTags.length ? { skin_type_tags: skinTypeTags } : {}),
+    ...(shortDescription ? { short_description: shortDescription } : {}),
+    ...(description ? { description } : {}),
+  };
+}
+
+async function searchLocalExternalSeedProducts({
+  query,
+  limit = 6,
+  logger,
+  queryFn,
+  transportPolicyMode = 'framework_first_turn',
+} = {}) {
+  const q = String(query || '').trim();
+  if (!q) {
+    return {
+      ok: false,
+      products: [],
+      reason: 'query_missing',
+      actual_http_attempt_count: 0,
+      attempted_base_urls: [],
+      attempted_paths: [],
+      transport_policy_mode: transportPolicyMode,
+    };
+  }
+
+  const runQuery = typeof queryFn === 'function' ? queryFn : runDbQuery;
+  if (typeof runQuery !== 'function') {
+    return {
+      ok: false,
+      products: [],
+      reason: 'db_unavailable',
+      actual_http_attempt_count: 0,
+      attempted_base_urls: [],
+      attempted_paths: [],
+      transport_policy_mode: transportPolicyMode,
+    };
+  }
+
+  const patterns = buildLocalExternalSeedSearchPatterns(q);
+  if (!patterns.length) {
+    return {
+      ok: false,
+      products: [],
+      reason: 'empty',
+      actual_http_attempt_count: 0,
+      attempted_base_urls: [],
+      attempted_paths: [],
+      transport_policy_mode: transportPolicyMode,
+    };
+  }
+
+  const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const rowCap = Math.max(18, Math.min(80, safeLimit * 8));
+  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const tool = 'creator_agents';
+
+  try {
+    const res = await runQuery(
+      `
+        SELECT
+          id,
+          external_product_id,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND (tool = '*' OR tool = $2)
+          AND (
+            lower(coalesce(title, '')) LIKE ANY($3::text[])
+            OR lower(coalesce(seed_data::text, '')) LIKE ANY($3::text[])
+          )
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $4
+      `,
+      [market, tool, patterns, rowCap],
+    );
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    const ranked = rankPurchasableRecoveryCandidates(
+      rows
+        .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
+        .filter(Boolean),
+      q,
+    ).slice(0, safeLimit);
+
+    return {
+      ok: ranked.length > 0,
+      products: ranked,
+      reason: ranked.length > 0 ? null : 'empty',
+      selected_source: ranked.length > 0 ? 'external_seed' : 'none',
+      actual_http_attempt_count: 0,
+      attempted_base_urls: [],
+      attempted_paths: [],
+      transport_policy_mode: transportPolicyMode,
+    };
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (
+      error?.code === 'NO_DATABASE' ||
+      /external_product_seeds/i.test(message) ||
+      /does not exist/i.test(message)
+    ) {
+      return {
+        ok: false,
+        products: [],
+        reason: 'db_unavailable',
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        transport_policy_mode: transportPolicyMode,
+      };
+    }
+    if (logger && typeof logger.warn === 'function') {
+      logger.warn({ err: error, query: q }, 'local_external_seed_search_failed');
+    }
+    return {
+      ok: false,
+      products: [],
+      reason: 'db_error',
+      actual_http_attempt_count: 0,
+      attempted_base_urls: [],
+      attempted_paths: [],
+      transport_policy_mode: transportPolicyMode,
+    };
+  }
+}
+
 function evaluateAnchorTrustForProductIntel({
   candidate = null,
   inputText = '',
@@ -7280,29 +7535,21 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
         const query = String(entry?.query || '').trim();
         const startedAt = Date.now();
         const out =
-          sourceScope === 'external_seed' && fetchGroundingAgentSearchCandidates
-            ? await fetchGroundingAgentSearchCandidates({
-                pivotaApiBase: PIVOTA_BACKEND_BASE_URL,
-                pivotaApiKey: PIVOTA_BACKEND_AGENT_API_KEY,
+          sourceScope === 'external_seed'
+            ? await searchLocalExternalSeedProducts({
                 query,
-                merchantIds: undefined,
-                searchAllMerchants: true,
                 limit: 8,
-                timeoutMs: externalSeedSearchTimeoutMs,
-                maxRetries: externalSeedSearchTimeoutMs >= 2400 ? 1 : 0,
-                retryBackoffMs: 90,
-                allowExternalSeed: true,
-                externalSeedStrategy: 'supplement_internal_first',
-                fastMode: false,
+                logger,
+                transportPolicyMode: 'product_grounding_exact',
               })
             : await searchPivotaBackendProducts({
                 query,
                 limit: 8,
                 logger,
-                timeoutMs: sourceScope === 'external_seed' ? externalSeedSearchTimeoutMs : searchTimeoutMs,
-                allowExternalSeed: sourceScope === 'external_seed',
-                externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'legacy',
-                fastMode: sourceScope !== 'external_seed',
+                timeoutMs: searchTimeoutMs,
+                allowExternalSeed: false,
+                externalSeedStrategy: 'legacy',
+                fastMode: true,
                 transportPolicy: buildRecoRecallTransportPolicy({ mode: 'product_grounding_exact' }),
               });
         return {
@@ -17603,9 +17850,13 @@ async function buildPurchasableFallbackCandidates({
   externalSeedStrategy = 'supplement_internal_first',
   sourceScope = 'hybrid',
   searchFn,
+  externalSeedSearchFn,
   transportPolicyMode = '',
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  const runExternalSeedSearch = typeof externalSeedSearchFn === 'function'
+    ? externalSeedSearchFn
+    : searchLocalExternalSeedProducts;
   const effectiveTransportPolicy = buildRecoRecallTransportPolicy({ mode: transportPolicyMode });
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', selected_source: 'none', stages: {} };
@@ -17650,16 +17901,11 @@ async function buildPurchasableFallbackCandidates({
     };
   }
   if (normalizedSourceScope === 'external_seed') {
-    const externalStage = await runSearch({
+    const externalStage = await runExternalSeedSearch({
       query: q,
       limit,
       logger,
-      timeoutMs,
-      deadlineMs,
-      allowExternalSeed: true,
-      externalSeedStrategy: normalizedExternalSeedStrategy || 'supplement_internal_first',
-      fastMode: false,
-      transportPolicy: effectiveTransportPolicy,
+      transportPolicyMode: effectiveTransportPolicy.mode,
     });
     const externalProducts = Array.isArray(externalStage?.products) ? externalStage.products : [];
     const rankedExternal = rankPurchasableRecoveryCandidates(
@@ -17714,18 +17960,11 @@ async function buildPurchasableFallbackCandidates({
     transportPolicy: effectiveTransportPolicy,
   });
   const supplementalPromise = shouldRunExternalSeedInParallel
-    ? runSearch({
+    ? runExternalSeedSearch({
         query: q,
         limit,
         logger,
-        timeoutMs,
-        deadlineMs,
-        allowExternalSeed: true,
-        externalSeedStrategy,
-        // External-seed supplementation should not be constrained by the same
-        // fast-path budget we use for internal catalog recall.
-        fastMode: false,
-        transportPolicy: effectiveTransportPolicy,
+        transportPolicyMode: effectiveTransportPolicy.mode,
       })
     : null;
 
@@ -17753,18 +17992,11 @@ async function buildPurchasableFallbackCandidates({
         strategy.includes('fallback')
       );
     if (shouldSupplement) {
-      supplemental = await runSearch({
+      supplemental = await runExternalSeedSearch({
         query: q,
         limit,
         logger,
-        timeoutMs,
-        deadlineMs,
-        allowExternalSeed: true,
-        externalSeedStrategy,
-        // External-seed supplementation should not be constrained by the same
-        // fast-path budget we use for internal catalog recall.
-        fastMode: false,
-        transportPolicy: effectiveTransportPolicy,
+        transportPolicyMode: effectiveTransportPolicy.mode,
       });
     }
   }
@@ -80849,6 +81081,7 @@ const __internal = {
   computeAnchorNameSimilarity,
   pickBestCatalogSearchCandidateForProductInput,
   loadExternalSeedEvidenceProduct,
+  searchLocalExternalSeedProducts,
   mapCatalogProductToAnchorProduct,
   inferProductAnchorInputMode,
   buildProductAnchorDecisionSpine,
