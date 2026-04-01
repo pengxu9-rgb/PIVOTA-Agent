@@ -927,6 +927,21 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.score).toBeLessThan(1);
   });
 
+  test('computeAnchorNameSimilarity counts search aliases for external-seed style candidates', () => {
+    const { __internal } = require('../src/auroraBff/routes');
+    const out = __internal.computeAnchorNameSimilarity({
+      inputText: 'The Ordinary UV Filters SPF 45 Serum',
+      candidate: {
+        brand: 'The Ordinary',
+        name: 'UV Filters Serum SPF 45',
+        display_name: 'The Ordinary UV Filters Serum SPF 45',
+        search_aliases: ['The Ordinary UV Filters SPF 45 Serum'],
+      },
+    });
+    expect(out.overlap).toBeGreaterThanOrEqual(5);
+    expect(out.score).toBeGreaterThan(0.8);
+  });
+
   test('computeAnchorNameSimilarity returns 0 overlap for unrelated names', () => {
     const { __internal } = require('../src/auroraBff/routes');
     const out = __internal.computeAnchorNameSimilarity({
@@ -1169,6 +1184,88 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.source).toBe('search');
     expect(out.decision_source).toBe('external_seed_search_exact');
     expect(out.product?.product_id).toBe('ext_uv_filters_45');
+  });
+
+  test('resolveCatalogProductForProductInput prefers a stronger external seed exact match over a weaker internal result', async () => {
+    process.env.AURORA_BFF_USE_MOCK = 'false';
+    process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    const queryText = 'The Ordinary UV Shield Serum 45';
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setResolveProductRefForTest(async () => ({
+      resolved: false,
+      reason: 'no_candidates',
+      metadata: { sources: [] },
+    }));
+
+    nock('http://catalog.test')
+      .post('/agent/v1/products/resolve')
+      .times(3)
+      .reply(200, {
+        resolved: false,
+        reason: 'no_candidates',
+      });
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((query) =>
+        Number(query.limit) === 8 &&
+        String(query.allow_external_seed || '') === 'false' &&
+        String(query.external_seed_strategy || '') === 'legacy',
+      )
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'int_spf_drift',
+            merchant_id: 'merchant_internal',
+            brand: 'The Ordinary',
+            name: 'Mineral UV Fluid SPF 30',
+            display_name: 'The Ordinary Mineral UV Fluid SPF 30',
+            category: 'sunscreen',
+          },
+        ],
+      });
+
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((query) =>
+        Number(query.limit) === 8 &&
+        String(query.allow_external_seed || '') === 'true' &&
+        String(query.external_seed_strategy || '') === 'supplement_internal_first',
+      )
+      .times(3)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'ext_uv_filters_alias',
+            merchant_id: 'external_seed',
+            retrieval_source: 'external_seed',
+            brand: 'The Ordinary',
+            name: 'UV Filters Serum SPF 45',
+            display_name: 'The Ordinary UV Filters Serum SPF 45',
+            search_aliases: [queryText],
+            category: 'sunscreen',
+            pdp_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
+          },
+        ],
+      });
+
+    try {
+      const out = await __internal.resolveCatalogProductForProductInput({
+        inputText: queryText,
+        lang: 'EN',
+        logger: { warn: jest.fn(), info: jest.fn() },
+      });
+
+      expect(out.ok).toBe(true);
+      expect(out.decision_source).toBe('external_seed_search_exact');
+      expect(out.product?.product_id).toBe('ext_uv_filters_alias');
+    } finally {
+      __internal.__resetResolveProductRefForTest();
+    }
   });
 
   test('resolveCatalogProductForProductInput prefers local resolver as earliest deterministic owner when it already resolves the product', async () => {

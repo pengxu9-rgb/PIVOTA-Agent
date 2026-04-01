@@ -1252,6 +1252,67 @@ test('buildPurchasableFallbackCandidates ranks external-seed supplement results 
   }
 });
 
+test('buildPurchasableFallbackCandidates can surface external seeds from alias and benefit semantics even when internal results exist', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.buildPurchasableFallbackCandidates({
+      query: 'oil control serum',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'supplement_internal_first',
+      searchFn: async ({ allowExternalSeed }) => {
+        if (allowExternalSeed === true) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'ext_oil_balance_1',
+                merchant_id: 'external_seed',
+                name: 'Balance Serum',
+                brand: 'Fenty Skin',
+                category: 'serum',
+                product_type: 'serum',
+                pdp_url: 'https://agent.pivota.cc/products/ext_oil_balance_1?merchant_id=external_seed',
+                url: 'https://agent.pivota.cc/products/ext_oil_balance_1?merchant_id=external_seed',
+                source: 'external_seed',
+                search_aliases: ['oil control serum', 'mattifying serum'],
+                benefit_tags: ['oil control', 'shine control', 'balancing'],
+                short_description: 'Lightweight balancing serum for oily skin and shine control.',
+              },
+            ],
+            reason: null,
+          };
+        }
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'int_niac_1',
+              merchant_id: 'catalog',
+              name: 'Niacinamide 10% + Zinc 1%',
+              brand: 'The Ordinary',
+              category: 'serum',
+              product_type: 'serum',
+              pdp_url: 'https://agent.pivota.cc/products/int_niac_1?merchant_id=catalog',
+              url: 'https://agent.pivota.cc/products/int_niac_1?merchant_id=catalog',
+              source: 'catalog',
+              ingredient_tokens: ['niacinamide', 'zinc'],
+            },
+          ],
+          reason: null,
+        };
+      },
+    });
+
+    assert.equal(out.selected_source, 'catalog_plus_external_seed');
+    assert.deepEqual(
+      out.products.map((row) => row.product_id),
+      ['ext_oil_balance_1', 'int_niac_1'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('buildPurchasableFallbackCandidates retries external seed only after internal empty when strategy is on_empty_only', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

@@ -72,6 +72,12 @@ const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
 const {
+  buildExternalSeedSurfacingText,
+  choosePreferredExternalSeedCandidate,
+  computeExternalSeedSurfacingMatch,
+  tokenizeSurfacingSearchText,
+} = require('./externalSeedSurfacingPolicy');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -5956,19 +5962,8 @@ function tokenizeAnchorCompareText(value) {
 function computeAnchorNameSimilarity({ inputText = '', candidate = null } = {}) {
   const inputTokens = tokenizeAnchorCompareText(inputText);
   if (!inputTokens.length) return { score: 0, overlap: 0, total: 0 };
-  const row =
-    normalizeRecoCatalogProduct(candidate) ||
-    (candidate && typeof candidate === 'object' && !Array.isArray(candidate) ? candidate : null);
   const candidateTokens = new Set(
-    tokenizeAnchorCompareText(
-      [
-        pickFirstTrimmed(row?.brand, row?.brand_name, row?.brandName),
-        pickFirstTrimmed(row?.name, row?.display_name, row?.displayName, row?.title),
-        pickFirstTrimmed(row?.display_name, row?.displayName),
-      ]
-        .filter(Boolean)
-        .join(' '),
-    ),
+    tokenizeAnchorCompareText(buildExternalSeedSurfacingText(candidate, { anchorOnly: true })),
   );
   const overlap = inputTokens.filter((token) => candidateTokens.has(token)).length;
   const score = inputTokens.length ? Number((overlap / inputTokens.length).toFixed(3)) : 0;
@@ -6001,6 +5996,11 @@ function pickBestCatalogSearchCandidateForProductInput({
     }
 
     const similarity = computeAnchorNameSimilarity({ inputText: query, candidate });
+    const surfacingMatch = computeExternalSeedSurfacingMatch({
+      query,
+      candidate,
+      anchorOnly: true,
+    });
     const candidateName = normalizeAnchorCompareText(
       pickFirstTrimmed(candidate.name, candidate.display_name, candidate.displayName, candidate.title),
     );
@@ -6030,8 +6030,10 @@ function pickBestCatalogSearchCandidateForProductInput({
       candidate,
       exactTextMatch,
       similarity,
+      surfacingMatch,
       rankScore:
         (exactTextMatch ? 1000 : 0) +
+        surfacingMatch.score +
         Math.round(similarity.score * 100) +
         (similarity.overlap * 10),
     });
@@ -6039,6 +6041,7 @@ function pickBestCatalogSearchCandidateForProductInput({
 
   ranked.sort((a, b) => {
     if (b.rankScore !== a.rankScore) return b.rankScore - a.rankScore;
+    if (b.surfacingMatch.overlap !== a.surfacingMatch.overlap) return b.surfacingMatch.overlap - a.surfacingMatch.overlap;
     if (b.similarity.overlap !== a.similarity.overlap) return b.similarity.overlap - a.similarity.overlap;
     return b.similarity.score - a.similarity.score;
   });
@@ -7251,25 +7254,30 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
           : null,
       });
     }
-    if (firstInternal) {
+    const preferredSearchCandidate = choosePreferredExternalSeedCandidate({
+      query,
+      internalCandidate: firstInternal,
+      externalCandidate: firstExternalSeed,
+    });
+    if (preferredSearchCandidate.candidate && preferredSearchCandidate.preferredSource === 'internal') {
       return {
         ok: true,
         reason: null,
         source: 'search',
         decision_source: 'catalog_search_exact',
         query_used: query,
-        product: firstInternal,
+        product: preferredSearchCandidate.candidate,
         attempts,
       };
     }
-    if (firstExternalSeed) {
+    if (preferredSearchCandidate.candidate && preferredSearchCandidate.preferredSource === 'external_seed') {
       return {
         ok: true,
         reason: null,
         source: 'search',
         decision_source: 'external_seed_search_exact',
         query_used: query,
-        product: firstExternalSeed,
+        product: preferredSearchCandidate.candidate,
         attempts,
       };
     }
@@ -37240,35 +37248,7 @@ function resolveIngredientRecoveryTargetId(target) {
 }
 
 function buildPurchasableRecoveryCandidateText(candidate) {
-  const row = isPlainObject(candidate) ? candidate : {};
-  const sku = isPlainObject(row.sku) ? row.sku : isPlainObject(row.product) ? row.product : {};
-  return [
-    row.brand,
-    row.name,
-    row.title,
-    row.display_name,
-    row.displayName,
-    row.category,
-    row.product_type,
-    row.type,
-    row.ingredient_name,
-    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
-    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
-    ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : []),
-    sku.brand,
-    sku.name,
-    sku.title,
-    sku.display_name,
-    sku.displayName,
-    sku.category,
-    sku.product_type,
-    sku.type,
-  ]
-    .flatMap((value) => (Array.isArray(value) ? value : [value]))
-    .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
+  return buildExternalSeedSurfacingText(candidate);
 }
 
 function tokenizePurchasableRecoveryQuery(query) {
@@ -37276,7 +37256,9 @@ function tokenizePurchasableRecoveryQuery(query) {
     .trim()
     .toLowerCase()
     .replace(PURCHASE_RECOVERY_QUERY_NOISE_RE, ' ');
-  return uniqCaseInsensitiveStrings(cleaned.match(PURCHASE_RECOVERY_WORD_RE) || [], 12);
+  const baseTokens = uniqCaseInsensitiveStrings(cleaned.match(PURCHASE_RECOVERY_WORD_RE) || [], 12);
+  const surfacingTokens = tokenizeSurfacingSearchText(query, { max: 12, dropStopwords: true });
+  return uniqCaseInsensitiveStrings([...baseTokens, ...surfacingTokens], 12);
 }
 
 function countIngredientRecoveryPhraseMatches(text, phrases) {
@@ -37409,6 +37391,7 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
     const bundleLike = isBundleLikePurchasableRecoveryCandidate(row);
     const eyeSpecific = !eyeAreaTarget && isEyeSpecificPurchasableRecoveryCandidate(row);
     const overlap = computePurchasableRecoveryQueryOverlap(row, queryTokens);
+    const surfacingMatch = computeExternalSeedSurfacingMatch({ query, candidate: row });
     const focusedSingle =
       !bundleLike &&
       /\b(spf|uv|sunscreen|serum|moisturi[sz]er|cream|gel|lotion|cleanser|wash|balm|treatment|emulsion)\b/i.test(text);
@@ -37418,6 +37401,7 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
       bundleLike,
       eyeSpecific,
       overlap,
+      surfacingMatch,
       focusedSingle,
       evidence: buildIngredientRecoveryEvidence(row, target),
     };
@@ -37476,6 +37460,7 @@ function rankPurchasableRecoveryCandidates(products, query, { target = null, pre
       if (aFamily !== bFamily) return bFamily - aFamily;
     }
       if (a.eyeSpecific !== b.eyeSpecific) return a.eyeSpecific ? 1 : -1;
+      if (a.surfacingMatch.score !== b.surfacingMatch.score) return b.surfacingMatch.score - a.surfacingMatch.score;
       if (a.overlap !== b.overlap) return b.overlap - a.overlap;
       if (a.focusedSingle !== b.focusedSingle) return a.focusedSingle ? -1 : 1;
       if (a.bundleLike !== b.bundleLike) return a.bundleLike ? 1 : -1;
