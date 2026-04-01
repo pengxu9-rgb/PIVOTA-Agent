@@ -796,6 +796,45 @@ describe('find_products_multi intent + filtering', () => {
     expect(String(resp.reply)).not.toContain('冲锋衣');
   });
 
+  test('activewear none reply does not drift into outerwear slots', () => {
+    const intent = extractIntentRuleBased('sports bra set', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'sports bra set' } },
+    });
+
+    expect(String(resp.reply)).toContain('sports bra');
+    expect(String(resp.reply)).not.toContain('lowest temperature');
+    expect(String(resp.reply)).not.toContain('down jacket');
+  });
+
+  test('general apparel weak reply does not ask for windproof outerwear slots', () => {
+    const intent = extractIntentRuleBased('mango dress', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'beauty-1',
+            title: 'Phyto-Glow Lip Balm Mango',
+            description: 'Beauty item with weak anchor overlap',
+            price: 10,
+          }),
+        ],
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'mango dress' } },
+    });
+
+    expect(String(resp.reply)).toContain('exact category');
+    expect(String(resp.reply)).not.toContain('lowest temperature');
+    expect(String(resp.reply)).not.toContain('windproof');
+  });
+
   test('lingerie intent filters out pet/toy items (avoid mixed featured pool)', () => {
     const intent = extractIntentRuleBased('性感内衣', [], []);
     expect(intent.target_object.type).toBe('human');

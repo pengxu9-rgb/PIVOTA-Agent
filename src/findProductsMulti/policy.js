@@ -2800,6 +2800,17 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
   const isJa = lang === 'ja';
   const rawUserQuery = String(creatorContext?.rawUserQuery || '');
   const isPet = (intent?.target_object?.type || '') === 'pet';
+  const requiredCategories = Array.isArray(intent?.category?.required)
+    ? intent.category.required.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+  const isHumanApparelIntent = String(intent?.primary_domain || '').trim().toLowerCase() === 'human_apparel';
+  const isColdWeatherApparelIntent =
+    String(scenario || '').toLowerCase().includes('cold') ||
+    String(scenario || '').toLowerCase().includes('mountain');
+  const isActivewearApparelIntent = requiredCategories.includes('activewear');
+  const isFootwearApparelIntent = requiredCategories.includes('footwear');
+  const isGeneralApparelIntent =
+    isHumanApparelIntent && !isColdWeatherApparelIntent && !isActivewearApparelIntent && !isFootwearApparelIntent;
   const price = intent?.hard_constraints?.price || null;
   const priceMinHint = formatBudgetAmountForHint(price?.currency, price?.min);
   const priceMaxHint = formatBudgetAmountForHint(price?.currency, price?.max);
@@ -3096,6 +3107,15 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
       }
       return "I couldn’t find solid matches for hiking-ready dog/pet apparel in the current inventory, so I won’t recommend unrelated items. Try searching for: dog jacket, dog raincoat, pet hiking gear, or tell me your dog’s size and the weather.";
     }
+    if (isActivewearApparelIntent) {
+      return "I couldn’t find enough activewear matches in the current inventory, so I won’t recommend unrelated items. Tell me whether you want a sports bra, leggings, or a matching set, plus your size and budget.";
+    }
+    if (isFootwearApparelIntent) {
+      return "I couldn’t find enough footwear matches in the current inventory, so I won’t recommend unrelated items. Tell me the shoe type, your size, and whether this is for walking, running, or everyday wear.";
+    }
+    if (isGeneralApparelIntent) {
+      return "I couldn’t find enough apparel matches in the current inventory, so I won’t recommend unrelated items. Tell me the exact category you want, plus your size and budget, and I’ll narrow it down.";
+    }
     return "I couldn’t find solid matches for adult cold-weather outerwear in the current inventory, so I won’t recommend unrelated items. Try searching for: down jacket, hiking shell, parka, or share your lowest temperature and budget.";
   }
   if (matchTier === 'weak') {
@@ -3122,6 +3142,15 @@ function buildReply(intent, matchTier, reasonCodes, creatorContext) {
         return '犬/ペット用の候補が少なく、関連の薄い商品はおすすめしません。サイズ（胴回り/背丈）、気温、雨対策（防水/防風）が必要か教えてください。';
       }
       return "I only found a few weak matches for dog/pet apparel, so I won’t recommend unrelated items. Tell me your dog’s size, the temperature, and whether you need waterproof/windproof.";
+    }
+    if (isActivewearApparelIntent) {
+      return 'I only found a few weak activewear matches, so I won’t force unrelated recommendations. Tell me whether you want a sports bra, leggings, or a matching set, plus your size and budget.';
+    }
+    if (isFootwearApparelIntent) {
+      return 'I only found a few weak footwear matches, so I won’t force unrelated recommendations. Tell me the shoe type, your size, and whether this is for walking, running, or everyday wear.';
+    }
+    if (isGeneralApparelIntent) {
+      return 'I only found a few weak apparel matches, so I won’t force unrelated recommendations. Share the exact category you want, plus your size and budget, and I’ll rerank around that.';
     }
     return "I only found a few weak matches, so I won’t force unrelated recommendations. Share your budget, the lowest temperature, and whether you need windproof/waterproof.";
   }

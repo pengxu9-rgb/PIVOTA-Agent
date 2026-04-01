@@ -18144,6 +18144,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     )
       ? Number(findProductsExpansionMeta.ambiguity_score_pre)
       : null;
+    const forceCreatorHumanApparelFallback =
+      operation === 'find_products_multi' &&
+      isCreatorUiSource(metadata?.source) &&
+      String(effectiveIntent?.primary_domain || '').trim().toLowerCase() === 'human_apparel';
     if (operation === 'find_products_multi') {
       const invokeGuidanceFastpathResponse = await runGuidanceServerOwnedLadderSearch({
         req,
@@ -22543,10 +22547,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
         const allowResolverFallback = shouldAllowResolverFallback(operation);
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
-          forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
+          forceSecondaryFallback:
+            auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,
         });
         const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
-          forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
+          forceInvokeFallback:
+            auroraFallbackOverrides.forceInvokeFallback || forceCreatorHumanApparelFallback,
         });
         const bypassSkipSecondaryFallback = shouldBypassSecondaryFallbackSkipOnPrimaryException({ err });
         const allowResolverFallbackOnException =
@@ -22978,10 +22984,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
       const allowResolverFallback = shouldAllowResolverFallback(operation);
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
-        forceSecondaryFallback: auroraFallbackOverrides.forceSecondaryFallback,
+        forceSecondaryFallback:
+          auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,
       });
       const allowInvokeFallback = shouldAllowInvokeFallback(operation, {
-        forceInvokeFallback: auroraFallbackOverrides.forceInvokeFallback,
+        forceInvokeFallback:
+          auroraFallbackOverrides.forceInvokeFallback || forceCreatorHumanApparelFallback,
       });
       let secondarySupplementMeta = null;
       let semanticRetryApplied = false;
