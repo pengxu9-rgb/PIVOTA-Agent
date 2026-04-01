@@ -1,5 +1,6 @@
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 const { applyFindProductsMultiPolicy, buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
+const { injectPivotaAttributes } = require('../src/findProductsMulti/productTagger');
 
 function withPolicyEnv(envOverrides, fn) {
   const keys = Object.keys(envOverrides || {});
@@ -119,6 +120,83 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.metadata?.search_decision?.brand_query_detected).toBe(true);
     expect(resp.metadata?.search_decision?.final_decision).toBe('products_returned');
     expect(resp.total).toBe(resp.products.length);
+  });
+
+  test('sleepwear query does not hard-block strong human apparel candidates with stale toy tags', () => {
+    const intent = extractIntentRuleBased('plus size sleepwear', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'sleepwear-1',
+            title: "Velvet Plus Size Padded Push-Up women's sleepwear set 4786",
+            description: 'Plus size lounge set with long sleeves and matching bottoms.',
+            attributes: {
+              pivota: {
+                domain: { value: 'toy_accessory', confidence: 0.97, source: 'legacy_seed' },
+                target_object: { value: 'toy', confidence: 0.99, source: 'legacy_seed' },
+                category_path: {
+                  value: ['toy_accessory', 'doll_clothing'],
+                  confidence: 0.92,
+                  source: 'legacy_seed',
+                },
+              },
+            },
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'plus size sleepwear' } },
+      rawUserQuery: 'plus size sleepwear',
+    });
+
+    expect(resp.products).toHaveLength(1);
+    expect(resp.products[0]?.attributes?.pivota?.target_object?.value).toBe('human');
+    expect(resp.products[0]?.attributes?.pivota?.domain?.value).toBe('human_apparel');
+  });
+
+  test('figure flattering sleepwear copy does not get re-tagged as toy', () => {
+    const intent = extractIntentRuleBased('plus size sleepwear', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'sleepwear-2',
+            title: "Velvet Plus Size women's sleepwear set",
+            description: 'Figure-flattering lounge set with long sleeves and matching bottoms.',
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'plus size sleepwear' } },
+      rawUserQuery: 'plus size sleepwear',
+    });
+
+    expect(resp.products).toHaveLength(1);
+    expect(resp.products[0]?.attributes?.pivota?.target_object?.value).toBe('human');
+    expect(resp.products[0]?.attributes?.pivota?.domain?.value).toBe('human_apparel');
+  });
+
+  test('beauty copy mentioning women does not get tagged as human apparel', () => {
+    const tagged = injectPivotaAttributes(
+      makeRawProduct({
+        id: 'beauty-1',
+        title: 'Lavender Face Wipes',
+        description:
+          'Gentle face wipes for women with calming lavender extract. Scent Notes: Top: Jasmine, Lilac, Rose.',
+        product_type: 'Cleanser',
+        category: 'Cleanser',
+      }),
+    );
+
+    expect(tagged?.attributes?.pivota?.target_object?.value).not.toBe('human');
+    expect(tagged?.attributes?.pivota?.domain?.value).not.toBe('human_apparel');
   });
 
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {

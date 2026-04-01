@@ -70,6 +70,32 @@ function toCanonicalBrandLabel(raw) {
   return tokenizeBrandText(raw).join(' ');
 }
 
+function isSingleShortBrandAlias(normalizedAlias) {
+  const tokens = tokenizeBrandText(normalizedAlias);
+  return tokens.length === 1 && tokens[0].length <= 2;
+}
+
+function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
+  const text = normalizeBrandText(normalizedText);
+  const alias = normalizeBrandText(normalizedAlias);
+  if (!text || !alias) return false;
+
+  if (isSingleShortBrandAlias(alias)) {
+    return tokenizeBrandText(text).includes(alias);
+  }
+
+  const compactText = text.replace(/\s+/g, '');
+  const compactAlias = alias.replace(/\s+/g, '');
+  return (
+    text === alias ||
+    text.includes(` ${alias} `) ||
+    text.startsWith(`${alias} `) ||
+    text.endsWith(` ${alias}`) ||
+    text.includes(alias) ||
+    (compactAlias && compactText.includes(compactAlias))
+  );
+}
+
 function collectDynamicBrandAliases(candidateProducts = []) {
   const out = new Set();
   for (const product of Array.isArray(candidateProducts) ? candidateProducts : []) {
@@ -103,7 +129,6 @@ function collectDynamicBrandAliases(candidateProducts = []) {
 }
 
 function detectBrandByStaticAliases(normalizedQuery) {
-  const compactQuery = normalizedQuery.replace(/\s+/g, '');
   const matches = [];
   for (const aliases of Object.values(STATIC_BRAND_ALIASES)) {
     const sortedAliases = [...aliases].sort((a, b) => String(b || '').length - String(a || '').length);
@@ -111,15 +136,7 @@ function detectBrandByStaticAliases(normalizedQuery) {
     for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
-      const compactAlias = normalizedAlias.replace(/\s+/g, '');
-      if (
-        normalizedQuery === normalizedAlias ||
-        normalizedQuery.includes(` ${normalizedAlias} `) ||
-        normalizedQuery.startsWith(`${normalizedAlias} `) ||
-        normalizedQuery.endsWith(` ${normalizedAlias}`) ||
-        normalizedQuery.includes(normalizedAlias) ||
-        (compactAlias && compactQuery.includes(compactAlias))
-      ) {
+      if (matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) {
         matchedAlias = normalizedAlias;
         break;
       }
@@ -139,13 +156,7 @@ function detectBrandByDynamicAliases(normalizedQuery, candidateProducts = []) {
   if (!dynamicAliases.length) return [];
   const matches = [];
   for (const alias of dynamicAliases) {
-    if (
-      normalizedQuery === alias ||
-      normalizedQuery.includes(` ${alias} `) ||
-      normalizedQuery.startsWith(`${alias} `) ||
-      normalizedQuery.endsWith(` ${alias}`) ||
-      normalizedQuery.includes(alias)
-    ) {
+    if (matchesBrandAliasInNormalizedText(normalizedQuery, alias)) {
       matches.push(alias);
     }
   }
