@@ -2083,6 +2083,98 @@ test('__internal: framework pool rejects a treatment-serum candidate that only m
   assert.ok(Number(state.hard_reject_count || 0) >= 1);
 });
 
+test('__internal: framework pool rejects a facial mask as an oil-control treatment when only retrieval-step matches', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_mask_live_shape',
+        merchant_id: 'external_seed',
+        brand: 'Byoma',
+        name: 'Bio-Collagen Radiance Facial Mask',
+        display_name: 'Bio-Collagen Radiance Facial Mask',
+        category: 'external',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        description_tokens: ['facial mask for radiance and skin texture'],
+        ingredient_tokens: ['ceramide', 'centella', 'glycerin'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_mask',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
+test('__internal: framework pool rejects non-facial hand cream from the lightweight moisturizer role', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_hand_cream_live_shape',
+        merchant_id: 'external_seed',
+        brand: 'Beekman 1802',
+        name: 'Pure Hand Cream',
+        display_name: 'Pure Hand Cream',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        description_tokens: ['fragrance-free hand cream with goat milk'],
+        ingredient_tokens: ['panthenol', 'glycerin'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_handcream',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'balancing', 'sebum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+            fit_keywords: ['lightweight', 'oil free', 'gel cream', 'breathable'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.selected_candidate_count, 0);
+  assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
 test('__internal: framework pool accepts external seed semantic evidence from benefit tags and aliases', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({

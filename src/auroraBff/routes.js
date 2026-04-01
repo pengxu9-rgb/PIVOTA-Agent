@@ -16985,6 +16985,27 @@ function buildConcernFrameworkCandidateText(row) {
     .trim();
 }
 
+const FACIAL_FRAMEWORK_SCOPE_BLOCK_RE = /\b(hand|body|foot|heel|elbow|cuticle|lip balm|lip mask|body wash|body lotion|body cream|body oil|hand cream|hand lotion|hand balm|foot cream|foot mask|scalp|hair|shampoo|conditioner|deodorant)\b/i;
+const FACIAL_FRAMEWORK_SCOPE_ALLOW_RE = /\b(face|facial|cheek|forehead|chin|t-zone)\b/i;
+
+function isConcernFrameworkOutOfScopeArea(row, candidateText) {
+  const text = String(candidateText || '').trim().toLowerCase();
+  if (!text || !FACIAL_FRAMEWORK_SCOPE_BLOCK_RE.test(text)) return false;
+  if (FACIAL_FRAMEWORK_SCOPE_ALLOW_RE.test(text)) return false;
+  const explicitStep = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      row?.product_type,
+      row?.productType,
+      row?.category,
+      row?.category_name,
+      row?.categoryName,
+      row?.step,
+      row?.type,
+    ),
+  );
+  return explicitStep !== 'sunscreen';
+}
+
 function summarizeConcernFrameworkSourceCounts(items = []) {
   const out = {};
   for (const raw of Array.isArray(items) ? items : []) {
@@ -17040,6 +17061,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   for (const row of deduped) {
+    const candidateText = buildConcernFrameworkCandidateText(row);
+    if (isConcernFrameworkOutOfScopeArea(row, candidateText)) {
+      hardReject.push({ product: row, reason: 'framework_out_of_scope_area' });
+      continue;
+    }
     const skincareDomainClass = classifySkincareCandidateDomain(row);
     const skincareDomainPenalty = skincareDomainClass === 'ambiguous' ? 0.08 : 0;
     if (skincareDomainClass === 'explicit_non_skincare') {
@@ -17048,8 +17074,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     }
     const stepResolution = normalizeCandidateStep(row, { targetContext });
     const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
+    const candidateStepSource = String(stepResolution?.candidate_step_source || 'none').trim().toLowerCase() || 'none';
+    const weakStepEvidence = candidateStepSource === 'retrieval_step' || candidateStepSource === 'retrieval_trace';
     const retrievalRoleId = pickFirstTrimmed(row.retrieval_role_id, row.role_id);
-    const candidateText = buildConcernFrameworkCandidateText(row);
 
     let bestRole = null;
     let bestScore = 0;
@@ -17076,7 +17103,15 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       if (fitKeywordHits > 0) score += Math.min(0.24, fitKeywordHits * 0.12);
       if (queryTermHits > 0) score += Math.min(0.16, queryTermHits * 0.08);
       if (candidateStep && preferredStep && candidateStep === preferredStep) {
-        score += 0.72;
+        if (preferredStep === 'treatment') {
+          score += semanticFitMatched
+            ? (weakStepEvidence ? 0.44 : 0.72)
+            : (weakStepEvidence ? 0.04 : 0.14);
+        } else {
+          score += weakStepEvidence
+            ? (semanticFitMatched ? 0.42 : 0.1)
+            : 0.72;
+        }
       } else if (candidateStep && alternateSteps.includes(candidateStep)) {
         score += preferredStep === 'treatment'
           ? (semanticFitMatched ? 0.62 : 0.18)
@@ -17095,6 +17130,24 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
     if (!bestRole) {
       hardReject.push({ product: row, reason: 'framework_role_unmatched' });
+      continue;
+    }
+    const bestPreferredStep = normalizeRecoTargetStep(bestRole?.preferred_step);
+    if (bestPreferredStep === 'treatment' && !bestSemanticFit) {
+      hardReject.push({
+        product: {
+          ...row,
+          matched_role_id: String(bestRole.role_id || '').trim() || null,
+          matched_role_label: String(bestRole.label || '').trim() || null,
+          matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
+          framework_score: Number(bestScore.toFixed(4)),
+          framework_semantic_fit: false,
+          candidate_step: candidateStep || null,
+          candidate_step_source: stepResolution?.candidate_step_source || 'none',
+          candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
+        },
+        reason: 'framework_primary_semantic_missing',
+      });
       continue;
     }
     const annotated = {
