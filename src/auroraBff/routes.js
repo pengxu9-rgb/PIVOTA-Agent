@@ -82,6 +82,11 @@ const {
   buildRecoRecallPlan,
 } = require('./recoRecallPlanner');
 const {
+  RECO_RECALL_TRANSPORT_POLICY_VERSION,
+  buildRecoRecallTransportPolicy,
+  resolveRecoRecallTransportModeForPlannerMode,
+} = require('./recoRecallTransportPolicy');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -254,6 +259,7 @@ const {
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,
+  classifySkincareCandidateDomain,
   isSkincareCandidate,
   normalizeCandidateStep,
 } = require('./recommendationSharedStack');
@@ -3836,6 +3842,7 @@ async function searchPivotaBackendProducts({
   allowExternalSeed = undefined,
   externalSeedStrategy = '',
   fastMode = true,
+  transportPolicy = null,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -3866,6 +3873,10 @@ async function searchPivotaBackendProducts({
   const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
   const hasOverallBudget = (minMs = 120) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 120);
   const useAllMerchants = searchAllMerchants === true;
+  const effectiveTransportPolicy = isPlainObject(transportPolicy)
+    ? transportPolicy
+    : buildRecoRecallTransportPolicy({ mode: transportPolicy });
+  const transportPolicyMode = pickFirstTrimmed(effectiveTransportPolicy?.mode, 'default') || 'default';
   const params = {
     query: q,
     search_all_merchants: useAllMerchants,
@@ -3883,8 +3894,12 @@ async function searchPivotaBackendProducts({
   const forceLocalFallbackEnabled = forceLocalSearchFallback === true;
   const localSearchFallbackConfigured =
     (
-      forceLocalFallbackEnabled ||
       (
+        effectiveTransportPolicy.include_local_fallback !== false &&
+        forceLocalFallbackEnabled
+      ) ||
+      (
+        effectiveTransportPolicy.include_local_fallback !== false &&
         RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
         RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED
       )
@@ -3896,11 +3911,23 @@ async function searchPivotaBackendProducts({
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
+    includeSelfProxy: effectiveTransportPolicy.include_self_proxy !== false,
   });
-  const pathCandidates = buildRecoCatalogSearchPathCandidates();
+  const maxConfiguredPaths = Number.isFinite(Number(effectiveTransportPolicy.max_paths))
+    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_paths)))
+    : 0;
+  const pathCandidates = buildRecoCatalogSearchPathCandidates().slice(
+    0,
+    maxConfiguredPaths > 0 ? maxConfiguredPaths : undefined,
+  );
   if (!baseUrlCandidates.length) {
     return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   }
+  const maxConfiguredBaseUrls = Number.isFinite(Number(effectiveTransportPolicy.max_base_urls))
+    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_base_urls)))
+    : 0;
+  const allowSecondaryBaseFailover = effectiveTransportPolicy.allow_secondary_base_failover !== false;
+  const allowSecondaryPathFailover = effectiveTransportPolicy.allow_secondary_path_failover !== false;
   const mapSearchFailureReason = ({ statusCode, errCode, errMessage } = {}) => {
     const code = typeof errCode === 'string' ? errCode.trim().toUpperCase() : '';
     const msg = typeof errMessage === 'string' ? errMessage : '';
@@ -4126,6 +4153,13 @@ async function searchPivotaBackendProducts({
       ? pathCandidates
       : ['/agent/v1/products/search'];
     const pathAttempts = [];
+    const buildAttemptTelemetry = () => ({
+      attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+      attempted_paths: pathAttempts.map((item) => item.path).filter(Boolean),
+      attempted_base_urls: normalizedBase ? [normalizedBase] : [],
+      actual_http_attempt_count: pathAttempts.length,
+      transport_policy_mode: transportPolicyMode,
+    });
     let lastFailure = null;
     let lastEmpty = null;
     if (!hasOverallBudget(120) || timeoutForAttemptMs < 120) {
@@ -4158,7 +4192,7 @@ async function searchPivotaBackendProducts({
         };
         return {
           ...exhausted,
-          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          ...buildAttemptTelemetry(),
           source_path_failover: pathAttempts.length > 1,
         };
       }
@@ -4227,13 +4261,14 @@ async function searchPivotaBackendProducts({
           });
           lastFailure = failed;
           const shouldTryNextPath =
+            allowSecondaryPathFailover &&
             pathIdx < normalizedPaths.length - 1 &&
             shouldTrySecondaryPathReason(reason) &&
             hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
-            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            ...buildAttemptTelemetry(),
             source_path_failover: pathAttempts.length > 1,
           };
         }
@@ -4267,13 +4302,14 @@ async function searchPivotaBackendProducts({
           });
           lastFailure = failed;
           const shouldTryNextPath =
+            allowSecondaryPathFailover &&
             pathIdx < normalizedPaths.length - 1 &&
             shouldTrySecondaryPathReason(bodyReason) &&
             hasOverallBudget(150);
           if (shouldTryNextPath) continue;
           return {
             ...failed,
-            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            ...buildAttemptTelemetry(),
             source_path_failover: pathAttempts.length > 1,
           };
         }
@@ -4300,19 +4336,20 @@ async function searchPivotaBackendProducts({
         if (products.length > 0) {
           return {
             ...result,
-            attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+            ...buildAttemptTelemetry(),
             source_path_failover: pathAttempts.length > 1,
           };
         }
         lastEmpty = result;
         const shouldTryNextPath =
+          allowSecondaryPathFailover &&
           pathIdx < normalizedPaths.length - 1 &&
           shouldTrySecondaryPathReason(result.reason || 'empty') &&
           hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...result,
-          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          ...buildAttemptTelemetry(),
           source_path_failover: pathAttempts.length > 1,
         };
       } catch (err) {
@@ -4346,13 +4383,14 @@ async function searchPivotaBackendProducts({
         });
         lastFailure = failed;
         const shouldTryNextPath =
+          allowSecondaryPathFailover &&
           pathIdx < normalizedPaths.length - 1 &&
           shouldTrySecondaryPathReason(reason) &&
           hasOverallBudget(150);
         if (shouldTryNextPath) continue;
         return {
           ...failed,
-          attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+          ...buildAttemptTelemetry(),
           source_path_failover: pathAttempts.length > 1,
         };
       }
@@ -4360,14 +4398,14 @@ async function searchPivotaBackendProducts({
     if (lastEmpty) {
       return {
         ...lastEmpty,
-        attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+        ...buildAttemptTelemetry(),
         source_path_failover: pathAttempts.length > 1,
       };
     }
     if (lastFailure) {
       return {
         ...lastFailure,
-        attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+        ...buildAttemptTelemetry(),
         source_path_failover: pathAttempts.length > 1,
       };
     }
@@ -4378,7 +4416,7 @@ async function searchPivotaBackendProducts({
       source_base_url: normalizedBase,
       source_endpoint: `${normalizedBase}${normalizedPaths[0] || '/agent/v1/products/search'}`,
       source_path: normalizedPaths[0] || '/agent/v1/products/search',
-      attempted_endpoints: pathAttempts.map((item) => item.endpoint),
+      ...buildAttemptTelemetry(),
       source_path_failover: pathAttempts.length > 1,
       latency_ms: Date.now() - startedAt,
     };
@@ -4388,6 +4426,10 @@ async function searchPivotaBackendProducts({
   const orderedBaseUrls = RECO_CATALOG_MULTI_SOURCE_ENABLED
     ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs)
     : baseUrlCandidates.slice(0, 1);
+  const effectiveOrderedBaseUrls = orderedBaseUrls.slice(
+    0,
+    maxConfiguredBaseUrls > 0 ? maxConfiguredBaseUrls : undefined,
+  );
   const attempts = [];
   let resolverFirstApplied = false;
   let resolverFirstSkippedForAurora = false;
@@ -4401,8 +4443,21 @@ async function searchPivotaBackendProducts({
       }
       return item.endpoint ? [item.endpoint] : [];
     });
+  const collectAttemptedPaths = () =>
+    attempts.flatMap((item) => Array.isArray(item.attempted_paths) ? item.attempted_paths : (item.path ? [item.path] : []));
+  const collectAttemptedBaseUrls = () =>
+    Array.from(new Set(
+      attempts.flatMap((item) => Array.isArray(item.attempted_base_urls) ? item.attempted_base_urls : (item.base_url ? [item.base_url] : [])),
+    ));
+  const collectActualHttpAttemptCount = () =>
+    attempts.reduce((sum, item) => {
+      const count = Number.isFinite(Number(item.actual_http_attempt_count))
+        ? Math.max(0, Math.trunc(Number(item.actual_http_attempt_count)))
+        : 0;
+      return sum + count;
+    }, 0);
 
-  for (let idx = 0; idx < orderedBaseUrls.length; idx += 1) {
+  for (let idx = 0; idx < effectiveOrderedBaseUrls.length; idx += 1) {
     if (!hasOverallBudget(180)) {
       finalFailure = {
         ok: false,
@@ -4412,7 +4467,7 @@ async function searchPivotaBackendProducts({
       };
       break;
     }
-    const baseUrl = orderedBaseUrls[idx];
+    const baseUrl = effectiveOrderedBaseUrls[idx];
     const timeoutForAttemptMs = normalizeAttemptTimeout(idx);
     if (timeoutForAttemptMs < 120) {
       finalFailure = {
@@ -4432,12 +4487,22 @@ async function searchPivotaBackendProducts({
       attempted_endpoints: Array.isArray(attempt.attempted_endpoints)
         ? attempt.attempted_endpoints.slice()
         : [],
+      attempted_paths: Array.isArray(attempt.attempted_paths)
+        ? attempt.attempted_paths.slice()
+        : [],
+      attempted_base_urls: Array.isArray(attempt.attempted_base_urls)
+        ? attempt.attempted_base_urls.slice()
+        : [],
+      actual_http_attempt_count: Number.isFinite(Number(attempt.actual_http_attempt_count))
+        ? Math.max(0, Math.trunc(Number(attempt.actual_http_attempt_count)))
+        : 0,
       reason: attempt.reason || null,
       ok: Boolean(attempt.ok),
       products: Array.isArray(attempt.products) ? attempt.products.length : 0,
       status_code: Number.isFinite(Number(attempt.status_code)) ? Math.trunc(Number(attempt.status_code)) : null,
       resolver_first_applied: attempt.resolver_first_applied === true,
       resolver_first_skipped_for_aurora: attempt.resolver_first_skipped_for_aurora === true,
+      transport_policy_mode: pickFirstTrimmed(attempt.transport_policy_mode, transportPolicyMode) || transportPolicyMode,
     });
     resolverFirstApplied = resolverFirstApplied || attempt.resolver_first_applied === true;
     resolverFirstSkippedForAurora =
@@ -4461,11 +4526,15 @@ async function searchPivotaBackendProducts({
         ...attempt,
         attempted_sources: attempts.map((item) => item.base_url),
         attempted_endpoints: collectAttemptedEndpoints(),
+        attempted_paths: collectAttemptedPaths(),
+        attempted_base_urls: collectAttemptedBaseUrls(),
+        actual_http_attempt_count: collectActualHttpAttemptCount(),
         source_failover: idx > 0,
         resolver_first_applied: resolverFirstApplied,
         resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
         source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
         search_source: effectiveSearchSource,
+        transport_policy_mode: transportPolicyMode,
       };
     }
 
@@ -4502,7 +4571,8 @@ async function searchPivotaBackendProducts({
     }
 
     const shouldTryNext =
-      idx < orderedBaseUrls.length - 1 &&
+      allowSecondaryBaseFailover &&
+      idx < effectiveOrderedBaseUrls.length - 1 &&
       shouldTrySecondaryReason(failureReason) &&
       hasOverallBudget(150);
     if (!shouldTryNext) break;
@@ -4518,12 +4588,16 @@ async function searchPivotaBackendProducts({
       source_endpoint: finalEmpty.source_endpoint || null,
       attempted_sources: attempts.map((item) => item.base_url),
       attempted_endpoints: collectAttemptedEndpoints(),
+      attempted_paths: collectAttemptedPaths(),
+      attempted_base_urls: collectAttemptedBaseUrls(),
+      actual_http_attempt_count: collectActualHttpAttemptCount(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
       resolver_first_applied: resolverFirstApplied,
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
       search_source: effectiveSearchSource,
+      transport_policy_mode: transportPolicyMode,
     };
   }
 
@@ -4538,12 +4612,16 @@ async function searchPivotaBackendProducts({
       source_endpoint: finalFailure.source_endpoint || null,
       attempted_sources: attempts.map((item) => item.base_url),
       attempted_endpoints: collectAttemptedEndpoints(),
+      attempted_paths: collectAttemptedPaths(),
+      attempted_base_urls: collectAttemptedBaseUrls(),
+      actual_http_attempt_count: collectActualHttpAttemptCount(),
       source_failover: attempts.length > 1,
       latency_ms: Date.now() - startedAt,
       resolver_first_applied: resolverFirstApplied,
       resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
       source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
       search_source: effectiveSearchSource,
+      transport_policy_mode: transportPolicyMode,
     };
   }
 
@@ -4553,12 +4631,16 @@ async function searchPivotaBackendProducts({
     reason: 'upstream_error',
     attempted_sources: attempts.map((item) => item.base_url),
     attempted_endpoints: collectAttemptedEndpoints(),
+    attempted_paths: collectAttemptedPaths(),
+    attempted_base_urls: collectAttemptedBaseUrls(),
+    actual_http_attempt_count: collectActualHttpAttemptCount(),
     source_failover: attempts.length > 1,
     latency_ms: Date.now() - startedAt,
     resolver_first_applied: resolverFirstApplied,
     resolver_first_skipped_for_aurora: resolverFirstSkippedForAurora,
     source_temporarily_deprioritized: sourceTemporarilyDeprioritized,
     search_source: effectiveSearchSource,
+    transport_policy_mode: transportPolicyMode,
   };
 }
 
@@ -7221,6 +7303,7 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
                 allowExternalSeed: sourceScope === 'external_seed',
                 externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'legacy',
                 fastMode: sourceScope !== 'external_seed',
+                transportPolicy: buildRecoRecallTransportPolicy({ mode: 'product_grounding_exact' }),
               });
         return {
           entry,
@@ -16152,6 +16235,7 @@ async function executeRecoRecallPlanEntry({
   timeoutMs,
   limit = 6,
   usePurchasableFallback = false,
+  transportPolicyMode = '',
 } = {}) {
   const sourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase() === 'external_seed'
     ? 'external_seed'
@@ -16165,6 +16249,7 @@ async function executeRecoRecallPlanEntry({
       allowExternalSeed: sourceScope === 'external_seed',
       externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
       sourceScope,
+      transportPolicyMode,
     });
   }
   return searchPivotaBackendProducts({
@@ -16175,12 +16260,32 @@ async function executeRecoRecallPlanEntry({
     allowExternalSeed: sourceScope === 'external_seed',
     externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
     fastMode: sourceScope !== 'external_seed',
+    transportPolicy: buildRecoRecallTransportPolicy({ mode: transportPolicyMode }),
   });
 }
 
-function deriveRecoCandidateDropStage({ candidateState, executedQueryCount, stageResults } = {}) {
+function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = null) {
+  const rows = Array.isArray(stageResults) ? stageResults : [];
+  const primaryInternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_a_primary_internal') || null;
+  const primaryExternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed') || null;
+  if (!primaryInternal || !primaryExternal) return '';
+  if (candidateState?.primary_role_matched === true) return '';
+  const internalTimedOut = primaryInternal.transient_only === true && Number(primaryInternal.timeout_count || 0) > 0;
+  const externalTimedOut = primaryExternal.transient_only === true && Number(primaryExternal.timeout_count || 0) > 0;
+  return internalTimedOut && externalTimedOut ? 'transient_timeout' : '';
+}
+
+function deriveRecoCandidateDropStage({
+  candidateState,
+  executedQueryCount,
+  stageResults,
+  primaryStageTimeoutClass = '',
+} = {}) {
   const selectedCount = getRecoRecallSelectedCount(candidateState);
   if (selectedCount > 0) return null;
+  if (String(primaryStageTimeoutClass || '').trim().toLowerCase() === 'transient_timeout') {
+    return 'upstream_timeout_primary_role';
+  }
   if (candidateState?.weak_viable_pool === true || normalizeRecoViablePoolStrength(candidateState?.viable_pool_strength) === 'weak') {
     return 'weak_viable_pool';
   }
@@ -16220,7 +16325,12 @@ async function collectRecoCandidatesFromRecallPlan({
   let plannerStopReason = 'plan_exhausted';
   let executedQueryCount = 0;
   let executedUpstreamAttemptCount = 0;
+  let actualHttpAttemptCount = 0;
   const planStages = Array.isArray(recallPlan?.stages) ? recallPlan.stages : [];
+  const transportPolicyMode = resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode);
+  const actualHttpAttemptsByStage = {};
+  const attemptedBaseUrlsByStage = {};
+  const attemptedPathsByStage = {};
 
   for (const stage of planStages) {
     const runDecision = shouldRunRecoRecallStage(stage, { stageResults, candidateState });
@@ -16234,6 +16344,7 @@ async function collectRecoCandidatesFromRecallPlan({
         skip_reason: runDecision.reason,
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
+        actual_http_attempt_count: 0,
         timeout_count: 0,
         transient_only: false,
         selected_count: getRecoRecallSelectedCount(candidateState),
@@ -16257,16 +16368,32 @@ async function collectRecoCandidatesFromRecallPlan({
           timeoutMs,
           limit,
           usePurchasableFallback,
+          transportPolicyMode,
         }),
       }),
     );
 
     let timeoutCount = 0;
     let transientCount = 0;
+    let stageActualHttpAttemptCount = 0;
+    const stageAttemptedBaseUrls = new Set();
+    const stageAttemptedPaths = new Set();
     for (const row of stageRows) {
       const queryEntry = row?.queryEntry || null;
       const out = row?.out || null;
       if (!queryEntry) continue;
+      const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
+        ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
+        : 0;
+      stageActualHttpAttemptCount += actualAttemptsForRow;
+      for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
+        const normalizedBaseUrl = String(baseUrl || '').trim();
+        if (normalizedBaseUrl) stageAttemptedBaseUrls.add(normalizedBaseUrl);
+      }
+      for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
+        const normalizedPath = String(pathToken || '').trim();
+        if (normalizedPath) stageAttemptedPaths.add(normalizedPath);
+      }
       const reason = String(out?.reason || '').trim().toLowerCase();
       if (reason === 'upstream_timeout') timeoutCount += 1;
       if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') transientCount += 1;
@@ -16300,8 +16427,13 @@ async function collectRecoCandidatesFromRecallPlan({
     }
 
     executedQueryCount += entries.length;
-    executedUpstreamAttemptCount += entries.length;
-    stageTimeoutCounts[String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`] = timeoutCount;
+    executedUpstreamAttemptCount += stageActualHttpAttemptCount;
+    actualHttpAttemptCount += stageActualHttpAttemptCount;
+    const stageId = String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`;
+    stageTimeoutCounts[stageId] = timeoutCount;
+    actualHttpAttemptsByStage[stageId] = stageActualHttpAttemptCount;
+    attemptedBaseUrlsByStage[stageId] = Array.from(stageAttemptedBaseUrls);
+    attemptedPathsByStage[stageId] = Array.from(stageAttemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
@@ -16316,15 +16448,24 @@ async function collectRecoCandidatesFromRecallPlan({
       skipped: false,
       skip_reason: null,
       executed_query_count: entries.length,
-      executed_upstream_attempt_count: entries.length,
+      executed_upstream_attempt_count: stageActualHttpAttemptCount,
+      actual_http_attempt_count: stageActualHttpAttemptCount,
       timeout_count: timeoutCount,
       transient_only: entries.length > 0 && transientCount >= entries.length && Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: stageSelectedCount,
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
+      attempted_base_urls: Array.from(stageAttemptedBaseUrls),
+      attempted_paths: Array.from(stageAttemptedPaths),
     };
     stageResults.push(stageResult);
 
     if (String(recallPlan?.mode || '').trim().toLowerCase() === 'framework_generic') {
+      const primaryStageTimeoutClass = deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState);
+      if (primaryStageTimeoutClass === 'transient_timeout') {
+        stopLevel = stage.stage_id || null;
+        plannerStopReason = 'primary_transient_timeout';
+        break;
+      }
       if (stageSelectedCount >= 3) {
         stopLevel = stage.stage_id || null;
         plannerStopReason = 'supporting_surface_satisfied';
@@ -16349,10 +16490,17 @@ async function collectRecoCandidatesFromRecallPlan({
     stageTimeoutCounts,
     executedQueryCount,
     executedUpstreamAttemptCount,
+    actualHttpAttemptCount,
+    actualHttpAttemptsByStage,
+    attemptedBaseUrlsByStage,
+    attemptedPathsByStage,
+    transportPolicyMode,
+    primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState),
     candidateDropStage: deriveRecoCandidateDropStage({
       candidateState,
       executedQueryCount,
       stageResults,
+      primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState),
     }),
   };
 }
@@ -16624,7 +16772,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   }
 
   for (const row of deduped) {
-    if (!isSkincareCandidate(row)) {
+    const skincareDomainClass = classifySkincareCandidateDomain(row);
+    const skincareDomainPenalty = skincareDomainClass === 'ambiguous' ? 0.08 : 0;
+    if (skincareDomainClass === 'explicit_non_skincare') {
       hardReject.push({ product: row, reason: 'non_skincare_or_blacklisted' });
       continue;
     }
@@ -16687,14 +16837,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       framework_score: Number(bestScore.toFixed(4)),
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: bestSemanticFit,
+      skincare_domain_class: skincareDomainClass,
+      skincare_domain_penalty: skincareDomainPenalty,
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
     };
-    if (bestScore >= 0.72) {
+    const adjustedScore = Math.max(0, Number((bestScore - skincareDomainPenalty).toFixed(4)));
+    annotated.framework_score = adjustedScore;
+    if (adjustedScore >= 0.72) {
       viable.push(annotated);
       roleBuckets.get(annotated.matched_role_id)?.push(annotated);
-    } else if (bestScore >= 0.5) {
+    } else if (adjustedScore >= 0.5) {
       softMismatch.push({ product: annotated, reason: 'framework_soft_mismatch' });
     } else {
       hardReject.push({ product: annotated, reason: 'framework_hard_mismatch' });
@@ -16831,6 +16985,7 @@ async function collectRecoCandidatesFromQueryLevels({
               timeoutMs,
               allowExternalSeed: queryAllowExternalSeed,
               externalSeedStrategy: queryExternalSeedStrategy,
+              transportPolicyMode: 'step_aware',
             })
           : await searchPivotaBackendProducts({
               query: queryEntry.query,
@@ -16839,6 +16994,7 @@ async function collectRecoCandidatesFromQueryLevels({
               timeoutMs,
               allowExternalSeed: false,
               fastMode: true,
+              transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),
             });
         return {
           queryEntry,
@@ -17426,8 +17582,10 @@ async function buildPurchasableFallbackCandidates({
   externalSeedStrategy = 'supplement_internal_first',
   sourceScope = 'hybrid',
   searchFn,
+  transportPolicyMode = '',
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
+  const effectiveTransportPolicy = buildRecoRecallTransportPolicy({ mode: transportPolicyMode });
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', selected_source: 'none', stages: {} };
   const normalizedSourceScope = String(sourceScope || 'hybrid').trim().toLowerCase();
@@ -17441,6 +17599,7 @@ async function buildPurchasableFallbackCandidates({
       deadlineMs,
       allowExternalSeed: false,
       fastMode: true,
+      transportPolicy: effectiveTransportPolicy,
     });
     const catalogProducts = Array.isArray(catalogStage?.products) ? catalogStage.products : [];
     const rankedCatalog = rankPurchasableRecoveryCandidates(catalogProducts, q).slice(
@@ -17457,6 +17616,12 @@ async function buildPurchasableFallbackCandidates({
       products: rankedCatalog,
       reason: rankedCatalog.length > 0 ? null : String(catalogStage?.reason || 'empty').trim() || 'empty',
       selected_source: rankedCatalog.length > 0 ? 'catalog' : 'none',
+      actual_http_attempt_count: Number.isFinite(Number(catalogStage?.actual_http_attempt_count))
+        ? Number(catalogStage.actual_http_attempt_count)
+        : 0,
+      attempted_base_urls: Array.isArray(catalogStage?.attempted_base_urls) ? catalogStage.attempted_base_urls : [],
+      attempted_paths: Array.isArray(catalogStage?.attempted_paths) ? catalogStage.attempted_paths : [],
+      transport_policy_mode: effectiveTransportPolicy.mode,
       stages: {
         catalog: catalogStage,
         external_seed: null,
@@ -17473,6 +17638,7 @@ async function buildPurchasableFallbackCandidates({
       allowExternalSeed: true,
       externalSeedStrategy: normalizedExternalSeedStrategy || 'supplement_internal_first',
       fastMode: false,
+      transportPolicy: effectiveTransportPolicy,
     });
     const externalProducts = Array.isArray(externalStage?.products) ? externalStage.products : [];
     const rankedExternal = rankPurchasableRecoveryCandidates(
@@ -17497,6 +17663,12 @@ async function buildPurchasableFallbackCandidates({
       products: rankedExternal,
       reason: rankedExternal.length > 0 ? null : String(externalStage?.reason || 'empty').trim() || 'empty',
       selected_source: rankedExternal.length > 0 ? 'external_seed' : 'none',
+      actual_http_attempt_count: Number.isFinite(Number(externalStage?.actual_http_attempt_count))
+        ? Number(externalStage.actual_http_attempt_count)
+        : 0,
+      attempted_base_urls: Array.isArray(externalStage?.attempted_base_urls) ? externalStage.attempted_base_urls : [],
+      attempted_paths: Array.isArray(externalStage?.attempted_paths) ? externalStage.attempted_paths : [],
+      transport_policy_mode: effectiveTransportPolicy.mode,
       stages: {
         catalog: null,
         external_seed: externalStage,
@@ -17518,6 +17690,7 @@ async function buildPurchasableFallbackCandidates({
     deadlineMs,
     allowExternalSeed: false,
     fastMode: true,
+    transportPolicy: effectiveTransportPolicy,
   });
   const supplementalPromise = shouldRunExternalSeedInParallel
     ? runSearch({
@@ -17531,6 +17704,7 @@ async function buildPurchasableFallbackCandidates({
         // External-seed supplementation should not be constrained by the same
         // fast-path budget we use for internal catalog recall.
         fastMode: false,
+        transportPolicy: effectiveTransportPolicy,
       })
     : null;
 
@@ -17569,6 +17743,7 @@ async function buildPurchasableFallbackCandidates({
         // External-seed supplementation should not be constrained by the same
         // fast-path budget we use for internal catalog recall.
         fastMode: false,
+        transportPolicy: effectiveTransportPolicy,
       });
     }
   }
@@ -17638,15 +17813,33 @@ async function buildPurchasableFallbackCandidates({
               : 'empty',
         );
 
+  const stages = {
+    catalog: primary,
+    external_seed: supplemental,
+  };
+  const actualHttpAttemptCount = [primary, supplemental].reduce((sum, stage) => {
+    const count = Number.isFinite(Number(stage?.actual_http_attempt_count))
+      ? Math.max(0, Math.trunc(Number(stage.actual_http_attempt_count)))
+      : 0;
+    return sum + count;
+  }, 0);
+  const attemptedBaseUrls = Array.from(new Set(
+    [primary, supplemental].flatMap((stage) => Array.isArray(stage?.attempted_base_urls) ? stage.attempted_base_urls : []),
+  ));
+  const attemptedPaths = Array.from(new Set(
+    [primary, supplemental].flatMap((stage) => Array.isArray(stage?.attempted_paths) ? stage.attempted_paths : []),
+  ));
+
   return {
     ok: rankedMerged.length > 0 || primaryOk || supplementalOk,
     products: rankedMerged,
     reason,
     selected_source: selectedSource,
-    stages: {
-      catalog: primary,
-      external_seed: supplemental,
-    },
+    stages,
+    actual_http_attempt_count: actualHttpAttemptCount,
+    attempted_base_urls: attemptedBaseUrls,
+    attempted_paths: attemptedPaths,
+    transport_policy_mode: effectiveTransportPolicy.mode,
   };
 }
 
@@ -17906,11 +18099,27 @@ async function buildRecoGenerateFromCatalog({
   const executedUpstreamAttemptCount = Number.isFinite(Number(collected?.executedUpstreamAttemptCount))
     ? Number(collected.executedUpstreamAttemptCount)
     : executedQueryCount;
+  const actualHttpAttemptCount = Number.isFinite(Number(collected?.actualHttpAttemptCount))
+    ? Number(collected.actualHttpAttemptCount)
+    : executedUpstreamAttemptCount;
   const stageTimeoutCounts =
     isPlainObject(collected?.stageTimeoutCounts)
       ? collected.stageTimeoutCounts
       : {};
+  const actualHttpAttemptsByStage =
+    isPlainObject(collected?.actualHttpAttemptsByStage)
+      ? collected.actualHttpAttemptsByStage
+      : {};
+  const attemptedBaseUrlsByStage =
+    isPlainObject(collected?.attemptedBaseUrlsByStage)
+      ? collected.attemptedBaseUrlsByStage
+      : {};
+  const attemptedPathsByStage =
+    isPlainObject(collected?.attemptedPathsByStage)
+      ? collected.attemptedPathsByStage
+      : {};
   const candidateDropStage = pickFirstTrimmed(collected?.candidateDropStage) || null;
+  const primaryStageTimeoutClass = pickFirstTrimmed(collected?.primaryStageTimeoutClass) || null;
   for (const r of results) {
     const reason = String(r?.reason || (r?.ok ? 'ok' : 'unknown')).trim() || 'unknown';
     statusCounts[reason] = (statusCounts[reason] || 0) + 1;
@@ -17941,6 +18150,7 @@ async function buildRecoGenerateFromCatalog({
     query_count: executedQueryCount,
     executed_query_count: executedQueryCount,
     executed_upstream_attempt_count: executedUpstreamAttemptCount,
+    actual_http_attempt_count: actualHttpAttemptCount,
     ok_count: okCount,
     picked_count: recos.length,
     probe_while_open: probeWhileOpen,
@@ -17949,6 +18159,9 @@ async function buildRecoGenerateFromCatalog({
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
     timeout_count: timeoutCount,
     stage_timeout_counts: stageTimeoutCounts,
+    actual_http_attempts_by_stage: actualHttpAttemptsByStage,
+    attempted_base_urls_by_stage: attemptedBaseUrlsByStage,
+    attempted_paths_by_stage: attemptedPathsByStage,
     status_counts: statusCounts,
     result_source_counts: resultSourceCounts,
     selected_source_counts: selectedSourceCounts,
@@ -17960,9 +18173,11 @@ async function buildRecoGenerateFromCatalog({
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
     planner_mode: recallPlan?.mode || null,
     planner_budget: isPlainObject(recallPlan?.budget) ? recallPlan.budget : null,
+    transport_policy_mode: pickFirstTrimmed(collected?.transportPolicyMode) || null,
     query_plan: Array.isArray(recallPlan?.entries) ? recallPlan.entries : null,
     stage_results: Array.isArray(collected?.stageResults) ? collected.stageResults : null,
     planner_stop_reason: pickFirstTrimmed(collected?.plannerStopReason) || null,
+    primary_stage_timeout_class: primaryStageTimeoutClass,
     framework_id: frameworkMode ? targetContext.framework_id || null : null,
     framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
     framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
@@ -24918,6 +25133,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
         : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
+    upstream_timeout_primary_role:
+      lang === 'CN'
+        ? '主推角色的检索链路超时了，我先不拿支持步骤强行替代。请稍后重试。'
+        : 'The primary-role retrieval chain timed out, so I am not replacing it with non-primary fallbacks. Please retry shortly.',
     upstream_empty_recommendations:
       lang === 'CN'
         ? '上游没有返回可落地的产品清单，已改为保守提示。可补充当前 routine 或稍后重试。'
@@ -24990,6 +25209,7 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
     return 'ingredient_constraint_no_match';
   }
   if (tokens.includes('reco_mainline_empty')) return 'reco_mainline_empty';
+  if (tokens.includes('upstream_timeout_primary_role')) return 'upstream_timeout_primary_role';
   if (
     tokens.includes('artifact_missing') ||
     tokens.includes('upstream_missing_or_unstructured') ||
@@ -25008,6 +25228,7 @@ function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
     no_viable_candidates_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     weak_viable_pool: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     reco_mainline_empty: ['retry_recommendations', 'update_current_routine', 'refine_profile'],
+    upstream_timeout_primary_role: ['retry_recommendations', 'update_current_routine'],
     low_confidence_treatment_filtered: ['upload_daylight_and_indoor_white', 'update_current_routine', 'retry_recommendations'],
     artifact_missing: ['upload_daylight_and_indoor_white', 'run_low_confidence_baseline'],
   };
@@ -30259,6 +30480,9 @@ function normalizeRecoEffectiveFailureClass(value) {
     token === 'catalog_contract_invalid' ||
     token === 'no_viable_candidates_for_target' ||
     token === 'weak_viable_pool' ||
+    token === 'filtered_after_recall' ||
+    token === 'no_recall_from_planned_sources' ||
+    token === 'upstream_timeout_primary_role' ||
     token === 'post_processing_eliminated_candidates'
   ) {
     return token;
@@ -30545,6 +30769,7 @@ function deriveRecoCatalogDependencyFailure(catalogDebug) {
   if (!debugObj) return { effective_failure_class: '', failure_origin: 'none' };
   const candidateDropStage = String(debugObj.candidate_drop_stage || '').trim().toLowerCase();
   const skippedReason = String(debugObj.skipped_reason || '').trim().toLowerCase();
+  const primaryStageTimeoutClass = String(debugObj.primary_stage_timeout_class || '').trim().toLowerCase();
   if (skippedReason === 'disabled' || skippedReason === 'pivota_backend_not_configured') {
     return {
       effective_failure_class: 'catalog_contract_invalid',
@@ -30571,6 +30796,12 @@ function deriveRecoCatalogDependencyFailure(catalogDebug) {
   const timeoutCountByStage = Object.values(stageTimeoutCounts).reduce((sum, value) => {
     return sum + (Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0);
   }, 0);
+  if (candidateDropStage === 'upstream_timeout_primary_role' || primaryStageTimeoutClass === 'transient_timeout') {
+    return {
+      effective_failure_class: 'upstream_timeout_primary_role',
+      failure_origin: 'upstream_dependency',
+    };
+  }
   if (candidateDropStage === 'upstream_timeout') {
     return {
       effective_failure_class: 'upstream_timeout',
@@ -30737,7 +30968,10 @@ function resolveRecoCentralOutcome({
       success_mode: normalizedSuccessMode || null,
     };
   }
-  const safeFailureStatus = effective === 'upstream_timeout' ? 'upstream_timeout' : 'severe_parse_or_prompt_failure';
+  const safeFailureStatus =
+    effective === 'upstream_timeout' || effective === 'upstream_timeout_primary_role'
+      ? 'upstream_timeout'
+      : 'severe_parse_or_prompt_failure';
   const telemetryReason = effective === 'schema_invalid'
     ? 'upstream_schema_invalid'
     : effective || null;
@@ -31028,7 +31262,7 @@ function buildRecoMainlineContract({
       failure_origin: outcome.failure_origin || 'none',
       upstream_status: normalizedTerminalSuccess
         ? 'ok'
-        : outcome.effective_failure_class === 'upstream_timeout'
+        : outcome.effective_failure_class === 'upstream_timeout' || outcome.effective_failure_class === 'upstream_timeout_primary_role'
           ? 'timeout'
           : outcome.effective_failure_class === 'schema_invalid'
             ? 'schema_invalid'
@@ -58924,10 +59158,15 @@ async function generateProductRecommendations({
       executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
         ? Number(catalogDebug.executed_upstream_attempt_count)
         : 0,
+      actual_http_attempt_count: Number.isFinite(Number(catalogDebug?.actual_http_attempt_count))
+        ? Number(catalogDebug.actual_http_attempt_count)
+        : 0,
       stage_timeout_counts:
         isPlainObject(catalogDebug?.stage_timeout_counts)
           ? catalogDebug.stage_timeout_counts
           : {},
+      primary_stage_timeout_class: pickFirstTrimmed(catalogDebug?.primary_stage_timeout_class) || null,
+      transport_policy_mode: pickFirstTrimmed(catalogDebug?.transport_policy_mode) || null,
       candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
       hard_reject_preview:
         Array.isArray(catalogCandidateState?.hard_reject_preview)
@@ -59521,10 +59760,15 @@ async function generateProductRecommendations({
       executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
         ? Number(catalogDebug.executed_upstream_attempt_count)
         : 0,
+      actual_http_attempt_count: Number.isFinite(Number(catalogDebug?.actual_http_attempt_count))
+        ? Number(catalogDebug.actual_http_attempt_count)
+        : 0,
       stage_timeout_counts:
         isPlainObject(catalogDebug?.stage_timeout_counts)
           ? catalogDebug.stage_timeout_counts
           : {},
+      primary_stage_timeout_class: pickFirstTrimmed(catalogDebug?.primary_stage_timeout_class) || null,
+      transport_policy_mode: pickFirstTrimmed(catalogDebug?.transport_policy_mode) || null,
       candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
       hard_reject_preview:
         Array.isArray(catalogCandidateState?.hard_reject_preview)
@@ -80572,6 +80816,8 @@ const __internal = {
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
   buildRecoRecallPlan,
+  buildRecoRecallTransportPolicy,
+  resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
   finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromRecallPlan,

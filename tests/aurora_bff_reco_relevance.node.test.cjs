@@ -1782,6 +1782,140 @@ test('__internal: framework recall planner emits a staged six-query budget with 
   );
 });
 
+test('__internal: framework-first transport policy constrains each planned query to one real HTTP attempt', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const calls = [];
+  axios.get = async (url, config) => {
+    calls.push({
+      url,
+      query: config?.params?.query,
+    });
+    return {
+      status: 504,
+      data: {},
+    };
+  };
+
+  try {
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'oil control serum',
+      limit: 6,
+      transportPolicy: __internal.buildRecoRecallTransportPolicy({ mode: 'framework_first_turn' }),
+    });
+
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'upstream_timeout');
+    assert.equal(out.transport_policy_mode, 'framework_first_turn');
+    assert.equal(out.actual_http_attempt_count, 1);
+    assert.equal(Array.isArray(out.attempted_base_urls), true);
+    assert.equal(out.attempted_base_urls.length, 1);
+    assert.equal(Array.isArray(out.attempted_paths), true);
+    assert.equal(out.attempted_paths.length, 1);
+    assert.equal(calls.length, 1);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('__internal: framework recall stops before support stages after primary transient timeout', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config) => {
+    observedQueries.push(String(config?.params?.query || ''));
+    return {
+      status: 504,
+      data: {},
+    };
+  };
+
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        query_terms: ['daily sunscreen', 'lightweight sunscreen', 'spf fluid'],
+      },
+    ],
+  };
+
+  try {
+    const out = await __internal.collectRecoCandidatesFromRecallPlan({
+      recallPlan: __internal.buildRecoRecallPlan({
+        mode: 'framework_generic',
+        targetContext,
+      }),
+      targetContext,
+      logger: null,
+      timeoutMs: 300,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+
+    assert.equal(out.executedQueryCount, 4);
+    assert.equal(out.actualHttpAttemptCount, 4);
+    assert.equal(out.primaryStageTimeoutClass, 'transient_timeout');
+    assert.equal(out.plannerStopReason, 'primary_transient_timeout');
+    assert.equal(out.candidateDropStage, 'upstream_timeout_primary_role');
+    assert.equal(observedQueries.some((query) => /lightweight moisturizer|gel cream|daily sunscreen|spf fluid/i.test(query)), false);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test('__internal: tri-state skincare classifier only hard rejects explicit non-skincare', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'Oil Control Serum',
+      category: 'serum',
+    }),
+    'explicit_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'Makeup Brush',
+      category: 'tool',
+    }),
+    'explicit_non_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      name: 'Balance Control',
+      benefit_tags: ['shine control', 'balancing'],
+      short_description: 'Helps control excess sebum for oily skin.',
+    }),
+    'ambiguous',
+  );
+  assert.equal(
+    recoShared.isSkincareCandidate({
+      name: 'Balance Control',
+      benefit_tags: ['shine control', 'balancing'],
+      short_description: 'Helps control excess sebum for oily skin.',
+    }),
+    true,
+  );
+});
+
 test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

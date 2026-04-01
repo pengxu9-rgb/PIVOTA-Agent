@@ -345,7 +345,7 @@ test('purchasable fallback: llm fallback returns strict https skincare products 
     assert.equal(out.products[0].retrieval_source, 'llm_fallback');
     assert.equal(out.products[0].retrieval_reason, 'catalog_empty_or_filtered');
     assert.equal(out.products[0].pdp_url, 'https://example.com/pdp/uv-gel');
-    assert.equal(out.external_search_ctas.length > 0, true);
+    assert.equal(out.external_search_ctas.length, 0);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
   }
@@ -393,6 +393,17 @@ test('purchasable fallback: query collection includes ingredient target names an
 });
 
 test('reco catalog dependency failure prefers staged recall diagnostics over artifact_missing', () => {
+  const primaryTimeoutFailure = __internal.deriveRecoCatalogDependencyFailure({
+    executed_query_count: 4,
+    stage_timeout_counts: {
+      framework_stage_a_primary_internal: 2,
+      framework_stage_b_primary_external_seed: 2,
+    },
+    primary_stage_timeout_class: 'transient_timeout',
+    candidate_drop_stage: 'upstream_timeout_primary_role',
+  });
+  assert.equal(primaryTimeoutFailure.effective_failure_class, 'upstream_timeout_primary_role');
+
   const timeoutFailure = __internal.deriveRecoCatalogDependencyFailure({
     executed_query_count: 4,
     stage_timeout_counts: {

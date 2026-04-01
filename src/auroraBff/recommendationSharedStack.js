@@ -13,10 +13,14 @@ const normalizeProductType =
   recoHybridInternal && typeof recoHybridInternal.normalizeProductType === 'function'
     ? recoHybridInternal.normalizeProductType
     : (value) => normalizeRecoTargetStep(value);
+const classifySkincareCandidateDomain =
+  recoHybridInternal && typeof recoHybridInternal.classifySkincareCandidateDomain === 'function'
+    ? recoHybridInternal.classifySkincareCandidateDomain
+    : () => 'ambiguous';
 const isSkincareCandidate =
   recoHybridInternal && typeof recoHybridInternal.isSkincareCandidate === 'function'
     ? recoHybridInternal.isSkincareCandidate
-    : () => false;
+    : () => true;
 
 const RECOMMENDATION_STEP_QUERY_POLICY_V1 = 'recommendation_step_query_policy_v1';
 const RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1 = 'recommendation_viable_threshold_policy_v1';
@@ -870,7 +874,9 @@ function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
 function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
-  const skincare = isSkincareCandidate(row);
+  const skincareDomainClass = classifySkincareCandidateDomain(row);
+  const skincare = skincareDomainClass !== 'explicit_non_skincare';
+  const domainPenalty = skincareDomainClass === 'ambiguous' ? 0.08 : 0;
   const stepResolution = normalizeCandidateStep(row, { targetContext });
   const candidateStep = stepResolution.candidate_step;
   const stepAwareIntent = Boolean(targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step);
@@ -884,7 +890,11 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
     candidateStep,
     targetStep: resolvedTargetStep,
   });
-  const selectionScore = clampScore(stepFitScore + Number(contextSignals.context_fit_score || 0), 0, 2);
+  const selectionScore = clampScore(
+    stepFitScore + Number(contextSignals.context_fit_score || 0) - domainPenalty,
+    0,
+    2,
+  );
 
   let bucket = 'viable';
   let reason = 'generic_viable';
@@ -928,6 +938,8 @@ function classifyRecommendationCandidate(product, { targetContext, recoContext }
     bucket,
     reason,
     score: stepFitScore,
+    skincare_domain_class: skincareDomainClass,
+    skincare_domain_penalty: domainPenalty,
     step_fit_score: stepFitScore,
     context_fit_score: Number(contextSignals.context_fit_score || 0),
     constraint_conflict: Boolean(contextSignals.constraint_conflict),
@@ -1111,6 +1123,7 @@ module.exports = {
   RAW_CANDIDATE_POOL_DEBUG_SIGNATURE_VERSION,
   GROUP_SEMANTICS_VERSION,
   STEP_THRESHOLDS,
+  classifySkincareCandidateDomain,
   isSkincareCandidate,
   resolveRecommendationTargetContext,
   buildConcernFrameworkRoles,

@@ -559,11 +559,18 @@ function productText(product) {
     .join(' ');
 }
 
-function isSkincareCandidate(product) {
+function classifySkincareCandidateDomain(product) {
   const joined = productText(product);
-  if (!joined) return false;
-  if (SKINCARE_BLOCK_RE.test(joined)) return false;
-  return SKINCARE_ALLOW_RE.test(joined);
+  if (!joined) return 'ambiguous';
+  const blocked = SKINCARE_BLOCK_RE.test(joined);
+  const allowed = SKINCARE_ALLOW_RE.test(joined);
+  if (blocked && !allowed) return 'explicit_non_skincare';
+  if (allowed) return 'explicit_skincare';
+  return 'ambiguous';
+}
+
+function isSkincareCandidate(product) {
+  return classifySkincareCandidateDomain(product) !== 'explicit_non_skincare';
 }
 
 function stepCompatibilityScore(product, targetStep, seedStep) {
@@ -1095,6 +1102,7 @@ module.exports = {
     normalizeProduct,
     normalizeProductType,
     normalizeCanonicalProductRef,
+    classifySkincareCandidateDomain,
     isSkincareCandidate,
     scoreFuzzyCandidate,
     buildRawSeedRow,
