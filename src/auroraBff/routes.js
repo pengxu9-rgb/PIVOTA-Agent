@@ -51860,8 +51860,23 @@ async function runConcernSemanticPlanner({
   };
   try {
     const plannerAttempts = [
-      { provider: 'gemini', model: 'gemini-3-flash-preview' },
-      { provider: 'gemini', model: 'gemini-3-pro-preview' },
+      {
+        provider: 'gemini',
+        model: 'gemini-3-flash-preview',
+        structured_contract: 'required_keys',
+        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+      },
+      {
+        provider: 'gemini',
+        model: 'gemini-3-pro-preview',
+        structured_contract: 'required_keys',
+        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+      },
+      {
+        provider: 'gemini',
+        model: 'gemini-3-pro-preview',
+        structured_contract: 'plain_text',
+      },
     ];
     let lastSemanticPlan = normalizeConcernSemanticPlanOutput(null, {
       fallbackPlan,
@@ -51877,7 +51892,9 @@ async function runConcernSemanticPlanner({
         timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
         llm_provider: attempt.provider,
         llm_model: attempt.model,
-        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+        ...(Array.isArray(attempt.required_structured_keys)
+          ? { required_structured_keys: attempt.required_structured_keys }
+          : {}),
         trace_id: ctx?.trace_id,
         request_id: ctx?.request_id,
       });
@@ -51905,6 +51922,7 @@ async function runConcernSemanticPlanner({
       const attemptTrace = {
         provider: attempt.provider,
         model: attempt.model,
+        structured_contract: attempt.structured_contract || 'plain_text',
         requested_provider: llmRouteMeta.requested_provider,
         requested_model: llmRouteMeta.requested_model,
         effective_provider: llmRouteMeta.effective_provider,
@@ -51938,13 +51956,27 @@ async function runConcernSemanticPlanner({
         trace.planner_model = llmRouteMeta.effective_model || attempt.model;
         return { semanticPlan, trace, upstream };
       }
-      const shouldRetry =
-        index + 1 < plannerAttempts.length
-        && attempt.provider === 'gemini'
-        && String(attempt.model || '').trim() === 'gemini-3-flash-preview'
-        && !attemptTrace.answer_preview
+      const nextAttempt = plannerAttempts[index + 1] || null;
+      const attemptReturnedNoSignal =
+        !attemptTrace.answer_preview
         && attemptTrace.raw_top_keys.length === 0
         && attemptTrace.repaired_from_text === false;
+      const shouldRetry =
+        Boolean(nextAttempt)
+        && attempt.provider === 'gemini'
+        && attemptReturnedNoSignal
+        && (
+          (
+            String(attempt.model || '').trim() === 'gemini-3-flash-preview'
+            && String(nextAttempt?.model || '').trim() === 'gemini-3-pro-preview'
+            && String(nextAttempt?.structured_contract || '').trim() === 'required_keys'
+          ) || (
+            String(attempt.model || '').trim() === 'gemini-3-pro-preview'
+            && String(attempt.structured_contract || '').trim() === 'required_keys'
+            && String(nextAttempt?.model || '').trim() === 'gemini-3-pro-preview'
+            && String(nextAttempt?.structured_contract || '').trim() === 'plain_text'
+          )
+        );
       if (!shouldRetry) break;
     }
     trace.planner_failure_class = 'schema_invalid';
