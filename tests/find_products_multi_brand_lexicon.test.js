@@ -32,6 +32,21 @@ describe('findProductsMulti brand lexicon', () => {
     );
   });
 
+  test('does not misread "outfit" as the short tom ford alias "tf"', () => {
+    expect(detectBrandEntities('zara blazer outfit', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: ['zara'],
+      }),
+    );
+    expect(detectBrandEntities('mango dress outfit', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: ['mango'],
+      }),
+    );
+  });
+
   test('treats fashion category terms as explicit category hints', () => {
     expect(hasExplicitCategoryHint('zara blazer')).toBe(true);
     expect(hasExplicitCategoryHint('uniqlo cardigan')).toBe(true);

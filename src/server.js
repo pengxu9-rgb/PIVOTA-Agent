@@ -6702,11 +6702,12 @@ function hasBrandTermMatch(candidateText, brandTerm) {
   const normalizedCandidate = normalizeSearchTextForMatch(candidateText);
   const normalizedTerm = normalizeSearchTextForMatch(brandTerm);
   if (!normalizedCandidate || !normalizedTerm) return false;
-  if (normalizedCandidate.includes(normalizedTerm)) return true;
+  const rawTokens = tokenizeSearchTextForMatch(normalizedTerm);
+  const singleShortTokenAlias = rawTokens.length === 1 && rawTokens[0].length <= 2;
+  if (!singleShortTokenAlias && normalizedCandidate.includes(normalizedTerm)) return true;
   const compactTerm = normalizedTerm.replace(/\s+/g, '');
   const compactCandidate = normalizedCandidate.replace(/\s+/g, '');
-  if (compactTerm && compactCandidate.includes(compactTerm)) return true;
-  const rawTokens = tokenizeSearchTextForMatch(normalizedTerm);
+  if (!singleShortTokenAlias && compactTerm && compactCandidate.includes(compactTerm)) return true;
   const coreTokens = rawTokens.filter(
     (token) =>
       token &&
@@ -6714,7 +6715,12 @@ function hasBrandTermMatch(candidateText, brandTerm) {
   );
   const tokens = coreTokens.length > 0 ? coreTokens : rawTokens;
   if (!tokens.length) return false;
-  if (tokens.length === 1) return normalizedCandidate.includes(tokens[0]);
+  if (tokens.length === 1) {
+    if (tokens[0].length <= 2) {
+      return tokenizeSearchTextForMatch(normalizedCandidate).includes(tokens[0]);
+    }
+    return normalizedCandidate.includes(tokens[0]);
+  }
   return tokens.every((token) => normalizedCandidate.includes(token));
 }
 

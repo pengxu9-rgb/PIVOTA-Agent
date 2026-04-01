@@ -106,6 +106,50 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
               },
+              {
+                id: 'body-cream-seed-1',
+                external_product_id: 'ext_body_cream_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/ginger-cream-cookie-whipped-body-cream',
+                canonical_url: 'https://shop.example.com/products/ginger-cream-cookie-whipped-body-cream',
+                domain: 'shop.example.com',
+                title: 'Ginger Cream Cookie Whipped Body Cream',
+                image_url: 'https://cdn.example.com/body-cream.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Beekman 1802',
+                  category: 'Moisturizer',
+                  description:
+                    "Made with our signature goat milk blend and scented with notes of sweet cream while making you feel warm and cozy on the inside. Ingredients include Mangifera Indica (Mango) Seed Butter.",
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'anti-chafe-seed-1',
+                external_product_id: 'ext_anti_chafe_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/anti-chafe-stick',
+                canonical_url: 'https://shop.example.com/products/anti-chafe-stick',
+                domain: 'shop.example.com',
+                title: 'Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal',
+                image_url: 'https://cdn.example.com/anti-chafe.jpg',
+                price_amount: '16.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'First Aid Beauty',
+                  category: 'body care',
+                  description:
+                    'For running errands or running a race, take the day in stride and swap uncomfortable chafing for a smooth, non-greasy glide.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
             ],
           };
         }
@@ -147,6 +191,9 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
     expect(resp.status).toBe(200);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_sleepwear_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_body_cream_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_anti_chafe_1');
     expect(resp.body.products[0]).toEqual(
       expect.objectContaining({
         merchant_id: 'external_seed',
@@ -209,7 +256,7 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
                   brand: 'Beekman 1802',
                   category: 'Cleanser',
                   description:
-                    'Gentle face wipes for women with calming lavender extract. Scent Notes: Top: Jasmine, Lilac, Rose.',
+                    "With a pack of our Goat Milk Wipes in your purse, gym bag, car (or wherever), you can freshen up anytime. Directions: Lift seal & remove wipe. After use, dispose of wipe in trash. Scent Notes: Top: Jasmine, Lilac, Rose.",
                 },
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
@@ -282,6 +329,7 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
       }),
     );
     expect(resp.body.products.map((product) => product.title)).not.toContain('Lilac Dream Face Wipes');
+    expect(resp.body.metadata?.route_debug?.creator_external_seed_direct?.brand_terms).toEqual(['zara']);
     expect(resp.body.metadata?.route_debug?.creator_external_seed_direct).toEqual(
       expect.objectContaining({
         attempted: true,
@@ -291,6 +339,143 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
         creator_cache_can_short_circuit: false,
       }),
     );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('keeps mango dress results on the direct creator path without beauty drift from outfit expansion', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'mango-dress-seed-1',
+                external_product_id: 'ext_mango_dress_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/mango-pleated-midi-dress',
+                canonical_url: 'https://shop.example.com/products/mango-pleated-midi-dress',
+                domain: 'shop.example.com',
+                title: 'Mango Pleated Midi Dress',
+                image_url: 'https://cdn.example.com/mango-dress.jpg',
+                price_amount: '79.90',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Mango',
+                  category: 'dress',
+                  description: 'Pleated midi dress with a fitted waist and flowy skirt.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'tf-eye-seed-1',
+                external_product_id: 'ext_tf_eye_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/soleil-neige-eye-color-quad',
+                canonical_url: 'https://shop.example.com/products/soleil-neige-eye-color-quad',
+                domain: 'shop.example.com',
+                title: 'Soleil Neige Eye Color Quad',
+                image_url: 'https://cdn.example.com/tf-eye.jpg',
+                price_amount: '92.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Tom Ford Beauty',
+                  category: 'eyeshadow',
+                  description: 'Eye color quad for a polished outfit finish.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'blush-seed-1',
+                external_product_id: 'ext_blush_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/fenty-sundress-szn-blush',
+                canonical_url: 'https://shop.example.com/products/fenty-sundress-szn-blush',
+                domain: 'shop.example.com',
+                title: 'Fenty Cheeks Suede Powder Blush — Sundress Szn',
+                image_url: 'https://cdn.example.com/fenty-blush.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Fenty Beauty',
+                  category: 'blush',
+                  description: 'Soft powder blush shade for cheeks.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'body-cream-seed-2',
+                external_product_id: 'ext_body_cream_2',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/ginger-cream-cookie-whipped-body-cream',
+                canonical_url: 'https://shop.example.com/products/ginger-cream-cookie-whipped-body-cream',
+                domain: 'shop.example.com',
+                title: 'Ginger Cream Cookie Whipped Body Cream',
+                image_url: 'https://cdn.example.com/body-cream-2.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Beekman 1802',
+                  category: 'Moisturizer',
+                  description:
+                    "Made with our signature goat milk blend and scented with notes of sweet cream while making you feel warm and cozy on the inside. Ingredients include Mangifera Indica (Mango) Seed Butter.",
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'mango dress',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+            allow_external_seed: true,
+            external_seed_strategy: 'unified_relevance',
+            search_all_merchants: true,
+          },
+        },
+        metadata: {
+          source: 'creator-agent-ui',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_external_seed_direct');
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['ext_mango_dress_1']);
+    expect(resp.body.metadata?.route_debug?.creator_external_seed_direct?.brand_terms).toEqual(['mango']);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
