@@ -51717,6 +51717,68 @@ function extractConcernSemanticPlanStructured(upstream) {
   return null;
 }
 
+function pickConcernSemanticRoleMatchesFromText(text, roles = []) {
+  const normalizedText = normalizeConcernRoleHint(text);
+  if (!normalizedText) return [];
+  const out = [];
+  for (const role of Array.isArray(roles) ? roles : []) {
+    if (!isPlainObject(role)) continue;
+    const patterns = uniqCaseInsensitiveStrings([
+      role.role_id,
+      role.label,
+      ...(Array.isArray(role.query_terms) ? role.query_terms.slice(0, 3) : []),
+    ], 8)
+      .map((value) => normalizeConcernRoleHint(value))
+      .filter((value) => value && value.length >= 6);
+    if (!patterns.length) continue;
+    if (patterns.some((value) => normalizedText.includes(value))) out.push(role);
+  }
+  return out;
+}
+
+function repairConcernSemanticPlanFromText(answerText, { fallbackPlan } = {}) {
+  const plan = isPlainObject(fallbackPlan) ? fallbackPlan : null;
+  if (!plan || !String(answerText || '').trim()) return null;
+  const coreRoles = pickConcernSemanticRoleMatchesFromText(answerText, plan.core_roles || []);
+  if (coreRoles.length === 0) return null;
+  const primaryRoleId = pickFirstTrimmed(plan.core_roles?.[0]?.role_id);
+  const matchedPrimary = coreRoles.some((role) => pickFirstTrimmed(role?.role_id) === primaryRoleId);
+  if (!matchedPrimary) return null;
+  const supportRoles = pickConcernSemanticRoleMatchesFromText(answerText, plan.support_roles || []);
+  return {
+    primary_concern: plan.primary_concern,
+    core_roles: coreRoles.map((role) => ({
+      role_id: role.role_id,
+      label: role.label,
+      why_this_role: role.why_this_role,
+      preferred_step: role.preferred_step,
+      query_terms: role.query_terms,
+      fit_keywords: role.fit_keywords,
+      ingredient_hypotheses: role.ingredient_hypotheses,
+      product_type_hypotheses: role.product_type_hypotheses,
+      frequency: role.frequency,
+      routine_slots: role.routine_slots,
+    })),
+    support_roles: supportRoles.map((role) => ({
+      role_id: role.role_id,
+      label: role.label,
+      why_this_role: role.why_this_role,
+      preferred_step: role.preferred_step,
+      query_terms: role.query_terms,
+      fit_keywords: role.fit_keywords,
+      ingredient_hypotheses: role.ingredient_hypotheses,
+      product_type_hypotheses: role.product_type_hypotheses,
+      frequency: role.frequency,
+      routine_slots: role.routine_slots,
+      support_only: true,
+    })),
+    ingredient_hypotheses: plan.ingredient_hypotheses,
+    product_type_hypotheses: plan.product_type_hypotheses,
+    routine_shell: plan.routine_shell,
+    selection_constraints: plan.selection_constraints,
+  };
+}
+
 async function runConcernSemanticPlanner({
   ctx,
   logger,
@@ -51757,8 +51819,17 @@ async function runConcernSemanticPlanner({
     });
     trace.planner_used = true;
     const rawStructured = extractConcernSemanticPlanStructured(upstream);
+    const repairedStructured =
+      isPlainObject(rawStructured)
+        ? null
+        : repairConcernSemanticPlanFromText(upstream?.answer, { fallbackPlan });
+    const effectiveStructured = repairedStructured || rawStructured;
     trace.raw_top_keys = isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [];
-    const semanticPlan = normalizeConcernSemanticPlanOutput(rawStructured, {
+    trace.answer_preview = typeof upstream?.answer === 'string'
+      ? String(upstream.answer).replace(/\s+/g, ' ').slice(0, 400)
+      : '';
+    trace.repaired_from_text = Boolean(repairedStructured);
+    const semanticPlan = normalizeConcernSemanticPlanOutput(effectiveStructured, {
       fallbackPlan,
       requestText,
       focus,
@@ -51771,6 +51842,17 @@ async function runConcernSemanticPlanner({
       : [];
     if (String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() !== 'trusted') {
       trace.planner_failure_class = 'schema_invalid';
+      logger?.warn?.(
+        {
+          trace_id: ctx?.trace_id,
+          request_id: ctx?.request_id,
+          planner_failure_class: trace.planner_failure_class,
+          raw_top_keys: trace.raw_top_keys,
+          repaired_from_text: trace.repaired_from_text,
+          answer_preview: trace.answer_preview,
+        },
+        'aurora bff: concern semantic planner schema-invalid',
+      );
       return {
         semanticPlan,
         trace,
