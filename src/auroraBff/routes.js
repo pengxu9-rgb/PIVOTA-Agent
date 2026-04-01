@@ -6573,7 +6573,29 @@ function collectExternalSeedTextValues(...values) {
   return uniqCaseInsensitiveStrings(flattened, 24);
 }
 
-function buildLocalExternalSeedSearchPatterns(query) {
+function buildLocalExternalSeedRoleSearchPhrases({ role = null, preferredStep = '' } = {}) {
+  const roleObj = isPlainObject(role) ? role : null;
+  if (!roleObj) return [];
+  const step = normalizeRecoTargetStep(preferredStep || roleObj.preferred_step);
+  const roleTerms = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(roleObj.query_terms) ? roleObj.query_terms : []),
+    ...(Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : []).flatMap((keyword) => {
+      const token = String(keyword || '').trim();
+      if (!token) return [];
+      if (!step) return [token];
+      if (step === 'treatment') return [token, `${token} serum`, `${token} treatment`];
+      if (step === 'moisturizer') return [token, `${token} moisturizer`, `${token} gel cream`];
+      if (step === 'sunscreen') return [token, `${token} sunscreen`, `${token} spf`];
+      return [token, `${token} ${step}`];
+    }),
+  ], 12);
+  return roleTerms.filter((value) => String(value || '').trim().length >= 5);
+}
+
+function buildLocalExternalSeedSearchPatterns(query, {
+  role = null,
+  preferredStep = '',
+} = {}) {
   const raw = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const tokens = tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true }).length > 0
     ? tokenizeSurfacingSearchText(query, { max: 10, dropStopwords: true })
@@ -6584,13 +6606,18 @@ function buildLocalExternalSeedSearchPatterns(query) {
     const right = String(tokens[index + 1] || '').trim();
     if (left && right) bigrams.push(`${left} ${right}`);
   }
+  const rolePhrases = buildLocalExternalSeedRoleSearchPhrases({ role, preferredStep });
+  const singletonTokens = tokens.length <= 2
+    ? tokens.filter((value) => String(value || '').trim().length >= 4)
+    : [];
   const phrases = uniqCaseInsensitiveStrings(
     [
       raw,
       ...bigrams,
-      ...tokens,
+      ...singletonTokens,
+      ...rolePhrases,
     ].map((value) => String(value || '').trim()).filter((value) => value.length >= 3),
-    10,
+    14,
   );
   return phrases.map((value) => `%${value}%`);
 }
@@ -6684,6 +6711,8 @@ async function searchLocalExternalSeedProducts({
   logger,
   queryFn,
   transportPolicyMode = 'framework_first_turn',
+  role = null,
+  preferredStep = '',
 } = {}) {
   const q = String(query || '').trim();
   if (!q) {
@@ -6711,7 +6740,10 @@ async function searchLocalExternalSeedProducts({
     };
   }
 
-  const patterns = buildLocalExternalSeedSearchPatterns(q);
+  const patterns = buildLocalExternalSeedSearchPatterns(q, {
+    role,
+    preferredStep,
+  });
   if (!patterns.length) {
     return {
       ok: false,
@@ -16483,10 +16515,15 @@ async function executeRecoRecallPlanEntry({
   limit = 6,
   usePurchasableFallback = false,
   transportPolicyMode = '',
+  targetContext = null,
 } = {}) {
   const sourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase() === 'external_seed'
     ? 'external_seed'
     : 'internal';
+  const roleId = String(entry?.role_id || '').trim();
+  const role = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.find((item) => String(item?.role_id || '').trim() === roleId) || null
+    : null;
   if (usePurchasableFallback) {
     return buildPurchasableFallbackCandidates({
       query: entry?.query,
@@ -16497,6 +16534,8 @@ async function executeRecoRecallPlanEntry({
       externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
       sourceScope,
       transportPolicyMode,
+      role,
+      preferredStep: entry?.preferred_step,
     });
   }
   return searchPivotaBackendProducts({
@@ -16637,6 +16676,7 @@ async function collectRecoCandidatesFromRecallPlan({
           limit,
           usePurchasableFallback,
           transportPolicyMode,
+          targetContext,
         }),
       }),
     );
@@ -17905,6 +17945,8 @@ async function buildPurchasableFallbackCandidates({
   searchFn,
   externalSeedSearchFn,
   transportPolicyMode = '',
+  role = null,
+  preferredStep = '',
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const runExternalSeedSearch = typeof externalSeedSearchFn === 'function'
@@ -17959,6 +18001,8 @@ async function buildPurchasableFallbackCandidates({
       limit,
       logger,
       transportPolicyMode: effectiveTransportPolicy.mode,
+      role,
+      preferredStep,
     });
     const externalProducts = Array.isArray(externalStage?.products) ? externalStage.products : [];
     const rankedExternal = rankPurchasableRecoveryCandidates(
@@ -18018,6 +18062,8 @@ async function buildPurchasableFallbackCandidates({
         limit,
         logger,
         transportPolicyMode: effectiveTransportPolicy.mode,
+        role,
+        preferredStep,
       })
     : null;
 
@@ -18050,6 +18096,8 @@ async function buildPurchasableFallbackCandidates({
         limit,
         logger,
         transportPolicyMode: effectiveTransportPolicy.mode,
+        role,
+        preferredStep,
       });
     }
   }
@@ -81134,6 +81182,7 @@ const __internal = {
   computeAnchorNameSimilarity,
   pickBestCatalogSearchCandidateForProductInput,
   loadExternalSeedEvidenceProduct,
+  buildLocalExternalSeedSearchPatterns,
   searchLocalExternalSeedProducts,
   mapCatalogProductToAnchorProduct,
   inferProductAnchorInputMode,

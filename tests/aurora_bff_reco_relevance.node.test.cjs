@@ -1827,6 +1827,32 @@ test('__internal: framework-first transport policy constrains each planned query
   }
 });
 
+test('__internal: local external seed search patterns do not fall back to singleton token noise for multi-token queries', async () => {
+  const { __internal } = loadRoutesFresh();
+  const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum');
+  assert.equal(patterns.includes('%oil%'), false);
+  assert.equal(patterns.includes('%serum%'), false);
+  assert.equal(patterns.includes('%oil control serum%'), true);
+  assert.equal(patterns.includes('%oil control%'), true);
+  assert.equal(patterns.includes('%control serum%'), true);
+});
+
+test('__internal: local external seed search patterns expand with framework role phrases for primary external seed recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum', {
+    role: {
+      role_id: 'oil_control_treatment',
+      preferred_step: 'treatment',
+      query_terms: ['oil control serum', 'oil balance serum', 'shine control serum', 'mattifying serum'],
+      fit_keywords: ['oil control', 'shine control', 'mattifying', 'balancing'],
+    },
+    preferredStep: 'treatment',
+  });
+  assert.equal(patterns.includes('%shine control serum%'), true);
+  assert.equal(patterns.includes('%mattifying serum%'), true);
+  assert.equal(patterns.includes('%balancing serum%') || patterns.includes('%balancing treatment%'), true);
+});
+
 test('__internal: framework recall stops before support stages after primary transient timeout', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
