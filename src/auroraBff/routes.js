@@ -51811,7 +51811,7 @@ async function runConcernSemanticPlanner({
   try {
     const plannerAttempts = [
       { provider: 'gemini', model: 'gemini-3-flash-preview' },
-      { provider: 'openai', model: 'gpt-4o-mini' },
+      { provider: 'gemini', model: 'gemini-3-pro-preview' },
     ];
     let lastSemanticPlan = normalizeConcernSemanticPlanOutput(null, {
       fallbackPlan,
@@ -51877,6 +51877,7 @@ async function runConcernSemanticPlanner({
       const shouldRetry =
         index + 1 < plannerAttempts.length
         && attempt.provider === 'gemini'
+        && String(attempt.model || '').trim() === 'gemini-3-flash-preview'
         && !attemptTrace.answer_preview
         && attemptTrace.raw_top_keys.length === 0
         && attemptTrace.repaired_from_text === false;

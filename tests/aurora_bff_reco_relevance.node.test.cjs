@@ -1817,7 +1817,7 @@ test('/v1/chat: generic concern planner repairs plain-text role ordering into a 
   }
 });
 
-test('/v1/chat: generic concern planner retries with openai after an empty gemini planner response', async () => {
+test('/v1/chat: generic concern planner retries with gemini pro after an empty gemini flash planner response', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -1888,7 +1888,7 @@ test('/v1/chat: generic concern planner retries with openai after an empty gemin
         const prompt = String(query || '');
         if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
           plannerAttempts.push(`${llm_provider}:${llm_model}`);
-          if (String(llm_provider) === 'gemini') return { answer: '' };
+          if (String(llm_provider) === 'gemini' && String(llm_model) === 'gemini-3-flash-preview') return { answer: '' };
           return { answer: JSON.stringify(buildConcernSemanticPlanFixture()) };
         }
         if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
@@ -1932,7 +1932,7 @@ test('/v1/chat: generic concern planner retries with openai after an empty gemin
     assert.equal(payload.selection_owner_source, 'llm_concern_planner');
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_retry_1');
-    assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'openai:gpt-4o-mini']);
+    assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'gemini:gemini-3-pro-preview']);
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
