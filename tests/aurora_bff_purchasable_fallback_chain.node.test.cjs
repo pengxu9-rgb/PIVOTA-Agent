@@ -124,6 +124,51 @@ test('purchasable fallback: still supplements from external seed when catalog tr
   assert.equal(out.products[0].retrieval_source, 'external_seed');
 });
 
+test('purchasable fallback: supplement_internal_first runs catalog and external seed in parallel', async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const calls = [];
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'oil control serum',
+    allowExternalSeed: true,
+    externalSeedStrategy: 'supplement_internal_first',
+    searchFn: async (params) => {
+      calls.push({
+        allowExternalSeed: params.allowExternalSeed === true,
+        fastMode: params.fastMode === true,
+      });
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      inFlight -= 1;
+      if (params.allowExternalSeed === true) {
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'prod_external_parallel_1',
+              merchant_id: 'm_ext_parallel_1',
+              name: 'External Oil Control Serum',
+              canonical_pdp_url: 'https://example.com/pdp/ext-oil-parallel',
+              source: 'external_seed',
+              search_aliases: ['oil control serum'],
+              benefit_tags: ['oil control', 'shine control'],
+            },
+          ],
+        };
+      }
+      return { ok: true, products: [], reason: 'empty' };
+    },
+  });
+
+  assert.deepEqual(
+    calls.map((row) => row.allowExternalSeed).sort(),
+    [false, true],
+  );
+  assert.ok(maxInFlight >= 2);
+  assert.equal(out.selected_source, 'external_seed');
+});
+
 test('purchasable fallback: merges catalog + external and de-duplicates by product+merchant', async () => {
   const out = await __internal.buildPurchasableFallbackCandidates({
     query: 'niacinamide',

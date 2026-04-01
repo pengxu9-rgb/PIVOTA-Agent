@@ -17059,8 +17059,15 @@ async function buildPurchasableFallbackCandidates({
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', selected_source: 'none', stages: {} };
-
-  const primary = await runSearch({
+  const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
+  const shouldRunExternalSeedInParallel =
+    allowExternalSeed === true
+    && normalizedExternalSeedStrategy !== 'on_empty_only'
+    && (
+      normalizedExternalSeedStrategy.includes('supplement')
+      || normalizedExternalSeedStrategy.includes('fallback')
+    );
+  const primaryPromise = runSearch({
     query: q,
     limit,
     logger,
@@ -17069,6 +17076,22 @@ async function buildPurchasableFallbackCandidates({
     allowExternalSeed: false,
     fastMode: true,
   });
+  const supplementalPromise = shouldRunExternalSeedInParallel
+    ? runSearch({
+        query: q,
+        limit,
+        logger,
+        timeoutMs,
+        deadlineMs,
+        allowExternalSeed: true,
+        externalSeedStrategy,
+        // External-seed supplementation should not be constrained by the same
+        // fast-path budget we use for internal catalog recall.
+        fastMode: false,
+      })
+    : null;
+
+  const primary = await primaryPromise;
   const primaryProducts = Array.isArray(primary?.products) ? primary.products : [];
   const primaryReason = String(primary?.reason || '').trim().toLowerCase();
   const primaryTransientFailure =
@@ -17080,14 +17103,17 @@ async function buildPurchasableFallbackCandidates({
       primaryReason === 'budget_exhausted'
     );
 
-  let supplemental = null;
+  let supplemental = supplementalPromise ? await supplementalPromise : null;
   if (allowExternalSeed) {
-    const strategy = String(externalSeedStrategy || '').trim().toLowerCase();
+    const strategy = normalizedExternalSeedStrategy;
     const shouldSupplement =
-      primaryTransientFailure ||
-      primaryProducts.length === 0 ||
-      strategy.includes('supplement') ||
-      strategy.includes('fallback');
+      !supplemental
+      && (
+        primaryTransientFailure ||
+        primaryProducts.length === 0 ||
+        strategy.includes('supplement') ||
+        strategy.includes('fallback')
+      );
     if (shouldSupplement) {
       supplemental = await runSearch({
         query: q,
