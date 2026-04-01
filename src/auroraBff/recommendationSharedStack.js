@@ -55,6 +55,8 @@ const STEP_THRESHOLDS = Object.freeze({
   }),
 });
 
+const EXPLICIT_SUNSCREEN_SIGNAL_RE = /\b(spf(?:\s*\d{1,3}\+?)?|sunscreen|sun screen|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|pa\+{1,4}|防晒|防曬)\b/i;
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -880,8 +882,13 @@ function buildCandidateResolutionText(product) {
     .join(' ');
 }
 
+function hasExplicitSunscreenSignal(text) {
+  return EXPLICIT_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
+}
+
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
+  const resolutionText = buildCandidateResolutionText(row);
   const structuredRaw = pickFirstTrimmed(
     row.product_type,
     row.productType,
@@ -891,6 +898,19 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
     row.step,
     row.type,
   );
+  const semanticStepText = joinUniqueQueryParts(
+    structuredRaw,
+    resolutionText,
+    row.retrieval_query,
+    row.query,
+  );
+  if (hasExplicitSunscreenSignal(semanticStepText)) {
+    return {
+      candidate_step: 'sunscreen',
+      candidate_step_source: normalizeProductType(structuredRaw) === 'sunscreen' ? 'structured_category' : 'title_or_tag_alias',
+      candidate_step_confidence: normalizeProductType(structuredRaw) === 'sunscreen' ? 'high' : 'medium',
+    };
+  }
   const structuredStep = normalizeProductType(structuredRaw);
   if (structuredStep) {
     return {
@@ -939,7 +959,6 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
             : 'high',
     };
   }
-  const resolutionText = buildCandidateResolutionText(row);
   const textResolution = resolutionText
     ? resolveRecoTargetStepIntent({
       text: resolutionText,

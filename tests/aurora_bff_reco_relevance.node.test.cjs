@@ -113,6 +113,12 @@ function getRecommendationsPayload(responseBody) {
   return recoCard && recoCard.payload && typeof recoCard.payload === 'object' ? recoCard.payload : null;
 }
 
+function getConfidenceNoticePayload(responseBody) {
+  const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];
+  const noticeCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+  return noticeCard && noticeCard.payload && typeof noticeCard.payload === 'object' ? noticeCard.payload : null;
+}
+
 function getRecoRequestedEvent(responseBody) {
   const events = Array.isArray(responseBody?.events) ? responseBody.events : [];
   return events.find((event) => event && event.event_name === 'recos_requested') || null;
@@ -235,6 +241,20 @@ function buildConcernPlannerMock({
     return {
       answer: JSON.stringify({
         note: 'generic concern path should stay framework-first',
+      }),
+    };
+  };
+}
+
+function buildConcernPlannerTimeoutMock() {
+  return async ({ query = '' } = {}) => {
+    const prompt = String(query || '');
+    if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
+      throw new Error('planner timeout');
+    }
+    return {
+      answer: JSON.stringify({
+        note: 'unexpected downstream llm invocation after planner timeout',
       }),
     };
   };
@@ -1542,6 +1562,64 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   }
 });
 
+test('/v1/chat: generic concern planner timeout fail-closes the mainline instead of surfacing fallback recommendations', async () => {
+  const originalGet = axios.get;
+  let searchCalls = 0;
+  let harness = null;
+
+  axios.get = async (url) => {
+    if (isProductsSearchUrl(url)) searchCalls += 1;
+    throw new Error(`Unexpected axios.get after planner timeout: ${url}`);
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerTimeoutMock(),
+      useMemoryStore: false,
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_timeout_uid', briefId: 'chat_framework_timeout_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_timeout_uid',
+        'X-Trace-ID': 'trace_chat_framework_timeout',
+        'X-Brief-ID': 'chat_framework_timeout_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(searchCalls, 0);
+    assert.equal(getRecommendationsPayload(response.body), null);
+    const notice = getConfidenceNoticePayload(response.body);
+    assert.ok(notice);
+    assert.equal(notice.reason, 'semantic_planner_timeout');
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.equal(recoEvent?.data?.recommendation_meta?.products_empty_reason ?? 'semantic_planner_timeout', 'semantic_planner_timeout');
+    assert.equal(recoEvent?.data?.recommendation_meta?.winner_source ?? 'deterministic', 'deterministic');
+  } finally {
+    harness?.restore?.();
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: generic oily-skin ask does not surface support-only fallback recommendations when the primary role is unmatched', async () => {
   const originalGet = axios.get;
   const observedSearchParams = [];
@@ -2301,6 +2379,70 @@ test('__internal: framework pool rejects non-facial hand cream from the lightwei
 
   assert.equal(state.selected_candidate_count, 0);
   assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
+test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'spf_serum_conflict_1',
+        merchant_id: 'external_seed',
+        brand: 'Skintific',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Matte sunscreen serum', 'Oil control sunscreen serum'],
+        benefit_tags: ['oil control', 'spf', 'broad spectrum'],
+        short_description: 'A lightweight sunscreen serum with SPF 50 for oily skin.',
+      },
+      {
+        product_id: 'oil_control_safe_1',
+        merchant_id: 'external_seed',
+        brand: 'Fenty Skin',
+        name: 'Oil Control Serum',
+        display_name: 'Oil Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Shine Control Serum'],
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_spf_conflict',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'oil_control_safe_1');
+  assert.ok(
+    Array.isArray(state.hard_reject_preview)
+    && state.hard_reject_preview.some((row) => row?.product_id === 'spf_serum_conflict_1' && row?.reason === 'framework_primary_sunscreen_conflict'),
+  );
 });
 
 test('__internal: framework pool accepts external seed semantic evidence from benefit tags and aliases', async () => {

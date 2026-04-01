@@ -17177,6 +17177,39 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
   });
 }
 
+const CONCERN_SUNSCREEN_SIGNAL_RE = /\b(spf(?:\s*\d{1,3}\+?)?|sunscreen|sun screen|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|pa\+{1,4}|防晒|防曬)\b/i;
+
+function hasConcernSunscreenSignal(row, candidateText = '') {
+  const text = uniqCaseInsensitiveStrings([
+    String(candidateText || '').trim(),
+    buildConcernFrameworkCandidateText(row),
+    buildConcernCandidateText(row),
+    pickFirstTrimmed(
+      row?.display_name,
+      row?.displayName,
+      row?.name,
+      row?.title,
+      row?.category,
+      row?.product_type,
+      row?.short_description,
+      row?.shortDescription,
+      row?.description,
+    ),
+  ], 4).join(' ');
+  return CONCERN_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
+}
+
+function isConcernPrimaryRoleWinnerSafe(row, { semanticPlan = null } = {}) {
+  const plan = isPlainObject(semanticPlan) ? semanticPlan : {};
+  const primaryRole = Array.isArray(plan.core_roles) ? plan.core_roles[0] : null;
+  const primaryRoleId = pickFirstTrimmed(primaryRole?.role_id);
+  const matchedRoleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
+  if (!primaryRoleId || !matchedRoleId || matchedRoleId !== primaryRoleId) return false;
+  const primaryStep = normalizeRecoTargetStep(primaryRole?.preferred_step);
+  if (primaryStep && primaryStep !== 'sunscreen' && hasConcernSunscreenSignal(row)) return false;
+  return true;
+}
+
 function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
   const recos = Array.isArray(recommendations) ? recommendations.slice() : [];
   const selector = isPlainObject(selectorRace) ? selectorRace : {};
@@ -17385,18 +17418,29 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     }
     const bestRole = bestRoleScore.role;
     const bestPreferredStep = normalizeRecoTargetStep(bestRole?.preferred_step);
+    const annotatedBase = {
+      ...row,
+      matched_role_id: String(bestRole.role_id || '').trim() || null,
+      matched_role_label: String(bestRole.label || '').trim() || null,
+      matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
+      framework_score: Number(bestRoleScore.score.toFixed(4)),
+      framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
+      candidate_step: candidateStep || null,
+      candidate_step_source: stepResolution?.candidate_step_source || 'none',
+      candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
+    };
+    if (bestPreferredStep === 'treatment' && hasConcernSunscreenSignal(row, candidateText)) {
+      hardReject.push({
+        product: annotatedBase,
+        reason: 'framework_primary_sunscreen_conflict',
+      });
+      continue;
+    }
     if (bestPreferredStep === 'treatment' && !bestRoleScore.semantic_fit_matched) {
       hardReject.push({
         product: {
-          ...row,
-          matched_role_id: String(bestRole.role_id || '').trim() || null,
-          matched_role_label: String(bestRole.label || '').trim() || null,
-          matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
-          framework_score: Number(bestRoleScore.score.toFixed(4)),
+          ...annotatedBase,
           framework_semantic_fit: false,
-          candidate_step: candidateStep || null,
-          candidate_step_source: stepResolution?.candidate_step_source || 'none',
-          candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
         },
         reason: 'framework_primary_semantic_missing',
       });
@@ -25703,6 +25747,18 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
         : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
+    semantic_planner_timeout:
+      lang === 'CN'
+        ? '语义规划器没有在时限内产出可信护理框架，所以我先停在保守模式，不拿 fallback 当成功。请稍后重试。'
+        : 'The semantic planner did not produce a trusted care framework in time, so I am staying in conservative mode instead of treating fallback as success. Please retry shortly.',
+    semantic_planner_schema_invalid:
+      lang === 'CN'
+        ? '语义规划器返回的结构不完整，所以我先停在保守模式，不拿 fallback 当成功。请稍后重试。'
+        : 'The semantic planner returned an invalid structure, so I am staying in conservative mode instead of treating fallback as success. Please retry shortly.',
+    semantic_plan_untrusted:
+      lang === 'CN'
+        ? '当前没有拿到可信的护理框架 owner，所以我先不硬推商品。请稍后重试。'
+        : 'I did not get a trusted care-framework owner for this turn, so I am not forcing product picks. Please retry shortly.',
     upstream_timeout_primary_role:
       lang === 'CN'
         ? '主推角色的检索链路超时了，我先不拿支持步骤强行替代。请稍后重试。'
@@ -25788,6 +25844,9 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   if (tokens.includes('filtered_after_recall')) return 'filtered_after_recall';
   if (tokens.includes('selector_disagreement_no_safe_winner')) return 'selector_disagreement_no_safe_winner';
   if (tokens.includes('no_recall_from_planned_sources')) return 'no_recall_from_planned_sources';
+  if (tokens.includes('semantic_planner_timeout')) return 'semantic_planner_timeout';
+  if (tokens.includes('semantic_planner_schema_invalid')) return 'semantic_planner_schema_invalid';
+  if (tokens.includes('semantic_plan_untrusted')) return 'semantic_plan_untrusted';
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
   if (tokens.includes('low_confidence')) return 'low_confidence';
   if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
@@ -25809,6 +25868,9 @@ function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
   const actionMap = {
     upstream_empty_recommendations: ['retry_recommendations', 'update_current_routine'],
     upstream_schema_invalid: ['retry_recommendations', 'update_current_routine', 'upload_daylight_and_indoor_white'],
+    semantic_planner_timeout: ['retry_recommendations', 'update_current_routine'],
+    semantic_planner_schema_invalid: ['retry_recommendations', 'update_current_routine'],
+    semantic_plan_untrusted: ['retry_recommendations', 'update_current_routine'],
     ingredient_constraint_no_match: ['broaden_to_goal', 'check_product_inci', 'search_category'],
     no_viable_candidates_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     weak_viable_pool: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
@@ -51471,17 +51533,19 @@ function buildConcernSemanticPlanPrompt({
     },
     fallback_plan: {
       primary_concern: plan.primary_concern,
-      core_roles: plan.core_roles,
-      support_roles: plan.support_roles,
-      ingredient_hypotheses: plan.ingredient_hypotheses,
-      routine_shell: plan.routine_shell,
+      core_role_ids: Array.isArray(plan.core_roles) ? plan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3) : [],
+      support_role_ids: Array.isArray(plan.support_roles) ? plan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 2) : [],
+      ingredient_hypotheses: asStringArray(plan.ingredient_hypotheses, 4),
+      routine_shell: {
+        am_core_roles: Array.isArray(plan.routine_shell?.am_core_roles) ? plan.routine_shell.am_core_roles.slice(0, 3) : [],
+        pm_core_roles: Array.isArray(plan.routine_shell?.pm_core_roles) ? plan.routine_shell.pm_core_roles.slice(0, 3) : [],
+        optional_support_roles: Array.isArray(plan.routine_shell?.optional_support_roles) ? plan.routine_shell.optional_support_roles.slice(0, 2) : [],
+      },
     },
     task_context: taskContext && taskContext.snapshot_fields_used
       ? {
           context_mode: String(taskContext.context_mode || '').trim() || null,
-          snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used : [],
-          hard_context_fields_used: Array.isArray(taskContext.hard_context_fields_used) ? taskContext.hard_context_fields_used : [],
-          soft_context_fields_used: Array.isArray(taskContext.soft_context_fields_used) ? taskContext.soft_context_fields_used : [],
+          snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used.slice(0, 6) : [],
         }
       : null,
   };
@@ -51549,6 +51613,8 @@ async function runConcernSemanticPlanner({
       baseUrl: AURORA_DECISION_BASE_URL,
       query,
       timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+      llm_provider: 'gemini',
+      llm_model: 'gemini-3-flash-preview',
       trace_id: ctx?.trace_id,
       request_id: ctx?.request_id,
     });
@@ -51680,8 +51746,9 @@ function normalizeConcernSelectorRaceOutput(raw, { recommendations = [], semanti
     .map((row) => ({
       id: pickFirstString(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId),
       matchedRoleId: pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId),
+      safe: isConcernPrimaryRoleWinnerSafe(row, { semanticPlan }),
     }))
-    .filter((row) => row.id && row.matchedRoleId === primaryRoleId)
+    .filter((row) => row.id && row.matchedRoleId === primaryRoleId && row.safe === true)
     .map((row) => row.id);
   const requestedTopPick = pickFirstTrimmed(payload.top_pick_product_id, payload.topPickProductId);
   const topPickProductId = validPrimaryIds.includes(requestedTopPick)
@@ -59978,6 +60045,10 @@ async function generateProductRecommendations({
   let concernWinnerSource = 'deterministic';
   let concernSupportRolesSurfaced = [];
   let concernOpenWorldExpansionUsed = false;
+  let concernSemanticPlanBlockedReason = '';
+  let concernSemanticPlanBlockedFailureClass = '';
+  let concernSemanticPlanBlockedFailureOrigin = 'none';
+  let concernSemanticPlanBlockedTelemetryReason = '';
   if (
     targetContext
     && Array.isArray(targetContext.framework_roles)
@@ -59998,6 +60069,24 @@ async function generateProductRecommendations({
       focus,
       entryType,
     });
+    if (String(targetContext?.selection_owner_state || targetContext?.framework_owner_state || '').trim().toLowerCase() !== 'trusted') {
+      const plannerFailureClass = normalizeRecoFailureClass(concernSemanticPlanTrace?.planner_failure_class || '');
+      concernSemanticPlanBlockedReason =
+        plannerFailureClass === 'timeout'
+          ? 'semantic_planner_timeout'
+          : plannerFailureClass === 'schema_invalid'
+            ? 'semantic_planner_schema_invalid'
+            : 'semantic_plan_untrusted';
+      concernSemanticPlanBlockedFailureClass =
+        plannerFailureClass === 'timeout'
+          ? 'upstream_timeout'
+          : 'schema_invalid';
+      concernSemanticPlanBlockedFailureOrigin = 'upstream_dependency';
+      concernSemanticPlanBlockedTelemetryReason =
+        plannerFailureClass === 'timeout'
+          ? 'timeout_degraded'
+          : 'upstream_schema_invalid';
+    }
   }
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
@@ -60059,7 +60148,38 @@ async function generateProductRecommendations({
     deterministicCatalogFirstEnabled && targetContext.step_aware_intent && !frameworkCatalogFirstEnabled,
   );
 
-  if (deterministicCatalogFirstEnabled) {
+  if (concernSemanticPlanBlockedReason) {
+    structured = {
+      recommendations: [],
+      products_empty_reason: concernSemanticPlanBlockedReason,
+      telemetry_reason: concernSemanticPlanBlockedTelemetryReason || null,
+      mainline_status: concernSemanticPlanBlockedFailureClass === 'upstream_timeout'
+        ? 'upstream_timeout'
+        : 'severe_parse_or_prompt_failure',
+    };
+    structuredSource = null;
+    llmFailureClass = concernSemanticPlanBlockedFailureClass === 'upstream_timeout' ? 'timeout' : 'schema_invalid';
+    initialLlmOutcome = concernSemanticPlanBlockedReason;
+    presentationMode = '';
+    successMode = '';
+    effectiveFailureClass = concernSemanticPlanBlockedFailureClass || 'schema_invalid';
+    failureOrigin = concernSemanticPlanBlockedFailureOrigin || 'upstream_dependency';
+    catalogCandidateState = frameworkCatalogFirstEnabled
+      ? finalizeConcernFrameworkCandidatePools([], { targetContext })
+      : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+    catalogDebug = {
+      recall_plan_version: pickFirstTrimmed(targetContext?.semantic_plan_version, CONCERN_SEMANTIC_PLAN_VERSION) || CONCERN_SEMANTIC_PLAN_VERSION,
+      executed_query_count: 0,
+      executed_upstream_attempt_count: 0,
+      actual_http_attempt_count: 0,
+      stage_timeout_counts: {},
+      primary_stage_timeout_class: concernSemanticPlanBlockedFailureClass === 'upstream_timeout' ? 'planner_timeout' : 'planner_invalid',
+      transport_policy_mode: null,
+      candidate_drop_stage: concernSemanticPlanBlockedReason,
+      selected_source_counts: {},
+      external_seed_used_count: 0,
+    };
+  } else if (deterministicCatalogFirstEnabled) {
     const catalogOut = await buildRecoGenerateFromCatalog({
       ctx,
       profileSummary,
@@ -60485,7 +60605,14 @@ async function generateProductRecommendations({
     presentationMode = '';
     successMode = '';
   }
-  if (stepAwareMainlineFailure) {
+  if (concernSemanticPlanBlockedReason) {
+    norm.payload.recommendations = [];
+    norm.payload.products_empty_reason = concernSemanticPlanBlockedReason;
+    norm.payload.telemetry_reason = concernSemanticPlanBlockedTelemetryReason || null;
+    norm.payload.mainline_status = concernSemanticPlanBlockedFailureClass === 'upstream_timeout'
+      ? 'upstream_timeout'
+      : 'severe_parse_or_prompt_failure';
+  } else if (stepAwareMainlineFailure) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
     norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
@@ -60847,7 +60974,7 @@ async function generateProductRecommendations({
       reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
     },
   };
-  if (frameworkMode && isPlainObject(targetContext?.semantic_plan)) {
+  if (frameworkMode && isPlainObject(targetContext?.semantic_plan) && !concernSemanticPlanBlockedReason) {
     const baseRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
     const selectorOut = await runConcernSelectorRace({
       ctx,
@@ -60950,7 +61077,7 @@ async function generateProductRecommendations({
       }
     }
   }
-  if (frameworkMode && viablePoolState?.primary_role_matched !== true) {
+  if (frameworkMode && !concernSemanticPlanBlockedReason && viablePoolState?.primary_role_matched !== true) {
     // Support-role rows are useful for diagnostics, but they must not surface as a successful
     // first-turn answer when the core role has no safe winner.
     norm.payload.recommendations = [];
