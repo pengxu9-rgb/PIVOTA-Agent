@@ -23,8 +23,9 @@ const STEP_ALIASES = Object.freeze({
   oil: ['face oil', 'facial oil', 'oil serum', 'skin oil', '护肤油', '面油'],
 });
 
-const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
-const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|hair|comb|razor|shaver|accessor|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|梳子|剃须|配件)\b/i;
+const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|facial|face|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
+const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|fragrance|brush set|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件)\b/i;
+const NON_FACE_SUPPORT_RE = /\b(hand|body|foot|feet|hair|scalp|nail|cuticle|lip\b|lips\b|deodorant|shampoo|conditioner|hand cream|body lotion|body cream|body wash|hand wash|护手|身体|足部|头皮|头发|洗发|护发|润唇)\b/i;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -534,6 +535,8 @@ function productText(product) {
     row.display_name,
     row.category,
     row.product_type,
+    row.short_description,
+    row.description,
     ...(Array.isArray(row.category_path) ? row.category_path : []),
     ...(Array.isArray(row.tags) ? row.tags : []),
     ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
@@ -559,18 +562,54 @@ function productText(product) {
     .join(' ');
 }
 
-function classifySkincareCandidateDomain(product) {
+function classifySkincareCandidate(product) {
   const joined = productText(product);
-  if (!joined) return 'ambiguous';
-  const blocked = SKINCARE_BLOCK_RE.test(joined);
-  const allowed = SKINCARE_ALLOW_RE.test(joined);
-  if (blocked && !allowed) return 'explicit_non_skincare';
-  if (allowed) return 'explicit_skincare';
-  return 'ambiguous';
+  if (!joined) {
+    return {
+      classification: 'ambiguous',
+      hard_reject: false,
+      penalty: 0.2,
+      reason: 'empty_candidate_text',
+    };
+  }
+  if (SKINCARE_BLOCK_RE.test(joined)) {
+    return {
+      classification: 'explicit_non_skincare',
+      hard_reject: true,
+      penalty: 1,
+      reason: 'explicit_non_skincare',
+    };
+  }
+  if (NON_FACE_SUPPORT_RE.test(joined)) {
+    return {
+      classification: 'explicit_non_face_supportive',
+      hard_reject: false,
+      penalty: 0.28,
+      reason: 'explicit_non_face_supportive',
+    };
+  }
+  if (SKINCARE_ALLOW_RE.test(joined)) {
+    return {
+      classification: 'explicit_face_skincare',
+      hard_reject: false,
+      penalty: 0,
+      reason: 'explicit_face_skincare',
+    };
+  }
+  return {
+    classification: 'ambiguous',
+    hard_reject: false,
+    penalty: 0.18,
+    reason: 'ambiguous',
+  };
 }
 
 function isSkincareCandidate(product) {
-  return classifySkincareCandidateDomain(product) !== 'explicit_non_skincare';
+  return classifySkincareCandidate(product).classification !== 'explicit_non_skincare';
+}
+
+function classifySkincareCandidateDomain(product) {
+  return String(classifySkincareCandidate(product).classification || 'ambiguous').trim() || 'ambiguous';
 }
 
 function stepCompatibilityScore(product, targetStep, seedStep) {
@@ -1102,6 +1141,7 @@ module.exports = {
     normalizeProduct,
     normalizeProductType,
     normalizeCanonicalProductRef,
+    classifySkincareCandidate,
     classifySkincareCandidateDomain,
     isSkincareCandidate,
     scoreFuzzyCandidate,

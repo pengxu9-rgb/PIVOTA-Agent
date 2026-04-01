@@ -5,7 +5,8 @@ const crypto = require('crypto');
 const os = require('os');
 const path = require('path');
 const { z } = require('zod');
-const { query: runDbQuery } = require('../db');
+const db = require('../db');
+const runDbQuery = (...args) => db.query(...args);
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -252,14 +253,18 @@ const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
   RECOMMENDATION_RECO_POLICY_V1,
+  CONCERN_SEMANTIC_PLAN_VERSION,
   CANDIDATE_POOL_SIGNATURE_VERSION,
   GROUP_SEMANTICS_VERSION,
   resolveRecommendationTargetContext,
+  buildConcernSemanticPlanFallback,
+  buildConcernTargetContextFromSemanticPlan,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,
+  classifySkincareCandidate,
   classifySkincareCandidateDomain,
   isSkincareCandidate,
   normalizeCandidateStep,
@@ -549,7 +554,14 @@ const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
-const USE_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+function isProductionLikeAuroraBffEnv() {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+}
+const REQUESTED_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+const USE_AURORA_BFF_MOCK = REQUESTED_AURORA_BFF_MOCK && !isProductionLikeAuroraBffEnv();
 function isConflictHeatmapV1Enabled() {
   return String(process.env.AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED || '').toLowerCase() === 'true';
 }
@@ -16870,6 +16882,14 @@ function buildConcernFrameworkSummary({
       rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
       preferred_step: String(role?.preferred_step || '').trim() || null,
     })),
+    support_roles: Array.isArray(targetContext.support_roles) ? targetContext.support_roles.map((role) => ({
+      role_id: String(role?.role_id || '').trim() || null,
+      label: String(role?.label || '').trim() || null,
+      why_this_role: String(role?.why_this_role || '').trim() || null,
+    })) : [],
+    ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
+      ? targetContext.semantic_plan.ingredient_hypotheses.slice(0, 8)
+      : [],
   };
 }
 
@@ -16968,6 +16988,7 @@ function buildFrameworkRecommendationNotes({
   language = 'EN',
   role = null,
   isPrimary = false,
+  selectionNotes = [],
 } = {}) {
   const isCn = String(language || '').trim().toUpperCase() === 'CN';
   const roleObj = isPlainObject(role) ? role : null;
@@ -16986,7 +17007,218 @@ function buildFrameworkRecommendationNotes({
           : `This stays inside the ${roleLabel} support role.`),
     );
   }
-  return notes.filter(Boolean).slice(0, 2);
+  notes.push(...uniqCaseInsensitiveStrings(asStringArray(selectionNotes), 2));
+  return notes.filter(Boolean).slice(0, 3);
+}
+
+function normalizeConcernQueryToken(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildConcernCandidateText(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  return [
+    pickFirstTrimmed(candidate.brand),
+    pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title),
+    pickFirstTrimmed(candidate.category, candidate.category_name, candidate.categoryName, candidate.product_type, candidate.productType),
+    pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
+    ...(Array.isArray(candidate.search_aliases) ? candidate.search_aliases : []),
+    ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
+    ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
+    ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
+    ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
+    ...(Array.isArray(candidate.skin_type_tags) ? candidate.skin_type_tags : []),
+    ...(Array.isArray(candidate.tags) ? candidate.tags : []),
+    ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
+    ...(Array.isArray(candidate.category_path) ? candidate.category_path : []),
+  ]
+    .map((item) => normalizeConcernQueryToken(item).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
+  const haystack = String(text || '').trim().toLowerCase();
+  if (!haystack) return 0;
+  let hits = 0;
+  for (const raw of Array.isArray(values) ? values : []) {
+    const token = normalizeConcernQueryToken(raw).toLowerCase();
+    if (!token || !haystack.includes(token)) continue;
+    hits += 1;
+    if (hits >= maxHits) break;
+  }
+  return hits;
+}
+
+function classifyConcernScopeCandidate(row) {
+  const base = classifySkincareCandidate(row);
+  const classification = String(base?.classification || 'ambiguous').trim() || 'ambiguous';
+  return {
+    classification,
+    hard_reject: base?.hard_reject === true || classification === 'explicit_non_skincare',
+    penalty: Number.isFinite(Number(base?.penalty)) ? Number(base.penalty) : 0,
+    reason: String(base?.reason || classification).trim() || classification,
+  };
+}
+
+function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '' } = {}) {
+  const roleId = String(role?.role_id || '').trim();
+  if (!roleId) return null;
+  const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
+  const alternateSteps = Array.isArray(role?.alternate_steps)
+    ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
+    : [];
+  const retrievalRoleId = pickFirstTrimmed(row?.retrieval_role_id, row?.role_id);
+  const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
+  const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
+  const ingredientMatches = countConcernRoleSignalMatches(candidateText, role?.ingredient_hypotheses, 2);
+  const productTypeMatches = countConcernRoleSignalMatches(candidateText, role?.product_type_hypotheses, 2);
+  const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
+  const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
+  const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
+
+  let score = 0;
+  if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
+  else if (alternateStep) score += preferredStep === 'treatment' ? 0.08 : 0.18;
+  score += Math.min(0.27, fitKeywordMatches * 0.12);
+  score += Math.min(0.18, queryTermMatches * 0.08);
+  score += Math.min(0.16, ingredientMatches * 0.08);
+  score += Math.min(0.12, productTypeMatches * 0.06);
+  if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.08 : 0.02;
+  if (preferredStep === 'treatment' && candidateStep === 'serum' && !semanticFitMatched) {
+    score = Math.min(score, 0.34);
+  }
+  if (!semanticFitMatched && !exactStep && !alternateStep) {
+    score = Math.min(score, 0.28);
+  }
+  return {
+    role_id: roleId,
+    role,
+    score: Number(score.toFixed(4)),
+    semantic_fit_matched: semanticFitMatched,
+    exact_step: exactStep,
+    alternate_step: alternateStep,
+  };
+}
+
+function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
+  targetContext = null,
+  language = 'EN',
+  debug = false,
+  selectionNotesByProductId = null,
+} = {}) {
+  const frameworkRoles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
+  return (Array.isArray(selectedCandidates) ? selectedCandidates : []).map((picked, index) => {
+    const matchedRole = frameworkRoles.find((role) => String(role?.role_id || '').trim() === String(picked?.matched_role_id || '').trim()) || null;
+    const stepToken = pickFirstTrimmed(
+      pickFirstTrimmed(matchedRole?.preferred_step, picked?.candidate_step),
+      picked?.matched_role_label,
+      targetContext?.resolved_target_step,
+      picked?.product_type,
+      picked?.category,
+      'other',
+    );
+    const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
+    const canonicalRef = normalizeCanonicalProductRef(
+      {
+        product_id: pickFirstString(picked?.product_id, picked?.productId),
+        merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    const productId = pickFirstString(picked?.product_id, picked?.productId);
+    const selectionNotes = isPlainObject(selectionNotesByProductId) && productId
+      ? asStringArray(selectionNotesByProductId[productId], 3)
+      : [];
+    return {
+      slot: inferSlotForStep(normalizedStep),
+      step: humanizeRecoProductType(normalizedStep, language),
+      score: Math.max(72, 95 - index * 3),
+      product_id: productId,
+      merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
+      brand: pickFirstString(picked?.brand, picked?.brand_name, picked?.brandName),
+      name: pickFirstString(picked?.name, picked?.title, picked?.display_name, picked?.displayName),
+      display_name: pickFirstString(picked?.display_name, picked?.displayName, picked?.name, picked?.title),
+      category: pickFirstString(
+        picked?.category,
+        picked?.category_name,
+        picked?.categoryName,
+        picked?.product_type,
+        picked?.productType,
+        picked?.type,
+        normalizedStep,
+      ),
+      retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
+      retrieval_reason: pickFirstString(picked?.retrieval_reason, picked?.retrievalReason, 'catalog_search_match'),
+      ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+      ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
+      ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
+      ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+      matched_role_id: pickFirstTrimmed(picked?.matched_role_id, picked?.matchedRoleId) || null,
+      matched_role_label: pickFirstTrimmed(picked?.matched_role_label, picked?.matchedRoleLabel) || null,
+      matched_role_rank: Number.isFinite(Number(picked?.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
+      sku: picked,
+      notes: [
+        ...buildFrameworkRecommendationNotes({
+          language,
+          role: matchedRole,
+          isPrimary: index === 0,
+          selectionNotes,
+        }),
+        ...(debug
+          ? [String(language || '').toUpperCase() === 'CN'
+            ? '来自 Pivota 商品库（framework 主链）'
+            : 'From Pivota catalog (framework-first mainline)']
+          : []),
+      ].filter(Boolean),
+    };
+  });
+}
+
+function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
+  const recos = Array.isArray(recommendations) ? recommendations.slice() : [];
+  const selector = isPlainObject(selectorRace) ? selectorRace : {};
+  if (!recos.length) {
+    return {
+      recommendations: [],
+      primary_recommendation_id: null,
+      support_roles_surfaced: [],
+      winner_source: 'deterministic',
+      selection_notes_by_product_id: {},
+    };
+  }
+  const byId = new Map();
+  for (const row of recos) {
+    const productId = pickFirstString(row?.product_id, row?.productId);
+    if (productId) byId.set(productId, row);
+  }
+  const orderedIds = uniqCaseInsensitiveStrings([
+    ...asStringArray(selector.ordered_product_ids),
+    ...Array.from(byId.keys()),
+  ], recos.length || 8).filter((id) => byId.has(id));
+  const ordered = orderedIds.map((id) => byId.get(id)).filter(Boolean);
+  const topPickProductId = pickFirstTrimmed(selector.top_pick_product_id) || null;
+  if (topPickProductId && ordered.length > 1) {
+    ordered.sort((left, right) => {
+      const leftId = pickFirstString(left?.product_id, left?.productId);
+      const rightId = pickFirstString(right?.product_id, right?.productId);
+      if (leftId === topPickProductId) return -1;
+      if (rightId === topPickProductId) return 1;
+      return 0;
+    });
+  }
+  const selectionNotes = uniqCaseInsensitiveStrings(asStringArray(selector.selection_notes), 3);
+  return {
+    recommendations: ordered,
+    primary_recommendation_id: topPickProductId,
+    support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(selector.support_roles_surfaced), 4),
+    winner_source: topPickProductId ? 'llm_selector' : 'deterministic',
+    selection_notes_by_product_id: topPickProductId && selectionNotes.length
+      ? { [topPickProductId]: selectionNotes }
+      : {},
+  };
 }
 
 function scoreConcernFrameworkCandidateTiebreak(row) {
@@ -17096,91 +17328,71 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const softMismatch = [];
   const hardReject = [];
   const roleBuckets = new Map();
+  const rolePoolStats = {};
+  const scopeClassificationStats = {
+    explicit_face_skincare: 0,
+    explicit_non_face_supportive: 0,
+    explicit_non_skincare: 0,
+    ambiguous: 0,
+  };
   for (const role of roles) {
-    roleBuckets.set(String(role?.role_id || '').trim(), []);
+    const roleId = String(role?.role_id || '').trim();
+    if (!roleId) continue;
+    roleBuckets.set(roleId, []);
+    rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
   for (const row of deduped) {
-    const candidateText = buildConcernFrameworkCandidateText(row);
+    const scopeClassification = classifyConcernScopeCandidate(row);
+    if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
+      scopeClassificationStats[scopeClassification.classification] += 1;
+    } else {
+      scopeClassificationStats.ambiguous += 1;
+    }
+    if (scopeClassification.hard_reject) {
+      hardReject.push({ product: row, reason: scopeClassification.reason || 'non_skincare_or_blacklisted' });
+      continue;
+    }
+    if (scopeClassification.classification === 'explicit_non_face_supportive') {
+      hardReject.push({ product: row, reason: 'non_face_supportive_scope' });
+      continue;
+    }
+    const candidateText = uniqCaseInsensitiveStrings([
+      buildConcernFrameworkCandidateText(row),
+      buildConcernCandidateText(row),
+    ], 2).join(' ').trim();
     if (isConcernFrameworkOutOfScopeArea(row, candidateText)) {
       hardReject.push({ product: row, reason: 'framework_out_of_scope_area' });
       continue;
     }
-    const skincareDomainClass = classifySkincareCandidateDomain(row);
-    const skincareDomainPenalty = skincareDomainClass === 'ambiguous' ? 0.08 : 0;
-    if (skincareDomainClass === 'explicit_non_skincare') {
-      hardReject.push({ product: row, reason: 'non_skincare_or_blacklisted' });
-      continue;
-    }
     const stepResolution = normalizeCandidateStep(row, { targetContext });
     const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
-    const candidateStepSource = String(stepResolution?.candidate_step_source || 'none').trim().toLowerCase() || 'none';
-    const weakStepEvidence = candidateStepSource === 'retrieval_step' || candidateStepSource === 'retrieval_trace';
-    const retrievalRoleId = pickFirstTrimmed(row.retrieval_role_id, row.role_id);
-
-    let bestRole = null;
-    let bestScore = 0;
-    let bestSemanticFit = false;
+    let bestRoleScore = null;
     for (const role of roles) {
-      const roleId = String(role?.role_id || '').trim();
-      if (!roleId) continue;
-      const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
-      const alternateSteps = Array.isArray(role?.alternate_steps)
-        ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
-        : [];
-      const fitKeywordHits = (Array.isArray(role?.fit_keywords) ? role.fit_keywords : []).reduce((count, keyword) => {
-        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
-        if (!normalizedKeyword) return count;
-        return candidateText.includes(normalizedKeyword) ? count + 1 : count;
-      }, 0);
-      const queryTermHits = (Array.isArray(role?.query_terms) ? role.query_terms : []).reduce((count, term) => {
-        const normalizedTerm = String(term || '').trim().toLowerCase();
-        if (!normalizedTerm) return count;
-        return candidateText.includes(normalizedTerm) ? count + 1 : count;
-      }, 0);
-      const semanticFitMatched = fitKeywordHits > 0 || queryTermHits > 0;
-      let score = 0;
-      if (fitKeywordHits > 0) score += Math.min(0.24, fitKeywordHits * 0.12);
-      if (queryTermHits > 0) score += Math.min(0.16, queryTermHits * 0.08);
-      if (candidateStep && preferredStep && candidateStep === preferredStep) {
-        if (preferredStep === 'treatment') {
-          score += semanticFitMatched
-            ? (weakStepEvidence ? 0.44 : 0.72)
-            : (weakStepEvidence ? 0.04 : 0.14);
-        } else {
-          score += weakStepEvidence
-            ? (semanticFitMatched ? 0.42 : 0.1)
-            : 0.72;
-        }
-      } else if (candidateStep && alternateSteps.includes(candidateStep)) {
-        score += preferredStep === 'treatment'
-          ? (semanticFitMatched ? 0.62 : 0.18)
-          : 0.62;
-      }
-      if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') {
-        score += semanticFitMatched ? 0.6 : 0.12;
-      }
-      if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.12 : 0;
-      if (score > bestScore) {
-        bestScore = score;
-        bestRole = role;
-        bestSemanticFit = semanticFitMatched;
-      }
+      const nextScore = scoreConcernRoleCandidate(row, role, { candidateStep, candidateText });
+      if (!nextScore) continue;
+      const adjustedScore = Math.max(0, nextScore.score - Number(scopeClassification.penalty || 0));
+      const normalizedNext = {
+        ...nextScore,
+        score: Number(adjustedScore.toFixed(4)),
+      };
+      if (!bestRoleScore || normalizedNext.score > bestRoleScore.score) bestRoleScore = normalizedNext;
     }
 
-    if (!bestRole) {
+    if (!bestRoleScore || !bestRoleScore.role) {
       hardReject.push({ product: row, reason: 'framework_role_unmatched' });
       continue;
     }
+    const bestRole = bestRoleScore.role;
     const bestPreferredStep = normalizeRecoTargetStep(bestRole?.preferred_step);
-    if (bestPreferredStep === 'treatment' && !bestSemanticFit) {
+    if (bestPreferredStep === 'treatment' && !bestRoleScore.semantic_fit_matched) {
       hardReject.push({
         product: {
           ...row,
           matched_role_id: String(bestRole.role_id || '').trim() || null,
           matched_role_label: String(bestRole.label || '').trim() || null,
           matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
-          framework_score: Number(bestScore.toFixed(4)),
+          framework_score: Number(bestRoleScore.score.toFixed(4)),
           framework_semantic_fit: false,
           candidate_step: candidateStep || null,
           candidate_step_source: stepResolution?.candidate_step_source || 'none',
@@ -17195,21 +17407,34 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_id: String(bestRole.role_id || '').trim() || null,
       matched_role_label: String(bestRole.label || '').trim() || null,
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
-      framework_score: Number(bestScore.toFixed(4)),
+      framework_score: Number(bestRoleScore.score.toFixed(4)),
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
-      framework_semantic_fit: bestSemanticFit,
-      skincare_domain_class: skincareDomainClass,
-      skincare_domain_penalty: skincareDomainPenalty,
+      framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
       candidate_step: candidateStep || null,
       candidate_step_source: stepResolution?.candidate_step_source || 'none',
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
+      concern_scope_classification: scopeClassification.classification,
+      concern_scope_penalty: Number(scopeClassification.penalty || 0),
     };
-    const adjustedScore = Math.max(0, Number((bestScore - skincareDomainPenalty).toFixed(4)));
-    annotated.framework_score = adjustedScore;
-    if (adjustedScore >= 0.72) {
+    rolePoolStats[annotated.matched_role_id] = {
+      viable_count: Number(rolePoolStats[annotated.matched_role_id]?.viable_count || 0),
+      top_score: Math.max(Number(rolePoolStats[annotated.matched_role_id]?.top_score || 0), Number(annotated.framework_score || 0)),
+    };
+    if (
+      annotated.framework_score >= 0.58
+      && (
+        annotated.framework_semantic_fit
+        || (
+          annotated.candidate_step
+          && annotated.candidate_step === normalizeRecoTargetStep(bestRole.preferred_step)
+          && normalizeRecoTargetStep(bestRole.preferred_step) !== 'treatment'
+        )
+      )
+    ) {
       viable.push(annotated);
+      rolePoolStats[annotated.matched_role_id].viable_count += 1;
       roleBuckets.get(annotated.matched_role_id)?.push(annotated);
-    } else if (adjustedScore >= 0.5) {
+    } else if (annotated.framework_score >= 0.42) {
       softMismatch.push({ product: annotated, reason: 'framework_soft_mismatch' });
     } else {
       hardReject.push({ product: annotated, reason: 'framework_hard_mismatch' });
@@ -17305,6 +17530,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: selected.length > 0 && !primaryRoleMatched,
     late_conflict_without_override: selected.length > 0 && !primaryRoleMatched,
+    candidate_drop_stage: deduped.length > 0 && viable.length === 0 ? 'filtered_after_recall' : selected.length > 0 && !primaryRoleMatched ? 'weak_viable_pool' : 'none',
+    scope_classification_stats: scopeClassificationStats,
+    role_pool_stats: rolePoolStats,
     candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${selected.length}_${viable.length}`,
     raw_candidate_pool_debug_signature: `framework_raw_${String(targetContext?.framework_id || '').slice(0, 12)}_${deduped.length}`,
   };
@@ -18359,81 +18587,63 @@ async function buildRecoGenerateFromCatalog({
       })
     : null;
 
-  const recos = selectedCandidates.map((picked, index) => {
-    const matchedRole = frameworkMode
-      ? (targetContext.framework_roles || []).find((role) => String(role?.role_id || '').trim() === String(picked.matched_role_id || '').trim()) || null
-      : null;
-    const stepToken = pickFirstTrimmed(
-      frameworkMode
-        ? pickFirstTrimmed(
-            matchedRole?.preferred_step,
-            picked.candidate_step,
-          )
-        : '',
-      frameworkMode ? picked.matched_role_label : '',
-      targetContext && targetContext.resolved_target_step,
-      picked.product_type,
-      picked.category,
-      'other',
-    );
-    const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
-    const canonicalRef = normalizeCanonicalProductRef(
-      {
-        product_id: pickFirstString(picked.product_id, picked.productId),
-        merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
-      },
-      { requireMerchant: true, allowOpaqueProductId: false },
-    );
-    return {
-      slot: inferSlotForStep(normalizedStep),
-      step: humanizeRecoProductType(normalizedStep, ctx && ctx.lang ? ctx.lang : 'EN'),
-      score: Math.max(72, 95 - index * 3),
-      product_id: pickFirstString(picked.product_id, picked.productId),
-      merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
-      brand: pickFirstString(picked.brand, picked.brand_name, picked.brandName),
-      name: pickFirstString(picked.name, picked.title, picked.display_name, picked.displayName),
-      display_name: pickFirstString(picked.display_name, picked.displayName, picked.name, picked.title),
-      category: pickFirstString(
-        picked.category,
-        picked.category_name,
-        picked.categoryName,
-        picked.product_type,
-        picked.productType,
-        picked.type,
-        normalizedStep,
-      ),
-      retrieval_source: pickFirstString(picked.retrieval_source, picked.retrievalSource, 'catalog'),
-      retrieval_reason: pickFirstString(picked.retrieval_reason, picked.retrievalReason, 'catalog_search_match'),
-      ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
-      ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
-      ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
-      ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
-      ...(frameworkMode
-        ? {
-            matched_role_id: pickFirstTrimmed(picked.matched_role_id, picked.matchedRoleId) || null,
-            matched_role_label: pickFirstTrimmed(picked.matched_role_label, picked.matchedRoleLabel) || null,
-            matched_role_rank: Number.isFinite(Number(picked.matched_role_rank)) ? Number(picked.matched_role_rank) : null,
-          }
-        : {}),
-      sku: picked,
-      notes: [
-        ...(frameworkMode
-          ? buildFrameworkRecommendationNotes({
-              language: ctx && ctx.lang ? ctx.lang : 'EN',
-              role: matchedRole,
-              isPrimary: index === 0,
-            })
-          : []),
-        ...(debug
-          ? (
-            ctx && ctx.lang === 'CN'
-              ? [frameworkMode ? '来自 Pivota 商品库（framework 主链）' : '来自 Pivota 商品库（step-aware viable pool）']
-              : [frameworkMode ? 'From Pivota catalog (framework-first mainline)' : 'From Pivota catalog (step-aware viable pool)']
-          )
-          : []),
-      ].filter(Boolean),
-    };
-  });
+  const recos = frameworkMode
+    ? buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
+        targetContext,
+        language: ctx && ctx.lang ? ctx.lang : 'EN',
+        debug,
+      })
+    : selectedCandidates.map((picked, index) => {
+        const stepToken = pickFirstTrimmed(
+          targetContext && targetContext.resolved_target_step,
+          picked.product_type,
+          picked.category,
+          'other',
+        );
+        const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
+        const canonicalRef = normalizeCanonicalProductRef(
+          {
+            product_id: pickFirstString(picked.product_id, picked.productId),
+            merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
+          },
+          { requireMerchant: true, allowOpaqueProductId: false },
+        );
+        return {
+          slot: inferSlotForStep(normalizedStep),
+          step: humanizeRecoProductType(normalizedStep, ctx && ctx.lang ? ctx.lang : 'EN'),
+          score: Math.max(72, 95 - index * 3),
+          product_id: pickFirstString(picked.product_id, picked.productId),
+          merchant_id: pickFirstString(picked.merchant_id, picked.merchantId),
+          brand: pickFirstString(picked.brand, picked.brand_name, picked.brandName),
+          name: pickFirstString(picked.name, picked.title, picked.display_name, picked.displayName),
+          display_name: pickFirstString(picked.display_name, picked.displayName, picked.name, picked.title),
+          category: pickFirstString(
+            picked.category,
+            picked.category_name,
+            picked.categoryName,
+            picked.product_type,
+            picked.productType,
+            picked.type,
+            normalizedStep,
+          ),
+          retrieval_source: pickFirstString(picked.retrieval_source, picked.retrievalSource, 'catalog'),
+          retrieval_reason: pickFirstString(picked.retrieval_reason, picked.retrievalReason, 'catalog_search_match'),
+          ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+          ...(pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked.canonical_pdp_url, picked.canonicalPdpUrl) } : {}),
+          ...(pickFirstString(picked.purchase_path, picked.purchasePath) ? { purchase_path: pickFirstString(picked.purchase_path, picked.purchasePath) } : {}),
+          ...(isPlainObject(picked.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+          sku: picked,
+          notes: [
+            ...(debug
+              ? (
+                ctx && ctx.lang === 'CN'
+                  ? ['来自 Pivota 商品库（step-aware viable pool）']
+                  : ['From Pivota catalog (step-aware viable pool)']
+              )
+              : []),
+          ].filter(Boolean),
+        };
+      });
 
   const statusCounts = {};
   const resultSourceCounts = {};
@@ -18598,6 +18808,12 @@ async function buildRecoGenerateFromCatalog({
             primary_role_matched: Boolean(candidateState.primary_role_matched),
             best_available_role_id: candidateState.best_available_role_id || null,
             late_conflict_without_override: Boolean(candidateState.late_conflict_without_override),
+            semantic_plan: isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null,
+            core_roles: Array.isArray(targetContext?.semantic_plan?.core_roles) ? targetContext.semantic_plan.core_roles : [],
+            support_roles: Array.isArray(targetContext?.semantic_plan?.support_roles) ? targetContext.semantic_plan.support_roles : [],
+            ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses) ? targetContext.semantic_plan.ingredient_hypotheses : [],
+            routine_shell: isPlainObject(targetContext?.routine_shell) ? targetContext.routine_shell : (isPlainObject(targetContext?.semantic_plan?.routine_shell) ? targetContext.semantic_plan.routine_shell : null),
+            selection_owner_source: pickFirstTrimmed(targetContext?.selection_owner_source, targetContext?.framework_owner_source) || null,
           }
         : {}),
       evidence: null,
@@ -25503,6 +25719,18 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '当前只拿到边缘匹配候选，我先不硬推商品。补充更明确的限制条件后，我再继续缩窄。'
         : "I only found borderline matches right now, so I’m not forcing a product pick. Add clearer constraints and I’ll narrow it down.",
+    filtered_after_recall:
+      lang === 'CN'
+        ? '已经召回到候选，但它们都没通过当前角色与范围约束，所以我先不硬推商品。'
+        : 'Candidates were recalled, but none passed the current role and scope contract, so I’m not forcing a product pick.',
+    selector_disagreement_no_safe_winner:
+      lang === 'CN'
+        ? '当前候选里没有足够安全的一致主推，我先停在框架层，不硬推具体商品。'
+        : 'The current candidate pool did not produce a safe consensus winner, so I’m staying at the framework layer instead of forcing a product pick.',
+    no_recall_from_planned_sources:
+      lang === 'CN'
+        ? '按当前护理框架搜索后，没有召回到可用候选。请稍后重试或补充更多上下文。'
+        : 'The current care framework did not recall usable candidates. Retry shortly or add more context.',
     upstream_schema_invalid:
       lang === 'CN'
         ? '上游推荐结果结构不完整，已改为保守提示。可稍后重试，或先补充更多上下文。'
@@ -25557,6 +25785,9 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
   if (tokens.includes('no_viable_candidates_for_target')) return 'no_viable_candidates_for_target';
   if (tokens.includes('weak_viable_pool')) return 'weak_viable_pool';
+  if (tokens.includes('filtered_after_recall')) return 'filtered_after_recall';
+  if (tokens.includes('selector_disagreement_no_safe_winner')) return 'selector_disagreement_no_safe_winner';
+  if (tokens.includes('no_recall_from_planned_sources')) return 'no_recall_from_planned_sources';
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
   if (tokens.includes('low_confidence')) return 'low_confidence';
   if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
@@ -30830,13 +31061,14 @@ function normalizeRecoEffectiveFailureClass(value) {
     token === 'prompt_contract_mismatch' ||
     token === 'schema_invalid' ||
     token === 'upstream_timeout' ||
+    token === 'upstream_timeout_primary_role' ||
     token === 'upstream_dependency_failure' ||
     token === 'catalog_contract_invalid' ||
     token === 'no_viable_candidates_for_target' ||
-    token === 'weak_viable_pool' ||
-    token === 'filtered_after_recall' ||
     token === 'no_recall_from_planned_sources' ||
-    token === 'upstream_timeout_primary_role' ||
+    token === 'filtered_after_recall' ||
+    token === 'weak_viable_pool' ||
+    token === 'selector_disagreement_no_safe_winner' ||
     token === 'post_processing_eliminated_candidates'
   ) {
     return token;
@@ -31603,6 +31835,7 @@ function buildRecoMainlineContract({
             : outcome.effective_failure_class === 'schema_invalid'
               ? 'schema_invalid'
               : outcome.effective_failure_class === 'upstream_timeout'
+                || outcome.effective_failure_class === 'upstream_timeout_primary_role'
                 ? 'upstream_timeout'
                 : 'upstream_missing_or_unstructured',
       source_mode: normalizedSourceMode,
@@ -31616,7 +31849,8 @@ function buildRecoMainlineContract({
       failure_origin: outcome.failure_origin || 'none',
       upstream_status: normalizedTerminalSuccess
         ? 'ok'
-        : outcome.effective_failure_class === 'upstream_timeout' || outcome.effective_failure_class === 'upstream_timeout_primary_role'
+        : outcome.effective_failure_class === 'upstream_timeout'
+          || outcome.effective_failure_class === 'upstream_timeout_primary_role'
           ? 'timeout'
           : outcome.effective_failure_class === 'schema_invalid'
             ? 'schema_invalid'
@@ -31626,7 +31860,15 @@ function buildRecoMainlineContract({
                 ? 'upstream_dependency_failure'
                 : outcome.effective_failure_class === 'catalog_contract_invalid'
                   ? 'catalog_contract_invalid'
-                  : 'artifact_missing',
+                  : outcome.effective_failure_class === 'filtered_after_recall'
+                    ? 'filtered_after_recall'
+                    : outcome.effective_failure_class === 'no_recall_from_planned_sources'
+                      ? 'no_recall_from_planned_sources'
+                      : outcome.effective_failure_class === 'weak_viable_pool'
+                        ? 'weak_viable_pool'
+                        : outcome.effective_failure_class === 'selector_disagreement_no_safe_winner'
+                          ? 'selector_disagreement_no_safe_winner'
+                          : 'artifact_missing',
       mainline_status: outcome.mainline_status,
       surface_kind: outcome.surface_kind,
       surface_reason: normalizedTerminalSuccess
@@ -51015,6 +51257,602 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
   }).query;
 }
 
+const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
+
+function normalizeConcernRoleArray(raw, { fallbackRoles = [], supportOnly = false } = {}) {
+  const rows = Array.isArray(raw) ? raw.slice(0, supportOnly ? 2 : 3) : [];
+  const out = [];
+  const usedFallbackIds = new Set();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = isPlainObject(rows[index]) ? rows[index] : {};
+    const requestedRoleId = String(row.role_id || row.id || '').trim();
+    const preferredStep = normalizeRecoTargetStep(row.preferred_step || row.step || row.product_type);
+    let fallbackRole =
+      fallbackRoles.find((role) => String(role?.role_id || '').trim() === requestedRoleId)
+      || fallbackRoles.find((role) => normalizeRecoTargetStep(role?.preferred_step) === preferredStep && !usedFallbackIds.has(String(role?.role_id || '').trim()))
+      || fallbackRoles[index]
+      || null;
+    if (fallbackRole) usedFallbackIds.add(String(fallbackRole.role_id || '').trim());
+
+    const label = pickFirstTrimmed(row.label, fallbackRole?.label);
+    const whyThisRole = pickFirstTrimmed(row.why_this_role, row.why, fallbackRole?.why_this_role);
+    const roleId = pickFirstTrimmed(requestedRoleId, fallbackRole?.role_id);
+    if (!roleId) continue;
+    out.push({
+      role_id: roleId,
+      rank: Number.isFinite(Number(row.rank)) ? Number(row.rank) : Number(fallbackRole?.rank || index + 1),
+      preferred_step: preferredStep || normalizeRecoTargetStep(fallbackRole?.preferred_step) || 'treatment',
+      alternate_steps: uniqCaseInsensitiveStrings(
+        [
+          ...asStringArray(row.alternate_steps || row.alternateSteps),
+          ...asStringArray(fallbackRole?.alternate_steps || fallbackRole?.alternateSteps),
+        ]
+          .map((value) => normalizeRecoTargetStep(value))
+          .filter(Boolean),
+        4,
+      ),
+      slot: inferSlotForStep(preferredStep || fallbackRole?.preferred_step || 'treatment'),
+      label: label || roleId,
+      why_this_role: whyThisRole || label || roleId,
+      query_terms: uniqCaseInsensitiveStrings([
+        ...asStringArray(row.query_terms || row.queryTerms),
+        ...asStringArray(fallbackRole?.query_terms || fallbackRole?.queryTerms),
+      ], 6),
+      fit_keywords: uniqCaseInsensitiveStrings([
+        ...asStringArray(row.fit_keywords || row.fitKeywords),
+        ...asStringArray(fallbackRole?.fit_keywords || fallbackRole?.fitKeywords),
+      ], 10),
+      ingredient_hypotheses: uniqCaseInsensitiveStrings([
+        ...asStringArray(row.ingredient_hypotheses || row.ingredientHypotheses),
+        ...asStringArray(fallbackRole?.ingredient_hypotheses || fallbackRole?.ingredientHypotheses),
+      ], 8),
+      product_type_hypotheses: uniqCaseInsensitiveStrings(
+        [
+          preferredStep || fallbackRole?.preferred_step,
+          ...asStringArray(row.product_type_hypotheses || row.productTypeHypotheses),
+          ...asStringArray(fallbackRole?.product_type_hypotheses || fallbackRole?.productTypeHypotheses),
+        ]
+          .map((value) => normalizeRecoTargetStep(value) || String(value || '').trim())
+          .filter(Boolean),
+        4,
+      ),
+      frequency: pickFirstTrimmed(row.frequency, fallbackRole?.frequency) || 'daily',
+      routine_slots: uniqCaseInsensitiveStrings([
+        ...asStringArray(row.routine_slots || row.routineSlots),
+        ...asStringArray(fallbackRole?.routine_slots || fallbackRole?.routineSlots),
+      ], 3),
+      support_only: supportOnly === true || row.support_only === true || fallbackRole?.support_only === true,
+    });
+  }
+  return out;
+}
+
+function normalizeConcernRoutineShell(raw, { coreRoles = [], supportRoles = [] } = {}) {
+  const roleIds = new Set([...coreRoles, ...supportRoles].map((role) => String(role?.role_id || '').trim()).filter(Boolean));
+  const normalizeRoleIds = (value, fallback = []) => uniqCaseInsensitiveStrings(
+    [
+      ...asStringArray(value),
+      ...fallback,
+    ]
+      .map((item) => String(item || '').trim())
+      .filter((item) => roleIds.has(item)),
+    8,
+  );
+  const fallbackShell = {
+    am_core_roles: coreRoles.filter((role) => Array.isArray(role.routine_slots) && role.routine_slots.includes('am')).map((role) => role.role_id),
+    pm_core_roles: coreRoles.filter((role) => Array.isArray(role.routine_slots) && role.routine_slots.includes('pm')).map((role) => role.role_id),
+    optional_support_roles: supportRoles.map((role) => role.role_id).filter(Boolean),
+    frequency: Object.fromEntries([...coreRoles, ...supportRoles].filter((role) => role && role.role_id).map((role) => [role.role_id, role.frequency || null])),
+    role_to_step_mapping: Object.fromEntries([...coreRoles, ...supportRoles].filter((role) => role && role.role_id).map((role) => [role.role_id, role.preferred_step || null])),
+  };
+  const shell = isPlainObject(raw) ? raw : {};
+  return {
+    am_core_roles: normalizeRoleIds(shell.am_core_roles || shell.amCoreRoles, fallbackShell.am_core_roles),
+    pm_core_roles: normalizeRoleIds(shell.pm_core_roles || shell.pmCoreRoles, fallbackShell.pm_core_roles),
+    optional_support_roles: normalizeRoleIds(shell.optional_support_roles || shell.optionalSupportRoles, fallbackShell.optional_support_roles),
+    frequency: {
+      ...fallbackShell.frequency,
+      ...(isPlainObject(shell.frequency) ? shell.frequency : {}),
+    },
+    role_to_step_mapping: {
+      ...fallbackShell.role_to_step_mapping,
+      ...(isPlainObject(shell.role_to_step_mapping || shell.roleToStepMapping) ? (shell.role_to_step_mapping || shell.roleToStepMapping) : {}),
+    },
+  };
+}
+
+function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '', focus = '' } = {}) {
+  const basePlan = isPlainObject(fallbackPlan)
+    ? fallbackPlan
+    : buildConcernSemanticPlanFallback({ text: requestText, focus });
+  const payload = isPlainObject(raw) ? raw : {};
+  const coreRoles = normalizeConcernRoleArray(payload.core_roles || payload.roles, {
+    fallbackRoles: Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [],
+    supportOnly: false,
+  });
+  const supportRoles = normalizeConcernRoleArray(payload.support_roles || payload.supportRoles, {
+    fallbackRoles: Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [],
+    supportOnly: true,
+  });
+  const usingFallbackRoles = coreRoles.length === 0;
+  const normalizedCoreRoles = usingFallbackRoles ? (Array.isArray(basePlan.core_roles) ? basePlan.core_roles : []) : coreRoles;
+  const normalizedSupportRoles = supportRoles.length > 0 ? supportRoles : (Array.isArray(basePlan.support_roles) ? basePlan.support_roles : []);
+  const ingredientHypotheses = uniqCaseInsensitiveStrings([
+    ...asStringArray(payload.ingredient_hypotheses || payload.ingredientHypotheses),
+    ...normalizedCoreRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
+    ...normalizedSupportRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
+  ], 12);
+  const productTypeHypotheses = uniqCaseInsensitiveStrings([
+    ...asStringArray(payload.product_type_hypotheses || payload.productTypeHypotheses),
+    ...normalizedCoreRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
+    ...normalizedSupportRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
+  ], 8);
+  const routineShell = normalizeConcernRoutineShell(payload.routine_shell || payload.routineShell, {
+    coreRoles: normalizedCoreRoles,
+    supportRoles: normalizedSupportRoles,
+  });
+  const baseSummary = isPlainObject(basePlan.framework_summary) ? basePlan.framework_summary : {};
+  const concernText = pickFirstTrimmed(
+    payload.primary_concern,
+    payload.concern_text,
+    payload.concernText,
+    baseSummary.concern_text,
+    requestText,
+    focus,
+  );
+  const normalized = {
+    plan_id: pickFirstTrimmed(payload.plan_id, payload.planId) || `concernplan_${crypto.createHash('sha1').update(JSON.stringify({
+      concernText,
+      coreRoles: normalizedCoreRoles.map((role) => role.role_id),
+      supportRoles: normalizedSupportRoles.map((role) => role.role_id),
+    })).digest('hex').slice(0, 16)}`,
+    semantic_plan_version: CONCERN_SEMANTIC_PLAN_VERSION,
+    intent_mode: 'generic_concern',
+    primary_concern: concernText,
+    core_roles: normalizedCoreRoles,
+    support_roles: normalizedSupportRoles,
+    ingredient_hypotheses: ingredientHypotheses.length ? ingredientHypotheses : basePlan.ingredient_hypotheses,
+    product_type_hypotheses: productTypeHypotheses.length ? productTypeHypotheses : basePlan.product_type_hypotheses,
+    frequency_policy: {
+      ...(isPlainObject(basePlan.frequency_policy) ? basePlan.frequency_policy : {}),
+      ...(isPlainObject(payload.frequency_policy || payload.frequencyPolicy) ? (payload.frequency_policy || payload.frequencyPolicy) : {}),
+      ...(isPlainObject(routineShell.frequency) ? routineShell.frequency : {}),
+    },
+    routine_shell: routineShell,
+    selection_constraints: {
+      ...(isPlainObject(basePlan.selection_constraints) ? basePlan.selection_constraints : {}),
+      ...(isPlainObject(payload.selection_constraints || payload.selectionConstraints) ? (payload.selection_constraints || payload.selectionConstraints) : {}),
+      support_cannot_replace_core: true,
+      allow_price_tiers: false,
+    },
+    selection_owner_source: usingFallbackRoles ? 'rule_concern_planner_fallback' : 'llm_concern_planner',
+    selection_owner_state: usingFallbackRoles ? 'fallback' : 'trusted',
+    framework_summary: {
+      concern_text: concernText,
+      headline: pickFirstTrimmed(payload.headline, baseSummary.headline) || baseSummary.headline || null,
+      prioritized_roles: normalizedCoreRoles.map((role) => ({
+        role_id: role.role_id,
+        label: role.label,
+        why_this_role: role.why_this_role,
+        rank: role.rank,
+      })),
+      support_roles: normalizedSupportRoles.map((role) => ({
+        role_id: role.role_id,
+        label: role.label,
+        why_this_role: role.why_this_role,
+      })),
+      ingredient_hypotheses: ingredientHypotheses.length ? ingredientHypotheses : asStringArray(baseSummary.ingredient_hypotheses),
+    },
+    concern_signals: isPlainObject(basePlan.concern_signals) ? basePlan.concern_signals : null,
+  };
+  return normalized;
+}
+
+function buildConcernSemanticPlanPrompt({
+  requestText = '',
+  focus = '',
+  lang = 'EN',
+  profileSummary = null,
+  recommendationTaskContext = null,
+  fallbackPlan = null,
+} = {}) {
+  const isCn = String(lang || '').trim().toUpperCase() === 'CN';
+  const profile = isPlainObject(profileSummary) ? profileSummary : {};
+  const taskContext = isPlainObject(recommendationTaskContext) ? recommendationTaskContext : null;
+  const plan = isPlainObject(fallbackPlan) ? fallbackPlan : buildConcernSemanticPlanFallback({ text: requestText, focus, profileSummary });
+  const contextPayload = {
+    request_text: String(requestText || '').trim(),
+    focus: String(focus || '').trim() || null,
+    profile: {
+      skin_type: pickFirstTrimmed(profile.skinType, profile.skin_type) || null,
+      sensitivity: pickFirstTrimmed(profile.sensitivity) || null,
+      barrier_status: pickFirstTrimmed(profile.barrierStatus, profile.barrier_status) || null,
+      goals: Array.isArray(profile.goals) ? profile.goals : [],
+    },
+    fallback_plan: {
+      primary_concern: plan.primary_concern,
+      core_roles: plan.core_roles,
+      support_roles: plan.support_roles,
+      ingredient_hypotheses: plan.ingredient_hypotheses,
+      routine_shell: plan.routine_shell,
+    },
+    task_context: taskContext && taskContext.snapshot_fields_used
+      ? {
+          context_mode: String(taskContext.context_mode || '').trim() || null,
+          snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used : [],
+          hard_context_fields_used: Array.isArray(taskContext.hard_context_fields_used) ? taskContext.hard_context_fields_used : [],
+          soft_context_fields_used: Array.isArray(taskContext.soft_context_fields_used) ? taskContext.soft_context_fields_used : [],
+        }
+      : null,
+  };
+
+  const instructions = isCn
+    ? [
+        '[PROMPT_VERSION=concern_semantic_plan_v1]',
+        '角色：严格的护肤关切语义规划器。',
+        '任务：只针对 generic concern 问题输出语义计划，不要输出具体商品。',
+        '输出 JSON 结构：{"primary_concern":string,"core_roles":[...],"support_roles":[...],"ingredient_hypotheses":[...],"product_type_hypotheses":[...],"routine_shell":{...},"selection_constraints":{...}}',
+        '规则：',
+        '- core_roles 最多 3 个，support_roles 最多 2 个。',
+        '- support role 只能是 optional/support，不能替代 core role。',
+        '- 不要做价格带判断。',
+        '- 不要输出具体品牌、SKU、购买链接。',
+        '- 如果上下文不足，也要给出保守但可执行的 core/support 角色框架。',
+        '- 对 oily skin 这类问题，先判断最先要解决的角色，再给相应的成分和产品类型方向。',
+      ]
+    : [
+        '[PROMPT_VERSION=concern_semantic_plan_v1]',
+        'Role: strict skincare concern planner.',
+        'Task: output a semantic plan for a generic skincare concern. Do NOT recommend specific products.',
+        'Output JSON shape: {"primary_concern":string,"core_roles":[...],"support_roles":[...],"ingredient_hypotheses":[...],"product_type_hypotheses":[...],"routine_shell":{...},"selection_constraints":{...}}',
+        'Rules:',
+        '- core_roles max 3, support_roles max 2.',
+        '- support roles must stay optional/supportive and cannot replace a core role.',
+        '- Do not decide price tiers.',
+        '- Do not output brand names, SKUs, or links.',
+        '- Even with limited context, return a conservative but actionable core/support framework.',
+        '- For oily-skin asks, decide what should be solved first, then name the product-type and ingredient directions that fit that role.',
+      ];
+  return `${instructions.join('\n')}\ncontext=${JSON.stringify(contextPayload)}`;
+}
+
+async function runConcernSemanticPlanner({
+  ctx,
+  logger,
+  requestText = '',
+  focus = '',
+  profileSummary = null,
+  recommendationTaskContext = null,
+} = {}) {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: requestText,
+    focus,
+    profileSummary,
+  });
+  const query = buildConcernSemanticPlanPrompt({
+    requestText,
+    focus,
+    lang: ctx?.lang || 'EN',
+    profileSummary,
+    recommendationTaskContext,
+    fallbackPlan,
+  });
+  const trace = {
+    prompt_version: CONCERN_SEMANTIC_PLAN_VERSION,
+    prompt_chars: query.length,
+    planner_used: false,
+    planner_failure_class: null,
+    planner_source: 'fallback',
+  };
+  try {
+    const upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+      trace_id: ctx?.trace_id,
+      request_id: ctx?.request_id,
+    });
+    trace.planner_used = true;
+    const rawStructured = getUpstreamStructuredOrJson(upstream)
+      || (upstream && typeof upstream.answer === 'string'
+        ? extractJsonObjectByKeys(upstream.answer, ['primary_concern', 'core_roles', 'support_roles', 'routine_shell'])
+        : null);
+    if (!isPlainObject(rawStructured) || !Array.isArray(rawStructured.core_roles) || rawStructured.core_roles.length === 0) {
+      trace.planner_failure_class = 'schema_invalid';
+      return {
+        semanticPlan: normalizeConcernSemanticPlanOutput(null, {
+          fallbackPlan,
+          requestText,
+          focus,
+        }),
+        trace,
+        upstream,
+      };
+    }
+    const semanticPlan = normalizeConcernSemanticPlanOutput(rawStructured, {
+      fallbackPlan,
+      requestText,
+      focus,
+    });
+    trace.planner_source = semanticPlan.selection_owner_source;
+    return { semanticPlan, trace, upstream };
+  } catch (error) {
+    logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern semantic planner failed');
+    trace.planner_failure_class = 'timeout';
+    return {
+      semanticPlan: normalizeConcernSemanticPlanOutput(null, {
+        fallbackPlan,
+        requestText,
+        focus,
+      }),
+      trace,
+      upstream: null,
+    };
+  }
+}
+
+function buildConcernSelectorDisplayCandidates(recommendations = []) {
+  return (Array.isArray(recommendations) ? recommendations : [])
+    .map((item) => {
+      const row = isPlainObject(item) ? item : null;
+      if (!row) return null;
+      const productId = pickFirstString(row.product_id, row.productId, row.sku?.product_id, row.sku?.productId);
+      if (!productId) return null;
+      return {
+        product_id: productId,
+        display_name: pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+        brand: pickFirstTrimmed(row.brand, row.sku?.brand),
+        matched_role_id: pickFirstTrimmed(row.matched_role_id, row.matchedRoleId),
+        matched_role_label: pickFirstTrimmed(row.matched_role_label, row.matchedRoleLabel),
+        category: pickFirstTrimmed(row.category, row.product_type, row.step),
+        notes: asStringArray(row.notes, 3),
+        reasons: asStringArray(row.reasons, 3),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function buildConcernSelectorRacePrompt({
+  requestText = '',
+  semanticPlan = null,
+  recommendations = [],
+  lang = 'EN',
+} = {}) {
+  const plan = isPlainObject(semanticPlan) ? semanticPlan : {};
+  const payload = {
+    request_text: String(requestText || '').trim(),
+    primary_role_id: pickFirstTrimmed(plan.core_roles?.[0]?.role_id),
+    core_roles: Array.isArray(plan.core_roles) ? plan.core_roles.map((role) => ({
+      role_id: role.role_id,
+      label: role.label,
+      why_this_role: role.why_this_role,
+      preferred_step: role.preferred_step,
+    })) : [],
+    support_roles: Array.isArray(plan.support_roles) ? plan.support_roles.map((role) => ({
+      role_id: role.role_id,
+      label: role.label,
+      why_this_role: role.why_this_role,
+      preferred_step: role.preferred_step,
+    })) : [],
+    candidates: buildConcernSelectorDisplayCandidates(recommendations),
+  };
+  const lines = String(lang || '').trim().toUpperCase() === 'CN'
+    ? [
+        '[PROMPT_VERSION=concern_selector_race_v1]',
+        '角色：严格的护肤候选赛马选择器。',
+        '任务：只在已给定的 normalized candidates 里选主推和排序。',
+        '输出 JSON：{"top_pick_product_id":string|null,"ordered_product_ids":[string],"support_roles_surfaced":[string],"selection_notes":[string],"open_world_candidate_expansion_needed":boolean}',
+        '规则：',
+        '- 如果有安全且相关的 primary core role 商品，必须优先选择它作为 top pick。',
+        '- support role 商品不能盖过 primary core role 商品。',
+        '- 如果 primary role 候选过弱或为空，top_pick_product_id 必须为 null，并把 open_world_candidate_expansion_needed 设为 true。',
+        '- 不能发明候选池之外的 product_id。',
+      ]
+    : [
+        '[PROMPT_VERSION=concern_selector_race_v1]',
+        'Role: strict skincare candidate selector.',
+        'Task: choose the top pick and ranking only from the provided normalized candidates.',
+        'Output JSON: {"top_pick_product_id":string|null,"ordered_product_ids":[string],"support_roles_surfaced":[string],"selection_notes":[string],"open_world_candidate_expansion_needed":boolean}',
+        'Rules:',
+        '- If there is a safe and relevant primary core-role product, it must win as the top pick.',
+        '- A support-role product may not outrank a primary core-role product.',
+        '- If the primary-role pool is too weak or empty, top_pick_product_id must be null and open_world_candidate_expansion_needed must be true.',
+        '- Do not invent product ids outside the candidate pool.',
+      ];
+  return `${lines.join('\n')}\ncontext=${JSON.stringify(payload)}`;
+}
+
+function normalizeConcernSelectorRaceOutput(raw, { recommendations = [], semanticPlan = null } = {}) {
+  const payload = isPlainObject(raw) ? raw : {};
+  const recommendationRows = Array.isArray(recommendations) ? recommendations : [];
+  const idToReco = new Map();
+  for (const row of recommendationRows) {
+    const productId = pickFirstString(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId);
+    if (productId) idToReco.set(productId, row);
+  }
+  const orderedProductIds = uniqCaseInsensitiveStrings(
+    asStringArray(payload.ordered_product_ids || payload.orderedProductIds),
+    recommendationRows.length || 8,
+  ).filter((id) => idToReco.has(id));
+  const primaryRoleId = pickFirstTrimmed(semanticPlan?.core_roles?.[0]?.role_id);
+  const validPrimaryIds = recommendationRows
+    .map((row) => ({
+      id: pickFirstString(row?.product_id, row?.productId, row?.sku?.product_id, row?.sku?.productId),
+      matchedRoleId: pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId),
+    }))
+    .filter((row) => row.id && row.matchedRoleId === primaryRoleId)
+    .map((row) => row.id);
+  const requestedTopPick = pickFirstTrimmed(payload.top_pick_product_id, payload.topPickProductId);
+  const topPickProductId = validPrimaryIds.includes(requestedTopPick)
+    ? requestedTopPick
+    : validPrimaryIds[0] || null;
+  const finalOrder = uniqCaseInsensitiveStrings([
+    ...(topPickProductId ? [topPickProductId] : []),
+    ...orderedProductIds,
+    ...Array.from(idToReco.keys()),
+  ], recommendationRows.length || 8);
+  return {
+    top_pick_product_id: topPickProductId,
+    ordered_product_ids: finalOrder,
+    support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(payload.support_roles_surfaced || payload.supportRolesSurfaced), 4),
+    selection_notes: uniqCaseInsensitiveStrings(asStringArray(payload.selection_notes || payload.selectionNotes), 4),
+    open_world_candidate_expansion_needed: payload.open_world_candidate_expansion_needed === true || (topPickProductId ? false : validPrimaryIds.length === 0),
+  };
+}
+
+async function runConcernSelectorRace({
+  ctx,
+  logger,
+  requestText = '',
+  semanticPlan = null,
+  recommendations = [],
+} = {}) {
+  const query = buildConcernSelectorRacePrompt({
+    requestText,
+    semanticPlan,
+    recommendations,
+    lang: ctx?.lang || 'EN',
+  });
+  const trace = {
+    selector_race_version: CONCERN_SELECTOR_RACE_VERSION,
+    winner_source: 'deterministic',
+    llm_selector_used: false,
+    open_world_candidate_expansion_needed: false,
+    selection_notes: [],
+  };
+  if (!Array.isArray(recommendations) || recommendations.length === 0) return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace };
+  try {
+    const upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 6000),
+      trace_id: ctx?.trace_id,
+      request_id: ctx?.request_id,
+    });
+    trace.llm_selector_used = true;
+    const rawStructured = getUpstreamStructuredOrJson(upstream)
+      || (upstream && typeof upstream.answer === 'string'
+        ? extractJsonObjectByKeys(upstream.answer, ['top_pick_product_id', 'ordered_product_ids'])
+        : null);
+    const result = normalizeConcernSelectorRaceOutput(rawStructured, { recommendations, semanticPlan });
+    trace.winner_source = result.top_pick_product_id ? 'llm_selector' : 'deterministic';
+    trace.open_world_candidate_expansion_needed = result.open_world_candidate_expansion_needed === true;
+    trace.selection_notes = result.selection_notes;
+    return { result, trace, upstream };
+  } catch (error) {
+    logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern selector race failed');
+    return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace, upstream: null };
+  }
+}
+
+function buildConcernOpenWorldExpansionPrompt({
+  requestText = '',
+  semanticPlan = null,
+  lang = 'EN',
+} = {}) {
+  const plan = isPlainObject(semanticPlan) ? semanticPlan : {};
+  const primaryRole = Array.isArray(plan.core_roles) ? plan.core_roles[0] : null;
+  const payload = {
+    request_text: String(requestText || '').trim(),
+    primary_role: primaryRole ? {
+      role_id: primaryRole.role_id,
+      label: primaryRole.label,
+      why_this_role: primaryRole.why_this_role,
+      preferred_step: primaryRole.preferred_step,
+      ingredient_hypotheses: asStringArray(primaryRole.ingredient_hypotheses, 6),
+      product_type_hypotheses: asStringArray(primaryRole.product_type_hypotheses, 4),
+      query_terms: asStringArray(primaryRole.query_terms, 6),
+    } : null,
+  };
+  const lines = String(lang || '').trim().toUpperCase() === 'CN'
+    ? [
+        '[PROMPT_VERSION=concern_open_world_expansion_v1]',
+        '角色：严格的护肤 open-world 候选发现器。',
+        '任务：只为 primary role 提供最多 2 个真实商品候选线索。',
+        '输出 JSON：{"products":[{"brand":string,"name":string,"category":string,"why":string}]}',
+        '规则：',
+        '- 只给面部护肤品。',
+        '- 不要输出工具、彩妆、香水、身体/手足/头发产品。',
+        '- 不要输出链接、价格、SKU。',
+        '- 候选后续还会被 grounding；如果不确定宁可返回空数组。',
+      ]
+    : [
+        '[PROMPT_VERSION=concern_open_world_expansion_v1]',
+        'Role: strict skincare open-world candidate finder.',
+        'Task: propose up to 2 real product leads for the primary role only.',
+        'Output JSON: {"products":[{"brand":string,"name":string,"category":string,"why":string}]}',
+        'Rules:',
+        '- Face skincare only.',
+        '- No tools, makeup, fragrance, or body/hand/hair products.',
+        '- No links, prices, or SKUs.',
+        '- These are only candidate leads and will be grounded later; return [] if unsure.',
+      ];
+  return `${lines.join('\n')}\ncontext=${JSON.stringify(payload)}`;
+}
+
+function normalizeConcernOpenWorldProducts(raw) {
+  const payload = isPlainObject(raw) ? raw : {};
+  return (Array.isArray(payload.products) ? payload.products : [])
+    .map((row) => {
+      if (!isPlainObject(row)) return null;
+      const brand = pickFirstTrimmed(row.brand);
+      const name = pickFirstTrimmed(row.name, row.display_name, row.displayName, row.title);
+      if (!name) return null;
+      return {
+        brand: brand || null,
+        name,
+        category: pickFirstTrimmed(row.category, row.product_type, row.productType) || null,
+        why: pickFirstTrimmed(row.why, row.reason) || null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+async function runConcernOpenWorldExpansion({
+  ctx,
+  logger,
+  requestText = '',
+  semanticPlan = null,
+} = {}) {
+  const query = buildConcernOpenWorldExpansionPrompt({
+    requestText,
+    semanticPlan,
+    lang: ctx?.lang || 'EN',
+  });
+  try {
+    const upstream = await auroraChat({
+      baseUrl: AURORA_DECISION_BASE_URL,
+      query,
+      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 5000),
+      trace_id: ctx?.trace_id,
+      request_id: ctx?.request_id,
+    });
+    const rawStructured = getUpstreamStructuredOrJson(upstream)
+      || (upstream && typeof upstream.answer === 'string'
+        ? extractJsonObjectByKeys(upstream.answer, ['products'])
+        : null);
+    return {
+      products: normalizeConcernOpenWorldProducts(rawStructured),
+      trace: {
+        open_world_expansion_used: true,
+        open_world_expansion_source: 'llm_open_world',
+      },
+    };
+  } catch (error) {
+    logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern open-world expansion failed');
+    return {
+      products: [],
+      trace: {
+        open_world_expansion_used: true,
+        open_world_expansion_source: 'llm_open_world',
+        open_world_failure_class: 'timeout',
+      },
+    };
+  }
+}
+
 function looksLikeRoutineRequest(message, action) {
   const text = String(message || '').trim().toLowerCase();
   const id =
@@ -59125,7 +59963,7 @@ async function generateProductRecommendations({
   const userAsk =
     String(message || '').trim() ||
     (ctx.lang === 'CN' ? '给我推荐几款护肤产品（按我的肤况与目标）' : 'Recommend a few skincare products for my profile and goals.');
-  const targetContext = resolveRecommendationTargetContext({
+  let targetContext = resolveRecommendationTargetContext({
     explicitStep: pickFirstTrimmed(
       normalizedIngredientContext && normalizedIngredientContext.target_step,
       normalizedIngredientContext && normalizedIngredientContext.step,
@@ -59134,6 +59972,33 @@ async function generateProductRecommendations({
     text: userAsk,
     entryType,
   });
+  let concernSemanticPlanTrace = null;
+  let concernSelectorRaceTrace = null;
+  let concernOpenWorldExpansionTrace = null;
+  let concernWinnerSource = 'deterministic';
+  let concernSupportRolesSurfaced = [];
+  let concernOpenWorldExpansionUsed = false;
+  if (
+    targetContext
+    && Array.isArray(targetContext.framework_roles)
+    && targetContext.framework_roles.length > 0
+    && String(targetContext.intent_mode || '').trim() === 'generic_concern'
+  ) {
+    const concernPlanOut = await runConcernSemanticPlanner({
+      ctx,
+      logger,
+      requestText: userAsk,
+      focus,
+      profileSummary,
+      recommendationTaskContext,
+    });
+    concernSemanticPlanTrace = concernPlanOut.trace || null;
+    targetContext = buildConcernTargetContextFromSemanticPlan(concernPlanOut.semanticPlan, {
+      text: userAsk,
+      focus,
+      entryType,
+    });
+  }
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
     pickFirstTrimmed(recoTriggerSource, ctx && ctx.trigger_source, 'text'),
   );
@@ -59254,7 +60119,7 @@ async function generateProductRecommendations({
     structured = catalogStructured;
     structuredSource = catalogStructured ? 'catalog_grounded' : null;
 
-    if (preLlmSelectedCandidateCount > 0 && catalogCandidateState?.terminal_success === true) {
+    if (preLlmSelectedCandidateCount > 0 && catalogCandidateState?.terminal_success === true && !frameworkCatalogFirstEnabled) {
       const llmPrimary = await runRecoLlmPrimary({
         ctx,
         logger,
@@ -59572,7 +60437,7 @@ async function generateProductRecommendations({
 
   const frameworkMode = Boolean(targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0);
   const norm = normalizeRecoGenerate(mapped);
-  const viablePoolState = isPlainObject(catalogCandidateState)
+  let viablePoolState = isPlainObject(catalogCandidateState)
     ? catalogCandidateState
     : frameworkMode
       ? finalizeConcernFrameworkCandidatePools(
@@ -59627,7 +60492,20 @@ async function generateProductRecommendations({
     norm.payload.mainline_status = stepAwareMainlineFailure.mainlineStatus;
   } else if (frameworkMode && !viablePoolState.terminal_success && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.recommendations = [];
-    norm.payload.products_empty_reason = 'no_mainline_match_for_framework';
+    norm.payload.products_empty_reason = pickFirstTrimmed(
+      viablePoolState?.candidate_drop_stage,
+      concernSelectorRaceTrace?.result?.open_world_candidate_expansion_needed && concernOpenWorldExpansionUsed ? 'selector_disagreement_no_safe_winner' : '',
+      'no_mainline_match_for_framework',
+    );
+    if (normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none') {
+      effectiveFailureClass = pickFirstTrimmed(
+        norm.payload.products_empty_reason === 'weak_viable_pool' ? 'weak_viable_pool' : '',
+        norm.payload.products_empty_reason === 'filtered_after_recall' ? 'filtered_after_recall' : '',
+        norm.payload.products_empty_reason === 'selector_disagreement_no_safe_winner' ? 'selector_disagreement_no_safe_winner' : '',
+        norm.payload.products_empty_reason === 'no_mainline_match_for_framework' ? 'no_recall_from_planned_sources' : '',
+      ) || effectiveFailureClass;
+      failureOrigin = norm.payload.products_empty_reason === 'filtered_after_recall' ? 'internal_contract' : 'user_input';
+    }
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.products_empty_reason = 'prompt_contract_mismatch';
   } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
@@ -59694,6 +60572,15 @@ async function generateProductRecommendations({
     profile: profileSummary || null,
     ...(frameworkMode
       ? {
+          semantic_plan: isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null,
+          core_roles: Array.isArray(targetContext?.semantic_plan?.core_roles) ? targetContext.semantic_plan.core_roles : [],
+          support_roles: Array.isArray(targetContext?.semantic_plan?.support_roles) ? targetContext.semantic_plan.support_roles : [],
+          ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses) ? targetContext.semantic_plan.ingredient_hypotheses : [],
+          routine_shell: isPlainObject(targetContext?.routine_shell) ? targetContext.routine_shell : (isPlainObject(targetContext?.semantic_plan?.routine_shell) ? targetContext.semantic_plan.routine_shell : null),
+          selection_owner_source: pickFirstTrimmed(targetContext?.selection_owner_source, targetContext?.framework_owner_source) || null,
+          selector_race: isPlainObject(concernSelectorRaceTrace?.result) ? concernSelectorRaceTrace.result : null,
+          winner_source: concernWinnerSource || 'deterministic',
+          open_world_expansion_used: concernOpenWorldExpansionUsed,
           framework_summary: mapped && mapped.framework_summary ? mapped.framework_summary : buildConcernFrameworkSummary({
             targetContext,
             recommendations: Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [],
@@ -59707,7 +60594,7 @@ async function generateProductRecommendations({
             preferred_step: String(role?.preferred_step || '').trim() || null,
           })) : [],
           primary_role_id: targetContext.primary_role_id || null,
-          primary_recommendation_id: viablePoolState.primary_recommendation_id || null,
+          primary_recommendation_id: viablePoolState.primary_role_matched ? (viablePoolState.primary_recommendation_id || null) : null,
           primary_role_matched: Boolean(viablePoolState.primary_role_matched),
           best_available_role_id: viablePoolState.best_available_role_id || null,
           late_conflict_without_override: Boolean(viablePoolState.late_conflict_without_override),
@@ -59960,7 +60847,124 @@ async function generateProductRecommendations({
       reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
     },
   };
-  const finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
+  if (frameworkMode && isPlainObject(targetContext?.semantic_plan)) {
+    const baseRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
+    const selectorOut = await runConcernSelectorRace({
+      ctx,
+      logger,
+      requestText: userAsk,
+      semanticPlan: targetContext.semantic_plan,
+      recommendations: baseRecommendations,
+    });
+    concernSelectorRaceTrace = {
+      ...(selectorOut.trace || {}),
+      result: selectorOut.result || null,
+    };
+    let selectorApplied = applyConcernSelectorRaceOrdering(baseRecommendations, selectorOut.result);
+    concernWinnerSource = selectorApplied.winner_source || 'deterministic';
+    concernSupportRolesSurfaced = selectorApplied.support_roles_surfaced || [];
+    if (Array.isArray(selectorApplied.recommendations) && selectorApplied.recommendations.length) {
+      const selectionNotesByProductId = isPlainObject(selectorApplied.selection_notes_by_product_id)
+        ? selectorApplied.selection_notes_by_product_id
+        : {};
+      norm.payload.recommendations = selectorApplied.recommendations.map((row) => {
+        const productId = pickFirstString(row?.product_id, row?.productId);
+        const selectionNotes = productId ? asStringArray(selectionNotesByProductId[productId], 3) : [];
+        if (!selectionNotes.length) return row;
+        return {
+          ...row,
+          notes: uniqCaseInsensitiveStrings([
+            ...selectionNotes,
+            ...asStringArray(row?.notes, 4),
+          ], 5),
+        };
+      });
+      norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || norm.payload.primary_recommendation_id || null;
+    }
+    if (
+      (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0 || !selectorApplied.primary_recommendation_id)
+      && selectorOut.result?.open_world_candidate_expansion_needed === true
+    ) {
+      const openWorldOut = await runConcernOpenWorldExpansion({
+        ctx,
+        logger,
+        requestText: userAsk,
+        semanticPlan: targetContext.semantic_plan,
+      });
+      concernOpenWorldExpansionUsed = true;
+      const groundedExternal = [];
+      for (const lead of Array.isArray(openWorldOut.products) ? openWorldOut.products : []) {
+        const inputText = joinBrandAndName(lead.brand, lead.name);
+        // eslint-disable-next-line no-await-in-loop
+        const resolved = await resolveCatalogProductForProductInput({
+          inputText,
+          lang: ctx?.lang || 'EN',
+          logger,
+        });
+        if (!resolved?.ok || !resolved.product) continue;
+        const normalized = normalizeRecoCatalogProduct(resolved.product);
+        if (!isPlainObject(normalized)) continue;
+        groundedExternal.push({
+          ...normalized,
+          retrieval_source: 'llm_open_world_grounded',
+          retrieval_reason: 'llm_open_world_grounded',
+          retrieval_query: inputText,
+          retrieval_role_id: targetContext.primary_role_id || null,
+          retrieval_step: pickFirstTrimmed(targetContext?.framework_roles?.[0]?.preferred_step) || null,
+        });
+      }
+      concernOpenWorldExpansionTrace = {
+        ...(openWorldOut.trace || {}),
+        grounded_count: groundedExternal.length,
+      };
+      if (groundedExternal.length) {
+        const mergedRawPool = [
+          ...groundedExternal,
+          ...(Array.isArray(viablePoolState?.raw_candidate_pool) ? viablePoolState.raw_candidate_pool : []),
+        ];
+        viablePoolState = finalizeConcernFrameworkCandidatePools(mergedRawPool, { targetContext });
+        const openWorldRecommendations = buildConcernRecommendationsFromSelectedCandidates(
+          Array.isArray(viablePoolState.selected_recommendations) ? viablePoolState.selected_recommendations : [],
+          {
+            targetContext,
+            language: ctx && ctx.lang ? ctx.lang : 'EN',
+            debug,
+          },
+        );
+        const reranked = await runConcernSelectorRace({
+          ctx,
+          logger,
+          requestText: userAsk,
+          semanticPlan: targetContext.semantic_plan,
+          recommendations: openWorldRecommendations,
+        });
+        selectorApplied = applyConcernSelectorRaceOrdering(openWorldRecommendations, reranked.result);
+        concernSelectorRaceTrace = {
+          ...(reranked.trace || {}),
+          result: reranked.result || null,
+        };
+        concernWinnerSource = selectorApplied.winner_source || concernWinnerSource;
+        concernSupportRolesSurfaced = selectorApplied.support_roles_surfaced || concernSupportRolesSurfaced;
+        norm.payload.recommendations = selectorApplied.recommendations;
+        norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || viablePoolState.primary_recommendation_id || null;
+      }
+    }
+  }
+  if (frameworkMode && viablePoolState?.primary_role_matched !== true) {
+    // Support-role rows are useful for diagnostics, but they must not surface as a successful
+    // first-turn answer when the core role has no safe winner.
+    norm.payload.recommendations = [];
+    norm.payload.primary_recommendation_id = null;
+    norm.payload.products_empty_reason = pickFirstTrimmed(
+      norm.payload?.products_empty_reason,
+      viablePoolState?.candidate_drop_stage,
+      viablePoolState?.weak_viable_pool ? 'weak_viable_pool' : '',
+      'weak_viable_pool',
+    ) || 'weak_viable_pool';
+    concernWinnerSource = 'deterministic';
+    concernSupportRolesSurfaced = [];
+  }
+  let finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   finalSelectedCandidateCount = finalRecommendations.length;
   postGuardrailCount = finalSelectedCandidateCount;
   if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailure) {
@@ -60011,7 +61015,13 @@ async function generateProductRecommendations({
     upstreamFailureCode,
     contractStatus,
   });
-  const primaryFailureReason = finalRecommendations.length > 0 ? '' : 'artifact_missing';
+  const primaryFailureReason = finalRecommendations.length > 0
+    ? ''
+    : (pickFirstTrimmed(
+      norm.payload?.products_empty_reason,
+      effectiveFailureClass,
+      'artifact_missing',
+    ) || 'artifact_missing');
   if (upstreamDebug) {
     upstreamDebug.contract_status = contractStatus;
     upstreamDebug.mainline_status = mainlineStatus;
@@ -60027,6 +61037,11 @@ async function generateProductRecommendations({
     upstreamDebug.post_guardrail_count = postGuardrailCount;
     upstreamDebug.effective_failure_class = effectiveFailureClass || null;
     upstreamDebug.failure_origin = failureOrigin || null;
+    upstreamDebug.semantic_plan_trace = concernSemanticPlanTrace;
+    upstreamDebug.selector_race_trace = concernSelectorRaceTrace;
+    upstreamDebug.open_world_expansion_trace = concernOpenWorldExpansionTrace;
+    upstreamDebug.scope_classification_stats = isPlainObject(viablePoolState?.scope_classification_stats) ? viablePoolState.scope_classification_stats : null;
+    upstreamDebug.role_pool_stats = isPlainObject(viablePoolState?.role_pool_stats) ? viablePoolState.role_pool_stats : null;
   }
   const terminalSuccess = finalRecommendations.length > 0
     && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
@@ -60128,11 +61143,22 @@ async function generateProductRecommendations({
         Array.isArray(catalogCandidateState?.hard_reject_preview)
           ? catalogCandidateState.hard_reject_preview
           : [],
+      semantic_plan_version: frameworkMode ? pickFirstTrimmed(targetContext?.semantic_plan_version, CONCERN_SEMANTIC_PLAN_VERSION) || CONCERN_SEMANTIC_PLAN_VERSION : null,
+      selection_contract_version: frameworkMode ? CONCERN_SELECTOR_RACE_VERSION : null,
+      winner_source: frameworkMode ? (concernWinnerSource || 'deterministic') : null,
+      open_world_expansion_used: frameworkMode ? concernOpenWorldExpansionUsed : false,
+      support_roles_surfaced: frameworkMode ? concernSupportRolesSurfaced : [],
       framework_id: frameworkMode ? targetContext.framework_id || null : null,
       framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
       framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
       primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
-      primary_recommendation_id: frameworkMode ? viablePoolState.primary_recommendation_id || null : null,
+      primary_recommendation_id: frameworkMode
+        ? (
+          viablePoolState.primary_role_matched === true
+            ? (pickFirstTrimmed(norm.payload?.primary_recommendation_id, viablePoolState.primary_recommendation_id) || null)
+            : null
+        )
+        : null,
       primary_role_matched: frameworkMode ? Boolean(viablePoolState.primary_role_matched) : false,
       best_available_role_id: frameworkMode ? viablePoolState.best_available_role_id || null : null,
       role_conflict_present: frameworkMode ? Boolean(viablePoolState.role_conflict_present) : false,
@@ -60177,6 +61203,10 @@ async function generateProductRecommendations({
       overall_target_fidelity_satisfied: Boolean(viablePoolState.overall_target_fidelity_satisfied),
       weak_viable_pool: Boolean(viablePoolState.weak_viable_pool),
       candidate_pool_signature: viablePoolState.candidate_pool_signature,
+      candidate_drop_stage: frameworkMode ? pickFirstTrimmed(viablePoolState.candidate_drop_stage) || null : null,
+      effective_failure_class: frameworkMode
+        ? (normalizeRecoEffectiveFailureClass(effectiveFailureClass || '') || (finalRecommendations.length > 0 ? 'none' : null))
+        : (deterministicCatalogFirstEnabled ? (normalizeRecoEffectiveFailureClass(effectiveFailureClass || '') || 'none') : undefined),
     },
   };
   if (finalRecommendations.length > 0) {

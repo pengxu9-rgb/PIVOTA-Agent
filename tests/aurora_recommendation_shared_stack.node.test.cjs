@@ -65,11 +65,17 @@ test('generic single-product chat asks resolve into a framework-first role plan 
   assert.equal(targetContext.intent_mode, 'generic_concern');
   assert.equal(targetContext.framework_owner_source, 'generic_concern_framework_resolver');
   assert.equal(targetContext.framework_owner_state, 'trusted');
+  assert.equal(targetContext.semantic_plan?.semantic_plan_version, 'concern_semantic_plan_v1');
+  assert.equal(targetContext.semantic_plan?.selection_owner_source, 'rule_concern_planner_fallback');
   assert.equal(targetContext.primary_role_id, 'oil_control_treatment');
   assert.deepEqual(
     targetContext.framework_roles.map((role) => role.role_id),
     ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
   );
+  assert.deepEqual(targetContext.support_roles, []);
+  assert.equal(targetContext.semantic_plan?.primary_concern, 'oil control and congestion');
+  assert.deepEqual(targetContext.semantic_plan?.routine_shell?.pm_core_roles, ['oil_control_treatment', 'lightweight_moisturizer']);
+  assert.deepEqual(targetContext.semantic_plan?.routine_shell?.optional_support_roles, []);
   const primaryRole = targetContext.framework_roles[0];
   assert.equal(primaryRole.role_id, 'oil_control_treatment');
   assert.equal(primaryRole.query_terms.includes('niacinamide serum oily skin'), false);

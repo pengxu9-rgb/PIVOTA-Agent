@@ -5,7 +5,19 @@ function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').trim().replace(/\/$/, '');
 }
 
-const USE_AURORA_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+function isProductionLikeEnvironment() {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+}
+
+const REQUESTED_AURORA_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
+const USE_AURORA_MOCK = REQUESTED_AURORA_MOCK && !isProductionLikeEnvironment();
+if (REQUESTED_AURORA_MOCK && isProductionLikeEnvironment()) {
+  // Never allow mock upstreams to service production-like traffic.
+  console.warn('[auroraDecisionClient] Ignoring AURORA_BFF_USE_MOCK in production-like environment');
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

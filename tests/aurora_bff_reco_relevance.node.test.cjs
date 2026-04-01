@@ -118,6 +118,132 @@ function getRecoRequestedEvent(responseBody) {
   return events.find((event) => event && event.event_name === 'recos_requested') || null;
 }
 
+function buildConcernSemanticPlanFixture() {
+  return {
+    primary_concern: 'oil control and congestion',
+    core_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        label: 'Oil-control treatment',
+        why_this_role: 'Target excess oil first.',
+        rank: 1,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        query_terms: ['oil control serum', 'shine control serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying'],
+        ingredient_hypotheses: ['niacinamide', 'zinc pca'],
+        product_type_hypotheses: ['treatment', 'serum'],
+        frequency: 'daily',
+        routine_slots: ['am', 'pm'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        label: 'Lightweight moisturizer',
+        why_this_role: 'Keep hydration light and breathable.',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        query_terms: ['lightweight moisturizer', 'gel cream'],
+        fit_keywords: ['lightweight moisturizer', 'gel cream', 'breathable hydration'],
+        ingredient_hypotheses: ['ceramide'],
+        product_type_hypotheses: ['moisturizer'],
+        frequency: 'daily',
+        routine_slots: ['am', 'pm'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        label: 'Daily sunscreen',
+        why_this_role: 'Daytime UV protection still matters.',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        query_terms: ['daily sunscreen', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'broad spectrum', 'uv filters'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+        frequency: 'daily_am',
+        routine_slots: ['am'],
+      },
+    ],
+    support_roles: [
+      {
+        role_id: 'optional_mask',
+        label: 'Optional mask',
+        why_this_role: 'Only if dehydration shows up.',
+        rank: 1,
+        preferred_step: 'mask',
+        frequency: 'optional',
+        routine_slots: ['pm'],
+      },
+    ],
+    ingredient_hypotheses: ['niacinamide', 'zinc pca', 'ceramide', 'UV filters'],
+    product_type_hypotheses: ['treatment', 'moisturizer', 'sunscreen'],
+    routine_shell: {
+      am_core_roles: ['oil_control_treatment', 'daily_sunscreen'],
+      pm_core_roles: ['oil_control_treatment', 'lightweight_moisturizer'],
+      optional_support_roles: ['optional_mask'],
+      frequency: {
+        oil_control_treatment: 'daily',
+        lightweight_moisturizer: 'daily',
+        daily_sunscreen: 'daily_am',
+        optional_mask: 'optional',
+      },
+      role_to_step_mapping: {
+        oil_control_treatment: 'treatment',
+        lightweight_moisturizer: 'moisturizer',
+        daily_sunscreen: 'sunscreen',
+        optional_mask: 'mask',
+      },
+    },
+  };
+}
+
+function buildConcernSelectorFixture({
+  topPickProductId = 'serum_chat_1',
+  orderedProductIds = ['serum_chat_1', 'moist_chat_1', 'spf_chat_1'],
+  openWorldCandidateExpansionNeeded = false,
+} = {}) {
+  return {
+    top_pick_product_id: topPickProductId || null,
+    ordered_product_ids: orderedProductIds,
+    support_roles_surfaced: ['daily_sunscreen'],
+    selection_notes: topPickProductId ? ['Top pick for that first role: Oil Balance Serum.'] : [],
+    open_world_candidate_expansion_needed: openWorldCandidateExpansionNeeded,
+  };
+}
+
+function buildConcernPlannerMock({
+  selectorResult = null,
+  plannerResult = null,
+} = {}) {
+  return async ({ query = '' } = {}) => {
+    const prompt = String(query || '');
+    if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
+      return { answer: JSON.stringify(plannerResult || buildConcernSemanticPlanFixture()) };
+    }
+    if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
+      if (selectorResult === 'schema_invalid') {
+        return {
+          structured: {
+            note: 'schema invalid selector output',
+          },
+          answer: JSON.stringify({
+            note: 'schema invalid selector output',
+          }),
+        };
+      }
+      return { answer: JSON.stringify(selectorResult || buildConcernSelectorFixture()) };
+    }
+    return {
+      answer: JSON.stringify({
+        note: 'generic concern path should stay framework-first',
+      }),
+    };
+  };
+}
+
+function installConcernPlannerMocks(decisionModule, options = {}) {
+  decisionModule.auroraChat = buildConcernPlannerMock(options);
+}
+
 test('__internal: normalizeIngredientRecoContextValue preserves resolved target step fields across merge', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeIngredientRecoContextValue({
@@ -1138,10 +1264,8 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
 
 test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant text aligned to the primary role', async () => {
   const originalGet = axios.get;
-  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
-  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-  const originalAuroraChat = decisionModule.auroraChat;
   const observedQueries = [];
+  let harness = null;
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1196,6 +1320,9 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
             category: 'serum',
             product_type: 'serum',
             ingredient_tokens: ['niacinamide', 'zinc pca'],
+            benefit_tags: ['oil control', 'shine control'],
+            search_aliases: ['Oil Control Serum'],
+            short_description: 'A mattifying oil-control serum for oily skin.',
           },
           {
             product_id: 'brush_chat_2',
@@ -1210,33 +1337,22 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
       },
     };
   };
-  decisionModule.auroraChat = async () => ({
-    answer: JSON.stringify({
-      recommendations: [
-        {
-          step: 'sunscreen',
-          reasons: ['This fallback answer should not override the framework-first mainline.'],
-          sku: { brand: 'SunGuard', display_name: 'Daily UV Fluid SPF 50' },
-        },
-      ],
-    }),
-  });
 
   try {
-    const express = require('express');
-    const { mountAuroraBffRoutes } = loadRoutesFresh();
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    mountAuroraBffRoutes(app, { logger: null });
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock(),
+      useMemoryStore: false,
+    });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_uid', briefId: 'chat_framework_brief' });
-    const response = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers: {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
         'X-Aurora-UID': 'chat_framework_uid',
         'X-Trace-ID': 'trace_chat_framework',
         'X-Brief-ID': 'chat_framework_brief',
-      },
-      body: {
+      })
+      .send({
         action: {
           action_id: 'chip.start.reco_products',
           kind: 'chip',
@@ -1253,14 +1369,17 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
         client_state: 'IDLE_CHAT',
         session: { state: 'idle' },
         language: 'EN',
-      },
-    });
+      });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
-    assert.equal(payload.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
+    assert.equal(payload.selection_owner_source, 'llm_concern_planner');
+    assert.equal(payload.recommendation_meta?.framework_owner_source, 'llm_concern_planner');
     assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
+    assert.equal(payload.recommendation_meta?.semantic_plan_version, 'concern_semantic_plan_v1');
+    assert.equal(payload.recommendation_meta?.selection_contract_version, 'concern_selector_race_v1');
+    assert.equal(payload.recommendation_meta?.winner_source, 'llm_selector');
     assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.equal(payload.recommendation_meta?.primary_failure_reason ?? null, null);
@@ -1268,11 +1387,27 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
     assert.equal(payload.recommendation_meta?.products_empty_reason ?? null, null);
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.primary_recommendation_id, 'serum_chat_1');
+    assert.equal(payload.semantic_plan?.primary_concern, 'oil control and congestion');
+    assert.deepEqual(
+      payload.core_roles?.map((role) => role?.role_id),
+      ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+    );
+    assert.deepEqual(
+      payload.support_roles?.map((role) => role?.role_id),
+      ['optional_mask'],
+    );
+    assert.ok(Array.isArray(payload.ingredient_hypotheses) && payload.ingredient_hypotheses.includes('niacinamide'));
+    assert.ok(Array.isArray(payload.routine_shell?.am_core_roles));
+    assert.ok(payload.routine_shell.am_core_roles.includes('oil_control_treatment'));
+    assert.ok(payload.routine_shell.am_core_roles.includes('daily_sunscreen'));
     assert.ok(Array.isArray(payload.roles) && payload.roles.length >= 3);
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 3);
     assert.equal(payload.recommendations[0]?.product_id, 'serum_chat_1');
     assert.equal(payload.recommendations[0]?.matched_role_id, 'oil_control_treatment');
-    assert.match(String(payload.recommendations[0]?.notes?.[0] || ''), /targeted oil-control step/i);
+    assert.ok(
+      Array.isArray(payload.recommendations[0]?.notes)
+      && payload.recommendations[0].notes.some((note) => /top pick for that first role|target excess oil first/i.test(String(note || ''))),
+    );
     assert.match(String(payload.recommendations[1]?.notes?.[0] || ''), /Keep hydration light and breathable/i);
     assert.match(String(payload.recommendations[2]?.notes?.[0] || ''), /Daytime UV protection still matters/i);
     assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'lightweight_moisturizer'));
@@ -1282,16 +1417,14 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
     assert.ok(observedQueries.some((query) => query.includes('oil control')));
     assert.ok(observedQueries.some((query) => query.includes('sunscreen')));
   } finally {
-    decisionModule.auroraChat = originalAuroraChat;
+    harness?.restore?.();
     axios.get = originalGet;
   }
 });
 
 test('/v1/chat: generic oily-skin ask keeps framework recommendations when the llm primary returns schema-invalid output', async () => {
   const originalGet = axios.get;
-  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
-  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-  const originalAuroraChat = decisionModule.auroraChat;
+  let harness = null;
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1345,35 +1478,29 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
             category: 'serum',
             product_type: 'serum',
             benefit_tags: ['oil control', 'shine control'],
+            search_aliases: ['Oil Control Serum'],
+            short_description: 'A mattifying oil-control serum for oily skin.',
           },
         ],
       },
     };
   };
-  decisionModule.auroraChat = async () => ({
-    structured: {
-      note: 'schema invalid for reco mainline because recommendations is missing',
-    },
-    answer: JSON.stringify({
-      note: 'schema invalid for reco mainline because recommendations is missing',
-    }),
-  });
 
   try {
-    const express = require('express');
-    const { mountAuroraBffRoutes } = loadRoutesFresh();
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    mountAuroraBffRoutes(app, { logger: null });
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock({ selectorResult: 'schema_invalid' }),
+      useMemoryStore: false,
+    });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_schema_uid', briefId: 'chat_framework_schema_brief' });
-    const response = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers: {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
         'X-Aurora-UID': 'chat_framework_schema_uid',
         'X-Trace-ID': 'trace_chat_framework_schema',
         'X-Brief-ID': 'chat_framework_schema_brief',
-      },
-      body: {
+      })
+      .send({
         action: {
           action_id: 'chip.start.reco_products',
           kind: 'chip',
@@ -1390,40 +1517,35 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
         client_state: 'IDLE_CHAT',
         session: { state: 'idle' },
         language: 'EN',
-      },
-    });
+      });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 3);
-    assert.equal(payload.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
+    assert.equal(payload.selection_owner_source, 'llm_concern_planner');
+    assert.equal(payload.recommendation_meta?.framework_owner_source, 'llm_concern_planner');
     assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
-    assert.equal(payload.recommendation_meta?.llm_invoked, true);
-    assert.ok(
-      ['schema_invalid', 'empty_structured'].includes(String(payload.recommendation_meta?.initial_llm_outcome || '')),
-    );
-    assert.equal(payload.recommendation_meta?.success_mode, 'degraded_success');
-    assert.ok(
-      ['schema_invalid', 'empty_structured'].includes(String(payload.recommendation_meta?.non_blocking_llm_issue || '')),
-    );
+    assert.equal(payload.recommendation_meta?.semantic_plan_version, 'concern_semantic_plan_v1');
+    assert.equal(payload.recommendation_meta?.selection_contract_version, 'concern_selector_race_v1');
+    assert.equal(payload.recommendation_meta?.winner_source, 'llm_selector');
+    assert.equal(payload.open_world_expansion_used, false);
+    assert.equal(payload.selector_race ?? null, null);
     assert.equal(payload.recommendations[0]?.product_id, 'serum_schema_1');
     assert.equal(payload.recommendations[0]?.matched_role_id, 'oil_control_treatment');
     assert.match(String(response.body?.assistant_text || ''), /Top pick for that first role: Oil Balance Serum\./i);
   } finally {
-    decisionModule.auroraChat = originalAuroraChat;
+    harness?.restore?.();
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic oily-skin ask preserves framework recommendations when the primary role is unmatched', async () => {
+test('/v1/chat: generic oily-skin ask does not surface support-only fallback recommendations when the primary role is unmatched', async () => {
   const originalGet = axios.get;
-  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
-  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-  const originalAuroraChat = decisionModule.auroraChat;
   const observedSearchParams = [];
+  let harness = null;
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1474,33 +1596,27 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
       data: { products: [] },
     };
   };
-  decisionModule.auroraChat = async () => ({
-    answer: JSON.stringify({
-      recommendations: [
-        {
-          step: 'sunscreen',
-          reasons: ['This fallback answer should not override the framework-first mainline.'],
-          sku: { brand: 'SunGuard', display_name: 'Daily UV Fluid SPF 50' },
-        },
-      ],
-    }),
-  });
 
   try {
-    const express = require('express');
-    const { mountAuroraBffRoutes } = loadRoutesFresh();
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    mountAuroraBffRoutes(app, { logger: null });
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock({
+        selectorResult: buildConcernSelectorFixture({
+          topPickProductId: null,
+          orderedProductIds: ['moist_partial_1', 'spf_partial_1'],
+        }),
+      }),
+      useMemoryStore: false,
+    });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_partial_uid', briefId: 'chat_framework_partial_brief' });
-    const response = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers: {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
         'X-Aurora-UID': 'chat_framework_partial_uid',
         'X-Trace-ID': 'trace_chat_framework_partial',
         'X-Brief-ID': 'chat_framework_partial_brief',
-      },
-      body: {
+      })
+      .send({
         action: {
           action_id: 'chip.start.reco_products',
           kind: 'chip',
@@ -1517,34 +1633,20 @@ test('/v1/chat: generic oily-skin ask preserves framework recommendations when t
         client_state: 'IDLE_CHAT',
         session: { state: 'idle' },
         language: 'EN',
-      },
-    });
+      });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 2);
-    assert.equal(payload.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
-    assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
-    assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
-    assert.equal(payload.recommendation_meta?.primary_role_matched, false);
-    assert.equal(payload.recommendation_meta?.late_conflict_without_override, true);
-    assert.equal(payload.recommendation_meta?.mainline_status, 'needs_more_context');
-    assert.equal(payload.recommendation_meta?.surface_reason, 'weak_viable_pool');
-    assert.equal(payload.recommendation_meta?.products_empty_reason, 'weak_viable_pool');
-    assert.equal(payload.primary_role_id, 'oil_control_treatment');
-    assert.equal(payload.primary_role_matched, false);
-    assert.equal(payload.late_conflict_without_override, true);
-    assert.equal(payload.recommendations[0]?.product_id, 'moist_partial_1');
-    assert.equal(payload.recommendations[0]?.matched_role_id, 'lightweight_moisturizer');
-    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
-    assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet\./i);
-    assert.match(String(response.body?.assistant_text || ''), /Best available inside the same framework right now: Air Gel Cream for Lightweight moisturizer\./i);
-    assert.ok(
-      observedSearchParams.some((row) => row.allow_external_seed === true && row.external_seed_strategy === 'supplement_internal_first'),
-    );
+    assert.equal(payload, null);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const noticeCard = cards.find((card) => card?.type === 'confidence_notice');
+    assert.ok(noticeCard);
+    assert.equal(noticeCard?.payload?.reason, 'post_processing_eliminated_candidates');
+    assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet/i);
+    assert.match(String(response.body?.assistant_text || ''), /I will not force an off-framework product/i);
+    assert.ok(observedSearchParams.every((row) => row.allow_external_seed !== true));
   } finally {
-    decisionModule.auroraChat = originalAuroraChat;
+    harness?.restore?.();
     axios.get = originalGet;
   }
 });
