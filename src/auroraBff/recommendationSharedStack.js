@@ -604,17 +604,38 @@ function productKey(product) {
   return `${productId}::${merchantId}::${name}`.toLowerCase();
 }
 
-function buildCandidateResolutionText(product) {
+function buildCandidateResolutionFragments(product) {
   const row = isPlainObject(product) ? product : {};
-  return [
-    pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
-    ...(Array.isArray(row.tags) ? row.tags : []),
-    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
-    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
-    pickFirstTrimmed(row.retrieval_query, row.query, row.retrieval_reason),
-  ]
-    .map((item) => normalizeQueryToken(item))
-    .filter(Boolean)
+  const fragments = [
+    ['title', pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title)],
+    ['structured_category', pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType, row.type)],
+    ...[...(Array.isArray(row.search_aliases) ? row.search_aliases : []), ...(Array.isArray(row.searchAliases) ? row.searchAliases : []), ...(Array.isArray(row.aliases) ? row.aliases : [])].map((value) => ['alias', value]),
+    ...[...(Array.isArray(row.benefit_tokens) ? row.benefit_tokens : []), ...(Array.isArray(row.benefit_tags) ? row.benefit_tags : []), ...(Array.isArray(row.benefitTags) ? row.benefitTags : []), ...(Array.isArray(row.benefit_tags_list) ? row.benefit_tags_list : []), ...(Array.isArray(row.benefitTagsList) ? row.benefitTagsList : []), ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : [])].map((value) => ['benefit', value]),
+    ...[...(Array.isArray(row.tags) ? row.tags : []), ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : [])].map((value) => ['tag', value]),
+    ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []).map((value) => ['ingredient', value]),
+    ...[...(Array.isArray(row.description_tokens) ? row.description_tokens : []), pickFirstTrimmed(row.short_description, row.shortDescription, row.description, row.summary, row.subtitle, row.seed_description, row.seedDescription)].map((value) => ['description', value]),
+    ['brand', pickFirstTrimmed(row.brand)],
+  ];
+  return uniqCaseInsensitiveStrings(
+    fragments
+      .map(([source, value]) => {
+        const normalized = normalizeQueryToken(value);
+        return normalized ? `${source}::${normalized}` : '';
+      })
+      .filter(Boolean),
+    48,
+  ).map((token) => {
+    const sepIndex = token.indexOf('::');
+    return {
+      source: sepIndex > -1 ? token.slice(0, sepIndex) : 'unknown',
+      value: sepIndex > -1 ? token.slice(sepIndex + 2) : token,
+    };
+  });
+}
+
+function buildCandidateResolutionText(product) {
+  return buildCandidateResolutionFragments(product)
+    .map((item) => item.value)
     .join(' ');
 }
 
@@ -653,6 +674,28 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
         retrievalStep === normalizeRecoTargetStep(targetContext?.resolved_target_step)
           ? 'high'
           : 'medium',
+    };
+  }
+  const resolutionFragments = buildCandidateResolutionFragments(row);
+  for (const fragment of resolutionFragments) {
+    const fragmentStep = normalizeRecoTargetStep(fragment.value);
+    if (!fragmentStep) continue;
+    return {
+      candidate_step: fragmentStep,
+      candidate_step_source:
+        fragment.source === 'description'
+          ? 'description_alias'
+          : fragment.source === 'retrieval_trace'
+            ? 'retrieval_trace'
+            : fragment.source === 'structured_category'
+              ? 'structured_category'
+              : 'title_or_tag_alias',
+      candidate_step_confidence:
+        fragment.source === 'description'
+          ? 'medium'
+          : fragment.source === 'retrieval_trace'
+            ? 'low'
+            : 'high',
     };
   }
   const resolutionText = buildCandidateResolutionText(row);
@@ -1076,4 +1119,5 @@ module.exports = {
   shouldStopStepAwareBroadening,
   deriveStepAwareEmptyReason,
   inferSlotForStep,
+  normalizeCandidateStep,
 };

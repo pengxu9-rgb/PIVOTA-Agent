@@ -251,6 +251,7 @@ const {
   deriveStepAwareEmptyReason,
   inferSlotForStep,
   isSkincareCandidate,
+  normalizeCandidateStep,
 } = require('./recommendationSharedStack');
 const { mountDupeRoutes } = require('./routes/dupeRoutes');
 const { dupeFlags } = require('./dupeFlags');
@@ -16197,6 +16198,46 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
   return Number(score.toFixed(4));
 }
 
+function buildConcernFrameworkCandidateText(row) {
+  const candidate = isPlainObject(row) ? row : {};
+  return [
+    buildExternalSeedSurfacingText(candidate),
+  ]
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+function summarizeConcernFrameworkSourceCounts(items = []) {
+  const out = {};
+  for (const raw of Array.isArray(items) ? items : []) {
+    const row = isPlainObject(raw)
+      ? (isPlainObject(raw.product) ? raw.product : raw)
+      : null;
+    const sourceKey = String(row?.retrieval_source || row?.retrievalSource || 'none').trim().toLowerCase() || 'none';
+    out[sourceKey] = Number(out[sourceKey] || 0) + 1;
+  }
+  return out;
+}
+
+function buildConcernFrameworkRejectPreview(entries = [], max = 5) {
+  return (Array.isArray(entries) ? entries : [])
+    .slice(0, Math.max(1, Number(max) || 5))
+    .map((entry) => {
+      const product = isPlainObject(entry?.product) ? entry.product : null;
+      return {
+        product_id: pickFirstTrimmed(product?.product_id, product?.productId, product?.id) || null,
+        retrieval_source: pickFirstTrimmed(product?.retrieval_source, product?.retrievalSource, 'none') || 'none',
+        matched_role_id: pickFirstTrimmed(product?.matched_role_id, product?.matchedRoleId) || null,
+        candidate_step: pickFirstTrimmed(product?.candidate_step, product?.candidateStep) || null,
+        framework_score: Number.isFinite(Number(product?.framework_score)) ? Number(product.framework_score) : null,
+        framework_semantic_fit: product?.framework_semantic_fit === true,
+        reason: String(entry?.reason || '').trim() || 'unknown',
+      };
+    });
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -16227,30 +16268,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       hardReject.push({ product: row, reason: 'non_skincare_or_blacklisted' });
       continue;
     }
-    const candidateStep = normalizeRecoTargetStep(
-      pickFirstTrimmed(
-        row.product_type,
-        row.productType,
-        row.category,
-        row.category_name,
-        row.categoryName,
-        row.step,
-        row.type,
-        row.retrieval_step,
-      ),
-    );
+    const stepResolution = normalizeCandidateStep(row, { targetContext });
+    const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
     const retrievalRoleId = pickFirstTrimmed(row.retrieval_role_id, row.role_id);
-    const candidateText = [
-      pickFirstTrimmed(row.brand),
-      pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
-      pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType),
-      ...(Array.isArray(row.ingredient_tokens) ? row.ingredient_tokens : []),
-      ...(Array.isArray(row.search_aliases) ? row.search_aliases : []),
-      ...(Array.isArray(row.benefit_tokens) ? row.benefit_tokens : []),
-      ...(Array.isArray(row.description_tokens) ? row.description_tokens : []),
-      ...(Array.isArray(row.tags) ? row.tags : []),
-      ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
-    ].join(' ').toLowerCase();
+    const candidateText = buildConcernFrameworkCandidateText(row);
 
     let bestRole = null;
     let bestScore = 0;
@@ -16262,39 +16283,31 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       const alternateSteps = Array.isArray(role?.alternate_steps)
         ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
         : [];
-      let fitKeywordMatched = false;
-      let queryTermMatched = false;
+      const fitKeywordHits = (Array.isArray(role?.fit_keywords) ? role.fit_keywords : []).reduce((count, keyword) => {
+        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
+        if (!normalizedKeyword) return count;
+        return candidateText.includes(normalizedKeyword) ? count + 1 : count;
+      }, 0);
+      const queryTermHits = (Array.isArray(role?.query_terms) ? role.query_terms : []).reduce((count, term) => {
+        const normalizedTerm = String(term || '').trim().toLowerCase();
+        if (!normalizedTerm) return count;
+        return candidateText.includes(normalizedTerm) ? count + 1 : count;
+      }, 0);
+      const semanticFitMatched = fitKeywordHits > 0 || queryTermHits > 0;
       let score = 0;
+      if (fitKeywordHits > 0) score += Math.min(0.24, fitKeywordHits * 0.12);
+      if (queryTermHits > 0) score += Math.min(0.16, queryTermHits * 0.08);
       if (candidateStep && preferredStep && candidateStep === preferredStep) {
         score += 0.72;
       } else if (candidateStep && alternateSteps.includes(candidateStep)) {
         score += preferredStep === 'treatment'
-          ? (fitKeywordMatched || queryTermMatched ? 0.62 : 0.18)
+          ? (semanticFitMatched ? 0.62 : 0.18)
           : 0.62;
       }
-      for (const keyword of Array.isArray(role?.fit_keywords) ? role.fit_keywords : []) {
-        const normalizedKeyword = String(keyword || '').trim().toLowerCase();
-        if (!normalizedKeyword) continue;
-        if (candidateText.includes(normalizedKeyword)) {
-          fitKeywordMatched = true;
-          score += 0.12;
-          break;
-        }
-      }
-      for (const term of Array.isArray(role?.query_terms) ? role.query_terms : []) {
-        const normalizedTerm = String(term || '').trim().toLowerCase();
-        if (!normalizedTerm) continue;
-        if (candidateText.includes(normalizedTerm)) {
-          queryTermMatched = true;
-          score += 0.08;
-          break;
-        }
-      }
-      const semanticFitMatched = fitKeywordMatched || queryTermMatched;
       if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') {
         score += semanticFitMatched ? 0.6 : 0.12;
       }
-      if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.12 : 0.02;
+      if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.12 : 0;
       if (score > bestScore) {
         bestScore = score;
         bestRole = role;
@@ -16315,6 +16328,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: bestSemanticFit,
       candidate_step: candidateStep || null,
+      candidate_step_source: stepResolution?.candidate_step_source || 'none',
+      candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
     };
     if (bestScore >= 0.72) {
       viable.push(annotated);
@@ -16358,6 +16373,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
   const bestAvailableRecommendation = selected[0] || null;
+  const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
+  const viableSourceCounts = summarizeConcernFrameworkSourceCounts(viable);
+  const selectedSourceCounts = summarizeConcernFrameworkSourceCounts(selected);
+  const externalSeedUsedCount = Number(selectedSourceCounts.external_seed || 0);
 
   return {
     raw_candidate_pool: deduped,
@@ -16377,10 +16396,15 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     ) || null,
     raw_candidate_count: deduped.length,
     viable_candidate_count: viable.length,
+    raw_source_counts: rawSourceCounts,
+    viable_source_counts: viableSourceCounts,
+    selected_source_counts: selectedSourceCounts,
+    external_seed_used_count: externalSeedUsedCount,
     exact_step_viable_count: primaryRoleMatched ? 1 : 0,
     same_family_viable_count: viable.length,
     soft_mismatch_count: softMismatch.length,
     hard_reject_count: hardReject.length,
+    hard_reject_preview: buildConcernFrameworkRejectPreview(hardReject),
     pre_llm_selected_candidate_count: selected.length,
     final_selected_candidate_count: selected.length,
     selected_candidate_count: selected.length,

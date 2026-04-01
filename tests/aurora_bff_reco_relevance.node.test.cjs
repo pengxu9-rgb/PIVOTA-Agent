@@ -1859,6 +1859,106 @@ test('__internal: framework pool accepts external seed semantic evidence from be
   assert.equal(state.selected_recommendations[0]?.framework_semantic_fit, true);
 });
 
+test('__internal: framework pool infers step from external seed alias and description when category is generic', async () => {
+  const { __internal } = loadRoutesFresh();
+  const normalized = __internal.normalizeRecoCatalogProduct({
+    product_id: 'ext_oil_generic_1',
+    merchant_id: 'merchant_ext_oil_generic',
+    brand: 'Fenty Skin',
+    name: 'Gloss Bomb Control',
+    display_name: 'Fenty Skin Gloss Bomb Control',
+    category: 'skincare',
+    source: 'external_seed',
+    search_aliases: ['Fenty Skin Oil Control Serum'],
+    benefit_tags: ['oil control', 'shine control'],
+    short_description: 'A mattifying balancing serum for oily skin.',
+  });
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [normalized],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_generic_step',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'ext_oil_generic_1');
+  assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
+  assert.equal(state.selected_recommendations[0]?.candidate_step_source, 'title_or_tag_alias');
+  assert.equal(state.selected_source_counts?.external_seed, 1);
+  assert.equal(state.external_seed_used_count, 1);
+});
+
+test('__internal: framework pool exposes source counts and reject preview for shared surfacing diagnostics', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'int_niac_diag_1',
+        merchant_id: 'merchant_int_niac_diag',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'oil_control_treatment',
+        ingredient_tokens: ['niacinamide', 'zinc'],
+      },
+      {
+        product_id: 'ext_oil_diag_1',
+        merchant_id: 'merchant_ext_oil_diag',
+        brand: 'Fenty Skin',
+        name: 'Oil Control Serum',
+        display_name: 'Fenty Skin Oil Control Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'oil_control_treatment',
+        tag_tokens: ['oil control', 'shine control'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_diag',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.raw_source_counts?.catalog, 1);
+  assert.equal(state.raw_source_counts?.external_seed, 1);
+  assert.equal(state.viable_source_counts?.external_seed, 1);
+  assert.equal(state.selected_source_counts?.external_seed, 1);
+  assert.ok(Array.isArray(state.hard_reject_preview));
+  assert.equal(state.hard_reject_preview[0]?.product_id, 'int_niac_diag_1');
+  assert.equal(state.hard_reject_preview[0]?.reason, 'framework_hard_mismatch');
+});
+
 test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
   const originalGet = axios.get;
   let inFlight = 0;
