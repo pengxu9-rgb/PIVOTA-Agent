@@ -47,6 +47,78 @@ test('purchasable fallback: catalog-only mode keeps catalog source', async () =>
   assert.equal(out.products[0].retrieval_source, 'catalog');
 });
 
+test('purchasable fallback: explicit internal sourceScope runs only the catalog stage', async () => {
+  const calls = [];
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'oil control serum',
+    sourceScope: 'internal',
+    searchFn: async (params) => {
+      calls.push({
+        allowExternalSeed: params.allowExternalSeed === true,
+        fastMode: params.fastMode === true,
+      });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_catalog_internal_only',
+            merchant_id: 'm_catalog_internal_only',
+            name: 'Catalog Oil Control Serum',
+            pdp_url: 'https://example.com/pdp/catalog-oil-control',
+            source: 'catalog',
+          },
+        ],
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [{ allowExternalSeed: false, fastMode: true }]);
+  assert.equal(out.selected_source, 'catalog');
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].retrieval_source, 'catalog');
+});
+
+test('purchasable fallback: explicit external sourceScope runs only the external seed stage', async () => {
+  const calls = [];
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'oil control serum',
+    sourceScope: 'external_seed',
+    searchFn: async (params) => {
+      calls.push({
+        allowExternalSeed: params.allowExternalSeed === true,
+        fastMode: params.fastMode === true,
+        externalSeedStrategy: params.externalSeedStrategy,
+      });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_external_stage_only',
+            merchant_id: 'm_external_stage_only',
+            name: 'External Oil Balance Serum',
+            canonical_pdp_url: 'https://example.com/pdp/external-oil-balance',
+            source: 'external_seed',
+            retrieval_source: 'external_seed',
+          },
+          {
+            product_id: 'prod_catalog_noise',
+            merchant_id: 'm_catalog_noise',
+            name: 'Catalog Noise',
+            canonical_pdp_url: 'https://example.com/pdp/catalog-noise',
+            source: 'catalog',
+            retrieval_source: 'catalog',
+          },
+        ],
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [{ allowExternalSeed: true, fastMode: false, externalSeedStrategy: 'supplement_internal_first' }]);
+  assert.equal(out.selected_source, 'external_seed');
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].retrieval_source, 'external_seed');
+});
+
 test('purchasable fallback: supplements from external seed when catalog is empty', async () => {
   const calls = [];
   const out = await __internal.buildPurchasableFallbackCandidates({
@@ -318,4 +390,28 @@ test('purchasable fallback: query collection includes ingredient target names an
   assert.equal(queries.some((row) => /ceramide barrier moisturizer/i.test(String(row))), true);
   assert.equal(queries.some((row) => /barrier repair ceramide moisturizer/i.test(String(row))), true);
   assert.equal(queries.some((row) => /panthenol \(b5/i.test(String(row))), true);
+});
+
+test('reco catalog dependency failure prefers staged recall diagnostics over artifact_missing', () => {
+  const timeoutFailure = __internal.deriveRecoCatalogDependencyFailure({
+    executed_query_count: 4,
+    stage_timeout_counts: {
+      framework_stage_a_primary_internal: 2,
+      framework_stage_b_primary_external_seed: 2,
+    },
+    candidate_drop_stage: 'upstream_timeout',
+  });
+  assert.equal(timeoutFailure.effective_failure_class, 'upstream_timeout');
+
+  const noRecallFailure = __internal.deriveRecoCatalogDependencyFailure({
+    executed_query_count: 2,
+    candidate_drop_stage: 'no_recall_from_planned_sources',
+  });
+  assert.equal(noRecallFailure.effective_failure_class, 'no_recall_from_planned_sources');
+
+  const filteredFailure = __internal.deriveRecoCatalogDependencyFailure({
+    executed_query_count: 2,
+    candidate_drop_stage: 'filtered_after_recall',
+  });
+  assert.equal(filteredFailure.effective_failure_class, 'filtered_after_recall');
 });

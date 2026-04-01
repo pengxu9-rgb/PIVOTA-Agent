@@ -1595,11 +1595,11 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
         data: {
           products: [
             {
-              product_id: 'int_oil_1',
+              product_id: 'int_niac_1',
               merchant_id: 'merchant_int_oil',
               brand: 'The Ordinary',
-              name: 'Oil Control Serum',
-              display_name: 'The Ordinary Oil Control Serum',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
               category: 'serum',
               product_type: 'serum',
               ingredient_tokens: ['niacinamide'],
@@ -1719,6 +1719,9 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     assert.ok(payload.recommendations.some((item) => item?.retrieval_source === 'external_seed'));
     assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.externalSeedStrategy === 'supplement_internal_first'));
     assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && entry.fastMode === false));
+    assert.ok(observedQueries.filter((entry) => entry.allowExternalSeed === true).length <= 3);
+    assert.ok(Number(payload.recommendation_meta?.executed_query_count || 0) <= 6);
+    assert.ok(Number(payload.recommendation_meta?.executed_upstream_attempt_count || 0) <= 8);
     assert.ok(Number(payload.recommendation_meta?.external_seed_used_count || 0) > 0);
     assert.ok(Number(payload.recommendation_meta?.selected_source_counts?.external_seed || 0) > 0);
   } finally {
@@ -1729,6 +1732,54 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     decisionModule.auroraChat = originalAuroraChat;
     axios.get = originalGet;
   }
+});
+
+test('__internal: framework recall planner emits a staged six-query budget with primary external seed only in stage B', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      framework_summary: {
+        concern_text: 'im oily skin, what product should i use?',
+      },
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 2,
+          preferred_step: 'moisturizer',
+          query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 3,
+          preferred_step: 'sunscreen',
+          query_terms: ['daily sunscreen', 'lightweight sunscreen', 'spf fluid'],
+        },
+      ],
+    },
+  });
+
+  assert.equal(plan.mode, 'framework_generic');
+  assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
+  assert.ok(Array.isArray(plan.stages));
+  assert.equal(plan.stages.length, 4);
+  assert.ok(Array.isArray(plan.entries));
+  assert.ok(plan.entries.length <= 6);
+  assert.deepEqual(
+    plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
+    [
+      ['framework_stage_a_primary_internal', 'internal', 2],
+      ['framework_stage_b_primary_external_seed', 'external_seed', 2],
+      ['framework_stage_c_support_rank2_internal', 'internal', 1],
+      ['framework_stage_c_support_rank3_internal', 'internal', 1],
+    ],
+  );
 });
 
 test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {

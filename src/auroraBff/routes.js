@@ -78,6 +78,10 @@ const {
   tokenizeSurfacingSearchText,
 } = require('./externalSeedSurfacingPolicy');
 const {
+  RECO_RECALL_PLAN_VERSION,
+  buildRecoRecallPlan,
+} = require('./recoRecallPlanner');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -7153,21 +7157,49 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
     }
   }
 
-  for (const query of queries) {
-    const [searchedInternal, searchedWithExternalSeed] = await Promise.all([
-      searchPivotaBackendProducts({
-        query,
-        limit: 8,
-        logger,
-        timeoutMs: searchTimeoutMs,
-        allowExternalSeed: false,
-        externalSeedStrategy: 'legacy',
-      }),
-      AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true
-        ? (async () => {
-            const startedAt = Date.now();
-            if (fetchGroundingAgentSearchCandidates) {
-              const out = await fetchGroundingAgentSearchCandidates({
+  const searchRecallPlan = buildRecoRecallPlan({
+    mode: 'product_grounding_exact',
+    queries,
+  });
+  const searchStageResults = [];
+  let bestSearchCandidate = null;
+  for (const stage of Array.isArray(searchRecallPlan?.stages) ? searchRecallPlan.stages : []) {
+    const sourceScope = String(stage?.source_scope || 'internal').trim().toLowerCase();
+    if (sourceScope === 'external_seed' && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED !== true) {
+      searchStageResults.push({
+        stage_id: stage.stage_id,
+        picked_candidate: false,
+        transient_only: false,
+        skipped: true,
+        skip_reason: 'external_seed_disabled',
+      });
+      continue;
+    }
+    const previousStage = [...searchStageResults].reverse().find((row) => row && row.skipped !== true) || null;
+    if (
+      String(stage?.run_if || '').trim().toLowerCase() === 'if_no_primary_viable_or_transient_only'
+      && previousStage?.picked_candidate
+      && previousStage?.picked_candidate_exact_phrase === true
+    ) {
+      searchStageResults.push({
+        stage_id: stage.stage_id,
+        picked_candidate: false,
+        transient_only: false,
+        skipped: true,
+        skip_reason: 'previous_stage_exact_candidate',
+      });
+      continue;
+    }
+
+    const stageRows = await mapWithConcurrency(
+      Array.isArray(stage?.entries) ? stage.entries : [],
+      Math.max(1, Number(stage?.concurrency || 1)),
+      async (entry) => {
+        const query = String(entry?.query || '').trim();
+        const startedAt = Date.now();
+        const out =
+          sourceScope === 'external_seed' && fetchGroundingAgentSearchCandidates
+            ? await fetchGroundingAgentSearchCandidates({
                 pivotaApiBase: PIVOTA_BACKEND_BASE_URL,
                 pivotaApiKey: PIVOTA_BACKEND_AGENT_API_KEY,
                 query,
@@ -7179,109 +7211,163 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
                 retryBackoffMs: 90,
                 allowExternalSeed: true,
                 externalSeedStrategy: 'supplement_internal_first',
-                fastMode: true,
+                fastMode: false,
+              })
+            : await searchPivotaBackendProducts({
+                query,
+                limit: 8,
+                logger,
+                timeoutMs: sourceScope === 'external_seed' ? externalSeedSearchTimeoutMs : searchTimeoutMs,
+                allowExternalSeed: sourceScope === 'external_seed',
+                externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'legacy',
+                fastMode: sourceScope !== 'external_seed',
               });
-              return {
-                ...out,
-                latency_ms: Math.max(0, Date.now() - startedAt),
-              };
-            }
-            return searchPivotaBackendProducts({
-              query,
-              limit: 8,
-              logger,
-              timeoutMs: externalSeedSearchTimeoutMs,
-              allowExternalSeed: true,
-              externalSeedStrategy: 'supplement_internal_first',
-            });
-          })()
-        : Promise.resolve(null),
-    ]);
-    const pickedInternal = pickBestCatalogSearchCandidateForProductInput({
-      query,
-      candidates: Array.isArray(searchedInternal?.products) ? searchedInternal.products : [],
-      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
-    });
-    const externalSeedCandidates = dedupeCatalogSearchCandidatesForProductAnchor(
-      (Array.isArray(searchedWithExternalSeed?.products) ? searchedWithExternalSeed.products : []).filter((rawCandidate) => {
-        const candidate =
-          normalizeRecoCatalogProduct(rawCandidate) ||
-          (rawCandidate && typeof rawCandidate === 'object' && !Array.isArray(rawCandidate) ? rawCandidate : null);
-        return String(candidate?.retrieval_source || '').trim().toLowerCase() === 'external_seed';
-      }),
+        return {
+          entry,
+          out: {
+            ...out,
+            latency_ms: Number.isFinite(Number(out?.latency_ms))
+              ? Math.trunc(Number(out.latency_ms))
+              : Math.max(0, Date.now() - startedAt),
+          },
+        };
+      },
     );
-    const pickedExternalSeed = pickBestCatalogSearchCandidateForProductInput({
-      query,
-      candidates: externalSeedCandidates,
-      strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
-    });
-    const firstInternal = pickedInternal.candidate;
-    const firstExternalSeed = pickedExternalSeed.candidate;
-    filteredNonSkincareCount += Number(pickedInternal.filteredNonSkincareCount || 0);
-    filteredNonSkincareCount += Number(pickedExternalSeed.filteredNonSkincareCount || 0);
-    if (Number(pickedInternal.ambiguousRejectedCount || 0) > 0) internalSearchAmbiguous = true;
-    if (Number(pickedExternalSeed.ambiguousRejectedCount || 0) > 0) externalSeedSearchAmbiguous = true;
-    attempts.push({
-      mode: 'search_internal',
-      query,
-      ok: Boolean(firstInternal),
-      reason: firstInternal
+
+    let stagePicked = null;
+    let stageTransientOnly = stageRows.length > 0;
+    for (const row of stageRows) {
+      const entry = row?.entry || null;
+      const out = row?.out || null;
+      const query = String(entry?.query || '').trim();
+      const rawProducts = Array.isArray(out?.products) ? out.products : [];
+      const candidates = sourceScope === 'external_seed'
+        ? dedupeCatalogSearchCandidatesForProductAnchor(
+            rawProducts.filter((rawCandidate) => {
+              const candidate =
+                normalizeRecoCatalogProduct(rawCandidate) ||
+                (rawCandidate && typeof rawCandidate === 'object' && !Array.isArray(rawCandidate) ? rawCandidate : null);
+              return String(candidate?.retrieval_source || '').trim().toLowerCase() === 'external_seed';
+            }),
+          )
+        : rawProducts;
+      const picked = pickBestCatalogSearchCandidateForProductInput({
+        query,
+        candidates,
+        strictFilter: AURORA_PRODUCT_STRICT_SKINCARE_FILTER,
+      });
+      filteredNonSkincareCount += Number(picked.filteredNonSkincareCount || 0);
+      if (sourceScope === 'external_seed') {
+        if (Number(picked.ambiguousRejectedCount || 0) > 0) externalSeedSearchAmbiguous = true;
+      } else if (Number(picked.ambiguousRejectedCount || 0) > 0) {
+        internalSearchAmbiguous = true;
+      }
+      const reason = picked.candidate
         ? null
         : filteredNonSkincareCount > 0
           ? 'catalog_non_skincare_match'
-          : Number(pickedInternal.ambiguousRejectedCount || 0) > 0
-            ? 'catalog_search_ambiguous'
-          : searchedInternal && searchedInternal.reason
-            ? String(searchedInternal.reason)
-            : null,
-      latency_ms: Number.isFinite(Number(searchedInternal?.latency_ms)) ? Math.trunc(Number(searchedInternal?.latency_ms)) : null,
-    });
-    if (AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED === true) {
+          : Number(picked.ambiguousRejectedCount || 0) > 0
+            ? (sourceScope === 'external_seed' ? 'external_seed_search_ambiguous' : 'catalog_search_ambiguous')
+            : out && out.reason
+              ? String(out.reason)
+              : null;
       attempts.push({
-        mode: 'search_external_seed',
+        mode: sourceScope === 'external_seed' ? 'search_external_seed' : 'search_internal',
         query,
-        ok: Boolean(firstExternalSeed),
-        reason: firstExternalSeed
-          ? null
-          : filteredNonSkincareCount > 0
-            ? 'catalog_non_skincare_match'
-            : Number(pickedExternalSeed.ambiguousRejectedCount || 0) > 0
-              ? 'external_seed_search_ambiguous'
-              : searchedWithExternalSeed && searchedWithExternalSeed.reason
-                ? String(searchedWithExternalSeed.reason)
-                : null,
-        latency_ms: Number.isFinite(Number(searchedWithExternalSeed?.latency_ms))
-          ? Math.trunc(Number(searchedWithExternalSeed?.latency_ms))
-          : null,
+        ok: Boolean(picked.candidate),
+        reason,
+        latency_ms: Number.isFinite(Number(out?.latency_ms)) ? Math.trunc(Number(out.latency_ms)) : null,
       });
+      if (!picked.candidate) {
+        const normalizedReason = String(reason || '').trim().toLowerCase();
+        if (!['upstream_timeout', 'upstream_error', 'rate_limited'].includes(normalizedReason)) {
+          stageTransientOnly = false;
+        }
+        continue;
+      }
+      stageTransientOnly = false;
+      if (!stagePicked) {
+        stagePicked = {
+          candidate: picked.candidate,
+          query,
+          preferredSource: sourceScope === 'external_seed' ? 'external_seed' : 'internal',
+        };
+      } else if (sourceScope === 'external_seed') {
+        const preferred = choosePreferredExternalSeedCandidate({
+          query,
+          internalCandidate: stagePicked.preferredSource === 'internal' ? stagePicked.candidate : null,
+          externalCandidate: picked.candidate,
+        });
+        if (preferred.candidate && preferred.preferredSource === 'external_seed') {
+          stagePicked = {
+            candidate: preferred.candidate,
+            query,
+            preferredSource: 'external_seed',
+          };
+        }
+      }
     }
-    const preferredSearchCandidate = choosePreferredExternalSeedCandidate({
-      query,
-      internalCandidate: firstInternal,
-      externalCandidate: firstExternalSeed,
+
+    const pickedCandidateMatch = stagePicked?.candidate
+      ? computeExternalSeedSurfacingMatch({
+          query: stagePicked.query,
+          candidate: stagePicked.candidate,
+          anchorOnly: true,
+        })
+      : null;
+
+    searchStageResults.push({
+      stage_id: stage.stage_id,
+      picked_candidate: Boolean(stagePicked?.candidate),
+      picked_candidate_strong: pickedCandidateMatch?.strong === true,
+      picked_candidate_exact_phrase: pickedCandidateMatch?.exact_phrase === true,
+      transient_only: stageTransientOnly,
+      skipped: false,
+      skip_reason: null,
     });
-    if (preferredSearchCandidate.candidate && preferredSearchCandidate.preferredSource === 'internal') {
+
+    if (stagePicked?.candidate) {
+      if (!bestSearchCandidate) {
+        bestSearchCandidate = stagePicked;
+      } else if (stagePicked.preferredSource === 'external_seed') {
+        const preferred = choosePreferredExternalSeedCandidate({
+          query: stagePicked.query || bestSearchCandidate.query || queries[0] || '',
+          internalCandidate: bestSearchCandidate.preferredSource === 'internal' ? bestSearchCandidate.candidate : null,
+          externalCandidate: stagePicked.candidate,
+        });
+        bestSearchCandidate = preferred.preferredSource === 'external_seed'
+          ? stagePicked
+          : bestSearchCandidate;
+      }
+    }
+
+    if (stagePicked?.candidate && (sourceScope === 'external_seed' || pickedCandidateMatch?.exact_phrase === true)) {
       return {
         ok: true,
         reason: null,
         source: 'search',
-        decision_source: 'catalog_search_exact',
-        query_used: query,
-        product: preferredSearchCandidate.candidate,
+        decision_source: stagePicked.preferredSource === 'external_seed'
+          ? 'external_seed_search_exact'
+          : 'catalog_search_exact',
+        query_used: stagePicked.query || queries[0] || null,
+        product: stagePicked.candidate,
         attempts,
       };
     }
-    if (preferredSearchCandidate.candidate && preferredSearchCandidate.preferredSource === 'external_seed') {
-      return {
-        ok: true,
-        reason: null,
-        source: 'search',
-        decision_source: 'external_seed_search_exact',
-        query_used: query,
-        product: preferredSearchCandidate.candidate,
-        attempts,
-      };
-    }
+  }
+
+  if (bestSearchCandidate?.candidate) {
+    return {
+      ok: true,
+      reason: null,
+      source: 'search',
+      decision_source: bestSearchCandidate.preferredSource === 'external_seed'
+        ? 'external_seed_search_exact'
+        : 'catalog_search_exact',
+      query_used: bestSearchCandidate.query || queries[0] || null,
+      product: bestSearchCandidate.candidate,
+      attempts,
+    };
   }
 
   const llmExternalMatch = await resolveOpenWorldExternalProductMatchForProductInput({
@@ -15948,35 +16034,38 @@ function buildRecoCatalogQueryLevels({
   seedTerms = [],
 } = {}) {
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
-    const concernText = String(targetContext?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
-    return targetContext.framework_roles.map((role, index) => {
-      const preferredStep = normalizeRecoTargetStep(role && role.preferred_step) || 'treatment';
-      const queries = [
-        ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
-        concernText ? `${concernText} ${preferredStep}` : '',
-        concernText,
-      ]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean)
-        .slice(0, 6);
-      return {
-        level_index: index,
-        ladder_level: `framework_${String(role?.role_id || index).trim() || index}`,
-        queries: queries.map((query) => ({
-          query,
+    const recallPlan = buildRecoRecallPlan({
+      mode: 'framework_generic',
+      targetContext,
+    });
+    return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
+      level_index: index,
+      ladder_level: String(stage?.stage_id || `framework_stage_${index + 1}`).trim() || `framework_stage_${index + 1}`,
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => {
+        const preferredStep = normalizeRecoTargetStep(entry?.preferred_step) || 'treatment';
+        return {
+          query: String(entry?.query || '').trim(),
           step: preferredStep,
           slot: inferSlotForStep(preferredStep),
-          ladder_level: `framework_${String(role?.role_id || index).trim() || index}`,
-          role_id: String(role?.role_id || '').trim() || null,
-          role_rank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : index + 1,
-          role_label: String(role?.label || '').trim() || null,
+          ladder_level: String(stage?.stage_id || `framework_stage_${index + 1}`).trim() || `framework_stage_${index + 1}`,
+          role_id: String(entry?.role_id || '').trim() || null,
+          role_rank: Number.isFinite(Number(entry?.role_rank)) ? Number(entry.role_rank) : null,
+          role_label: String(
+            targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === String(entry?.role_id || '').trim())?.label || '',
+          ).trim() || null,
           preferred_step: preferredStep,
-        })),
-      };
-    });
+          query_index: Number.isFinite(Number(entry?.query_index)) ? Number(entry.query_index) : 0,
+          allow_external_seed: String(entry?.source_scope || '').trim().toLowerCase() === 'external_seed',
+          external_seed_strategy:
+            String(entry?.source_scope || '').trim().toLowerCase() === 'external_seed'
+              ? 'stage_planned'
+              : 'on_empty_only',
+        };
+      }),
+    })).filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
   }
   if (targetContext && targetContext.step_aware_intent && targetContext.resolved_target_step) {
-    return buildSameFamilyQueryLevels({
+    const stepQueryLevels = buildSameFamilyQueryLevels({
       targetContext,
       profileSummary,
       ingredientContext,
@@ -15984,6 +16073,21 @@ function buildRecoCatalogQueryLevels({
       lang,
       seedTerms,
     });
+    const recallPlan = buildRecoRecallPlan({
+      mode: 'step_aware',
+      queryLevels: stepQueryLevels,
+    });
+    return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
+      level_index: index,
+      ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+        query: String(entry?.query || '').trim(),
+        step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
+        slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
+        ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
+        query_index: Number.isFinite(Number(entry?.query_index)) ? Number(entry.query_index) : 0,
+      })),
+    })).filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
   }
   const queries = buildRecoCatalogQueries({ profileSummary, lang, ingredientContext });
   return queries.length
@@ -15995,6 +16099,262 @@ function buildRecoCatalogQueryLevels({
         },
       ]
     : [];
+}
+
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null } = {}) {
+  return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    : finalizeRecommendationCandidatePools(rawCandidates, {
+        targetContext,
+        recoContext: recommendationTaskContext,
+      });
+}
+
+function getRecoRecallSelectedCount(candidateState) {
+  if (Number.isFinite(Number(candidateState?.selected_candidate_count))) {
+    return Math.max(0, Math.trunc(Number(candidateState.selected_candidate_count)));
+  }
+  return Array.isArray(candidateState?.selected_recommendations)
+    ? candidateState.selected_recommendations.length
+    : 0;
+}
+
+function shouldRunRecoRecallStage(stage, { stageResults = [], candidateState = null } = {}) {
+  const stageObj = isPlainObject(stage) ? stage : null;
+  if (!stageObj) return { run: false, reason: 'stage_invalid' };
+  const runIf = String(stageObj.run_if || 'always').trim().toLowerCase();
+  if (runIf === 'always') return { run: true, reason: 'always' };
+  if (runIf === 'if_surface_count_below_target') {
+    return getRecoRecallSelectedCount(candidateState) < 3
+      ? { run: true, reason: 'surface_count_below_target' }
+      : { run: false, reason: 'surface_count_satisfied' };
+  }
+  if (runIf === 'if_no_primary_viable_or_transient_only') {
+    if (candidateState?.primary_role_matched === true) {
+      return { run: false, reason: 'primary_role_already_matched' };
+    }
+    const previousStage = [...(Array.isArray(stageResults) ? stageResults : [])].reverse().find((row) => row && row.skipped !== true) || null;
+    if (!previousStage) return { run: true, reason: 'no_previous_stage' };
+    if (previousStage.primary_role_matched === true) {
+      return { run: false, reason: 'previous_stage_matched_primary_role' };
+    }
+    if (previousStage.transient_only === true || Number(previousStage.selected_count || 0) <= 0) {
+      return { run: true, reason: previousStage.transient_only === true ? 'previous_stage_transient_only' : 'previous_stage_empty' };
+    }
+    return { run: false, reason: 'previous_stage_satisfied' };
+  }
+  return { run: true, reason: 'default' };
+}
+
+async function executeRecoRecallPlanEntry({
+  entry,
+  logger,
+  timeoutMs,
+  limit = 6,
+  usePurchasableFallback = false,
+} = {}) {
+  const sourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase() === 'external_seed'
+    ? 'external_seed'
+    : 'internal';
+  if (usePurchasableFallback) {
+    return buildPurchasableFallbackCandidates({
+      query: entry?.query,
+      limit,
+      logger,
+      timeoutMs,
+      allowExternalSeed: sourceScope === 'external_seed',
+      externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
+      sourceScope,
+    });
+  }
+  return searchPivotaBackendProducts({
+    query: entry?.query,
+    limit,
+    logger,
+    timeoutMs,
+    allowExternalSeed: sourceScope === 'external_seed',
+    externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
+    fastMode: sourceScope !== 'external_seed',
+  });
+}
+
+function deriveRecoCandidateDropStage({ candidateState, executedQueryCount, stageResults } = {}) {
+  const selectedCount = getRecoRecallSelectedCount(candidateState);
+  if (selectedCount > 0) return null;
+  if (candidateState?.weak_viable_pool === true || normalizeRecoViablePoolStrength(candidateState?.viable_pool_strength) === 'weak') {
+    return 'weak_viable_pool';
+  }
+  const rawCandidateCount = Number.isFinite(Number(candidateState?.raw_candidate_count))
+    ? Math.max(0, Math.trunc(Number(candidateState.raw_candidate_count)))
+    : 0;
+  const viableCandidateCount = Number.isFinite(Number(candidateState?.viable_candidate_count))
+    ? Math.max(0, Math.trunc(Number(candidateState.viable_candidate_count)))
+    : 0;
+  if (rawCandidateCount > 0 && viableCandidateCount === 0) return 'filtered_after_recall';
+  const totalTimeoutCount = (Array.isArray(stageResults) ? stageResults : [])
+    .reduce((sum, stage) => sum + (Number.isFinite(Number(stage?.timeout_count)) ? Number(stage.timeout_count) : 0), 0);
+  if (Number(executedQueryCount || 0) > 0 && totalTimeoutCount >= Number(executedQueryCount || 0)) {
+    return 'upstream_timeout';
+  }
+  return 'no_recall_from_planned_sources';
+}
+
+async function collectRecoCandidatesFromRecallPlan({
+  recallPlan,
+  targetContext,
+  recommendationTaskContext = null,
+  logger,
+  timeoutMs,
+  limit = 6,
+  usePurchasableFallback = false,
+} = {}) {
+  const rawCandidates = [];
+  const searchResults = [];
+  const stageResults = [];
+  const stageTimeoutCounts = {};
+  let candidateState = buildRecoCandidateStateFromRawCandidates([], {
+    targetContext,
+    recommendationTaskContext,
+  });
+  let stopLevel = null;
+  let plannerStopReason = 'plan_exhausted';
+  let executedQueryCount = 0;
+  let executedUpstreamAttemptCount = 0;
+  const planStages = Array.isArray(recallPlan?.stages) ? recallPlan.stages : [];
+
+  for (const stage of planStages) {
+    const runDecision = shouldRunRecoRecallStage(stage, { stageResults, candidateState });
+    if (!runDecision.run) {
+      stageResults.push({
+        stage_id: String(stage?.stage_id || '').trim() || null,
+        role_id: String(stage?.role_id || '').trim() || null,
+        role_rank: Number.isFinite(Number(stage?.role_rank)) ? Number(stage.role_rank) : null,
+        source_scope: String(stage?.source_scope || 'internal').trim().toLowerCase() || 'internal',
+        skipped: true,
+        skip_reason: runDecision.reason,
+        executed_query_count: 0,
+        executed_upstream_attempt_count: 0,
+        timeout_count: 0,
+        transient_only: false,
+        selected_count: getRecoRecallSelectedCount(candidateState),
+        primary_role_matched: Boolean(candidateState?.primary_role_matched),
+      });
+      continue;
+    }
+
+    const entries = (Array.isArray(stage?.entries) ? stage.entries : []).slice(
+      0,
+      Math.max(1, Number(stage?.max_attempts_for_stage || 1)),
+    );
+    const stageRows = await mapWithConcurrency(
+      entries,
+      Math.max(1, Number(stage?.concurrency || 1)),
+      async (entry) => ({
+        queryEntry: entry,
+        out: await executeRecoRecallPlanEntry({
+          entry,
+          logger,
+          timeoutMs,
+          limit,
+          usePurchasableFallback,
+        }),
+      }),
+    );
+
+    let timeoutCount = 0;
+    let transientCount = 0;
+    for (const row of stageRows) {
+      const queryEntry = row?.queryEntry || null;
+      const out = row?.out || null;
+      if (!queryEntry) continue;
+      const reason = String(out?.reason || '').trim().toLowerCase();
+      if (reason === 'upstream_timeout') timeoutCount += 1;
+      if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') transientCount += 1;
+      searchResults.push({
+        stage_id: String(stage?.stage_id || '').trim() || null,
+        planner_mode: pickFirstTrimmed(recallPlan?.mode) || null,
+        query: queryEntry.query,
+        step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+        slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+        ladder_level: String(stage?.stage_id || '').trim() || null,
+        role_id: String(queryEntry.role_id || '').trim() || null,
+        role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+        query_index: Number.isFinite(Number(queryEntry.query_index)) ? Number(queryEntry.query_index) : 0,
+        source_scope: String(queryEntry.source_scope || 'internal').trim().toLowerCase() || 'internal',
+        ...out,
+      });
+      const products = Array.isArray(out?.products) ? out.products : [];
+      for (const product of products) {
+        const normalized = normalizeRecoCatalogProduct(product);
+        if (!isPlainObject(normalized)) continue;
+        rawCandidates.push({
+          ...normalized,
+          retrieval_query: queryEntry.query,
+          retrieval_step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+          retrieval_slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+          retrieval_ladder_level: String(stage?.stage_id || '').trim() || null,
+          retrieval_role_id: queryEntry.role_id || null,
+          retrieval_role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+        });
+      }
+    }
+
+    executedQueryCount += entries.length;
+    executedUpstreamAttemptCount += entries.length;
+    stageTimeoutCounts[String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`] = timeoutCount;
+    candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
+      targetContext,
+      recommendationTaskContext,
+    });
+
+    const stageSelectedCount = getRecoRecallSelectedCount(candidateState);
+    const stageResult = {
+      stage_id: String(stage?.stage_id || '').trim() || null,
+      role_id: String(stage?.role_id || '').trim() || null,
+      role_rank: Number.isFinite(Number(stage?.role_rank)) ? Number(stage.role_rank) : null,
+      source_scope: String(stage?.source_scope || 'internal').trim().toLowerCase() || 'internal',
+      skipped: false,
+      skip_reason: null,
+      executed_query_count: entries.length,
+      executed_upstream_attempt_count: entries.length,
+      timeout_count: timeoutCount,
+      transient_only: entries.length > 0 && transientCount >= entries.length && Number(candidateState?.raw_candidate_count || 0) === 0,
+      selected_count: stageSelectedCount,
+      primary_role_matched: Boolean(candidateState?.primary_role_matched),
+    };
+    stageResults.push(stageResult);
+
+    if (String(recallPlan?.mode || '').trim().toLowerCase() === 'framework_generic') {
+      if (stageSelectedCount >= 3) {
+        stopLevel = stage.stage_id || null;
+        plannerStopReason = 'supporting_surface_satisfied';
+        break;
+      }
+    } else if (String(recallPlan?.mode || '').trim().toLowerCase() === 'step_aware') {
+      if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
+        stopLevel = stage.stage_id || null;
+        plannerStopReason = 'step_aware_stop_condition_met';
+        break;
+      }
+    }
+  }
+
+  return {
+    rawCandidates,
+    searchResults,
+    candidateState,
+    stopLevel,
+    plannerStopReason,
+    stageResults,
+    stageTimeoutCounts,
+    executedQueryCount,
+    executedUpstreamAttemptCount,
+    candidateDropStage: deriveRecoCandidateDropStage({
+      candidateState,
+      executedQueryCount,
+      stageResults,
+    }),
+  };
 }
 
 function buildConcernFrameworkSummary({
@@ -16457,14 +16817,20 @@ async function collectRecoCandidatesFromQueryLevels({
       queries,
       RECO_CATALOG_SEARCH_CONCURRENCY,
       async (queryEntry) => {
+        const queryAllowExternalSeed =
+          allowExternalSeed === true
+          && queryEntry?.allow_external_seed === true;
+        const queryExternalSeedStrategy = queryAllowExternalSeed
+          ? String(queryEntry?.external_seed_strategy || externalSeedStrategy || 'supplement_internal_first').trim().toLowerCase()
+          : 'on_empty_only';
         const out = usePurchasableFallback
           ? await buildPurchasableFallbackCandidates({
               query: queryEntry.query,
               limit,
               logger,
               timeoutMs,
-              allowExternalSeed,
-              externalSeedStrategy,
+              allowExternalSeed: queryAllowExternalSeed,
+              externalSeedStrategy: queryExternalSeedStrategy,
             })
           : await searchPivotaBackendProducts({
               query: queryEntry.query,
@@ -16812,15 +17178,19 @@ async function groundRecoRecommendationsFromCatalog({
       text: [pickFirstTrimmed(rec.display_name, rec.name, rec.title), ...seedTerms].filter(Boolean).join(' '),
       entryType: 'grounding',
     });
-    const queryLevels = buildRecoCatalogQueryLevels({
+    const stepQueryLevels = buildSameFamilyQueryLevels({
       targetContext: itemTargetContext,
       profileSummary: null,
       ingredientContext: null,
       lang: ctx && ctx.lang ? ctx.lang : 'EN',
       seedTerms,
     });
-    const collected = await collectRecoCandidatesFromQueryLevels({
-      queryLevels,
+    const recallPlan = buildRecoRecallPlan({
+      mode: 'step_aware',
+      queryLevels: stepQueryLevels,
+    });
+    const collected = await collectRecoCandidatesFromRecallPlan({
+      recallPlan,
       targetContext: itemTargetContext,
       logger,
       timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
@@ -16829,7 +17199,7 @@ async function groundRecoRecommendationsFromCatalog({
     });
     const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
     const poolState = isPlainObject(collected.candidateState) ? collected.candidateState : finalizeRecommendationCandidatePools([], { targetContext: itemTargetContext });
-    queryCount += results.length;
+    queryCount += Number.isFinite(Number(collected?.executedQueryCount)) ? Number(collected.executedQueryCount) : results.length;
     exactStepViableCount += Number(poolState.exact_step_viable_count || 0);
     sameFamilyViableCount += Number(poolState.same_family_viable_count || 0);
     softMismatchCount += Number(poolState.soft_mismatch_count || 0);
@@ -17054,12 +17424,85 @@ async function buildPurchasableFallbackCandidates({
   allowExternalSeed = false,
   allowIdlessProducts = false,
   externalSeedStrategy = 'supplement_internal_first',
+  sourceScope = 'hybrid',
   searchFn,
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
   const q = String(query || '').trim();
   if (!q) return { ok: false, products: [], reason: 'query_missing', selected_source: 'none', stages: {} };
+  const normalizedSourceScope = String(sourceScope || 'hybrid').trim().toLowerCase();
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
+  if (normalizedSourceScope === 'internal') {
+    const catalogStage = await runSearch({
+      query: q,
+      limit,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      allowExternalSeed: false,
+      fastMode: true,
+    });
+    const catalogProducts = Array.isArray(catalogStage?.products) ? catalogStage.products : [];
+    const rankedCatalog = rankPurchasableRecoveryCandidates(catalogProducts, q).slice(
+      0,
+      Math.max(1, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6),
+    ).map((product) => ({
+      ...product,
+      source: pickFirstString(product.source, product.source_type, 'catalog').toLowerCase() || 'catalog',
+      retrieval_source: pickFirstTrimmed(product.retrieval_source, product.retrievalSource, 'catalog') || 'catalog',
+      retrieval_reason: pickFirstTrimmed(product.retrieval_reason, product.retrievalReason, 'catalog_search_match') || 'catalog_search_match',
+    }));
+    return {
+      ok: rankedCatalog.length > 0 || catalogStage?.ok === true,
+      products: rankedCatalog,
+      reason: rankedCatalog.length > 0 ? null : String(catalogStage?.reason || 'empty').trim() || 'empty',
+      selected_source: rankedCatalog.length > 0 ? 'catalog' : 'none',
+      stages: {
+        catalog: catalogStage,
+        external_seed: null,
+      },
+    };
+  }
+  if (normalizedSourceScope === 'external_seed') {
+    const externalStage = await runSearch({
+      query: q,
+      limit,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      allowExternalSeed: true,
+      externalSeedStrategy: normalizedExternalSeedStrategy || 'supplement_internal_first',
+      fastMode: false,
+    });
+    const externalProducts = Array.isArray(externalStage?.products) ? externalStage.products : [];
+    const rankedExternal = rankPurchasableRecoveryCandidates(
+      externalProducts.filter((product) => {
+        const sourceToken = String(
+          pickFirstString(product?.retrieval_source, product?.retrievalSource, product?.source, product?.source_type) || '',
+        ).trim().toLowerCase();
+        return sourceToken.includes('external');
+      }),
+      q,
+    ).slice(
+      0,
+      Math.max(1, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6),
+    ).map((product) => ({
+      ...product,
+      source: pickFirstString(product.source, product.source_type, 'external_seed').toLowerCase() || 'external_seed',
+      retrieval_source: 'external_seed',
+      retrieval_reason: pickFirstTrimmed(product.retrieval_reason, product.retrievalReason, 'external_seed_supplement') || 'external_seed_supplement',
+    }));
+    return {
+      ok: rankedExternal.length > 0 || externalStage?.ok === true,
+      products: rankedExternal,
+      reason: rankedExternal.length > 0 ? null : String(externalStage?.reason || 'empty').trim() || 'empty',
+      selected_source: rankedExternal.length > 0 ? 'external_seed' : 'none',
+      stages: {
+        catalog: null,
+        external_seed: externalStage,
+      },
+    };
+  }
   const shouldRunExternalSeedInParallel =
     allowExternalSeed === true
     && normalizedExternalSeedStrategy !== 'on_empty_only'
@@ -17263,6 +17706,27 @@ async function buildRecoGenerateFromCatalog({
     searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
+  const sameFamilyQueryLevels =
+    !frameworkMode && targetContext && targetContext.step_aware_intent
+      ? buildSameFamilyQueryLevels({
+          targetContext,
+          profileSummary,
+          ingredientContext,
+          recoContext: recommendationTaskContext,
+          lang: ctx && ctx.lang ? ctx.lang : 'EN',
+        })
+      : null;
+  const recallPlan = frameworkMode
+    ? buildRecoRecallPlan({
+        mode: 'framework_generic',
+        targetContext,
+      })
+    : (targetContext && targetContext.step_aware_intent)
+      ? buildRecoRecallPlan({
+          mode: 'step_aware',
+          queryLevels: sameFamilyQueryLevels,
+        })
+      : null;
   const queryLevels = buildRecoCatalogQueryLevels({
     targetContext,
     profileSummary,
@@ -17274,17 +17738,27 @@ async function buildRecoGenerateFromCatalog({
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
 
-  const collected = await collectRecoCandidatesFromQueryLevels({
-    queryLevels,
-    targetContext,
-    recommendationTaskContext,
-    logger,
-    timeoutMs: searchTimeoutEffectiveMs,
-    limit: 6,
-    usePurchasableFallback: useParallelSupplementedSearch,
-    allowExternalSeed: allowExternalSeedSupplement,
-    externalSeedStrategy: effectiveExternalSeedStrategy,
-  });
+  const collected = recallPlan
+    ? await collectRecoCandidatesFromRecallPlan({
+        recallPlan,
+        targetContext,
+        recommendationTaskContext,
+        logger,
+        timeoutMs: searchTimeoutEffectiveMs,
+        limit: 6,
+        usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
+      })
+    : await collectRecoCandidatesFromQueryLevels({
+        queryLevels,
+        targetContext,
+        recommendationTaskContext,
+        logger,
+        timeoutMs: searchTimeoutEffectiveMs,
+        limit: 6,
+        usePurchasableFallback: useParallelSupplementedSearch,
+        allowExternalSeed: allowExternalSeedSupplement,
+        externalSeedStrategy: effectiveExternalSeedStrategy,
+      });
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
   let candidateState = isPlainObject(collected.candidateState)
@@ -17415,11 +17889,28 @@ async function buildRecoGenerateFromCatalog({
   });
 
   const statusCounts = {};
-  const sourceCounts = {};
+  const resultSourceCounts = {};
   let okCount = 0;
   let emptyCount = 0;
   let timeoutCount = 0;
-  let externalSeedUsedCount = 0;
+  const selectedSourceCounts =
+    isPlainObject(candidateState?.selected_source_counts)
+      ? candidateState.selected_source_counts
+      : {};
+  const externalSeedUsedCount = Number.isFinite(Number(candidateState?.external_seed_used_count))
+    ? Number(candidateState.external_seed_used_count)
+    : 0;
+  const executedQueryCount = Number.isFinite(Number(collected?.executedQueryCount))
+    ? Number(collected.executedQueryCount)
+    : results.length;
+  const executedUpstreamAttemptCount = Number.isFinite(Number(collected?.executedUpstreamAttemptCount))
+    ? Number(collected.executedUpstreamAttemptCount)
+    : executedQueryCount;
+  const stageTimeoutCounts =
+    isPlainObject(collected?.stageTimeoutCounts)
+      ? collected.stageTimeoutCounts
+      : {};
+  const candidateDropStage = pickFirstTrimmed(collected?.candidateDropStage) || null;
   for (const r of results) {
     const reason = String(r?.reason || (r?.ok ? 'ok' : 'unknown')).trim() || 'unknown';
     statusCounts[reason] = (statusCounts[reason] || 0) + 1;
@@ -17427,8 +17918,7 @@ async function buildRecoGenerateFromCatalog({
     if (r?.ok && (!Array.isArray(r?.products) || r.products.length === 0)) emptyCount += 1;
     if (reason === 'upstream_timeout') timeoutCount += 1;
     const source = String(r?.selected_source || 'none').trim() || 'none';
-    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
-    if (source.includes('external_seed')) externalSeedUsedCount += 1;
+    resultSourceCounts[source] = (resultSourceCounts[source] || 0) + 1;
   }
 
   const transientReasons = new Set(['upstream_timeout', 'upstream_error', 'rate_limited']);
@@ -17447,7 +17937,10 @@ async function buildRecoGenerateFromCatalog({
 
   const debugPayload = {
     ...debugInfo,
-    query_count: results.length,
+    recall_plan_version: recallPlan?.version || null,
+    query_count: executedQueryCount,
+    executed_query_count: executedQueryCount,
+    executed_upstream_attempt_count: executedUpstreamAttemptCount,
     ok_count: okCount,
     picked_count: recos.length,
     probe_while_open: probeWhileOpen,
@@ -17455,14 +17948,21 @@ async function buildRecoGenerateFromCatalog({
     total_ms: Date.now() - startedAt,
     fail_fast_after: getRecoCatalogFailFastSnapshot(Date.now()),
     timeout_count: timeoutCount,
+    stage_timeout_counts: stageTimeoutCounts,
     status_counts: statusCounts,
-    selected_source_counts: sourceCounts,
+    result_source_counts: resultSourceCounts,
+    selected_source_counts: selectedSourceCounts,
     external_seed_used_count: externalSeedUsedCount,
-    external_seed_used_rate: results.length > 0 ? Number((externalSeedUsedCount / results.length).toFixed(4)) : 0,
+    external_seed_used_rate: recos.length > 0 ? Number((externalSeedUsedCount / recos.length).toFixed(4)) : 0,
     resolved_target_step: targetContext && targetContext.resolved_target_step ? targetContext.resolved_target_step : null,
     resolved_target_step_confidence: targetContext && targetContext.resolved_target_step_confidence ? targetContext.resolved_target_step_confidence : 'none',
     resolved_target_step_source: targetContext && targetContext.resolved_target_step_source ? targetContext.resolved_target_step_source : 'none',
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
+    planner_mode: recallPlan?.mode || null,
+    planner_budget: isPlainObject(recallPlan?.budget) ? recallPlan.budget : null,
+    query_plan: Array.isArray(recallPlan?.entries) ? recallPlan.entries : null,
+    stage_results: Array.isArray(collected?.stageResults) ? collected.stageResults : null,
+    planner_stop_reason: pickFirstTrimmed(collected?.plannerStopReason) || null,
     framework_id: frameworkMode ? targetContext.framework_id || null : null,
     framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
     framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
@@ -17485,6 +17985,7 @@ async function buildRecoGenerateFromCatalog({
     same_family_viable_count: Number(candidateState.same_family_viable_count || 0),
     soft_mismatch_count: Number(candidateState.soft_mismatch_count || 0),
     hard_reject_count: Number(candidateState.hard_reject_count || 0),
+    candidate_drop_stage: candidateDropStage,
     selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
     weak_viable_pool: Boolean(candidateState.weak_viable_pool),
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
@@ -30042,6 +30543,7 @@ function extractRecoOutcomeContractArgsFromPayload(payload, fallback = null) {
 function deriveRecoCatalogDependencyFailure(catalogDebug) {
   const debugObj = isPlainObject(catalogDebug) ? catalogDebug : null;
   if (!debugObj) return { effective_failure_class: '', failure_origin: 'none' };
+  const candidateDropStage = String(debugObj.candidate_drop_stage || '').trim().toLowerCase();
   const skippedReason = String(debugObj.skipped_reason || '').trim().toLowerCase();
   if (skippedReason === 'disabled' || skippedReason === 'pivota_backend_not_configured') {
     return {
@@ -30055,14 +30557,46 @@ function deriveRecoCatalogDependencyFailure(catalogDebug) {
       failure_origin: 'upstream_dependency',
     };
   }
-  const queryCount = Number.isFinite(Number(debugObj.query_count)) ? Math.max(0, Math.trunc(Number(debugObj.query_count))) : 0;
+  const queryCount = Number.isFinite(Number(debugObj.executed_query_count))
+    ? Math.max(0, Math.trunc(Number(debugObj.executed_query_count)))
+    : Number.isFinite(Number(debugObj.query_count))
+      ? Math.max(0, Math.trunc(Number(debugObj.query_count)))
+      : 0;
   const okCount = Number.isFinite(Number(debugObj.ok_count)) ? Math.max(0, Math.trunc(Number(debugObj.ok_count))) : 0;
   const statusCounts = isPlainObject(debugObj.status_counts) ? debugObj.status_counts : {};
+  const stageTimeoutCounts = isPlainObject(debugObj.stage_timeout_counts) ? debugObj.stage_timeout_counts : {};
   const timeoutCount = Number.isFinite(Number(statusCounts.upstream_timeout)) ? Math.max(0, Math.trunc(Number(statusCounts.upstream_timeout))) : 0;
   const upstreamErrorCount = Number.isFinite(Number(statusCounts.upstream_error)) ? Math.max(0, Math.trunc(Number(statusCounts.upstream_error))) : 0;
   const rateLimitedCount = Number.isFinite(Number(statusCounts.rate_limited)) ? Math.max(0, Math.trunc(Number(statusCounts.rate_limited))) : 0;
+  const timeoutCountByStage = Object.values(stageTimeoutCounts).reduce((sum, value) => {
+    return sum + (Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0);
+  }, 0);
+  if (candidateDropStage === 'upstream_timeout') {
+    return {
+      effective_failure_class: 'upstream_timeout',
+      failure_origin: 'upstream_dependency',
+    };
+  }
+  if (candidateDropStage === 'no_recall_from_planned_sources') {
+    return {
+      effective_failure_class: 'no_recall_from_planned_sources',
+      failure_origin: 'user_input',
+    };
+  }
+  if (candidateDropStage === 'filtered_after_recall') {
+    return {
+      effective_failure_class: 'filtered_after_recall',
+      failure_origin: 'user_input',
+    };
+  }
+  if (candidateDropStage === 'weak_viable_pool') {
+    return {
+      effective_failure_class: 'weak_viable_pool',
+      failure_origin: 'user_input',
+    };
+  }
   if (queryCount > 0 && okCount === 0) {
-    if (timeoutCount >= queryCount) {
+    if (Math.max(timeoutCount, timeoutCountByStage) >= queryCount) {
       return {
         effective_failure_class: 'upstream_timeout',
         failure_origin: 'upstream_dependency',
@@ -30186,6 +30720,8 @@ function resolveRecoCentralOutcome({
       || effective === 'context_resolution_failure'
       || effective === 'no_viable_candidates_for_target'
       || effective === 'weak_viable_pool'
+      || effective === 'no_recall_from_planned_sources'
+      || effective === 'filtered_after_recall'
     )
   ) {
     return {
@@ -58379,6 +58915,20 @@ async function generateProductRecommendations({
       external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
         ? Number(catalogDebug.external_seed_used_count)
         : 0,
+      recall_plan_version: pickFirstTrimmed(catalogDebug?.recall_plan_version) || null,
+      executed_query_count: Number.isFinite(Number(catalogDebug?.executed_query_count))
+        ? Number(catalogDebug.executed_query_count)
+        : Number.isFinite(Number(catalogDebug?.query_count))
+          ? Number(catalogDebug.query_count)
+          : 0,
+      executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
+        ? Number(catalogDebug.executed_upstream_attempt_count)
+        : 0,
+      stage_timeout_counts:
+        isPlainObject(catalogDebug?.stage_timeout_counts)
+          ? catalogDebug.stage_timeout_counts
+          : {},
+      candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
       hard_reject_preview:
         Array.isArray(catalogCandidateState?.hard_reject_preview)
           ? catalogCandidateState.hard_reject_preview
@@ -58962,6 +59512,20 @@ async function generateProductRecommendations({
       external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
         ? Number(catalogDebug.external_seed_used_count)
         : 0,
+      recall_plan_version: pickFirstTrimmed(catalogDebug?.recall_plan_version) || null,
+      executed_query_count: Number.isFinite(Number(catalogDebug?.executed_query_count))
+        ? Number(catalogDebug.executed_query_count)
+        : Number.isFinite(Number(catalogDebug?.query_count))
+          ? Number(catalogDebug.query_count)
+          : 0,
+      executed_upstream_attempt_count: Number.isFinite(Number(catalogDebug?.executed_upstream_attempt_count))
+        ? Number(catalogDebug.executed_upstream_attempt_count)
+        : 0,
+      stage_timeout_counts:
+        isPlainObject(catalogDebug?.stage_timeout_counts)
+          ? catalogDebug.stage_timeout_counts
+          : {},
+      candidate_drop_stage: pickFirstTrimmed(catalogDebug?.candidate_drop_stage) || null,
       hard_reject_preview:
         Array.isArray(catalogCandidateState?.hard_reject_preview)
           ? catalogCandidateState.hard_reject_preview
@@ -80007,8 +80571,10 @@ const __internal = {
   applyRecoGuardrailToProductAnalysisPayload,
   getRecoGuardrailCircuitSnapshot,
   buildRecoCatalogSearchBaseUrlCandidates,
+  buildRecoRecallPlan,
   buildRecoCatalogQueryLevels,
   finalizeConcernFrameworkCandidatePools,
+  collectRecoCandidatesFromRecallPlan,
   collectRecoCandidatesFromQueryLevels,
   buildProductCatalogQueryCandidates,
   filterRecoContextProductCandidates,
@@ -80104,6 +80670,7 @@ const __internal = {
   initLlmFallbackStageCounts,
   mergeLlmFallbackStageCounts,
   deriveProductsEmptyReason,
+  deriveRecoCatalogDependencyFailure,
   countPurchasableProductsForTargets,
   applyPhotoClaimConsistency,
   applyRecoCardContractInvariant,

@@ -1064,6 +1064,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setResolveProductRefForTest(async () => ({
+      resolved: false,
+      reason: 'no_candidates',
+      metadata: { sources: [] },
+    }));
 
     nock('http://catalog.test')
       .post('/agent/v1/products/resolve')
@@ -1104,29 +1110,64 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
           {
             product_id: 'uv_filters_45',
             brand: 'The Ordinary',
-            name: 'UV Filters SPF 45 Serum',
-            display_name: 'The Ordinary UV Filters SPF 45 Serum',
+            name: 'UV Shield SPF 45 Serum',
+            display_name: 'The Ordinary UV Shield SPF 45 Serum',
             category: 'sunscreen',
           },
         ],
       });
 
+    try {
+      const out = await __internal.resolveCatalogProductForProductInput({
+        inputText: 'The Ordinary UV Shield SPF 45 Serum',
+        lang: 'EN',
+        logger: { warn: jest.fn(), info: jest.fn() },
+      });
+
+      expect(out.ok).toBe(true);
+      expect(['search', 'resolve']).toContain(out.source);
+      expect(out.decision_source).toBe('catalog_search_exact');
+      expect(out.product?.product_id).toBe('uv_filters_45');
+    } finally {
+      __internal.__resetResolveProductRefForTest();
+    }
+  });
+
+  test('buildRecoRecallPlan caps product grounding exact recall to staged internal then external queries', () => {
     const { __internal } = require('../src/auroraBff/routes');
-    const out = await __internal.resolveCatalogProductForProductInput({
-      inputText: 'The Ordinary UV Filters SPF 45 Serum',
-      lang: 'EN',
-      logger: { warn: jest.fn(), info: jest.fn() },
+    const plan = __internal.buildRecoRecallPlan({
+      mode: 'product_grounding_exact',
+      queries: [
+        'The Ordinary UV Filters SPF 45 Serum',
+        'The Ordinary UV Filters Serum SPF 45',
+        'theordinary uv filters spf 45 serum',
+        'uv filters serum spf 45',
+      ],
     });
 
-    expect(out.ok).toBe(true);
-    expect(out.source).toBe('search');
-    expect(out.product?.product_id).toBe('uv_filters_45');
+    expect(plan.mode).toBe('product_grounding_exact');
+    expect(plan.entries).toHaveLength(6);
+    expect(plan.stages).toHaveLength(2);
+    expect(plan.stages[0]).toMatchObject({
+      stage_id: 'product_grounding_stage_a_internal',
+      source_scope: 'internal',
+    });
+    expect(plan.stages[1]).toMatchObject({
+      stage_id: 'product_grounding_stage_b_external_seed',
+      source_scope: 'external_seed',
+    });
   });
 
   test('resolveCatalogProductForProductInput considers external seed results in parallel and uses them when internal search misses', async () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    const { __internal } = require('../src/auroraBff/routes');
+    __internal.__setResolveProductRefForTest(async () => ({
+      resolved: false,
+      reason: 'no_candidates',
+      metadata: { sources: [] },
+    }));
 
     nock('http://catalog.test')
       .post('/agent/v1/products/resolve')
@@ -1165,25 +1206,28 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
             merchant_id: 'external_seed',
             retrieval_source: 'external_seed',
             brand: 'The Ordinary',
-            name: 'UV Filters SPF 45 Serum',
-            display_name: 'The Ordinary UV Filters SPF 45 Serum',
+            name: 'UV Shield SPF 45 Serum',
+            display_name: 'The Ordinary UV Shield SPF 45 Serum',
             category: 'sunscreen',
             pdp_url: 'https://theordinary.com/en-al/uv-filters-spf-45-serum-100451.html',
           },
         ],
       });
 
-    const { __internal } = require('../src/auroraBff/routes');
-    const out = await __internal.resolveCatalogProductForProductInput({
-      inputText: 'The Ordinary UV Filters SPF 45 Serum',
-      lang: 'EN',
-      logger: { warn: jest.fn(), info: jest.fn() },
-    });
+    try {
+      const out = await __internal.resolveCatalogProductForProductInput({
+        inputText: 'The Ordinary UV Shield SPF 45 Serum',
+        lang: 'EN',
+        logger: { warn: jest.fn(), info: jest.fn() },
+      });
 
-    expect(out.ok).toBe(true);
-    expect(out.source).toBe('search');
-    expect(out.decision_source).toBe('external_seed_search_exact');
-    expect(out.product?.product_id).toBe('ext_uv_filters_45');
+      expect(out.ok).toBe(true);
+      expect(['search', 'resolve']).toContain(out.source);
+      expect(out.decision_source).toBe('external_seed_search_exact');
+      expect(out.product?.product_id).toBe('ext_uv_filters_45');
+    } finally {
+      __internal.__resetResolveProductRefForTest();
+    }
   });
 
   test('resolveCatalogProductForProductInput prefers a stronger external seed exact match over a weaker internal result', async () => {
