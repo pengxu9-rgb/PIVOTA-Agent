@@ -321,12 +321,9 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_external_seed_direct');
-    expect(resp.body.products[0]).toEqual(
-      expect.objectContaining({
-        merchant_id: 'external_seed',
-        product_id: 'ext_zara_blazer_1',
-      }),
+    expect(resp.body.metadata?.query_source).toBe('cache_creator_search_merged_external_seed_direct');
+    expect(resp.body.products.map((product) => product.product_id || product.id)).toContain(
+      'ext_zara_blazer_1',
     );
     expect(resp.body.products.map((product) => product.title)).not.toContain('Lilac Dream Face Wipes');
     expect(resp.body.metadata?.route_debug?.creator_external_seed_direct?.brand_terms).toEqual(['zara']);
@@ -337,6 +334,7 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
         creator_brand_like_query: true,
         creator_cache_products_count: 1,
         creator_cache_can_short_circuit: false,
+        result: 'merged_with_creator_cache',
       }),
     );
     expect(upstreamSearch.isDone()).toBe(false);
@@ -558,6 +556,110 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
         attempted: true,
         eligible: true,
         source: 'creator-agent',
+      }),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('merges creator cache search hits when external seed direct path is empty', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS c FROM products_cache_embeddings_fallback')) {
+          return { rows: [{ c: 0 }] };
+        }
+        if (text.includes('COUNT(*)::int AS c FROM products_cache WHERE merchant_id = ANY($1)')) {
+          return { rows: [{ c: 120 }] };
+        }
+        if (text.includes('COUNT(*)::int AS c FROM products_cache WHERE')) {
+          return { rows: [{ c: 118 }] };
+        }
+        if (text.includes('COUNT(*)::int AS total') && text.includes('FROM products_cache')) {
+          return { rows: [{ total: 3 }] };
+        }
+        if (text.includes('SELECT product_data') && text.includes('FROM products_cache')) {
+          return {
+            rows: [
+              {
+                product_data: {
+                  id: 'internal_sleepwear_1',
+                  product_id: 'internal_sleepwear_1',
+                  merchant_id: 'merch_efbc46b4619cfbdf',
+                  title: 'Cloud Soft Sleepwear Set',
+                  description: 'Plus size sleepwear set with long sleeves and matching pants.',
+                  product_type: 'sleepwear',
+                  status: 'active',
+                  inventory_quantity: 8,
+                  price: 49.9,
+                  currency: 'USD',
+                },
+              },
+              {
+                product_data: {
+                  id: 'internal_sleepwear_2',
+                  product_id: 'internal_sleepwear_2',
+                  merchant_id: 'merch_efbc46b4619cfbdf',
+                  title: 'Modal Pajama Set',
+                  description: 'Soft plus size pajamas with a relaxed fit.',
+                  product_type: 'sleepwear',
+                  status: 'active',
+                  inventory_quantity: 5,
+                  price: 44.9,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'plus size sleepwear',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+            allow_external_seed: true,
+            external_seed_strategy: 'unified_relevance',
+            search_all_merchants: true,
+          },
+        },
+        metadata: {
+          source: 'creator-agent-ui',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('cache_creator_search');
+    expect(resp.body.products.map((product) => product.product_id || product.id)).toEqual(
+      expect.arrayContaining(['internal_sleepwear_1', 'internal_sleepwear_2']),
+    );
+    expect(resp.body.metadata?.route_debug?.creator_external_seed_direct).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        result: 'cache_only_after_empty_direct',
+        cache_products_count: 2,
+        direct_products_count: 0,
       }),
     );
     expect(upstreamSearch.isDone()).toBe(false);

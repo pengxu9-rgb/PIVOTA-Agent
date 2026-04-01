@@ -20925,6 +20925,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let creatorCacheRouteDebug = null;
   let creatorHumanApparelDirectRouteDebug = null;
   let crossMerchantCacheRouteDebug = null;
+  let creatorCacheSearchResponse = null;
   try {
     let resolvedOfferId = null;
     let resolvedMerchantId = null;
@@ -21091,6 +21092,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               },
             };
 
+            creatorCacheSearchResponse = upstreamData;
             const withPolicy = applyFindProductsMultiPolicyIfNeeded({
               response: upstreamData,
               intent: effectiveIntent,
@@ -21103,6 +21105,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
             return res.json(enriched);
+          }
+
+          if (fromCache.products && fromCache.products.length > 0) {
+            creatorCacheSearchResponse = {
+              products: fromCache.products,
+              total: fromCache.total,
+              page: fromCache.page,
+              page_size: fromCache.page_size,
+              reply: null,
+              metadata: {
+                query_source: 'cache_creator_search',
+                fetched_at: new Date().toISOString(),
+                merchants_searched: fromCache.merchantIds.length,
+                ...(fromCache.retrieval_sources ? { retrieval_sources: fromCache.retrieval_sources } : {}),
+                ...(ROUTE_DEBUG_ENABLED
+                  ? { route_debug: { creator_cache: creatorCacheRouteDebug } }
+                  : {}),
+                ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+                ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+              },
+            };
           }
         } catch (err) {
           creatorCacheRouteDebug = {
@@ -21166,7 +21189,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
           creatorHumanApparelDirectRouteDebug.result = directResponse ? 'response' : 'null_response';
           if (directResponse) {
-            const mergedDirectResponse = {
+            const cacheProducts = Array.isArray(creatorCacheSearchResponse?.products)
+              ? creatorCacheSearchResponse.products
+              : [];
+            const directProducts = Array.isArray(directResponse.products) ? directResponse.products : [];
+
+            let responseForPolicy = {
               ...directResponse,
               metadata: {
                 ...(directResponse.metadata || {}),
@@ -21182,13 +21210,87 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
               },
             };
+
+            if (cacheProducts.length > 0) {
+              const safeLimit = Math.max(
+                1,
+                Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
+              );
+              const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+              const safeOffset = Math.max(
+                0,
+                Number.isFinite(Number(search.offset))
+                  ? Math.floor(Number(search.offset))
+                  : (safePage - 1) * safeLimit,
+              );
+              const mergedProducts = [];
+              const seen = new Set();
+              for (const product of [...cacheProducts, ...directProducts]) {
+                const key = buildSearchProductKey(product);
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                mergedProducts.push(product);
+              }
+              const pagedProducts = mergedProducts.slice(safeOffset, safeOffset + safeLimit);
+              creatorHumanApparelDirectRouteDebug.result =
+                directProducts.length > 0 ? 'merged_with_creator_cache' : 'cache_only_after_empty_direct';
+
+              responseForPolicy = {
+                status: 'success',
+                success: true,
+                products: pagedProducts,
+                total: Math.max(
+                  Number(creatorCacheSearchResponse?.total || 0),
+                  Number(directResponse?.total || 0),
+                  mergedProducts.length,
+                ),
+                page: safePage,
+                page_size: pagedProducts.length,
+                reply: null,
+                metadata: {
+                  ...(creatorCacheSearchResponse?.metadata || {}),
+                  ...(directProducts.length > 0
+                    ? { query_source: 'cache_creator_search_merged_external_seed_direct' }
+                    : { query_source: 'cache_creator_search' }),
+                  fetched_at: new Date().toISOString(),
+                  external_seed_rows_fetched: directResponse?.metadata?.external_seed_rows_fetched,
+                  external_seed_rows_built: directResponse?.metadata?.external_seed_rows_built,
+                  external_seed_returned_count: directProducts.length,
+                  creator_external_seed_tool_scope: directResponse?.metadata?.creator_external_seed_tool_scope || null,
+                  retrieval_query_variants: directResponse?.metadata?.retrieval_query_variants || null,
+                  retrieval_query_debug: directResponse?.metadata?.retrieval_query_debug || null,
+                  source_breakdown: {
+                    internal_count: cacheProducts.length,
+                    external_seed_count: directProducts.length,
+                    stale_cache_used: false,
+                    strategy_applied:
+                      directProducts.length > 0
+                        ? 'creator_cache_search_merged_external_seed_direct'
+                        : 'creator_cache_search',
+                  },
+                  route_debug: {
+                    ...(((creatorCacheSearchResponse?.metadata || {}).route_debug || {})),
+                    creator_external_seed_direct: {
+                      ...(((directResponse.metadata || {}).route_debug || {}).creator_external_seed_direct || {}),
+                      ...creatorHumanApparelDirectRouteDebug,
+                      cache_products_count: cacheProducts.length,
+                      direct_products_count: directProducts.length,
+                      merged_products_count: mergedProducts.length,
+                    },
+                  },
+                  ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+                  ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+                },
+              };
+            }
+
             const withPolicy = applyFindProductsMultiPolicyIfNeeded({
-              response: mergedDirectResponse,
+              response: responseForPolicy,
               intent: effectiveIntent,
               requestPayload: effectivePayload,
               metadata: policyMetadata,
               rawUserQuery,
-              responseMetadata: mergedDirectResponse?.metadata,
+              responseMetadata: responseForPolicy?.metadata,
             });
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
