@@ -79082,6 +79082,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           shouldAutoRerunRecommendationsFromProfilePatch
         );
 
+      let analysisContextSnapshotForConversation = null;
+      let chatAnalysisTaskContext = null;
+
       if (wantsProductRecommendations) {
         let recoIngredientContext = mergeIngredientRecoContextValue(
           ingredientRecoContext,
@@ -79525,6 +79528,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         const latestArtifactForGate = await ensureLatestArtifactForConversation();
         const latestArtifact = latestArtifactForGate;
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
+        analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
+        chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
@@ -81167,8 +81172,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (historyForPrefix.length) {
         recordClarificationHistorySent({ count: historyForPrefix.length });
       }
-      const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
-      const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
       const ingredientHintForPrefix = (() => {
         const msg = String(upstreamMessage || '').trim();
         if (!msg) return null;
