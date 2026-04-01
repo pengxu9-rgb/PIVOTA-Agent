@@ -93,12 +93,12 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
                 seed_data: {
                   brand: 'Velvet',
                   category: 'sleepwear',
-                  description: 'Plus size sleepwear lounge set with matching bottoms.',
+                  description: 'Figure-flattering plus size sleepwear lounge set with matching bottoms.',
                   snapshot: {
                     title: "Velvet Plus Size Padded Push-Up women's sleepwear set 4786",
                     brand: 'Velvet',
                     category: 'sleepwear',
-                    description: 'Plus size sleepwear lounge set with matching bottoms.',
+                    description: 'Figure-flattering plus size sleepwear lounge set with matching bottoms.',
                     destination_url: 'https://shop.example.com/products/plus-size-sleepwear-set',
                     canonical_url: 'https://shop.example.com/products/plus-size-sleepwear-set',
                   },
@@ -161,6 +161,198 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
     );
     expect(upstreamSearch.isDone()).toBe(false);
     expect(String(resp.body.reply || '')).not.toContain('Search is temporarily unavailable');
+  });
+
+  test('uses direct creator human apparel main path when creator cache has non-short-circuit brand hits', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total') && text.includes('FROM products_cache')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('SELECT product_data') && text.includes('FROM products_cache')) {
+          return {
+            rows: [
+              {
+                product_data: {
+                  id: 'internal_1',
+                  product_id: 'internal_1',
+                  merchant_id: 'merch_1',
+                  title: 'Hydrating Lip Balm',
+                  description: 'Irrelevant internal cache hit to avoid cache short-circuiting.',
+                  status: 'published',
+                  inventory_quantity: 4,
+                  price: 12,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'zara-seed-1',
+                external_product_id: 'ext_zara_blazer_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/zara-tailored-blazer',
+                canonical_url: 'https://shop.example.com/products/zara-tailored-blazer',
+                domain: 'shop.example.com',
+                title: 'Zara Tailored Blazer',
+                image_url: 'https://cdn.example.com/zara-blazer.jpg',
+                price_amount: '89.90',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Zara',
+                  category: 'blazer',
+                  description: 'Single-breasted tailored blazer for women.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'zara blazer',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+            allow_external_seed: true,
+            external_seed_strategy: 'unified_relevance',
+            search_all_merchants: true,
+          },
+        },
+        metadata: {
+          source: 'creator-agent-ui',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_external_seed_direct');
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_zara_blazer_1',
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.creator_external_seed_direct).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        eligible: true,
+        creator_brand_like_query: true,
+        creator_cache_products_count: 1,
+        creator_cache_can_short_circuit: false,
+      }),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('accepts canonical creator_agent source on the creator human apparel direct path', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'zara-seed-2',
+                external_product_id: 'ext_zara_blazer_2',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/zara-structured-blazer',
+                canonical_url: 'https://shop.example.com/products/zara-structured-blazer',
+                domain: 'shop.example.com',
+                title: 'Zara Structured Blazer',
+                image_url: 'https://cdn.example.com/zara-structured-blazer.jpg',
+                price_amount: '99.90',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Zara',
+                  category: 'blazer',
+                  description: 'Structured blazer for women.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'zara blazer',
+            page: 1,
+            limit: 10,
+            in_stock_only: true,
+            allow_external_seed: true,
+            external_seed_strategy: 'unified_relevance',
+            search_all_merchants: true,
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_external_seed_direct');
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_zara_blazer_2',
+      }),
+    );
+    expect(resp.body.metadata?.route_debug?.creator_external_seed_direct).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        eligible: true,
+        source: 'creator-agent',
+      }),
+    );
+    expect(upstreamSearch.isDone()).toBe(false);
   });
 
   test('returns a direct empty contract on creator cache miss without falling back to upstream unavailable', async () => {

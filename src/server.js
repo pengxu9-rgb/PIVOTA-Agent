@@ -7194,7 +7194,7 @@ function hasStrongCreatorHumanApparelSignal(text) {
 
 function isCreatorHumanApparelToyLike(text, categoryId) {
   if (CREATOR_HUMAN_APPAREL_TOY_CATEGORY_IDS.has(String(categoryId || ''))) return true;
-  return /\b(labubu|pop mart|doll|vinyl face doll|blind box|plush|plushie|figure|collectible|toy accessory|toy accessories)\b|盲盒|公仔|娃娃|娃衣|玩具/i.test(
+  return /\b(labubu|pop mart|doll|vinyl face doll|blind box|plush|plushie|collectible|toy accessory|toy accessories|action figure|vinyl figure|collectible figure|figurine)\b|盲盒|公仔|娃娃|娃衣|玩具/i.test(
     String(text || ''),
   );
 }
@@ -11544,7 +11544,10 @@ function tokenizeQueryForCache(q, options = {}) {
 
 function detectToyOutfitIntentFromQuery(q) {
   const s = String(q || '').toLowerCase();
-  const toy = /\b(labubu|toy|toys|doll|dolls|plush|plushie|figure|collectible)\b/.test(s);
+  const toy =
+    /\b(labubu|toy|toys|doll|dolls|plush|plushie|collectible|action figure|vinyl figure|collectible figure|figurine)\b/.test(
+      s,
+    );
   const outfit = /\b(clothes|clothing|outfit|accessory|accessories|hat)\b/.test(s) || /衣服|穿/.test(s);
   const lingerie = /\b(lingerie|underwear|bra|pant(y|ies)|thong|sleepwear|nightgown|nightdress)\b/.test(s);
   return { toy_intent: toy, outfit_intent: toy && outfit, lingerie_intent: lingerie };
@@ -12203,8 +12206,9 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
       // This prevents generic terms like "dress" from being dominated by doll outfits
       // when the user is clearly asking for human clothing.
       const toyLike =
-        /\b(labubu|doll|vinyl face doll|blind box|plush|plushie|figure|collectible)\b/.test(blob) ||
-        /盲盒|公仔|娃娃|娃衣/.test(blob);
+        /\b(labubu|doll|vinyl face doll|blind box|plush|plushie|collectible|action figure|vinyl figure|collectible figure|figurine)\b/.test(
+          blob,
+        ) || /盲盒|公仔|娃娃|娃衣/.test(blob);
       const petLike =
         /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/.test(blob) ||
         /\b(perro|perros|mascota|mascotas|gato|gatos)\b/.test(blob) ||
@@ -20913,6 +20917,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     strictConstraintReason: null,
   };
   let creatorCacheRouteDebug = null;
+  let creatorHumanApparelDirectRouteDebug = null;
   let crossMerchantCacheRouteDebug = null;
   try {
     let resolvedOfferId = null;
@@ -20939,12 +20944,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const inStockOnly = search.in_stock_only !== false;
 
       const isCreatorUi = isCreatorUiSource(source);
+      const isCanonicalCreatorAgentSource = normalizeAgentSource(source) === 'creator-agent';
+      const isCreatorHumanApparelSource = isCreatorUi || isCanonicalCreatorAgentSource;
       const creatorBrandLikeQuery =
-        isCreatorUi && queryText.length > 0
+        queryText.length > 0
           ? Boolean(detectBrandEntities(queryText, { candidateProducts: [] })?.brand_like)
           : false;
       const creatorCacheCanShortCircuit =
         CREATOR_CACHE_SHORT_CIRCUIT_ENABLED && !creatorBrandLikeQuery;
+      const merchantId = String(search.merchant_id || search.merchantId || '').trim();
+      const merchantIdsRaw = search.merchant_ids || search.merchantIds;
+      const merchantIds =
+        Array.isArray(merchantIdsRaw)
+          ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
+          : typeof merchantIdsRaw === 'string'
+            ? merchantIdsRaw
+                .split(',')
+                .map((v) => String(v || '').trim())
+                .filter(Boolean)
+            : [];
+      const hasMerchantScope = Boolean(merchantId) || merchantIds.length > 0;
       if (!strictCommerceFindProductsMulti && isCreatorUiColdStart && process.env.DATABASE_URL) {
         try {
           const page = search.page || 1;
@@ -21097,23 +21116,49 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      const creatorCacheEmpty =
-        !creatorCacheRouteDebug || Number(creatorCacheRouteDebug.products_count || 0) <= 0;
+      const creatorCacheProductsCount = Number(creatorCacheRouteDebug?.products_count || 0);
       const creatorHumanApparelDirectEligible =
         !strictCommerceFindProductsMulti &&
-        isCreatorUi &&
-        creatorCacheEmpty &&
+        isCreatorHumanApparelSource &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
         String(effectiveIntent?.primary_domain || '').trim().toLowerCase() === 'human_apparel' &&
-        String(search.merchant_id || search.merchantId || '').trim().length === 0;
+        !hasMerchantScope;
+      creatorHumanApparelDirectRouteDebug = {
+        eligible: creatorHumanApparelDirectEligible,
+        attempted: false,
+        source: normalizeAgentSource(source) || null,
+        query: queryText,
+        intent_domain: String(effectiveIntent?.primary_domain || '').trim().toLowerCase() || null,
+        creator_brand_like_query: creatorBrandLikeQuery,
+        creator_cache_products_count: creatorCacheProductsCount,
+        creator_cache_can_short_circuit: creatorCacheCanShortCircuit,
+        has_merchant_scope: hasMerchantScope,
+        skip_reason: creatorHumanApparelDirectEligible
+          ? null
+          : strictCommerceFindProductsMulti
+            ? 'strict_constraint_query'
+            : !isCreatorHumanApparelSource
+              ? 'source_not_creator'
+              : queryText.length === 0
+                ? 'empty_query'
+                : !process.env.DATABASE_URL
+                  ? 'database_unavailable'
+                  : String(effectiveIntent?.primary_domain || '').trim().toLowerCase() !== 'human_apparel'
+                    ? 'intent_not_human_apparel'
+                    : hasMerchantScope
+                      ? 'merchant_scoped_query'
+                      : 'not_eligible',
+      };
       if (creatorHumanApparelDirectEligible) {
+        creatorHumanApparelDirectRouteDebug.attempted = true;
         try {
           const directResponse = await searchCreatorHumanApparelExternalSeedProductsDirect({
             search,
             metadata,
             intent: effectiveIntent,
           });
+          creatorHumanApparelDirectRouteDebug.result = directResponse ? 'response' : 'null_response';
           if (directResponse) {
             const mergedDirectResponse = {
               ...directResponse,
@@ -21122,6 +21167,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 route_debug: {
                   ...((directResponse.metadata && directResponse.metadata.route_debug) || {}),
                   ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
+                  creator_external_seed_direct: {
+                    ...(((directResponse.metadata || {}).route_debug || {}).creator_external_seed_direct || {}),
+                    ...creatorHumanApparelDirectRouteDebug,
+                  },
                 },
                 ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
                 ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
@@ -21140,25 +21189,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             return res.json(enriched);
           }
         } catch (err) {
+          creatorHumanApparelDirectRouteDebug.error = String(err?.message || err);
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
             'Creator UI human apparel external seed direct search failed; falling back to upstream',
           );
         }
       }
-
-      const merchantId = String(search.merchant_id || search.merchantId || '').trim();
-      const merchantIdsRaw = search.merchant_ids || search.merchantIds;
-      const merchantIds =
-        Array.isArray(merchantIdsRaw)
-          ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
-          : typeof merchantIdsRaw === 'string'
-            ? merchantIdsRaw
-                .split(',')
-                .map((v) => String(v || '').trim())
-                .filter(Boolean)
-            : [];
-      const hasMerchantScope = Boolean(merchantId) || merchantIds.length > 0;
 
       // Shopping Agent cold-start should not be blocked on upstream cross-merchant scans.
       // When callers do not specify merchant scope and have no query text, serve a fast
@@ -23281,7 +23318,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (
       operation === 'find_products_multi' &&
       ROUTE_DEBUG_ENABLED &&
-      (creatorCacheRouteDebug || crossMerchantCacheRouteDebug)
+      (creatorCacheRouteDebug || creatorHumanApparelDirectRouteDebug || crossMerchantCacheRouteDebug)
     ) {
       upstreamData = {
         ...upstreamData,
@@ -23290,6 +23327,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           route_debug: {
             ...((upstreamData.metadata && upstreamData.metadata.route_debug) || {}),
             ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
+            ...(creatorHumanApparelDirectRouteDebug
+              ? { creator_external_seed_direct: creatorHumanApparelDirectRouteDebug }
+              : {}),
             ...(crossMerchantCacheRouteDebug ? { cross_merchant_cache: crossMerchantCacheRouteDebug } : {}),
           },
         },
