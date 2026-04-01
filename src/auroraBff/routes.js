@@ -51806,61 +51806,97 @@ async function runConcernSemanticPlanner({
     planner_used: false,
     planner_failure_class: null,
     planner_source: 'fallback',
+    planner_attempts: [],
   };
   try {
-    const upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query,
-      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
-      llm_provider: 'gemini',
-      llm_model: 'gemini-3-flash-preview',
-      trace_id: ctx?.trace_id,
-      request_id: ctx?.request_id,
-    });
-    trace.planner_used = true;
-    const rawStructured = extractConcernSemanticPlanStructured(upstream);
-    const repairedStructured =
-      isPlainObject(rawStructured)
-        ? null
-        : repairConcernSemanticPlanFromText(upstream?.answer, { fallbackPlan });
-    const effectiveStructured = repairedStructured || rawStructured;
-    trace.raw_top_keys = isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [];
-    trace.answer_preview = typeof upstream?.answer === 'string'
-      ? String(upstream.answer).replace(/\s+/g, ' ').slice(0, 400)
-      : '';
-    trace.repaired_from_text = Boolean(repairedStructured);
-    const semanticPlan = normalizeConcernSemanticPlanOutput(effectiveStructured, {
+    const plannerAttempts = [
+      { provider: 'gemini', model: 'gemini-3-flash-preview' },
+      { provider: 'openai', model: 'gpt-4o-mini' },
+    ];
+    let lastSemanticPlan = normalizeConcernSemanticPlanOutput(null, {
       fallbackPlan,
       requestText,
       focus,
     });
-    trace.normalized_core_role_ids = Array.isArray(semanticPlan?.core_roles)
-      ? semanticPlan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 4)
-      : [];
-    trace.normalized_support_role_ids = Array.isArray(semanticPlan?.support_roles)
-      ? semanticPlan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3)
-      : [];
-    if (String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() !== 'trusted') {
-      trace.planner_failure_class = 'schema_invalid';
-      logger?.warn?.(
-        {
-          trace_id: ctx?.trace_id,
-          request_id: ctx?.request_id,
-          planner_failure_class: trace.planner_failure_class,
-          raw_top_keys: trace.raw_top_keys,
-          repaired_from_text: trace.repaired_from_text,
-          answer_preview: trace.answer_preview,
-        },
-        'aurora bff: concern semantic planner schema-invalid',
-      );
-      return {
-        semanticPlan,
-        trace,
-        upstream,
+    let lastUpstream = null;
+    for (let index = 0; index < plannerAttempts.length; index += 1) {
+      const attempt = plannerAttempts[index];
+      const upstream = await auroraChat({
+        baseUrl: AURORA_DECISION_BASE_URL,
+        query,
+        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+        llm_provider: attempt.provider,
+        llm_model: attempt.model,
+        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+        trace_id: ctx?.trace_id,
+        request_id: ctx?.request_id,
+      });
+      trace.planner_used = true;
+      lastUpstream = upstream;
+      const rawStructured = extractConcernSemanticPlanStructured(upstream);
+      const repairedStructured =
+        isPlainObject(rawStructured)
+          ? null
+          : repairConcernSemanticPlanFromText(upstream?.answer, { fallbackPlan });
+      const effectiveStructured = repairedStructured || rawStructured;
+      const answerPreview = typeof upstream?.answer === 'string'
+        ? String(upstream.answer).replace(/\s+/g, ' ').slice(0, 400)
+        : '';
+      const semanticPlan = normalizeConcernSemanticPlanOutput(effectiveStructured, {
+        fallbackPlan,
+        requestText,
+        focus,
+      });
+      lastSemanticPlan = semanticPlan;
+      const attemptTrace = {
+        provider: attempt.provider,
+        model: attempt.model,
+        raw_top_keys: isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [],
+        repaired_from_text: Boolean(repairedStructured),
+        answer_preview: answerPreview,
+        normalized_core_role_ids: Array.isArray(semanticPlan?.core_roles)
+          ? semanticPlan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 4)
+          : [],
+        normalized_support_role_ids: Array.isArray(semanticPlan?.support_roles)
+          ? semanticPlan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3)
+          : [],
+        trusted: String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() === 'trusted',
       };
+      trace.planner_attempts.push(attemptTrace);
+      trace.raw_top_keys = attemptTrace.raw_top_keys;
+      trace.answer_preview = attemptTrace.answer_preview;
+      trace.repaired_from_text = attemptTrace.repaired_from_text;
+      trace.normalized_core_role_ids = attemptTrace.normalized_core_role_ids;
+      trace.normalized_support_role_ids = attemptTrace.normalized_support_role_ids;
+      if (attemptTrace.trusted) {
+        trace.planner_source = semanticPlan.selection_owner_source;
+        trace.planner_provider = attempt.provider;
+        trace.planner_model = attempt.model;
+        return { semanticPlan, trace, upstream };
+      }
+      const shouldRetry =
+        index + 1 < plannerAttempts.length
+        && attempt.provider === 'gemini'
+        && !attemptTrace.answer_preview
+        && attemptTrace.raw_top_keys.length === 0
+        && attemptTrace.repaired_from_text === false;
+      if (!shouldRetry) break;
     }
-    trace.planner_source = semanticPlan.selection_owner_source;
-    return { semanticPlan, trace, upstream };
+    trace.planner_failure_class = 'schema_invalid';
+    logger?.warn?.(
+      {
+        trace_id: ctx?.trace_id,
+        request_id: ctx?.request_id,
+        planner_failure_class: trace.planner_failure_class,
+        planner_attempts: trace.planner_attempts,
+      },
+      'aurora bff: concern semantic planner schema-invalid',
+    );
+    return {
+      semanticPlan: lastSemanticPlan,
+      trace,
+      upstream: lastUpstream,
+    };
   } catch (error) {
     logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern semantic planner failed');
     trace.planner_failure_class = 'timeout';

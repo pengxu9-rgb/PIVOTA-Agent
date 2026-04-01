@@ -1817,6 +1817,128 @@ test('/v1/chat: generic concern planner repairs plain-text role ordering into a 
   }
 });
 
+test('/v1/chat: generic concern planner retries with openai after an empty gemini planner response', async () => {
+  const originalGet = axios.get;
+  let harness = null;
+  const plannerAttempts = [];
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'spf_retry_1',
+              merchant_id: 'mid_spf_retry',
+              brand: 'SunGuard',
+              name: 'Daily UV Fluid SPF 50',
+              display_name: 'Daily UV Fluid SPF 50',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+            },
+          ],
+        },
+      };
+    }
+    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'moist_retry_1',
+              merchant_id: 'mid_moist_retry',
+              brand: 'LightLab',
+              name: 'Air Gel Cream',
+              display_name: 'Air Gel Cream',
+              category: 'moisturizer',
+              product_type: 'gel cream',
+            },
+          ],
+        },
+      };
+    }
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'serum_retry_1',
+            merchant_id: 'mid_serum_retry',
+            brand: 'Clarity Lab',
+            name: 'Oil Balance Serum',
+            display_name: 'Oil Balance Serum',
+            category: 'serum',
+            product_type: 'serum',
+            benefit_tags: ['oil control', 'shine control'],
+            search_aliases: ['Oil Control Serum'],
+            short_description: 'A mattifying oil-control serum for oily skin.',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: async ({ query = '', llm_provider = '', llm_model = '' } = {}) => {
+        const prompt = String(query || '');
+        if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
+          plannerAttempts.push(`${llm_provider}:${llm_model}`);
+          if (String(llm_provider) === 'gemini') return { answer: '' };
+          return { answer: JSON.stringify(buildConcernSemanticPlanFixture()) };
+        }
+        if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
+          return { answer: JSON.stringify(buildConcernSelectorFixture({ topPickProductId: 'serum_retry_1', orderedProductIds: ['serum_retry_1', 'moist_retry_1', 'spf_retry_1'] })) };
+        }
+        return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
+      },
+      useMemoryStore: false,
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_retry_uid', briefId: 'chat_framework_retry_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_retry_uid',
+        'X-Trace-ID': 'trace_chat_framework_retry',
+        'X-Brief-ID': 'chat_framework_retry_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.selection_owner_source, 'llm_concern_planner');
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendations?.[0]?.product_id, 'serum_retry_1');
+    assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'openai:gpt-4o-mini']);
+  } finally {
+    harness?.restore?.();
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: generic concern planner junk structured output still fail-closes instead of trusting index fallback', async () => {
   const originalGet = axios.get;
   let searchCalls = 0;
