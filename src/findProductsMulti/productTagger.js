@@ -44,6 +44,74 @@ const HUMAN_OUTERWEAR_KEYWORDS = [
   'ski jacket',
 ];
 
+const HUMAN_APPAREL_GENERAL_KEYWORDS = [
+  'blazer',
+  'cardigan',
+  'dress',
+  'dresses',
+  'skirt',
+  'skirts',
+  'blouse',
+  'shirt',
+  'shirts',
+  'tee',
+  't-shirt',
+  't shirt',
+  'top',
+  'tops',
+  'tank',
+  'hoodie',
+  'hoodies',
+  'sweater',
+  'sweatshirt',
+  'jeans',
+  'trousers',
+  'pants',
+  'shorts',
+  'leggings',
+  'robe',
+  'robes',
+  'loungewear',
+  'sleepwear',
+  'pajama',
+  'pajamas',
+  'pyjama',
+  'pyjamas',
+  'nightwear',
+  'nightgown',
+  'nightdress',
+  'sneaker',
+  'sneakers',
+  'shoe',
+  'shoes',
+  'boot',
+  'boots',
+  'heel',
+  'heels',
+  'sandal',
+  'sandals',
+  'activewear',
+  'athleisure',
+  'sports bra',
+  'matching set',
+  'tracksuit',
+  'sweatsuit',
+  'plus size',
+  "women's",
+  'womens',
+  'women',
+  '女士',
+  '女装',
+  '连衣裙',
+  '裙子',
+  '上衣',
+  '裤子',
+  '睡衣',
+  '家居服',
+  '浴袍',
+  '鞋',
+];
+
 const PET_ANIMAL_RE = /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets)\b/i;
 const PET_ANIMAL_ES_RE = /\b(perro|perros|perrita|cachorro|mascota|mascotas|gato|gatos)\b/i;
 const PET_ANIMAL_FR_RE = /\b(chien|chiens|chienne|chiot|animal|animaux|chat|chats)\b/i;
@@ -86,7 +154,14 @@ function safeStringify(value) {
 function buildProductText(product) {
   const title = product?.title || product?.name || '';
   const desc = product?.description || '';
-  const attrs = safeStringify(product?.attributes);
+  const attrsObject = ensureAttributesObject(product);
+  const attrsForText =
+    attrsObject && typeof attrsObject === 'object'
+      ? Object.fromEntries(
+          Object.entries(attrsObject).filter(([key]) => String(key || '').trim().toLowerCase() !== 'pivota'),
+        )
+      : attrsObject;
+  const attrs = safeStringify(attrsForText);
   const options = safeStringify(product?.options || product?.product_options);
   const variants = safeStringify(product?.variants);
   return `${title}\n${desc}\n${attrs}\n${options}\n${variants}`.toLowerCase();
@@ -97,8 +172,39 @@ function includesAny(loweredText, keywords) {
   return keywords.some((k) => loweredText.includes(String(k).toLowerCase()));
 }
 
+function hasHumanApparelSignal(text) {
+  const lowered = String(text || '').toLowerCase();
+  return (
+    includesAny(lowered, HUMAN_OUTERWEAR_KEYWORDS) ||
+    includesAny(lowered, HUMAN_APPAREL_GENERAL_KEYWORDS)
+  );
+}
+
+function inferHumanApparelCategoryPath(text) {
+  const lowered = String(text || '').toLowerCase();
+  if (/\b(pajama|pajamas|pyjama|pyjamas|sleepwear|loungewear|nightwear|nightgown|nightdress|robe|robes)\b/.test(lowered) || /睡衣|家居服|浴袍/.test(lowered)) {
+    return ['human_apparel', 'sleepwear', 'pajamas'];
+  }
+  if (/\b(blazer|blazers)\b/.test(lowered)) return ['human_apparel', 'blazer'];
+  if (/\b(cardigan|cardigans)\b/.test(lowered)) return ['human_apparel', 'cardigan'];
+  if (/\b(dress|dresses)\b/.test(lowered) || /连衣裙|裙子/.test(lowered)) {
+    return ['human_apparel', 'dress'];
+  }
+  if (/\b(sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals)\b/.test(lowered) || /鞋/.test(lowered)) {
+    return ['human_apparel', 'footwear'];
+  }
+  if (/\b(activewear|athleisure|sports bra|matching set|tracksuit|sweatsuit)\b/.test(lowered)) {
+    return ['human_apparel', 'activewear'];
+  }
+  if (includesAny(lowered, HUMAN_OUTERWEAR_KEYWORDS)) {
+    return ['human_apparel', 'outerwear'];
+  }
+  return ['human_apparel', 'apparel'];
+}
+
 function inferPivotaTags(product) {
   const text = buildProductText(product);
+  const hasHumanSignals = hasHumanApparelSignal(text);
 
   const isToyStrong =
     includesAny(text, TOY_STRONG_KEYWORDS) ||
@@ -136,13 +242,14 @@ function inferPivotaTags(product) {
   }
 
   const isHumanOuterwear = includesAny(text, HUMAN_OUTERWEAR_KEYWORDS);
-  if (isHumanOuterwear) {
+  if (isHumanOuterwear || hasHumanSignals) {
+    const categoryPath = inferHumanApparelCategoryPath(text);
     return {
       version: TAG_VERSION,
       domain: { value: 'human_apparel', confidence: 0.9, source: TAG_SOURCE },
       target_object: { value: 'human', confidence: 0.95, source: TAG_SOURCE },
       category_path: {
-        value: ['human_apparel', 'outerwear'],
+        value: categoryPath,
         confidence: 0.75,
         source: TAG_SOURCE,
       },
@@ -186,11 +293,15 @@ function injectPivotaAttributes(product) {
     String(existingPivota?.domain?.source || '').toLowerCase() === TAG_SOURCE ||
     String(existingPivota?.target_object?.source || '').toLowerCase() === TAG_SOURCE ||
     String(existingPivota?.category_path?.source || '').toLowerCase() === TAG_SOURCE;
+  const shouldOverrideExistingToyWithHuman =
+    String(existingPivota?.target_object?.value || '').toLowerCase() === 'toy' &&
+    String(inferred?.target_object?.value || '').toLowerCase() === 'human';
 
   const pickField = (field) => {
     const existing = existingPivota?.[field];
     if (!existing) return inferred[field];
     const src = String(existing?.source || '').toLowerCase();
+    if (shouldOverrideExistingToyWithHuman) return inferred[field];
     if (isOurExisting || src === TAG_SOURCE) return inferred[field];
     return existing;
   };
@@ -198,7 +309,10 @@ function injectPivotaAttributes(product) {
   const mergedPivota = {
     ...(existingPivota || {}),
     ...inferred,
-    version: isOurExisting ? inferred.version : (existingPivota?.version || inferred.version),
+    version:
+      shouldOverrideExistingToyWithHuman || isOurExisting
+        ? inferred.version
+        : (existingPivota?.version || inferred.version),
     domain: pickField('domain'),
     target_object: pickField('target_object'),
     category_path: pickField('category_path'),

@@ -1637,4 +1637,5 @@ module.exports = {
   buildCreatorCategoryTree,
   getCreatorCategoryProducts,
   suggestCategoriesFromQuery,
+  heuristicCategoryForProduct,
 };

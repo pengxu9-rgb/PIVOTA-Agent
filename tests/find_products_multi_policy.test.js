@@ -121,6 +121,42 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.total).toBe(resp.products.length);
   });
 
+  test('sleepwear query does not hard-block strong human apparel candidates with stale toy tags', () => {
+    const intent = extractIntentRuleBased('plus size sleepwear', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'sleepwear-1',
+            title: "Velvet Plus Size Padded Push-Up women's sleepwear set 4786",
+            description: 'Plus size lounge set with long sleeves and matching bottoms.',
+            attributes: {
+              pivota: {
+                domain: { value: 'toy_accessory', confidence: 0.97, source: 'legacy_seed' },
+                target_object: { value: 'toy', confidence: 0.99, source: 'legacy_seed' },
+                category_path: {
+                  value: ['toy_accessory', 'doll_clothing'],
+                  confidence: 0.92,
+                  source: 'legacy_seed',
+                },
+              },
+            },
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'plus size sleepwear' } },
+      rawUserQuery: 'plus size sleepwear',
+    });
+
+    expect(resp.products).toHaveLength(1);
+    expect(resp.products[0]?.attributes?.pivota?.target_object?.value).toBe('human');
+    expect(resp.products[0]?.attributes?.pivota?.domain?.value).toBe('human_apparel');
+  });
+
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {
     withPolicyEnv(
       {

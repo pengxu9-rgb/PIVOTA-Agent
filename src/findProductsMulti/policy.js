@@ -2219,13 +2219,14 @@ function getProductObject(product) {
   const tagged = String(pivota?.target_object?.value || '').toLowerCase();
   if (tagged === 'human' || tagged === 'pet' || tagged === 'toy') return tagged;
 
+  const domain = String(pivota?.domain?.value || '').toLowerCase();
+  if (domain === 'human_apparel') return 'human';
+  if (domain === 'toy_accessory') return 'toy';
+
   // Fallback: light-weight heuristic from text.
   const text = buildProductText(product);
   if (hasPetSignalInProduct(product)) return 'pet';
   if (isToyLikeText(text)) return 'toy';
-  // If explicitly human apparel in domain, treat as human.
-  const domain = String(pivota?.domain?.value || '').toLowerCase();
-  if (domain === 'human_apparel') return 'human';
 
   return 'unknown';
 }
