@@ -1888,8 +1888,18 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
         const prompt = String(query || '');
         if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
           plannerAttempts.push(`${llm_provider}:${llm_model}`);
-          if (String(llm_provider) === 'gemini' && String(llm_model) === 'gemini-3-flash-preview') return { answer: '' };
-          return { answer: JSON.stringify(buildConcernSemanticPlanFixture()) };
+          if (String(llm_provider) === 'gemini' && String(llm_model) === 'gemini-3-flash-preview') {
+            return {
+              answer: '',
+              llm_provider,
+              llm_model,
+            };
+          }
+          return {
+            answer: JSON.stringify(buildConcernSemanticPlanFixture()),
+            llm_provider,
+            llm_model,
+          };
         }
         if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
           return { answer: JSON.stringify(buildConcernSelectorFixture({ topPickProductId: 'serum_retry_1', orderedProductIds: ['serum_retry_1', 'moist_retry_1', 'spf_retry_1'] })) };
@@ -1932,6 +1942,11 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
     assert.equal(payload.selection_owner_source, 'llm_concern_planner');
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_retry_1');
+    assert.equal(payload.recommendation_meta?.semantic_planner_requested_provider, 'gemini');
+    assert.equal(payload.recommendation_meta?.semantic_planner_requested_model, 'gemini-3-pro-preview');
+    assert.equal(payload.recommendation_meta?.semantic_planner_effective_provider, 'gemini');
+    assert.equal(payload.recommendation_meta?.semantic_planner_effective_model, 'gemini-3-pro-preview');
+    assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'upstream_response');
     assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'gemini:gemini-3-pro-preview']);
   } finally {
     harness?.restore?.();

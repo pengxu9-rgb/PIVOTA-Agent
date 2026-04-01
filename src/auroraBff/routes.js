@@ -51776,6 +51776,54 @@ function repairConcernSemanticPlanFromText(answerText, { fallbackPlan } = {}) {
   };
 }
 
+function extractConcernPlannerLlmRouteMeta(upstream, { requestedProvider = '', requestedModel = '' } = {}) {
+  const payload = isPlainObject(upstream) ? upstream : null;
+  const meta = isPlainObject(payload?.meta) ? payload.meta : null;
+  const sessionPatch = isPlainObject(payload?.session_patch) ? payload.session_patch : null;
+  const sessionLlm = isPlainObject(sessionPatch?.llm) ? sessionPatch.llm : null;
+  const requested_provider =
+    pickFirstTrimmed(
+      requestedProvider,
+      payload?.llm_provider_requested,
+      meta?.llm_provider_requested,
+      sessionLlm?.llm_provider_requested,
+    ) || null;
+  const requested_model =
+    pickFirstTrimmed(
+      requestedModel,
+      payload?.llm_model_requested,
+      meta?.llm_model_requested,
+      sessionLlm?.llm_model_requested,
+    ) || null;
+  const effective_provider =
+    pickFirstTrimmed(
+      payload?.llm_provider,
+      payload?.llm_provider_effective,
+      meta?.llm_provider_effective,
+      sessionLlm?.llm_provider_effective,
+    ) || null;
+  const effective_model =
+    pickFirstTrimmed(
+      payload?.llm_model,
+      payload?.llm_model_effective,
+      meta?.llm_model_effective,
+      sessionLlm?.llm_model_effective,
+    ) || null;
+  const selection_source =
+    effective_provider || effective_model
+      ? 'upstream_response'
+      : requested_provider || requested_model
+        ? 'requested_route'
+        : 'none';
+  return {
+    requested_provider,
+    requested_model,
+    effective_provider,
+    effective_model,
+    selection_source,
+  };
+}
+
 async function runConcernSemanticPlanner({
   ctx,
   logger,
@@ -51803,6 +51851,11 @@ async function runConcernSemanticPlanner({
     planner_used: false,
     planner_failure_class: null,
     planner_source: 'fallback',
+    planner_requested_provider: null,
+    planner_requested_model: null,
+    planner_effective_provider: null,
+    planner_effective_model: null,
+    planner_selection_source: 'none',
     planner_attempts: [],
   };
   try {
@@ -51830,6 +51883,10 @@ async function runConcernSemanticPlanner({
       });
       trace.planner_used = true;
       lastUpstream = upstream;
+      const llmRouteMeta = extractConcernPlannerLlmRouteMeta(upstream, {
+        requestedProvider: attempt.provider,
+        requestedModel: attempt.model,
+      });
       const rawStructured = extractConcernSemanticPlanStructured(upstream);
       const repairedStructured =
         isPlainObject(rawStructured)
@@ -51848,6 +51905,11 @@ async function runConcernSemanticPlanner({
       const attemptTrace = {
         provider: attempt.provider,
         model: attempt.model,
+        requested_provider: llmRouteMeta.requested_provider,
+        requested_model: llmRouteMeta.requested_model,
+        effective_provider: llmRouteMeta.effective_provider,
+        effective_model: llmRouteMeta.effective_model,
+        selection_source: llmRouteMeta.selection_source,
         raw_top_keys: isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [],
         repaired_from_text: Boolean(repairedStructured),
         answer_preview: answerPreview,
@@ -51865,10 +51927,15 @@ async function runConcernSemanticPlanner({
       trace.repaired_from_text = attemptTrace.repaired_from_text;
       trace.normalized_core_role_ids = attemptTrace.normalized_core_role_ids;
       trace.normalized_support_role_ids = attemptTrace.normalized_support_role_ids;
+      trace.planner_requested_provider = llmRouteMeta.requested_provider;
+      trace.planner_requested_model = llmRouteMeta.requested_model;
+      trace.planner_effective_provider = llmRouteMeta.effective_provider;
+      trace.planner_effective_model = llmRouteMeta.effective_model;
+      trace.planner_selection_source = llmRouteMeta.selection_source;
       if (attemptTrace.trusted) {
         trace.planner_source = semanticPlan.selection_owner_source;
-        trace.planner_provider = attempt.provider;
-        trace.planner_model = attempt.model;
+        trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
+        trace.planner_model = llmRouteMeta.effective_model || attempt.model;
         return { semanticPlan, trace, upstream };
       }
       const shouldRetry =
@@ -61531,6 +61598,11 @@ async function generateProductRecommendations({
       framework_id: frameworkMode ? targetContext.framework_id || null : null,
       framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
       framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
+      semantic_planner_requested_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_requested_provider) || null : null,
+      semantic_planner_requested_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_requested_model) || null : null,
+      semantic_planner_effective_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_provider) || null : null,
+      semantic_planner_effective_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_model) || null : null,
+      semantic_planner_selection_source: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_selection_source) || null : null,
       primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
       primary_recommendation_id: frameworkMode
         ? (

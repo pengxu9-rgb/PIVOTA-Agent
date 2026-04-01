@@ -1150,7 +1150,25 @@ async function auroraChat({
     headers: Object.keys(upstreamHeaders).length ? upstreamHeaders : undefined,
   });
   const data = resp && resp.data;
-  return data && typeof data === 'object' ? data : { raw: data };
+  const normalized = data && typeof data === 'object' ? { ...data } : { raw: data };
+  const headers = resp && resp.headers && typeof resp.headers === 'object' ? resp.headers : {};
+  const headerProvider =
+    String(
+      headers['x-llm-provider']
+      || headers['x-aurora-llm-provider']
+      || headers['x-upstream-llm-provider']
+      || '',
+    ).trim();
+  const headerModel =
+    String(
+      headers['x-llm-model']
+      || headers['x-aurora-llm-model']
+      || headers['x-upstream-llm-model']
+      || '',
+    ).trim();
+  if (!normalized.llm_provider && headerProvider) normalized.llm_provider = headerProvider;
+  if (!normalized.llm_model && headerModel) normalized.llm_model = headerModel;
+  return normalized;
 }
 
 module.exports = {

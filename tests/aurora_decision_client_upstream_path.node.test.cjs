@@ -35,3 +35,39 @@ test('auroraDecisionClient posts machine requests to /api/upstream/chat', async 
     delete require.cache[moduleId];
   }
 });
+
+test('auroraDecisionClient merges effective llm routing metadata from upstream headers', async () => {
+  const moduleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+  delete require.cache[moduleId];
+  const axios = require('axios');
+  const originalPost = axios.post;
+
+  axios.post = async () => ({
+    status: 200,
+    headers: {
+      'x-llm-provider': 'gemini',
+      'x-llm-model': 'gemini-3-pro-preview',
+    },
+    data: {
+      ok: true,
+      answer: 'ok',
+      structured: { alternatives: [] },
+    },
+  });
+
+  try {
+    const { auroraChat } = require(moduleId);
+    const resp = await auroraChat({
+      baseUrl: 'https://aurora-decision.test',
+      query: 'Return JSON',
+      llm_provider: 'gemini',
+      llm_model: 'gemini-3-flash-preview',
+    });
+
+    assert.equal(resp.llm_provider, 'gemini');
+    assert.equal(resp.llm_model, 'gemini-3-pro-preview');
+  } finally {
+    axios.post = originalPost;
+    delete require.cache[moduleId];
+  }
+});
