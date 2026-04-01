@@ -2,9 +2,30 @@ const crypto = require('crypto');
 const { getGeminiGlobalGate } = require('../../lib/geminiGlobalGate');
 const { extractRecoTargetStepFromText } = require('../recoTargetStep');
 
+function firstConfiguredEnv(keys, fallback = '') {
+  for (const key of Array.isArray(keys) ? keys : []) {
+    const value = String(process.env[key] || '').trim();
+    if (value) return value;
+  }
+  return String(fallback || '').trim();
+}
+
+function resolveChatV2GeminiModel() {
+  return firstConfiguredEnv(
+    [
+      'PIVOTA_UI_CHAT_LLM_MODEL_GEMINI',
+      'PIVOTA_UI_CHAT_LLM_MODEL',
+      'AURORA_QA_MODEL_GEMINI',
+      'AURORA_ANALYSIS_STORY_MODEL_GEMINI',
+      'GEMINI_MODEL',
+    ],
+    'gemini-3-flash-preview',
+  );
+}
+
 const GEMINI_MODELS = Object.freeze({
-  structured: 'gemini-2.0-flash',
-  chat: 'gemini-2.0-flash',
+  structured: resolveChatV2GeminiModel(),
+  chat: resolveChatV2GeminiModel(),
 });
 
 const FREEFORM_PROMPT_VERSION = 'inline_system_prompt_v3';

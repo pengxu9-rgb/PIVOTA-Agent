@@ -757,7 +757,13 @@ const AURORA_LLM_SINGLE_PROVIDER = (() => {
   return 'gemini';
 })();
 const AURORA_DIAG_FORCE_GEMINI = (() => {
-  const raw = String(process.env.AURORA_DIAG_FORCE_GEMINI || 'true')
+  const raw = String(process.env.AURORA_DIAG_FORCE_GEMINI || 'false')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const AURORA_PROD_LLM_ROUTE_OVERRIDE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_PROD_LLM_ROUTE_OVERRIDE_ENABLED || 'false')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -34117,6 +34123,11 @@ function normalizeChatLlmProvider(value) {
   return null;
 }
 
+function shouldHonorExternalLlmRouteOverride() {
+  if (!isProductionLikeAuroraBffEnv()) return true;
+  return AURORA_PROD_LLM_ROUTE_OVERRIDE_ENABLED;
+}
+
 function getDiagForceGeminiModel() {
   const picked = pickConfiguredEnv(['AURORA_DIAG_FORCE_GEMINI_MODEL', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL']);
   return resolveNonImageGeminiModel({
@@ -34141,21 +34152,22 @@ function normalizeChatLlmModel(value) {
 }
 
 function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, requestedModel = null } = {}) {
+  const allowExternalOverride = shouldHonorExternalLlmRouteOverride();
   const headerProvider =
-    req && typeof req.get === 'function'
+    allowExternalOverride && req && typeof req.get === 'function'
       ? normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'))
       : null;
   const headerModel =
-    req && typeof req.get === 'function'
+    allowExternalOverride && req && typeof req.get === 'function'
       ? normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'))
       : null;
   const llm_provider =
-    normalizeChatLlmProvider(requestedProvider) ||
+    (allowExternalOverride ? normalizeChatLlmProvider(requestedProvider) : null) ||
     headerProvider ||
     AURORA_PRODUCT_INTEL_LLM_PROVIDER ||
     null;
   const llm_model =
-    normalizeChatLlmModel(requestedModel) ||
+    (allowExternalOverride ? normalizeChatLlmModel(requestedModel) : null) ||
     headerModel ||
     AURORA_PRODUCT_INTEL_LLM_MODEL ||
     null;
@@ -34177,12 +34189,13 @@ function resolveProductIntelEscalationRoute({ req = null } = {}) {
       trigger_reason: 'diag_force_gemini',
     };
   }
+  const allowExternalOverride = shouldHonorExternalLlmRouteOverride();
   const headerProvider =
-    req && typeof req.get === 'function'
+    allowExternalOverride && req && typeof req.get === 'function'
       ? normalizeChatLlmProvider(req.get('X-LLM-Escalation-Provider') ?? req.get('X-Aurora-LLM-Escalation-Provider'))
       : null;
   const headerModel =
-    req && typeof req.get === 'function'
+    allowExternalOverride && req && typeof req.get === 'function'
       ? normalizeChatLlmModel(req.get('X-LLM-Escalation-Model') ?? req.get('X-Aurora-LLM-Escalation-Model'))
       : null;
   const llm_provider = headerProvider || AURORA_PRODUCT_INTEL_ESCALATION_PROVIDER || null;
@@ -74792,14 +74805,19 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
+      const allowExternalLlmOverride = shouldHonorExternalLlmRouteOverride();
       const llmProvider = AURORA_DIAG_FORCE_GEMINI
         ? 'gemini'
-        : normalizeChatLlmProvider(parsed.data.llm_provider) ||
-          normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'));
+        : (allowExternalLlmOverride ? normalizeChatLlmProvider(parsed.data.llm_provider) : null) ||
+          (allowExternalLlmOverride
+            ? normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'))
+            : null);
       const llmModel = AURORA_DIAG_FORCE_GEMINI
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
-        : normalizeChatLlmModel(parsed.data.llm_model) ||
-          normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'));
+        : (allowExternalLlmOverride ? normalizeChatLlmModel(parsed.data.llm_model) : null) ||
+          (allowExternalLlmOverride
+            ? normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'))
+            : null);
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -79506,9 +79524,6 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         const latestArtifactForGate = await ensureLatestArtifactForConversation();
         const latestArtifact = latestArtifactForGate;
-        const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
-        const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
-
         const artifactGate = hasUsableArtifactForRecommendations(latestArtifactForGate);
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
@@ -81152,6 +81167,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       if (historyForPrefix.length) {
         recordClarificationHistorySent({ count: historyForPrefix.length });
       }
+      const analysisContextSnapshotForConversation = await ensureAnalysisContextSnapshotForConversation();
+      const chatAnalysisTaskContext = await ensureTaskAnalysisContextForConversation('chat');
       const ingredientHintForPrefix = (() => {
         const msg = String(upstreamMessage || '').trim();
         if (!msg) return null;

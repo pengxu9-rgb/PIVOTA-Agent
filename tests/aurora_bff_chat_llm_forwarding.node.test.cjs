@@ -296,3 +296,61 @@ test('/v1/chat keeps requested llm metadata on local short-circuit responses', a
     },
   );
 });
+
+test('/v1/chat ignores external llm provider/model overrides in production-like environments', async () => {
+  await withEnv(
+    {
+      NODE_ENV: 'production',
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: 'https://aurora-decision.test',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'false',
+      AURORA_DIAG_FORCE_GEMINI: 'false',
+      AURORA_PROD_LLM_ROUTE_OVERRIDE_ENABLED: 'false',
+    },
+    async () => {
+      const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
+      delete require.cache[clientModuleId];
+      const clientMod = require(clientModuleId);
+      const originalAuroraChat = clientMod.auroraChat;
+      let capturedCall = null;
+      clientMod.auroraChat = async (args = {}) => {
+        capturedCall = { ...args };
+        return { answer: 'ok', intent: 'chat', cards: [] };
+      };
+
+      const routesModuleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[routesModuleId];
+
+      try {
+        const { mountAuroraBffRoutes } = require(routesModuleId);
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await supertest(app)
+          .post('/v1/chat')
+          .set('X-Aurora-UID', 'uid_prod_llm_override_blocked')
+          .set('X-Trace-ID', 'trace_prod_llm_override_blocked')
+          .set('X-Brief-ID', 'brief_prod_llm_override_blocked')
+          .set('X-Lang', 'EN')
+          .set('X-LLM-Provider', 'gemini')
+          .set('X-LLM-Model', 'gemini-2.5-flash')
+          .send({
+            message: 'Hello in prod',
+            llm_provider: 'openai',
+            llm_model: 'gpt-4o-mini',
+          });
+
+        assert.equal(resp.status, 200);
+        assert.ok(capturedCall);
+        assert.equal(capturedCall.llm_provider, undefined);
+        assert.equal(capturedCall.llm_model, undefined);
+        assert.equal(resp.body?.session_patch?.llm?.llm_provider_requested ?? null, null);
+        assert.equal(resp.body?.session_patch?.llm?.llm_model_requested ?? null, null);
+      } finally {
+        clientMod.auroraChat = originalAuroraChat;
+        delete require.cache[routesModuleId];
+      }
+    },
+  );
+});
