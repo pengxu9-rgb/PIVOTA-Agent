@@ -60,8 +60,6 @@ const HUMAN_APPAREL_GENERAL_KEYWORDS = [
   'tee',
   't-shirt',
   't shirt',
-  'top',
-  'tops',
   'tank',
   'hoodie',
   'hoodies',

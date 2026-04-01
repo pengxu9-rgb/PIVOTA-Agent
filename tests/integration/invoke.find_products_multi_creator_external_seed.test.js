@@ -208,7 +208,8 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
                 seed_data: {
                   brand: 'Beekman 1802',
                   category: 'Cleanser',
-                  description: 'Gentle face wipes for women with calming lavender extract.',
+                  description:
+                    'Gentle face wipes for women with calming lavender extract. Scent Notes: Top: Jasmine, Lilac, Rose.',
                 },
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),

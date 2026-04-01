@@ -188,7 +188,8 @@ describe('find_products_multi intent + filtering', () => {
       makeRawProduct({
         id: 'beauty-1',
         title: 'Lavender Face Wipes',
-        description: 'Gentle face wipes for women with calming lavender extract.',
+        description:
+          'Gentle face wipes for women with calming lavender extract. Scent Notes: Top: Jasmine, Lilac, Rose.',
         product_type: 'Cleanser',
         category: 'Cleanser',
       }),
