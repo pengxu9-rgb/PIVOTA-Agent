@@ -1953,10 +1953,6 @@ const AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_product_relevance');
 const AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL'], 'gemini-3-flash-preview', 'aurora_qa_story_review');
-const AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL =
-  resolveAuroraGeminiModel(['AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL'], 'gemini-3-flash-preview', 'aurora_runtime_qa_stable');
-const AURORA_RUNTIME_QA_ALLOW_PREVIEW =
-  String(process.env.AURORA_RUNTIME_QA_ALLOW_PREVIEW || 'false').trim().toLowerCase() === 'true';
 const AURORA_EVAL_JUDGE_GEMINI_MODEL =
   resolveAuroraGeminiModel(['AURORA_EVAL_JUDGE_GEMINI_MODEL', 'AURORA_DIAG_FORCE_GEMINI_MODEL'], 'gemini-3-pro-preview', 'aurora_eval_judge');
 const ANALYSIS_STORY_LLM_TIMEOUT_MS = Math.max(
@@ -19607,42 +19603,30 @@ function pickRuntimeQaProviders({ mode, singleProvider } = {}) {
 }
 
 function resolveRuntimeQaGeminiModel(model) {
-  const configured = resolveNonImageGeminiModel({
+  return resolveNonImageGeminiModel({
     model: String(model || AURORA_RUNTIME_QA_GEMINI_MODEL || '').trim(),
     fallbackModel: 'gemini-3-flash-preview',
     envSource: model ? 'runtime_override' : 'AURORA_RUNTIME_QA_GEMINI_MODEL',
     callPath: 'aurora_runtime_qa',
   }).effectiveModel;
-  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
-  const lower = configured.toLowerCase();
-  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
-  return configured;
 }
 
 function resolveProductRelevanceGeminiModel(model) {
-  const configured = resolveNonImageGeminiModel({
+  return resolveNonImageGeminiModel({
     model: String(model || AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL || '').trim(),
     fallbackModel: 'gemini-3-flash-preview',
     envSource: model ? 'runtime_override' : 'AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL',
     callPath: 'aurora_qa_product_relevance',
   }).effectiveModel;
-  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
-  const lower = configured.toLowerCase();
-  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
-  return configured;
 }
 
 function resolveStoryReviewGeminiModel(model) {
-  const configured = resolveNonImageGeminiModel({
+  return resolveNonImageGeminiModel({
     model: String(model || AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL || '').trim(),
     fallbackModel: 'gemini-3-flash-preview',
     envSource: model ? 'runtime_override' : 'AURORA_ANALYSIS_STORY_REVIEW_GEMINI_MODEL',
     callPath: 'aurora_qa_story_review',
   }).effectiveModel;
-  if (AURORA_RUNTIME_QA_ALLOW_PREVIEW) return configured;
-  const lower = configured.toLowerCase();
-  if (lower === 'gemini-3-flash-preview') return AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL;
-  return configured;
 }
 
 function resolveRuntimeQaRequest(kind, overrides = {}) {
@@ -58687,7 +58671,7 @@ function normalizeOpenWorldAlternativeRow(candidate, {
 function getRecoAlternativesOpenWorldModel() {
   return pickFirstTrimmed(
     process.env.AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL,
-    process.env.AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL,
+    process.env.AURORA_RUNTIME_QA_GEMINI_MODEL,
     ANALYSIS_STORY_MODEL_GEMINI,
     'gemini-3-flash-preview',
   );

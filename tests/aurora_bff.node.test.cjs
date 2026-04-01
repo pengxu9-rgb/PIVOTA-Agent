@@ -5876,9 +5876,9 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
       AURORA_DIAG_FORCE_GEMINI: 'true',
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
@@ -5911,13 +5911,15 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           return {
             ok: true,
             json: {
-              alternative: {
-                brand: 'Good Molecules',
-                name: 'Niacinamide Serum',
-                product_type: 'serum',
-                similarity_score: 72,
-                reason: 'Niacinamide-led serum role overlaps with the anchor.',
-              },
+              alternatives: [
+                {
+                  brand: 'Good Molecules',
+                  name: 'Niacinamide Serum',
+                  product_type: 'serum',
+                  similarity_score: 72,
+                  reason: 'Niacinamide-led serum role overlaps with the anchor.',
+                },
+              ],
               empty_reason: null,
             },
           };
@@ -5973,10 +5975,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(geminiRequest?.maxOutputTokens, 2048);
         const payload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(payload?.task?.max_alternatives, 1);
-        assert.match(String(payload?.task?.selection_rule || ''), /empty_reason/i);
-        assert.match(String(payload?.task?.selection_rule || ''), /active or ingredient theme overlap/i);
-        assert.match(String(payload?.task?.selection_rule || ''), /different brand/i);
-        assert.deepEqual(payload?.anchor?.active_themes ?? [], ['niacinamide', 'zinc']);
+        assert.match(String(payload?.task?.selection_rule || ''), /single best real skincare alternative/i);
         assert.ok(Array.isArray(payload?.anchor?.hero_ingredients ?? []));
         assert.ok((payload?.anchor?.hero_ingredients ?? []).length <= 2);
         assert.deepEqual(payload?.anchor?.known_actives ?? [], ['Niacinamide', 'Zinc PCA']);
@@ -6000,9 +5999,9 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
       AURORA_DIAG_FORCE_GEMINI: 'true',
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
@@ -6088,15 +6087,15 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
   );
 });
 
-test('fetchRecoAlternativesForProduct: weak anchors without active themes fail precheck with explicit reason', async () => {
+test('fetchRecoAlternativesForProduct: weak anchors in open_world_only surface explicit provider failure without implicit model fallback', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
       AURORA_DIAG_FORCE_GEMINI: 'true',
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },
@@ -6106,6 +6105,15 @@ test('fetchRecoAlternativesForProduct: weak anchors without active themes fail p
       try {
         const routeModule = require('../src/auroraBff/routes');
         const { __internal } = routeModule;
+        __internal.__setCallGeminiJsonObjectForTest(async () => ({
+          ok: false,
+          reason: 'gemini_client_unavailable',
+          detail: 'missing api key',
+          timeout_stage: 'queue',
+          total_ms: 321,
+          upstream_ms: 0,
+          meta: { result_reason: 'gemini_client_unavailable' },
+        }));
         const out = await __internal.fetchRecoAlternativesForProduct({
           ctx: { lang: 'EN', request_id: 'req_open_world_weak_anchor', trace_id: 'trace_open_world_weak_anchor' },
           profileSummary: null,
@@ -6127,15 +6135,17 @@ test('fetchRecoAlternativesForProduct: weak anchors without active themes fail p
             disable_fallback: true,
             disable_synthetic_local_fallback: true,
             ignore_selector_candidates: true,
-            skip_anchor_precheck: true,
+            skip_anchor_precheck: false,
           },
         });
 
         assert.equal(out?.ok, true);
-        assert.equal(out?.failure_class, 'precheck_fail');
-        assert.equal(out?.no_result_reason, 'anchor_signal_insufficient_for_open_world');
+        assert.equal(out?.failure_class, 'provider_error');
+        assert.equal(out?.no_result_reason, 'no_viable_results_after_fallback');
         assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
       } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
         delete require.cache[moduleId];
       }
     },
@@ -6148,9 +6158,9 @@ test('fetchRecoAlternativesForProduct: open_world_only recovers complete alterna
       AURORA_BFF_RETENTION_DAYS: '0',
       DATABASE_URL: undefined,
       AURORA_BFF_USE_MOCK: 'false',
+      GEMINI_API_KEY: 'test_gemini_key',
       AURORA_DIAG_FORCE_GEMINI: 'true',
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-flash-preview',
-      AURORA_RUNTIME_QA_GEMINI_STABLE_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MODEL: 'gemini-2.5-flash',
       AURORA_RECO_ALTERNATIVES_OPEN_WORLD_MAX_OUTPUT_TOKENS: '2048',
     },

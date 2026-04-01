@@ -170,7 +170,7 @@ test('runtime QA product relevance uses structured schema and flash model', asyn
   );
 });
 
-test('runtime QA can explicitly keep preview model when allow-preview override is enabled', async () => {
+test('runtime QA uses configured preview model without implicit stable rewrite', async () => {
   await withEnv(
     {
       GEMINI_API_KEY: 'test_gemini_key',
@@ -178,7 +178,6 @@ test('runtime QA can explicitly keep preview model when allow-preview override i
       AURORA_DIAG_FORCE_GEMINI_MODEL: 'gemini-3-pro-preview',
       AURORA_RUNTIME_QA_GEMINI_MODEL: 'gemini-3-flash-preview',
       AURORA_PRODUCT_RELEVANCE_GEMINI_MODEL: 'gemini-3-flash-preview',
-      AURORA_RUNTIME_QA_ALLOW_PREVIEW: 'true',
     },
     async () => {
       const { moduleId, __internal } = loadRouteInternals();
