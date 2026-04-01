@@ -17084,12 +17084,10 @@ async function buildPurchasableFallbackCandidates({
   if (allowExternalSeed) {
     const strategy = String(externalSeedStrategy || '').trim().toLowerCase();
     const shouldSupplement =
-      !primaryTransientFailure &&
-      (
-        primaryProducts.length === 0 ||
-        strategy.includes('supplement') ||
-        strategy.includes('fallback')
-      );
+      primaryTransientFailure ||
+      primaryProducts.length === 0 ||
+      strategy.includes('supplement') ||
+      strategy.includes('fallback');
     if (shouldSupplement) {
       supplemental = await runSearch({
         query: q,
@@ -58340,6 +58338,25 @@ async function generateProductRecommendations({
       same_family_viable_count: Number(catalogDebug?.same_family_viable_count || 0),
       soft_mismatch_count: Number(catalogDebug?.soft_mismatch_count || 0),
       hard_reject_count: Number(catalogDebug?.hard_reject_count || 0),
+      raw_source_counts:
+        isPlainObject(catalogCandidateState?.raw_source_counts)
+          ? catalogCandidateState.raw_source_counts
+          : {},
+      viable_source_counts:
+        isPlainObject(catalogCandidateState?.viable_source_counts)
+          ? catalogCandidateState.viable_source_counts
+          : {},
+      selected_source_counts:
+        isPlainObject(catalogDebug?.selected_source_counts)
+          ? catalogDebug.selected_source_counts
+          : {},
+      external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
+        ? Number(catalogDebug.external_seed_used_count)
+        : 0,
+      hard_reject_preview:
+        Array.isArray(catalogCandidateState?.hard_reject_preview)
+          ? catalogCandidateState.hard_reject_preview
+          : [],
       pre_llm_selected_candidate_count: Number(catalogCandidateState?.pre_llm_selected_candidate_count || 0),
       weak_viable_pool: Boolean(catalogDebug?.weak_viable_pool),
       viable_pool_strength: pickFirstTrimmed(catalogCandidateState?.viable_pool_strength) || null,
@@ -58908,9 +58925,21 @@ async function generateProductRecommendations({
         isPlainObject(catalogDebug?.selected_source_counts)
           ? catalogDebug.selected_source_counts
           : {},
+      raw_source_counts:
+        isPlainObject(catalogCandidateState?.raw_source_counts)
+          ? catalogCandidateState.raw_source_counts
+          : {},
+      viable_source_counts:
+        isPlainObject(catalogCandidateState?.viable_source_counts)
+          ? catalogCandidateState.viable_source_counts
+          : {},
       external_seed_used_count: Number.isFinite(Number(catalogDebug?.external_seed_used_count))
         ? Number(catalogDebug.external_seed_used_count)
         : 0,
+      hard_reject_preview:
+        Array.isArray(catalogCandidateState?.hard_reject_preview)
+          ? catalogCandidateState.hard_reject_preview
+          : [],
       framework_id: frameworkMode ? targetContext.framework_id || null : null,
       framework_owner_source: frameworkMode ? targetContext.framework_owner_source || null : null,
       framework_owner_state: frameworkMode ? targetContext.framework_owner_state || null : null,
