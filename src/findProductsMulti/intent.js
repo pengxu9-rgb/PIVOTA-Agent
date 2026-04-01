@@ -208,7 +208,49 @@ const WOMEN_CLOTHING_SIGNALS_EN = [
   'jeans',
   'hoodie',
   'sweater',
+  'blazer',
+  'cardigan',
+  'leggings',
+  'shorts',
+  'robe',
+  'loungewear',
+  'activewear',
+  'athleisure',
 ];
+
+function extractHumanApparelCategories(text) {
+  const t = String(text || '');
+  const lower = t.toLowerCase();
+  if (!t) return [];
+
+  const categories = [];
+  const push = (...values) => {
+    for (const value of values) {
+      const normalized = String(value || '').trim();
+      if (normalized && !categories.includes(normalized)) categories.push(normalized);
+    }
+  };
+
+  if (/blazer/.test(lower)) push('blazer');
+  if (/cardigan/.test(lower)) push('cardigan');
+  if (/\bdress(es)?\b/.test(lower) || /连衣裙|裙子/.test(t)) push('dress');
+  if (/\b(skirt|skirts)\b/.test(lower)) push('skirt');
+  if (/\b(blouse|shirt|tee|t-shirt|t shirt|tshirt|top|tops|tank)\b/.test(lower) || /上衣/.test(t)) {
+    push('top');
+  }
+  if (/\b(hoodie|hoodies)\b/.test(lower)) push('hoodie');
+  if (/\b(sweater|sweaters|sweatshirt|sweatshirts)\b/.test(lower)) push('sweater');
+  if (/\b(jeans|trousers|pants|shorts|leggings)\b/.test(lower) || /裤子/.test(t)) push('bottoms');
+  if (/\b(robe|robes)\b/.test(lower)) push('robe');
+  if (/\b(sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals)\b/.test(lower)) {
+    push('footwear');
+  }
+  if (/\b(activewear|athleisure|sports bra|sports bra set|yoga set|matching set|co-ord|coord|tracksuit|sweatsuit)\b/.test(lower)) {
+    push('activewear');
+  }
+
+  return categories.slice(0, 3);
+}
 
 const PET_SIGNALS_ZH = [
   '狗',
@@ -1133,6 +1175,8 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     includesAny(latest, WOMEN_CLOTHING_SIGNALS_EN) ||
     // Spanish/French basic gender words
     includesAny(latest, ['mujer', 'mujeres', 'ropa', 'femme', 'femmes', 'vêtement', 'vetement']);
+  const humanApparelCategories = extractHumanApparelCategories(latest);
+  const hasHumanApparelCategorySignal = humanApparelCategories.length > 0;
 
   const hasSleepwearSignalLocalRaw =
     includesAny(latest, SLEEPWEAR_SIGNALS_ZH) ||
@@ -1323,11 +1367,11 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
     categoryRequired = [];
     scenarioName = 'general';
     scenarioSignals = [];
-  } else if (hasWomenClothingSignal) {
+  } else if (hasWomenClothingSignal || hasHumanApparelCategorySignal) {
     primary_domain = 'human_apparel';
     targetType = 'human';
-    categoryRequired = ['apparel'].slice(0, 1);
-    scenarioName = 'women_clothing';
+    categoryRequired = (humanApparelCategories.length > 0 ? humanApparelCategories : ['apparel']).slice(0, 3);
+    scenarioName = hasWomenClothingSignal ? 'women_clothing' : 'human_apparel_general';
     scenarioSignals = [];
   } else if (hasLingerieSignal) {
     primary_domain = 'human_apparel';
@@ -1530,6 +1574,7 @@ function extractIntentRuleBased(latest_user_query, recent_queries = [], recent_m
 module.exports = {
   PivotaIntentV1Zod,
   extractIntentRuleBased,
+  extractHumanApparelCategories,
   detectLanguage,
   TOY_KEYWORDS_STRONG,
   TOY_KEYWORDS_WEAK,

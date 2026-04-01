@@ -503,6 +503,30 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBeGreaterThanOrEqual(20);
   });
 
+  test('intent: brand plus apparel item routes to human_apparel category', () => {
+    const intent = extractIntentRuleBased('zara blazer', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['blazer']));
+    expect(intent.query_class).toBe('category');
+  });
+
+  test('intent: activewear brand set routes to human_apparel category', () => {
+    const intent = extractIntentRuleBased('alo yoga set', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['activewear']));
+    expect(intent.query_class).toBe('category');
+  });
+
+  test('intent: footwear query routes to human_apparel category', () => {
+    const intent = extractIntentRuleBased('adidas sneakers', [], []);
+    expect(intent.primary_domain).toBe('human_apparel');
+    expect(intent.target_object.type).toBe('human');
+    expect(intent.category.required).toEqual(expect.arrayContaining(['footwear']));
+    expect(intent.query_class).toBe('category');
+  });
+
   test('intent: pet gift with min budget parses as USD price min (30+)', () => {
     const intent = extractIntentRuleBased('我要送朋友，可以贵一点，30美金以上的狗狗衣服', [], []);
     expect(intent.target_object.type).toBe('pet');

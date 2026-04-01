@@ -4,6 +4,7 @@ const intentSchema = require('../schemas/intent.v1.json');
 const {
   PivotaIntentV1Zod,
   extractIntentRuleBased,
+  extractHumanApparelCategories,
   TOY_KEYWORDS_STRONG,
 } = require('./intent');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
@@ -289,6 +290,53 @@ function applyHardOverrides(latestQuery, intent) {
           ? intent.history_usage.reason
           : 'Beauty intent detected from latest query; keeping non-tool beauty scenario.',
       },
+    };
+    return PivotaIntentV1Zod.parse(patched);
+  }
+
+  const humanApparelCategories = extractHumanApparelCategories(q);
+  if (humanApparelCategories.length > 0) {
+    const patched = {
+      ...intent,
+      language,
+      primary_domain: 'human_apparel',
+      target_object: {
+        ...(intent.target_object || {}),
+        type: 'human',
+        age_group: intent?.target_object?.age_group || 'adult',
+      },
+      category: {
+        required: humanApparelCategories,
+        optional: Array.isArray(intent?.category?.optional) ? intent.category.optional : [],
+      },
+      scenario: {
+        name: 'human_apparel_general',
+        signals: Array.isArray(intent?.scenario?.signals) ? intent.scenario.signals : [],
+      },
+      hard_constraints: {
+        ...(intent.hard_constraints || {}),
+        must_exclude_domains: Array.from(
+          new Set([...(intent.hard_constraints?.must_exclude_domains || []), 'toy_accessory'])
+        ),
+        must_exclude_keywords: Array.from(
+          new Set([
+            ...(intent.hard_constraints?.must_exclude_keywords || []),
+            'Labubu',
+            'doll',
+            'vinyl face doll',
+            '娃娃',
+            '公仔',
+            '娃衣',
+            '盲盒',
+          ])
+        ).slice(0, 16),
+      },
+      history_usage: {
+        ...(intent.history_usage || {}),
+        used: false,
+        reason: 'Human apparel category detected from latest query; overriding ambiguous domain classification.',
+      },
+      query_class: 'category',
     };
     return PivotaIntentV1Zod.parse(patched);
   }

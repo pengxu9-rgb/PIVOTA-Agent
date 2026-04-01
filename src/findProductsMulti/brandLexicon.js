@@ -6,6 +6,18 @@ const STATIC_BRAND_ALIASES = Object.freeze({
   fenty_beauty: ['fenty beauty', 'fentybeauty', 'fenty'],
   kylie_cosmetics: ['kylie cosmetics', 'kyliecosmetics', 'kylie'],
   sigma_beauty: ['sigma beauty', 'sigmabeauty', 'sigma'],
+  zara: ['zara'],
+  uniqlo: ['uniqlo'],
+  lululemon: ['lululemon', 'lulu lemon'],
+  alo_yoga: ['alo yoga', 'aloyoga', 'alo'],
+  free_people: ['free people', 'freepeople'],
+  skims: ['skims'],
+  arcteryx: ['arc teryx', "arc'teryx", 'arcteryx'],
+  new_balance: ['new balance', 'newbalance'],
+  adidas: ['adidas'],
+  nike: ['nike'],
+  hm: ['h&m', 'hm'],
+  mango: ['mango'],
 });
 
 const BRAND_SUFFIX_TOKENS = new Set([
@@ -205,7 +217,7 @@ function hasExplicitCategoryHint(queryText, intent = null) {
   const normalized = normalizeBrandText(queryText);
   if (!normalized) return false;
   if (
-    /\b(perfume|fragrance|parfum|cologne|body mist|lingerie|underwear|bra|panties|skincare|serum|toner|lipstick|mascara|foundation|brush|tool|shampoo|conditioner)\b/.test(
+    /\b(perfume|fragrance|parfum|cologne|body mist|lingerie|underwear|bra|bralette|panties|sleepwear|loungewear|pajamas?|blazer|cardigan|dress|robe|shirt|tee|t shirt|tshirt|top|tank|sweater|hoodie|sweatshirt|jacket|coat|parka|windbreaker|leggings|jeans|trousers|pants|shorts|skirt|activewear|athleisure|sports bra|yoga set|matching set|sneakers?|shoes?|boots?|sandals?|heels?|skincare|serum|toner|lipstick|mascara|foundation|brush|tool|shampoo|conditioner)\b/.test(
       normalized,
     )
   ) {
