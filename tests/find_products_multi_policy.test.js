@@ -1,5 +1,6 @@
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 const { applyFindProductsMultiPolicy, buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
+const { injectPivotaAttributes } = require('../src/findProductsMulti/productTagger');
 
 function withPolicyEnv(envOverrides, fn) {
   const keys = Object.keys(envOverrides || {});
@@ -180,6 +181,21 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.products).toHaveLength(1);
     expect(resp.products[0]?.attributes?.pivota?.target_object?.value).toBe('human');
     expect(resp.products[0]?.attributes?.pivota?.domain?.value).toBe('human_apparel');
+  });
+
+  test('beauty copy mentioning women does not get tagged as human apparel', () => {
+    const tagged = injectPivotaAttributes(
+      makeRawProduct({
+        id: 'beauty-1',
+        title: 'Lavender Face Wipes',
+        description: 'Gentle face wipes for women with calming lavender extract.',
+        product_type: 'Cleanser',
+        category: 'Cleanser',
+      }),
+    );
+
+    expect(tagged?.attributes?.pivota?.target_object?.value).not.toBe('human');
+    expect(tagged?.attributes?.pivota?.domain?.value).not.toBe('human_apparel');
   });
 
   test('balanced domain filter recovers near-taxonomy candidates when strict filter empties', () => {

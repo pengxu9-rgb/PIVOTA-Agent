@@ -193,6 +193,27 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
           return {
             rows: [
               {
+                id: 'beauty-seed-1',
+                external_product_id: 'ext_face_wipes_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/lavender-face-wipes',
+                canonical_url: 'https://shop.example.com/products/lavender-face-wipes',
+                domain: 'shop.example.com',
+                title: 'Lilac Dream Face Wipes',
+                image_url: 'https://cdn.example.com/face-wipes.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Beekman 1802',
+                  category: 'Cleanser',
+                  description: 'Gentle face wipes for women with calming lavender extract.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
                 id: 'zara-seed-1',
                 external_product_id: 'ext_zara_blazer_1',
                 market: 'US',
@@ -259,6 +280,7 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
         product_id: 'ext_zara_blazer_1',
       }),
     );
+    expect(resp.body.products.map((product) => product.title)).not.toContain('Lilac Dream Face Wipes');
     expect(resp.body.metadata?.route_debug?.creator_external_seed_direct).toEqual(
       expect.objectContaining({
         attempted: true,

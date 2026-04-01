@@ -7181,13 +7181,13 @@ const CREATOR_HUMAN_APPAREL_BEAUTY_CATEGORY_IDS = new Set([
 ]);
 
 function hasCreatorHumanApparelSignal(text) {
-  return /\b(blazer|cardigan|dress|dresses|skirt|skirts|blouse|shirt|shirts|tee|t-shirt|t shirt|top|tops|tank|hoodie|hoodies|sweater|sweatshirt|jeans|trousers|pants|shorts|leggings|robe|robes|loungewear|sleepwear|pajama|pajamas|pyjama|pyjamas|nightwear|nightgown|nightdress|sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals|activewear|athleisure|sports bra|matching set|tracksuit|sweatsuit|plus size|women(?:'s)?|womens)\b|女士|女装|连衣裙|裙子|上衣|裤子|睡衣|家居服|浴袍|鞋/i.test(
+  return /\b(blazer|cardigan|dress|dresses|skirt|skirts|blouse|shirt|shirts|tee|t-shirt|t shirt|top|tops|tank|hoodie|hoodies|sweater|sweatshirt|jeans|trousers|pants|shorts|leggings|robe|robes|loungewear|sleepwear|pajama|pajamas|pyjama|pyjamas|nightwear|nightgown|nightdress|sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals|activewear|athleisure|sports bra|matching set|tracksuit|sweatsuit|plus size)\b|女装|连衣裙|裙子|上衣|裤子|睡衣|家居服|浴袍|鞋/i.test(
     String(text || ''),
   );
 }
 
 function hasStrongCreatorHumanApparelSignal(text) {
-  return /\b(blazer|cardigan|skirt|skirts|blouse|shirt|shirts|tee|t-shirt|t shirt|top|tops|tank|hoodie|hoodies|sweater|sweatshirt|jeans|trousers|pants|shorts|leggings|robe|robes|loungewear|sleepwear|pajama|pajamas|pyjama|pyjamas|nightwear|nightgown|nightdress|sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals|activewear|athleisure|sports bra|matching set|tracksuit|sweatsuit|plus size|women(?:'s)?|womens)\b|女士|女装|连衣裙|上衣|裤子|睡衣|家居服|浴袍|鞋/i.test(
+  return /\b(blazer|cardigan|skirt|skirts|blouse|shirt|shirts|tee|t-shirt|t shirt|top|tops|tank|hoodie|hoodies|sweater|sweatshirt|jeans|trousers|pants|shorts|leggings|robe|robes|loungewear|sleepwear|pajama|pajamas|pyjama|pyjamas|nightwear|nightgown|nightdress|sneaker|sneakers|shoe|shoes|boot|boots|heel|heels|sandal|sandals|activewear|athleisure|sports bra|matching set|tracksuit|sweatsuit|plus size)\b|女装|连衣裙|上衣|裤子|睡衣|家居服|浴袍|鞋/i.test(
     String(text || ''),
   );
 }
