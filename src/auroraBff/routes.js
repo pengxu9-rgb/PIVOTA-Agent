@@ -51321,24 +51321,105 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
 
+function normalizeConcernRoleHint(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\-\/]+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pickConcernSemanticRoleRows(payload, { supportOnly = false } = {}) {
+  const source = isPlainObject(payload) ? payload : null;
+  if (!source) return [];
+  const candidates = supportOnly
+    ? [
+        source.support_roles,
+        source.supportRoles,
+        source.support_role_ids,
+        source.supportRoleIds,
+        source.optional_support_roles,
+        source.optionalSupportRoles,
+        source.optional_roles,
+        source.optionalRoles,
+        source.framework_summary?.support_roles,
+        source.frameworkSummary?.support_roles,
+        source.framework_summary?.optional_support_roles,
+        source.frameworkSummary?.optional_support_roles,
+      ]
+    : [
+        source.core_roles,
+        source.coreRoles,
+        source.core_role_ids,
+        source.coreRoleIds,
+        source.primary_roles,
+        source.primaryRoles,
+        source.primary_role,
+        source.primaryRole,
+        source.roles,
+        source.framework_roles,
+        source.frameworkRoles,
+        source.framework_summary?.prioritized_roles,
+        source.frameworkSummary?.prioritized_roles,
+      ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) return candidate;
+    if ((typeof candidate === 'string' && candidate.trim()) || isPlainObject(candidate)) return [candidate];
+  }
+  return [];
+}
+
 function normalizeConcernRoleArray(raw, { fallbackRoles = [], supportOnly = false } = {}) {
   const rows = Array.isArray(raw) ? raw.slice(0, supportOnly ? 2 : 3) : [];
   const out = [];
   const usedFallbackIds = new Set();
   for (let index = 0; index < rows.length; index += 1) {
-    const row = isPlainObject(rows[index]) ? rows[index] : {};
-    const requestedRoleId = String(row.role_id || row.id || '').trim();
+    const rawRow = rows[index];
+    const row =
+      typeof rawRow === 'string'
+        ? { role_id: rawRow }
+        : isPlainObject(rawRow)
+          ? rawRow
+          : {};
+    const requestedRoleLabel = pickFirstTrimmed(
+      row.label,
+      row.name,
+      row.role_name,
+      row.roleName,
+    );
+    const requestedRoleIdHint = pickFirstTrimmed(
+      row.role_id,
+      row.roleId,
+      row.id,
+      row.role,
+      row.role_key,
+      row.roleKey,
+      requestedRoleLabel,
+    );
+    const requestedRoleHint = normalizeConcernRoleHint(requestedRoleIdHint);
     const preferredStep = normalizeRecoTargetStep(row.preferred_step || row.step || row.product_type);
+    const hasPlannerSignal = Boolean(
+      requestedRoleHint
+      || preferredStep
+      || Array.isArray(row.query_terms)
+      || Array.isArray(row.queryTerms)
+      || Array.isArray(row.fit_keywords)
+      || Array.isArray(row.fitKeywords),
+    );
+    if (!hasPlannerSignal) continue;
     let fallbackRole =
-      fallbackRoles.find((role) => String(role?.role_id || '').trim() === requestedRoleId)
+      fallbackRoles.find((role) => normalizeConcernRoleHint(role?.role_id) === requestedRoleHint)
+      || fallbackRoles.find((role) => normalizeConcernRoleHint(role?.label) === requestedRoleHint)
       || fallbackRoles.find((role) => normalizeRecoTargetStep(role?.preferred_step) === preferredStep && !usedFallbackIds.has(String(role?.role_id || '').trim()))
       || fallbackRoles[index]
       || null;
     if (fallbackRole) usedFallbackIds.add(String(fallbackRole.role_id || '').trim());
 
-    const label = pickFirstTrimmed(row.label, fallbackRole?.label);
+    const label = pickFirstTrimmed(requestedRoleLabel, fallbackRole?.label);
     const whyThisRole = pickFirstTrimmed(row.why_this_role, row.why, fallbackRole?.why_this_role);
-    const roleId = pickFirstTrimmed(requestedRoleId, fallbackRole?.role_id);
+    const roleId = pickFirstTrimmed(fallbackRole?.role_id, requestedRoleIdHint);
     if (!roleId) continue;
     out.push({
       role_id: roleId,
@@ -51428,11 +51509,22 @@ function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '
     ? fallbackPlan
     : buildConcernSemanticPlanFallback({ text: requestText, focus });
   const payload = isPlainObject(raw) ? raw : {};
-  const coreRoles = normalizeConcernRoleArray(payload.core_roles || payload.roles, {
+  const rawCoreRoles = pickConcernSemanticRoleRows(payload, { supportOnly: false });
+  const rawSupportRoles = pickConcernSemanticRoleRows(payload, { supportOnly: true });
+  const rawMixedSupportRoles = rawSupportRoles.length === 0 && Array.isArray(payload.roles)
+    ? payload.roles.filter((row) => {
+        const item = isPlainObject(row) ? row : null;
+        if (!item) return false;
+        return item.support_only === true
+          || item.supportOnly === true
+          || /support|optional/i.test(String(item.slot || item.role_slot || item.roleSlot || '').trim());
+      })
+    : [];
+  const coreRoles = normalizeConcernRoleArray(rawCoreRoles, {
     fallbackRoles: Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [],
     supportOnly: false,
   });
-  const supportRoles = normalizeConcernRoleArray(payload.support_roles || payload.supportRoles, {
+  const supportRoles = normalizeConcernRoleArray(rawSupportRoles.length ? rawSupportRoles : rawMixedSupportRoles, {
     fallbackRoles: Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [],
     supportOnly: true,
   });
@@ -51440,12 +51532,24 @@ function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '
   const normalizedCoreRoles = usingFallbackRoles ? (Array.isArray(basePlan.core_roles) ? basePlan.core_roles : []) : coreRoles;
   const normalizedSupportRoles = supportRoles.length > 0 ? supportRoles : (Array.isArray(basePlan.support_roles) ? basePlan.support_roles : []);
   const ingredientHypotheses = uniqCaseInsensitiveStrings([
-    ...asStringArray(payload.ingredient_hypotheses || payload.ingredientHypotheses),
+    ...asStringArray(
+      payload.ingredient_hypotheses
+      || payload.ingredientHypotheses
+      || payload.ingredient_directions
+      || payload.ingredientDirections
+      || payload.framework_summary?.ingredient_hypotheses
+      || payload.frameworkSummary?.ingredient_hypotheses,
+    ),
     ...normalizedCoreRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
     ...normalizedSupportRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
   ], 12);
   const productTypeHypotheses = uniqCaseInsensitiveStrings([
-    ...asStringArray(payload.product_type_hypotheses || payload.productTypeHypotheses),
+    ...asStringArray(
+      payload.product_type_hypotheses
+      || payload.productTypeHypotheses
+      || payload.product_type_directions
+      || payload.productTypeDirections,
+    ),
     ...normalizedCoreRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
     ...normalizedSupportRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
   ], 8);
@@ -51580,6 +51684,39 @@ function buildConcernSemanticPlanPrompt({
   return `${instructions.join('\n')}\ncontext=${JSON.stringify(contextPayload)}`;
 }
 
+function extractConcernSemanticPlanStructured(upstream) {
+  const structured = getUpstreamStructuredOrJson(upstream, {
+    answerRequiredKeys: [
+      'primary_concern',
+      'primaryConcern',
+      'core_roles',
+      'coreRoles',
+      'roles',
+      'support_roles',
+      'supportRoles',
+      'routine_shell',
+      'routineShell',
+      'framework_summary',
+      'frameworkSummary',
+    ],
+  });
+  const candidates = [
+    structured,
+    structured?.semantic_plan,
+    structured?.semanticPlan,
+    structured?.plan,
+    structured?.result,
+    upstream?.structured?.semantic_plan,
+    upstream?.structured?.semanticPlan,
+    upstream?.structured?.plan,
+    upstream?.structured?.result,
+  ];
+  for (const candidate of candidates) {
+    if (isPlainObject(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function runConcernSemanticPlanner({
   ctx,
   logger,
@@ -51619,27 +51756,27 @@ async function runConcernSemanticPlanner({
       request_id: ctx?.request_id,
     });
     trace.planner_used = true;
-    const rawStructured = getUpstreamStructuredOrJson(upstream)
-      || (upstream && typeof upstream.answer === 'string'
-        ? extractJsonObjectByKeys(upstream.answer, ['primary_concern', 'core_roles', 'support_roles', 'routine_shell'])
-        : null);
-    if (!isPlainObject(rawStructured) || !Array.isArray(rawStructured.core_roles) || rawStructured.core_roles.length === 0) {
-      trace.planner_failure_class = 'schema_invalid';
-      return {
-        semanticPlan: normalizeConcernSemanticPlanOutput(null, {
-          fallbackPlan,
-          requestText,
-          focus,
-        }),
-        trace,
-        upstream,
-      };
-    }
+    const rawStructured = extractConcernSemanticPlanStructured(upstream);
+    trace.raw_top_keys = isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [];
     const semanticPlan = normalizeConcernSemanticPlanOutput(rawStructured, {
       fallbackPlan,
       requestText,
       focus,
     });
+    trace.normalized_core_role_ids = Array.isArray(semanticPlan?.core_roles)
+      ? semanticPlan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 4)
+      : [];
+    trace.normalized_support_role_ids = Array.isArray(semanticPlan?.support_roles)
+      ? semanticPlan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3)
+      : [];
+    if (String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() !== 'trusted') {
+      trace.planner_failure_class = 'schema_invalid';
+      return {
+        semanticPlan,
+        trace,
+        upstream,
+      };
+    }
     trace.planner_source = semanticPlan.selection_owner_source;
     return { semanticPlan, trace, upstream };
   } catch (error) {

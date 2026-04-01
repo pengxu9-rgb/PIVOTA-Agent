@@ -1562,6 +1562,200 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   }
 });
 
+test('/v1/chat: generic concern planner accepts camelCase semantic-plan output and still stays on the trusted mainline', async () => {
+  const originalGet = axios.get;
+  let harness = null;
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'spf_camel_1',
+              merchant_id: 'mid_spf_camel',
+              brand: 'SunGuard',
+              name: 'Daily UV Fluid SPF 50',
+              display_name: 'Daily UV Fluid SPF 50',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+            },
+          ],
+        },
+      };
+    }
+    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'moist_camel_1',
+              merchant_id: 'mid_moist_camel',
+              brand: 'LightLab',
+              name: 'Air Gel Cream',
+              display_name: 'Air Gel Cream',
+              category: 'moisturizer',
+              product_type: 'gel cream',
+            },
+          ],
+        },
+      };
+    }
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'serum_camel_1',
+            merchant_id: 'mid_serum_camel',
+            brand: 'Clarity Lab',
+            name: 'Oil Balance Serum',
+            display_name: 'Oil Balance Serum',
+            category: 'serum',
+            product_type: 'serum',
+            benefit_tags: ['oil control', 'shine control'],
+            search_aliases: ['Oil Control Serum'],
+            short_description: 'A mattifying oil-control serum for oily skin.',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock({
+        plannerResult: {
+          primaryConcern: 'oil control and congestion',
+          coreRoles: [
+            'Oil-control treatment',
+            'Lightweight moisturizer',
+            { id: 'daily_sunscreen', label: 'Daily sunscreen', preferredStep: 'sunscreen' },
+          ],
+          supportRoles: [
+            'Optional hydrating mask',
+          ],
+          ingredientDirections: ['Niacinamide', 'Zinc PCA'],
+          productTypeDirections: ['serum', 'moisturizer', 'sunscreen'],
+          routineShell: {
+            amCoreRoles: ['oil_control_treatment', 'daily_sunscreen'],
+            pmCoreRoles: ['oil_control_treatment', 'lightweight_moisturizer'],
+            optionalSupportRoles: ['hydrating_mask_support'],
+          },
+        },
+      }),
+      useMemoryStore: false,
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_camel_uid', briefId: 'chat_framework_camel_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_camel_uid',
+        'X-Trace-ID': 'trace_chat_framework_camel',
+        'X-Brief-ID': 'chat_framework_camel_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.selection_owner_source, 'llm_concern_planner');
+    assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
+    assert.equal(payload.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendations?.[0]?.product_id, 'serum_camel_1');
+    assert.ok(Array.isArray(payload.support_roles));
+    assert.match(
+      String(payload.support_roles[0]?.role_id || payload.support_roles[0]?.label || ''),
+      /hydrating mask/i,
+    );
+  } finally {
+    harness?.restore?.();
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: generic concern planner junk structured output still fail-closes instead of trusting index fallback', async () => {
+  const originalGet = axios.get;
+  let searchCalls = 0;
+  let harness = null;
+
+  axios.get = async (url) => {
+    if (isProductsSearchUrl(url)) searchCalls += 1;
+    throw new Error(`Unexpected axios.get after planner schema-invalid output: ${url}`);
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock({
+        plannerResult: {
+          core_roles: [{}],
+          support_roles: [],
+        },
+      }),
+      useMemoryStore: false,
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_junk_uid', briefId: 'chat_framework_junk_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_junk_uid',
+        'X-Trace-ID': 'trace_chat_framework_junk',
+        'X-Brief-ID': 'chat_framework_junk_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(searchCalls, 0);
+    assert.equal(getRecommendationsPayload(response.body), null);
+    const notice = getConfidenceNoticePayload(response.body);
+    assert.ok(notice);
+    assert.ok(['schema_invalid', 'semantic_planner_schema_invalid'].includes(notice.reason));
+  } finally {
+    harness?.restore?.();
+    axios.get = originalGet;
+  }
+});
+
 test('/v1/chat: generic concern planner timeout fail-closes the mainline instead of surfacing fallback recommendations', async () => {
   const originalGet = axios.get;
   let searchCalls = 0;
