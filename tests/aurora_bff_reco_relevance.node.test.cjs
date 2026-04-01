@@ -1773,6 +1773,51 @@ test('__internal: framework pool rejects generic ingredient serum as an oil-cont
   assert.ok(Number(state.hard_reject_count || 0) >= 1);
 });
 
+test('__internal: framework pool rejects a treatment-serum candidate that only matches by alternate step and retrieval role', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'int_niac_live_bug',
+        merchant_id: 'merchant_int_niac_live_bug',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'mattifying serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        ingredient_tokens: ['niacinamide', 'zinc'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_live_bug',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_id, 'oil_control_treatment');
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.viable_candidate_count, 0);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
 test('__internal: framework pool accepts external seed semantic evidence from benefit tags and aliases', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({

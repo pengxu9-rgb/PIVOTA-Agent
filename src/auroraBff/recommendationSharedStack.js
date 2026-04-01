@@ -313,9 +313,9 @@ function buildConcernFrameworkRoles({ text = '', focus = '', profileSummary = nu
         '控油功效产品',
         'Start with a targeted oil-control step to manage shine, congestion, or clogged pores.',
         '先用针对控油和毛孔的功效产品，把出油和堵塞问题压住。',
-        ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+        ['oil control serum', 'oil balance serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
         ['serum'],
-        ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+        ['oil control', 'oil balance', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
       ),
       role(
         'lightweight_moisturizer',

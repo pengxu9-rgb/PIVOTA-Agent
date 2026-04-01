@@ -16257,8 +16257,13 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       let fitKeywordMatched = false;
       let queryTermMatched = false;
       let score = 0;
-      if (candidateStep && preferredStep && candidateStep === preferredStep) score += 0.72;
-      else if (candidateStep && alternateSteps.includes(candidateStep)) score += 0.62;
+      if (candidateStep && preferredStep && candidateStep === preferredStep) {
+        score += 0.72;
+      } else if (candidateStep && alternateSteps.includes(candidateStep)) {
+        score += preferredStep === 'treatment'
+          ? (fitKeywordMatched || queryTermMatched ? 0.62 : 0.18)
+          : 0.62;
+      }
       for (const keyword of Array.isArray(role?.fit_keywords) ? role.fit_keywords : []) {
         const normalizedKeyword = String(keyword || '').trim().toLowerCase();
         if (!normalizedKeyword) continue;
@@ -16279,7 +16284,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       }
       const semanticFitMatched = fitKeywordMatched || queryTermMatched;
       if (candidateStep && preferredStep === 'treatment' && candidateStep === 'serum') {
-        score += semanticFitMatched ? 0.6 : 0.38;
+        score += semanticFitMatched ? 0.6 : 0.12;
       }
       if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.12 : 0.02;
       if (score > bestScore) {
