@@ -3211,6 +3211,38 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
   );
 });
 
+test('__internal: framework recall planner injects canonical shine-control serum ladder when live planner only emits oil-balance phrasing', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      framework_summary: {
+        concern_text: 'im oily skin, what product should i use?',
+      },
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+          query_terms: ['oil control serum', 'oil balance serum'],
+          fit_keywords: ['oil control', 'oil balance', 'shine control', 'mattifying'],
+          ingredient_hypotheses: ['Salicylic acid'],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    plan.stages[0]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
+  );
+  assert.deepEqual(
+    plan.stages[1]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
+  );
+});
+
 test('__internal: framework recall planner falls back to role label query when treatment role lacks enough query terms', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({

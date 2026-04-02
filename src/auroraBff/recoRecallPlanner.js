@@ -46,6 +46,33 @@ function buildPrimaryTreatmentIngredientQuery(role) {
   return normalizeConcernQueryToken(`${picked} treatment`);
 }
 
+function buildPrimaryTreatmentSemanticQueries(role) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return [];
+  const roleId = normalizeConcernQueryToken(roleObj.role_id).toLowerCase();
+  const roleLabel = normalizeConcernQueryToken(roleObj.label).toLowerCase();
+  const signalText = uniqueCaseInsensitiveStrings([
+    roleId,
+    roleLabel,
+    ...(Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : []),
+    ...(Array.isArray(roleObj.query_terms) ? roleObj.query_terms : []),
+  ], 24)
+    .map((value) => normalizeConcernQueryToken(value).toLowerCase())
+    .join(' ');
+  if (!signalText) return [];
+  const semanticQueries = [];
+  if (
+    /\b(oil balance|shine control|mattify|mattifying|anti-shine|sebum|balancing)\b/.test(signalText)
+  ) {
+    semanticQueries.push(
+      'shine control serum',
+      'mattifying serum',
+      'balancing serum oily skin',
+    );
+  }
+  return uniqueCaseInsensitiveStrings(semanticQueries, 3);
+}
+
 function flattenPlanEntries(stages) {
   return (Array.isArray(stages) ? stages : []).flatMap((stage) => {
     const stageObj = stage && typeof stage === 'object' && !Array.isArray(stage) ? stage : null;
@@ -114,6 +141,7 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   if (allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment') {
     const ingredientLedQuery = buildPrimaryTreatmentIngredientQuery(roleObj);
     if (ingredientLedQuery) out.push(ingredientLedQuery);
+    out.push(...buildPrimaryTreatmentSemanticQueries(roleObj));
   }
   out.push(...roleQueries.slice(1));
   if (
