@@ -44,9 +44,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
   const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
-  const alternateSteps = Array.isArray(role?.alternate_steps)
-    ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
-    : [];
+  // Treatment roles often land on serum-shaped catalog items even when the planner
+  // does not explicitly emit alternate_steps=["serum"].
+  const alternateStepSet = new Set(
+    Array.isArray(role?.alternate_steps)
+      ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
+      : [],
+  );
+  if (preferredStep === 'treatment') alternateStepSet.add('serum');
+  const alternateSteps = [...alternateStepSet];
   const retrievalRoleId = pickFirstTrimmed(row?.retrieval_role_id, row?.role_id);
   const retrievalRoleMatched = Boolean(retrievalRoleId && retrievalRoleId === roleId);
   const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);

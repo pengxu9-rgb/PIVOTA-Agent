@@ -4320,6 +4320,52 @@ test('__internal: framework pool promotes strong semantic serum evidence into th
   assert.equal(state.weak_viable_pool, false);
 });
 
+test('__internal: framework pool treats serum as the default alternate shape for treatment roles', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_default_serum_1',
+        merchant_id: 'merchant_catalog_oil_balance_default_serum',
+        brand: 'Clarity Lab',
+        name: 'Shine Balance Serum',
+        display_name: 'Clarity Lab Shine Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Oil Balance Serum'],
+        benefit_tags: ['oil control', 'mattifying'],
+        short_description: 'A mattifying balancing serum for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_default_serum_shape',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'catalog_oil_balance_default_serum_1');
+  assert.ok(Number(state.selected_recommendations[0]?.framework_score || 0) >= 0.58);
+});
+
 test('__internal: framework pool exposes source counts and reject preview for shared surfacing diagnostics', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
