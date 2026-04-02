@@ -2763,6 +2763,8 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
       recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
       'catalog_grounded',
     );
+    assert.equal(observedSearchParams.length, 2);
+    assert.ok(observedSearchParams.every((row) => !/(sunscreen|spf|moisturizer|gel cream|lotion)/.test(row.query)));
     assert.ok(observedSearchParams.every((row) => row.allow_external_seed !== true));
   } finally {
     harness?.restore?.();
