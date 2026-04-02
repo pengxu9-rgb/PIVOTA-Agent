@@ -30,6 +30,21 @@ test('intent canonical keeps pregnancy + retinol safety ask on ingredient_scienc
   assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
 });
 
+test('intent canonical keeps typed sunscreen reco asks on reco_products', () => {
+  const out = inferCanonicalIntent({
+    message: 'what sunscreen for oily skin?',
+  });
+  assert.equal(out.intent, INTENT_ENUM.RECO_PRODUCTS);
+  assert.equal(out.source, 'heuristic_step_aware_reco');
+});
+
+test('intent canonical keeps sunscreen filter safety asks on ingredient_science', () => {
+  const out = inferCanonicalIntent({
+    message: 'what sunscreen filters are safest in pregnancy?',
+  });
+  assert.equal(out.intent, INTENT_ENUM.INGREDIENT_SCIENCE);
+});
+
 test('intent canonical maps ingredient entry action to ingredient science', () => {
   const out = inferCanonicalIntent({
     message: '',

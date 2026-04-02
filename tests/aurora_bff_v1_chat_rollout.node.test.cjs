@@ -64,6 +64,46 @@ test('V1ChatRequestSchema accepts optional context on legacy /v1/chat bodies', (
   assert.equal(parsed.success, true);
 });
 
+test('V1ChatRequestSchema accepts current frontend action payload shape with id/type aliases', () => {
+  resetAuroraModules();
+  const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+  const parsed = V1ChatRequestSchema.safeParse({
+    message: 'im oily skin, what product should i use?',
+    language: 'EN',
+    client_state: { state: 'IDLE_CHAT' },
+    action: {
+      id: 'chip.start.reco_products',
+      type: 'chip.start.reco_products',
+      data: {
+        reply_text: 'im oily skin, what product should i use?',
+        profile_patch: {
+          skin_type: 'oily',
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.success, true);
+});
+
+test('V1ChatRequestSchema normalizes lowercase and locale language tags for current frontend chat payloads', () => {
+  resetAuroraModules();
+  const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+  const parsedEn = V1ChatRequestSchema.safeParse({
+    message: 'im oily skin, what product should i use?',
+    language: 'en',
+  });
+  const parsedZh = V1ChatRequestSchema.safeParse({
+    message: '我想要适合油皮的产品',
+    language: 'zh-CN',
+  });
+
+  assert.equal(parsedEn.success, true);
+  assert.equal(parsedZh.success, true);
+  assert.equal(parsedEn.data.language, 'EN');
+  assert.equal(parsedZh.data.language, 'CN');
+});
+
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
@@ -958,6 +998,78 @@ test('/v1/chat keeps current frontend reco freeform payload compatible with the 
         assert.equal(response.body?.version, '1.0');
         assert.ok(Array.isArray(response.body?.cards));
         assert.equal(Object.prototype.hasOwnProperty.call(response.body || {}, 'assistant_message'), true);
+      } finally {
+        recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
+      }
+    },
+  );
+});
+
+test('/v1/chat keeps current frontend action id/type reco payload compatible with the v1 mainline request shape', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+      const routes = require('../src/auroraBff/routes');
+      const originalResolve = recoHybridResolver.runRecoHybridResolveCandidates;
+      recoHybridResolver.runRecoHybridResolveCandidates = async () => ({
+        rows: [
+          {
+            product_id: 'prod_oil_control_1',
+            merchant_id: 'merchant_oil_control_1',
+            brand: 'Fenty Skin',
+            name: 'Oil Control Serum',
+            reasons: ['Matches oil-control treatment for oily skin.'],
+            match_state: 'exact',
+          },
+        ],
+        recommendation_meta: {
+          source_mode: 'catalog_grounded',
+          exact_match_count: 1,
+        },
+      });
+      __resetRouterForTests();
+      try {
+        const payload = {
+          session: {
+            state: 'IDLE_CHAT',
+            profile: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+          language: 'EN',
+          client_state: { state: 'IDLE_CHAT' },
+          action: {
+            id: 'chip.start.reco_products',
+            type: 'chip.start.reco_products',
+            data: {
+              reply_text: 'im oily skin, what product should i use?',
+              profile_patch: {
+                skin_type: 'oily',
+                goals: ['oil control'],
+              },
+            },
+          },
+          messages: [{ role: 'user', content: 'im oily skin, what product should i use?' }],
+        };
+        const parsed = V1ChatRequestSchema.safeParse(payload);
+        assert.equal(parsed.success, true);
+        assert.equal(await routes.__internal.shouldDelegateV1ChatToV2(payload), false);
+
+        const response = await supertest(createApp())
+          .post('/v1/chat')
+          .set(buildHeaders())
+          .send(payload)
+          .expect(200);
+
+        assert.equal(response.status, 200);
+        assert.equal(response.body?.version, '1.0');
+        assert.ok(Array.isArray(response.body?.cards));
       } finally {
         recoHybridResolver.runRecoHybridResolveCandidates = originalResolve;
       }

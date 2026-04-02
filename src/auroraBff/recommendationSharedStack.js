@@ -760,15 +760,51 @@ function buildSameFamilyQueryLevels({
 } = {}) {
   const step = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
   if (!step) return [];
-  const aliases = STEP_QUERY_ALIASES[step] || [step];
+  const rawAliases = STEP_QUERY_ALIASES[step] || [step];
+  const aliases = uniqCaseInsensitiveStrings(
+    (Array.isArray(rawAliases) ? rawAliases : [rawAliases]).filter((alias) => {
+      const normalized = normalizeQueryToken(alias).toLowerCase();
+      if (!normalized) return false;
+      if (step === 'sunscreen' && (normalized === 'sun screen' || normalized === 'spf')) return false;
+      return true;
+    }),
+    8,
+  );
   const stepPrimary = aliases[0] || step;
-  const goalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
+  const rawGoalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
+  const goalTerms = step === 'sunscreen'
+    ? []
+    : rawGoalTerms;
   const ingredientTerms = collectIngredientTerms(ingredientContext, recoContext).slice(0, 2);
-  const concernTerms = collectConcernTerms(profileSummary, ingredientContext, recoContext).slice(0, 2);
+  const profileSkinType = normalizeQueryToken(
+    profileSummary?.skin_type || profileSummary?.skinType || profileSummary?.skin_type_tendency,
+  ).toLowerCase();
+  const sunscreenSkinTypeTerms =
+    step === 'sunscreen' && profileSkinType
+      ? [/\bskin\b/.test(profileSkinType) ? profileSkinType : `${profileSkinType} skin`]
+      : [];
+  const concernTerms = uniqCaseInsensitiveStrings(
+    [
+      ...collectConcernTerms(profileSummary, ingredientContext, recoContext),
+      ...sunscreenSkinTypeTerms,
+    ]
+      .map((item) => normalizeQueryToken(item))
+      .filter((item) => {
+        const normalized = String(item || '').trim().toLowerCase();
+        if (!normalized) return false;
+        if (step === 'sunscreen' && /\b(acne|breakout|blemish|spot|spots|pore|pores)\b/.test(normalized)) return false;
+        return true;
+      }),
+    4,
+  ).slice(0, 2);
   const normalizedSeedTerms = uniqCaseInsensitiveStrings(
     (Array.isArray(seedTerms) ? seedTerms : [])
       .map((item) => normalizeQueryToken(item))
-      .filter((item) => isSeedTermCompatibleWithTargetStep(item, step)),
+      .filter((item) => {
+        if (!isSeedTermCompatibleWithTargetStep(item, step)) return false;
+        if (step === 'sunscreen' && /\b(acne|breakout|blemish|spot|spots|pore|pores)\b/i.test(String(item || ''))) return false;
+        return true;
+      }),
     4,
   );
 
@@ -803,7 +839,7 @@ function buildSameFamilyQueryLevels({
     },
     {
       ladder_level: 'step_alias_expansion',
-      queries: uniqCaseInsensitiveStrings(aliases, 8),
+      queries: uniqCaseInsensitiveStrings(step === 'sunscreen' ? aliases.slice(1, 2) : aliases, 8),
     },
   ];
 
@@ -888,6 +924,7 @@ function hasExplicitSunscreenSignal(text) {
 
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
+  const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
   const structuredRaw = pickFirstTrimmed(
     row.product_type,
@@ -901,8 +938,6 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   const semanticStepText = joinUniqueQueryParts(
     structuredRaw,
     resolutionText,
-    row.retrieval_query,
-    row.query,
   );
   if (hasExplicitSunscreenSignal(semanticStepText)) {
     return {
@@ -927,7 +962,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       row.retrievalSlotStep,
     ),
   );
-  if (retrievalStep) {
+  if (retrievalStep && !stepAwareIntent) {
     return {
       candidate_step: retrievalStep,
       candidate_step_source: 'retrieval_step',
@@ -981,7 +1016,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
     };
   }
   const retrievalQuery = normalizeQueryToken(row.retrieval_query || row.query);
-  if (retrievalQuery && targetContext?.resolved_target_step) {
+  if (retrievalQuery && targetContext?.resolved_target_step && !stepAwareIntent) {
     const retrievalResolution = resolveRecoTargetStepIntent({
       text: retrievalQuery,
     });
@@ -1245,45 +1280,21 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     .filter((row) => row.bucket === 'soft_mismatch')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
   const hardReject = classified.filter((row) => row.bucket === 'hard_reject');
-  const thresholds = getStepPolicy(targetContext && targetContext.resolved_target_step);
   const exactStepViableCount = viable.filter((row) => row.candidate_step && row.candidate_step === targetContext?.resolved_target_step).length;
   const sameFamilyViableCount = viable.length;
   const averageContextFit = viable.length
     ? viable.reduce((sum, row) => sum + Number(row.context_fit_score || 0), 0) / viable.length
     : 0;
-  const sameFamilySuccessThresholdMet = Boolean(
-    sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
-      && viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
-  );
-  const sameFamilyStrongViableExists = viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
+  const sameFamilySuccessThresholdMet = sameFamilyViableCount > 0;
+  const sameFamilyStrongViableExists = viable.length > 0;
   const selected = viable.slice(0, 3);
   const selectedFamilies = uniqCaseInsensitiveStrings(selected.map((row) => row.candidate_step || row.family_relation || 'unknown'), 3);
   const topCandidatesConverged = selectedFamilies.length <= 1;
   const primaryDisplayGroups = summarizePrimaryDisplayGroups(selected);
-  const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0
-    && primaryDisplayGroups.every((group) => Number(group.group_target_fidelity || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
+  const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0;
   const hardConstraintConflict = viable.some((row) => row.constraint_conflict === true) || selected.some((row) => row.constraint_conflict === true);
-  const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && softMismatch.length > 0;
-  const softTargetSuccessAllowed =
-    targetContext?.mainline_mode === 'soft_target'
-      ? Boolean(
-        (exactStepViableCount > 0 || sameFamilyStrongViableExists)
-          && topCandidatesConverged
-          && !hardConstraintConflict
-          && overallTargetFidelitySatisfied,
-      )
-      : null;
-  const hardTargetSuccessAllowed =
-    targetContext?.mainline_mode === 'hard_target'
-      ? Boolean(exactStepViableCount > 0 && !hardConstraintConflict && overallTargetFidelitySatisfied)
-      : null;
-  const terminalSuccess = Boolean(
-    !targetContext?.step_aware_intent
-      ? selected.length > 0
-      : targetContext.mainline_mode === 'soft_target'
-        ? softTargetSuccessAllowed
-        : hardTargetSuccessAllowed,
-  );
+  const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && (softMismatch.length > 0 || viable.length > 0);
+  const terminalSuccess = Boolean(selected.length > 0 && !hardConstraintConflict);
   const familyMatchType = !targetContext?.step_aware_intent
     ? null
     : exactStepViableCount > 0
@@ -1357,14 +1368,12 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
 
 function shouldStopStepAwareBroadening(poolState, { targetContext } = {}) {
   if (!targetContext?.step_aware_intent) return false;
-  const thresholds = getStepPolicy(targetContext.resolved_target_step);
   const viableCount = Number(poolState?.same_family_viable_count || 0);
-  const sameFamilyStrongViableExists = Boolean(poolState?.same_family_strong_viable_exists);
-  return viableCount >= Number(thresholds.min_viable_count_for_step || 1) && sameFamilyStrongViableExists;
+  return viableCount > 0;
 }
 
 function deriveStepAwareEmptyReason(targetContext, poolState) {
-  if (poolState?.weak_viable_pool) return 'weak_viable_pool_for_target';
+  if (poolState?.weak_viable_pool) return 'weak_viable_pool';
   if (targetContext?.step_aware_intent) return 'no_viable_candidates_for_target';
   return 'upstream_missing_or_empty';
 }

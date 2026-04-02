@@ -81,6 +81,14 @@ function getRoutesInternal() {
   }
 }
 
+function canProxyRecoToV1Mainline() {
+  if (invokeV1MainlineChatImpl !== invokeV1MainlineChat) return true;
+  const routesInternal = getRoutesInternal();
+  return typeof routesInternal.hasMountedV1ChatMainlineHandler === 'function'
+    ? routesInternal.hasMountedV1ChatMainlineHandler() === true
+    : false;
+}
+
 function buildLoopbackChatBaseUrl(req) {
   const forwardedProto = typeof req?.get === 'function' ? req.get('x-forwarded-proto') : null;
   const proto = pickFirstTrimmed(forwardedProto, req?.protocol, 'http') || 'http';
@@ -113,7 +121,42 @@ function buildLoopbackChatHeaders(req) {
   return out;
 }
 
+function normalizeIncomingChatAction(action) {
+  if (typeof action === 'string') {
+    const trimmed = action.trim();
+    return trimmed || null;
+  }
+  if (!isPlainObject(action)) return null;
+  const data = isPlainObject(action.data) ? action.data : null;
+  const actionId = pickFirstTrimmed(
+    action.action_id,
+    action.id,
+    data && data.action_id,
+    data && data.aurora_action_id,
+    action.type,
+  );
+  const kindValue = pickFirstTrimmed(action.kind, action.type);
+  const normalizedKind = kindValue
+    ? /(^|[._-])chip([._-]|$)/i.test(kindValue)
+      ? 'chip'
+      : 'action'
+    : null;
+  return {
+    ...(actionId ? { action_id: actionId } : {}),
+    ...(normalizedKind ? { kind: normalizedKind } : {}),
+    ...(data ? { data } : {}),
+  };
+}
+
 async function invokeV1MainlineChat({ req, body } = {}) {
+  const routesInternal = getRoutesInternal();
+  if (typeof routesInternal.runV1ChatMainlineInProcess === 'function') {
+    try {
+      return await routesInternal.runV1ChatMainlineInProcess({ req, body });
+    } catch (error) {
+      if (String(error?.message || '') !== 'v1_chat_mainline_handler_unmounted') throw error;
+    }
+  }
   const baseUrl = buildLoopbackChatBaseUrl(req);
   if (!baseUrl) throw new Error('loopback_chat_base_missing');
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -1289,7 +1332,7 @@ async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
-    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal)) {
+    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal) && canProxyRecoToV1Mainline()) {
       const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
       res.json(
         applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
@@ -1335,9 +1378,9 @@ async function handleChat(req, res) {
 
 function resolveAnalysisFollowupActionId(req, internal = {}) {
   const body = req.body || {};
-  const action = isPlainObject(body.action) ? body.action : {};
-  const actionData = isPlainObject(action.data) ? action.data : {};
-  const explicitActionId = pickFirstTrimmed(body.action_id, action.action_id, actionData.action_id);
+  const action = normalizeIncomingChatAction(body.action);
+  const actionData = isPlainObject(action?.data) ? action.data : {};
+  const explicitActionId = pickFirstTrimmed(body.action_id, action?.action_id, actionData.action_id);
   if (explicitActionId && ANALYSIS_FOLLOWUP_ACTION_IDS_V2.has(explicitActionId.trim())) {
     return { actionId: explicitActionId.trim(), routingMode: 'explicit' };
   }
@@ -1383,7 +1426,7 @@ async function handleChatStream(req, res) {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
     const internal = auth.internal;
-    if (shouldProxyFrameworkRecoToV1Mainline(body, internal)) {
+    if (shouldProxyFrameworkRecoToV1Mainline(body, internal) && canProxyRecoToV1Mainline()) {
       sendEvent('thinking', {
         step: 'routing_framework_mainline',
         message: 'Preparing framework-first recommendations...',
@@ -1579,10 +1622,10 @@ function buildSkillRequest(req) {
   const bodyParams = isPlainObject(body.params) ? body.params : {};
   const session = isPlainObject(body.session) ? body.session : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : null;
-  const action = isPlainObject(body.action) ? body.action : {};
-  const actionData = isPlainObject(action.data) ? action.data : {};
+  const action = normalizeIncomingChatAction(body.action);
+  const actionData = isPlainObject(action?.data) ? action.data : {};
   const normalizedActionData = omitLegacyActionAliases(actionData);
-  const actionId = pickFirstTrimmed(body.action_id, action.action_id);
+  const actionId = pickFirstTrimmed(body.action_id, action?.action_id);
   const userMessage = pickFirstTrimmed(
     body.message,
     body.text,
