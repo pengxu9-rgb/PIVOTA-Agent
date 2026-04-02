@@ -1,6 +1,13 @@
 const { z } = require('zod');
 
-const LanguageSchema = z.enum(['EN', 'CN']);
+const LanguageSchema = z.preprocess((value) => {
+  if (typeof value !== 'string') return value;
+  const raw = value.trim();
+  if (!raw) return raw;
+  if (/^en(?:[-_].+)?$/i.test(raw)) return 'EN';
+  if (/^(?:cn|zh|zh-cn|zh_hans|zh-hans)(?:[-_].+)?$/i.test(raw)) return 'CN';
+  return raw.toUpperCase();
+}, z.enum(['EN', 'CN']));
 
 const TriggerSourceSchema = z.enum(['chip', 'action', 'text_explicit', 'text']);
 
@@ -254,8 +261,10 @@ const V1ChatRequestSchema = z
         z.string().min(1),
         z
           .object({
-            action_id: z.string().min(1),
+            action_id: z.string().min(1).optional(),
+            id: z.string().min(1).optional(),
             kind: z.enum(['chip', 'action']).optional(),
+            type: z.string().min(1).optional(),
             data: z.record(z.string(), z.any()).optional(),
           })
           .strict(),

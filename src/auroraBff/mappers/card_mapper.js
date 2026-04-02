@@ -1,6 +1,8 @@
 function mapSkillResponseToChatCardsV1(skillResponse) {
+  const mappedCards = (skillResponse.cards || []).map((card) => mapCard(card, skillResponse));
+  const answerFirstCard = buildAnswerFirstTextResponseCard(skillResponse, mappedCards);
   return {
-    cards: (skillResponse.cards || []).map((card) => mapCard(card, skillResponse)),
+    cards: answerFirstCard ? [answerFirstCard, ...mappedCards] : mappedCards,
     ops: {
       thread_ops: skillResponse.ops?.thread_ops || [],
       profile_patch: skillResponse.ops?.profile_patch || {},
@@ -12,8 +14,10 @@ function mapSkillResponseToChatCardsV1(skillResponse) {
 }
 
 function mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps) {
+  const mappedCards = (skillResponse.cards || []).map((card) => mapCard(card, skillResponse));
+  const answerFirstCard = buildAnswerFirstTextResponseCard(skillResponse, mappedCards);
   return {
-    cards: (skillResponse.cards || []).map((card) => mapCard(card, skillResponse)),
+    cards: answerFirstCard ? [answerFirstCard, ...mappedCards] : mappedCards,
     ops: {
       thread_ops: skillResponse.ops?.thread_ops || [],
       profile_patch: skillResponse.ops?.profile_patch || {},
@@ -29,6 +33,65 @@ function mapSkillResponseToStreamEnvelope(skillResponse, thinkingSteps) {
       quality_ok: skillResponse.quality?.quality_ok === true,
     },
   };
+}
+
+function buildAnswerFirstTextResponseCard(skillResponse, mappedCards = []) {
+  const cards = Array.isArray(mappedCards) ? mappedCards : [];
+  if (cards.some((card) => String(card?.card_type || '').trim().toLowerCase() === 'text_response')) return null;
+  const explicitAnswerEn = pickFirstString(
+    skillResponse?.answer_en,
+    skillResponse?.answer,
+    skillResponse?.text,
+    skillResponse?.reply_text,
+    skillResponse?.assistant_text,
+  );
+  const explicitAnswerZh = pickFirstString(
+    skillResponse?.answer_zh,
+    skillResponse?.reply_text_zh,
+  );
+  if (explicitAnswerEn || explicitAnswerZh) {
+    return {
+      card_type: 'text_response',
+      sections: [
+        {
+          type: 'text_answer',
+          text_en: explicitAnswerEn || explicitAnswerZh,
+          text_zh: explicitAnswerZh || null,
+        },
+      ],
+      metadata: {},
+    };
+  }
+
+  const firstCard = cards[0];
+  if (String(firstCard?.card_type || '').trim().toLowerCase() === 'aurora_ingredient_report') {
+    const sections = Array.isArray(firstCard.sections) ? firstCard.sections : [];
+    const overview = sections.find((section) => String(section?.type || '').trim().toLowerCase() === 'ingredient_overview') || {};
+    const ingredientName = pickFirstString(overview.ingredient_name, overview.inci_name, overview.name);
+    const textEn = pickFirstString(
+      overview.description_en,
+      ingredientName ? `${ingredientName} is commonly used in skincare to support targeted concerns.` : '',
+    );
+    const textZh = pickFirstString(
+      overview.description_zh,
+      ingredientName ? `${ingredientName} 是护肤中常见的功效成分。` : '',
+    );
+    if (textEn || textZh) {
+      return {
+        card_type: 'text_response',
+        sections: [
+          {
+            type: 'text_answer',
+            text_en: textEn || textZh,
+            text_zh: textZh || null,
+          },
+        ],
+        metadata: {},
+      };
+    }
+  }
+
+  return null;
 }
 
 function mapCard(card, skillResponse) {

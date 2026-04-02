@@ -760,15 +760,51 @@ function buildSameFamilyQueryLevels({
 } = {}) {
   const step = normalizeRecoTargetStep(targetContext && targetContext.resolved_target_step);
   if (!step) return [];
-  const aliases = STEP_QUERY_ALIASES[step] || [step];
+  const rawAliases = STEP_QUERY_ALIASES[step] || [step];
+  const aliases = uniqCaseInsensitiveStrings(
+    (Array.isArray(rawAliases) ? rawAliases : [rawAliases]).filter((alias) => {
+      const normalized = normalizeQueryToken(alias).toLowerCase();
+      if (!normalized) return false;
+      if (step === 'sunscreen' && (normalized === 'sun screen' || normalized === 'spf')) return false;
+      return true;
+    }),
+    8,
+  );
   const stepPrimary = aliases[0] || step;
-  const goalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
+  const rawGoalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
+  const goalTerms = step === 'sunscreen'
+    ? []
+    : rawGoalTerms;
   const ingredientTerms = collectIngredientTerms(ingredientContext, recoContext).slice(0, 2);
-  const concernTerms = collectConcernTerms(profileSummary, ingredientContext, recoContext).slice(0, 2);
+  const profileSkinType = normalizeQueryToken(
+    profileSummary?.skin_type || profileSummary?.skinType || profileSummary?.skin_type_tendency,
+  ).toLowerCase();
+  const sunscreenSkinTypeTerms =
+    step === 'sunscreen' && profileSkinType
+      ? [/\bskin\b/.test(profileSkinType) ? profileSkinType : `${profileSkinType} skin`]
+      : [];
+  const concernTerms = uniqCaseInsensitiveStrings(
+    [
+      ...collectConcernTerms(profileSummary, ingredientContext, recoContext),
+      ...sunscreenSkinTypeTerms,
+    ]
+      .map((item) => normalizeQueryToken(item))
+      .filter((item) => {
+        const normalized = String(item || '').trim().toLowerCase();
+        if (!normalized) return false;
+        if (step === 'sunscreen' && /\b(acne|breakout|blemish|spot|spots|pore|pores)\b/.test(normalized)) return false;
+        return true;
+      }),
+    4,
+  ).slice(0, 2);
   const normalizedSeedTerms = uniqCaseInsensitiveStrings(
     (Array.isArray(seedTerms) ? seedTerms : [])
       .map((item) => normalizeQueryToken(item))
-      .filter((item) => isSeedTermCompatibleWithTargetStep(item, step)),
+      .filter((item) => {
+        if (!isSeedTermCompatibleWithTargetStep(item, step)) return false;
+        if (step === 'sunscreen' && /\b(acne|breakout|blemish|spot|spots|pore|pores)\b/i.test(String(item || ''))) return false;
+        return true;
+      }),
     4,
   );
 
@@ -803,7 +839,7 @@ function buildSameFamilyQueryLevels({
     },
     {
       ladder_level: 'step_alias_expansion',
-      queries: uniqCaseInsensitiveStrings(aliases, 8),
+      queries: uniqCaseInsensitiveStrings(step === 'sunscreen' ? aliases.slice(1, 2) : aliases, 8),
     },
   ];
 
@@ -888,6 +924,7 @@ function hasExplicitSunscreenSignal(text) {
 
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
+  const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
   const structuredRaw = pickFirstTrimmed(
     row.product_type,
@@ -901,8 +938,6 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   const semanticStepText = joinUniqueQueryParts(
     structuredRaw,
     resolutionText,
-    row.retrieval_query,
-    row.query,
   );
   if (hasExplicitSunscreenSignal(semanticStepText)) {
     return {
@@ -927,7 +962,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       row.retrievalSlotStep,
     ),
   );
-  if (retrievalStep) {
+  if (retrievalStep && !stepAwareIntent) {
     return {
       candidate_step: retrievalStep,
       candidate_step_source: 'retrieval_step',
@@ -981,7 +1016,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
     };
   }
   const retrievalQuery = normalizeQueryToken(row.retrieval_query || row.query);
-  if (retrievalQuery && targetContext?.resolved_target_step) {
+  if (retrievalQuery && targetContext?.resolved_target_step && !stepAwareIntent) {
     const retrievalResolution = resolveRecoTargetStepIntent({
       text: retrievalQuery,
     });
