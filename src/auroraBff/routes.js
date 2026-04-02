@@ -52207,6 +52207,8 @@ async function runConcernSemanticPlanner({
         effective_provider: llmRouteMeta.effective_provider,
         effective_model: llmRouteMeta.effective_model,
         selection_source: llmRouteMeta.selection_source,
+        provider_reason: pickFirstTrimmed(plannerResponse?.reason) || null,
+        provider_parse_status: pickFirstTrimmed(plannerResponse?.parse_status) || null,
         raw_top_keys: isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [],
         repaired_from_text: Boolean(repairedStructured),
         answer_preview: answerPreview,
@@ -52240,10 +52242,17 @@ async function runConcernSemanticPlanner({
         !attemptTrace.answer_preview
         && attemptTrace.raw_top_keys.length === 0
         && attemptTrace.repaired_from_text === false;
+      const attemptReturnedUnusableStructured =
+        String(attempt.structured_contract || '').trim() === 'required_keys'
+        && attemptTrace.trusted !== true
+        && (
+          ['PARSE_TRUNCATED_JSON', 'gemini_json_invalid', 'gemini_text_empty'].includes(String(attemptTrace.provider_reason || ''))
+          || ['parse_truncated', 'invalid'].includes(String(attemptTrace.provider_parse_status || ''))
+        );
       const shouldRetry =
         Boolean(nextAttempt)
         && attempt.provider === 'gemini'
-        && attemptReturnedNoSignal
+        && (attemptReturnedNoSignal || attemptReturnedUnusableStructured)
         && (
           (
             String(attempt.model || '').trim() === 'gemini-3-flash-preview'
