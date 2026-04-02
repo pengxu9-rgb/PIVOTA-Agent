@@ -111,6 +111,7 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
 
   const concernText = String(targetObj?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
   const primaryRole = roles[0] || null;
+  const supportRoles = roles.slice(1, 3);
 
   const stages = [
     buildStage({
@@ -139,21 +140,43 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
       runIf: 'if_no_primary_viable_or_transient_only',
       preferredStep: primaryRole?.preferred_step || null,
     }),
+    ...supportRoles.map((role) => buildStage({
+      stageId: `framework_stage_c_support_${String(role?.role_id || '').trim() || 'role'}`,
+      roleId: role?.role_id || null,
+      roleRank: role?.rank || null,
+      sourceScope: 'internal',
+      queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
+      concurrency: 1,
+      maxAttemptsForStage: 1,
+      stopOnViableMatch: false,
+      reasonForInclusion: 'support_role_internal',
+      runIf: 'if_surface_count_below_target',
+      preferredStep: role?.preferred_step || null,
+      slot: Array.isArray(role?.routine_slots) ? role.routine_slots[0] || null : null,
+    })),
   ].filter(Boolean);
+  const entries = flattenPlanEntries(stages);
+  const maxQueryEntries = entries.length;
 
   return {
     version: RECO_RECALL_PLAN_VERSION,
     mode: 'framework_generic',
     budget: {
-      max_query_entries: 4,
-      max_upstream_attempt_count: 4,
+      max_query_entries: maxQueryEntries,
+      max_upstream_attempt_count: maxQueryEntries,
       stage_concurrency: {
         framework_stage_a_primary_internal: 2,
         framework_stage_b_primary_external_seed: 1,
+        ...Object.fromEntries(
+          supportRoles.map((role) => [
+            `framework_stage_c_support_${String(role?.role_id || '').trim() || 'role'}`,
+            1,
+          ]),
+        ),
       },
     },
     stages,
-    entries: flattenPlanEntries(stages),
+    entries,
   };
 }
 

@@ -1567,8 +1567,144 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
     assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
     assert.match(String(response.body?.assistant_text || ''), /Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen\./i);
     assert.match(String(response.body?.assistant_text || ''), /Top pick for that first role: Oil Balance Serum\./i);
+    const suggestedChipIds = (Array.isArray(response.body?.suggested_chips) ? response.body.suggested_chips : [])
+      .map((chip) => String(chip?.chip_id || '').trim())
+      .filter(Boolean);
+    assert.ok(
+      suggestedChipIds.includes('chip.start.routine')
+      || suggestedChipIds.includes('chip.action.reco_routine')
+      || suggestedChipIds.includes('tpl.action.routine_generate'),
+    );
     assert.ok(observedQueries.some((query) => query.includes('oil control')));
     assert.ok(observedQueries.some((query) => query.includes('sunscreen')));
+  } finally {
+    harness?.restore?.();
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: generic oily-skin ask stays routine-ready when moisturizer support only matches by exact step and role recall', async () => {
+  const originalGet = axios.get;
+  let harness = null;
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    if (query.includes('sunscreen') || query.includes('spf')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'spf_routine_ready_1',
+              merchant_id: 'mid_spf_routine_ready',
+              brand: 'SunGuard',
+              name: 'Daily Shield SPF 50',
+              display_name: 'Daily Shield SPF 50',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+              short_description: 'A daily face sunscreen for oily skin.',
+            },
+          ],
+        },
+      };
+    }
+    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'moist_routine_ready_1',
+              merchant_id: 'mid_moist_routine_ready',
+              brand: 'LightLab',
+              name: 'Daily Balance Lotion',
+              display_name: 'Daily Balance Lotion',
+              category: 'moisturizer',
+              product_type: 'moisturizer',
+              short_description: 'A face lotion for oily skin.',
+            },
+          ],
+        },
+      };
+    }
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'serum_routine_ready_1',
+            merchant_id: 'mid_serum_routine_ready',
+            brand: 'Clarity Lab',
+            name: 'Oil Balance Serum',
+            display_name: 'Oil Balance Serum',
+            category: 'serum',
+            product_type: 'serum',
+            ingredient_tokens: ['niacinamide', 'zinc pca'],
+            benefit_tags: ['oil control', 'shine control'],
+            search_aliases: ['Oil Control Serum'],
+            short_description: 'A mattifying oil-control serum for oily skin.',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
+      useMemoryStore: false,
+    });
+
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_routine_ready_uid', briefId: 'chat_framework_routine_ready_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_routine_ready_uid',
+        'X-Trace-ID': 'trace_chat_framework_routine_ready',
+        'X-Brief-ID': 'chat_framework_routine_ready_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 3);
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'oil_control_treatment'));
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'lightweight_moisturizer'));
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
+    assert.ok(Array.isArray(payload.routine_shell?.am_core_roles));
+    assert.ok(payload.routine_shell.am_core_roles.includes('daily_sunscreen'));
+    const suggestedChipIds = (Array.isArray(response.body?.suggested_chips) ? response.body.suggested_chips : [])
+      .map((chip) => String(chip?.chip_id || '').trim())
+      .filter(Boolean);
+    assert.ok(
+      suggestedChipIds.includes('chip.start.routine')
+      || suggestedChipIds.includes('chip.action.reco_routine')
+      || suggestedChipIds.includes('tpl.action.routine_generate'),
+    );
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
@@ -2967,7 +3103,7 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
   }
 });
 
-test('__internal: framework recall planner emits a primary-only staged budget with external seed only in stage B', () => {
+test('__internal: framework recall planner emits primary stages first, then support-role internal stages', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3001,14 +3137,16 @@ test('__internal: framework recall planner emits a primary-only staged budget wi
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 2);
+  assert.equal(plan.stages.length, 4);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 4);
+  assert.ok(plan.entries.length <= 6);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 2],
       ['framework_stage_b_primary_external_seed', 'external_seed', 2],
+      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 1],
+      ['framework_stage_c_support_daily_sunscreen', 'internal', 1],
     ],
   );
 });
@@ -3423,6 +3561,108 @@ test('__internal: framework pool rejects non-facial hand cream from the lightwei
 
   assert.equal(state.selected_candidate_count, 0);
   assert.ok(Number(state.hard_reject_count || 0) >= 1);
+});
+
+test('__internal: framework pool rescues an exact-step lightweight moisturizer support slot from role-matched catalog recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_support_1',
+        merchant_id: 'merchant_catalog_oil_balance_support',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Oil Control Serum'],
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'catalog_balance_lotion_1',
+        merchant_id: 'merchant_catalog_balance_lotion',
+        brand: 'LightLab',
+        name: 'Daily Balance Lotion',
+        display_name: 'LightLab Daily Balance Lotion',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_query: 'lightweight moisturizer',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A face lotion for oily skin.',
+      },
+      {
+        product_id: 'catalog_uv_fluid_1',
+        merchant_id: 'merchant_catalog_uv_fluid',
+        brand: 'SunGuard',
+        name: 'Daily UV Fluid SPF 50',
+        display_name: 'SunGuard Daily UV Fluid SPF 50',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'catalog',
+        retrieval_query: 'daily sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        benefit_tags: ['spf', 'broad spectrum'],
+        short_description: 'A lightweight sunscreen for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_support_slot_rescue',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+            ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+            product_type_hypotheses: ['treatment', 'serum'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'barrier lotion'],
+            fit_keywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free'],
+            ingredient_hypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+            product_type_hypotheses: ['moisturizer'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'broad spectrum', 'uv filters'],
+            ingredient_hypotheses: ['UV filters'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  const moisturizer = state.selected_recommendations.find((item) => item?.matched_role_id === 'lightweight_moisturizer') || null;
+  assert.ok(moisturizer);
+  assert.equal(moisturizer?.candidate_step, 'moisturizer');
+  assert.ok(Number(moisturizer?.framework_score || 0) >= 0.58);
+  assert.equal(moisturizer?.framework_semantic_fit, true);
+  assert.equal(state.role_pool_stats?.lightweight_moisturizer?.viable_count, 1);
+  assert.ok(Number(state.role_pool_stats?.lightweight_moisturizer?.top_score || 0) >= 0.58);
 });
 
 test('__internal: framework pool rejects explicit SPF sunscreen serum from the oil-control treatment primary slot', async () => {

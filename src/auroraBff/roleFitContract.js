@@ -48,6 +48,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
     : [];
   const retrievalRoleId = pickFirstTrimmed(row?.retrieval_role_id, row?.role_id);
+  const retrievalRoleMatched = Boolean(retrievalRoleId && retrievalRoleId === roleId);
   const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
   const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
   const ingredientMatches = countConcernRoleSignalMatches(candidateText, role?.ingredient_hypotheses, 2);
@@ -56,6 +57,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
   const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
+  const supportStepRescueApplied =
+    Number(role?.rank || 99) > 1
+    && preferredStep !== 'treatment'
+    && exactStep
+    && retrievalRoleMatched
+    && productTypeMatches > 0
+    && fitKeywordMatches === 0
+    && queryTermMatches === 0
+    && ingredientMatches === 0;
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
@@ -71,7 +81,10 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   score += Math.min(0.18, queryTermMatches * 0.08);
   score += Math.min(0.16, ingredientMatches * 0.08);
   score += Math.min(0.12, productTypeMatches * 0.06);
-  if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.08 : 0.02;
+  if (retrievalRoleMatched) score += semanticFitMatched ? 0.08 : 0.02;
+  // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable
+  // when the catalog only gives us the role-matched product shape, without loosening treatment rules.
+  if (supportStepRescueApplied) score += 0.1;
   if (preferredStep === 'treatment' && candidateStep === 'serum' && !semanticFitMatched) {
     score = Math.min(score, 0.34);
   }
@@ -84,6 +97,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     score: Number(score.toFixed(4)),
     semantic_fit_matched: semanticFitMatched,
     strong_semantic_fit_matched: strongSemanticFitMatched,
+    retrieval_role_matched: retrievalRoleMatched,
+    support_step_rescue_applied: supportStepRescueApplied,
     exact_step: exactStep,
     alternate_step: alternateStep,
   };
