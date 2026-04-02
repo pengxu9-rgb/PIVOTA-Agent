@@ -118,7 +118,6 @@ test('extractPrimaryChatRequestMessage falls back to the last user message in me
 
   assert.equal(message, 'what sunscreen for oily skin?');
 });
-
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
