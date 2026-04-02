@@ -241,6 +241,37 @@ describe('Shopping agent facade', () => {
     );
   });
 
+  test('second-stage supplement helper blocks outfit-only broadening for human apparel category queries', () => {
+    const runtime = createTestRuntime({
+      extractSearchAnchorTokens(queryText) {
+        return String(queryText || '')
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+      },
+    });
+
+    expect(
+      runtime.getFindProductsMultiSecondStageSupplementDecision({
+        queryText: 'blue striped sweater',
+        expandedQuery: 'blue striped sweater outfit',
+        traceQueryClass: 'category',
+        effectiveIntent: {
+          primary_domain: 'human_apparel',
+          target_object: { type: 'human' },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        allowSupplement: false,
+        reason: 'disabled_for_risky_broadening',
+        queryClass: 'category',
+        addedTokens: ['outfit', 'dress', 'skirt'],
+      }),
+    );
+  });
+
   test('second-stage supplement helper allows safe browse supplement with bounded expansion', () => {
     const runtime = createTestRuntime({
       extractSearchAnchorTokens(queryText) {
