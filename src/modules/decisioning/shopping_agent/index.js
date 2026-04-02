@@ -230,14 +230,25 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
       .filter(Boolean);
     const originalSet = new Set(originalAnchors);
     const addedTokens = expandedAnchors.filter((token) => !originalSet.has(token));
-    const riskyBroadening = addedTokens.length >= 3;
+    const riskyBroadeningTokens = [...addedTokens];
+    const humanApparelOutfitBroadening =
+      browseLike &&
+      String(effectiveIntent?.primary_domain || '').trim().toLowerCase() === 'human_apparel' &&
+      String(effectiveIntent?.target_object?.type || '').trim().toLowerCase() === 'human' &&
+      addedTokens.includes('outfit');
+    if (humanApparelOutfitBroadening) {
+      for (const token of ['dress', 'skirt']) {
+        if (!riskyBroadeningTokens.includes(token)) riskyBroadeningTokens.push(token);
+      }
+    }
+    const riskyBroadening = riskyBroadeningTokens.length >= 3;
 
     if (!normalizedExpandedQuery || normalizedExpandedQuery === normalizedQueryText) {
       return {
         allowSupplement: false,
         reason: 'second_stage_not_expanded',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -246,7 +257,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
         allowSupplement: false,
         reason: 'disabled_for_brand_like_query',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -255,7 +266,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
         allowSupplement: false,
         reason: 'disabled_for_resolution_like_query',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -264,7 +275,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
         allowSupplement: false,
         reason: 'disabled_for_ambiguity_sensitive_query',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -273,7 +284,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
         allowSupplement: false,
         reason: queryClass ? 'disabled_for_query_class' : 'disabled_for_unknown_query_class',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -282,7 +293,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
         allowSupplement: false,
         reason: 'disabled_for_risky_broadening',
         queryClass,
-        addedTokens,
+        addedTokens: riskyBroadeningTokens,
         riskyBroadening,
       };
     }
@@ -290,7 +301,7 @@ function createShoppingAgentDecisioningRuntime(deps = {}) {
       allowSupplement: true,
       reason: 'second_stage_allowed',
       queryClass,
-      addedTokens,
+      addedTokens: riskyBroadeningTokens,
       riskyBroadening,
     };
   }
