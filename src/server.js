@@ -3443,6 +3443,80 @@ async function resolveCatalogSyncMerchantIds() {
   return { merchantIds: [], source: discovered.source || 'none' };
 }
 
+async function recoverExactProductCandidatesByDetailScan(args) {
+  const productId = String(args?.productId || '').trim();
+  const checkoutToken = args?.checkoutToken;
+  const limit = Math.min(Math.max(1, Number(args?.limit || 10) || 10), 50);
+  if (!productId) {
+    return {
+      product_group_id: null,
+      members: [],
+      products: [],
+    };
+  }
+
+  const configuredMerchantIds = Array.isArray(args?.merchantIds) ? args.merchantIds : [];
+  const merchantIds = uniqueStrings([
+    ...(String(productId).trim().toLowerCase().startsWith('ext_') ? [EXTERNAL_SEED_MERCHANT_ID] : []),
+    ...configuredMerchantIds,
+  ]).slice(0, Math.min(Math.max(limit * 2, 8), 24));
+
+  if (!merchantIds.length) {
+    return {
+      product_group_id: buildProductGroupId({ merchant_id: 'pid', product_id: productId }) || `pg:pid:${productId}`,
+      members: [],
+      products: [],
+    };
+  }
+
+  const recoveredProducts = [];
+  const chunkSize = 4;
+  for (let i = 0; i < merchantIds.length; i += chunkSize) {
+    const chunk = merchantIds.slice(i, i + chunkSize);
+    // eslint-disable-next-line no-await-in-loop
+    const results = await Promise.all(
+      chunk.map(async (merchantId) => {
+        const detail = await (
+          typeof args?.fetchDetail === 'function'
+            ? args.fetchDetail({ merchantId, productId, checkoutToken })
+            : fetchProductDetailForOffers({ merchantId, productId, checkoutToken })
+        ).catch(() => null);
+        if (!detail || typeof detail !== 'object') return null;
+        return {
+          ...detail,
+          merchant_id: String(detail.merchant_id || merchantId).trim() || merchantId,
+          product_id: String(detail.product_id || detail.id || productId).trim() || productId,
+        };
+      }),
+    );
+    recoveredProducts.push(...results.filter(Boolean));
+    if (recoveredProducts.length >= limit) break;
+  }
+
+  const dedupedProducts = Array.from(
+    new Map(
+      recoveredProducts
+        .map((product) => [String(product?.merchant_id || '').trim(), product])
+        .filter(([merchantId]) => Boolean(merchantId)),
+    ).values(),
+  ).slice(0, limit);
+
+  const members = dedupedProducts.map((product, index) => ({
+    merchant_id: String(product?.merchant_id || '').trim(),
+    merchant_name: product?.merchant_name || product?.store_name || undefined,
+    product_id: String(product?.product_id || productId).trim() || productId,
+    platform: product?.platform ? String(product.platform).trim() : undefined,
+    is_primary: index === 0,
+  }));
+
+  return {
+    product_group_id:
+      buildProductGroupId({ merchant_id: 'pid', product_id: productId }) || `pg:pid:${productId}`,
+    members,
+    products: dedupedProducts,
+  };
+}
+
 const catalogSyncState = {
   last_run_at: null,
   last_success_at: null,
@@ -19853,7 +19927,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const resolveGroupCachedStartedAt = Date.now();
 	      if (!canonicalProductRef) {
 	        const resolvedGroup = await resolveProductGroupCached({
-		          productId,
+			          productId,
 	          merchantId: requestedMerchantId || null,
           platform,
           checkoutToken,
@@ -19868,6 +19942,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        }
 	      }
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
+
+        const recoverExactProductStartedAt = Date.now();
+        if (!canonicalProductRef && !requestedMerchantId && productId) {
+          const configuredMerchantTarget = await resolveCatalogSyncMerchantIds().catch(() => ({
+            merchantIds: [],
+            source: 'resolve_failed',
+          }));
+          const recoveredCandidates = await recoverExactProductCandidatesByDetailScan({
+            productId,
+            merchantIds: configuredMerchantTarget.merchantIds,
+            checkoutToken,
+            limit: payload?.offers?.limit || 10,
+          }).catch(() => null);
+
+          if (recoveredCandidates?.members?.length) {
+            if (!productGroupId && recoveredCandidates.product_group_id) {
+              productGroupId = String(recoveredCandidates.product_group_id || '').trim() || productGroupId;
+            }
+            groupMembers = recoveredCandidates.members;
+            const canonicalMember =
+              recoveredCandidates.members.find((m) => m.is_primary) ||
+              recoveredCandidates.members[0] ||
+              null;
+            canonicalProductRef = canonicalMember
+              ? {
+                  merchant_id: canonicalMember.merchant_id,
+                  product_id: canonicalMember.product_id,
+                  ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+                }
+              : null;
+          }
+        }
+        markPdpV2Phase('recover_exact_product_detail_scan', recoverExactProductStartedAt);
 
 	      if (!canonicalProductRef) {
 	        canonicalProductRef = {
@@ -20576,17 +20683,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 			        }
 			      }
 
-		      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
-		      // - no product detail fetches
-		      // - no long descriptions/media
-	      // - small limit
-		      let deduped = [];
-		      let anchor = null;
-		      const shouldSkipSearch = !requestedMerchantId && groupMembers.length > 0;
-		      if (!shouldSkipSearch) {
+	      // Fetch candidates via Agent Search (GET). This is intentionally lightweight:
+	      // - no product detail fetches
+	      // - no long descriptions/media
+      // - small limit
+	      let deduped = [];
+	      let anchor = null;
+        let recoveredOfferProducts = [];
+        const configuredMerchantTarget = requestedMerchantId
+          ? { merchantIds: [], source: 'requested_merchant_only' }
+          : await resolveCatalogSyncMerchantIds();
+        const configuredMerchantIds = configuredMerchantTarget.merchantIds;
+	      const shouldSkipSearch = !requestedMerchantId && groupMembers.length > 0;
+	      if (!shouldSkipSearch) {
       const searchUrl = `${PIVOTA_API_BASE}/agent/v1/products/search`;
-      const configuredMerchantTarget = await resolveCatalogSyncMerchantIds();
-      const configuredMerchantIds = configuredMerchantTarget.merchantIds;
 
       const queryParams = {
         ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
@@ -20631,9 +20741,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          ? deduped.find((p) => String(p?.merchant_id || '').trim() === requestedMerchantId) ||
 		            (deduped.length === 0 ? { merchant_id: requestedMerchantId } : null)
 		          : null) ||
-		        deduped[0] ||
-		        null;
-		      }
+	        deduped[0] ||
+	        null;
+	      }
+
+        if (!requestedMerchantId && deduped.length === 0 && groupMembers.length === 0) {
+          const recoveredCandidates = await recoverExactProductCandidatesByDetailScan({
+            productId,
+            merchantIds: configuredMerchantIds,
+            checkoutToken,
+            limit,
+          }).catch(() => null);
+
+          if (recoveredCandidates?.products?.length) {
+            recoveredOfferProducts = recoveredCandidates.products;
+            deduped = recoveredCandidates.products;
+            anchor = recoveredCandidates.products[0] || null;
+            if (!productGroupId && recoveredCandidates.product_group_id) {
+              productGroupId = String(recoveredCandidates.product_group_id || '').trim() || productGroupId;
+            }
+            if (groupMembers.length === 0 && Array.isArray(recoveredCandidates.members)) {
+              groupMembers = recoveredCandidates.members.slice(0, limit);
+            }
+          }
+        }
 
 	      // Ensure we have a real anchor product for:
 	      // - reliable offers (at least 1 offer should exist when merchant_id is provided)
@@ -20749,11 +20880,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : buildProductGroupId({ merchant_id: 'pid', product_id: productId })) || `pg:pid:${productId}`;
 	      }
 
-		      let offerProducts = deduped;
-		      if (groupMembers.length > 0) {
-		        const fetched = [];
-		        const chunkSize = 4;
-		        for (let i = 0; i < groupMembers.length; i += chunkSize) {
+	      let offerProducts = recoveredOfferProducts.length > 0 ? recoveredOfferProducts : deduped;
+	      if (groupMembers.length > 0 && recoveredOfferProducts.length === 0) {
+	        const fetched = [];
+	        const chunkSize = 4;
+	        for (let i = 0; i < groupMembers.length; i += chunkSize) {
 		          const chunk = groupMembers.slice(i, i + chunkSize);
 		          // eslint-disable-next-line no-await-in-loop
 		          const results = await Promise.all(
@@ -20850,15 +20981,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        ? offers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
 		        : null;
 		      const defaultOfferId = preferredOfferId || bestPriceOfferId;
-		      const canonicalMember =
-		        groupMembers.find((m) => m.is_primary) || groupMembers[0] || null;
-		      const canonicalProductRef = canonicalMember
-		        ? {
-		            merchant_id: canonicalMember.merchant_id,
-		            product_id: canonicalMember.product_id,
-		            ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
-		          }
-		        : null;
+	      const canonicalMember =
+	        groupMembers.find((m) => m.is_primary) || groupMembers[0] || null;
+	      const canonicalProductRef = canonicalMember
+	        ? {
+	            merchant_id: canonicalMember.merchant_id,
+	            product_id: canonicalMember.product_id,
+	            ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
+	          }
+          : anchor
+            ? {
+                merchant_id: String(anchor.merchant_id || '').trim(),
+                product_id: String(anchor.product_id || productId).trim() || productId,
+                ...(anchor?.platform ? { platform: String(anchor.platform).trim() } : {}),
+              }
+            : null;
 
 		      const result = {
 		        status: 'success',
@@ -25957,6 +26094,7 @@ module.exports._debug = {
   catalogSyncState,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetail,
+  recoverExactProductCandidatesByDetailScan,
 };
 
 if (require.main === module) {
