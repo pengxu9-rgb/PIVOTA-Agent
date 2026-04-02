@@ -117,4 +117,29 @@ describe('submit_payment response contract normalization', () => {
       },
     });
   });
+
+  it('rejects unsupported pivota hosted checkout responses', async () => {
+    nock(API_BASE)
+      .post('/agent/v1/payments')
+      .reply(200, {
+        status: 'success',
+        checkout_session: {
+          checkout_session_id: 'csess_bad_123',
+          hosted_url: 'https://checkout.example.com/session/csess_bad_123',
+          provider: 'pivota_hosted_checkout',
+        },
+      });
+
+    const res = await invokeSubmitPayment();
+    expect(res.status).toBe(502);
+    expect(res.body).toMatchObject({
+      error: 'UNSUPPORTED_PAYMENT_SURFACE',
+      message:
+        'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
+      detail: {
+        psp: 'pivota_hosted_checkout',
+        checkout_session_id: 'csess_bad_123',
+      },
+    });
+  });
 });
