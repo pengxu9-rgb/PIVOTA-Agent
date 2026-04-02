@@ -15,6 +15,12 @@ function uniqueCaseInsensitiveStrings(values, max = 12) {
   return out;
 }
 
+function normalizeConcernQueryToken(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function flattenPlanEntries(stages) {
   return (Array.isArray(stages) ? stages : []).flatMap((stage) => {
     const stageObj = stage && typeof stage === 'object' && !Array.isArray(stage) ? stage : null;
@@ -77,9 +83,16 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return [];
   const preferredStep = String(roleObj.preferred_step || '').trim();
-  const out = [
-    ...(Array.isArray(roleObj.query_terms) ? roleObj.query_terms : []),
-  ];
+  const roleQueries = Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [];
+  const out = [];
+  if (roleQueries.length > 0) out.push(roleQueries[0]);
+  if (allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment') {
+    const roleLabelOrIdQuery = normalizeConcernQueryToken(
+      String(roleObj.label || roleObj.role_id || '').replace(/[-_/]+/g, ' '),
+    ).toLowerCase();
+    if (roleLabelOrIdQuery) out.push(roleLabelOrIdQuery);
+  }
+  out.push(...roleQueries.slice(1));
   if (allowConcernFallback && concernText) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);
     out.push(concernText);

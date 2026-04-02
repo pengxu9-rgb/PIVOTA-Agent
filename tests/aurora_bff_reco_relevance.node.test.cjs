@@ -3170,6 +3170,14 @@ test('__internal: framework recall planner emits primary stages first, then supp
       ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 1],
     ],
   );
+  assert.deepEqual(
+    plan.stages[0]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'oil control treatment'],
+  );
+  assert.deepEqual(
+    plan.stages[1]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'oil control treatment'],
+  );
 });
 
 test('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
@@ -3886,6 +3894,66 @@ test('__internal: framework pool rejects explicit SPF sunscreen serum from the o
     Array.isArray(state.hard_reject_preview)
     && state.hard_reject_preview.some((row) => row?.product_id === 'spf_serum_conflict_1' && row?.reason === 'framework_primary_sunscreen_conflict'),
   );
+});
+
+test('__internal: framework pool does not let moisturizer-signaled serum metadata satisfy the treatment primary slot', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_moist_disguised_serum_1',
+        merchant_id: 'external_seed',
+        brand: 'Embryolisse',
+        name: 'Mattifying Moisturizer',
+        display_name: 'Mattifying Moisturizer',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'oil control serum',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A lightweight mattifying moisturizer for combination to oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_oily_moist_disguised_serum',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'mattify', 'sebum', 'balancing', 'anti-shine', 'blemish'],
+          },
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+            fit_keywords: ['lightweight moisturizer', 'gel cream', 'breathable hydration', 'mattifying moisturizer'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(state.best_available_role_id ?? null, null);
+  assert.ok(Array.isArray(state.soft_mismatch));
+  assert.ok(
+    state.soft_mismatch.some(
+      (entry) => entry?.product?.product_id === 'ext_moist_disguised_serum_1' && entry?.product?.candidate_step === 'moisturizer',
+    ),
+  );
+  assert.equal(state.weak_viable_pool, false);
+  assert.equal(state.candidate_drop_stage, 'weak_viable_pool');
 });
 
 test('__internal: framework pool clears support-only selected recommendations when the primary role is unmatched', async () => {

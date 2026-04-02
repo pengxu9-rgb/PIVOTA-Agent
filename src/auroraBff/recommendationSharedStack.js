@@ -918,6 +918,13 @@ function buildCandidateResolutionText(product) {
     .join(' ');
 }
 
+function buildCandidateNonStructuredStepText(product) {
+  return buildCandidateResolutionFragments(product)
+    .filter((item) => item && item.source !== 'structured_category' && item.source !== 'ingredient' && item.source !== 'brand')
+    .map((item) => item.value)
+    .join(' ');
+}
+
 function hasExplicitSunscreenSignal(text) {
   return EXPLICIT_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
 }
@@ -926,6 +933,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
   const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
+  const nonStructuredStepText = buildCandidateNonStructuredStepText(row);
   const structuredRaw = pickFirstTrimmed(
     row.product_type,
     row.productType,
@@ -947,7 +955,20 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
     };
   }
   const structuredStep = normalizeProductType(structuredRaw);
+  const nonStructuredStep = normalizeRecoTargetStep(nonStructuredStepText);
   if (structuredStep) {
+    if (
+      structuredStep === 'serum'
+      && nonStructuredStep
+      && nonStructuredStep !== 'serum'
+      && nonStructuredStep !== 'treatment'
+    ) {
+      return {
+        candidate_step: nonStructuredStep,
+        candidate_step_source: 'title_or_tag_alias',
+        candidate_step_confidence: 'medium',
+      };
+    }
     return {
       candidate_step: structuredStep,
       candidate_step_source: 'structured_category',
