@@ -3158,12 +3158,12 @@ test('__internal: framework recall planner emits primary stages first, then supp
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 8);
+  assert.ok(plan.entries.length <= 10);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
-      ['framework_stage_a_primary_internal', 'internal', 2],
-      ['framework_stage_b_primary_external_seed', 'external_seed', 2],
+      ['framework_stage_a_primary_internal', 'internal', 3],
+      ['framework_stage_b_primary_external_seed', 'external_seed', 3],
       ['framework_stage_c_support_lightweight_moisturizer', 'internal', 1],
       ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 1],
       ['framework_stage_c_support_daily_sunscreen', 'internal', 1],
@@ -3172,11 +3172,11 @@ test('__internal: framework recall planner emits primary stages first, then supp
   );
   assert.deepEqual(
     plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'oil control treatment'],
+    ['oil control serum', 'oil control treatment', 'shine control serum'],
   );
   assert.deepEqual(
     plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'oil control treatment'],
+    ['oil control serum', 'oil control treatment', 'shine control serum'],
   );
 });
 
@@ -3203,11 +3203,11 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
 
   assert.deepEqual(
     plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment'],
+    ['oil control serum', 'Salicylic acid treatment', 'oil control treatment'],
   );
   assert.deepEqual(
     plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment'],
+    ['oil control serum', 'Salicylic acid treatment', 'oil control treatment'],
   );
 });
 
