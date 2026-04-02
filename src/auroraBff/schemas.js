@@ -254,8 +254,10 @@ const V1ChatRequestSchema = z
         z.string().min(1),
         z
           .object({
-            action_id: z.string().min(1),
+            action_id: z.string().min(1).optional(),
+            id: z.string().min(1).optional(),
             kind: z.enum(['chip', 'action']).optional(),
+            type: z.string().min(1).optional(),
             data: z.record(z.string(), z.any()).optional(),
           })
           .strict(),

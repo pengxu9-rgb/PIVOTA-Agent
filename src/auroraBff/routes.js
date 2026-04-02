@@ -1354,8 +1354,11 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
   const trimmedMessage = String(message || '').trim();
   if (!trimmedMessage || trimmedMessage.length > 64) return false;
 
-  const action = isPlainObject(payload.action) ? payload.action : {};
-  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  const action = normalizeIncomingChatAction(payload.action);
+  const actionId =
+    typeof action === 'string'
+      ? action
+      : pickFirstTrimmed(payload.action_id, action && action.action_id);
   if (
     looksLikeProductEvaluationIntentV2(trimmedMessage, actionId) ||
     looksLikeRecommendationRequest(trimmedMessage) ||
@@ -1396,10 +1399,13 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
 
 async function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
-  const action = isPlainObject(payload.action) ? payload.action : {};
+  const action = normalizeIncomingChatAction(payload.action);
   const actionData = isPlainObject(action.data) ? action.data : {};
   const bodyParams = isPlainObject(payload.params) ? payload.params : {};
-  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
+  const actionId =
+    typeof action === 'string'
+      ? action
+      : pickFirstTrimmed(payload.action_id, action && action.action_id);
   const canDelegateActionToV2 = [
     'chip.action.add_to_routine',
     'chip.start.routine',
@@ -33093,17 +33099,19 @@ function inferProfilePatchFromClarification({ clarificationId, replyText }) {
 }
 
 function parseProfilePatchFromAction(action) {
-  if (!action) return null;
-  if (typeof action === 'object' && action.data && typeof action.data === 'object') {
-    const patch = action.data.profile_patch || action.data.profilePatch;
+  const normalizedAction = normalizeIncomingChatAction(action);
+  if (!normalizedAction) return null;
+  const actionValue = normalizedAction;
+  if (typeof actionValue === 'object' && actionValue.data && typeof actionValue.data === 'object') {
+    const patch = actionValue.data.profile_patch || actionValue.data.profilePatch;
     if (patch && typeof patch === 'object') return patch;
   }
 
-  const id = typeof action === 'string' ? action : action && action.action_id;
-  if (typeof action === 'object' && action && typeof action.data === 'object' && action.data) {
+  const id = typeof actionValue === 'string' ? actionValue : actionValue && actionValue.action_id;
+  if (typeof actionValue === 'object' && actionValue && typeof actionValue.data === 'object' && actionValue.data) {
     const clarificationIdRaw =
-      action.data.clarification_id || action.data.clarificationId || parseClarificationIdFromActionId(id);
-    const replyText = extractReplyTextFromAction(action) || parseClarificationReplyFromActionId(id);
+      actionValue.data.clarification_id || actionValue.data.clarificationId || parseClarificationIdFromActionId(id);
+    const replyText = extractReplyTextFromAction(actionValue) || parseClarificationReplyFromActionId(id);
     const patchFromClarification = inferProfilePatchFromClarification({
       clarificationId: clarificationIdRaw,
       replyText,
@@ -34149,8 +34157,9 @@ function shouldPersistProfilePatch(baseProfile, patch) {
 }
 
 function extractReplyTextFromAction(action) {
-  if (!action || typeof action !== 'object') return null;
-  const data = action.data && typeof action.data === 'object' ? action.data : null;
+  const normalizedAction = normalizeIncomingChatAction(action);
+  if (!normalizedAction || typeof normalizedAction !== 'object') return null;
+  const data = normalizedAction.data && typeof normalizedAction.data === 'object' ? normalizedAction.data : null;
   if (!data) return null;
   const raw =
     (typeof data.reply_text === 'string' && data.reply_text) ||
@@ -34159,6 +34168,33 @@ function extractReplyTextFromAction(action) {
     null;
   const text = raw ? String(raw).trim() : '';
   return text || null;
+}
+
+function normalizeIncomingChatAction(action) {
+  if (typeof action === 'string') {
+    const trimmed = action.trim();
+    return trimmed || null;
+  }
+  if (!isPlainObject(action)) return null;
+  const data = isPlainObject(action.data) ? action.data : null;
+  const actionId = pickFirstTrimmed(
+    action.action_id,
+    action.id,
+    data && data.action_id,
+    data && data.aurora_action_id,
+    action.type,
+  );
+  const kindValue = pickFirstTrimmed(action.kind, action.type);
+  const normalizedKind = kindValue
+    ? /(^|[._-])chip([._-]|$)/i.test(kindValue)
+      ? 'chip'
+      : 'action'
+    : null;
+  return {
+    ...(actionId ? { action_id: actionId } : {}),
+    ...(normalizedKind ? { kind: normalizedKind } : {}),
+    ...(data ? { data } : {}),
+  };
 }
 
 function coerceBoolean(value) {
@@ -75020,7 +75056,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const normalizedActionPayload = (() => {
-        if (parsed.data.action) return parsed.data.action;
+        if (parsed.data.action) return normalizeIncomingChatAction(parsed.data.action);
         if (typeof parsed.data.action_id === 'string' && parsed.data.action_id.trim()) {
           return {
             action_id: parsed.data.action_id.trim(),
