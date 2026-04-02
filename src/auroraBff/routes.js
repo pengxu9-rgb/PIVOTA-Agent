@@ -20794,6 +20794,58 @@ function withTimeout(promise, timeoutMs, timeoutCode) {
   });
 }
 
+function parseTimeoutMsValue(rawValue, fallbackMs) {
+  const parsed = Number(rawValue);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.trunc(parsed));
+  return Math.max(1, Math.trunc(Number(fallbackMs) || 1));
+}
+
+function getAuroraIdentityTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_IDENTITY_TIMEOUT_MS, 2500);
+}
+
+function getAuroraStorageReadTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_STORAGE_READ_TIMEOUT_MS, 3500);
+}
+
+function getAuroraStorageWriteTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_STORAGE_WRITE_TIMEOUT_MS, 4500);
+}
+
+function getAuroraBootstrapArtifactTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_BOOTSTRAP_ARTIFACT_TIMEOUT_MS, 4000);
+}
+
+function buildGuestIdentity(ctx, extra = {}) {
+  return {
+    auroraUid: ctx && Object.prototype.hasOwnProperty.call(ctx, 'aurora_uid') ? ctx.aurora_uid : null,
+    userId: null,
+    userEmail: null,
+    token: null,
+    auth_invalid: false,
+    ...extra,
+  };
+}
+
+function markAuthMetaUnavailable(ctx) {
+  if (!ctx || typeof ctx !== 'object') return;
+  ctx.auth_meta = {
+    state: 'unavailable',
+    user: { email: null },
+    expires_at: null,
+  };
+}
+
+function runAuroraTimedOperation(operation, { timeoutMs, timeoutCode, status = 504 } = {}) {
+  return withTimeout(Promise.resolve().then(() => operation()), timeoutMs, timeoutCode).catch((err) => {
+    if (err && err.code === timeoutCode) {
+      err.status = err.status || status;
+      err.timeout = true;
+    }
+    throw err;
+  });
+}
+
 function getRemainingBudgetMs({ startedAtMs, budgetMs } = {}) {
   const started = Number(startedAtMs);
   const budget = Number(budgetMs);
@@ -31042,12 +31094,19 @@ function requireAuroraUid(ctx) {
 
 async function resolveIdentity(req, ctx) {
   const token = getBearerToken(req);
-  if (!token) return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: false };
+  if (!token) return buildGuestIdentity(ctx);
 
   let session = null;
   try {
-    session = await resolveSessionFromToken(token);
-  } catch {
+    session = await runAuroraTimedOperation(
+      () => resolveSessionFromToken(token),
+      { timeoutMs: getAuroraIdentityTimeoutMs(), timeoutCode: 'AURORA_IDENTITY_TIMEOUT' },
+    );
+  } catch (err) {
+    if (err && err.code === 'AURORA_IDENTITY_TIMEOUT') {
+      markAuthMetaUnavailable(ctx);
+      return buildGuestIdentity(ctx);
+    }
     session = null;
   }
 
@@ -31057,12 +31116,15 @@ async function resolveIdentity(req, ctx) {
       user: { email: null },
       expires_at: null,
     };
-    return { auroraUid: ctx.aurora_uid, userId: null, userEmail: null, token: null, auth_invalid: true };
+    return buildGuestIdentity(ctx, { auth_invalid: true });
   }
 
   if (ctx.aurora_uid) {
     try {
-      await upsertIdentityLink(ctx.aurora_uid, session.userId);
+      await runAuroraTimedOperation(
+        () => upsertIdentityLink(ctx.aurora_uid, session.userId),
+        { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_IDENTITY_LINK_TIMEOUT' },
+      );
     } catch {
       // ignore
     }
@@ -31074,6 +31136,49 @@ async function resolveIdentity(req, ctx) {
     expires_at: session.expiresAt ? String(session.expiresAt) : null,
   };
   return { auroraUid: ctx.aurora_uid, userId: session.userId, userEmail: session.email, token, auth_invalid: false };
+}
+
+const auroraRouteDependencyOverridesForTest = Object.create(null);
+
+function resolveAuroraRouteDependency(name, fallback) {
+  const override = auroraRouteDependencyOverridesForTest[name];
+  return typeof override === 'function' ? override : fallback;
+}
+
+function resolveIdentityForRoute(req, ctx) {
+  return resolveAuroraRouteDependency('resolveIdentity', resolveIdentity)(req, ctx);
+}
+
+function getProfileForIdentityForRoute(identity) {
+  return resolveAuroraRouteDependency('getProfileForIdentity', getProfileForIdentity)(identity);
+}
+
+function getRecentSkinLogsForIdentityForRoute(identity, days) {
+  return resolveAuroraRouteDependency('getRecentSkinLogsForIdentity', getRecentSkinLogsForIdentity)(identity, days);
+}
+
+function getChatContextForIdentityForRoute(identity) {
+  return resolveAuroraRouteDependency('getChatContextForIdentity', getChatContextForIdentity)(identity);
+}
+
+function upsertProfileForIdentityForRoute(identity, patch) {
+  return resolveAuroraRouteDependency('upsertProfileForIdentity', upsertProfileForIdentity)(identity, patch);
+}
+
+function upsertSkinLogForIdentityForRoute(identity, payload) {
+  return resolveAuroraRouteDependency('upsertSkinLogForIdentity', upsertSkinLogForIdentity)(identity, payload);
+}
+
+function loadLatestDiagnosisArtifactForRouteWithOverride(args) {
+  return resolveAuroraRouteDependency('loadLatestDiagnosisArtifactForRoute', loadLatestDiagnosisArtifactForRoute)(args);
+}
+
+function getIngredientPlanByArtifactIdForRoute(args) {
+  return resolveAuroraRouteDependency('getIngredientPlanByArtifactId', getIngredientPlanByArtifactId)(args);
+}
+
+function saveIngredientPlanForRoute(args) {
+  return resolveAuroraRouteDependency('saveIngredientPlan', saveIngredientPlan)(args);
 }
 
 function parseClarificationIdFromActionId(actionId) {
@@ -72646,14 +72751,46 @@ function mountAuroraBffRoutes(app, { logger }) {
       let latestArtifact = null;
       let latestIngredientPlan = null;
       let dbError = null;
-      const identity = await resolveIdentity(req, ctx);
+      const identity = await resolveIdentityForRoute(req, ctx);
+      const identityRef = { auroraUid: identity.auroraUid, userId: identity.userId };
+
       try {
-        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-        latestArtifact = await loadLatestDiagnosisArtifactForRoute({ identity, session: null, ctx, logger });
-        const latestArtifactId = pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id);
-        if (latestArtifactId) {
-          const existingPlan = await getIngredientPlanByArtifactId({ artifactId: latestArtifactId });
+        profile = await runAuroraTimedOperation(
+          () => getProfileForIdentityForRoute(identityRef),
+          { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_BOOTSTRAP_PROFILE_TIMEOUT' },
+        );
+      } catch (err) {
+        dbError = dbError || err;
+        logger?.warn({ err: err.code || err.message, request_id: ctx.request_id }, 'aurora bff: bootstrap profile load failed');
+      }
+
+      try {
+        recentLogs = await runAuroraTimedOperation(
+          () => getRecentSkinLogsForIdentityForRoute(identityRef, 7),
+          { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_BOOTSTRAP_LOGS_TIMEOUT' },
+        );
+      } catch (err) {
+        dbError = dbError || err;
+        logger?.warn({ err: err.code || err.message, request_id: ctx.request_id }, 'aurora bff: bootstrap recent logs load failed');
+      }
+
+      try {
+        latestArtifact = await runAuroraTimedOperation(
+          () => loadLatestDiagnosisArtifactForRouteWithOverride({ identity, session: null, ctx, logger }),
+          { timeoutMs: getAuroraBootstrapArtifactTimeoutMs(), timeoutCode: 'AURORA_BOOTSTRAP_ARTIFACT_TIMEOUT' },
+        );
+      } catch (err) {
+        dbError = dbError || err;
+        logger?.warn({ err: err.code || err.message, request_id: ctx.request_id }, 'aurora bff: bootstrap artifact load failed');
+      }
+
+      const latestArtifactId = pickFirstTrimmed(latestArtifact && latestArtifact.artifact_id);
+      if (latestArtifactId) {
+        try {
+          const existingPlan = await runAuroraTimedOperation(
+            () => getIngredientPlanByArtifactIdForRoute({ artifactId: latestArtifactId }),
+            { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_BOOTSTRAP_INGREDIENT_PLAN_TIMEOUT' },
+          );
           if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
             latestIngredientPlan = {
               ...existingPlan.plan_json,
@@ -72661,9 +72798,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               created_at: existingPlan.created_at || existingPlan.plan_json.created_at,
             };
           }
+        } catch (err) {
+          dbError = dbError || err;
+          logger?.warn(
+            { err: err.code || err.message, request_id: ctx.request_id, artifact_id: latestArtifactId },
+            'aurora bff: bootstrap ingredient plan load failed',
+          );
         }
-      } catch (err) {
-        dbError = err;
       }
 
       const profileSummary = summarizeProfileForContext(profile);
@@ -72802,13 +72943,16 @@ function mountAuroraBffRoutes(app, { logger }) {
         return res.status(400).json(envelope);
       }
 
-      const identity = await resolveIdentity(req, ctx);
+      const identity = await resolveIdentityForRoute(req, ctx);
       const cleanPatch = { ...parsed.data };
       if (Object.prototype.hasOwnProperty.call(cleanPatch, 'currentRoutine')) {
         const routineState = normalizeRoutineStateValue(cleanPatch.currentRoutine);
         cleanPatch.currentRoutine = routineState.current_routine_struct || routineState.current_routine_text || null;
       }
-      const updated = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, cleanPatch);
+      const updated = await runAuroraTimedOperation(
+        () => upsertProfileForIdentityForRoute({ auroraUid: identity.auroraUid, userId: identity.userId }, cleanPatch),
+        { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_PROFILE_UPDATE_TIMEOUT' },
+      );
 
       const envelope = buildEnvelope(ctx, {
         assistant_message: null,
@@ -72828,12 +72972,15 @@ function mountAuroraBffRoutes(app, { logger }) {
           : dbError
             ? 503
             : 500;
+      const timeoutCode = status === 504 ? err.code || 'AURORA_PROFILE_UPDATE_TIMEOUT' : null;
       logger?.warn({ err: err?.message || String(err), code, status }, 'profile update failed');
       const envelope = buildEnvelope(ctx, {
         assistant_message:
           status >= 400 && status < 500
             ? makeAssistantMessage('Invalid request.')
-            : makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.'),
+            : status === 504
+              ? makeAssistantMessage('Profile save timed out. Please try again shortly.')
+              : makeAssistantMessage(dbError ? 'Storage is not ready yet. Please try again shortly.' : 'Failed to save profile.'),
         suggested_chips: [],
         cards: [
           {
@@ -72843,6 +72990,8 @@ function mountAuroraBffRoutes(app, { logger }) {
               error:
                 status >= 400 && status < 500
                   ? err.code || 'BAD_REQUEST'
+                  : status === 504
+                    ? 'PROFILE_UPDATE_TIMEOUT'
                   : dbNotConfigured
                     ? 'DB_NOT_CONFIGURED'
                     : dbSchemaError
@@ -72850,12 +72999,14 @@ function mountAuroraBffRoutes(app, { logger }) {
                       : dbError
                         ? 'DB_UNAVAILABLE'
                         : 'PROFILE_SAVE_FAILED',
-              ...(status >= 400 && status < 500 ? {} : code ? { code } : {}),
+              ...(status >= 400 && status < 500 ? {} : (timeoutCode || code) ? { code: timeoutCode || code } : {}),
             },
           },
         ],
         session_patch: {},
-        events: [makeEvent(ctx, 'error', { code: (status >= 400 && status < 500 ? err.code : code) || 'PROFILE_SAVE_FAILED' })],
+        events: [
+          makeEvent(ctx, 'error', { code: (status >= 400 && status < 500 ? err.code : timeoutCode || code) || 'PROFILE_SAVE_FAILED' }),
+        ],
       });
       return res.status(status).json(envelope);
     }
@@ -74618,7 +74769,8 @@ function mountAuroraBffRoutes(app, { logger }) {
         ),
       );
 
-      const identity = await resolveIdentity(req, ctx);
+      const identity = await resolveIdentityForRoute(req, ctx);
+      const identityRef = { auroraUid: identity.auroraUid, userId: identity.userId };
       resolvedIdentity = {
         auroraUid: identity.auroraUid || null,
         userId: identity.userId || null,
@@ -74637,13 +74789,37 @@ function mountAuroraBffRoutes(app, { logger }) {
       profile = null;
       recentLogs = [];
       let storageContextLoadFailed = false;
-      try {
-        profile = await getProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-        recentLogs = await getRecentSkinLogsForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, 7);
-        chatContext = await getChatContextForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId });
-      } catch (err) {
+      const [profileLoadResult, recentLogsLoadResult, chatContextLoadResult] = await Promise.allSettled([
+        runAuroraTimedOperation(
+          () => getProfileForIdentityForRoute(identityRef),
+          { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_CHAT_PROFILE_CONTEXT_TIMEOUT' },
+        ),
+        runAuroraTimedOperation(
+          () => getRecentSkinLogsForIdentityForRoute(identityRef, 7),
+          { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_CHAT_RECENT_LOGS_TIMEOUT' },
+        ),
+        runAuroraTimedOperation(
+          () => getChatContextForIdentityForRoute(identityRef),
+          { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_CHAT_CONTEXT_TIMEOUT' },
+        ),
+      ]);
+      if (profileLoadResult.status === 'fulfilled') {
+        profile = profileLoadResult.value;
+      } else {
         storageContextLoadFailed = true;
-        logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to load memory context');
+        logger?.warn({ err: profileLoadResult.reason?.code || profileLoadResult.reason?.message }, 'aurora bff: failed to load memory profile');
+      }
+      if (recentLogsLoadResult.status === 'fulfilled') {
+        recentLogs = recentLogsLoadResult.value;
+      } else {
+        storageContextLoadFailed = true;
+        logger?.warn({ err: recentLogsLoadResult.reason?.code || recentLogsLoadResult.reason?.message }, 'aurora bff: failed to load recent logs');
+      }
+      if (chatContextLoadResult.status === 'fulfilled') {
+        chatContext = chatContextLoadResult.value;
+      } else {
+        storageContextLoadFailed = true;
+        logger?.warn({ err: chatContextLoadResult.reason?.code || chatContextLoadResult.reason?.message }, 'aurora bff: failed to load chat context');
       }
       if (storageContextLoadFailed) {
         recordProfileContextMissing({ side: 'backend' });
@@ -74678,6 +74854,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return null;
       })();
+      const actionLabelFromPayload =
+        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
+          ? parsed.data.action_label.trim()
+          : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
+            ? normalizedActionPayload.trim()
+            : null;
 
       // Allow chips/actions to patch profile inline (so chat can progress without an extra API call).
       const profilePatchFromAction = parseProfilePatchFromAction(normalizedActionPayload);
@@ -74692,7 +74874,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           // Always apply inline for gating even if DB is unavailable.
           profile = { ...(profile || {}), ...patchParsed.data };
           try {
-            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, patchParsed.data);
+            profile = await runAuroraTimedOperation(
+              () => upsertProfileForIdentityForRoute(identityRef, patchParsed.data),
+              { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_PROFILE_PATCH_TIMEOUT' },
+            );
           } catch (err) {
             logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to apply profile chip patch');
           }
@@ -74726,9 +74911,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
         profile = { ...(profile || {}), ...pregnancyPolicy.patch };
         try {
-          profile = await upsertProfileForIdentity(
-            { auroraUid: identity.auroraUid, userId: identity.userId },
-            pregnancyPolicy.patch,
+          profile = await runAuroraTimedOperation(
+            () => upsertProfileForIdentityForRoute(identityRef, pregnancyPolicy.patch),
+            { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_PREGNANCY_PATCH_TIMEOUT' },
           );
         } catch (err) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist pregnancy policy patch');
@@ -74884,7 +75069,10 @@ function mountAuroraBffRoutes(app, { logger }) {
         const shouldPersistTextPatch = shouldPersistProfilePatch(profileBeforePatch, normalizedPatch);
         if (shouldPersistTextPatch) {
           try {
-            profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, normalizedPatch);
+            profile = await runAuroraTimedOperation(
+              () => upsertProfileForIdentityForRoute(identityRef, normalizedPatch),
+              { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_TEXT_PROFILE_PATCH_TIMEOUT' },
+            );
             for (const field of patchFields) {
               recordAuroraProfileAutoPatch({ field, outcome: 'persisted' });
             }
@@ -74904,9 +75092,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       textDerivedSkinLog = extractTrackerLogFromFreeText({ message });
       if (textDerivedSkinLog) {
         try {
-          const savedLog = await upsertSkinLogForIdentity(
-            { auroraUid: identity.auroraUid, userId: identity.userId },
-            textDerivedSkinLog,
+          const savedLog = await runAuroraTimedOperation(
+            () => upsertSkinLogForIdentityForRoute(identityRef, textDerivedSkinLog),
+            { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_TRACKER_LOG_TIMEOUT' },
           );
           recordAuroraProfileAutoPatch({ field: 'recentLogs', outcome: 'persisted' });
           recentLogs = [savedLog, ...(Array.isArray(recentLogs) ? recentLogs : [])].slice(0, 7);
@@ -74970,12 +75158,20 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ensureLatestArtifactForConversation = async () => {
         if (cachedLatestArtifactLoaded) return cachedLatestArtifactForConversation;
         cachedLatestArtifactLoaded = true;
-        cachedLatestArtifactForConversation = await loadLatestDiagnosisArtifactForRoute({
-          identity,
-          session: parsed.data.session,
-          ctx,
-          logger,
-        });
+        try {
+          cachedLatestArtifactForConversation = await runAuroraTimedOperation(
+            () => loadLatestDiagnosisArtifactForRouteWithOverride({
+              identity,
+              session: parsed.data.session,
+              ctx,
+              logger,
+            }),
+            { timeoutMs: getAuroraBootstrapArtifactTimeoutMs(), timeoutCode: 'AURORA_CHAT_ARTIFACT_TIMEOUT' },
+          );
+        } catch (err) {
+          cachedLatestArtifactForConversation = null;
+          logger?.warn({ err: err.code || err.message }, 'aurora bff: latest artifact load timed out, continuing without');
+        }
         return cachedLatestArtifactForConversation;
       };
       const ensureAnalysisContextSnapshotForConversation = async () => {
@@ -75110,16 +75306,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             : null;
         let latestDiagnosisArtifact = null;
         if (isDeepDiveAction) {
-          try {
-            latestDiagnosisArtifact = await loadLatestDiagnosisArtifactForRoute({
-              identity,
-              session: parsedSession,
-              ctx,
-              logger,
-            });
-          } catch (_artifactErr) {
-            logger?.warn?.({ err: _artifactErr?.message }, 'aurora bff: artifact load failed for deep-dive, continuing without');
-          }
+          latestDiagnosisArtifact = await ensureLatestArtifactForConversation();
         }
         const followupReplyText = actionReplyText || message;
         const followup = isDeepDiveAction
@@ -75894,9 +76081,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         };
         profile = { ...(profile || {}), safetyPromptState: nextState };
         try {
-          const saved = await upsertProfileForIdentity(
-            { auroraUid: identity.auroraUid, userId: identity.userId },
-            { safetyPromptState: nextState },
+          const saved = await runAuroraTimedOperation(
+            () => upsertProfileForIdentityForRoute(identityRef, { safetyPromptState: nextState }),
+            { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_SAFETY_PROMPT_STATE_TIMEOUT' },
           );
           if (saved && typeof saved === 'object') profile = saved;
         } catch (err) {
@@ -78180,12 +78367,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       if (progressEntryRequested) {
         const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
-        const latestArtifactForProgress = await loadLatestDiagnosisArtifactForRoute({
-          identity,
-          session: parsed.data.session,
-          ctx,
-          logger,
-        });
+        const latestArtifactForProgress = await ensureLatestArtifactForConversation();
         const profileSummaryForPatch = summarizeChatProfileForContext(profile);
         const progressBaseline = buildDiagnosisBaseline({
           profile: profileSummaryForPatch || profile,
@@ -78376,12 +78558,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         const profileSummaryForDiagnosis = summarizeChatProfileForContext(profile);
 
         if (enteredDiagnosisFromFreshStart) {
-          const latestArtifactForDiagnosis = await loadLatestDiagnosisArtifactForRoute({
-            identity,
-            session: parsed.data.session,
-            ctx,
-            logger,
-          });
+          const latestArtifactForDiagnosis = await ensureLatestArtifactForConversation();
           const returningBaseline = buildDiagnosisBaseline({
             profile: profileSummaryForDiagnosis || profile,
             artifact: latestArtifactForDiagnosis,
@@ -78769,7 +78946,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (rawBudget && (!profile || profile.budgetTier !== rawBudget)) {
             profile = { ...(profile || {}), budgetTier: rawBudget };
             try {
-              profile = await upsertProfileForIdentity({ auroraUid: identity.auroraUid, userId: identity.userId }, { budgetTier: rawBudget });
+              profile = await runAuroraTimedOperation(
+                () => upsertProfileForIdentityForRoute(identityRef, { budgetTier: rawBudget }),
+                { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_BUDGET_TIER_TIMEOUT' },
+              );
             } catch (err) {
               logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist budgetTier');
             }
@@ -79512,7 +79692,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const latestArtifactId = String(latestArtifact.artifact_id || '').trim();
           try {
             const existingPlan = latestArtifactId
-              ? await getIngredientPlanByArtifactId({ artifactId: latestArtifactId })
+              ? await runAuroraTimedOperation(
+                () => getIngredientPlanByArtifactIdForRoute({ artifactId: latestArtifactId }),
+                { timeoutMs: getAuroraStorageReadTimeoutMs(), timeoutCode: 'AURORA_CHAT_INGREDIENT_PLAN_LOAD_TIMEOUT' },
+              )
               : null;
             if (existingPlan && existingPlan.plan_json && typeof existingPlan.plan_json === 'object') {
               mappedIngredientPlan = {
@@ -79523,12 +79706,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             } else {
               const builtPlan = buildIngredientPlan({ artifact: latestArtifact, profile });
               if (latestArtifactId) {
-                const savedPlan = await saveIngredientPlan({
-                  artifactId: latestArtifactId,
-                  auroraUid: identity.auroraUid,
-                  userId: identity.userId,
-                  plan: builtPlan,
-                });
+                const savedPlan = await runAuroraTimedOperation(
+                  () => saveIngredientPlanForRoute({
+                    artifactId: latestArtifactId,
+                    auroraUid: identity.auroraUid,
+                    userId: identity.userId,
+                    plan: builtPlan,
+                  }),
+                  { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_INGREDIENT_PLAN_SAVE_TIMEOUT' },
+                );
                 mappedIngredientPlan = savedPlan && savedPlan.plan_json && typeof savedPlan.plan_json === 'object'
                   ? {
                       ...savedPlan.plan_json,
@@ -82940,6 +83126,18 @@ const __internal = {
   },
   __resetLoadDeterministicExternalSeedCandidatesBatchForTest() {
     loadDeterministicExternalSeedCandidatesBatchImpl = productRecV1.loadDeterministicExternalSeedCandidatesBatch;
+  },
+  __setRouteDependencyOverridesForTest(overrides = {}) {
+    if (!overrides || typeof overrides !== 'object') return;
+    for (const [name, fn] of Object.entries(overrides)) {
+      if (typeof fn === 'function') auroraRouteDependencyOverridesForTest[name] = fn;
+      else delete auroraRouteDependencyOverridesForTest[name];
+    }
+  },
+  __resetRouteDependencyOverridesForTest() {
+    for (const name of Object.keys(auroraRouteDependencyOverridesForTest)) {
+      delete auroraRouteDependencyOverridesForTest[name];
+    }
   },
   shouldKeepTypedRecoRequestOnV1Mainline,
 };

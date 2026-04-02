@@ -306,6 +306,46 @@ test('POST /v1/chat/stream proxies generic skincare reco requests to the v1 main
   assert.ok(thinkingSteps.includes('routing_framework_mainline'));
 });
 
+test('POST /v1/chat/stream emits error and done when the v1 mainline proxy times out', async () => {
+  const previousTimeoutMs = process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS;
+  process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS = '40';
+  __setInvokeV1MainlineChatForTests(() => new Promise(() => {}));
+
+  try {
+    const app = createApp();
+    const response = await request(app)
+      .post('/v1/chat/stream')
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              goals: ['oil control'],
+            },
+          },
+        },
+        context: {
+          locale: 'en',
+        },
+        client_state: { state: 'IDLE_CHAT' },
+      })
+      .expect(200);
+
+    const parsed = parseSse(response.text);
+    const events = parsed.map((event) => event.event);
+    assert.ok(events.includes('thinking'));
+    assert.ok(events.includes('error'));
+    assert.strictEqual(events[events.length - 1], 'done');
+    assert.equal(parsed.some((event) => event.event === 'result'), false);
+  } finally {
+    if (previousTimeoutMs == null) delete process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS;
+    else process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS = previousTimeoutMs;
+  }
+});
+
 test('POST /v2/chat proxies generic skincare reco chip payloads to the v1 mainline envelope', async () => {
   __setInvokeV1MainlineChatForTests(async () => ({
     request_id: 'req_v2_framework',

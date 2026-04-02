@@ -118,6 +118,65 @@ test('extractPrimaryChatRequestMessage falls back to the last user message in me
 
   assert.equal(message, 'what sunscreen for oily skin?');
 });
+
+test('GET /v1/session/bootstrap degrades instead of hanging when profile storage read times out', async () => {
+  await withEnv(
+    {
+      AURORA_STORAGE_READ_TIMEOUT_MS: '40',
+      AURORA_BOOTSTRAP_ARTIFACT_TIMEOUT_MS: '40',
+    },
+    async () => {
+      const routes = require('../src/auroraBff/routes');
+      routes.__internal.__setRouteDependencyOverridesForTest({
+        getProfileForIdentity: () => new Promise(() => {}),
+        getRecentSkinLogsForIdentity: async () => [],
+        loadLatestDiagnosisArtifactForRoute: async () => null,
+      });
+      try {
+        const app = createApp();
+        const response = await supertest(app)
+          .get('/v1/session/bootstrap')
+          .set(buildHeaders())
+          .expect(200);
+
+        assert.equal(response.body.cards?.[0]?.type, 'session_bootstrap');
+        assert.equal(response.body.cards?.[0]?.payload?.db_ready, false);
+        assert.deepEqual(response.body.session_patch?.recent_logs, []);
+      } finally {
+        routes.__internal.__resetRouteDependencyOverridesForTest();
+      }
+    },
+  );
+});
+
+test('POST /v1/profile/update returns a bounded timeout envelope when profile persistence hangs', async () => {
+  await withEnv(
+    {
+      AURORA_STORAGE_WRITE_TIMEOUT_MS: '40',
+    },
+    async () => {
+      const routes = require('../src/auroraBff/routes');
+      routes.__internal.__setRouteDependencyOverridesForTest({
+        upsertProfileForIdentity: () => new Promise(() => {}),
+      });
+      try {
+        const app = createApp();
+        const response = await supertest(app)
+          .post('/v1/profile/update')
+          .set(buildHeaders())
+          .send({ skinType: 'oily' })
+          .expect(504);
+
+        assert.equal(response.body.cards?.[0]?.type, 'error');
+        assert.equal(response.body.cards?.[0]?.payload?.error, 'PROFILE_UPDATE_TIMEOUT');
+        assert.equal(response.body.cards?.[0]?.payload?.code, 'AURORA_PROFILE_UPDATE_TIMEOUT');
+      } finally {
+        routes.__internal.__resetRouteDependencyOverridesForTest();
+      }
+    },
+  );
+});
+
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');

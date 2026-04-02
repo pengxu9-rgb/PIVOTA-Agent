@@ -13529,6 +13529,33 @@ function resolveAuroraChatContractConfig() {
   };
 }
 
+function parseTimeoutMsValue(rawValue, fallbackMs) {
+  const parsed = Number(rawValue);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.trunc(parsed));
+  return Math.max(1, Math.trunc(Number(fallbackMs) || 1));
+}
+
+function getHealthzDependencyTimeoutMs() {
+  return parseTimeoutMsValue(process.env.HEALTHZ_DEPENDENCY_TIMEOUT_MS, 2000);
+}
+
+function withTimeoutCode(promise, timeoutMs, timeoutCode) {
+  const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0;
+  if (!ms) return Promise.resolve(promise);
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(timeoutCode || 'timeout');
+      err.code = timeoutCode || 'TIMEOUT';
+      reject(err);
+    }, ms);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 const healthRouteHandler = (req, res) => {
   const dbConfigured = Boolean(process.env.DATABASE_URL);
   const taxonomyEnabled = process.env.TAXONOMY_ENABLED !== 'false';
@@ -13553,9 +13580,32 @@ const healthRouteHandler = (req, res) => {
     typeof getIngredientRecallRegistryHealth === 'function'
       ? getIngredientRecallRegistryHealth()
       : Promise.resolve(null);
+  const dependencyTimeoutMs = getHealthzDependencyTimeoutMs();
 
-  Promise.all([cacheStatsPromise, ingredientRegistryHealthPromise])
-    .then(([cacheStats, ingredientRegistryHealth]) => {
+  Promise.allSettled([
+    withTimeoutCode(cacheStatsPromise, dependencyTimeoutMs, 'HEALTHZ_CACHE_STATS_TIMEOUT'),
+    withTimeoutCode(ingredientRegistryHealthPromise, dependencyTimeoutMs, 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT'),
+  ])
+    .then(([cacheStatsResult, ingredientRegistryHealthResult]) => {
+      if (cacheStatsResult.status === 'rejected') {
+        logger.warn({ err: cacheStatsResult.reason?.code || cacheStatsResult.reason?.message }, 'healthz cache stats probe degraded');
+      }
+      if (ingredientRegistryHealthResult.status === 'rejected') {
+        logger.warn(
+          { err: ingredientRegistryHealthResult.reason?.code || ingredientRegistryHealthResult.reason?.message },
+          'healthz ingredient registry probe degraded',
+        );
+      }
+
+      const cacheStats = cacheStatsResult.status === 'fulfilled' ? cacheStatsResult.value : null;
+      const ingredientRegistryHealth =
+        ingredientRegistryHealthResult.status === 'fulfilled'
+          ? ingredientRegistryHealthResult.value
+          : {
+              ok: false,
+              degraded: true,
+              code: ingredientRegistryHealthResult.reason?.code || 'HEALTHZ_INGREDIENT_REGISTRY_TIMEOUT',
+            };
       const sellable = cacheStats && typeof cacheStats.products_cache_sellable_total === 'number'
         ? cacheStats.products_cache_sellable_total
         : null;

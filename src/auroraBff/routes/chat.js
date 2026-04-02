@@ -25,6 +25,47 @@ function toBool(value, fallback = false) {
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'y' || raw === 'on';
 }
 
+function parseTimeoutMsValue(rawValue, fallbackMs) {
+  const parsed = Number(rawValue);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.trunc(parsed));
+  return Math.max(1, Math.trunc(Number(fallbackMs) || 1));
+}
+
+function getAuroraChatRequestIdentityTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_CHAT_REQUEST_IDENTITY_TIMEOUT_MS, 2500);
+}
+
+function getAuroraV1MainlineProxyTimeoutMs() {
+  return parseTimeoutMsValue(process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS, 15000);
+}
+
+function withTimeoutCode(promise, timeoutMs, timeoutCode, status = 504) {
+  const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0;
+  if (!ms) return Promise.resolve(promise);
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(timeoutCode || 'timeout');
+      err.code = timeoutCode || 'TIMEOUT';
+      err.status = status;
+      reject(err);
+    }, ms);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([Promise.resolve(promise), timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function markAuthMetaUnavailable(ctx) {
+  if (!ctx || typeof ctx !== 'object') return;
+  ctx.auth_meta = {
+    state: 'unavailable',
+    user: { email: null },
+    expires_at: null,
+  };
+}
+
 const AURORA_CHAT_POLICY_VERSION = String(process.env.AURORA_CHAT_POLICY_VERSION || 'aurora_chat_v2_p0').trim();
 const AURORA_PROFILE_V2_ENABLED = toBool(process.env.AURORA_PROFILE_V2_ENABLED, false);
 const AURORA_QA_PLANNER_V1_ENABLED = toBool(process.env.AURORA_QA_PLANNER_V1_ENABLED, false);
@@ -160,15 +201,26 @@ async function invokeV1MainlineChat({ req, body } = {}) {
   const baseUrl = buildLoopbackChatBaseUrl(req);
   if (!baseUrl) throw new Error('loopback_chat_base_missing');
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
-  const timeoutMs = 45000;
+  const timeoutMs = getAuroraV1MainlineProxyTimeoutMs();
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const resp = await fetch(`${baseUrl}/v1/chat`, {
-      method: 'POST',
-      headers: buildLoopbackChatHeaders(req),
-      body: JSON.stringify(body || {}),
-      ...(controller ? { signal: controller.signal } : {}),
-    });
+    let resp;
+    try {
+      resp = await fetch(`${baseUrl}/v1/chat`, {
+        method: 'POST',
+        headers: buildLoopbackChatHeaders(req),
+        body: JSON.stringify(body || {}),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        const timeoutError = new Error('AURORA_V1_MAINLINE_TIMEOUT');
+        timeoutError.code = 'AURORA_V1_MAINLINE_TIMEOUT';
+        timeoutError.status = 504;
+        throw timeoutError;
+      }
+      throw error;
+    }
     const payload = await resp.json().catch(() => null);
     if (!resp.ok || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
       const error = new Error(`v1_chat_loopback_failed_${Number(resp?.status) || 500}`);
@@ -180,6 +232,14 @@ async function invokeV1MainlineChat({ req, body } = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function invokeBoundedV1MainlineChat(params) {
+  return withTimeoutCode(
+    Promise.resolve().then(() => invokeV1MainlineChatImpl(params)),
+    getAuroraV1MainlineProxyTimeoutMs(),
+    'AURORA_V1_MAINLINE_TIMEOUT',
+  );
 }
 
 function mergeResponseMeta(payload, authMeta) {
@@ -283,8 +343,15 @@ async function resolveRequestIdentity(req, internal = null) {
     return { ctx, internal: helpers };
   }
   try {
-    req._identity = await helpers.resolveIdentity(req, ctx);
-  } catch {
+    req._identity = await withTimeoutCode(
+      Promise.resolve().then(() => helpers.resolveIdentity(req, ctx)),
+      getAuroraChatRequestIdentityTimeoutMs(),
+      'AURORA_IDENTITY_TIMEOUT',
+    );
+  } catch (error) {
+    if (error && error.code === 'AURORA_IDENTITY_TIMEOUT') {
+      markAuthMetaUnavailable(ctx);
+    }
     // Ignore auth resolution failures here and let the route continue as guest.
   }
   return { ctx, internal: helpers };
@@ -1333,7 +1400,7 @@ async function handleChat(req, res) {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
     if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal) && canProxyRecoToV1Mainline()) {
-      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      const mainlineResponse = await invokeBoundedV1MainlineChat({ req, body });
       res.json(
         applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
           req,
@@ -1369,9 +1436,10 @@ async function handleChat(req, res) {
     res.json(responsePayload);
   } catch (error) {
     console.error('[chat] skill execution error:', error);
-    res.status(500).json({
-      error: 'internal_error',
-      message: 'An error occurred processing your request.',
+    const status = Number.isFinite(Number(error?.status)) ? Number(error.status) : 500;
+    res.status(status).json({
+      error: status === 504 ? 'upstream_timeout' : 'internal_error',
+      message: status === 504 ? 'The request timed out while waiting for the Aurora mainline.' : 'An error occurred processing your request.',
     });
   }
 }
@@ -1431,7 +1499,7 @@ async function handleChatStream(req, res) {
         step: 'routing_framework_mainline',
         message: 'Preparing framework-first recommendations...',
       });
-      const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
+      const mainlineResponse = await invokeBoundedV1MainlineChat({ req, body });
       sendEvent(
         'result',
         applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
