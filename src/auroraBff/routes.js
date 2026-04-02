@@ -51489,65 +51489,12 @@ const CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
     primary_concern: { type: 'string' },
-    core_roles: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          role_id: { type: 'string' },
-          label: { type: 'string' },
-          why_this_role: { type: 'string' },
-          preferred_step: { type: 'string' },
-          query_terms: { type: 'array', items: { type: 'string' } },
-          fit_keywords: { type: 'array', items: { type: 'string' } },
-          ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
-          product_type_hypotheses: { type: 'array', items: { type: 'string' } },
-          frequency: { type: 'string' },
-          routine_slots: { type: 'array', items: { type: 'string' } },
-        },
-        required: ['role_id'],
-      },
-    },
-    support_roles: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          role_id: { type: 'string' },
-          label: { type: 'string' },
-          why_this_role: { type: 'string' },
-          preferred_step: { type: 'string' },
-          query_terms: { type: 'array', items: { type: 'string' } },
-          fit_keywords: { type: 'array', items: { type: 'string' } },
-          ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
-          product_type_hypotheses: { type: 'array', items: { type: 'string' } },
-          frequency: { type: 'string' },
-          routine_slots: { type: 'array', items: { type: 'string' } },
-          support_only: { type: 'boolean' },
-        },
-        required: ['role_id'],
-      },
-    },
+    core_role_ids: { type: 'array', items: { type: 'string' } },
+    support_role_ids: { type: 'array', items: { type: 'string' } },
     ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
     product_type_hypotheses: { type: 'array', items: { type: 'string' } },
-    routine_shell: {
-      type: 'object',
-      properties: {
-        am_core_roles: { type: 'array', items: { type: 'string' } },
-        pm_core_roles: { type: 'array', items: { type: 'string' } },
-        optional_support_roles: { type: 'array', items: { type: 'string' } },
-      },
-      required: ['am_core_roles', 'pm_core_roles', 'optional_support_roles'],
-    },
-    selection_constraints: {
-      type: 'object',
-      properties: {
-        support_cannot_replace_core: { type: 'boolean' },
-        allow_price_tiers: { type: 'boolean' },
-      },
-    },
   },
-  required: ['primary_concern', 'core_roles', 'routine_shell'],
+  required: ['primary_concern', 'core_role_ids'],
 });
 
 function normalizeConcernRoleHint(value) {
@@ -51887,27 +51834,33 @@ function buildConcernSemanticPlanPromptBundle({
     ? [
         '[PROMPT_VERSION=concern_semantic_plan_v1]',
         '角色：严格的护肤关切语义规划器。',
-        '任务：只针对 generic concern 问题输出语义计划，不要输出具体商品。',
-        '输出 JSON 结构：{"primary_concern":string,"core_roles":[...],"support_roles":[...],"ingredient_hypotheses":[...],"product_type_hypotheses":[...],"routine_shell":{...},"selection_constraints":{...}}',
+        '任务：只针对 generic concern 问题输出最小语义计划，不要输出具体商品。',
+        '输出最小 JSON：{"primary_concern":string,"core_role_ids":[string],"support_role_ids":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
         '规则：',
-        '- core_roles 最多 3 个，support_roles 最多 2 个。',
+        '- 只返回 role_id，不要返回 role 对象。',
+        '- core_role_ids 最多 3 个，support_role_ids 最多 2 个。',
+        '- role_id 必须从 context.fallback_plan.core_role_ids / support_role_ids 中挑选。',
         '- support role 只能是 optional/support，不能替代 core role。',
         '- 不要做价格带判断。',
         '- 不要输出具体品牌、SKU、购买链接。',
-        '- 如果上下文不足，也要给出保守但可执行的 core/support 角色框架。',
+        '- 不要输出 routine shell、selection constraints、额外解释文本。',
+        '- 如果上下文不足，也要给出保守但可执行的 core/support role_id 框架。',
         '- 对 oily skin 这类问题，先判断最先要解决的角色，再给相应的成分和产品类型方向。',
       ]
     : [
         '[PROMPT_VERSION=concern_semantic_plan_v1]',
         'Role: strict skincare concern planner.',
-        'Task: output a semantic plan for a generic skincare concern. Do NOT recommend specific products.',
-        'Output JSON shape: {"primary_concern":string,"core_roles":[...],"support_roles":[...],"ingredient_hypotheses":[...],"product_type_hypotheses":[...],"routine_shell":{...},"selection_constraints":{...}}',
+        'Task: output the minimum semantic plan for a generic skincare concern. Do NOT recommend specific products.',
+        'Output minimum JSON only: {"primary_concern":string,"core_role_ids":[string],"support_role_ids":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
         'Rules:',
-        '- core_roles max 3, support_roles max 2.',
+        '- Return role IDs only, not role objects.',
+        '- core_role_ids max 3, support_role_ids max 2.',
+        '- Every role_id must come from context.fallback_plan.core_role_ids or context.fallback_plan.support_role_ids.',
         '- support roles must stay optional/supportive and cannot replace a core role.',
         '- Do not decide price tiers.',
         '- Do not output brand names, SKUs, or links.',
-        '- Even with limited context, return a conservative but actionable core/support framework.',
+        '- Do not emit a routine shell, selection constraints, or extra commentary.',
+        '- Even with limited context, return a conservative but actionable core/support role framework.',
         '- For oily-skin asks, decide what should be solved first, then name the product-type and ingredient directions that fit that role.',
       ];
   const systemPrompt = instructions.join('\n');
@@ -51975,15 +51928,143 @@ function pickConcernSemanticRoleMatchesFromText(text, roles = []) {
   return out;
 }
 
+const CONCERN_SEMANTIC_WEAK_PRODUCT_TYPE_HINTS = new Set([
+  'product',
+  'products',
+  'skincare',
+  'skin care',
+  'treatment',
+  'serum',
+]);
+
+function scoreConcernSemanticRoleFromText(answerText, role) {
+  const normalizedText = normalizeConcernRoleHint(answerText);
+  const row = isPlainObject(role) ? role : null;
+  if (!normalizedText || !row) return { score: 0, matched: false, evidence: [] };
+
+  const evidence = [];
+  let score = 0;
+  const addEvidence = (type, values, weight, maxMatches = 2) => {
+    let matches = 0;
+    for (const value of values) {
+      if (matches >= maxMatches) break;
+      if (!value || normalizedText.includes(value) !== true) continue;
+      evidence.push(`${type}:${value}`);
+      score += weight;
+      matches += 1;
+    }
+  };
+
+  const strongPatterns = uniqCaseInsensitiveStrings(
+    [
+      row.role_id,
+      row.label,
+      ...asStringArray(row.query_terms || row.queryTerms),
+      ...asStringArray(row.fit_keywords || row.fitKeywords),
+    ],
+    16,
+  )
+    .map((value) => normalizeConcernRoleHint(value))
+    .filter((value) => value && value.length >= 4);
+  addEvidence('strong', strongPatterns, 2, 3);
+
+  const ingredientPatterns = uniqCaseInsensitiveStrings(
+    asStringArray(row.ingredient_hypotheses || row.ingredientHypotheses),
+    8,
+  )
+    .map((value) => normalizeConcernRoleHint(value))
+    .filter((value) => value && value.length >= 4);
+  addEvidence('ingredient', ingredientPatterns, 1, 2);
+
+  const productTypePatterns = uniqCaseInsensitiveStrings(
+    [
+      row.preferred_step,
+      ...(Array.isArray(row.alternate_steps) ? row.alternate_steps : []),
+      ...asStringArray(row.product_type_hypotheses || row.productTypeHypotheses),
+    ],
+    8,
+  )
+    .map((value) => normalizeConcernRoleHint(value))
+    .filter((value) => value && !CONCERN_SEMANTIC_WEAK_PRODUCT_TYPE_HINTS.has(value));
+  addEvidence('product_type', productTypePatterns, 1, 2);
+
+  const roleId = pickFirstTrimmed(row.role_id).toLowerCase();
+  if (roleId === 'oil_control_treatment') {
+    addEvidence('role_signal', [
+      'oil control',
+      'shine control',
+      'mattifying',
+      'anti shine',
+      'balancing',
+      'congestion',
+      'clogged pores',
+      'breakout',
+      'acne',
+      'sebum',
+    ], 1, 3);
+  } else if (roleId === 'lightweight_moisturizer') {
+    addEvidence('role_signal', [
+      'lightweight moisturizer',
+      'oil free moisturizer',
+      'gel cream',
+      'water gel',
+      'breathable hydration',
+      'light hydration',
+      'non greasy moisturizer',
+    ], 1, 3);
+  } else if (roleId === 'daily_sunscreen') {
+    addEvidence('role_signal', [
+      'daily sunscreen',
+      'sunscreen',
+      'sun protection',
+      'broad spectrum',
+      'uv protection',
+      'spf',
+    ], 1, 3);
+  }
+
+  return {
+    score,
+    matched: score >= 2,
+    evidence,
+  };
+}
+
 function repairConcernSemanticPlanFromText(answerText, { fallbackPlan } = {}) {
   const plan = isPlainObject(fallbackPlan) ? fallbackPlan : null;
   if (!plan || !String(answerText || '').trim()) return null;
-  const coreRoles = pickConcernSemanticRoleMatchesFromText(answerText, plan.core_roles || []);
-  if (coreRoles.length === 0) return null;
+  const normalizedText = normalizeConcernRoleHint(answerText);
   const primaryRoleId = pickFirstTrimmed(plan.core_roles?.[0]?.role_id);
-  const matchedPrimary = coreRoles.some((role) => pickFirstTrimmed(role?.role_id) === primaryRoleId);
-  if (!matchedPrimary) return null;
-  const supportRoles = pickConcernSemanticRoleMatchesFromText(answerText, plan.support_roles || []);
+  const coreRoleScored = (Array.isArray(plan.core_roles) ? plan.core_roles : [])
+    .map((role) => ({
+      role,
+      match: scoreConcernSemanticRoleFromText(answerText, role),
+    }));
+  const primaryScore = coreRoleScored.find((item) => pickFirstTrimmed(item?.role?.role_id) === primaryRoleId)?.match?.score || 0;
+  if (primaryScore < 2) return null;
+  const hasFrameworkScaffold = /\b(priority order|start with|follow with|during the day|in the morning|at night|morning|evening)\b/.test(normalizedText);
+  const nonPrimaryCoreSignalCount = coreRoleScored
+    .filter((item) => pickFirstTrimmed(item?.role?.role_id) !== primaryRoleId)
+    .filter((item) => item.match.score >= 1)
+    .length;
+
+  const coreRoles = coreRoleScored
+    .filter((item, index) => item.match.matched || (index > 0 && item.match.score >= 1))
+    .sort((left, right) => {
+      const rankDiff = Number(left?.role?.rank || 0) - Number(right?.role?.rank || 0);
+      if (rankDiff !== 0) return rankDiff;
+      return Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
+    })
+    .map((item) => item.role);
+
+  const supportRoles = (Array.isArray(plan.support_roles) ? plan.support_roles : [])
+    .map((role) => ({
+      role,
+      match: scoreConcernSemanticRoleFromText(answerText, role),
+    }))
+    .filter((item) => item.match.score >= 1)
+    .map((item) => item.role);
+  if (coreRoles.length < 2 && !(hasFrameworkScaffold && nonPrimaryCoreSignalCount > 0)) return null;
   return {
     primary_concern: plan.primary_concern,
     core_roles: coreRoles.map((role) => ({
@@ -52107,13 +52188,13 @@ async function runConcernSemanticPlanner({
         provider: 'gemini',
         model: 'gemini-3-flash-preview',
         structured_contract: 'required_keys',
-        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+        required_structured_keys: ['primary_concern', 'core_role_ids'],
       },
       {
         provider: 'gemini',
         model: 'gemini-3-pro-preview',
         structured_contract: 'required_keys',
-        required_structured_keys: ['primary_concern', 'core_roles', 'routine_shell'],
+        required_structured_keys: ['primary_concern', 'core_role_ids'],
       },
       {
         provider: 'gemini',
@@ -52135,9 +52216,9 @@ async function runConcernSemanticPlanner({
           model: attempt.model,
           systemPrompt: promptBundle.systemPrompt,
           userPrompt: promptBundle.userPrompt,
-          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 12000),
           temperature: 0.1,
-          maxOutputTokens: 700,
+          maxOutputTokens: 900,
           route: 'aurora_concern_semantic_plan_plain_text',
           ignoreForceModel: true,
         });
@@ -52146,9 +52227,9 @@ async function runConcernSemanticPlanner({
           model: attempt.model,
           systemPrompt: promptBundle.systemPrompt,
           userPrompt: promptBundle.userPrompt,
-          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 12000),
           temperature: 0.1,
-          maxOutputTokens: 900,
+          maxOutputTokens: 600,
           responseJsonSchema: CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA,
           route: 'aurora_concern_semantic_plan_structured',
           ignoreForceModel: true,
@@ -52231,12 +52312,6 @@ async function runConcernSemanticPlanner({
       trace.planner_effective_provider = llmRouteMeta.effective_provider;
       trace.planner_effective_model = llmRouteMeta.effective_model;
       trace.planner_selection_source = llmRouteMeta.selection_source;
-      if (attemptTrace.trusted) {
-        trace.planner_source = semanticPlan.selection_owner_source;
-        trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
-        trace.planner_model = llmRouteMeta.effective_model || attempt.model;
-        return { semanticPlan, trace, upstream: plannerResponse };
-      }
       const nextAttempt = plannerAttempts[index + 1] || null;
       const attemptReturnedNoSignal =
         !attemptTrace.answer_preview
@@ -52265,6 +52340,12 @@ async function runConcernSemanticPlanner({
             && String(nextAttempt?.structured_contract || '').trim() === 'plain_text'
           )
         );
+      if (attemptTrace.trusted && !shouldRetry) {
+        trace.planner_source = semanticPlan.selection_owner_source;
+        trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
+        trace.planner_model = llmRouteMeta.effective_model || attempt.model;
+        return { semanticPlan, trace, upstream: plannerResponse };
+      }
       if (!shouldRetry) break;
     }
     trace.planner_failure_class = 'schema_invalid';
