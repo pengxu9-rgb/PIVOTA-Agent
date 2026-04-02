@@ -104,6 +104,21 @@ test('V1ChatRequestSchema normalizes lowercase and locale language tags for curr
   assert.equal(parsedZh.data.language, 'CN');
 });
 
+test('extractPrimaryChatRequestMessage falls back to the last user message in messages[] for standard chat payloads', () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const message = __internal.extractPrimaryChatRequestMessage({
+    messages: [
+      { role: 'assistant', content: 'How can I help?' },
+      { role: 'user', content: 'what sunscreen for oily skin?' },
+    ],
+    language: 'EN',
+  });
+
+  assert.equal(message, 'what sunscreen for oily skin?');
+});
+
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
