@@ -28803,12 +28803,15 @@ function extractLatestArtifactIdFromSession(session) {
 function normalizeRecoSourceDetail(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (
-    token === 'goal_driven' ||
+    token === 'typed_reco' ||
+    token === 'framework_mainline' ||
+    token === 'step_aware_mainline' ||
     token === 'ingredient_driven' ||
     token === 'profile_refine_rerun' ||
+    token === 'analysis_handoff' ||
     token === 'travel_handoff'
   ) return token;
-  return 'goal_driven';
+  return 'typed_reco';
 }
 
 function inferRecoSourceMode(sourceMode, source, { defaultValue = 'rules_only' } = {}) {
@@ -67535,7 +67538,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         requestOverride: requestProfileOverlay,
         includeAlternatives: false,
         logger,
-        recoTriggerSource: 'goal_driven',
+        recoTriggerSource: 'typed_reco',
         entryType: 'direct',
       });
       const norm = upstreamReco && upstreamReco.norm && typeof upstreamReco.norm === 'object'
@@ -78980,7 +78983,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             session: parsed.data.session,
           })
             ? 'travel_handoff'
-          : 'goal_driven';
+          : 'typed_reco';
       const recoRequestMessage = String(message || '').trim();
       let recoSource = '';
       let llmPrimaryUsed = false;
@@ -79263,45 +79266,17 @@ function mountAuroraBffRoutes(app, { logger }) {
 
         // Diagnosis-first gate: if profile is incomplete, do NOT generate recommendations yet.
         // This applies regardless of the current state; otherwise users see weakly-related recos before core profile.
-        if (hardRequiredMissing.length > 0) {
-          const required = hardRequiredMissing;
-          const prompt = buildDiagnosisPrompt(ctx.lang, required);
-          const chips = buildDiagnosisChips(ctx.lang, required);
-          const decision = pushGateDecision('diagnosis_first_profile_gate', {
-            reason_codes: ['diagnosis_first'],
+        if (hardRequiredMissing.length > 0 && AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
+          const pendingFromGate = buildPendingClarificationForGate({
+            language: ctx.lang,
+            missing: hardRequiredMissing,
+            message,
+            wants: 'recommendation',
           });
-          if (decision && decision.mode === GATE_MODE.ADVISORY) {
-            enqueueGateAdvisory({
-              gate_id: 'diagnosis_first_profile_gate',
-              message:
-                ctx.lang === 'CN'
-                  ? '我先给你可执行推荐，同时补充画像后可进一步提高精准度。'
-                  : 'I will provide usable recommendations first; adding profile details will improve precision.',
-              reason_codes: ['diagnosis_first', ...required.map((field) => `missing_${field}`)],
-              actions: ['refine_profile'],
-              chips,
-            });
-            logger?.info(
-              {
-                request_id: ctx.request_id,
-                trace_id: ctx.trace_id,
-                missing_fields: required,
-              },
-              'aurora bff: diagnosis-first gate downgraded to advisory',
-            );
-            if (AURORA_CHAT_CLARIFICATION_FLOW_V2_ENABLED) {
-              const pendingFromGate = buildPendingClarificationForGate({
-                language: ctx.lang,
-                missing: required,
-                message,
-                wants: 'recommendation',
-              });
-              if (pendingFromGate) {
-                const sessionPatch = {};
-                emitPendingClarificationPatch(sessionPatch, pendingFromGate);
-                pendingClarificationPatchOverride = sessionPatch.pending_clarification || pendingClarificationPatchOverride;
-              }
-            }
+          if (pendingFromGate) {
+            const sessionPatch = {};
+            emitPendingClarificationPatch(sessionPatch, pendingFromGate);
+            pendingClarificationPatchOverride = sessionPatch.pending_clarification || pendingClarificationPatchOverride;
           }
         }
 
@@ -79511,30 +79486,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         const allowLowRiskNonBlockingArtifactGate =
           AURORA_CHAT_NONBLOCKING_GATE_V1_ENABLED && looksLikeLowRiskSkincareTask(message);
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && !allowLowRiskNonBlockingArtifactGate) {
-          const chips = buildRecoEntryChips(ctx.lang);
-          const decision = pushGateDecision('artifact_missing_gate', {
-            reason_codes: ['artifact_missing'],
-          });
-          if (decision && decision.mode === GATE_MODE.ADVISORY) {
-            enqueueGateAdvisory({
-              gate_id: 'artifact_missing_gate',
-              message:
-                ctx.lang === 'CN'
-                  ? '我会先给你可执行推荐；补充 daylight + indoor_white 可进一步提升精准度。'
-                  : 'I will provide actionable recommendations first; adding daylight + indoor_white photos can further improve precision.',
-              reason_codes: ['artifact_missing'],
-              actions: ['upload_daylight_and_indoor_white', 'refine_profile'],
-              chips: [...refinementChips, ...chips].slice(0, 8),
-            });
-            logger?.info(
-              {
-                request_id: ctx.request_id,
-                trace_id: ctx.trace_id,
-                artifact_reason: artifactGate.reason || 'artifact_missing',
-              },
-              'aurora bff: artifact gate downgraded to advisory',
-            );
-          }
+          logger?.info(
+            {
+              request_id: ctx.request_id,
+              trace_id: ctx.trace_id,
+              artifact_reason: artifactGate.reason || 'artifact_missing',
+            },
+            'aurora bff: artifact gate bypassed for reco mainline',
+          );
         }
         if (AURORA_PRODUCT_MATCHER_ENABLED && !artifactGate.ok && allowLowRiskNonBlockingArtifactGate) {
           recordAuroraSkinFlowMetric({ stage: 'artifact_gate_nonblocking_low_risk', hit: true });
@@ -79924,7 +79883,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                     rationale: ['minimum_recommendation_context_unsatisfied'],
                   },
                   actions: ['update_current_routine', 'upload_daylight_and_indoor_white', 'retry_recommendations'],
-                  details: ['generic_goal_driven_reco_requires_artifact_or_explicit_target'],
+                  details: ['generic_reco_requires_artifact_or_explicit_target'],
                 }),
               },
             ],
