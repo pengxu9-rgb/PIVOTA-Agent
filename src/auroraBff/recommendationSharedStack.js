@@ -1280,45 +1280,21 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     .filter((row) => row.bucket === 'soft_mismatch')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
   const hardReject = classified.filter((row) => row.bucket === 'hard_reject');
-  const thresholds = getStepPolicy(targetContext && targetContext.resolved_target_step);
   const exactStepViableCount = viable.filter((row) => row.candidate_step && row.candidate_step === targetContext?.resolved_target_step).length;
   const sameFamilyViableCount = viable.length;
   const averageContextFit = viable.length
     ? viable.reduce((sum, row) => sum + Number(row.context_fit_score || 0), 0) / viable.length
     : 0;
-  const sameFamilySuccessThresholdMet = Boolean(
-    sameFamilyViableCount >= Number(thresholds.min_viable_count_for_step || 1)
-      && viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72)),
-  );
-  const sameFamilyStrongViableExists = viable.some((row) => Number(row.selection_score || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
+  const sameFamilySuccessThresholdMet = sameFamilyViableCount > 0;
+  const sameFamilyStrongViableExists = viable.length > 0;
   const selected = viable.slice(0, 3);
   const selectedFamilies = uniqCaseInsensitiveStrings(selected.map((row) => row.candidate_step || row.family_relation || 'unknown'), 3);
   const topCandidatesConverged = selectedFamilies.length <= 1;
   const primaryDisplayGroups = summarizePrimaryDisplayGroups(selected);
-  const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0
-    && primaryDisplayGroups.every((group) => Number(group.group_target_fidelity || 0) >= Number(thresholds.min_viable_quality_for_step || 0.72));
+  const overallTargetFidelitySatisfied = primaryDisplayGroups.length > 0;
   const hardConstraintConflict = viable.some((row) => row.constraint_conflict === true) || selected.some((row) => row.constraint_conflict === true);
-  const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && softMismatch.length > 0;
-  const softTargetSuccessAllowed =
-    targetContext?.mainline_mode === 'soft_target'
-      ? Boolean(
-        (exactStepViableCount > 0 || sameFamilyStrongViableExists)
-          && topCandidatesConverged
-          && !hardConstraintConflict
-          && overallTargetFidelitySatisfied,
-      )
-      : null;
-  const hardTargetSuccessAllowed =
-    targetContext?.mainline_mode === 'hard_target'
-      ? Boolean(exactStepViableCount > 0 && !hardConstraintConflict && overallTargetFidelitySatisfied)
-      : null;
-  const terminalSuccess = Boolean(
-    !targetContext?.step_aware_intent
-      ? selected.length > 0
-      : targetContext.mainline_mode === 'soft_target'
-        ? softTargetSuccessAllowed
-        : hardTargetSuccessAllowed,
-  );
+  const weakViablePool = Boolean(targetContext?.step_aware_intent) && selected.length === 0 && (softMismatch.length > 0 || viable.length > 0);
+  const terminalSuccess = Boolean(selected.length > 0 && !hardConstraintConflict);
   const familyMatchType = !targetContext?.step_aware_intent
     ? null
     : exactStepViableCount > 0
@@ -1392,14 +1368,12 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
 
 function shouldStopStepAwareBroadening(poolState, { targetContext } = {}) {
   if (!targetContext?.step_aware_intent) return false;
-  const thresholds = getStepPolicy(targetContext.resolved_target_step);
   const viableCount = Number(poolState?.same_family_viable_count || 0);
-  const sameFamilyStrongViableExists = Boolean(poolState?.same_family_strong_viable_exists);
-  return viableCount >= Number(thresholds.min_viable_count_for_step || 1) && sameFamilyStrongViableExists;
+  return viableCount > 0;
 }
 
 function deriveStepAwareEmptyReason(targetContext, poolState) {
-  if (poolState?.weak_viable_pool) return 'weak_viable_pool_for_target';
+  if (poolState?.weak_viable_pool) return 'weak_viable_pool';
   if (targetContext?.step_aware_intent) return 'no_viable_candidates_for_target';
   return 'upstream_missing_or_empty';
 }

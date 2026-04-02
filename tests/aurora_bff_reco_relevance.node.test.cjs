@@ -2755,7 +2755,7 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const noticeCard = cards.find((card) => card?.type === 'confidence_notice');
     assert.ok(noticeCard);
-    assert.equal(noticeCard?.payload?.reason, 'filtered_after_recall');
+    assert.equal(noticeCard?.payload?.reason, 'weak_viable_pool');
     assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet/i);
     assert.match(String(response.body?.assistant_text || ''), /I will not force an off-framework product/i);
     const recoEvent = getRecoRequestedEvent(response.body);
@@ -3590,6 +3590,24 @@ test('__internal: step-aware reco does not let retrieval trace turn a serum into
 
   assert.equal(out.candidate_step, 'serum');
   assert.equal(out.candidate_step_source, 'structured_category');
+});
+
+test('__internal: step-aware broadening stops once any viable pool exists instead of waiting for late quality flags', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+  const out = recoShared.shouldStopStepAwareBroadening(
+    {
+      same_family_viable_count: 1,
+      same_family_strong_viable_exists: false,
+    },
+    {
+      targetContext: {
+        step_aware_intent: true,
+        resolved_target_step: 'sunscreen',
+      },
+    },
+  );
+
+  assert.equal(out, true);
 });
 
 test('__internal: reco WARN safety text only surfaces travel UV warnings for travel-context reco asks', async () => {

@@ -16622,7 +16622,7 @@ function deriveRecoCandidateDropStage({
   const viableCandidateCount = Number.isFinite(Number(candidateState?.viable_candidate_count))
     ? Math.max(0, Math.trunc(Number(candidateState.viable_candidate_count)))
     : 0;
-  if (rawCandidateCount > 0 && viableCandidateCount === 0) return 'filtered_after_recall';
+  if (rawCandidateCount > 0 && viableCandidateCount === 0) return 'weak_viable_pool';
   const totalTimeoutCount = (Array.isArray(stageResults) ? stageResults : [])
     .reduce((sum, stage) => sum + (Number.isFinite(Number(stage?.timeout_count)) ? Number(stage.timeout_count) : 0), 0);
   if (Number(executedQueryCount || 0) > 0 && totalTimeoutCount >= Number(executedQueryCount || 0)) {
@@ -17438,7 +17438,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: selected.length > 0 && !primaryRoleMatched,
     late_conflict_without_override: selected.length > 0 && !primaryRoleMatched,
-    candidate_drop_stage: deduped.length > 0 && viable.length === 0 ? 'filtered_after_recall' : selected.length > 0 && !primaryRoleMatched ? 'weak_viable_pool' : 'none',
+    candidate_drop_stage: deduped.length > 0 && viable.length === 0 ? 'weak_viable_pool' : selected.length > 0 && !primaryRoleMatched ? 'weak_viable_pool' : 'none',
     scope_classification_stats: scopeClassificationStats,
     role_pool_stats: rolePoolStats,
     candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${surfacedRecommendations.length}_${viable.length}`,
@@ -25865,7 +25865,7 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   const tokens = collectRecoContractReasonTokens({ payload, fieldMissing });
   if (tokens.includes('no_viable_candidates_for_target')) return 'no_viable_candidates_for_target';
   if (tokens.includes('weak_viable_pool')) return 'weak_viable_pool';
-  if (tokens.includes('filtered_after_recall')) return 'filtered_after_recall';
+  if (tokens.includes('filtered_after_recall')) return 'weak_viable_pool';
   if (tokens.includes('selector_disagreement_no_safe_winner')) return 'selector_disagreement_no_safe_winner';
   if (tokens.includes('no_recall_from_planned_sources')) return 'no_recall_from_planned_sources';
   if (tokens.includes('semantic_planner_timeout')) return 'semantic_planner_timeout';
@@ -31536,13 +31536,7 @@ function deriveRecoCatalogDependencyFailure(catalogDebug) {
       failure_origin: 'user_input',
     };
   }
-  if (candidateDropStage === 'filtered_after_recall') {
-    return {
-      effective_failure_class: 'filtered_after_recall',
-      failure_origin: 'user_input',
-    };
-  }
-  if (candidateDropStage === 'weak_viable_pool') {
+  if (candidateDropStage === 'filtered_after_recall' || candidateDropStage === 'weak_viable_pool') {
     return {
       effective_failure_class: 'weak_viable_pool',
       failure_origin: 'user_input',
@@ -31679,12 +31673,12 @@ function resolveRecoCentralOutcome({
   ) {
     return {
       surface_kind: entryType === 'chat' ? 'clarify' : 'needs_more_context',
-      surface_reason: effective,
+      surface_reason: effective === 'filtered_after_recall' ? 'weak_viable_pool' : effective,
       mainline_status: 'needs_more_context',
-      telemetry_reason: effective,
-      products_empty_reason: effective,
+      telemetry_reason: effective === 'filtered_after_recall' ? 'weak_viable_pool' : effective,
+      products_empty_reason: effective === 'filtered_after_recall' ? 'weak_viable_pool' : effective,
       user_fixable: true,
-      effective_failure_class: effective,
+      effective_failure_class: effective === 'filtered_after_recall' ? 'weak_viable_pool' : effective,
       failure_origin: origin,
       presentation_mode: normalizedPresentationMode || null,
       success_mode: normalizedSuccessMode || null,
@@ -31997,7 +31991,7 @@ function buildRecoMainlineContract({
                 : outcome.effective_failure_class === 'catalog_contract_invalid'
                   ? 'catalog_contract_invalid'
                   : outcome.effective_failure_class === 'filtered_after_recall'
-                    ? 'filtered_after_recall'
+                    ? 'weak_viable_pool'
                     : outcome.effective_failure_class === 'no_recall_from_planned_sources'
                       ? 'no_recall_from_planned_sources'
                       : outcome.effective_failure_class === 'weak_viable_pool'
@@ -60643,7 +60637,13 @@ async function generateProductRecommendations({
         ? Math.max(0, Math.trunc(Number(viablePoolState.selected_candidate_count)))
         : 0;
   }
-  const stepAwareMainlineFailure = stepAwareFailurePolicyEnabled
+  const stepAwareDeterministicSuccess = Boolean(
+    targetContext.step_aware_intent
+      && viablePoolState?.terminal_success
+      && Array.isArray(norm.payload?.recommendations)
+      && norm.payload.recommendations.length > 0,
+  );
+  const stepAwareMainlineFailure = stepAwareFailurePolicyEnabled && !stepAwareDeterministicSuccess
     ? deriveRecoFailureFromStepAwareLlmFallback({
         initialLlmOutcome,
         llmFailureClass,
@@ -60679,11 +60679,11 @@ async function generateProductRecommendations({
     if (normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none') {
       effectiveFailureClass = pickFirstTrimmed(
         norm.payload.products_empty_reason === 'weak_viable_pool' ? 'weak_viable_pool' : '',
-        norm.payload.products_empty_reason === 'filtered_after_recall' ? 'filtered_after_recall' : '',
+        norm.payload.products_empty_reason === 'filtered_after_recall' ? 'weak_viable_pool' : '',
         norm.payload.products_empty_reason === 'selector_disagreement_no_safe_winner' ? 'selector_disagreement_no_safe_winner' : '',
         norm.payload.products_empty_reason === 'no_mainline_match_for_framework' ? 'no_recall_from_planned_sources' : '',
       ) || effectiveFailureClass;
-      failureOrigin = norm.payload.products_empty_reason === 'filtered_after_recall' ? 'internal_contract' : 'user_input';
+      failureOrigin = norm.payload.products_empty_reason === 'filtered_after_recall' ? 'user_input' : 'user_input';
     }
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.products_empty_reason = 'prompt_contract_mismatch';
