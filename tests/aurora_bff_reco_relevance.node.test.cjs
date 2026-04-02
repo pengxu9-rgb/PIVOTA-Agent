@@ -3172,11 +3172,11 @@ test('__internal: framework recall planner emits primary stages first, then supp
   );
   assert.deepEqual(
     plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'oil control treatment', 'shine control serum'],
+    ['oil control serum', 'shine control serum', 'mattifying serum'],
   );
   assert.deepEqual(
     plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'oil control treatment', 'shine control serum'],
+    ['oil control serum', 'shine control serum', 'mattifying serum'],
   );
 });
 
@@ -3203,11 +3203,37 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
 
   assert.deepEqual(
     plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'oil control treatment'],
+    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
   );
   assert.deepEqual(
     plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'oil control treatment'],
+    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
+  );
+});
+
+test('__internal: framework recall planner falls back to role label query when treatment role lacks enough query terms', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      framework_summary: {
+        concern_text: 'im oily skin, what product should i use?',
+      },
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+          query_terms: ['oil control serum'],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    plan.stages[0]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'oil control treatment', 'im oily skin, what product should i use? treatment'],
   );
 });
 

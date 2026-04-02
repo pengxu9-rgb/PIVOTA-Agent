@@ -114,12 +114,18 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   if (allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment') {
     const ingredientLedQuery = buildPrimaryTreatmentIngredientQuery(roleObj);
     if (ingredientLedQuery) out.push(ingredientLedQuery);
+  }
+  out.push(...roleQueries.slice(1));
+  if (
+    allowConcernFallback
+    && String(preferredStep).trim().toLowerCase() === 'treatment'
+    && roleQueries.length <= 1
+  ) {
     const roleLabelOrIdQuery = normalizeConcernQueryToken(
       String(roleObj.label || roleObj.role_id || '').replace(/[-_/]+/g, ' '),
     ).toLowerCase();
     if (roleLabelOrIdQuery) out.push(roleLabelOrIdQuery);
   }
-  out.push(...roleQueries.slice(1));
   if (allowConcernFallback && concernText) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);
     out.push(concernText);
