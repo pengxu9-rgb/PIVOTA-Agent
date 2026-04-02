@@ -1548,6 +1548,24 @@ function extractLastUserMessageFromChatRequestMessages(messages) {
   return null;
 }
 
+function extractPrimaryChatRequestMessage(payload, normalizedActionPayload = null) {
+  const body = isPlainObject(payload) ? payload : {};
+  const actionReplyText = extractReplyTextFromAction(normalizedActionPayload);
+  const actionLabelFromPayload =
+    typeof body.action_label === 'string' && body.action_label.trim()
+      ? body.action_label.trim()
+      : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
+        ? normalizedActionPayload.trim()
+        : null;
+  return (
+    String(body.message || body.query || '').trim() ||
+    actionReplyText ||
+    actionLabelFromPayload ||
+    pickFirstTrimmed(extractLastUserMessageFromChatRequestMessages(body.messages)) ||
+    ''
+  );
+}
+
 function normalizeImplicitAnalysisFollowupPrompt(value) {
   return String(value || '')
     .trim()
@@ -74679,18 +74697,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       const actionReplyText = extractReplyTextFromAction(normalizedActionPayload);
-      const actionLabelFromPayload =
-        typeof parsed.data.action_label === 'string' && parsed.data.action_label.trim()
-          ? parsed.data.action_label.trim()
-          : normalizedActionPayload && typeof normalizedActionPayload === 'string' && normalizedActionPayload.trim()
-            ? normalizedActionPayload.trim()
-            : null;
-      const message =
+      const message = extractPrimaryChatRequestMessage(parsed.data, normalizedActionPayload);
+      const hasExplicitUserTextInput = Boolean(
         String(parsed.data.message || parsed.data.query || '').trim() ||
-        actionReplyText ||
-        actionLabelFromPayload ||
-        '';
-      const hasExplicitUserTextInput = Boolean(String(parsed.data.message || parsed.data.query || '').trim());
+        pickFirstTrimmed(extractLastUserMessageFromChatRequestMessages(parsed.data.messages)),
+      );
       requestMessage = message;
       const pregnancyPolicy = derivePregnancyPolicyPatch({
         profile,
@@ -82571,6 +82582,8 @@ const __internal = {
   buildPrelabelKbKey,
   parseBoolQueryValue,
   parseIntQueryValue,
+  extractPrimaryChatRequestMessage,
+  extractLastUserMessageFromChatRequestMessages,
   getRequiredRouteContractsHealth,
   mapSuggestionForResponse,
   generatePrelabelsForAnchor,
