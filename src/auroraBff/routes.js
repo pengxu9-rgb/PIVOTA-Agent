@@ -89,6 +89,36 @@ const {
   resolveRecoRecallTransportModeForPlannerMode,
 } = require('./recoRecallTransportPolicy');
 const {
+  resolveAuroraGeminiMainlineModel,
+  resolveAuroraPublicLlmRoute,
+  validateAuroraModelSelection,
+  shouldAllowAuroraPublicLlmOverride,
+  normalizeAuroraLlmProvider,
+  normalizeAuroraLlmModel,
+} = require('./auroraModelPolicy');
+const {
+  CONCERN_PLANNER_PROMPT_VERSION,
+  buildConcernSemanticPlanTextPromptBundle,
+  normalizeConcernSemanticPlanFromText,
+} = require('./concernPlannerNormalizer');
+const {
+  buildConcernCandidateText: buildConcernCandidateTextPolicy,
+  buildConcernFrameworkCandidateText: buildConcernFrameworkCandidateTextPolicy,
+  classifyConcernScopeCandidate: classifyConcernScopeCandidatePolicy,
+  hasConcernSunscreenSignal: hasConcernSunscreenSignalPolicy,
+  isConcernFrameworkOutOfScopeArea: isConcernFrameworkOutOfScopeAreaPolicy,
+} = require('./productScopeClassifier');
+const {
+  scoreConcernRoleCandidate: scoreConcernRoleCandidatePolicy,
+} = require('./roleFitContract');
+const {
+  isConcernPrimaryRoleWinnerSafe: isConcernPrimaryRoleWinnerSafePolicy,
+  applyConcernSelectorRaceOrdering: applyConcernSelectorRaceOrderingPolicy,
+} = require('./selectorWinnerPolicy');
+const {
+  resolveConcernMainlineFailure,
+} = require('./failureClassifier');
+const {
   runGeminiVisionStrategy,
   runGeminiReportStrategy,
   runGeminiDeepeningStrategy,
@@ -1923,12 +1953,12 @@ function pickConfiguredEnv(keys) {
 
 function resolveAuroraGeminiModel(keys, fallbackModel, callPath) {
   const picked = pickConfiguredEnv(keys);
-  return resolveNonImageGeminiModel({
-    model: picked.value,
+  return resolveAuroraGeminiMainlineModel({
+    configuredModel: picked.value,
     fallbackModel,
     envSource: picked.envSource || (Array.isArray(keys) && keys.length === 1 ? keys[0] : 'aurora_default'),
     callPath,
-  }).effectiveModel;
+  }).effective_model;
 }
 const SKIN_VISION_MODEL_OPENAI =
   String(process.env.AURORA_SKIN_VISION_MODEL_OPENAI || process.env.AURORA_SKIN_VISION_MODEL || 'gpt-4o-mini').trim() ||
@@ -17020,25 +17050,7 @@ function normalizeConcernQueryToken(value) {
 }
 
 function buildConcernCandidateText(row) {
-  const candidate = isPlainObject(row) ? row : {};
-  return [
-    pickFirstTrimmed(candidate.brand),
-    pickFirstTrimmed(candidate.display_name, candidate.displayName, candidate.name, candidate.title),
-    pickFirstTrimmed(candidate.category, candidate.category_name, candidate.categoryName, candidate.product_type, candidate.productType),
-    pickFirstTrimmed(candidate.short_description, candidate.shortDescription, candidate.description),
-    ...(Array.isArray(candidate.search_aliases) ? candidate.search_aliases : []),
-    ...(Array.isArray(candidate.benefit_tags) ? candidate.benefit_tags : []),
-    ...(Array.isArray(candidate.benefit_tokens) ? candidate.benefit_tokens : []),
-    ...(Array.isArray(candidate.description_tokens) ? candidate.description_tokens : []),
-    ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
-    ...(Array.isArray(candidate.skin_type_tags) ? candidate.skin_type_tags : []),
-    ...(Array.isArray(candidate.tags) ? candidate.tags : []),
-    ...(Array.isArray(candidate.tag_tokens) ? candidate.tag_tokens : []),
-    ...(Array.isArray(candidate.category_path) ? candidate.category_path : []),
-  ]
-    .map((item) => normalizeConcernQueryToken(item).toLowerCase())
-    .filter(Boolean)
-    .join(' ');
+  return buildConcernCandidateTextPolicy(row);
 }
 
 function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
@@ -17055,54 +17067,11 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
 }
 
 function classifyConcernScopeCandidate(row) {
-  const base = classifySkincareCandidate(row);
-  const classification = String(base?.classification || 'ambiguous').trim() || 'ambiguous';
-  return {
-    classification,
-    hard_reject: base?.hard_reject === true || classification === 'explicit_non_skincare',
-    penalty: Number.isFinite(Number(base?.penalty)) ? Number(base.penalty) : 0,
-    reason: String(base?.reason || classification).trim() || classification,
-  };
+  return classifyConcernScopeCandidatePolicy(row);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '' } = {}) {
-  const roleId = String(role?.role_id || '').trim();
-  if (!roleId) return null;
-  const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
-  const alternateSteps = Array.isArray(role?.alternate_steps)
-    ? role.alternate_steps.map((value) => normalizeRecoTargetStep(value)).filter(Boolean)
-    : [];
-  const retrievalRoleId = pickFirstTrimmed(row?.retrieval_role_id, row?.role_id);
-  const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
-  const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
-  const ingredientMatches = countConcernRoleSignalMatches(candidateText, role?.ingredient_hypotheses, 2);
-  const productTypeMatches = countConcernRoleSignalMatches(candidateText, role?.product_type_hypotheses, 2);
-  const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
-  const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
-  const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
-
-  let score = 0;
-  if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
-  else if (alternateStep) score += preferredStep === 'treatment' ? 0.08 : 0.18;
-  score += Math.min(0.27, fitKeywordMatches * 0.12);
-  score += Math.min(0.18, queryTermMatches * 0.08);
-  score += Math.min(0.16, ingredientMatches * 0.08);
-  score += Math.min(0.12, productTypeMatches * 0.06);
-  if (retrievalRoleId && retrievalRoleId === roleId) score += semanticFitMatched ? 0.08 : 0.02;
-  if (preferredStep === 'treatment' && candidateStep === 'serum' && !semanticFitMatched) {
-    score = Math.min(score, 0.34);
-  }
-  if (!semanticFitMatched && !exactStep && !alternateStep) {
-    score = Math.min(score, 0.28);
-  }
-  return {
-    role_id: roleId,
-    role,
-    score: Number(score.toFixed(4)),
-    semantic_fit_matched: semanticFitMatched,
-    exact_step: exactStep,
-    alternate_step: alternateStep,
-  };
+  return scoreConcernRoleCandidatePolicy(row, role, { candidateStep, candidateText });
 }
 
 function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
@@ -17182,78 +17151,15 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
 const CONCERN_SUNSCREEN_SIGNAL_RE = /\b(spf(?:\s*\d{1,3}\+?)?|sunscreen|sun screen|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|pa\+{1,4}|防晒|防曬)\b/i;
 
 function hasConcernSunscreenSignal(row, candidateText = '') {
-  const text = uniqCaseInsensitiveStrings([
-    String(candidateText || '').trim(),
-    buildConcernFrameworkCandidateText(row),
-    buildConcernCandidateText(row),
-    pickFirstTrimmed(
-      row?.display_name,
-      row?.displayName,
-      row?.name,
-      row?.title,
-      row?.category,
-      row?.product_type,
-      row?.short_description,
-      row?.shortDescription,
-      row?.description,
-    ),
-  ], 4).join(' ');
-  return CONCERN_SUNSCREEN_SIGNAL_RE.test(String(text || '').trim().toLowerCase());
+  return hasConcernSunscreenSignalPolicy(row, candidateText);
 }
 
 function isConcernPrimaryRoleWinnerSafe(row, { semanticPlan = null } = {}) {
-  const plan = isPlainObject(semanticPlan) ? semanticPlan : {};
-  const primaryRole = Array.isArray(plan.core_roles) ? plan.core_roles[0] : null;
-  const primaryRoleId = pickFirstTrimmed(primaryRole?.role_id);
-  const matchedRoleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
-  if (!primaryRoleId || !matchedRoleId || matchedRoleId !== primaryRoleId) return false;
-  const primaryStep = normalizeRecoTargetStep(primaryRole?.preferred_step);
-  if (primaryStep && primaryStep !== 'sunscreen' && hasConcernSunscreenSignal(row)) return false;
-  return true;
+  return isConcernPrimaryRoleWinnerSafePolicy(row, { semanticPlan });
 }
 
 function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
-  const recos = Array.isArray(recommendations) ? recommendations.slice() : [];
-  const selector = isPlainObject(selectorRace) ? selectorRace : {};
-  if (!recos.length) {
-    return {
-      recommendations: [],
-      primary_recommendation_id: null,
-      support_roles_surfaced: [],
-      winner_source: 'deterministic',
-      selection_notes_by_product_id: {},
-    };
-  }
-  const byId = new Map();
-  for (const row of recos) {
-    const productId = pickFirstString(row?.product_id, row?.productId);
-    if (productId) byId.set(productId, row);
-  }
-  const orderedIds = uniqCaseInsensitiveStrings([
-    ...asStringArray(selector.ordered_product_ids),
-    ...Array.from(byId.keys()),
-  ], recos.length || 8).filter((id) => byId.has(id));
-  const ordered = orderedIds.map((id) => byId.get(id)).filter(Boolean);
-  const topPickProductId = pickFirstTrimmed(selector.top_pick_product_id) || null;
-  if (topPickProductId && ordered.length > 1) {
-    ordered.sort((left, right) => {
-      const leftId = pickFirstString(left?.product_id, left?.productId);
-      const rightId = pickFirstString(right?.product_id, right?.productId);
-      if (leftId === topPickProductId) return -1;
-      if (rightId === topPickProductId) return 1;
-      return 0;
-    });
-  }
-  const selectionNotes = uniqCaseInsensitiveStrings(asStringArray(selector.selection_notes), 3);
-  return {
-    recommendations: ordered,
-    primary_recommendation_id: topPickProductId,
-    support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(selector.support_roles_surfaced), 4),
-    winner_source: topPickProductId ? 'llm_selector' : 'deterministic',
-    selection_notes_by_product_id: topPickProductId && selectionNotes.length
-      ? { [topPickProductId]: selectionNotes }
-      : {},
-  };
+  return applyConcernSelectorRaceOrderingPolicy(recommendations, selectorRace);
 }
 
 function scoreConcernFrameworkCandidateTiebreak(row) {
@@ -17282,35 +17188,14 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
 }
 
 function buildConcernFrameworkCandidateText(row) {
-  const candidate = isPlainObject(row) ? row : {};
-  return [
-    buildExternalSeedSurfacingText(candidate),
-  ]
-    .map((item) => String(item || '').trim().toLowerCase())
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  return buildConcernFrameworkCandidateTextPolicy(row);
 }
 
 const FACIAL_FRAMEWORK_SCOPE_BLOCK_RE = /\b(hand|body|foot|heel|elbow|cuticle|lip balm|lip mask|body wash|body lotion|body cream|body oil|hand cream|hand lotion|hand balm|foot cream|foot mask|scalp|hair|shampoo|conditioner|deodorant)\b/i;
 const FACIAL_FRAMEWORK_SCOPE_ALLOW_RE = /\b(face|facial|cheek|forehead|chin|t-zone)\b/i;
 
 function isConcernFrameworkOutOfScopeArea(row, candidateText) {
-  const text = String(candidateText || '').trim().toLowerCase();
-  if (!text || !FACIAL_FRAMEWORK_SCOPE_BLOCK_RE.test(text)) return false;
-  if (FACIAL_FRAMEWORK_SCOPE_ALLOW_RE.test(text)) return false;
-  const explicitStep = normalizeRecoTargetStep(
-    pickFirstTrimmed(
-      row?.product_type,
-      row?.productType,
-      row?.category,
-      row?.category_name,
-      row?.categoryName,
-      row?.step,
-      row?.type,
-    ),
-  );
-  return explicitStep !== 'sunscreen';
+  return isConcernFrameworkOutOfScopeAreaPolicy(row, candidateText);
 }
 
 function summarizeConcernFrameworkSourceCounts(items = []) {
@@ -25917,6 +25802,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '当前没有拿到可信的护理框架 owner，所以我先不硬推商品。请稍后重试。'
         : 'I did not get a trusted care-framework owner for this turn, so I am not forcing product picks. Please retry shortly.',
+    planner_untrusted:
+      lang === 'CN'
+        ? '当前没有拿到可信的护理框架 owner，所以我先不硬推商品。请稍后重试。'
+        : 'I did not get a trusted care-framework owner for this turn, so I am not forcing product picks. Please retry shortly.',
     upstream_timeout_primary_role:
       lang === 'CN'
         ? '主推角色的检索链路超时了，我先不拿支持步骤强行替代。请稍后重试。'
@@ -26005,6 +25894,7 @@ function inferRecoContractNoticeReason({ payload, fieldMissing } = {}) {
   if (tokens.includes('semantic_planner_timeout')) return 'semantic_planner_timeout';
   if (tokens.includes('semantic_planner_schema_invalid')) return 'semantic_planner_schema_invalid';
   if (tokens.includes('semantic_plan_untrusted')) return 'semantic_plan_untrusted';
+  if (tokens.includes('planner_untrusted')) return 'planner_untrusted';
   if (tokens.includes('low_confidence_treatment_filtered')) return 'low_confidence_treatment_filtered';
   if (tokens.includes('low_confidence')) return 'low_confidence';
   if (tokens.includes('ingredient_constraint_no_match') || tokens.includes('ingredient_no_verified_candidates')) {
@@ -26029,6 +25919,7 @@ function buildRecoInvariantNoticeCard({ ctx, language, reason, details } = {}) {
     semantic_planner_timeout: ['retry_recommendations', 'update_current_routine'],
     semantic_planner_schema_invalid: ['retry_recommendations', 'update_current_routine'],
     semantic_plan_untrusted: ['retry_recommendations', 'update_current_routine'],
+    planner_untrusted: ['retry_recommendations', 'update_current_routine'],
     ingredient_constraint_no_match: ['broaden_to_goal', 'check_product_inci', 'search_category'],
     no_viable_candidates_for_target: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
     weak_viable_pool: ['refine_profile', 'retry_recommendations', 'update_current_routine'],
@@ -34279,21 +34170,13 @@ function coerceBoolean(value) {
 }
 
 function normalizeChatLlmProvider(value) {
-  if (AURORA_DIAG_FORCE_GEMINI) {
-    if (typeof value !== 'string') return null;
-    const forcedToken = value.trim();
-    if (!forcedToken) return null;
-    return 'gemini';
-  }
-  if (typeof value !== 'string') return null;
-  const provider = value.trim().toLowerCase();
-  if (provider === 'gemini' || provider === 'openai') return provider;
-  return null;
+  return normalizeAuroraLlmProvider(value);
 }
 
 function shouldHonorExternalLlmRouteOverride() {
-  if (!isProductionLikeAuroraBffEnv()) return true;
-  return AURORA_PROD_LLM_ROUTE_OVERRIDE_ENABLED;
+  return shouldAllowAuroraPublicLlmOverride({
+    productionLike: isProductionLikeAuroraBffEnv(),
+  });
 }
 
 function getDiagForceGeminiModel() {
@@ -34307,16 +34190,7 @@ function getDiagForceGeminiModel() {
 }
 
 function normalizeChatLlmModel(value) {
-  if (AURORA_DIAG_FORCE_GEMINI) {
-    if (typeof value !== 'string') return null;
-    const forcedToken = value.trim();
-    if (!forcedToken) return null;
-    return getDiagForceGeminiModel();
-  }
-  if (typeof value !== 'string') return null;
-  const model = value.trim();
-  if (!model) return null;
-  return model.slice(0, 120);
+  return normalizeAuroraLlmModel(value);
 }
 
 function resolveProductIntelLlmRoute({ req = null, requestedProvider = null, requestedModel = null } = {}) {
@@ -52160,7 +52034,7 @@ async function runConcernSemanticPlanner({
     focus,
     profileSummary,
   });
-  const promptBundle = buildConcernSemanticPlanPromptBundle({
+  const promptBundle = buildConcernSemanticPlanTextPromptBundle({
     requestText,
     focus,
     lang: ctx?.lang || 'EN',
@@ -52170,7 +52044,7 @@ async function runConcernSemanticPlanner({
   });
   const query = promptBundle.query;
   const trace = {
-    prompt_version: CONCERN_SEMANTIC_PLAN_VERSION,
+    prompt_version: CONCERN_PLANNER_PROMPT_VERSION,
     prompt_chars: query.length,
     planner_used: false,
     planner_failure_class: null,
@@ -52181,60 +52055,51 @@ async function runConcernSemanticPlanner({
     planner_effective_model: null,
     planner_selection_source: 'none',
     planner_attempts: [],
+    model_policy_trace: [],
   };
   try {
+    const primaryModel = resolveAuroraGeminiMainlineModel({
+      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_PLANNER_GEMINI_MODEL', 'AURORA_ANALYSIS_STORY_MODEL_GEMINI', 'GEMINI_MODEL']).value,
+      fallbackModel: 'gemini-3-flash-preview',
+      envSource: 'AURORA_CONCERN_PLANNER_GEMINI_MODEL',
+      callPath: 'aurora_concern_semantic_planner_primary',
+    });
+    const retryModel = resolveAuroraGeminiMainlineModel({
+      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL', 'AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI', 'GEMINI_MODEL']).value,
+      fallbackModel: 'gemini-3-pro-preview',
+      envSource: 'AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL',
+      callPath: 'aurora_concern_semantic_planner_retry',
+    });
     const plannerAttempts = [
       {
         provider: 'gemini',
-        model: 'gemini-3-flash-preview',
-        structured_contract: 'required_keys',
-        required_structured_keys: ['primary_concern', 'core_role_ids'],
-      },
-      {
-        provider: 'gemini',
-        model: 'gemini-3-pro-preview',
-        structured_contract: 'required_keys',
-        required_structured_keys: ['primary_concern', 'core_role_ids'],
-      },
-      {
-        provider: 'gemini',
-        model: 'gemini-3-pro-preview',
+        model: primaryModel.effective_model,
         structured_contract: 'plain_text',
+        model_policy: primaryModel,
+      },
+      {
+        provider: 'gemini',
+        model: retryModel.effective_model,
+        structured_contract: 'plain_text',
+        model_policy: retryModel,
       },
     ];
-    let lastSemanticPlan = normalizeConcernSemanticPlanOutput(null, {
-      fallbackPlan,
-      requestText,
-      focus,
-    });
+    let lastSemanticPlan = { ...fallbackPlan };
     let lastPlannerResponse = null;
+    let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      let plannerResponse = null;
-      if (String(attempt.structured_contract || '').trim() === 'plain_text') {
-        plannerResponse = await callGeminiTextResponseImpl({
-          model: attempt.model,
-          systemPrompt: promptBundle.systemPrompt,
-          userPrompt: promptBundle.userPrompt,
-          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 12000),
-          temperature: 0.1,
-          maxOutputTokens: 900,
-          route: 'aurora_concern_semantic_plan_plain_text',
-          ignoreForceModel: true,
-        });
-      } else {
-        plannerResponse = await callGeminiJsonObjectImpl({
-          model: attempt.model,
-          systemPrompt: promptBundle.systemPrompt,
-          userPrompt: promptBundle.userPrompt,
-          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 12000),
-          temperature: 0.1,
-          maxOutputTokens: 600,
-          responseJsonSchema: CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA,
-          route: 'aurora_concern_semantic_plan_structured',
-          ignoreForceModel: true,
-        });
-      }
+      const plannerResponse = await callGeminiTextResponseImpl({
+        model: attempt.model,
+        systemPrompt: promptBundle.systemPrompt,
+        userPrompt: promptBundle.userPrompt,
+        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 15000),
+        temperature: 0.1,
+        maxOutputTokens: 1400,
+        route: 'aurora_concern_semantic_plan_plain_text',
+        ignoreForceModel: true,
+        thinkingBudget: 512,
+      });
       trace.planner_used = true;
       lastPlannerResponse = plannerResponse;
       const llmRouteMeta = {
@@ -52244,41 +52109,45 @@ async function runConcernSemanticPlanner({
         effective_model: pickFirstTrimmed(plannerResponse?.effective_model, attempt.model) || null,
         selection_source: pickFirstTrimmed(plannerResponse?.selection_source) || 'local_gemini_direct',
       };
-      const rawStructured =
-        plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
-          ? plannerResponse.json
-          : null;
-      const repairedStructured =
-        isPlainObject(rawStructured)
-          ? null
-          : repairConcernSemanticPlanFromText(
-              pickFirstTrimmed(plannerResponse?.text, plannerResponse?.raw_text),
-              { fallbackPlan },
-            );
-      const effectiveStructured = repairedStructured || rawStructured;
+      const modelPolicyTrace = validateAuroraModelSelection({
+        requestedProvider: llmRouteMeta.requested_provider,
+        requestedModel: llmRouteMeta.requested_model,
+        effectiveProvider: llmRouteMeta.effective_provider,
+        effectiveModel: llmRouteMeta.effective_model,
+        selectionSource: llmRouteMeta.selection_source,
+      });
+      trace.model_policy_trace.push({
+        ...modelPolicyTrace,
+        attempt_model: attempt.model,
+      });
+      const answerText = pickFirstTrimmed(plannerResponse?.text, plannerResponse?.raw_text);
+      const semanticPlan = modelPolicyTrace.ok
+        ? normalizeConcernSemanticPlanFromText(answerText, {
+            fallbackPlan,
+            requestText,
+            focus,
+          })
+        : {
+            ...fallbackPlan,
+            selection_owner_source: 'policy_violation_blocked',
+            selection_owner_state: 'fallback',
+          };
       const answerPreview = pickFirstTrimmed(
         plannerResponse?.text,
         plannerResponse?.raw_text,
-        plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
-          ? JSON.stringify(plannerResponse.json)
-          : '',
+        '',
       )
         ? String(
             pickFirstTrimmed(
               plannerResponse?.text,
               plannerResponse?.raw_text,
-              plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
-                ? JSON.stringify(plannerResponse.json)
-                : '',
+              '',
             ),
           ).replace(/\s+/g, ' ').slice(0, 400)
         : '';
-      const semanticPlan = normalizeConcernSemanticPlanOutput(effectiveStructured, {
-        fallbackPlan,
-        requestText,
-        focus,
-      });
       lastSemanticPlan = semanticPlan;
+      const providerReason = pickFirstTrimmed(plannerResponse?.reason) || null;
+      if (/TIMEOUT/i.test(String(providerReason || ''))) anyTimeout = true;
       const attemptTrace = {
         provider: attempt.provider,
         model: attempt.model,
@@ -52287,11 +52156,11 @@ async function runConcernSemanticPlanner({
         requested_model: llmRouteMeta.requested_model,
         effective_provider: llmRouteMeta.effective_provider,
         effective_model: llmRouteMeta.effective_model,
-        selection_source: llmRouteMeta.selection_source,
-        provider_reason: pickFirstTrimmed(plannerResponse?.reason) || null,
+        selection_source: modelPolicyTrace.selection_source || llmRouteMeta.selection_source,
+        provider_reason: providerReason,
         provider_parse_status: pickFirstTrimmed(plannerResponse?.parse_status) || null,
-        raw_top_keys: isPlainObject(rawStructured) ? Object.keys(rawStructured).slice(0, 16) : [],
-        repaired_from_text: Boolean(repairedStructured),
+        raw_top_keys: [],
+        repaired_from_text: false,
         answer_preview: answerPreview,
         normalized_core_role_ids: Array.isArray(semanticPlan?.core_roles)
           ? semanticPlan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 4)
@@ -52299,7 +52168,9 @@ async function runConcernSemanticPlanner({
         normalized_support_role_ids: Array.isArray(semanticPlan?.support_roles)
           ? semanticPlan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3)
           : [],
-        trusted: String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() === 'trusted',
+        trusted:
+          String(semanticPlan?.selection_owner_state || '').trim().toLowerCase() === 'trusted'
+          && modelPolicyTrace.ok === true,
       };
       trace.planner_attempts.push(attemptTrace);
       trace.raw_top_keys = attemptTrace.raw_top_keys;
@@ -52311,44 +52182,15 @@ async function runConcernSemanticPlanner({
       trace.planner_requested_model = llmRouteMeta.requested_model;
       trace.planner_effective_provider = llmRouteMeta.effective_provider;
       trace.planner_effective_model = llmRouteMeta.effective_model;
-      trace.planner_selection_source = llmRouteMeta.selection_source;
-      const nextAttempt = plannerAttempts[index + 1] || null;
-      const attemptReturnedNoSignal =
-        !attemptTrace.answer_preview
-        && attemptTrace.raw_top_keys.length === 0
-        && attemptTrace.repaired_from_text === false;
-      const attemptReturnedUnusableStructured =
-        String(attempt.structured_contract || '').trim() === 'required_keys'
-        && attemptTrace.trusted !== true
-        && (
-          ['PARSE_TRUNCATED_JSON', 'gemini_json_invalid', 'gemini_text_empty'].includes(String(attemptTrace.provider_reason || ''))
-          || ['parse_truncated', 'invalid'].includes(String(attemptTrace.provider_parse_status || ''))
-        );
-      const shouldRetry =
-        Boolean(nextAttempt)
-        && attempt.provider === 'gemini'
-        && (attemptReturnedNoSignal || attemptReturnedUnusableStructured)
-        && (
-          (
-            String(attempt.model || '').trim() === 'gemini-3-flash-preview'
-            && String(nextAttempt?.model || '').trim() === 'gemini-3-pro-preview'
-            && String(nextAttempt?.structured_contract || '').trim() === 'required_keys'
-          ) || (
-            String(attempt.model || '').trim() === 'gemini-3-pro-preview'
-            && String(attempt.structured_contract || '').trim() === 'required_keys'
-            && String(nextAttempt?.model || '').trim() === 'gemini-3-pro-preview'
-            && String(nextAttempt?.structured_contract || '').trim() === 'plain_text'
-          )
-        );
-      if (attemptTrace.trusted && !shouldRetry) {
+      trace.planner_selection_source = modelPolicyTrace.selection_source || llmRouteMeta.selection_source;
+      if (attemptTrace.trusted) {
         trace.planner_source = semanticPlan.selection_owner_source;
         trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
         trace.planner_model = llmRouteMeta.effective_model || attempt.model;
         return { semanticPlan, trace, upstream: plannerResponse };
       }
-      if (!shouldRetry) break;
     }
-    trace.planner_failure_class = 'schema_invalid';
+    trace.planner_failure_class = anyTimeout ? 'timeout' : 'planner_untrusted';
     logger?.warn?.(
       {
         trace_id: ctx?.trace_id,
@@ -52356,22 +52198,31 @@ async function runConcernSemanticPlanner({
         planner_failure_class: trace.planner_failure_class,
         planner_attempts: trace.planner_attempts,
       },
-      'aurora bff: concern semantic planner schema-invalid',
+      'aurora bff: concern semantic planner untrusted',
     );
     return {
-      semanticPlan: lastSemanticPlan,
+      semanticPlan: {
+        ...fallbackPlan,
+        selection_owner_source: 'rule_concern_planner_fallback',
+        selection_owner_state: 'fallback',
+      },
       trace,
       upstream: lastPlannerResponse,
     };
   } catch (error) {
     logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern semantic planner failed');
-    trace.planner_failure_class = 'timeout';
+    const errorMessage = String(error?.message || error || '').trim();
+    const errorCode = String(error?.code || '').trim().toUpperCase();
+    trace.planner_failure_class =
+      /timeout/i.test(errorMessage) || errorCode === 'ETIMEDOUT' || errorCode === 'ECONNABORTED'
+        ? 'timeout'
+        : 'planner_untrusted';
     return {
-      semanticPlan: normalizeConcernSemanticPlanOutput(null, {
-        fallbackPlan,
-        requestText,
-        focus,
-      }),
+      semanticPlan: {
+        ...fallbackPlan,
+        selection_owner_source: 'rule_concern_planner_fallback',
+        selection_owner_state: 'fallback',
+      },
       trace,
       upstream: null,
     };
@@ -60791,22 +60642,15 @@ async function generateProductRecommendations({
       entryType,
     });
     if (String(targetContext?.selection_owner_state || targetContext?.framework_owner_state || '').trim().toLowerCase() !== 'trusted') {
-      const plannerFailureClass = normalizeRecoFailureClass(concernSemanticPlanTrace?.planner_failure_class || '');
-      concernSemanticPlanBlockedReason =
-        plannerFailureClass === 'timeout'
-          ? 'semantic_planner_timeout'
-          : plannerFailureClass === 'schema_invalid'
-            ? 'semantic_planner_schema_invalid'
-            : 'semantic_plan_untrusted';
-      concernSemanticPlanBlockedFailureClass =
-        plannerFailureClass === 'timeout'
-          ? 'upstream_timeout'
-          : 'schema_invalid';
-      concernSemanticPlanBlockedFailureOrigin = 'upstream_dependency';
+      const plannerFailureClass = String(concernSemanticPlanTrace?.planner_failure_class || '').trim().toLowerCase();
+      concernSemanticPlanBlockedReason = 'planner_untrusted';
+      concernSemanticPlanBlockedFailureClass = 'planner_untrusted';
+      concernSemanticPlanBlockedFailureOrigin =
+        plannerFailureClass === 'timeout' ? 'upstream_dependency' : 'internal_contract';
       concernSemanticPlanBlockedTelemetryReason =
         plannerFailureClass === 'timeout'
-          ? 'timeout_degraded'
-          : 'upstream_schema_invalid';
+          ? 'planner_timeout'
+          : 'planner_untrusted';
     }
   }
   const normalizedRecoTriggerSource = normalizeRecoSourceDetail(
@@ -60874,17 +60718,15 @@ async function generateProductRecommendations({
       recommendations: [],
       products_empty_reason: concernSemanticPlanBlockedReason,
       telemetry_reason: concernSemanticPlanBlockedTelemetryReason || null,
-      mainline_status: concernSemanticPlanBlockedFailureClass === 'upstream_timeout'
-        ? 'upstream_timeout'
-        : 'severe_parse_or_prompt_failure',
+      mainline_status: 'severe_parse_or_prompt_failure',
     };
     structuredSource = null;
-    llmFailureClass = concernSemanticPlanBlockedFailureClass === 'upstream_timeout' ? 'timeout' : 'schema_invalid';
+    llmFailureClass = 'planner_untrusted';
     initialLlmOutcome = concernSemanticPlanBlockedReason;
     presentationMode = '';
     successMode = '';
-    effectiveFailureClass = concernSemanticPlanBlockedFailureClass || 'schema_invalid';
-    failureOrigin = concernSemanticPlanBlockedFailureOrigin || 'upstream_dependency';
+    effectiveFailureClass = concernSemanticPlanBlockedFailureClass || 'planner_untrusted';
+    failureOrigin = concernSemanticPlanBlockedFailureOrigin || 'internal_contract';
     catalogCandidateState = frameworkCatalogFirstEnabled
       ? finalizeConcernFrameworkCandidatePools([], { targetContext })
       : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
@@ -60894,7 +60736,7 @@ async function generateProductRecommendations({
       executed_upstream_attempt_count: 0,
       actual_http_attempt_count: 0,
       stage_timeout_counts: {},
-      primary_stage_timeout_class: concernSemanticPlanBlockedFailureClass === 'upstream_timeout' ? 'planner_timeout' : 'planner_invalid',
+      primary_stage_timeout_class: concernSemanticPlanBlockedTelemetryReason === 'planner_timeout' ? 'planner_timeout' : 'planner_untrusted',
       transport_policy_mode: null,
       candidate_drop_stage: concernSemanticPlanBlockedReason,
       selected_source_counts: {},
@@ -60991,11 +60833,17 @@ async function generateProductRecommendations({
       presentationMode = '';
       successMode = '';
     }
-    const failureSignals = resolveRecoEffectiveFailure({
-      targetContext,
-      viablePoolState: catalogCandidateState,
-      catalogDebug,
-    });
+    const failureSignals = frameworkCatalogFirstEnabled
+      ? resolveConcernMainlineFailure({
+          plannerBlocked: false,
+          viablePoolState: catalogCandidateState,
+          catalogDebug,
+        })
+      : resolveRecoEffectiveFailure({
+          targetContext,
+          viablePoolState: catalogCandidateState,
+          catalogDebug,
+        });
     effectiveFailureClass = failureSignals.effective_failure_class || 'none';
     failureOrigin = failureSignals.failure_origin || 'none';
   } else {
@@ -61426,6 +61274,7 @@ async function generateProductRecommendations({
           ingredient_hypotheses: Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses) ? targetContext.semantic_plan.ingredient_hypotheses : [],
           routine_shell: isPlainObject(targetContext?.routine_shell) ? targetContext.routine_shell : (isPlainObject(targetContext?.semantic_plan?.routine_shell) ? targetContext.semantic_plan.routine_shell : null),
           selection_owner_source: pickFirstTrimmed(targetContext?.selection_owner_source, targetContext?.framework_owner_source) || null,
+          selection_owner_state: pickFirstTrimmed(targetContext?.selection_owner_state, targetContext?.framework_owner_state) || null,
           selector_race: isPlainObject(concernSelectorRaceTrace?.result) ? concernSelectorRaceTrace.result : null,
           winner_source: concernWinnerSource || 'deterministic',
           open_world_expansion_used: concernOpenWorldExpansionUsed,
@@ -61816,15 +61665,25 @@ async function generateProductRecommendations({
   finalSelectedCandidateCount = finalRecommendations.length;
   postGuardrailCount = finalSelectedCandidateCount;
   if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailure) {
-    const failureSignals = resolveRecoEffectiveFailure({
-      targetContext,
-      viablePoolState: {
-        ...viablePoolState,
-        final_selected_candidate_count: finalSelectedCandidateCount,
-      },
-      catalogDebug,
-      postGuardrailCount,
-    });
+    const failureSignals = frameworkMode
+      ? resolveConcernMainlineFailure({
+          plannerBlocked: false,
+          viablePoolState: {
+            ...viablePoolState,
+            final_selected_candidate_count: finalSelectedCandidateCount,
+          },
+          catalogDebug,
+          postGuardrailCount,
+        })
+      : resolveRecoEffectiveFailure({
+          targetContext,
+          viablePoolState: {
+            ...viablePoolState,
+            final_selected_candidate_count: finalSelectedCandidateCount,
+          },
+          catalogDebug,
+          postGuardrailCount,
+        });
     effectiveFailureClass = failureSignals.effective_failure_class || 'none';
     failureOrigin = failureSignals.failure_origin || 'none';
   }
@@ -61890,6 +61749,12 @@ async function generateProductRecommendations({
     upstreamDebug.open_world_expansion_trace = concernOpenWorldExpansionTrace;
     upstreamDebug.scope_classification_stats = isPlainObject(viablePoolState?.scope_classification_stats) ? viablePoolState.scope_classification_stats : null;
     upstreamDebug.role_pool_stats = isPlainObject(viablePoolState?.role_pool_stats) ? viablePoolState.role_pool_stats : null;
+    upstreamDebug.model_policy_trace = Array.isArray(concernSemanticPlanTrace?.model_policy_trace) ? concernSemanticPlanTrace.model_policy_trace : [];
+    upstreamDebug.mock_block_trace = {
+      requested_use_mock: String(process.env.AURORA_BFF_USE_MOCK || '').trim().toLowerCase() === 'true',
+      production_like: isProductionLikeAuroraBffEnv(),
+      effective_use_mock: false,
+    };
   }
   const terminalSuccess = finalRecommendations.length > 0
     && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
@@ -62004,6 +61869,7 @@ async function generateProductRecommendations({
       semantic_planner_effective_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_provider) || null : null,
       semantic_planner_effective_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_model) || null : null,
       semantic_planner_selection_source: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_selection_source) || null : null,
+      semantic_planner_owner_state: frameworkMode ? pickFirstTrimmed(targetContext?.selection_owner_state, targetContext?.framework_owner_state) || null : null,
       primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
       primary_recommendation_id: frameworkMode
         ? (
@@ -75278,19 +75144,15 @@ function mountAuroraBffRoutes(app, { logger }) {
       const debugFromHeader = debugHeader == null ? undefined : coerceBoolean(debugHeader);
       const debugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const debugUpstream = debugFromHeader ?? debugFromBody;
-      const allowExternalLlmOverride = shouldHonorExternalLlmRouteOverride();
-      const llmProvider = AURORA_DIAG_FORCE_GEMINI
-        ? 'gemini'
-        : (allowExternalLlmOverride ? normalizeChatLlmProvider(parsed.data.llm_provider) : null) ||
-          (allowExternalLlmOverride
-            ? normalizeChatLlmProvider(req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'))
-            : null);
-      const llmModel = AURORA_DIAG_FORCE_GEMINI
-        ? AURORA_DIAG_FORCE_GEMINI_MODEL
-        : (allowExternalLlmOverride ? normalizeChatLlmModel(parsed.data.llm_model) : null) ||
-          (allowExternalLlmOverride
-            ? normalizeChatLlmModel(req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'))
-            : null);
+      const llmRoute = resolveAuroraPublicLlmRoute({
+        requestedProvider: parsed.data.llm_provider,
+        requestedModel: parsed.data.llm_model,
+        headerProvider: req.get('X-LLM-Provider') ?? req.get('X-Aurora-LLM-Provider'),
+        headerModel: req.get('X-LLM-Model') ?? req.get('X-Aurora-LLM-Model'),
+        productionLike: isProductionLikeAuroraBffEnv(),
+      });
+      const llmProvider = llmRoute.llm_provider;
+      const llmModel = llmRoute.llm_model;
       llmRouteMetaForResponse =
         llmProvider || llmModel
           ? {
@@ -75298,6 +75160,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             llm_model_requested: llmModel || null,
             llm_provider_effective: null,
             llm_model_effective: null,
+            llm_selection_source: llmRoute.selection_source || null,
           }
           : null;
       const anchorProductId =

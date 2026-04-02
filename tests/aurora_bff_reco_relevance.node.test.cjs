@@ -202,6 +202,24 @@ function buildConcernSemanticPlanFixture() {
   };
 }
 
+function buildConcernPlannerTextFixture({
+  primaryConcern = 'oil control and congestion',
+  coreRoleIds = ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  supportRoleIds = ['optional_mask'],
+  ingredientHypotheses = ['niacinamide', 'zinc pca', 'ceramide', 'UV filters'],
+  productTypeHypotheses = ['treatment', 'moisturizer', 'sunscreen'],
+  routineShellHints = 'AM=oil_control_treatment,daily_sunscreen; PM=oil_control_treatment,lightweight_moisturizer; OPTIONAL=optional_mask',
+} = {}) {
+  return [
+    `PRIMARY_CONCERN: ${primaryConcern}`,
+    `CORE_ROLE_IDS: ${coreRoleIds.join(' | ')}`,
+    `SUPPORT_ROLE_IDS: ${supportRoleIds.join(' | ')}`,
+    `INGREDIENT_HYPOTHESES: ${ingredientHypotheses.join(' | ')}`,
+    `PRODUCT_TYPE_HYPOTHESES: ${productTypeHypotheses.join(' | ')}`,
+    `ROUTINE_SHELL_HINTS: ${routineShellHints}`,
+  ].join('\n');
+}
+
 function buildConcernSelectorFixture({
   topPickProductId = 'serum_chat_1',
   orderedProductIds = ['serum_chat_1', 'moist_chat_1', 'spf_chat_1'],
@@ -307,9 +325,13 @@ function buildConcernPlannerGeminiJsonMock({
 
 function buildConcernPlannerGeminiTextMock({
   plainText = '',
+  plainTextByModel = null,
+  throwModels = [],
+  effectiveModelByModel = null,
   attemptRecorder = null,
   throwOnConcernPrompt = false,
 } = {}) {
+  const throwModelSet = new Set((Array.isArray(throwModels) ? throwModels : []).map((item) => String(item || '').trim()));
   return async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
     if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) {
       return { ok: false, reason: 'unexpected_gemini_prompt' };
@@ -320,8 +342,16 @@ function buildConcernPlannerGeminiTextMock({
         structured_contract: 'plain_text',
       });
     }
-    if (throwOnConcernPrompt) throw new Error('planner timeout');
-    const text = String(plainText || '').trim();
+    if (throwOnConcernPrompt || throwModelSet.has(String(model || '').trim())) throw new Error('planner timeout');
+    const mappedText =
+      plainTextByModel && typeof plainTextByModel === 'object'
+        ? plainTextByModel[String(model || '').trim()]
+        : undefined;
+    const text = String(mappedText != null ? mappedText : plainText || '').trim();
+    const effectiveModel =
+      effectiveModelByModel && typeof effectiveModelByModel === 'object'
+        ? String(effectiveModelByModel[String(model || '').trim()] || '').trim() || String(model || '').trim()
+        : String(model || '').trim();
     if (!text) {
       return {
         ok: false,
@@ -329,7 +359,7 @@ function buildConcernPlannerGeminiTextMock({
         raw_text: '',
         provider: 'gemini',
         requested_model: model,
-        effective_model: model,
+        effective_model: effectiveModel,
         selection_source: 'test_mock',
       };
     }
@@ -339,7 +369,7 @@ function buildConcernPlannerGeminiTextMock({
       raw_text: text,
       provider: 'gemini',
       requested_model: model,
-      effective_model: model,
+      effective_model: effectiveModel,
       selection_source: 'test_mock',
     };
   };
@@ -1446,8 +1476,9 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
   try {
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: buildConcernPlannerMock(),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
       useMemoryStore: false,
     });
 
@@ -1596,8 +1627,9 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   try {
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: buildConcernPlannerMock({ selectorResult: 'schema_invalid' }),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
       useMemoryStore: false,
     });
 
@@ -1651,7 +1683,7 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   }
 });
 
-test('/v1/chat: generic concern planner accepts camelCase semantic-plan output and still stays on the trusted mainline', async () => {
+test('/v1/chat: generic concern planner accepts keyed plain-text semantic-plan output and stays on the trusted mainline', async () => {
   const originalGet = axios.get;
   let harness = null;
 
@@ -1717,47 +1749,10 @@ test('/v1/chat: generic concern planner accepts camelCase semantic-plan output a
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: buildConcernPlannerMock({
-        plannerResult: {
-          primaryConcern: 'oil control and congestion',
-          coreRoles: [
-            'Oil-control treatment',
-            'Lightweight moisturizer',
-            { id: 'daily_sunscreen', label: 'Daily sunscreen', preferredStep: 'sunscreen' },
-          ],
-          supportRoles: [
-            'Optional hydrating mask',
-          ],
-          ingredientDirections: ['Niacinamide', 'Zinc PCA'],
-          productTypeDirections: ['serum', 'moisturizer', 'sunscreen'],
-          routineShell: {
-            amCoreRoles: ['oil_control_treatment', 'daily_sunscreen'],
-            pmCoreRoles: ['oil_control_treatment', 'lightweight_moisturizer'],
-            optionalSupportRoles: ['hydrating_mask_support'],
-          },
-        },
+      auroraChatImpl: buildConcernPlannerMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
       }),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        plannerResult: {
-          primaryConcern: 'oil control and congestion',
-          coreRoles: [
-            'Oil-control treatment',
-            'Lightweight moisturizer',
-            { id: 'daily_sunscreen', label: 'Daily sunscreen', preferredStep: 'sunscreen' },
-          ],
-          supportRoles: [
-            'Optional hydrating mask',
-          ],
-          ingredientDirections: ['Niacinamide', 'Zinc PCA'],
-          productTypeDirections: ['serum', 'moisturizer', 'sunscreen'],
-          routineShell: {
-            amCoreRoles: ['oil_control_treatment', 'daily_sunscreen'],
-            pmCoreRoles: ['oil_control_treatment', 'lightweight_moisturizer'],
-            optionalSupportRoles: ['hydrating_mask_support'],
-          },
-        },
-      }),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -1792,13 +1787,13 @@ test('/v1/chat: generic concern planner accepts camelCase semantic-plan output a
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
     assert.equal(payload.selection_owner_source, 'llm_concern_planner');
-    assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
+    assert.equal(payload.recommendation_meta?.semantic_planner_owner_state ?? payload.recommendation_meta?.framework_owner_state, 'trusted');
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_camel_1');
     assert.ok(Array.isArray(payload.support_roles));
     assert.match(
       String(payload.support_roles[0]?.role_id || payload.support_roles[0]?.label || ''),
-      /hydrating mask/i,
+      /mask/i,
     );
   } finally {
     harness?.restore?.();
@@ -1879,9 +1874,6 @@ test('/v1/chat: generic concern planner repairs plain-text role ordering into a 
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        emptyModels: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
-      }),
       geminiTextImpl: buildConcernPlannerGeminiTextMock({
         plainText: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
       }),
@@ -2008,9 +2000,6 @@ test('/v1/chat: generic concern planner trusts prose-only Gemini planner output 
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        emptyModels: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
-      }),
       geminiTextImpl: buildConcernPlannerGeminiTextMock({
         plainText: 'Since you have oily skin, are prone to acne, and have a stable skin barrier with low sensitivity, start with a niacinamide or salicylic-acid treatment to control shine and congestion. Follow with a lightweight moisturizer to keep hydration breathable without feeling heavy. During the day, finish with a daily sunscreen for UV protection.',
       }),
@@ -2131,11 +2120,13 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        emptyModels: ['gemini-3-flash-preview'],
-        attemptRecorder: ({ model }) => plannerAttempts.push(`gemini:${model}`),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainTextByModel: {
+          'gemini-3-flash-preview': '',
+          'gemini-3-pro-preview': buildConcernPlannerTextFixture(),
+        },
+        attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract}`),
       }),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2177,14 +2168,17 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_provider, 'gemini');
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_model, 'gemini-3-pro-preview');
     assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'test_mock');
-    assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'gemini:gemini-3-pro-preview']);
+    assert.deepEqual(plannerAttempts, [
+      'gemini:gemini-3-flash-preview:plain_text',
+      'gemini:gemini-3-pro-preview:plain_text',
+    ]);
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic concern planner retries with gemini pro after a truncated gemini flash structured response', async () => {
+test('/v1/chat: generic concern planner retries with gemini pro after an untrusted gemini flash prose response', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -2258,31 +2252,13 @@ test('/v1/chat: generic concern planner retries with gemini pro after a truncate
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
-        if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) return { ok: false, reason: 'unexpected_gemini_prompt' };
-        plannerAttempts.push(`gemini:${String(model || '').trim()}`);
-        if (String(model || '').trim() === 'gemini-3-flash-preview') {
-          return {
-            ok: false,
-            reason: 'PARSE_TRUNCATED_JSON',
-            parse_status: 'parse_truncated',
-            raw_text: '{ "primary_concern": "oil control and congestion", "core_roles": [',
-            provider: 'gemini',
-            requested_model: model,
-            effective_model: model,
-            selection_source: 'test_mock',
-          };
-        }
-        return {
-          ok: true,
-          json: buildConcernSemanticPlanFixture(),
-          provider: 'gemini',
-          requested_model: model,
-          effective_model: model,
-          selection_source: 'test_mock',
-        };
-      },
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainTextByModel: {
+          'gemini-3-flash-preview': 'Start with a few lightweight skincare products for oily skin.',
+          'gemini-3-pro-preview': buildConcernPlannerTextFixture(),
+        },
+        attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${String(model || '').trim()}:${structured_contract}`),
+      }),
       useMemoryStore: false,
     });
 
@@ -2319,14 +2295,17 @@ test('/v1/chat: generic concern planner retries with gemini pro after a truncate
     assert.equal(payload.selection_owner_source, 'llm_concern_planner');
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_trunc_1');
-    assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'gemini:gemini-3-pro-preview']);
+    assert.deepEqual(plannerAttempts, [
+      'gemini:gemini-3-flash-preview:plain_text',
+      'gemini:gemini-3-pro-preview:plain_text',
+    ]);
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic concern planner falls back to a plain-text gemini pro planner attempt when structured retries return empty', async () => {
+test('/v1/chat: generic concern planner records model telemetry from a successful gemini pro text retry', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -2407,12 +2386,11 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        emptyModels: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
-        attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract === 'plain_text' ? 'plain_text' : 'structured'}`),
-      }),
       geminiTextImpl: buildConcernPlannerGeminiTextMock({
-        plainText: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
+        plainTextByModel: {
+          'gemini-3-flash-preview': '',
+          'gemini-3-pro-preview': buildConcernPlannerTextFixture(),
+        },
         attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract}`),
       }),
       useMemoryStore: false,
@@ -2455,8 +2433,7 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_model, 'gemini-3-pro-preview');
     assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'test_mock');
     assert.deepEqual(plannerAttempts, [
-      'gemini:gemini-3-flash-preview:structured',
-      'gemini:gemini-3-pro-preview:structured',
+      'gemini:gemini-3-flash-preview:plain_text',
       'gemini:gemini-3-pro-preview:plain_text',
     ]);
   } finally {
@@ -2465,114 +2442,24 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
   }
 });
 
-test('/v1/chat: generic concern planner recovers after a schema-invalid pro structured attempt without surfacing fallback recommendations', async () => {
+test('/v1/chat: generic concern planner fails closed when both flash and pro prose remain untrusted', async () => {
   const originalGet = axios.get;
+  let searchCalls = 0;
   let harness = null;
   const plannerAttempts = [];
 
-  axios.get = async (url, config = {}) => {
-    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
-    const query = String(config?.params?.query || '').trim().toLowerCase();
-    if (query.includes('sunscreen') || query.includes('spf')) {
-      return {
-        status: 200,
-        data: {
-          products: [
-            {
-              product_id: 'spf_invalid_1',
-              merchant_id: 'mid_spf_invalid',
-              brand: 'SunGuard',
-              name: 'Daily UV Fluid SPF 50',
-              display_name: 'Daily UV Fluid SPF 50',
-              category: 'sunscreen',
-              product_type: 'sunscreen',
-            },
-          ],
-        },
-      };
-    }
-    if (query.includes('moisturizer') || query.includes('gel cream') || query.includes('lotion')) {
-      return {
-        status: 200,
-        data: {
-          products: [
-            {
-              product_id: 'moist_invalid_1',
-              merchant_id: 'mid_moist_invalid',
-              brand: 'LightLab',
-              name: 'Air Gel Cream',
-              display_name: 'Air Gel Cream',
-              category: 'moisturizer',
-              product_type: 'gel cream',
-            },
-          ],
-        },
-      };
-    }
-    return {
-      status: 200,
-      data: {
-        products: [
-          {
-            product_id: 'serum_invalid_1',
-            merchant_id: 'mid_serum_invalid',
-            brand: 'Clarity Lab',
-            name: 'Oil Balance Serum',
-            display_name: 'Oil Balance Serum',
-            category: 'serum',
-            product_type: 'serum',
-            benefit_tags: ['oil control', 'shine control'],
-            search_aliases: ['Oil Control Serum'],
-            short_description: 'A mattifying oil-control serum for oily skin.',
-          },
-        ],
-      },
-    };
+  axios.get = async (url) => {
+    if (isProductsSearchUrl(url)) searchCalls += 1;
+    throw new Error(`Unexpected axios.get after untrusted planner output: ${url}`);
   };
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: async ({ query = '' } = {}) => {
-        const prompt = String(query || '');
-        if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
-          return {
-            answer: JSON.stringify(
-              buildConcernSelectorFixture({
-                topPickProductId: 'serum_invalid_1',
-                orderedProductIds: ['serum_invalid_1', 'moist_invalid_1', 'spf_invalid_1'],
-              }),
-            ),
-          };
-        }
-        return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
-      },
-      geminiJsonImpl: async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
-        if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) return { ok: false, reason: 'unexpected_gemini_prompt' };
-        plannerAttempts.push(`gemini:${String(model || '').trim()}:structured`);
-        if (String(model || '').trim() === 'gemini-3-flash-preview') {
-          return {
-            ok: false,
-            reason: 'gemini_text_empty',
-            raw_text: '',
-            provider: 'gemini',
-            requested_model: model,
-            effective_model: model,
-            selection_source: 'test_mock',
-          };
-        }
-        return {
-          ok: false,
-          reason: 'gemini_json_invalid',
-          parse_status: 'invalid',
-          raw_text: '{\"primaryConcern\":\"oil control and congestion\"',
-          provider: 'gemini',
-          requested_model: model,
-          effective_model: model,
-          selection_source: 'test_mock',
-        };
-      },
       geminiTextImpl: buildConcernPlannerGeminiTextMock({
-        plainText: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
+        plainTextByModel: {
+          'gemini-3-flash-preview': 'Use a few lightweight products for oily skin.',
+          'gemini-3-pro-preview': 'Maybe start with a breathable routine and adjust later.',
+        },
         attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract}`),
       }),
       useMemoryStore: false,
@@ -2606,26 +2493,22 @@ test('/v1/chat: generic concern planner recovers after a schema-invalid pro stru
       });
 
     assert.equal(response.statusCode, 200);
-    const payload = getRecommendationsPayload(response.body);
-    assert.ok(payload);
-    assert.equal(payload.selection_owner_source, 'llm_concern_planner');
-    assert.equal(payload.primary_role_id, 'oil_control_treatment');
-    assert.equal(payload.recommendations?.[0]?.product_id, 'serum_invalid_1');
-    assert.deepEqual(plannerAttempts.slice(0, 2), [
-      'gemini:gemini-3-flash-preview:structured',
-      'gemini:gemini-3-pro-preview:structured',
+    assert.equal(searchCalls, 0);
+    assert.equal(getRecommendationsPayload(response.body), null);
+    const notice = getConfidenceNoticePayload(response.body);
+    assert.ok(notice);
+    assert.equal(notice.reason, 'planner_untrusted');
+    assert.deepEqual(plannerAttempts, [
+      'gemini:gemini-3-flash-preview:plain_text',
+      'gemini:gemini-3-pro-preview:plain_text',
     ]);
-    assert.equal(plannerAttempts.length === 2 || plannerAttempts.length === 3, true);
-    if (plannerAttempts.length === 3) {
-      assert.equal(plannerAttempts[2], 'gemini:gemini-3-pro-preview:plain_text');
-    }
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: generic concern planner junk structured output still fail-closes instead of trusting index fallback', async () => {
+test('/v1/chat: generic concern planner junk prose output still fail-closes instead of trusting fallback roles', async () => {
   const originalGet = axios.get;
   let searchCalls = 0;
   let harness = null;
@@ -2637,19 +2520,9 @@ test('/v1/chat: generic concern planner junk structured output still fail-closes
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: buildConcernPlannerMock({
-        plannerResult: {
-          core_roles: [{}],
-          support_roles: [],
-        },
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: 'A few products could help oily skin, but I need to think more.',
       }),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
-        plannerResult: {
-          core_roles: [{}],
-          support_roles: [],
-        },
-      }),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2685,7 +2558,7 @@ test('/v1/chat: generic concern planner junk structured output still fail-closes
     assert.equal(getRecommendationsPayload(response.body), null);
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
-    assert.ok(['schema_invalid', 'semantic_planner_schema_invalid'].includes(notice.reason));
+    assert.equal(notice.reason, 'planner_untrusted');
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
@@ -2704,11 +2577,9 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: buildConcernPlannerTimeoutMock(),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
         throwOnConcernPrompt: true,
       }),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2744,9 +2615,10 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
     assert.equal(getRecommendationsPayload(response.body), null);
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
-    assert.equal(notice.reason, 'semantic_planner_timeout');
+    assert.equal(notice.reason, 'planner_untrusted');
     const recoEvent = getRecoRequestedEvent(response.body);
-    assert.equal(recoEvent?.data?.recommendation_meta?.products_empty_reason ?? 'semantic_planner_timeout', 'semantic_planner_timeout');
+    assert.equal(recoEvent?.data?.recommendation_meta?.products_empty_reason ?? 'planner_untrusted', 'planner_untrusted');
+    assert.equal(recoEvent?.data?.recommendation_meta?.telemetry_failure_reason ?? 'planner_timeout', 'planner_timeout');
     assert.equal(recoEvent?.data?.recommendation_meta?.winner_source ?? 'deterministic', 'deterministic');
   } finally {
     harness?.restore?.();
@@ -2817,8 +2689,9 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
           orderedProductIds: ['moist_partial_1', 'spf_partial_1'],
         }),
       }),
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
       useMemoryStore: false,
     });
 
@@ -3003,8 +2876,9 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
-      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
-      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
       useMemoryStore: false,
     });
 

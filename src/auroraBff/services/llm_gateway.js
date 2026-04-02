@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { getGeminiGlobalGate } = require('../../lib/geminiGlobalGate');
 const { extractRecoTargetStepFromText } = require('../recoTargetStep');
+const { resolveAuroraGeminiMainlineModel } = require('../auroraModelPolicy');
 
 function firstConfiguredEnv(keys, fallback = '') {
   for (const key of Array.isArray(keys) ? keys : []) {
@@ -11,7 +12,7 @@ function firstConfiguredEnv(keys, fallback = '') {
 }
 
 function resolveChatV2GeminiModel() {
-  return firstConfiguredEnv(
+  const configuredModel = firstConfiguredEnv(
     [
       'PIVOTA_UI_CHAT_LLM_MODEL_GEMINI',
       'PIVOTA_UI_CHAT_LLM_MODEL',
@@ -19,8 +20,14 @@ function resolveChatV2GeminiModel() {
       'AURORA_ANALYSIS_STORY_MODEL_GEMINI',
       'GEMINI_MODEL',
     ],
-    'gemini-3-flash-preview',
+    '',
   );
+  return resolveAuroraGeminiMainlineModel({
+    configuredModel,
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: 'PIVOTA_UI_CHAT_LLM_MODEL_GEMINI',
+    callPath: 'aurora_chat_v2_llm_gateway',
+  }).effective_model;
 }
 
 const GEMINI_MODELS = Object.freeze({

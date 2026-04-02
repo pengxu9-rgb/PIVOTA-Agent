@@ -169,16 +169,21 @@ function createAppWithPatchedAuroraChat(options = {}) {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
   routesMod.mountAuroraBffRoutes(app, { logger: null });
+  const server = app.listen(0, '127.0.0.1');
+  if (typeof server.unref === 'function') server.unref();
 
   return {
     app,
-    request: supertest(app),
+    request: supertest(server),
     routesMod,
     restore() {
       clientMod.auroraChat = originalAuroraChat;
       if (typeof internalHooks.__resetCallGeminiJsonObjectForTest === 'function') internalHooks.__resetCallGeminiJsonObjectForTest();
       if (typeof internalHooks.__resetCallGeminiTextResponseForTest === 'function') internalHooks.__resetCallGeminiTextResponseForTest();
       if (typeof internalHooks.__resetCallOpenAiJsonObjectForTest === 'function') internalHooks.__resetCallOpenAiJsonObjectForTest();
+      try {
+        server.close();
+      } catch {}
       for (const [key, value] of Object.entries(originalMemoryStoreFns)) {
         memoryStoreMod[key] = value;
       }
