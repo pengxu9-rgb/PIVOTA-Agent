@@ -957,16 +957,26 @@ function buildCreateOrderV2Body({
   });
 }
 
-function buildCheckoutSessionV2Body({
+function buildSubmitPaymentBody({
   payload = {},
   payment = {},
-  metadata = {},
-  clientChannel = 'shop',
-  gatewayRequestId = null,
 } = {}) {
-  const buyerContext = buildInvokeBuyerContext({ source: payment, payload });
+  const paymentMethod =
+    payment?.payment_method && typeof payment.payment_method === 'object' && !Array.isArray(payment.payment_method)
+      ? payment.payment_method
+      : {};
+  const paymentMethodType =
+    firstNonEmptyString(
+      payment?.payment_method_hint,
+      payment?.paymentMethodHint,
+      paymentMethod?.type,
+      payment?.payment_method,
+    ) || 'card';
   return pruneEmptyFields({
     order_id: firstNonEmptyString(payment?.order_id, payment?.orderId),
+    payment_method: {
+      type: paymentMethodType,
+    },
     return_url: firstNonEmptyString(
       payment?.return_url,
       payment?.returnUrl,
@@ -975,20 +985,16 @@ function buildCheckoutSessionV2Body({
       payload?.return_url,
       payload?.returnUrl,
     ),
-    buyer_ref: getInvokeScopedBuyerRef(payload),
-    requested_scopes: Array.isArray(payment?.requested_scopes) ? payment.requested_scopes : undefined,
-    market: firstNonEmptyString(payment?.market, payload?.market),
-    locale: firstNonEmptyString(payment?.locale, payload?.locale, payload?.context?.locale),
-    source: firstNonEmptyString(payment?.source, metadata?.source, clientChannel),
-    customer_email: buyerContext.customer_email,
-    shipping_address: buyerContext.shipping_address,
-    request_context: buildInvokeRequestContext({
-      payload,
-      metadata,
-      clientChannel,
-      gatewayRequestId,
-      fallbackCurrency: payment?.currency,
-    }),
+    idempotency_key: firstNonEmptyString(
+      payment?.idempotency_key,
+      payment?.idempotencyKey,
+    ),
+    save_payment_method:
+      typeof payment?.save_payment_method === 'boolean'
+        ? payment.save_payment_method
+        : typeof payment?.savePaymentMethod === 'boolean'
+          ? payment.savePaymentMethod
+          : undefined,
   });
 }
 
@@ -9727,7 +9733,7 @@ const ROUTE_MAP = {
   },
   submit_payment: {
     method: 'POST',
-    path: '/agent/v2/payments/checkout-sessions',
+    path: '/agent/v1/payments',
     paramType: 'body'
   },
   get_order_status: {
@@ -22870,12 +22876,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       
       case 'submit_payment': {
         const payment = payload.payment || {};
-        requestBody = buildCheckoutSessionV2Body({
+        requestBody = buildSubmitPaymentBody({
           payload,
           payment,
-          metadata,
-          clientChannel,
-          gatewayRequestId,
         });
         break;
       }
@@ -24806,6 +24809,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         paymentObj.psp_used ||
         checkoutSession?.provider ||
         null;
+      const normalizedPsp =
+        typeof psp === 'string' ? psp.trim().toLowerCase() : psp != null ? String(psp).trim().toLowerCase() : '';
+
+      if (normalizedPsp === 'pivota_hosted_checkout') {
+        logger.error(
+          {
+            gateway_request_id: gatewayRequestId,
+            checkout_trace_id: gatewayRequestId,
+            checkout_session_id: checkoutSession?.checkout_session_id || null,
+            checkout_url: checkoutSession?.hosted_url || null,
+          },
+          'submit_payment returned unsupported pivota hosted checkout contract',
+        );
+        return res.status(502).json({
+          error: 'UNSUPPORTED_PAYMENT_SURFACE',
+          message:
+            'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
+          detail: {
+            psp: 'pivota_hosted_checkout',
+            checkout_session_id: checkoutSession?.checkout_session_id || null,
+            checkout_url: checkoutSession?.hosted_url || null,
+          },
+        });
+      }
 
       let paymentAction =
         p.payment_action ||

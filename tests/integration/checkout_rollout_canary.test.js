@@ -10,7 +10,7 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
     nock.cleanAll();
   });
 
-  it('keeps preview_quote -> create_order -> submit_payment on the canonical v2 path', async () => {
+  it('keeps preview_quote -> create_order -> submit_payment on the canonical merchant PSP path', async () => {
     nock(process.env.PIVOTA_API_BASE)
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout')
@@ -97,24 +97,19 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_123' &&
-          body.buyer_ref === 'buyer_rollout' &&
-          body.request_context?.currency === 'USD'
+          body.payment_method?.type === 'card'
         );
       })
       .reply(200, {
-        status: 'success',
-        checkout_session: {
-          checkout_session_id: 'csess_rollout_123',
-          order_id: 'ORD_ROLLOUT_123',
-          state: 'created',
-          hosted_url: 'https://checkout.example.com/session/csess_rollout_123',
-          checkout_token: 'tok_rollout_123',
-          provider: 'pivota_hosted_checkout',
-        },
+        status: 'requires_action',
+        payment_id: 'pay_rollout_123',
+        payment_intent_id: 'pi_rollout_123',
+        psp: 'stripe',
+        client_secret: 'pi_rollout_123_secret_456',
       });
 
     const previewResp = await request(app)
@@ -192,21 +187,24 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
     expect(createOrderResp.body.payment?.client_secret).toBe('cs_rollout');
     expect(paymentResp.body).toMatchObject({
       status: 'requires_action',
-      upstream_status: 'success',
       payment_status: 'requires_action',
       confirmation_owner: 'client',
       requires_client_confirmation: true,
-      checkout_session_id: 'csess_rollout_123',
-      checkout_url: 'https://checkout.example.com/session/csess_rollout_123',
+      payment_intent_id: 'pi_rollout_123',
+      psp: 'stripe',
+      payment_action: {
+        type: 'stripe_client_secret',
+        client_secret: 'pi_rollout_123_secret_456',
+      },
       payment: {
-        checkout_session_id: 'csess_rollout_123',
-        checkout_token: 'tok_rollout_123',
+        payment_intent_id: 'pi_rollout_123',
+        payment_status: 'requires_action',
       },
     });
     expect(nock.isDone()).toBe(true);
   });
 
-  it('survives quote expiry and temporary checkout unavailability without leaving the v2 path', async () => {
+  it('survives quote expiry and temporary payment unavailability without leaving the merchant PSP path', async () => {
     nock(process.env.PIVOTA_API_BASE)
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_retry')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_retry')
@@ -318,11 +316,11 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_retry')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_retry')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_RETRY' &&
-          body.buyer_ref === 'buyer_rollout_retry'
+          body.payment_method?.type === 'card'
         );
       })
       .reply(503, {
@@ -333,23 +331,19 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_retry')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_retry')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_RETRY' &&
-          body.buyer_ref === 'buyer_rollout_retry'
+          body.payment_method?.type === 'card'
         );
       })
       .reply(200, {
-        status: 'success',
-        checkout_session: {
-          checkout_session_id: 'csess_rollout_retry',
-          order_id: 'ORD_ROLLOUT_RETRY',
-          state: 'created',
-          hosted_url: 'https://checkout.example.com/session/csess_rollout_retry',
-          checkout_token: 'tok_rollout_retry',
-          provider: 'pivota_hosted_checkout',
-        },
+        status: 'requires_action',
+        payment_id: 'pay_rollout_retry',
+        payment_intent_id: 'pi_rollout_retry',
+        psp: 'stripe',
+        client_secret: 'pi_rollout_retry_secret_456',
       });
 
     const previewResp = await request(app)
@@ -426,15 +420,18 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
     expect(createOrderResp.body.payment?.client_secret).toBe('cs_rollout_retry');
     expect(paymentResp.body).toMatchObject({
       status: 'requires_action',
-      upstream_status: 'success',
       payment_status: 'requires_action',
       confirmation_owner: 'client',
       requires_client_confirmation: true,
-      checkout_session_id: 'csess_rollout_retry',
-      checkout_url: 'https://checkout.example.com/session/csess_rollout_retry',
+      payment_intent_id: 'pi_rollout_retry',
+      psp: 'stripe',
+      payment_action: {
+        type: 'stripe_client_secret',
+        client_secret: 'pi_rollout_retry_secret_456',
+      },
       payment: {
-        checkout_session_id: 'csess_rollout_retry',
-        checkout_token: 'tok_rollout_retry',
+        payment_intent_id: 'pi_rollout_retry',
+        payment_status: 'requires_action',
       },
     });
     expect(nock.isDone()).toBe(true);
@@ -500,7 +497,7 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
     nock(process.env.PIVOTA_API_BASE)
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_governance')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_governance')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return body && body.order_id === 'ORD_ROLLOUT_GOVERNANCE';
       })
       .reply(503, {
