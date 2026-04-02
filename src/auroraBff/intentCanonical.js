@@ -1,8 +1,10 @@
 const { matchConcepts } = require('./kbV0/conceptMatcher');
+const { normalizeRecoTargetStep } = require('./recoTargetStep');
 const {
   detectLanguageFromText,
   isIngredientScienceLikeText,
   isRecommendationLikeText,
+  isSuitabilityLikeText,
 } = require('./languageIntentLexicon');
 
 const INTENT_ENUM = Object.freeze({
@@ -181,6 +183,24 @@ function hasAnchorLinkCue(text) {
   return ANCHOR_LINK_CUE_RE.test(String(text || '').trim());
 }
 
+function isExplicitStepAwareRecoAsk(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  if (!normalizeRecoTargetStep(raw)) return false;
+  if (isIngredientScienceLikeText(raw)) return false;
+  if (isSuitabilityLikeText(raw)) return false;
+  if (/\b(ingredient|ingredients|active|actives|mechanism|evidence|clinical|study|paper|research|citation|citations|filters?)\b/i.test(raw)) {
+    return false;
+  }
+  if (/(成分|机理|机制|证据|临床|论文|滤剂|防晒剂)/.test(raw)) return false;
+  if (/(pregnan|trying\s+to\s+conceive|conceiv|lactat|breastfeed|怀孕|备孕|哺乳)/i.test(raw)) return false;
+  if (/\b(can|could)\s+i\s+use\b/i.test(raw) || /(可以用吗|能用吗|适合我吗)/.test(raw)) return false;
+  return (
+    /\b(what|which|best|recommend|suggest|need|want|buy|get|looking for|for)\b/i.test(raw) ||
+    /(推荐|求推荐|想要|需要|买|适合).{0,20}(洁面|洗面奶|精华|面霜|乳液|防晒|面膜|爽肤水|化妆水)/.test(raw)
+  );
+}
+
 function normalizeTravelDestinationCandidate(value) {
   const raw = String(value || '').trim().replace(/\s+/g, ' ');
   if (!raw) return '';
@@ -267,6 +287,15 @@ function inferCanonicalIntent({ message, actionId, actionLabel, language } = {})
       source: 'known_option_text',
       confidence: 0.92,
       entities: intent === INTENT_ENUM.TRAVEL_PLANNING || intent === INTENT_ENUM.WEATHER_ENV ? extractTravelEntities(text) : {},
+    };
+  }
+
+  if (isExplicitStepAwareRecoAsk(text)) {
+    return {
+      intent: INTENT_ENUM.RECO_PRODUCTS,
+      source: 'heuristic_step_aware_reco',
+      confidence: 0.9,
+      entities: {},
     };
   }
 
