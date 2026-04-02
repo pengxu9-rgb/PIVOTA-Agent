@@ -3489,6 +3489,120 @@ test('__internal: framework pool rejects explicit SPF sunscreen serum from the o
   );
 });
 
+test('__internal: framework pool clears support-only selected recommendations when the primary role is unmatched', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'spf_support_only_1',
+        merchant_id: 'external_seed',
+        brand: 'SunGuard',
+        name: 'Daily UV Fluid SPF 50',
+        display_name: 'Daily UV Fluid SPF 50',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'daily sunscreen',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        search_aliases: ['Broad Spectrum Sunscreen'],
+        benefit_tags: ['spf', 'broad spectrum'],
+        short_description: 'A lightweight broad-spectrum sunscreen for oily skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_support_only_clear',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            label: 'Oil-control treatment',
+            query_terms: ['oil control serum', 'shine control serum'],
+            fit_keywords: ['oil control', 'shine control', 'mattifying', 'sebum'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 2,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'broad spectrum', 'uv filters'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 0);
+  assert.equal(state.pre_llm_selected_candidate_count, 1);
+  assert.equal(state.best_available_role_id, 'daily_sunscreen');
+  assert.equal(state.weak_viable_pool, true);
+});
+
+test('__internal: step-aware sunscreen query ladder drops noisy acne and alias-only queries', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+  const levels = recoShared.buildSameFamilyQueryLevels({
+    targetContext: {
+      resolved_target_step: 'sunscreen',
+      step_aware_intent: true,
+    },
+    profileSummary: {
+      skin_type: 'oily',
+      goals: ['acne'],
+    },
+    ingredientContext: null,
+    seedTerms: [],
+    lang: 'EN',
+  });
+
+  const queries = levels.flatMap((level) => (Array.isArray(level?.queries) ? level.queries : []).map((row) => row.query));
+  assert.ok(queries.includes('sunscreen'));
+  assert.ok(queries.includes('sunscreen oily skin'));
+  assert.equal(queries.includes('sunscreen acne'), false);
+  assert.equal(queries.includes('sun screen'), false);
+  assert.equal(queries.includes('spf'), false);
+});
+
+test('__internal: reco WARN safety text only surfaces travel UV warnings for travel-context reco asks', async () => {
+  const { __internal } = loadRoutesFresh();
+  const safetyDecision = {
+    block_level: 'WARN',
+    reason_codes: ['TRAVEL_HIGH_UV_RETINOID_WARN'],
+    reasons: ['Higher UV exposure while traveling can raise irritation risk.'],
+    safe_alternatives: ['Use a simpler routine and reapply sunscreen.'],
+  };
+
+  assert.equal(
+    __internal.shouldSurfaceRecoWarnSafetyText({
+      safetyDecision,
+      recoEntrySourceDetail: 'goal_driven',
+      message: 'what sunscreen for oily skin?',
+    }),
+    false,
+  );
+  assert.equal(
+    __internal.shouldSurfaceRecoWarnSafetyText({
+      safetyDecision,
+      recoEntrySourceDetail: 'travel_handoff',
+      message: 'what sunscreen for oily skin?',
+    }),
+    true,
+  );
+  assert.equal(
+    __internal.shouldSurfaceRecoWarnSafetyText({
+      safetyDecision,
+      recoEntrySourceDetail: 'goal_driven',
+      message: 'what sunscreen should I pack for beach travel?',
+    }),
+    true,
+  );
+});
+
 test('__internal: framework pool accepts external seed semantic evidence from benefit tags and aliases', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({

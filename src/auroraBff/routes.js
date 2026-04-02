@@ -17380,15 +17380,16 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
   const bestAvailableRecommendation = selected[0] || null;
+  const surfacedRecommendations = primaryRoleMatched ? selected : [];
   const rawSourceCounts = summarizeConcernFrameworkSourceCounts(deduped);
   const viableSourceCounts = summarizeConcernFrameworkSourceCounts(viable);
-  const selectedSourceCounts = summarizeConcernFrameworkSourceCounts(selected);
+  const selectedSourceCounts = summarizeConcernFrameworkSourceCounts(surfacedRecommendations);
   const externalSeedUsedCount = Number(selectedSourceCounts.external_seed || 0);
 
   return {
     raw_candidate_pool: deduped,
     viable_candidate_pool: viable,
-    selected_recommendations: selected,
+    selected_recommendations: surfacedRecommendations,
     primary_recommendation_id: pickFirstString(
       primaryRecommendation?.product_id,
       primaryRecommendation?.productId,
@@ -17413,15 +17414,15 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     hard_reject_count: hardReject.length,
     hard_reject_preview: buildConcernFrameworkRejectPreview(hardReject),
     pre_llm_selected_candidate_count: selected.length,
-    final_selected_candidate_count: selected.length,
-    selected_candidate_count: selected.length,
+    final_selected_candidate_count: surfacedRecommendations.length,
+    selected_candidate_count: surfacedRecommendations.length,
     hard_reject: hardReject,
     soft_mismatch: softMismatch,
     viable,
     viable_pool_strength: primaryRoleMatched ? 'strong' : selected.length > 0 ? 'weak' : 'empty',
     weak_viable_pool: selected.length > 0 && !primaryRoleMatched,
     family_match_type: primaryRoleMatched ? 'framework_exact' : selected.length > 0 ? 'framework_partial' : 'framework_failed',
-    item_target_fidelity: selected.map((item) => Number(item.framework_score || 0)),
+    item_target_fidelity: surfacedRecommendations.map((item) => Number(item.framework_score || 0)),
     group_target_fidelity: primaryRecommendation ? [Number(primaryRecommendation.framework_score || 0)] : [],
     target_fidelity_level: primaryRoleMatched ? 'satisfied' : selected.length > 0 ? 'partial' : 'failed',
     overall_target_fidelity_satisfied: primaryRoleMatched,
@@ -17433,14 +17434,14 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: primaryRoleMatched && selected.length > 0,
+    terminal_success: primaryRoleMatched && surfacedRecommendations.length > 0,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: selected.length > 0 && !primaryRoleMatched,
     late_conflict_without_override: selected.length > 0 && !primaryRoleMatched,
     candidate_drop_stage: deduped.length > 0 && viable.length === 0 ? 'filtered_after_recall' : selected.length > 0 && !primaryRoleMatched ? 'weak_viable_pool' : 'none',
     scope_classification_stats: scopeClassificationStats,
     role_pool_stats: rolePoolStats,
-    candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${selected.length}_${viable.length}`,
+    candidate_pool_signature: `framework_${String(targetContext?.framework_id || '').slice(0, 12)}_${surfacedRecommendations.length}_${viable.length}`,
     raw_candidate_pool_debug_signature: `framework_raw_${String(targetContext?.framework_id || '').slice(0, 12)}_${deduped.length}`,
   };
 }
@@ -28897,6 +28898,39 @@ function isTravelRecoHandoffRequest({ actionId, actionData, profile, session } =
 
   const context = buildTravelRecoHandoffContext({ session, profile });
   return Boolean(context.travel_readiness || context.has_travel_plan);
+}
+
+function hasTravelOrUvSafetySignal(safety) {
+  const s = isPlainObject(safety) ? safety : null;
+  if (!s) return false;
+  const tokens = [
+    ...(Array.isArray(s.reason_codes) ? s.reason_codes : []),
+    ...(Array.isArray(s.reasons) ? s.reasons : []),
+    ...(Array.isArray(s.safe_alternatives) ? s.safe_alternatives : []),
+  ]
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!tokens) return false;
+  return /\btravel\b|\btrip\b|\bvacation\b|\buv\b|high[_ -]?uv|sun exposure|destination|beach|outdoor/.test(tokens);
+}
+
+function messageHasExplicitTravelOrUvContext(message = '') {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return /\btravel\b|\btrip\b|\bvacation\b|\buv\b|sun exposure|higher uv|beach|outdoor/.test(normalized);
+}
+
+function shouldSurfaceRecoWarnSafetyText({
+  safetyDecision,
+  recoEntrySourceDetail = '',
+  message = '',
+} = {}) {
+  const s = isPlainObject(safetyDecision) ? safetyDecision : null;
+  if (!s || String(s.block_level || '').trim() !== BLOCK_LEVEL.WARN) return false;
+  if (!hasTravelOrUvSafetySignal(s)) return true;
+  return String(recoEntrySourceDetail || '').trim().toLowerCase() === 'travel_handoff'
+    || messageHasExplicitTravelOrUvContext(message);
 }
 
 function isVerifiedBeautyProductCandidate(row) {
@@ -80803,8 +80837,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             : (ctx.lang === 'CN'
               ? '我还没能从上游拿到可结构化的产品推荐结果。你可以先告诉我你想要的品类（例如：洁面/精华/面霜/防晒），我再继续。'
               : "I couldn't get a structured product recommendation from upstream yet. Tell me what category you want (cleanser / serum / moisturizer / sunscreen), and I’ll continue."));
-        const safetyWarnText =
-          safetyDecision && safetyDecision.block_level === BLOCK_LEVEL.WARN ? buildSafetyNoticeText(safetyDecision) : '';
+        const safetyWarnText = shouldSurfaceRecoWarnSafetyText({
+          safetyDecision,
+          recoEntrySourceDetail: effectiveRecoEntrySourceDetail,
+          message: recoRequestMessage || message,
+        })
+          ? buildSafetyNoticeText(safetyDecision)
+          : '';
         const recoAssistantRewrite = finalHasRecs
           ? await maybeRewriteRecoAssistantTextWithLlm({
             payload,
@@ -82814,6 +82853,7 @@ const __internal = {
   validateRecoPromptContract,
   applyRecoWarningVisibilityContract,
   hasItineraryContextForReco,
+  shouldSurfaceRecoWarnSafetyText,
   enrichRecoItemWithPdpOpenContract,
   enrichRecommendationsWithPdpOpenContract,
   getPdpPrefetchStateSnapshot,
