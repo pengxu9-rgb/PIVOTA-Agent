@@ -86,6 +86,35 @@ test('concern planner normalizer trusts prose-only role ordering when semantics 
   assert.equal(normalized.core_roles[2].role_id, 'daily_sunscreen');
 });
 
+test('concern planner normalizer trusts a single explicit core role when support semantics are also explicit', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'my oily skin also feels dehydrated, what product should i use?',
+    profileSummary: { skinType: 'oily', goals: ['oil control', 'hydration'], barrierStatus: 'dry' },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    [
+      'PRIMARY_CONCERN: excess oil and congestion',
+      'CORE_ROLE_IDS: oil_control_treatment',
+      'SUPPORT_ROLE_IDS: hydrating_mask_support',
+      'INGREDIENT_HYPOTHESES: niacinamide | zinc pca',
+      'PRODUCT_TYPE_HYPOTHESES: serum | gel moisturizer | sunscreen',
+      'ROUTINE_SHELL_HINTS: PM=oil_control_treatment; OPTIONAL=hydrating_mask_support',
+    ].join('\n'),
+    {
+      fallbackPlan,
+      requestText: 'my oily skin also feels dehydrated, what product should i use?',
+    },
+  );
+
+  assert.equal(normalized.selection_owner_source, 'llm_concern_planner');
+  assert.equal(normalized.selection_owner_state, 'trusted');
+  assert.equal(normalized.core_roles[0]?.role_id, 'oil_control_treatment');
+  assert.deepEqual(
+    normalized.support_roles.map((role) => role.role_id),
+    ['hydrating_mask_support'],
+  );
+});
+
 test('concern planner normalizer fail-closes junk text into fallback state', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'im oily skin, what product should i use?',

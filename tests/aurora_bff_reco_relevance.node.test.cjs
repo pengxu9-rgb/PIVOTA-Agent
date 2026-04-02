@@ -2498,6 +2498,11 @@ test('/v1/chat: generic concern planner fails closed when both flash and pro pro
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
     assert.equal(notice.reason, 'planner_untrusted');
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.equal(
+      recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
+      'framework_mainline',
+    );
     assert.deepEqual(plannerAttempts, [
       'gemini:gemini-3-flash-preview:plain_text',
       'gemini:gemini-3-pro-preview:plain_text',
@@ -2559,6 +2564,11 @@ test('/v1/chat: generic concern planner junk prose output still fail-closes inst
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
     assert.equal(notice.reason, 'planner_untrusted');
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.equal(
+      recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
+      'framework_mainline',
+    );
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
@@ -2617,6 +2627,10 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
     assert.ok(notice);
     assert.equal(notice.reason, 'planner_untrusted');
     const recoEvent = getRecoRequestedEvent(response.body);
+    assert.equal(
+      recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
+      'framework_mainline',
+    );
     assert.equal(recoEvent?.data?.recommendation_meta?.products_empty_reason ?? 'planner_untrusted', 'planner_untrusted');
     assert.equal(recoEvent?.data?.recommendation_meta?.telemetry_failure_reason ?? 'planner_timeout', 'planner_timeout');
     assert.equal(recoEvent?.data?.recommendation_meta?.winner_source ?? 'deterministic', 'deterministic');
@@ -2728,9 +2742,14 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const noticeCard = cards.find((card) => card?.type === 'confidence_notice');
     assert.ok(noticeCard);
-    assert.equal(noticeCard?.payload?.reason, 'post_processing_eliminated_candidates');
+    assert.equal(noticeCard?.payload?.reason, 'filtered_after_recall');
     assert.match(String(response.body?.assistant_text || ''), /I do not have a strong mainline match for the first role yet/i);
     assert.match(String(response.body?.assistant_text || ''), /I will not force an off-framework product/i);
+    const recoEvent = getRecoRequestedEvent(response.body);
+    assert.equal(
+      recoEvent?.data?.recommendation_meta?.source_mode || recoEvent?.data?.source_mode,
+      'catalog_grounded',
+    );
     assert.ok(observedSearchParams.every((row) => row.allow_external_seed !== true));
   } finally {
     harness?.restore?.();

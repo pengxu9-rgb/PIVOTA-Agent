@@ -318,6 +318,10 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
   const ingredientLine = extractLineValue(answerText, ['INGREDIENT_HYPOTHESES', 'INGREDIENTS', 'INGREDIENT DIRECTIONS']);
   const productTypeLine = extractLineValue(answerText, ['PRODUCT_TYPE_HYPOTHESES', 'PRODUCT TYPES', 'PRODUCT TYPE DIRECTIONS']);
   const routineShellLine = extractLineValue(answerText, ['ROUTINE_SHELL_HINTS', 'ROUTINE SHELL', 'ROUTINE']);
+  const explicitCoreRoleTokens = splitSectionTokens(coreRoleLine);
+  const explicitSupportRoleTokens = splitSectionTokens(supportRoleLine);
+  const explicitIngredientHypotheses = splitSectionTokens(ingredientLine);
+  const explicitProductTypeHypotheses = splitSectionTokens(productTypeLine);
 
   let coreRoles = normalizeConcernRoleRows(splitSectionTokens(coreRoleLine), {
     fallbackRoles: Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [],
@@ -354,19 +358,47 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
       .slice(0, 2);
   }
 
-  const trusted = coreRoles.length >= 2;
+  const routineShellHints = parseRoutineShellHints(routineShellLine, { coreRoles, supportRoles });
+  const hasRoutineShellHints =
+    (Array.isArray(routineShellHints.am_core_roles) && routineShellHints.am_core_roles.length > 0)
+    || (Array.isArray(routineShellHints.pm_core_roles) && routineShellHints.pm_core_roles.length > 0)
+    || (Array.isArray(routineShellHints.optional_support_roles) && routineShellHints.optional_support_roles.length > 0);
+  const hasFrameworkScaffold = /\b(priority order|start with|follow with|during the day|in the morning|at night|morning|evening|optional support)\b/.test(
+    normalizeConcernRoleHint(answerText),
+  );
   const ingredientHypotheses = uniqCaseInsensitiveStrings([
-    ...splitSectionTokens(ingredientLine),
+    ...explicitIngredientHypotheses,
     ...coreRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses)),
     ...supportRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses)),
   ], 12);
   const productTypeHypotheses = uniqCaseInsensitiveStrings([
-    ...splitSectionTokens(productTypeLine),
+    ...explicitProductTypeHypotheses,
     ...coreRoles.flatMap((role) => asStringArray(role.product_type_hypotheses)),
     ...supportRoles.flatMap((role) => asStringArray(role.product_type_hypotheses)),
   ], 8);
-  const routineShellHints = parseRoutineShellHints(routineShellLine, { coreRoles, supportRoles });
   const routineShell = buildRoutineShell({ coreRoles, supportRoles, shellHints: routineShellHints });
+  const trusted =
+    (explicitCoreRoleTokens.length > 0 && coreRoles.length > 0)
+    || (hasFrameworkScaffold && coreRoles.length >= 2)
+    || (
+      hasFrameworkScaffold
+      && coreRoles.length >= 1
+      && (
+        explicitSupportRoleTokens.length > 0
+        || supportRoles.length > 0
+        || hasRoutineShellHints
+      )
+    )
+    || (
+      explicitCoreRoleTokens.length > 0
+      && coreRoles.length >= 1
+      && (
+        explicitSupportRoleTokens.length > 0
+        || explicitIngredientHypotheses.length > 0
+        || explicitProductTypeHypotheses.length > 0
+        || hasRoutineShellHints
+      )
+    );
   if (!trusted) {
     return {
       ...basePlan,

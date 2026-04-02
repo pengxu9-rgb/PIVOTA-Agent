@@ -28820,6 +28820,21 @@ function normalizeRecoSourceDetail(raw) {
   return 'goal_driven';
 }
 
+function inferRecoSourceMode(sourceMode, source, { defaultValue = 'rules_only' } = {}) {
+  const normalizedMode = String(sourceMode || '').trim().toLowerCase();
+  if (normalizedMode) return normalizedMode;
+  const normalizedSource = String(source || '').trim().toLowerCase();
+  if (!normalizedSource) return String(defaultValue || 'rules_only').trim().toLowerCase() || 'rules_only';
+  if (normalizedSource.includes('framework_mainline')) return 'framework_mainline';
+  if (normalizedSource.includes('catalog_grounded')) return 'catalog_grounded';
+  if (normalizedSource.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
+  if (normalizedSource.includes('llm_primary')) return 'llm_primary';
+  if (normalizedSource.includes('artifact_matcher')) return 'artifact_matcher';
+  if (normalizedSource.includes('travel_handoff') || normalizedSource.includes('travel_reco_preview')) return 'travel_handoff';
+  if (normalizedSource.includes('upstream')) return 'upstream_fallback';
+  return String(defaultValue || 'rules_only').trim().toLowerCase() || 'rules_only';
+}
+
 function extractLastTravelReadinessFromSession(session) {
   if (!isPlainObject(session)) return null;
   const raw = isPlainObject(session.last_travel_readiness)
@@ -31875,7 +31890,7 @@ function buildRecoMainlineContract({
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
   const failureClass = normalizeRecoFailureClass(llmFailureClass);
-  const normalizedSourceMode = String(sourceMode || '').trim().toLowerCase() || 'rules_only';
+  const normalizedSourceMode = inferRecoSourceMode(sourceMode, source, { defaultValue: 'rules_only' });
   const upstreamCode = String(upstreamFailureCode || '').trim().toUpperCase();
   const normalizedProductsEmptyReason = normalizeRecoProductsEmptyReason(productsEmptyReason);
   const normalizedGroundingStatus = normalizeRecoGroundingStatus(groundingStatus);
@@ -51700,363 +51715,6 @@ function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '
   return normalized;
 }
 
-function buildConcernSemanticPlanPromptBundle({
-  requestText = '',
-  focus = '',
-  lang = 'EN',
-  profileSummary = null,
-  recommendationTaskContext = null,
-  fallbackPlan = null,
-} = {}) {
-  const isCn = String(lang || '').trim().toUpperCase() === 'CN';
-  const profile = isPlainObject(profileSummary) ? profileSummary : {};
-  const taskContext = isPlainObject(recommendationTaskContext) ? recommendationTaskContext : null;
-  const plan = isPlainObject(fallbackPlan) ? fallbackPlan : buildConcernSemanticPlanFallback({ text: requestText, focus, profileSummary });
-  const contextPayload = {
-    request_text: String(requestText || '').trim(),
-    focus: String(focus || '').trim() || null,
-    profile: {
-      skin_type: pickFirstTrimmed(profile.skinType, profile.skin_type) || null,
-      sensitivity: pickFirstTrimmed(profile.sensitivity) || null,
-      barrier_status: pickFirstTrimmed(profile.barrierStatus, profile.barrier_status) || null,
-      goals: Array.isArray(profile.goals) ? profile.goals : [],
-    },
-    fallback_plan: {
-      primary_concern: plan.primary_concern,
-      core_role_ids: Array.isArray(plan.core_roles) ? plan.core_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 3) : [],
-      support_role_ids: Array.isArray(plan.support_roles) ? plan.support_roles.map((role) => pickFirstTrimmed(role?.role_id)).filter(Boolean).slice(0, 2) : [],
-      ingredient_hypotheses: asStringArray(plan.ingredient_hypotheses, 4),
-      routine_shell: {
-        am_core_roles: Array.isArray(plan.routine_shell?.am_core_roles) ? plan.routine_shell.am_core_roles.slice(0, 3) : [],
-        pm_core_roles: Array.isArray(plan.routine_shell?.pm_core_roles) ? plan.routine_shell.pm_core_roles.slice(0, 3) : [],
-        optional_support_roles: Array.isArray(plan.routine_shell?.optional_support_roles) ? plan.routine_shell.optional_support_roles.slice(0, 2) : [],
-      },
-    },
-    task_context: taskContext && taskContext.snapshot_fields_used
-      ? {
-          context_mode: String(taskContext.context_mode || '').trim() || null,
-          snapshot_fields_used: Array.isArray(taskContext.snapshot_fields_used) ? taskContext.snapshot_fields_used.slice(0, 6) : [],
-        }
-      : null,
-  };
-
-  const instructions = isCn
-    ? [
-        '[PROMPT_VERSION=concern_semantic_plan_v1]',
-        '角色：严格的护肤关切语义规划器。',
-        '任务：只针对 generic concern 问题输出最小语义计划，不要输出具体商品。',
-        '输出最小 JSON：{"primary_concern":string,"core_role_ids":[string],"support_role_ids":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
-        '规则：',
-        '- 只返回 role_id，不要返回 role 对象。',
-        '- core_role_ids 最多 3 个，support_role_ids 最多 2 个。',
-        '- role_id 必须从 context.fallback_plan.core_role_ids / support_role_ids 中挑选。',
-        '- support role 只能是 optional/support，不能替代 core role。',
-        '- 不要做价格带判断。',
-        '- 不要输出具体品牌、SKU、购买链接。',
-        '- 不要输出 routine shell、selection constraints、额外解释文本。',
-        '- 如果上下文不足，也要给出保守但可执行的 core/support role_id 框架。',
-        '- 对 oily skin 这类问题，先判断最先要解决的角色，再给相应的成分和产品类型方向。',
-      ]
-    : [
-        '[PROMPT_VERSION=concern_semantic_plan_v1]',
-        'Role: strict skincare concern planner.',
-        'Task: output the minimum semantic plan for a generic skincare concern. Do NOT recommend specific products.',
-        'Output minimum JSON only: {"primary_concern":string,"core_role_ids":[string],"support_role_ids":[string],"ingredient_hypotheses":[string],"product_type_hypotheses":[string]}',
-        'Rules:',
-        '- Return role IDs only, not role objects.',
-        '- core_role_ids max 3, support_role_ids max 2.',
-        '- Every role_id must come from context.fallback_plan.core_role_ids or context.fallback_plan.support_role_ids.',
-        '- support roles must stay optional/supportive and cannot replace a core role.',
-        '- Do not decide price tiers.',
-        '- Do not output brand names, SKUs, or links.',
-        '- Do not emit a routine shell, selection constraints, or extra commentary.',
-        '- Even with limited context, return a conservative but actionable core/support role framework.',
-        '- For oily-skin asks, decide what should be solved first, then name the product-type and ingredient directions that fit that role.',
-      ];
-  const systemPrompt = instructions.join('\n');
-  const userPrompt = `context=${JSON.stringify(contextPayload)}`;
-  return {
-    systemPrompt,
-    userPrompt,
-    query: `${systemPrompt}\n${userPrompt}`,
-  };
-}
-
-function buildConcernSemanticPlanPrompt(options = {}) {
-  return buildConcernSemanticPlanPromptBundle(options).query;
-}
-
-function extractConcernSemanticPlanStructured(upstream) {
-  const structured = getUpstreamStructuredOrJson(upstream, {
-    answerRequiredKeys: [
-      'primary_concern',
-      'primaryConcern',
-      'core_roles',
-      'coreRoles',
-      'roles',
-      'support_roles',
-      'supportRoles',
-      'routine_shell',
-      'routineShell',
-      'framework_summary',
-      'frameworkSummary',
-    ],
-  });
-  const candidates = [
-    structured,
-    structured?.semantic_plan,
-    structured?.semanticPlan,
-    structured?.plan,
-    structured?.result,
-    upstream?.structured?.semantic_plan,
-    upstream?.structured?.semanticPlan,
-    upstream?.structured?.plan,
-    upstream?.structured?.result,
-  ];
-  for (const candidate of candidates) {
-    if (isPlainObject(candidate)) return candidate;
-  }
-  return null;
-}
-
-function pickConcernSemanticRoleMatchesFromText(text, roles = []) {
-  const normalizedText = normalizeConcernRoleHint(text);
-  if (!normalizedText) return [];
-  const out = [];
-  for (const role of Array.isArray(roles) ? roles : []) {
-    if (!isPlainObject(role)) continue;
-    const patterns = uniqCaseInsensitiveStrings([
-      role.role_id,
-      role.label,
-      ...(Array.isArray(role.query_terms) ? role.query_terms.slice(0, 3) : []),
-    ], 8)
-      .map((value) => normalizeConcernRoleHint(value))
-      .filter((value) => value && value.length >= 6);
-    if (!patterns.length) continue;
-    if (patterns.some((value) => normalizedText.includes(value))) out.push(role);
-  }
-  return out;
-}
-
-const CONCERN_SEMANTIC_WEAK_PRODUCT_TYPE_HINTS = new Set([
-  'product',
-  'products',
-  'skincare',
-  'skin care',
-  'treatment',
-  'serum',
-]);
-
-function scoreConcernSemanticRoleFromText(answerText, role) {
-  const normalizedText = normalizeConcernRoleHint(answerText);
-  const row = isPlainObject(role) ? role : null;
-  if (!normalizedText || !row) return { score: 0, matched: false, evidence: [] };
-
-  const evidence = [];
-  let score = 0;
-  const addEvidence = (type, values, weight, maxMatches = 2) => {
-    let matches = 0;
-    for (const value of values) {
-      if (matches >= maxMatches) break;
-      if (!value || normalizedText.includes(value) !== true) continue;
-      evidence.push(`${type}:${value}`);
-      score += weight;
-      matches += 1;
-    }
-  };
-
-  const strongPatterns = uniqCaseInsensitiveStrings(
-    [
-      row.role_id,
-      row.label,
-      ...asStringArray(row.query_terms || row.queryTerms),
-      ...asStringArray(row.fit_keywords || row.fitKeywords),
-    ],
-    16,
-  )
-    .map((value) => normalizeConcernRoleHint(value))
-    .filter((value) => value && value.length >= 4);
-  addEvidence('strong', strongPatterns, 2, 3);
-
-  const ingredientPatterns = uniqCaseInsensitiveStrings(
-    asStringArray(row.ingredient_hypotheses || row.ingredientHypotheses),
-    8,
-  )
-    .map((value) => normalizeConcernRoleHint(value))
-    .filter((value) => value && value.length >= 4);
-  addEvidence('ingredient', ingredientPatterns, 1, 2);
-
-  const productTypePatterns = uniqCaseInsensitiveStrings(
-    [
-      row.preferred_step,
-      ...(Array.isArray(row.alternate_steps) ? row.alternate_steps : []),
-      ...asStringArray(row.product_type_hypotheses || row.productTypeHypotheses),
-    ],
-    8,
-  )
-    .map((value) => normalizeConcernRoleHint(value))
-    .filter((value) => value && !CONCERN_SEMANTIC_WEAK_PRODUCT_TYPE_HINTS.has(value));
-  addEvidence('product_type', productTypePatterns, 1, 2);
-
-  const roleId = pickFirstTrimmed(row.role_id).toLowerCase();
-  if (roleId === 'oil_control_treatment') {
-    addEvidence('role_signal', [
-      'oil control',
-      'shine control',
-      'mattifying',
-      'anti shine',
-      'balancing',
-      'congestion',
-      'clogged pores',
-      'breakout',
-      'acne',
-      'sebum',
-    ], 1, 3);
-  } else if (roleId === 'lightweight_moisturizer') {
-    addEvidence('role_signal', [
-      'lightweight moisturizer',
-      'oil free moisturizer',
-      'gel cream',
-      'water gel',
-      'breathable hydration',
-      'light hydration',
-      'non greasy moisturizer',
-    ], 1, 3);
-  } else if (roleId === 'daily_sunscreen') {
-    addEvidence('role_signal', [
-      'daily sunscreen',
-      'sunscreen',
-      'sun protection',
-      'broad spectrum',
-      'uv protection',
-      'spf',
-    ], 1, 3);
-  }
-
-  return {
-    score,
-    matched: score >= 2,
-    evidence,
-  };
-}
-
-function repairConcernSemanticPlanFromText(answerText, { fallbackPlan } = {}) {
-  const plan = isPlainObject(fallbackPlan) ? fallbackPlan : null;
-  if (!plan || !String(answerText || '').trim()) return null;
-  const normalizedText = normalizeConcernRoleHint(answerText);
-  const primaryRoleId = pickFirstTrimmed(plan.core_roles?.[0]?.role_id);
-  const coreRoleScored = (Array.isArray(plan.core_roles) ? plan.core_roles : [])
-    .map((role) => ({
-      role,
-      match: scoreConcernSemanticRoleFromText(answerText, role),
-    }));
-  const primaryScore = coreRoleScored.find((item) => pickFirstTrimmed(item?.role?.role_id) === primaryRoleId)?.match?.score || 0;
-  if (primaryScore < 2) return null;
-  const hasFrameworkScaffold = /\b(priority order|start with|follow with|during the day|in the morning|at night|morning|evening)\b/.test(normalizedText);
-  const nonPrimaryCoreSignalCount = coreRoleScored
-    .filter((item) => pickFirstTrimmed(item?.role?.role_id) !== primaryRoleId)
-    .filter((item) => item.match.score >= 1)
-    .length;
-
-  const coreRoles = coreRoleScored
-    .filter((item, index) => item.match.matched || (index > 0 && item.match.score >= 1))
-    .sort((left, right) => {
-      const rankDiff = Number(left?.role?.rank || 0) - Number(right?.role?.rank || 0);
-      if (rankDiff !== 0) return rankDiff;
-      return Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
-    })
-    .map((item) => item.role);
-
-  const supportRoles = (Array.isArray(plan.support_roles) ? plan.support_roles : [])
-    .map((role) => ({
-      role,
-      match: scoreConcernSemanticRoleFromText(answerText, role),
-    }))
-    .filter((item) => item.match.score >= 1)
-    .map((item) => item.role);
-  if (coreRoles.length < 2 && !(hasFrameworkScaffold && nonPrimaryCoreSignalCount > 0)) return null;
-  return {
-    primary_concern: plan.primary_concern,
-    core_roles: coreRoles.map((role) => ({
-      role_id: role.role_id,
-      label: role.label,
-      why_this_role: role.why_this_role,
-      preferred_step: role.preferred_step,
-      query_terms: role.query_terms,
-      fit_keywords: role.fit_keywords,
-      ingredient_hypotheses: role.ingredient_hypotheses,
-      product_type_hypotheses: role.product_type_hypotheses,
-      frequency: role.frequency,
-      routine_slots: role.routine_slots,
-    })),
-    support_roles: supportRoles.map((role) => ({
-      role_id: role.role_id,
-      label: role.label,
-      why_this_role: role.why_this_role,
-      preferred_step: role.preferred_step,
-      query_terms: role.query_terms,
-      fit_keywords: role.fit_keywords,
-      ingredient_hypotheses: role.ingredient_hypotheses,
-      product_type_hypotheses: role.product_type_hypotheses,
-      frequency: role.frequency,
-      routine_slots: role.routine_slots,
-      support_only: true,
-    })),
-    ingredient_hypotheses: plan.ingredient_hypotheses,
-    product_type_hypotheses: plan.product_type_hypotheses,
-    routine_shell: plan.routine_shell,
-    selection_constraints: plan.selection_constraints,
-  };
-}
-
-function extractConcernPlannerLlmRouteMeta(upstream, { requestedProvider = '', requestedModel = '' } = {}) {
-  const payload = isPlainObject(upstream) ? upstream : null;
-  const meta = isPlainObject(payload?.meta) ? payload.meta : null;
-  const sessionPatch = isPlainObject(payload?.session_patch) ? payload.session_patch : null;
-  const sessionLlm = isPlainObject(sessionPatch?.llm) ? sessionPatch.llm : null;
-  const requested_provider =
-    pickFirstTrimmed(
-      requestedProvider,
-      payload?.llm_provider_requested,
-      meta?.llm_provider_requested,
-      sessionLlm?.llm_provider_requested,
-    ) || null;
-  const requested_model =
-    pickFirstTrimmed(
-      requestedModel,
-      payload?.llm_model_requested,
-      meta?.llm_model_requested,
-      sessionLlm?.llm_model_requested,
-    ) || null;
-  const effective_provider =
-    pickFirstTrimmed(
-      payload?.llm_provider,
-      payload?.llm_provider_effective,
-      meta?.llm_provider_effective,
-      sessionLlm?.llm_provider_effective,
-    ) || null;
-  const effective_model =
-    pickFirstTrimmed(
-      payload?.llm_model,
-      payload?.llm_model_effective,
-      meta?.llm_model_effective,
-      sessionLlm?.llm_model_effective,
-    ) || null;
-  const selection_source =
-    effective_provider || effective_model
-      ? 'upstream_response'
-      : requested_provider || requested_model
-        ? 'requested_route'
-        : 'none';
-  return {
-    requested_provider,
-    requested_model,
-    effective_provider,
-    effective_model,
-    selection_source,
-  };
-}
-
 async function runConcernSemanticPlanner({
   ctx,
   logger,
@@ -61703,7 +61361,8 @@ async function generateProductRecommendations({
   if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailure) {
     const failureSignals = frameworkMode
       ? resolveConcernMainlineFailure({
-          plannerBlocked: false,
+          plannerBlocked: Boolean(concernSemanticPlanBlockedReason),
+          plannerFailureClass: concernSemanticPlanBlockedTelemetryReason === 'planner_timeout' ? 'timeout' : concernSemanticPlanBlockedFailureClass,
           viablePoolState: {
             ...viablePoolState,
             final_selected_candidate_count: finalSelectedCandidateCount,
@@ -61730,12 +61389,20 @@ async function generateProductRecommendations({
         ? 'catalog_grounded'
         : structuredSource === 'catalog_transient_fallback'
           ? 'catalog_transient_fallback'
-          : 'llm_primary'
-    : stepAwareMainlineFailure && structuredSource === 'catalog_grounded'
-      ? 'catalog_grounded'
-      : stepAwareMainlineFailure && structuredSource === 'catalog_transient_fallback'
+          : frameworkMode
+            ? 'framework_mainline'
+            : 'llm_primary'
+    : frameworkMode
+      ? structuredSource === 'catalog_transient_fallback'
         ? 'catalog_transient_fallback'
-    : 'rules_only';
+        : structuredSource === 'catalog_grounded'
+          ? 'catalog_grounded'
+          : 'framework_mainline'
+      : stepAwareMainlineFailure && structuredSource === 'catalog_grounded'
+        ? 'catalog_grounded'
+        : stepAwareMainlineFailure && structuredSource === 'catalog_transient_fallback'
+          ? 'catalog_transient_fallback'
+          : 'rules_only';
   const catalogSkipReason = effectiveCatalogSkipReason || pickFirstTrimmed(catalogDebug && catalogDebug.skipped_reason) || null;
   const contractStatus = deriveRecoContractStatus({
     promptContractOk: promptContract.ok,
@@ -61808,7 +61475,9 @@ async function generateProductRecommendations({
         ? 'catalog_grounded_v1'
         : sourceMode === 'catalog_transient_fallback'
           ? 'catalog_transient_fallback'
-          : 'rules_only',
+          : sourceMode === 'framework_mainline'
+            ? 'framework_mainline_v1'
+            : 'rules_only',
     recommendation_meta: {
       ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
       source_mode: sourceMode,
@@ -80204,17 +79873,19 @@ function mountAuroraBffRoutes(app, { logger }) {
           latestArtifact.overall_confidence.score,
         );
         const artifactConfidenceScore = Number.isFinite(artifactConfidenceScoreRaw) ? artifactConfidenceScoreRaw : null;
-        const genericGoalDrivenNeedsMoreContext =
-          !hasStableRecoTarget
-          && !hasExplicitRecoTarget
-          && !ingredientDrivenRecommendationRequested
-          && !travelRecoHandoff
-          && !(
+        const genericConcernRecoMainline =
+          String(chatRecoTargetContext?.intent_mode || '').trim().toLowerCase() === 'generic_concern'
+          || (
             chatRecoTargetContext
             && Array.isArray(chatRecoTargetContext.framework_roles)
             && chatRecoTargetContext.framework_roles.length > 0
-            && String(chatRecoTargetContext.framework_owner_state || '').trim().toLowerCase() === 'trusted'
           );
+        const genericGoalDrivenNeedsMoreContext =
+          !genericConcernRecoMainline
+          && !hasStableRecoTarget
+          && !hasExplicitRecoTarget
+          && !ingredientDrivenRecommendationRequested
+          && !travelRecoHandoff;
 
         if (genericGoalDrivenNeedsMoreContext) {
           const recommendationContextState = {
@@ -80629,7 +80300,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         } else if (generatedPrimaryUsed) {
           recoSource = generatedPayloadSource || generatedSourceMode || 'catalog_grounded_v1';
         } else if (generatedRecoCount > 0) {
-          recoSource = generatedPayloadSource || 'rules_only';
+          recoSource = generatedPayloadSource || generatedSourceMode || (genericConcernRecoMainline ? 'framework_mainline_v1' : 'rules_only');
         }
         if (!generatedRecoCount && String(recoContract?.telemetry_failure_reason || '').trim().toLowerCase() === 'timeout_degraded') {
           recoTimeoutDegraded = true;
@@ -80843,6 +80514,18 @@ function mountAuroraBffRoutes(app, { logger }) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco.timeout_degraded_rate', value: 1 }, 'metric');
           recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true });
           const llmTraceRef = buildRecoLlmTraceRef(recoLlmTrace);
+          const timeoutDegradedSourceMode = inferRecoSourceMode(
+            recoContract?.source_mode,
+            recoContract?.source,
+            { defaultValue: genericConcernRecoMainline ? 'framework_mainline' : 'rules_only' },
+          );
+          const timeoutDegradedReason = sanitizeRecoClientVisibleToken(
+            pickFirstTrimmed(
+              recoContract?.products_empty_reason,
+              recoContract?.surface_reason,
+              recoContract?.primary_failure_reason,
+            ),
+          ) || (genericConcernRecoMainline ? 'upstream_timeout_primary_role' : 'artifact_missing');
           const confNode =
             latestArtifact &&
             latestArtifact.overall_confidence &&
@@ -80856,7 +80539,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               payload: {
                 ...buildConfidenceNoticeCardPayload({
                 language: ctx.lang,
-                reason: 'artifact_missing',
+                reason: timeoutDegradedReason,
                 confidence: confNode,
                 actions: ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine'],
                 details: [ctx.lang === 'CN' ? '推荐阶段超时，已切换保守降级输出。' : 'Recommendation stage timed out; switched to conservative degraded output.'],
@@ -80897,7 +80580,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                   source: 'upstream_timeout',
                   sourceDetail: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
                   recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                  reason: 'artifact_missing',
+                  reason: timeoutDegradedReason,
                   telemetryReason: 'timeout_degraded',
                   failureClass: 'timeout',
                   llmTraceRef,
@@ -80906,7 +80589,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 gated: true,
                 ...(recoMainlineStatus ? { mainline_status: recoMainlineStatus } : { mainline_status: 'upstream_timeout' }),
                 ...(recoCatalogSkipReason ? { catalog_skip_reason: recoCatalogSkipReason } : {}),
-                source_mode: 'rules_only',
+                source_mode: timeoutDegradedSourceMode,
                 grounding_status: 'ungrounded',
                 grounded_count: 0,
                 ungrounded_count: 0,
@@ -80956,13 +80639,16 @@ function mountAuroraBffRoutes(app, { logger }) {
           const metaExisting = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
           const derivedSourceMode = pickFirstTrimmed(
             metaExisting.source_mode,
+            recoContract?.source_mode,
             matcherFallbackUsed
               ? 'artifact_matcher'
               : generatedPrimaryUsed
                 ? (generatedSourceMode || 'catalog_grounded')
                 : llmPrimaryUsed
                   ? 'llm_primary'
-                  : 'rules_only',
+                  : genericConcernRecoMainline
+                    ? 'framework_mainline'
+                    : 'rules_only',
           );
           const contextualRecoMainlineEmpty =
             !payloadHasRecs
@@ -81355,7 +81041,9 @@ function mountAuroraBffRoutes(app, { logger }) {
               ? generatedSourceMode || 'catalog_grounded'
               : llmPrimaryUsed
                 ? 'llm_primary'
-                : 'rules_only';
+                : genericConcernRecoMainline
+                  ? 'framework_mainline'
+                  : 'rules_only';
           recordAuroraRecoKbWrite({ source: skippedSource, outcome: 'skipped' });
         }
         if (matcherFallbackUsed && AURORA_PRODUCT_MATCHER_ENABLED && matcherBundle) {
