@@ -19456,14 +19456,19 @@ async function callGeminiJsonObject({
     return {
       ok: false,
       reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
+      provider: 'gemini',
+      requested_model: String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI,
+      effective_model: String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI,
+      selection_source: 'local_gemini_direct',
     };
   }
+  const requestedModel = String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
   const resolvedModel =
     ignoreForceModel === true
-      ? String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI
+      ? requestedModel
       : AURORA_DIAG_FORCE_GEMINI
         ? AURORA_DIAG_FORCE_GEMINI_MODEL
-        : String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
+        : requestedModel;
   const systemText = String(systemPrompt || 'Return strict JSON only.').trim();
   const userText = String(userPrompt || '').trim();
   const promptText = `${systemText}\n\n${userText}`;
@@ -19554,6 +19559,10 @@ async function callGeminiJsonObject({
         upstream_ms: invalidMeta.upstream_ms,
         total_ms: invalidMeta.total_ms,
         schema_sanitized: Boolean(sanitizedSchema),
+        provider: 'gemini',
+        requested_model: requestedModel,
+        effective_model: resolvedModel,
+        selection_source: 'local_gemini_direct',
       };
     }
     if (shouldTrackQaRoute(route)) recordQaRouteObservability(qaMeta);
@@ -19568,6 +19577,10 @@ async function callGeminiJsonObject({
       upstream_ms: qaMeta.upstream_ms,
       total_ms: qaMeta.total_ms,
       schema_sanitized: Boolean(sanitizedSchema),
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_direct',
     };
   } catch (err) {
     const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
@@ -19595,10 +19608,165 @@ async function callGeminiJsonObject({
       upstream_ms: failedMeta.upstream_ms,
       total_ms: failedMeta.total_ms,
       schema_sanitized: Boolean(sanitizedSchema),
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_direct',
     };
   }
 }
 let callGeminiJsonObjectImpl = callGeminiJsonObject;
+
+async function callGeminiTextResponse({
+  model,
+  systemPrompt,
+  userPrompt,
+  timeoutMs = 3000,
+  temperature = 0,
+  maxOutputTokens = null,
+  route = 'aurora_routes_text',
+  queueTimeoutMs = 0,
+  upstreamTimeoutMs = 0,
+  ignoreForceModel = false,
+  thinkingBudget = undefined,
+} = {}) {
+  const gemini = getGeminiClient();
+  if (!gemini || !gemini.client) {
+    return {
+      ok: false,
+      reason: gemini && gemini.init_error ? String(gemini.init_error) : 'gemini_client_unavailable',
+    };
+  }
+  const requestedModel = String(model || ANALYSIS_STORY_MODEL_GEMINI).trim() || ANALYSIS_STORY_MODEL_GEMINI;
+  const resolvedModel =
+    ignoreForceModel === true
+      ? requestedModel
+      : AURORA_DIAG_FORCE_GEMINI
+        ? AURORA_DIAG_FORCE_GEMINI_MODEL
+        : requestedModel;
+  const systemText = String(systemPrompt || 'Return plain text only.').trim();
+  const userText = String(userPrompt || '').trim();
+  const promptText = `${systemText}\n\n${userText}`;
+  const effectiveMaxOutputTokens =
+    Number.isFinite(Number(maxOutputTokens)) && Number(maxOutputTokens) > 0
+      ? Math.max(64, Math.min(4096, Math.trunc(Number(maxOutputTokens))))
+      : 0;
+  const promptBytes = Buffer.byteLength(promptText, 'utf8');
+  const timeoutBudget = splitGeminiTimeoutBudget(timeoutMs, {
+    queueMs: queueTimeoutMs,
+    upstreamMs: upstreamTimeoutMs || timeoutMs,
+  });
+  try {
+    const built = await callAuroraGeminiGenerateContentWithMeta({
+      featureEnvVar: AURORA_GEMINI_KEY_FEATURE_ENV,
+      route,
+      queueTimeoutMs: timeoutBudget.queue_timeout_ms,
+      upstreamTimeoutMs: timeoutBudget.upstream_timeout_ms,
+      request: {
+        model: resolvedModel,
+        systemInstruction: {
+          parts: [{ text: systemText }],
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: userText,
+              },
+            ],
+          },
+        ],
+        config: {
+          temperature,
+          thinkingConfig: {
+            includeThoughts: false,
+            ...(Number.isFinite(thinkingBudget) ? { thinkingBudget: Math.max(0, Math.trunc(thinkingBudget)) } : {}),
+          },
+          ...(effectiveMaxOutputTokens ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
+        },
+      },
+    });
+    const response = built && built.response ? built.response : null;
+    const finishReason = extractGeminiFinishReason(response);
+    const qaMeta = normalizeQaTimeoutMeta(built && built.meta ? built.meta : {}, {
+      route,
+      model: resolvedModel,
+      promptBytes,
+      schemaBytes: 0,
+      maxOutputTokens: effectiveMaxOutputTokens,
+      resultReason: finishReason === 'MAX_TOKENS' ? 'gemini_text_max_tokens' : 'ok',
+    });
+    const text = await extractTextFromGeminiResponse(response);
+    const trimmedText = String(text || '').trim();
+    if (!trimmedText) {
+      const emptyMeta = {
+        ...qaMeta,
+        result_reason: 'gemini_text_empty',
+      };
+      return {
+        ok: false,
+        reason: 'gemini_text_empty',
+        raw_text: '',
+        finish_reason: finishReason,
+        timeout_stage: null,
+        meta: emptyMeta,
+        gate_wait_ms: emptyMeta.gate_wait_ms,
+        upstream_ms: emptyMeta.upstream_ms,
+        total_ms: emptyMeta.total_ms,
+        provider: 'gemini',
+        requested_model: requestedModel,
+        effective_model: resolvedModel,
+        selection_source: 'local_gemini_direct',
+      };
+    }
+    return {
+      ok: true,
+      text: trimmedText,
+      raw_text: trimmedText,
+      finish_reason: finishReason,
+      timeout_stage: null,
+      meta: qaMeta,
+      gate_wait_ms: qaMeta.gate_wait_ms,
+      upstream_ms: qaMeta.upstream_ms,
+      total_ms: qaMeta.total_ms,
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_direct',
+    };
+  } catch (err) {
+    const classified = buildGeminiJsonTimeoutResult(err, 'gemini_error');
+    const failedMeta = normalizeQaTimeoutMeta(
+      err && err.meta && typeof err.meta === 'object' ? err.meta : {},
+      {
+        route,
+        model: resolvedModel,
+        promptBytes,
+        schemaBytes: 0,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        resultReason: classified.reason,
+        timeoutStage: classified.timeout_stage,
+        detail: classified.detail,
+      },
+    );
+    return {
+      ok: false,
+      reason: classified.reason,
+      detail: classified.detail,
+      timeout_stage: classified.timeout_stage,
+      meta: failedMeta,
+      gate_wait_ms: failedMeta.gate_wait_ms,
+      upstream_ms: failedMeta.upstream_ms,
+      total_ms: failedMeta.total_ms,
+      provider: 'gemini',
+      requested_model: requestedModel,
+      effective_model: resolvedModel,
+      selection_source: 'local_gemini_direct',
+    };
+  }
+}
+let callGeminiTextResponseImpl = callGeminiTextResponse;
 
 function pickRuntimeQaProviders({ mode, singleProvider } = {}) {
   return pickQaProvidersForMode({
@@ -51317,6 +51485,70 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 }
 
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
+const CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    primary_concern: { type: 'string' },
+    core_roles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          role_id: { type: 'string' },
+          label: { type: 'string' },
+          why_this_role: { type: 'string' },
+          preferred_step: { type: 'string' },
+          query_terms: { type: 'array', items: { type: 'string' } },
+          fit_keywords: { type: 'array', items: { type: 'string' } },
+          ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
+          product_type_hypotheses: { type: 'array', items: { type: 'string' } },
+          frequency: { type: 'string' },
+          routine_slots: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['role_id'],
+      },
+    },
+    support_roles: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          role_id: { type: 'string' },
+          label: { type: 'string' },
+          why_this_role: { type: 'string' },
+          preferred_step: { type: 'string' },
+          query_terms: { type: 'array', items: { type: 'string' } },
+          fit_keywords: { type: 'array', items: { type: 'string' } },
+          ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
+          product_type_hypotheses: { type: 'array', items: { type: 'string' } },
+          frequency: { type: 'string' },
+          routine_slots: { type: 'array', items: { type: 'string' } },
+          support_only: { type: 'boolean' },
+        },
+        required: ['role_id'],
+      },
+    },
+    ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
+    product_type_hypotheses: { type: 'array', items: { type: 'string' } },
+    routine_shell: {
+      type: 'object',
+      properties: {
+        am_core_roles: { type: 'array', items: { type: 'string' } },
+        pm_core_roles: { type: 'array', items: { type: 'string' } },
+        optional_support_roles: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['am_core_roles', 'pm_core_roles', 'optional_support_roles'],
+    },
+    selection_constraints: {
+      type: 'object',
+      properties: {
+        support_cannot_replace_core: { type: 'boolean' },
+        allow_price_tiers: { type: 'boolean' },
+      },
+    },
+  },
+  required: ['primary_concern', 'core_roles', 'routine_shell'],
+});
 
 function normalizeConcernRoleHint(value) {
   return String(value || '')
@@ -51611,7 +51843,7 @@ function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '
   return normalized;
 }
 
-function buildConcernSemanticPlanPrompt({
+function buildConcernSemanticPlanPromptBundle({
   requestText = '',
   focus = '',
   lang = 'EN',
@@ -51678,7 +51910,17 @@ function buildConcernSemanticPlanPrompt({
         '- Even with limited context, return a conservative but actionable core/support framework.',
         '- For oily-skin asks, decide what should be solved first, then name the product-type and ingredient directions that fit that role.',
       ];
-  return `${instructions.join('\n')}\ncontext=${JSON.stringify(contextPayload)}`;
+  const systemPrompt = instructions.join('\n');
+  const userPrompt = `context=${JSON.stringify(contextPayload)}`;
+  return {
+    systemPrompt,
+    userPrompt,
+    query: `${systemPrompt}\n${userPrompt}`,
+  };
+}
+
+function buildConcernSemanticPlanPrompt(options = {}) {
+  return buildConcernSemanticPlanPromptBundle(options).query;
 }
 
 function extractConcernSemanticPlanStructured(upstream) {
@@ -51837,7 +52079,7 @@ async function runConcernSemanticPlanner({
     focus,
     profileSummary,
   });
-  const query = buildConcernSemanticPlanPrompt({
+  const promptBundle = buildConcernSemanticPlanPromptBundle({
     requestText,
     focus,
     lang: ctx?.lang || 'EN',
@@ -51845,6 +52087,7 @@ async function runConcernSemanticPlanner({
     recommendationTaskContext,
     fallbackPlan,
   });
+  const query = promptBundle.query;
   const trace = {
     prompt_version: CONCERN_SEMANTIC_PLAN_VERSION,
     prompt_chars: query.length,
@@ -51883,35 +52126,71 @@ async function runConcernSemanticPlanner({
       requestText,
       focus,
     });
-    let lastUpstream = null;
+    let lastPlannerResponse = null;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      const upstream = await auroraChat({
-        baseUrl: AURORA_DECISION_BASE_URL,
-        query,
-        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
-        llm_provider: attempt.provider,
-        llm_model: attempt.model,
-        ...(Array.isArray(attempt.required_structured_keys)
-          ? { required_structured_keys: attempt.required_structured_keys }
-          : {}),
-        trace_id: ctx?.trace_id,
-        request_id: ctx?.request_id,
-      });
+      let plannerResponse = null;
+      if (String(attempt.structured_contract || '').trim() === 'plain_text') {
+        plannerResponse = await callGeminiTextResponseImpl({
+          model: attempt.model,
+          systemPrompt: promptBundle.systemPrompt,
+          userPrompt: promptBundle.userPrompt,
+          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+          temperature: 0.1,
+          maxOutputTokens: 700,
+          route: 'aurora_concern_semantic_plan_plain_text',
+          ignoreForceModel: true,
+        });
+      } else {
+        plannerResponse = await callGeminiJsonObjectImpl({
+          model: attempt.model,
+          systemPrompt: promptBundle.systemPrompt,
+          userPrompt: promptBundle.userPrompt,
+          timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 7000),
+          temperature: 0.1,
+          maxOutputTokens: 900,
+          responseJsonSchema: CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA,
+          route: 'aurora_concern_semantic_plan_structured',
+          ignoreForceModel: true,
+        });
+      }
       trace.planner_used = true;
-      lastUpstream = upstream;
-      const llmRouteMeta = extractConcernPlannerLlmRouteMeta(upstream, {
-        requestedProvider: attempt.provider,
-        requestedModel: attempt.model,
-      });
-      const rawStructured = extractConcernSemanticPlanStructured(upstream);
+      lastPlannerResponse = plannerResponse;
+      const llmRouteMeta = {
+        requested_provider: pickFirstTrimmed(plannerResponse?.provider, attempt.provider) || null,
+        requested_model: pickFirstTrimmed(plannerResponse?.requested_model, attempt.model) || null,
+        effective_provider: pickFirstTrimmed(plannerResponse?.provider, attempt.provider) || null,
+        effective_model: pickFirstTrimmed(plannerResponse?.effective_model, attempt.model) || null,
+        selection_source: pickFirstTrimmed(plannerResponse?.selection_source) || 'local_gemini_direct',
+      };
+      const rawStructured =
+        plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
+          ? plannerResponse.json
+          : null;
       const repairedStructured =
         isPlainObject(rawStructured)
           ? null
-          : repairConcernSemanticPlanFromText(upstream?.answer, { fallbackPlan });
+          : repairConcernSemanticPlanFromText(
+              pickFirstTrimmed(plannerResponse?.text, plannerResponse?.raw_text),
+              { fallbackPlan },
+            );
       const effectiveStructured = repairedStructured || rawStructured;
-      const answerPreview = typeof upstream?.answer === 'string'
-        ? String(upstream.answer).replace(/\s+/g, ' ').slice(0, 400)
+      const answerPreview = pickFirstTrimmed(
+        plannerResponse?.text,
+        plannerResponse?.raw_text,
+        plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
+          ? JSON.stringify(plannerResponse.json)
+          : '',
+      )
+        ? String(
+            pickFirstTrimmed(
+              plannerResponse?.text,
+              plannerResponse?.raw_text,
+              plannerResponse?.ok === true && isPlainObject(plannerResponse?.json)
+                ? JSON.stringify(plannerResponse.json)
+                : '',
+            ),
+          ).replace(/\s+/g, ' ').slice(0, 400)
         : '';
       const semanticPlan = normalizeConcernSemanticPlanOutput(effectiveStructured, {
         fallbackPlan,
@@ -51954,7 +52233,7 @@ async function runConcernSemanticPlanner({
         trace.planner_source = semanticPlan.selection_owner_source;
         trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
         trace.planner_model = llmRouteMeta.effective_model || attempt.model;
-        return { semanticPlan, trace, upstream };
+        return { semanticPlan, trace, upstream: plannerResponse };
       }
       const nextAttempt = plannerAttempts[index + 1] || null;
       const attemptReturnedNoSignal =
@@ -51992,7 +52271,7 @@ async function runConcernSemanticPlanner({
     return {
       semanticPlan: lastSemanticPlan,
       trace,
-      upstream: lastUpstream,
+      upstream: lastPlannerResponse,
     };
   } catch (error) {
     logger?.warn?.({ err: error?.message || String(error) }, 'aurora bff: concern semantic planner failed');
@@ -82993,6 +83272,12 @@ const __internal = {
   },
   __resetCallGeminiJsonObjectForTest() {
     callGeminiJsonObjectImpl = callGeminiJsonObject;
+  },
+  __setCallGeminiTextResponseForTest(fn) {
+    callGeminiTextResponseImpl = typeof fn === 'function' ? fn : callGeminiTextResponse;
+  },
+  __resetCallGeminiTextResponseForTest() {
+    callGeminiTextResponseImpl = callGeminiTextResponse;
   },
   __setCallOpenAiJsonObjectForTest(fn) {
     callOpenAiJsonObjectImpl = typeof fn === 'function' ? fn : callOpenAiJsonObject;

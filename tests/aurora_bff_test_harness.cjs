@@ -131,7 +131,7 @@ function createAppWithPatchedAuroraChat(options = {}) {
       : options && typeof options === 'object'
         ? options
         : {};
-  const { auroraChatImpl, geminiJsonImpl, openAiJsonImpl, useMemoryStore = true } = normalized;
+  const { auroraChatImpl, geminiJsonImpl, geminiTextImpl, openAiJsonImpl, useMemoryStore = true } = normalized;
   const clientModuleId = require.resolve('../src/auroraBff/auroraDecisionClient');
   delete require.cache[clientModuleId];
   const clientMod = require(clientModuleId);
@@ -160,6 +160,9 @@ function createAppWithPatchedAuroraChat(options = {}) {
   if (typeof geminiJsonImpl === 'function' && typeof internalHooks.__setCallGeminiJsonObjectForTest === 'function') {
     internalHooks.__setCallGeminiJsonObjectForTest(geminiJsonImpl);
   }
+  if (typeof geminiTextImpl === 'function' && typeof internalHooks.__setCallGeminiTextResponseForTest === 'function') {
+    internalHooks.__setCallGeminiTextResponseForTest(geminiTextImpl);
+  }
   if (typeof openAiJsonImpl === 'function' && typeof internalHooks.__setCallOpenAiJsonObjectForTest === 'function') {
     internalHooks.__setCallOpenAiJsonObjectForTest(openAiJsonImpl);
   }
@@ -174,6 +177,7 @@ function createAppWithPatchedAuroraChat(options = {}) {
     restore() {
       clientMod.auroraChat = originalAuroraChat;
       if (typeof internalHooks.__resetCallGeminiJsonObjectForTest === 'function') internalHooks.__resetCallGeminiJsonObjectForTest();
+      if (typeof internalHooks.__resetCallGeminiTextResponseForTest === 'function') internalHooks.__resetCallGeminiTextResponseForTest();
       if (typeof internalHooks.__resetCallOpenAiJsonObjectForTest === 'function') internalHooks.__resetCallOpenAiJsonObjectForTest();
       for (const [key, value] of Object.entries(originalMemoryStoreFns)) {
         memoryStoreMod[key] = value;

@@ -260,6 +260,91 @@ function buildConcernPlannerTimeoutMock() {
   };
 }
 
+function isConcernSemanticPlannerPromptParts({ systemPrompt = '', userPrompt = '' } = {}) {
+  const prompt = `${String(systemPrompt || '')}\n${String(userPrompt || '')}`;
+  return prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1');
+}
+
+function buildConcernPlannerGeminiJsonMock({
+  plannerResult = null,
+  emptyModels = [],
+  attemptRecorder = null,
+  throwOnConcernPrompt = false,
+} = {}) {
+  const emptyModelSet = new Set((Array.isArray(emptyModels) ? emptyModels : []).map((item) => String(item || '').trim()));
+  return async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
+    if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) {
+      return { ok: false, reason: 'unexpected_gemini_prompt' };
+    }
+    if (typeof attemptRecorder === 'function') {
+      attemptRecorder({
+        model: String(model || '').trim(),
+        structured_contract: 'required_keys',
+      });
+    }
+    if (throwOnConcernPrompt) throw new Error('planner timeout');
+    if (emptyModelSet.has(String(model || '').trim())) {
+      return {
+        ok: false,
+        reason: 'gemini_text_empty',
+        raw_text: '',
+        provider: 'gemini',
+        requested_model: model,
+        effective_model: model,
+        selection_source: 'test_mock',
+      };
+    }
+    return {
+      ok: true,
+      json: plannerResult || buildConcernSemanticPlanFixture(),
+      provider: 'gemini',
+      requested_model: model,
+      effective_model: model,
+      selection_source: 'test_mock',
+    };
+  };
+}
+
+function buildConcernPlannerGeminiTextMock({
+  plainText = '',
+  attemptRecorder = null,
+  throwOnConcernPrompt = false,
+} = {}) {
+  return async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
+    if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) {
+      return { ok: false, reason: 'unexpected_gemini_prompt' };
+    }
+    if (typeof attemptRecorder === 'function') {
+      attemptRecorder({
+        model: String(model || '').trim(),
+        structured_contract: 'plain_text',
+      });
+    }
+    if (throwOnConcernPrompt) throw new Error('planner timeout');
+    const text = String(plainText || '').trim();
+    if (!text) {
+      return {
+        ok: false,
+        reason: 'gemini_text_empty',
+        raw_text: '',
+        provider: 'gemini',
+        requested_model: model,
+        effective_model: model,
+        selection_source: 'test_mock',
+      };
+    }
+    return {
+      ok: true,
+      text,
+      raw_text: text,
+      provider: 'gemini',
+      requested_model: model,
+      effective_model: model,
+      selection_source: 'test_mock',
+    };
+  };
+}
+
 function installConcernPlannerMocks(decisionModule, options = {}) {
   decisionModule.auroraChat = buildConcernPlannerMock(options);
 }
@@ -1361,6 +1446,8 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
   try {
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: buildConcernPlannerMock(),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -1509,6 +1596,8 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   try {
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: buildConcernPlannerMock({ selectorResult: 'schema_invalid' }),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -1648,6 +1737,27 @@ test('/v1/chat: generic concern planner accepts camelCase semantic-plan output a
           },
         },
       }),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        plannerResult: {
+          primaryConcern: 'oil control and congestion',
+          coreRoles: [
+            'Oil-control treatment',
+            'Lightweight moisturizer',
+            { id: 'daily_sunscreen', label: 'Daily sunscreen', preferredStep: 'sunscreen' },
+          ],
+          supportRoles: [
+            'Optional hydrating mask',
+          ],
+          ingredientDirections: ['Niacinamide', 'Zinc PCA'],
+          productTypeDirections: ['serum', 'moisturizer', 'sunscreen'],
+          routineShell: {
+            amCoreRoles: ['oil_control_treatment', 'daily_sunscreen'],
+            pmCoreRoles: ['oil_control_treatment', 'lightweight_moisturizer'],
+            optionalSupportRoles: ['hydrating_mask_support'],
+          },
+        },
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -1764,16 +1874,17 @@ test('/v1/chat: generic concern planner repairs plain-text role ordering into a 
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: async ({ query = '' } = {}) => {
         const prompt = String(query || '');
-        if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
-          return {
-            answer: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
-          };
-        }
         if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
           return { answer: JSON.stringify(buildConcernSelectorFixture({ topPickProductId: 'serum_text_1', orderedProductIds: ['serum_text_1', 'moist_text_1', 'spf_text_1'] })) };
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        emptyModels: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
+      }),
       useMemoryStore: false,
     });
 
@@ -1884,28 +1995,18 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: async ({ query = '', llm_provider = '', llm_model = '' } = {}) => {
+      auroraChatImpl: async ({ query = '' } = {}) => {
         const prompt = String(query || '');
-        if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
-          plannerAttempts.push(`${llm_provider}:${llm_model}`);
-          if (String(llm_provider) === 'gemini' && String(llm_model) === 'gemini-3-flash-preview') {
-            return {
-              answer: '',
-              llm_provider,
-              llm_model,
-            };
-          }
-          return {
-            answer: JSON.stringify(buildConcernSemanticPlanFixture()),
-            llm_provider,
-            llm_model,
-          };
-        }
         if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
           return { answer: JSON.stringify(buildConcernSelectorFixture({ topPickProductId: 'serum_retry_1', orderedProductIds: ['serum_retry_1', 'moist_retry_1', 'spf_retry_1'] })) };
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        emptyModels: ['gemini-3-flash-preview'],
+        attemptRecorder: ({ model }) => plannerAttempts.push(`gemini:${model}`),
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -1946,7 +2047,7 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
     assert.equal(payload.recommendation_meta?.semantic_planner_requested_model, 'gemini-3-pro-preview');
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_provider, 'gemini');
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_model, 'gemini-3-pro-preview');
-    assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'upstream_response');
+    assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'test_mock');
     assert.deepEqual(plannerAttempts, ['gemini:gemini-3-flash-preview', 'gemini:gemini-3-pro-preview']);
   } finally {
     harness?.restore?.();
@@ -2021,25 +2122,8 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
 
   try {
     harness = createAppWithPatchedAuroraChat({
-      auroraChatImpl: async ({ query = '', llm_provider = '', llm_model = '', required_structured_keys = undefined } = {}) => {
+      auroraChatImpl: async ({ query = '' } = {}) => {
         const prompt = String(query || '');
-        if (prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1')) {
-          plannerAttempts.push(
-            `${llm_provider}:${llm_model}:${Array.isArray(required_structured_keys) ? 'structured' : 'plain_text'}`,
-          );
-          if (Array.isArray(required_structured_keys)) {
-            return {
-              answer: '',
-              llm_provider,
-              llm_model,
-            };
-          }
-          return {
-            answer: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
-            llm_provider,
-            llm_model,
-          };
-        }
         if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
           return {
             answer: JSON.stringify(
@@ -2052,6 +2136,14 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
         }
         return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
       },
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        emptyModels: ['gemini-3-flash-preview', 'gemini-3-pro-preview'],
+        attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract === 'plain_text' ? 'plain_text' : 'structured'}`),
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: 'Priority order: Oil-control treatment -> Lightweight moisturizer -> Daily sunscreen. Optional support: Optional hydrating mask if oily skin also feels dehydrated.',
+        attemptRecorder: ({ model, structured_contract }) => plannerAttempts.push(`gemini:${model}:${structured_contract}`),
+      }),
       useMemoryStore: false,
     });
 
@@ -2090,7 +2182,7 @@ test('/v1/chat: generic concern planner falls back to a plain-text gemini pro pl
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_plain_1');
     assert.equal(payload.recommendation_meta?.semantic_planner_requested_model, 'gemini-3-pro-preview');
     assert.equal(payload.recommendation_meta?.semantic_planner_effective_model, 'gemini-3-pro-preview');
-    assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'upstream_response');
+    assert.equal(payload.recommendation_meta?.semantic_planner_selection_source, 'test_mock');
     assert.deepEqual(plannerAttempts, [
       'gemini:gemini-3-flash-preview:structured',
       'gemini:gemini-3-pro-preview:structured',
@@ -2120,6 +2212,13 @@ test('/v1/chat: generic concern planner junk structured output still fail-closes
           support_roles: [],
         },
       }),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        plannerResult: {
+          core_roles: [{}],
+          support_roles: [],
+        },
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2175,6 +2274,10 @@ test('/v1/chat: generic concern planner timeout fail-closes the mainline instead
   try {
     harness = createAppWithPatchedAuroraChat({
       auroraChatImpl: buildConcernPlannerTimeoutMock(),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock({
+        throwOnConcernPrompt: true,
+      }),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2283,6 +2386,8 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
           orderedProductIds: ['moist_partial_1', 'spf_partial_1'],
         }),
       }),
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
       useMemoryStore: false,
     });
 
@@ -2336,10 +2441,8 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
   const originalExternalSeedEnabled = process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
   process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = 'false';
   process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = 'true';
-  delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
-  const decisionModule = require('../src/auroraBff/auroraDecisionClient');
-  const originalAuroraChat = decisionModule.auroraChat;
   const observedQueries = [];
+  let harness = null;
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -2453,33 +2556,36 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     ],
   });
 
-  decisionModule.auroraChat = async () => ({
-    answer: JSON.stringify({
-      recommendations: [
-        {
-          step: 'treatment',
-          reasons: ['A framework-first oily-skin ask should prioritize oil control first.'],
-          sku: { brand: 'Fenty Skin', display_name: 'Oil Control Serum' },
-        },
-      ],
-    }),
-  });
-
   try {
-    const express = require('express');
-    const { mountAuroraBffRoutes } = loadRoutesFresh();
-    const app = express();
-    app.use(express.json({ limit: '1mb' }));
-    mountAuroraBffRoutes(app, { logger: null });
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: async ({ query = '' } = {}) => {
+        const prompt = String(query || '');
+        if (prompt.includes('PROMPT_VERSION=concern_selector_race_v1')) {
+          return {
+            answer: JSON.stringify(
+              buildConcernSelectorFixture({
+                topPickProductId: 'ext_oil_1',
+                orderedProductIds: ['ext_oil_1'],
+              }),
+            ),
+          };
+        }
+        return { answer: JSON.stringify({ note: 'unexpected prompt' }) };
+      },
+      geminiJsonImpl: buildConcernPlannerGeminiJsonMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock(),
+      useMemoryStore: false,
+    });
 
     await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_seed_uid', briefId: 'chat_framework_seed_brief' });
-    const response = await invokeRoute(app, 'POST', '/v1/chat', {
-      headers: {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
         'X-Aurora-UID': 'chat_framework_seed_uid',
         'X-Trace-ID': 'trace_chat_framework_seed',
         'X-Brief-ID': 'chat_framework_seed_brief',
-      },
-      body: {
+      })
+      .send({
         action: {
           action_id: 'chip.start.reco_products',
           kind: 'chip',
@@ -2496,10 +2602,9 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
         client_state: 'IDLE_CHAT',
         session: { state: 'idle' },
         language: 'EN',
-      },
-    });
+      });
 
-    assert.equal(response.status, 200);
+    assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
     assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
@@ -2513,11 +2618,11 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     assert.ok(Number(payload.recommendation_meta?.external_seed_used_count || 0) > 0);
     assert.ok(Number(payload.recommendation_meta?.selected_source_counts?.external_seed || 0) > 0);
   } finally {
+    harness?.restore?.();
     if (originalFallbackEnabled == null) delete process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
     else process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED = originalFallbackEnabled;
     if (originalExternalSeedEnabled == null) delete process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED;
     else process.env.AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED = originalExternalSeedEnabled;
-    decisionModule.auroraChat = originalAuroraChat;
     dbModule.query = originalDbQuery;
     axios.get = originalGet;
   }
