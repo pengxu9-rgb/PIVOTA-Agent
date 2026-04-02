@@ -3180,6 +3180,37 @@ test('__internal: framework recall planner emits primary stages first, then supp
   );
 });
 
+test('__internal: framework recall planner prefers ingredient-led treatment query when a treatment-strength active is available', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      framework_summary: {
+        concern_text: 'im oily skin, what product should i use?',
+      },
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 1,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+          query_terms: ['oil control serum', 'shine control serum', 'mattifying serum'],
+          ingredient_hypotheses: ['Niacinamide', 'Salicylic acid'],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    plan.stages[0]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'Salicylic acid treatment'],
+  );
+  assert.deepEqual(
+    plan.stages[1]?.entries?.map((entry) => entry?.query),
+    ['oil control serum', 'Salicylic acid treatment'],
+  );
+});
+
 test('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
@@ -4030,6 +4061,8 @@ test('__internal: step-aware sunscreen query ladder drops noisy acne and alias-o
   const queries = levels.flatMap((level) => (Array.isArray(level?.queries) ? level.queries : []).map((row) => row.query));
   assert.ok(queries.includes('sunscreen'));
   assert.ok(queries.includes('sunscreen oily skin'));
+  assert.ok(queries.includes('daily sunscreen'));
+  assert.ok(queries.includes('broad spectrum sunscreen'));
   assert.equal(queries.includes('sunscreen acne'), false);
   assert.equal(queries.includes('sun screen'), false);
   assert.equal(queries.includes('spf'), false);

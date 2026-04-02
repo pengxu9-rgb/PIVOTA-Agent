@@ -21,6 +21,31 @@ function normalizeConcernQueryToken(value) {
     .trim();
 }
 
+function scoreTreatmentIngredientHypothesis(value) {
+  const normalized = normalizeConcernQueryToken(value).toLowerCase();
+  if (!normalized) return 0;
+  if (/\b(salicylic|glycolic|lactic|mandelic|azelaic|retinol|retinoid|adapalene|tretinoin|benzoyl|peroxide|sulfur|aha|bha|pha|acid|exfoliant)\b/.test(normalized)) {
+    return 3;
+  }
+  if (/\b(niacinamide|zinc|zinc pca)\b/.test(normalized)) return 2;
+  return 1;
+}
+
+function buildPrimaryTreatmentIngredientQuery(role) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return '';
+  const candidates = uniqueCaseInsensitiveStrings(
+    Array.isArray(roleObj.ingredient_hypotheses) ? roleObj.ingredient_hypotheses : [],
+    8,
+  )
+    .map((value) => normalizeConcernQueryToken(value))
+    .filter(Boolean)
+    .sort((left, right) => scoreTreatmentIngredientHypothesis(right) - scoreTreatmentIngredientHypothesis(left));
+  const picked = candidates[0] || '';
+  if (!picked || scoreTreatmentIngredientHypothesis(picked) < 3) return '';
+  return normalizeConcernQueryToken(`${picked} treatment`);
+}
+
 function flattenPlanEntries(stages) {
   return (Array.isArray(stages) ? stages : []).flatMap((stage) => {
     const stageObj = stage && typeof stage === 'object' && !Array.isArray(stage) ? stage : null;
@@ -87,6 +112,8 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   const out = [];
   if (roleQueries.length > 0) out.push(roleQueries[0]);
   if (allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment') {
+    const ingredientLedQuery = buildPrimaryTreatmentIngredientQuery(roleObj);
+    if (ingredientLedQuery) out.push(ingredientLedQuery);
     const roleLabelOrIdQuery = normalizeConcernQueryToken(
       String(roleObj.label || roleObj.role_id || '').replace(/[-_/]+/g, ' '),
     ).toLowerCase();

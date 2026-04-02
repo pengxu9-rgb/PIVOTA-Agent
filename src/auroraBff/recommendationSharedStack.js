@@ -47,6 +47,10 @@ const STEP_QUERY_ALIASES = Object.freeze({
   oil: Object.freeze(['face oil', 'facial oil', 'oil serum', '护肤油', '面油']),
 });
 
+const STEP_QUERY_LADDER_EXPANSIONS = Object.freeze({
+  sunscreen: Object.freeze(['daily sunscreen', 'broad spectrum sunscreen']),
+});
+
 const STEP_THRESHOLDS = Object.freeze({
   default: Object.freeze({
     min_viable_count_for_step: 1,
@@ -839,7 +843,12 @@ function buildSameFamilyQueryLevels({
     },
     {
       ladder_level: 'step_alias_expansion',
-      queries: uniqCaseInsensitiveStrings(step === 'sunscreen' ? aliases.slice(1, 2) : aliases, 8),
+      queries: uniqCaseInsensitiveStrings(
+        step === 'sunscreen'
+          ? [...(STEP_QUERY_LADDER_EXPANSIONS.sunscreen || []), ...aliases.slice(1)]
+          : aliases,
+        8,
+      ),
     },
   ];
 
