@@ -86,6 +86,24 @@ test('V1ChatRequestSchema accepts current frontend action payload shape with id/
   assert.equal(parsed.success, true);
 });
 
+test('V1ChatRequestSchema normalizes lowercase and locale language tags for current frontend chat payloads', () => {
+  resetAuroraModules();
+  const { V1ChatRequestSchema } = require('../src/auroraBff/schemas');
+  const parsedEn = V1ChatRequestSchema.safeParse({
+    message: 'im oily skin, what product should i use?',
+    language: 'en',
+  });
+  const parsedZh = V1ChatRequestSchema.safeParse({
+    message: '我想要适合油皮的产品',
+    language: 'zh-CN',
+  });
+
+  assert.equal(parsedEn.success, true);
+  assert.equal(parsedZh.success, true);
+  assert.equal(parsedEn.data.language, 'EN');
+  assert.equal(parsedZh.data.language, 'CN');
+});
+
 test('buildSkillRequest normalizes frontend language, camelCase profile fields, and routine slot maps', () => {
   resetAuroraModules();
   const { buildSkillRequest } = require('../src/auroraBff/routes/chat');
