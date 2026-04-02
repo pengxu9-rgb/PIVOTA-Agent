@@ -3908,7 +3908,9 @@ async function searchPivotaBackendProducts({
   const isMainPathMode = modeToken === 'main_path';
   const isSelfProxyMode = modeToken === 'self_proxy';
   const sourceOverrideToken = String(searchSourceOverride || '').trim().toLowerCase();
-  const effectiveSearchSource = sourceOverrideToken || RECO_CATALOG_SEARCH_SOURCE;
+  const effectiveSearchSource = sourceOverrideToken
+    || (isMainPathMode ? RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE : '')
+    || RECO_CATALOG_SEARCH_SOURCE;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const timeoutFloorForMode = isMainPathMode
     ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
