@@ -81,6 +81,14 @@ function getRoutesInternal() {
   }
 }
 
+function canProxyRecoToV1Mainline() {
+  if (invokeV1MainlineChatImpl !== invokeV1MainlineChat) return true;
+  const routesInternal = getRoutesInternal();
+  return typeof routesInternal.hasMountedV1ChatMainlineHandler === 'function'
+    ? routesInternal.hasMountedV1ChatMainlineHandler() === true
+    : false;
+}
+
 function buildLoopbackChatBaseUrl(req) {
   const forwardedProto = typeof req?.get === 'function' ? req.get('x-forwarded-proto') : null;
   const proto = pickFirstTrimmed(forwardedProto, req?.protocol, 'http') || 'http';
@@ -141,6 +149,14 @@ function normalizeIncomingChatAction(action) {
 }
 
 async function invokeV1MainlineChat({ req, body } = {}) {
+  const routesInternal = getRoutesInternal();
+  if (typeof routesInternal.runV1ChatMainlineInProcess === 'function') {
+    try {
+      return await routesInternal.runV1ChatMainlineInProcess({ req, body });
+    } catch (error) {
+      if (String(error?.message || '') !== 'v1_chat_mainline_handler_unmounted') throw error;
+    }
+  }
   const baseUrl = buildLoopbackChatBaseUrl(req);
   if (!baseUrl) throw new Error('loopback_chat_base_missing');
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
@@ -1316,7 +1332,7 @@ async function handleChat(req, res) {
   try {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
-    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal)) {
+    if (shouldProxyFrameworkRecoToV1Mainline(body, auth.internal) && canProxyRecoToV1Mainline()) {
       const mainlineResponse = await invokeV1MainlineChatImpl({ req, body });
       res.json(
         applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
@@ -1410,7 +1426,7 @@ async function handleChatStream(req, res) {
     const auth = await resolveRequestIdentity(req, getRoutesInternal());
     const body = isPlainObject(req.body) ? req.body : {};
     const internal = auth.internal;
-    if (shouldProxyFrameworkRecoToV1Mainline(body, internal)) {
+    if (shouldProxyFrameworkRecoToV1Mainline(body, internal) && canProxyRecoToV1Mainline()) {
       sendEvent('thinking', {
         step: 'routing_framework_mainline',
         message: 'Preparing framework-first recommendations...',

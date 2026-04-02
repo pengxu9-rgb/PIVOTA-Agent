@@ -108,7 +108,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         `[PROMPT_VERSION=${CONCERN_PLANNER_PROMPT_VERSION}]`,
         '角色：严格的护肤通用关切规划器。',
         '任务：只给出第一轮护理框架，不推荐具体商品。',
-        '只输出纯文本，严格使用以下键名和单行格式：',
+        '只输出纯文本。优先使用以下键名；也接受简短 bullets 或 numbered list，但语义必须等价：',
         'PRIMARY_CONCERN: ...',
         'CORE_ROLE_IDS: role_id | role_id | role_id',
         'SUPPORT_ROLE_IDS: role_id | role_id',
@@ -126,7 +126,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         `[PROMPT_VERSION=${CONCERN_PLANNER_PROMPT_VERSION}]`,
         'Role: strict skincare generic-concern planner.',
         'Task: return only the first-turn care framework, not specific products.',
-        'Output plain text only in these single-line keys:',
+        'Output plain text only. Prefer these headings; short bullets or numbered lines are also acceptable if the meaning stays explicit:',
         'PRIMARY_CONCERN: ...',
         'CORE_ROLE_IDS: role_id | role_id | role_id',
         'SUPPORT_ROLE_IDS: role_id | role_id',
@@ -180,7 +180,9 @@ function splitSectionTokens(value) {
 function extractLineValue(text, labels = []) {
   const lines = String(text || '').split(/\r?\n/);
   for (const rawLine of lines) {
-    const line = String(rawLine || '').trim();
+    const line = String(rawLine || '')
+      .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
+      .trim();
     if (!line) continue;
     for (const label of labels) {
       const prefix = `${label}:`;
@@ -208,10 +210,38 @@ function parseRoutineShellHints(value, { coreRoles = [], supportRoles = [] } = {
   return mapping;
 }
 
+function buildConcernRoleSemanticPatterns(role) {
+  const row = isPlainObject(role) ? role : null;
+  if (!row) return [];
+  return uniqCaseInsensitiveStrings(
+    [
+      row.role_id,
+      row.label,
+      ...asStringArray(row.query_terms),
+      ...asStringArray(row.ingredient_hypotheses),
+      row.preferred_step,
+      ...asStringArray(row.product_type_hypotheses),
+    ],
+    24,
+  )
+    .map((value) => normalizeConcernRoleHint(value))
+    .filter((value) => value && value.length >= 3);
+}
+
+function findConcernRoleFirstIndex(normalizedText, role) {
+  if (!normalizedText) return Number.POSITIVE_INFINITY;
+  let best = Number.POSITIVE_INFINITY;
+  for (const pattern of buildConcernRoleSemanticPatterns(role)) {
+    const index = normalizedText.indexOf(pattern);
+    if (index >= 0 && index < best) best = index;
+  }
+  return best;
+}
+
 function scoreConcernSemanticRoleFromText(answerText, role) {
   const normalizedText = normalizeConcernRoleHint(answerText);
   const row = isPlainObject(role) ? role : null;
-  if (!normalizedText || !row) return { score: 0, matched: false };
+  if (!normalizedText || !row) return { score: 0, matched: false, first_index: null };
   let score = 0;
   const strongPatterns = uniqCaseInsensitiveStrings(
     [
@@ -248,9 +278,11 @@ function scoreConcernSemanticRoleFromText(answerText, role) {
     score += 1;
     if (score >= 5) break;
   }
+  const firstIndex = findConcernRoleFirstIndex(normalizedText, row);
   return {
     score,
     matched: score >= 2,
+    first_index: Number.isFinite(firstIndex) ? firstIndex : null,
   };
 }
 
@@ -340,6 +372,12 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
       }))
       .filter((item) => item.match.matched || item.match.score >= 2)
       .sort((left, right) => {
+        const leftIndex = Number.isFinite(left?.match?.first_index) ? Number(left.match.first_index) : Number.POSITIVE_INFINITY;
+        const rightIndex = Number.isFinite(right?.match?.first_index) ? Number(right.match.first_index) : Number.POSITIVE_INFINITY;
+        const leftHasIndex = Number.isFinite(leftIndex);
+        const rightHasIndex = Number.isFinite(rightIndex);
+        if (leftHasIndex && rightHasIndex && leftIndex !== rightIndex) return leftIndex - rightIndex;
+        if (leftHasIndex !== rightHasIndex) return leftHasIndex ? -1 : 1;
         const scoreDiff = Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
         if (scoreDiff !== 0) return scoreDiff;
         return Number(left?.role?.rank || 0) - Number(right?.role?.rank || 0);
@@ -354,6 +392,15 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
         match: scoreConcernSemanticRoleFromText(answerText, role),
       }))
       .filter((item) => item.match.score >= 1)
+      .sort((left, right) => {
+        const scoreDiff = Number(right?.match?.score || 0) - Number(left?.match?.score || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        const leftIndex = Number.isFinite(left?.match?.first_index) ? Number(left.match.first_index) : Number.POSITIVE_INFINITY;
+        const rightIndex = Number.isFinite(right?.match?.first_index) ? Number(right.match.first_index) : Number.POSITIVE_INFINITY;
+        if (Number.isFinite(leftIndex) && Number.isFinite(rightIndex) && leftIndex !== rightIndex) return leftIndex - rightIndex;
+        if (Number.isFinite(leftIndex) !== Number.isFinite(rightIndex)) return Number.isFinite(leftIndex) ? -1 : 1;
+        return Number(left?.role?.rank || 0) - Number(right?.role?.rank || 0);
+      })
       .map((item) => item.role)
       .slice(0, 2);
   }
@@ -363,7 +410,7 @@ function normalizeConcernSemanticPlanFromText(text, { fallbackPlan, requestText 
     (Array.isArray(routineShellHints.am_core_roles) && routineShellHints.am_core_roles.length > 0)
     || (Array.isArray(routineShellHints.pm_core_roles) && routineShellHints.pm_core_roles.length > 0)
     || (Array.isArray(routineShellHints.optional_support_roles) && routineShellHints.optional_support_roles.length > 0);
-  const hasFrameworkScaffold = /\b(priority order|start with|follow with|during the day|in the morning|at night|morning|evening|optional support)\b/.test(
+  const hasFrameworkScaffold = /\b(priority order|start with|follow with|during the day|in the morning|at night|morning|evening|optional support|am\b|pm\b|optional\b|then\b|finally\b|core roles?\b|support roles?\b)\b/.test(
     normalizeConcernRoleHint(answerText),
   );
   const ingredientHypotheses = uniqCaseInsensitiveStrings([

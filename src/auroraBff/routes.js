@@ -92,9 +92,11 @@ const {
   resolveAuroraGeminiMainlineModel,
   resolveAuroraPublicLlmRoute,
   validateAuroraModelSelection,
+  validateAuroraMainlineModelSelection,
   shouldAllowAuroraPublicLlmOverride,
   normalizeAuroraLlmProvider,
   normalizeAuroraLlmModel,
+  classifyAuroraGeminiRouteGroup,
 } = require('./auroraModelPolicy');
 const {
   CONCERN_PLANNER_PROMPT_VERSION,
@@ -1400,7 +1402,7 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
 async function shouldDelegateV1ChatToV2(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = normalizeIncomingChatAction(payload.action);
-  const actionData = isPlainObject(action.data) ? action.data : {};
+  const actionData = isPlainObject(action && action.data) ? action.data : {};
   const bodyParams = isPlainObject(payload.params) ? payload.params : {};
   const actionId =
     typeof action === 'string'
@@ -31890,7 +31892,7 @@ function buildRecoMainlineContract({
   const recoRows = Array.isArray(recommendations) ? recommendations : [];
   const hasRecommendations = recoRows.length > 0;
   const failureClass = normalizeRecoFailureClass(llmFailureClass);
-  const normalizedSourceMode = inferRecoSourceMode(sourceMode, source, { defaultValue: 'rules_only' });
+  const normalizedSourceMode = inferRecoSourceMode(sourceMode, source, { defaultValue: 'legacy_notice' });
   const upstreamCode = String(upstreamFailureCode || '').trim().toUpperCase();
   const normalizedProductsEmptyReason = normalizeRecoProductsEmptyReason(productsEmptyReason);
   const normalizedGroundingStatus = normalizeRecoGroundingStatus(groundingStatus);
@@ -32282,7 +32284,7 @@ function buildRecoRequestedEventData({
       : rawMetaMainlineStatus;
   const data = {
     explicit: explicit === true,
-    source: String(source || payloadObj.source || meta.source_mode || 'rules_only').trim() || 'rules_only',
+    source: String(source || payloadObj.source || meta.source_mode || 'legacy_notice').trim() || 'legacy_notice',
     ...(pickFirstTrimmed(sourceDetail) ? { source_detail: pickFirstTrimmed(sourceDetail) } : {}),
     ...(recomputeFromProfileUpdate === true ? { recompute_from_profile_update: true } : {}),
     ...(typeof lowConfidence === 'boolean' ? { low_confidence: lowConfidence } : {}),
@@ -51410,310 +51412,6 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 }
 
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
-const CONCERN_SEMANTIC_PLAN_RESPONSE_JSON_SCHEMA = Object.freeze({
-  type: 'object',
-  properties: {
-    primary_concern: { type: 'string' },
-    core_role_ids: { type: 'array', items: { type: 'string' } },
-    support_role_ids: { type: 'array', items: { type: 'string' } },
-    ingredient_hypotheses: { type: 'array', items: { type: 'string' } },
-    product_type_hypotheses: { type: 'array', items: { type: 'string' } },
-  },
-  required: ['primary_concern', 'core_role_ids'],
-});
-
-function normalizeConcernRoleHint(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[_\-\/]+/g, ' ')
-    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function pickConcernSemanticRoleRows(payload, { supportOnly = false } = {}) {
-  const source = isPlainObject(payload) ? payload : null;
-  if (!source) return [];
-  const candidates = supportOnly
-    ? [
-        source.support_roles,
-        source.supportRoles,
-        source.support_role_ids,
-        source.supportRoleIds,
-        source.optional_support_roles,
-        source.optionalSupportRoles,
-        source.optional_roles,
-        source.optionalRoles,
-        source.framework_summary?.support_roles,
-        source.frameworkSummary?.support_roles,
-        source.framework_summary?.optional_support_roles,
-        source.frameworkSummary?.optional_support_roles,
-      ]
-    : [
-        source.core_roles,
-        source.coreRoles,
-        source.core_role_ids,
-        source.coreRoleIds,
-        source.primary_roles,
-        source.primaryRoles,
-        source.primary_role,
-        source.primaryRole,
-        source.roles,
-        source.framework_roles,
-        source.frameworkRoles,
-        source.framework_summary?.prioritized_roles,
-        source.frameworkSummary?.prioritized_roles,
-      ];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate) && candidate.length > 0) return candidate;
-    if ((typeof candidate === 'string' && candidate.trim()) || isPlainObject(candidate)) return [candidate];
-  }
-  return [];
-}
-
-function normalizeConcernRoleArray(raw, { fallbackRoles = [], supportOnly = false } = {}) {
-  const rows = Array.isArray(raw) ? raw.slice(0, supportOnly ? 2 : 3) : [];
-  const out = [];
-  const usedFallbackIds = new Set();
-  for (let index = 0; index < rows.length; index += 1) {
-    const rawRow = rows[index];
-    const row =
-      typeof rawRow === 'string'
-        ? { role_id: rawRow }
-        : isPlainObject(rawRow)
-          ? rawRow
-          : {};
-    const requestedRoleLabel = pickFirstTrimmed(
-      row.label,
-      row.name,
-      row.role_name,
-      row.roleName,
-    );
-    const requestedRoleIdHint = pickFirstTrimmed(
-      row.role_id,
-      row.roleId,
-      row.id,
-      row.role,
-      row.role_key,
-      row.roleKey,
-      requestedRoleLabel,
-    );
-    const requestedRoleHint = normalizeConcernRoleHint(requestedRoleIdHint);
-    const preferredStep = normalizeRecoTargetStep(row.preferred_step || row.step || row.product_type);
-    const hasPlannerSignal = Boolean(
-      requestedRoleHint
-      || preferredStep
-      || Array.isArray(row.query_terms)
-      || Array.isArray(row.queryTerms)
-      || Array.isArray(row.fit_keywords)
-      || Array.isArray(row.fitKeywords),
-    );
-    if (!hasPlannerSignal) continue;
-    let fallbackRole =
-      fallbackRoles.find((role) => normalizeConcernRoleHint(role?.role_id) === requestedRoleHint)
-      || fallbackRoles.find((role) => normalizeConcernRoleHint(role?.label) === requestedRoleHint)
-      || fallbackRoles.find((role) => normalizeRecoTargetStep(role?.preferred_step) === preferredStep && !usedFallbackIds.has(String(role?.role_id || '').trim()))
-      || fallbackRoles[index]
-      || null;
-    if (fallbackRole) usedFallbackIds.add(String(fallbackRole.role_id || '').trim());
-
-    const label = pickFirstTrimmed(requestedRoleLabel, fallbackRole?.label);
-    const whyThisRole = pickFirstTrimmed(row.why_this_role, row.why, fallbackRole?.why_this_role);
-    const roleId = pickFirstTrimmed(fallbackRole?.role_id, requestedRoleIdHint);
-    if (!roleId) continue;
-    out.push({
-      role_id: roleId,
-      rank: Number.isFinite(Number(row.rank)) ? Number(row.rank) : Number(fallbackRole?.rank || index + 1),
-      preferred_step: preferredStep || normalizeRecoTargetStep(fallbackRole?.preferred_step) || 'treatment',
-      alternate_steps: uniqCaseInsensitiveStrings(
-        [
-          ...asStringArray(row.alternate_steps || row.alternateSteps),
-          ...asStringArray(fallbackRole?.alternate_steps || fallbackRole?.alternateSteps),
-        ]
-          .map((value) => normalizeRecoTargetStep(value))
-          .filter(Boolean),
-        4,
-      ),
-      slot: inferSlotForStep(preferredStep || fallbackRole?.preferred_step || 'treatment'),
-      label: label || roleId,
-      why_this_role: whyThisRole || label || roleId,
-      query_terms: uniqCaseInsensitiveStrings([
-        ...asStringArray(row.query_terms || row.queryTerms),
-        ...asStringArray(fallbackRole?.query_terms || fallbackRole?.queryTerms),
-      ], 6),
-      fit_keywords: uniqCaseInsensitiveStrings([
-        ...asStringArray(row.fit_keywords || row.fitKeywords),
-        ...asStringArray(fallbackRole?.fit_keywords || fallbackRole?.fitKeywords),
-      ], 10),
-      ingredient_hypotheses: uniqCaseInsensitiveStrings([
-        ...asStringArray(row.ingredient_hypotheses || row.ingredientHypotheses),
-        ...asStringArray(fallbackRole?.ingredient_hypotheses || fallbackRole?.ingredientHypotheses),
-      ], 8),
-      product_type_hypotheses: uniqCaseInsensitiveStrings(
-        [
-          preferredStep || fallbackRole?.preferred_step,
-          ...asStringArray(row.product_type_hypotheses || row.productTypeHypotheses),
-          ...asStringArray(fallbackRole?.product_type_hypotheses || fallbackRole?.productTypeHypotheses),
-        ]
-          .map((value) => normalizeRecoTargetStep(value) || String(value || '').trim())
-          .filter(Boolean),
-        4,
-      ),
-      frequency: pickFirstTrimmed(row.frequency, fallbackRole?.frequency) || 'daily',
-      routine_slots: uniqCaseInsensitiveStrings([
-        ...asStringArray(row.routine_slots || row.routineSlots),
-        ...asStringArray(fallbackRole?.routine_slots || fallbackRole?.routineSlots),
-      ], 3),
-      support_only: supportOnly === true || row.support_only === true || fallbackRole?.support_only === true,
-    });
-  }
-  return out;
-}
-
-function normalizeConcernRoutineShell(raw, { coreRoles = [], supportRoles = [] } = {}) {
-  const roleIds = new Set([...coreRoles, ...supportRoles].map((role) => String(role?.role_id || '').trim()).filter(Boolean));
-  const normalizeRoleIds = (value, fallback = []) => uniqCaseInsensitiveStrings(
-    [
-      ...asStringArray(value),
-      ...fallback,
-    ]
-      .map((item) => String(item || '').trim())
-      .filter((item) => roleIds.has(item)),
-    8,
-  );
-  const fallbackShell = {
-    am_core_roles: coreRoles.filter((role) => Array.isArray(role.routine_slots) && role.routine_slots.includes('am')).map((role) => role.role_id),
-    pm_core_roles: coreRoles.filter((role) => Array.isArray(role.routine_slots) && role.routine_slots.includes('pm')).map((role) => role.role_id),
-    optional_support_roles: supportRoles.map((role) => role.role_id).filter(Boolean),
-    frequency: Object.fromEntries([...coreRoles, ...supportRoles].filter((role) => role && role.role_id).map((role) => [role.role_id, role.frequency || null])),
-    role_to_step_mapping: Object.fromEntries([...coreRoles, ...supportRoles].filter((role) => role && role.role_id).map((role) => [role.role_id, role.preferred_step || null])),
-  };
-  const shell = isPlainObject(raw) ? raw : {};
-  return {
-    am_core_roles: normalizeRoleIds(shell.am_core_roles || shell.amCoreRoles, fallbackShell.am_core_roles),
-    pm_core_roles: normalizeRoleIds(shell.pm_core_roles || shell.pmCoreRoles, fallbackShell.pm_core_roles),
-    optional_support_roles: normalizeRoleIds(shell.optional_support_roles || shell.optionalSupportRoles, fallbackShell.optional_support_roles),
-    frequency: {
-      ...fallbackShell.frequency,
-      ...(isPlainObject(shell.frequency) ? shell.frequency : {}),
-    },
-    role_to_step_mapping: {
-      ...fallbackShell.role_to_step_mapping,
-      ...(isPlainObject(shell.role_to_step_mapping || shell.roleToStepMapping) ? (shell.role_to_step_mapping || shell.roleToStepMapping) : {}),
-    },
-  };
-}
-
-function normalizeConcernSemanticPlanOutput(raw, { fallbackPlan, requestText = '', focus = '' } = {}) {
-  const basePlan = isPlainObject(fallbackPlan)
-    ? fallbackPlan
-    : buildConcernSemanticPlanFallback({ text: requestText, focus });
-  const payload = isPlainObject(raw) ? raw : {};
-  const rawCoreRoles = pickConcernSemanticRoleRows(payload, { supportOnly: false });
-  const rawSupportRoles = pickConcernSemanticRoleRows(payload, { supportOnly: true });
-  const rawMixedSupportRoles = rawSupportRoles.length === 0 && Array.isArray(payload.roles)
-    ? payload.roles.filter((row) => {
-        const item = isPlainObject(row) ? row : null;
-        if (!item) return false;
-        return item.support_only === true
-          || item.supportOnly === true
-          || /support|optional/i.test(String(item.slot || item.role_slot || item.roleSlot || '').trim());
-      })
-    : [];
-  const coreRoles = normalizeConcernRoleArray(rawCoreRoles, {
-    fallbackRoles: Array.isArray(basePlan.core_roles) ? basePlan.core_roles : [],
-    supportOnly: false,
-  });
-  const supportRoles = normalizeConcernRoleArray(rawSupportRoles.length ? rawSupportRoles : rawMixedSupportRoles, {
-    fallbackRoles: Array.isArray(basePlan.support_roles) ? basePlan.support_roles : [],
-    supportOnly: true,
-  });
-  const usingFallbackRoles = coreRoles.length === 0;
-  const normalizedCoreRoles = usingFallbackRoles ? (Array.isArray(basePlan.core_roles) ? basePlan.core_roles : []) : coreRoles;
-  const normalizedSupportRoles = supportRoles.length > 0 ? supportRoles : (Array.isArray(basePlan.support_roles) ? basePlan.support_roles : []);
-  const ingredientHypotheses = uniqCaseInsensitiveStrings([
-    ...asStringArray(
-      payload.ingredient_hypotheses
-      || payload.ingredientHypotheses
-      || payload.ingredient_directions
-      || payload.ingredientDirections
-      || payload.framework_summary?.ingredient_hypotheses
-      || payload.frameworkSummary?.ingredient_hypotheses,
-    ),
-    ...normalizedCoreRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
-    ...normalizedSupportRoles.flatMap((role) => asStringArray(role.ingredient_hypotheses || role.ingredientHypotheses)),
-  ], 12);
-  const productTypeHypotheses = uniqCaseInsensitiveStrings([
-    ...asStringArray(
-      payload.product_type_hypotheses
-      || payload.productTypeHypotheses
-      || payload.product_type_directions
-      || payload.productTypeDirections,
-    ),
-    ...normalizedCoreRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
-    ...normalizedSupportRoles.flatMap((role) => asStringArray(role.product_type_hypotheses || role.productTypeHypotheses)),
-  ], 8);
-  const routineShell = normalizeConcernRoutineShell(payload.routine_shell || payload.routineShell, {
-    coreRoles: normalizedCoreRoles,
-    supportRoles: normalizedSupportRoles,
-  });
-  const baseSummary = isPlainObject(basePlan.framework_summary) ? basePlan.framework_summary : {};
-  const concernText = pickFirstTrimmed(
-    payload.primary_concern,
-    payload.concern_text,
-    payload.concernText,
-    baseSummary.concern_text,
-    requestText,
-    focus,
-  );
-  const normalized = {
-    plan_id: pickFirstTrimmed(payload.plan_id, payload.planId) || `concernplan_${crypto.createHash('sha1').update(JSON.stringify({
-      concernText,
-      coreRoles: normalizedCoreRoles.map((role) => role.role_id),
-      supportRoles: normalizedSupportRoles.map((role) => role.role_id),
-    })).digest('hex').slice(0, 16)}`,
-    semantic_plan_version: CONCERN_SEMANTIC_PLAN_VERSION,
-    intent_mode: 'generic_concern',
-    primary_concern: concernText,
-    core_roles: normalizedCoreRoles,
-    support_roles: normalizedSupportRoles,
-    ingredient_hypotheses: ingredientHypotheses.length ? ingredientHypotheses : basePlan.ingredient_hypotheses,
-    product_type_hypotheses: productTypeHypotheses.length ? productTypeHypotheses : basePlan.product_type_hypotheses,
-    frequency_policy: {
-      ...(isPlainObject(basePlan.frequency_policy) ? basePlan.frequency_policy : {}),
-      ...(isPlainObject(payload.frequency_policy || payload.frequencyPolicy) ? (payload.frequency_policy || payload.frequencyPolicy) : {}),
-      ...(isPlainObject(routineShell.frequency) ? routineShell.frequency : {}),
-    },
-    routine_shell: routineShell,
-    selection_constraints: {
-      ...(isPlainObject(basePlan.selection_constraints) ? basePlan.selection_constraints : {}),
-      ...(isPlainObject(payload.selection_constraints || payload.selectionConstraints) ? (payload.selection_constraints || payload.selectionConstraints) : {}),
-      support_cannot_replace_core: true,
-      allow_price_tiers: false,
-    },
-    selection_owner_source: usingFallbackRoles ? 'rule_concern_planner_fallback' : 'llm_concern_planner',
-    selection_owner_state: usingFallbackRoles ? 'fallback' : 'trusted',
-    framework_summary: {
-      concern_text: concernText,
-      headline: pickFirstTrimmed(payload.headline, baseSummary.headline) || baseSummary.headline || null,
-      prioritized_roles: normalizedCoreRoles.map((role) => ({
-        role_id: role.role_id,
-        label: role.label,
-        why_this_role: role.why_this_role,
-        rank: role.rank,
-      })),
-      support_roles: normalizedSupportRoles.map((role) => ({
-        role_id: role.role_id,
-        label: role.label,
-        why_this_role: role.why_this_role,
-      })),
-      ingredient_hypotheses: ingredientHypotheses.length ? ingredientHypotheses : asStringArray(baseSummary.ingredient_hypotheses),
-    },
-    concern_signals: isPlainObject(basePlan.concern_signals) ? basePlan.concern_signals : null,
-  };
-  return normalized;
-}
 
 async function runConcernSemanticPlanner({
   ctx,
@@ -51748,6 +51446,9 @@ async function runConcernSemanticPlanner({
     planner_effective_provider: null,
     planner_effective_model: null,
     planner_selection_source: 'none',
+    planner_route: 'aurora_concern_semantic_plan_plain_text',
+    planner_route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+    planner_key_slot: null,
     planner_attempts: [],
     model_policy_trace: [],
   };
@@ -51783,16 +51484,17 @@ async function runConcernSemanticPlanner({
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
+      const attemptTimeoutMs = index === 0 ? 8000 : 10000;
       const plannerResponse = await callGeminiTextResponseImpl({
         model: attempt.model,
         systemPrompt: promptBundle.systemPrompt,
         userPrompt: promptBundle.userPrompt,
-        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 15000),
+        timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, attemptTimeoutMs),
         temperature: 0.1,
-        maxOutputTokens: 1400,
+        maxOutputTokens: 1100,
         route: 'aurora_concern_semantic_plan_plain_text',
         ignoreForceModel: true,
-        thinkingBudget: 512,
+        thinkingBudget: 384,
       });
       trace.planner_used = true;
       lastPlannerResponse = plannerResponse;
@@ -51803,12 +51505,13 @@ async function runConcernSemanticPlanner({
         effective_model: pickFirstTrimmed(plannerResponse?.effective_model, attempt.model) || null,
         selection_source: pickFirstTrimmed(plannerResponse?.selection_source) || 'local_gemini_direct',
       };
-      const modelPolicyTrace = validateAuroraModelSelection({
+      const modelPolicyTrace = validateAuroraMainlineModelSelection({
         requestedProvider: llmRouteMeta.requested_provider,
         requestedModel: llmRouteMeta.requested_model,
         effectiveProvider: llmRouteMeta.effective_provider,
         effectiveModel: llmRouteMeta.effective_model,
         selectionSource: llmRouteMeta.selection_source,
+        route: 'aurora_concern_semantic_plan_plain_text',
       });
       trace.model_policy_trace.push({
         ...modelPolicyTrace,
@@ -51851,6 +51554,9 @@ async function runConcernSemanticPlanner({
         effective_provider: llmRouteMeta.effective_provider,
         effective_model: llmRouteMeta.effective_model,
         selection_source: modelPolicyTrace.selection_source || llmRouteMeta.selection_source,
+        route: 'aurora_concern_semantic_plan_plain_text',
+        route_group: modelPolicyTrace.route_group || classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+        key_slot: pickFirstTrimmed(plannerResponse?.meta?.key_slot, plannerResponse?.meta?.keySlot) || null,
         provider_reason: providerReason,
         provider_parse_status: pickFirstTrimmed(plannerResponse?.parse_status) || null,
         raw_top_keys: [],
@@ -51877,6 +51583,7 @@ async function runConcernSemanticPlanner({
       trace.planner_effective_provider = llmRouteMeta.effective_provider;
       trace.planner_effective_model = llmRouteMeta.effective_model;
       trace.planner_selection_source = modelPolicyTrace.selection_source || llmRouteMeta.selection_source;
+      trace.planner_key_slot = attemptTrace.key_slot;
       if (attemptTrace.trusted) {
         trace.planner_source = semanticPlan.selection_owner_source;
         trace.planner_provider = llmRouteMeta.effective_provider || attempt.provider;
@@ -52053,20 +51760,59 @@ async function runConcernSelectorRace({
     llm_selector_used: false,
     open_world_candidate_expansion_needed: false,
     selection_notes: [],
+    selector_route: 'aurora_concern_selector_race',
+    selector_route_group: classifyAuroraGeminiRouteGroup('aurora_concern_selector_race'),
+    selector_requested_provider: null,
+    selector_requested_model: null,
+    selector_effective_provider: null,
+    selector_effective_model: null,
+    selector_selection_source: 'none',
+    selector_key_slot: null,
   };
   if (!Array.isArray(recommendations) || recommendations.length === 0) return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace };
   try {
-    const upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query,
-      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 6000),
-      trace_id: ctx?.trace_id,
-      request_id: ctx?.request_id,
+    const selectorModel = resolveAuroraGeminiMainlineModel({
+      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_SELECTOR_GEMINI_MODEL', 'AURORA_CONCERN_PLANNER_GEMINI_MODEL', 'GEMINI_MODEL']).value,
+      fallbackModel: 'gemini-3-flash-preview',
+      envSource: 'AURORA_CONCERN_SELECTOR_GEMINI_MODEL',
+      callPath: 'aurora_concern_selector_race',
+    });
+    const upstream = await callGeminiTextResponseImpl({
+      model: selectorModel.effective_model,
+      systemPrompt: 'Return strict JSON only.',
+      userPrompt: query,
+      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 3000),
+      temperature: 0.1,
+      maxOutputTokens: 600,
+      route: 'aurora_concern_selector_race',
+      ignoreForceModel: true,
+      thinkingBudget: 192,
+    });
+    const selectorPolicy = validateAuroraMainlineModelSelection({
+      requestedProvider: pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini',
+      requestedModel: pickFirstTrimmed(upstream?.requested_model, selectorModel.effective_model) || selectorModel.effective_model,
+      effectiveProvider: pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini',
+      effectiveModel: pickFirstTrimmed(upstream?.effective_model, selectorModel.effective_model) || selectorModel.effective_model,
+      selectionSource: pickFirstTrimmed(upstream?.selection_source, 'local_gemini_direct') || 'local_gemini_direct',
+      route: 'aurora_concern_selector_race',
     });
     trace.llm_selector_used = true;
-    const rawStructured = getUpstreamStructuredOrJson(upstream)
-      || (upstream && typeof upstream.answer === 'string'
-        ? extractJsonObjectByKeys(upstream.answer, ['top_pick_product_id', 'ordered_product_ids'])
+    trace.selector_requested_provider = pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini';
+    trace.selector_requested_model = pickFirstTrimmed(upstream?.requested_model, selectorModel.effective_model) || selectorModel.effective_model;
+    trace.selector_effective_provider = pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini';
+    trace.selector_effective_model = pickFirstTrimmed(upstream?.effective_model, selectorModel.effective_model) || selectorModel.effective_model;
+    trace.selector_selection_source = selectorPolicy.selection_source || pickFirstTrimmed(upstream?.selection_source, 'local_gemini_direct') || 'local_gemini_direct';
+    trace.selector_key_slot = pickFirstTrimmed(upstream?.meta?.key_slot, upstream?.meta?.keySlot) || null;
+    if (!selectorPolicy.ok) {
+      trace.selector_selection_source = selectorPolicy.selection_source || 'policy_violation_blocked';
+      return { result: normalizeConcernSelectorRaceOutput(null, { recommendations, semanticPlan }), trace, upstream };
+    }
+    const rawStructured =
+      (upstream && typeof upstream.text === 'string'
+        ? extractJsonObjectByKeys(upstream.text, ['top_pick_product_id', 'ordered_product_ids'])
+        : null)
+      || (upstream && typeof upstream.raw_text === 'string'
+        ? extractJsonObjectByKeys(upstream.raw_text, ['top_pick_product_id', 'ordered_product_ids'])
         : null);
     const result = normalizeConcernSelectorRaceOutput(rawStructured, { recommendations, semanticPlan });
     trace.winner_source = result.top_pick_product_id ? 'llm_selector' : 'deterministic';
@@ -52155,22 +51901,51 @@ async function runConcernOpenWorldExpansion({
     lang: ctx?.lang || 'EN',
   });
   try {
-    const upstream = await auroraChat({
-      baseUrl: AURORA_DECISION_BASE_URL,
-      query,
-      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 5000),
-      trace_id: ctx?.trace_id,
-      request_id: ctx?.request_id,
+    const openWorldModel = resolveAuroraGeminiMainlineModel({
+      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_OPEN_WORLD_GEMINI_MODEL', 'AURORA_CONCERN_SELECTOR_GEMINI_MODEL', 'GEMINI_MODEL']).value,
+      fallbackModel: 'gemini-3-flash-preview',
+      envSource: 'AURORA_CONCERN_OPEN_WORLD_GEMINI_MODEL',
+      callPath: 'aurora_concern_open_world',
     });
-    const rawStructured = getUpstreamStructuredOrJson(upstream)
-      || (upstream && typeof upstream.answer === 'string'
-        ? extractJsonObjectByKeys(upstream.answer, ['products'])
-        : null);
+    const upstream = await callGeminiTextResponseImpl({
+      model: openWorldModel.effective_model,
+      systemPrompt: 'Return strict JSON only.',
+      userPrompt: query,
+      timeoutMs: Math.min(RECO_UPSTREAM_TIMEOUT_MS, 4000),
+      temperature: 0.1,
+      maxOutputTokens: 450,
+      route: 'aurora_concern_open_world',
+      ignoreForceModel: true,
+      thinkingBudget: 128,
+    });
+    const openWorldPolicy = validateAuroraMainlineModelSelection({
+      requestedProvider: pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini',
+      requestedModel: pickFirstTrimmed(upstream?.requested_model, openWorldModel.effective_model) || openWorldModel.effective_model,
+      effectiveProvider: pickFirstTrimmed(upstream?.provider, 'gemini') || 'gemini',
+      effectiveModel: pickFirstTrimmed(upstream?.effective_model, openWorldModel.effective_model) || openWorldModel.effective_model,
+      selectionSource: pickFirstTrimmed(upstream?.selection_source, 'local_gemini_direct') || 'local_gemini_direct',
+      route: 'aurora_concern_open_world',
+    });
+    const rawStructured = openWorldPolicy.ok
+      ? (
+        (upstream && typeof upstream.text === 'string'
+          ? extractJsonObjectByKeys(upstream.text, ['products'])
+          : null)
+        || (upstream && typeof upstream.raw_text === 'string'
+          ? extractJsonObjectByKeys(upstream.raw_text, ['products'])
+          : null)
+      )
+      : null;
     return {
       products: normalizeConcernOpenWorldProducts(rawStructured),
       trace: {
         open_world_expansion_used: true,
         open_world_expansion_source: 'llm_open_world',
+        requested_model: pickFirstTrimmed(upstream?.requested_model, openWorldModel.effective_model) || openWorldModel.effective_model,
+        effective_model: pickFirstTrimmed(upstream?.effective_model, openWorldModel.effective_model) || openWorldModel.effective_model,
+        selection_source: openWorldPolicy.selection_source || pickFirstTrimmed(upstream?.selection_source, 'local_gemini_direct') || 'local_gemini_direct',
+        route: 'aurora_concern_open_world',
+        key_slot: pickFirstTrimmed(upstream?.meta?.key_slot, upstream?.meta?.keySlot) || null,
       },
     };
   } catch (error) {
@@ -60311,6 +60086,9 @@ async function generateProductRecommendations({
   let concernWinnerSource = 'deterministic';
   let concernSupportRolesSurfaced = [];
   let concernOpenWorldExpansionUsed = false;
+  let selectorRaceApplied = false;
+  let pdpEnrichmentApplied = false;
+  const mainlineStageTimingsMs = {};
   let concernSemanticPlanBlockedReason = '';
   let concernSemanticPlanBlockedFailureClass = '';
   let concernSemanticPlanBlockedFailureOrigin = 'none';
@@ -60321,6 +60099,7 @@ async function generateProductRecommendations({
     && targetContext.framework_roles.length > 0
     && String(targetContext.intent_mode || '').trim() === 'generic_concern'
   ) {
+    const plannerStartedAt = Date.now();
     const concernPlanOut = await runConcernSemanticPlanner({
       ctx,
       logger,
@@ -60329,6 +60108,7 @@ async function generateProductRecommendations({
       profileSummary,
       recommendationTaskContext,
     });
+    mainlineStageTimingsMs.semantic_planner = Math.max(0, Date.now() - plannerStartedAt);
     concernSemanticPlanTrace = concernPlanOut.trace || null;
     targetContext = buildConcernTargetContextFromSemanticPlan(concernPlanOut.semanticPlan, {
       text: userAsk,
@@ -60437,6 +60217,7 @@ async function generateProductRecommendations({
       external_seed_used_count: 0,
     };
   } else if (deterministicCatalogFirstEnabled) {
+    const catalogRecallStartedAt = Date.now();
     const catalogOut = await buildRecoGenerateFromCatalog({
       ctx,
       profileSummary,
@@ -60447,6 +60228,7 @@ async function generateProductRecommendations({
       debug,
       logger,
     });
+    mainlineStageTimingsMs.catalog_recall = Math.max(0, Date.now() - catalogRecallStartedAt);
     catalogStructured =
       catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
         ? catalogOut.structured
@@ -60579,6 +60361,7 @@ async function generateProductRecommendations({
       llmStructuredRecoEmpty;
     const shouldAllowCatalogTransientFallback = !llmStructured || llmStructuredRecoEmpty;
     if (shouldAttemptCatalogRecovery) {
+      const catalogRecoveryStartedAt = Date.now();
       const catalogOut = await buildRecoGenerateFromCatalog({
         ctx,
         profileSummary,
@@ -60589,6 +60372,10 @@ async function generateProductRecommendations({
         debug,
         logger,
       });
+      mainlineStageTimingsMs.catalog_recall = Math.max(
+        Number(mainlineStageTimingsMs.catalog_recall || 0),
+        Math.max(0, Date.now() - catalogRecoveryStartedAt),
+      );
       catalogStructured =
         catalogOut && typeof catalogOut === 'object' && catalogOut.structured && typeof catalogOut.structured === 'object'
           ? catalogOut.structured
@@ -61180,66 +60967,91 @@ async function generateProductRecommendations({
   }
 
   const recoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
-  const groundedRecoRows = [];
-  const ungroundedRecoRows = [];
-  recoRowsForPdp.forEach((row, index) => {
-    if (isRecoUngroundedItem(row)) {
-      ungroundedRecoRows.push({ index, row });
-    } else {
-      groundedRecoRows.push({ index, row });
-    }
-  });
-  const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
-  const pdpOpenOut = !groundedRecoRows.length
-    ? {
-      recommendations: [],
-      path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
-      fail_reason_counts: {},
-      time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
-    }
-    : skipPdpOpenEnrichByBudget
-      ? {
-        recommendations: groundedRecoRows.map((entry) => entry.row),
-        path_stats: { skipped_due_budget: true },
-        fail_reason_counts: {},
+  const shouldDelayPdpEnrichment = frameworkMode;
+  if (shouldDelayPdpEnrichment) {
+    const prePdpDeduped = dedupeRecoRecommendationsStrict(recoRowsForPdp, { maxItems: 8 });
+    norm.payload = {
+      ...norm.payload,
+      recommendations: prePdpDeduped.recommendations,
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        pdp_open_path_stats: { deferred_until_safe_winner: true },
+        resolve_fail_reason_counts: {},
         time_to_pdp_ms_stats: {},
+        reco_post_pdp_dedupe_dropped: Number(prePdpDeduped.dropped_count || 0),
+      },
+    };
+  } else {
+    const groundedRecoRows = [];
+    const ungroundedRecoRows = [];
+    recoRowsForPdp.forEach((row, index) => {
+      if (isRecoUngroundedItem(row)) {
+        ungroundedRecoRows.push({ index, row });
+      } else {
+        groundedRecoRows.push({ index, row });
       }
-      : await enrichRecommendationsWithPdpOpenContract({
-        recommendations: groundedRecoRows.map((entry) => entry.row),
-        logger,
-        fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
-        lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
-      });
-  const recombinedRecommendations = [];
-  let groundedCursor = 0;
-  let ungroundedCursor = 0;
-  for (let index = 0; index < recoRowsForPdp.length; index += 1) {
-    const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
-    if (ungroundedEntry && ungroundedEntry.index === index) {
-      recombinedRecommendations.push(ungroundedEntry.row);
-      ungroundedCursor += 1;
-      continue;
+    });
+    const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
+    const pdpStartedAt = Date.now();
+    const pdpOpenOut = !groundedRecoRows.length
+      ? {
+        recommendations: [],
+        path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
+        fail_reason_counts: {},
+        time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+      }
+      : skipPdpOpenEnrichByBudget
+        ? {
+          recommendations: groundedRecoRows.map((entry) => entry.row),
+          path_stats: { skipped_due_budget: true },
+          fail_reason_counts: {},
+          time_to_pdp_ms_stats: {},
+        }
+        : await enrichRecommendationsWithPdpOpenContract({
+          recommendations: groundedRecoRows.map((entry) => entry.row),
+          logger,
+          fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+          lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+        });
+    mainlineStageTimingsMs.pdp_enrichment = Math.max(0, Date.now() - pdpStartedAt);
+    pdpEnrichmentApplied = groundedRecoRows.length > 0;
+    const recombinedRecommendations = [];
+    let groundedCursor = 0;
+    let ungroundedCursor = 0;
+    for (let index = 0; index < recoRowsForPdp.length; index += 1) {
+      const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
+      if (ungroundedEntry && ungroundedEntry.index === index) {
+        recombinedRecommendations.push(ungroundedEntry.row);
+        ungroundedCursor += 1;
+        continue;
+      }
+      const groundedEntry = groundedRecoRows[groundedCursor];
+      if (groundedEntry && groundedEntry.index === index) {
+        recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
+        groundedCursor += 1;
+      }
     }
-    const groundedEntry = groundedRecoRows[groundedCursor];
-    if (groundedEntry && groundedEntry.index === index) {
-      recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
-      groundedCursor += 1;
-    }
+    const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
+    norm.payload = {
+      ...norm.payload,
+      recommendations: pdpDeduped.recommendations,
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        pdp_open_path_stats: pdpOpenOut.path_stats,
+        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+        reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
+      },
+    };
   }
-  const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
-  norm.payload = {
-    ...norm.payload,
-    recommendations: pdpDeduped.recommendations,
-    metadata: {
-      ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
-      pdp_open_path_stats: pdpOpenOut.path_stats,
-      resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
-      time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
-      reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
-    },
-  };
-  if (frameworkMode && isPlainObject(targetContext?.semantic_plan) && !concernSemanticPlanBlockedReason) {
+  if (
+    frameworkMode
+    && isPlainObject(targetContext?.semantic_plan)
+    && !concernSemanticPlanBlockedReason
+    && viablePoolState?.primary_role_matched === true
+  ) {
     const baseRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
+    const selectorStartedAt = Date.now();
     const selectorOut = await runConcernSelectorRace({
       ctx,
       logger,
@@ -61247,6 +61059,8 @@ async function generateProductRecommendations({
       semanticPlan: targetContext.semantic_plan,
       recommendations: baseRecommendations,
     });
+    mainlineStageTimingsMs.selector_race = Math.max(0, Date.now() - selectorStartedAt);
+    selectorRaceApplied = true;
     concernSelectorRaceTrace = {
       ...(selectorOut.trace || {}),
       result: selectorOut.result || null,
@@ -61272,74 +61086,6 @@ async function generateProductRecommendations({
       });
       norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || norm.payload.primary_recommendation_id || null;
     }
-    if (
-      (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0 || !selectorApplied.primary_recommendation_id)
-      && selectorOut.result?.open_world_candidate_expansion_needed === true
-    ) {
-      const openWorldOut = await runConcernOpenWorldExpansion({
-        ctx,
-        logger,
-        requestText: userAsk,
-        semanticPlan: targetContext.semantic_plan,
-      });
-      concernOpenWorldExpansionUsed = true;
-      const groundedExternal = [];
-      for (const lead of Array.isArray(openWorldOut.products) ? openWorldOut.products : []) {
-        const inputText = joinBrandAndName(lead.brand, lead.name);
-        // eslint-disable-next-line no-await-in-loop
-        const resolved = await resolveCatalogProductForProductInput({
-          inputText,
-          lang: ctx?.lang || 'EN',
-          logger,
-        });
-        if (!resolved?.ok || !resolved.product) continue;
-        const normalized = normalizeRecoCatalogProduct(resolved.product);
-        if (!isPlainObject(normalized)) continue;
-        groundedExternal.push({
-          ...normalized,
-          retrieval_source: 'llm_open_world_grounded',
-          retrieval_reason: 'llm_open_world_grounded',
-          retrieval_query: inputText,
-          retrieval_role_id: targetContext.primary_role_id || null,
-          retrieval_step: pickFirstTrimmed(targetContext?.framework_roles?.[0]?.preferred_step) || null,
-        });
-      }
-      concernOpenWorldExpansionTrace = {
-        ...(openWorldOut.trace || {}),
-        grounded_count: groundedExternal.length,
-      };
-      if (groundedExternal.length) {
-        const mergedRawPool = [
-          ...groundedExternal,
-          ...(Array.isArray(viablePoolState?.raw_candidate_pool) ? viablePoolState.raw_candidate_pool : []),
-        ];
-        viablePoolState = finalizeConcernFrameworkCandidatePools(mergedRawPool, { targetContext });
-        const openWorldRecommendations = buildConcernRecommendationsFromSelectedCandidates(
-          Array.isArray(viablePoolState.selected_recommendations) ? viablePoolState.selected_recommendations : [],
-          {
-            targetContext,
-            language: ctx && ctx.lang ? ctx.lang : 'EN',
-            debug,
-          },
-        );
-        const reranked = await runConcernSelectorRace({
-          ctx,
-          logger,
-          requestText: userAsk,
-          semanticPlan: targetContext.semantic_plan,
-          recommendations: openWorldRecommendations,
-        });
-        selectorApplied = applyConcernSelectorRaceOrdering(openWorldRecommendations, reranked.result);
-        concernSelectorRaceTrace = {
-          ...(reranked.trace || {}),
-          result: reranked.result || null,
-        };
-        concernWinnerSource = selectorApplied.winner_source || concernWinnerSource;
-        concernSupportRolesSurfaced = selectorApplied.support_roles_surfaced || concernSupportRolesSurfaced;
-        norm.payload.recommendations = selectorApplied.recommendations;
-        norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || viablePoolState.primary_recommendation_id || null;
-      }
-    }
   }
   if (frameworkMode && !concernSemanticPlanBlockedReason && viablePoolState?.primary_role_matched !== true) {
     // Support-role rows are useful for diagnostics, but they must not surface as a successful
@@ -61354,6 +61100,70 @@ async function generateProductRecommendations({
     ) || 'weak_viable_pool';
     concernWinnerSource = 'deterministic';
     concernSupportRolesSurfaced = [];
+  }
+  if (frameworkMode && Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
+    const finalRecoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
+    const groundedRecoRows = [];
+    const ungroundedRecoRows = [];
+    finalRecoRowsForPdp.forEach((row, index) => {
+      if (isRecoUngroundedItem(row)) {
+        ungroundedRecoRows.push({ index, row });
+      } else {
+        groundedRecoRows.push({ index, row });
+      }
+    });
+    const skipPdpOpenEnrichByBudget = Number.isFinite(deadlineAtMs) && Date.now() >= (deadlineAtMs - 250);
+    const pdpStartedAt = Date.now();
+    const pdpOpenOut = !groundedRecoRows.length
+      ? {
+        recommendations: [],
+        path_stats: { internal: 0, external: 0, none: 0, unknown: 0 },
+        fail_reason_counts: {},
+        time_to_pdp_ms_stats: { count: 0, mean: 0, p50: 0, p90: 0, max: 0 },
+      }
+      : skipPdpOpenEnrichByBudget
+        ? {
+          recommendations: groundedRecoRows.map((entry) => entry.row),
+          path_stats: { skipped_due_budget: true },
+          fail_reason_counts: {},
+          time_to_pdp_ms_stats: {},
+        }
+        : await enrichRecommendationsWithPdpOpenContract({
+          recommendations: groundedRecoRows.map((entry) => entry.row),
+          logger,
+          fastExternalFallbackReasonCode: pdpFastExternalFallbackReasonCode,
+          lightEnrich: RECO_PDP_LIGHT_ENRICH_ENABLED,
+        });
+    mainlineStageTimingsMs.pdp_enrichment = Math.max(0, Date.now() - pdpStartedAt);
+    pdpEnrichmentApplied = groundedRecoRows.length > 0;
+    const recombinedRecommendations = [];
+    let groundedCursor = 0;
+    let ungroundedCursor = 0;
+    for (let index = 0; index < finalRecoRowsForPdp.length; index += 1) {
+      const ungroundedEntry = ungroundedRecoRows[ungroundedCursor];
+      if (ungroundedEntry && ungroundedEntry.index === index) {
+        recombinedRecommendations.push(ungroundedEntry.row);
+        ungroundedCursor += 1;
+        continue;
+      }
+      const groundedEntry = groundedRecoRows[groundedCursor];
+      if (groundedEntry && groundedEntry.index === index) {
+        recombinedRecommendations.push(pdpOpenOut.recommendations[groundedCursor] || groundedEntry.row);
+        groundedCursor += 1;
+      }
+    }
+    const pdpDeduped = dedupeRecoRecommendationsStrict(recombinedRecommendations, { maxItems: 8 });
+    norm.payload = {
+      ...norm.payload,
+      recommendations: pdpDeduped.recommendations,
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        pdp_open_path_stats: pdpOpenOut.path_stats,
+        resolve_fail_reason_counts: pdpOpenOut.fail_reason_counts,
+        time_to_pdp_ms_stats: pdpOpenOut.time_to_pdp_ms_stats,
+        reco_post_pdp_dedupe_dropped: Number(pdpDeduped.dropped_count || 0),
+      },
+    };
   }
   let finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   finalSelectedCandidateCount = finalRecommendations.length;
@@ -61391,18 +61201,22 @@ async function generateProductRecommendations({
           ? 'catalog_transient_fallback'
           : frameworkMode
             ? 'framework_mainline'
-            : 'llm_primary'
+            : targetContext.step_aware_intent
+              ? 'step_aware_mainline'
+              : 'llm_primary'
     : frameworkMode
       ? structuredSource === 'catalog_transient_fallback'
         ? 'catalog_transient_fallback'
         : structuredSource === 'catalog_grounded'
           ? 'catalog_grounded'
           : 'framework_mainline'
-      : stepAwareMainlineFailure && structuredSource === 'catalog_grounded'
-        ? 'catalog_grounded'
-        : stepAwareMainlineFailure && structuredSource === 'catalog_transient_fallback'
-          ? 'catalog_transient_fallback'
-          : 'rules_only';
+      : targetContext.step_aware_intent
+        ? structuredSource === 'catalog_grounded'
+          ? 'catalog_grounded'
+          : structuredSource === 'catalog_transient_fallback'
+            ? 'catalog_transient_fallback'
+            : 'step_aware_mainline'
+        : 'legacy_notice';
   const catalogSkipReason = effectiveCatalogSkipReason || pickFirstTrimmed(catalogDebug && catalogDebug.skipped_reason) || null;
   const contractStatus = deriveRecoContractStatus({
     promptContractOk: promptContract.ok,
@@ -61430,8 +61244,7 @@ async function generateProductRecommendations({
     : (pickFirstTrimmed(
       norm.payload?.products_empty_reason,
       effectiveFailureClass,
-      'artifact_missing',
-    ) || 'artifact_missing');
+    ) || 'no_recall_from_planned_sources');
   if (upstreamDebug) {
     upstreamDebug.contract_status = contractStatus;
     upstreamDebug.mainline_status = mainlineStatus;
@@ -61453,6 +61266,7 @@ async function generateProductRecommendations({
     upstreamDebug.scope_classification_stats = isPlainObject(viablePoolState?.scope_classification_stats) ? viablePoolState.scope_classification_stats : null;
     upstreamDebug.role_pool_stats = isPlainObject(viablePoolState?.role_pool_stats) ? viablePoolState.role_pool_stats : null;
     upstreamDebug.model_policy_trace = Array.isArray(concernSemanticPlanTrace?.model_policy_trace) ? concernSemanticPlanTrace.model_policy_trace : [];
+    upstreamDebug.mainline_stage_timings_ms = { ...mainlineStageTimingsMs };
     upstreamDebug.mock_block_trace = {
       requested_use_mock: String(process.env.AURORA_BFF_USE_MOCK || '').trim().toLowerCase() === 'true',
       production_like: isProductionLikeAuroraBffEnv(),
@@ -61477,7 +61291,9 @@ async function generateProductRecommendations({
           ? 'catalog_transient_fallback'
           : sourceMode === 'framework_mainline'
             ? 'framework_mainline_v1'
-            : 'rules_only',
+            : sourceMode === 'step_aware_mainline'
+              ? 'step_aware_mainline_v1'
+            : 'legacy_notice',
     recommendation_meta: {
       ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
       source_mode: sourceMode,
@@ -61574,6 +61390,9 @@ async function generateProductRecommendations({
       semantic_planner_effective_provider: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_provider) || null : null,
       semantic_planner_effective_model: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_effective_model) || null : null,
       semantic_planner_selection_source: frameworkMode ? pickFirstTrimmed(concernSemanticPlanTrace?.planner_selection_source) || null : null,
+      selector_requested_model: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_requested_model) || null : null,
+      selector_effective_model: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_effective_model) || null : null,
+      selector_selection_source: frameworkMode ? pickFirstTrimmed(concernSelectorRaceTrace?.selector_selection_source) || null : null,
       semantic_planner_owner_state: frameworkMode ? pickFirstTrimmed(targetContext?.selection_owner_state, targetContext?.framework_owner_state) || null : null,
       primary_role_id: frameworkMode ? targetContext.primary_role_id || null : null,
       primary_recommendation_id: frameworkMode
@@ -63003,6 +62822,8 @@ function buildPrelabelKbReadCandidates(anchorProductId, lang = 'EN') {
   return out;
 }
 
+let runMountedV1ChatHandlerImpl = null;
+
 function mapSuggestionForResponse(row) {
   const item = sanitizeSuggestionForPublic(row);
   if (!item) return null;
@@ -63056,6 +62877,81 @@ let requiredRouteContractsHealth = Object.freeze({
 
 function getRequiredRouteContractsHealth() {
   return requiredRouteContractsHealth;
+}
+
+async function runV1ChatMainlineInProcess({ req, body } = {}) {
+  if (typeof runMountedV1ChatHandlerImpl !== 'function') {
+    throw new Error('v1_chat_mainline_handler_unmounted');
+  }
+  const baseReq = req && typeof req === 'object' ? req : {};
+  const headers = baseReq.headers && typeof baseReq.headers === 'object' ? { ...baseReq.headers } : {};
+  const mockReq = Object.create(baseReq);
+  mockReq.body = body && typeof body === 'object' ? body : {};
+  mockReq.headers = headers;
+  mockReq.method = 'POST';
+  mockReq.url = '/v1/chat';
+  mockReq.originalUrl = '/v1/chat';
+  if (typeof mockReq.get !== 'function') {
+    mockReq.get = (name) => {
+      const token = String(name || '').trim().toLowerCase();
+      return headers[token] ?? headers[name] ?? null;
+    };
+  }
+
+  const responseState = {
+    statusCode: 200,
+    body: null,
+    headers: {},
+  };
+  const mockRes = {
+    locals: {},
+    headersSent: false,
+    set(name, value) {
+      responseState.headers[String(name || '').toLowerCase()] = value;
+      return this;
+    },
+    setHeader(name, value) {
+      responseState.headers[String(name || '').toLowerCase()] = value;
+      return this;
+    },
+    getHeader(name) {
+      return responseState.headers[String(name || '').toLowerCase()];
+    },
+    status(code) {
+      const nextCode = Number(code);
+      if (Number.isFinite(nextCode) && nextCode > 0) {
+        responseState.statusCode = Math.trunc(nextCode);
+      }
+      return this;
+    },
+    json(payload) {
+      responseState.body = payload;
+      this.headersSent = true;
+      return payload;
+    },
+    send(payload) {
+      responseState.body = payload;
+      this.headersSent = true;
+      return payload;
+    },
+    end(payload) {
+      if (payload !== undefined) responseState.body = payload;
+      this.headersSent = true;
+      return payload;
+    },
+  };
+
+  await runMountedV1ChatHandlerImpl(mockReq, mockRes);
+  if (responseState.statusCode >= 400) {
+    const error = new Error(`v1_chat_mainline_failed_${responseState.statusCode}`);
+    error.status = responseState.statusCode;
+    error.payload = responseState.body;
+    throw error;
+  }
+  if (!responseState.body || typeof responseState.body !== 'object' || Array.isArray(responseState.body)) {
+    throw new Error('v1_chat_mainline_invalid_payload');
+  }
+  return responseState.body;
 }
 
 function mountAuroraBffRoutes(app, { logger }) {
@@ -65101,10 +64997,13 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reasons: Array.isArray(kbQuarantineMeta.reasons) ? kbQuarantineMeta.reasons.slice(0, 8) : [],
                   refreshed: kbQuarantineMeta.refreshed === true,
                 },
-              }
-              : {}),
-          },
-        };
+        }
+        : {}),
+      mainline_stage_timings_ms: { ...mainlineStageTimingsMs },
+      pdp_enrichment_applied: pdpEnrichmentApplied,
+      selector_race_applied: frameworkMode ? selectorRaceApplied : false,
+    },
+  };
         return annotateProductIntelRelaxedProvenance(withDiag, {
           quarantineReasons: kbQuarantineMeta.hit
             ? (Array.isArray(kbQuarantineMeta.reasons) && kbQuarantineMeta.reasons.length
@@ -68129,7 +68028,12 @@ function mountAuroraBffRoutes(app, { logger }) {
         eventData: buildRecoRequestedEventData({
           explicit: true,
           payload: guardedRecoCard?.payload,
-          source: String(guardedRecoCard?.payload?.source || guardedRecoCard?.payload?.recommendation_meta?.source_mode || baseContract.source || 'rules_only'),
+          source: String(
+            guardedRecoCard?.payload?.source
+            || guardedRecoCard?.payload?.recommendation_meta?.source_mode
+            || baseContract.source
+            || 'legacy_notice',
+          ),
           llmTraceRef,
           failureClass: finalContract.failure_class,
           upstreamFailureCode: upstreamReco?.upstreamFailureCode,
@@ -73428,7 +73332,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     }
   });
 
-  app.post('/v1/chat', async (req, res) => {
+  const handleV1Chat = async (req, res) => {
     const parsed = V1ChatRequestSchema.safeParse(req.body || {});
     const ctx = buildRequestContext(req, parsed.success ? parsed.data : req.body || {});
     const templateCtx = {
@@ -73598,7 +73502,8 @@ function mountAuroraBffRoutes(app, { logger }) {
       const cards = Array.isArray(envelope.cards) ? envelope.cards : [];
       for (const card of cards) {
         if (!card || typeof card !== 'object') continue;
-        if (String(card.type || '').trim().toLowerCase() !== 'recommendations') continue;
+        const cardType = String(card.type || '').trim().toLowerCase();
+        if (cardType !== 'recommendations' && cardType !== 'aurora_structured') continue;
         const payload = card.payload && typeof card.payload === 'object' && !Array.isArray(card.payload) ? card.payload : {};
         const payloadMeta =
           payload.recommendation_meta && typeof payload.recommendation_meta === 'object' && !Array.isArray(payload.recommendation_meta)
@@ -73611,10 +73516,14 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (existingSourceMode === 'travel_handoff' || triggerSource === 'travel_handoff' || handoffSource === 'travel_readiness') {
           return 'travel_handoff';
         }
+        if (existingSourceMode === 'framework_mainline') return 'framework_mainline';
+        if (existingSourceMode === 'step_aware_mainline') return 'step_aware_mainline';
         if (source.includes('llm_primary')) return 'llm_primary';
         if (source === 'llm' || source.startsWith('llm_')) return 'llm_primary';
         if (source.includes('catalog_grounded')) return 'catalog_grounded';
         if (source.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
+        if (source.includes('framework_mainline')) return 'framework_mainline';
+        if (source.includes('step_aware_mainline')) return 'step_aware_mainline';
         if (source.includes('artifact_matcher')) return 'artifact_matcher';
         if (source.includes('travel_handoff') || source.includes('travel_reco_preview')) return 'travel_handoff';
         if (source.includes('upstream')) return 'upstream_fallback';
@@ -73626,17 +73535,21 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (String(evt.event_name || '').trim() !== 'recos_requested') continue;
         const data = evt.data && typeof evt.data === 'object' && !Array.isArray(evt.data) ? evt.data : {};
         const source = String(data.source || '').trim().toLowerCase();
+        const sourceMode = String(data.source_mode || data.sourceMode || '').trim().toLowerCase();
+        if (sourceMode === 'framework_mainline') return 'framework_mainline';
+        if (sourceMode === 'step_aware_mainline') return 'step_aware_mainline';
         if (source.includes('llm_primary')) return 'llm_primary';
         if (source === 'llm' || source.startsWith('llm_')) return 'llm_primary';
         if (source.includes('catalog_grounded')) return 'catalog_grounded';
         if (source.includes('catalog_transient_fallback')) return 'catalog_transient_fallback';
+        if (source.includes('framework_mainline')) return 'framework_mainline';
+        if (source.includes('step_aware_mainline')) return 'step_aware_mainline';
         if (source.includes('artifact_matcher')) return 'artifact_matcher';
         if (source.includes('travel_handoff') || source.includes('travel_reco_preview')) return 'travel_handoff';
         if (source.includes('upstream')) return 'upstream_fallback';
       }
 
       if (hasRecommendationCards(cards)) return 'catalog_grounded';
-      if (hasRecosRequestedEvent(events)) return 'rules_only';
       return null;
     };
     const hasItineraryContext = (profileValue) => {
@@ -79907,8 +79820,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           const noContextContract = {
             ok: false,
             contract_status: 'recommendations_empty',
-            source_mode: 'rules_only',
-            source: 'rules_only',
+            source_mode: 'legacy_notice',
+            source: 'legacy_notice',
             primary_failure_reason: 'needs_more_context',
             telemetry_failure_reason: 'minimum_recommendation_context_unsatisfied',
             failure_class: 'context_resolution_failure',
@@ -79925,14 +79838,14 @@ function mountAuroraBffRoutes(app, { logger }) {
             intent: 'reco_products',
             profile: summarizeProfileForContext(profile),
             recommendations: [],
-            source: 'rules_only',
+            source: 'legacy_notice',
             task_mode: recoTaskMode,
             recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.32,
             recommendation_confidence_level: 'low',
             products_empty_reason: 'needs_more_context',
             recommendation_meta: {
               task_mode: recoTaskMode,
-              source_mode: 'rules_only',
+              source_mode: 'legacy_notice',
               trigger_source: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
               recompute_from_profile_update: shouldAutoRerunRecommendationsFromProfilePatch === true,
               used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
@@ -79998,7 +79911,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               eventData: buildRecoRequestedEventData({
                 explicit: true,
                 payload,
-                source: 'rules_only',
+                source: 'legacy_notice',
                 sourceDetail: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
                 recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
                 reason: 'needs_more_context',
@@ -80300,7 +80213,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         } else if (generatedPrimaryUsed) {
           recoSource = generatedPayloadSource || generatedSourceMode || 'catalog_grounded_v1';
         } else if (generatedRecoCount > 0) {
-          recoSource = generatedPayloadSource || generatedSourceMode || (genericConcernRecoMainline ? 'framework_mainline_v1' : 'rules_only');
+          recoSource = generatedPayloadSource
+            || generatedSourceMode
+            || (
+              genericConcernRecoMainline
+                ? 'framework_mainline_v1'
+                : hasDeterministicRecoTarget
+                  ? 'step_aware_mainline_v1'
+                  : 'legacy_notice'
+            );
         }
         if (!generatedRecoCount && String(recoContract?.telemetry_failure_reason || '').trim().toLowerCase() === 'timeout_degraded') {
           recoTimeoutDegraded = true;
@@ -80517,7 +80438,14 @@ function mountAuroraBffRoutes(app, { logger }) {
           const timeoutDegradedSourceMode = inferRecoSourceMode(
             recoContract?.source_mode,
             recoContract?.source,
-            { defaultValue: genericConcernRecoMainline ? 'framework_mainline' : 'rules_only' },
+            {
+              defaultValue:
+                genericConcernRecoMainline
+                  ? 'framework_mainline'
+                  : hasDeterministicRecoTarget
+                    ? 'step_aware_mainline'
+                    : 'legacy_notice',
+            },
           );
           const timeoutDegradedReason = sanitizeRecoClientVisibleToken(
             pickFirstTrimmed(
@@ -80525,7 +80453,11 @@ function mountAuroraBffRoutes(app, { logger }) {
               recoContract?.surface_reason,
               recoContract?.primary_failure_reason,
             ),
-          ) || (genericConcernRecoMainline ? 'upstream_timeout_primary_role' : 'artifact_missing');
+          ) || (
+            genericConcernRecoMainline || hasDeterministicRecoTarget
+              ? 'upstream_timeout_primary_role'
+              : 'needs_more_context'
+          );
           const confNode =
             latestArtifact &&
             latestArtifact.overall_confidence &&
@@ -80648,7 +80580,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                   ? 'llm_primary'
                   : genericConcernRecoMainline
                     ? 'framework_mainline'
-                    : 'rules_only',
+                    : hasDeterministicRecoTarget
+                      ? 'step_aware_mainline'
+                      : 'legacy_notice',
           );
           const contextualRecoMainlineEmpty =
             !payloadHasRecs
@@ -80699,7 +80633,20 @@ function mountAuroraBffRoutes(app, { logger }) {
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
             used_itinerary: Boolean(profile && (profile.itinerary || profile.travel_plan || profile.travel_plans)),
             used_safety_flags: lowConfidenceArtifact,
-            primary_failure_reason: payloadHasRecs ? null : (contextualRecoMainlineEmpty ? 'reco_mainline_empty' : 'artifact_missing'),
+            primary_failure_reason: payloadHasRecs
+              ? null
+              : (
+                contextualRecoMainlineEmpty
+                  ? 'reco_mainline_empty'
+                  : pickFirstTrimmed(
+                    recoContract?.primary_failure_reason,
+                    payload.failure_reason,
+                    payload.products_empty_reason,
+                    genericConcernRecoMainline || hasDeterministicRecoTarget
+                      ? 'no_recall_from_planned_sources'
+                      : 'needs_more_context',
+                  )
+              ),
             telemetry_failure_reason: recoTelemetryFailureReason || null,
             failure_class: llmFailureClass || metaExisting.failure_class || recoContract?.failure_class || null,
             effective_failure_class: payloadOutcomeArgs.effectiveFailureClass || metaExisting.effective_failure_class || 'none',
@@ -81043,7 +80990,9 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? 'llm_primary'
                 : genericConcernRecoMainline
                   ? 'framework_mainline'
-                  : 'rules_only';
+                  : hasDeterministicRecoTarget
+                    ? 'step_aware_mainline'
+                    : 'legacy_notice';
           recordAuroraRecoKbWrite({ source: skippedSource, outcome: 'skipped' });
         }
         if (matcherFallbackUsed && AURORA_PRODUCT_MATCHER_ENABLED && matcherBundle) {
@@ -82564,10 +82513,16 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       return sendChatEnvelope(envelope, status);
     }
-  });
+  };
+  runMountedV1ChatHandlerImpl = handleV1Chat;
+  app.post('/v1/chat', handleV1Chat);
 }
 
 const __internal = {
+  runV1ChatMainlineInProcess,
+  hasMountedV1ChatMainlineHandler() {
+    return typeof runMountedV1ChatHandlerImpl === 'function';
+  },
   resolveIdentity,
   normalizeClarificationField,
   detectBrandAvailabilityIntent,

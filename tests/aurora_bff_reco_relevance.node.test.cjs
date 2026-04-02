@@ -171,8 +171,8 @@ function buildConcernSemanticPlanFixture() {
     ],
     support_roles: [
       {
-        role_id: 'optional_mask',
-        label: 'Optional mask',
+        role_id: 'hydrating_mask_support',
+        label: 'Optional hydrating mask',
         why_this_role: 'Only if dehydration shows up.',
         rank: 1,
         preferred_step: 'mask',
@@ -185,18 +185,18 @@ function buildConcernSemanticPlanFixture() {
     routine_shell: {
       am_core_roles: ['oil_control_treatment', 'daily_sunscreen'],
       pm_core_roles: ['oil_control_treatment', 'lightweight_moisturizer'],
-      optional_support_roles: ['optional_mask'],
+      optional_support_roles: ['hydrating_mask_support'],
       frequency: {
         oil_control_treatment: 'daily',
         lightweight_moisturizer: 'daily',
         daily_sunscreen: 'daily_am',
-        optional_mask: 'optional',
+        hydrating_mask_support: 'optional',
       },
       role_to_step_mapping: {
         oil_control_treatment: 'treatment',
         lightweight_moisturizer: 'moisturizer',
         daily_sunscreen: 'sunscreen',
-        optional_mask: 'mask',
+        hydrating_mask_support: 'mask',
       },
     },
   };
@@ -205,10 +205,10 @@ function buildConcernSemanticPlanFixture() {
 function buildConcernPlannerTextFixture({
   primaryConcern = 'oil control and congestion',
   coreRoleIds = ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
-  supportRoleIds = ['optional_mask'],
+  supportRoleIds = ['hydrating_mask_support'],
   ingredientHypotheses = ['niacinamide', 'zinc pca', 'ceramide', 'UV filters'],
   productTypeHypotheses = ['treatment', 'moisturizer', 'sunscreen'],
-  routineShellHints = 'AM=oil_control_treatment,daily_sunscreen; PM=oil_control_treatment,lightweight_moisturizer; OPTIONAL=optional_mask',
+  routineShellHints = 'AM=oil_control_treatment,daily_sunscreen; PM=oil_control_treatment,lightweight_moisturizer; OPTIONAL=hydrating_mask_support',
 } = {}) {
   return [
     `PRIMARY_CONCERN: ${primaryConcern}`,
@@ -283,6 +283,11 @@ function isConcernSemanticPlannerPromptParts({ systemPrompt = '', userPrompt = '
   return prompt.includes('PROMPT_VERSION=concern_semantic_plan_v1');
 }
 
+function isConcernSelectorPromptParts({ systemPrompt = '', userPrompt = '' } = {}) {
+  const prompt = `${String(systemPrompt || '')}\n${String(userPrompt || '')}`;
+  return prompt.includes('PROMPT_VERSION=concern_selector_race_v1');
+}
+
 function buildConcernPlannerGeminiJsonMock({
   plannerResult = null,
   emptyModels = [],
@@ -326,6 +331,7 @@ function buildConcernPlannerGeminiJsonMock({
 function buildConcernPlannerGeminiTextMock({
   plainText = '',
   plainTextByModel = null,
+  selectorResult = null,
   throwModels = [],
   effectiveModelByModel = null,
   attemptRecorder = null,
@@ -333,25 +339,34 @@ function buildConcernPlannerGeminiTextMock({
 } = {}) {
   const throwModelSet = new Set((Array.isArray(throwModels) ? throwModels : []).map((item) => String(item || '').trim()));
   return async ({ systemPrompt = '', userPrompt = '', model = '' } = {}) => {
-    if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) {
+    if (!isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt }) && !isConcernSelectorPromptParts({ systemPrompt, userPrompt })) {
       return { ok: false, reason: 'unexpected_gemini_prompt' };
     }
     if (typeof attemptRecorder === 'function') {
       attemptRecorder({
         model: String(model || '').trim(),
-        structured_contract: 'plain_text',
+        structured_contract: isConcernSelectorPromptParts({ systemPrompt, userPrompt }) ? 'selector_text' : 'plain_text',
       });
     }
-    if (throwOnConcernPrompt || throwModelSet.has(String(model || '').trim())) throw new Error('planner timeout');
+    if ((throwOnConcernPrompt && isConcernSemanticPlannerPromptParts({ systemPrompt, userPrompt })) || throwModelSet.has(String(model || '').trim())) {
+      throw new Error('planner timeout');
+    }
     const mappedText =
       plainTextByModel && typeof plainTextByModel === 'object'
         ? plainTextByModel[String(model || '').trim()]
         : undefined;
-    const text = String(mappedText != null ? mappedText : plainText || '').trim();
     const effectiveModel =
       effectiveModelByModel && typeof effectiveModelByModel === 'object'
         ? String(effectiveModelByModel[String(model || '').trim()] || '').trim() || String(model || '').trim()
         : String(model || '').trim();
+    const selectorPrompt = isConcernSelectorPromptParts({ systemPrompt, userPrompt });
+    const text = selectorPrompt
+      ? (
+        selectorResult === 'schema_invalid'
+          ? '{"note":"schema invalid selector output"}'
+          : JSON.stringify(selectorResult || buildConcernSelectorFixture())
+      )
+      : String(mappedText != null ? mappedText : plainText || '').trim();
     if (!text) {
       return {
         ok: false,
@@ -1532,7 +1547,7 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
     );
     assert.deepEqual(
       payload.support_roles?.map((role) => role?.role_id),
-      ['optional_mask'],
+      [],
     );
     assert.ok(Array.isArray(payload.ingredient_hypotheses) && payload.ingredient_hypotheses.includes('niacinamide'));
     assert.ok(Array.isArray(payload.routine_shell?.am_core_roles));
@@ -1791,10 +1806,7 @@ test('/v1/chat: generic concern planner accepts keyed plain-text semantic-plan o
     assert.equal(payload.primary_role_id, 'oil_control_treatment');
     assert.equal(payload.recommendations?.[0]?.product_id, 'serum_camel_1');
     assert.ok(Array.isArray(payload.support_roles));
-    assert.match(
-      String(payload.support_roles[0]?.role_id || payload.support_roles[0]?.label || ''),
-      /mask/i,
-    );
+    assert.equal(payload.support_roles.length, 0);
   } finally {
     harness?.restore?.();
     axios.get = originalGet;
@@ -2177,6 +2189,7 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
     axios.get = originalGet;
   }
 });
+
 
 test('/v1/chat: generic concern planner retries with gemini pro after an untrusted gemini flash prose response', async () => {
   const originalGet = axios.get;

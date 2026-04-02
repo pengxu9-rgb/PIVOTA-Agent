@@ -23,6 +23,28 @@ function normalizeAuroraLlmModel(value) {
   return token.slice(0, 120);
 }
 
+function isAuroraBlockedMainlineModel(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return false;
+  return /^gemini[-_. ]?2(\b|[-_. ])/i.test(token);
+}
+
+function classifyAuroraGeminiRouteGroup(route = '') {
+  const token = String(route || '').trim().toLowerCase();
+  if (!token) return 'unknown';
+  if (token.includes('aurora_concern') || token.includes('aurora_mainline') || token.includes('aurora_reco')) {
+    return 'aurora_mainline';
+  }
+  if (token.includes('diag') || token.includes('verify') || token.includes('ensemble')) {
+    return 'diagnosis_verify_ensemble';
+  }
+  if (token.includes('layer1')) return 'layer1_clients';
+  if (token.includes('async') || token.includes('background') || token.includes('job')) {
+    return 'async_background';
+  }
+  return 'other';
+}
+
 function shouldAllowAuroraPublicLlmOverride({ productionLike = false } = {}) {
   return productionLike !== true;
 }
@@ -120,12 +142,56 @@ function validateAuroraModelSelection({
   };
 }
 
+function validateAuroraMainlineModelSelection({
+  requestedProvider = null,
+  requestedModel = null,
+  effectiveProvider = null,
+  effectiveModel = null,
+  selectionSource = 'unknown',
+  route = '',
+} = {}) {
+  const base = validateAuroraModelSelection({
+    requestedProvider,
+    requestedModel,
+    effectiveProvider,
+    effectiveModel,
+    selectionSource,
+  });
+  const routeGroup = classifyAuroraGeminiRouteGroup(route);
+  if (!base.ok) {
+    return {
+      ...base,
+      route: String(route || '').trim() || null,
+      route_group: routeGroup,
+    };
+  }
+  if (isAuroraBlockedMainlineModel(base.effective_model)) {
+    return {
+      ...base,
+      ok: false,
+      policy_violation: true,
+      policy_violation_reason: 'blocked_model_family',
+      selection_source: 'policy_violation_blocked',
+      route: String(route || '').trim() || null,
+      route_group: routeGroup,
+    };
+  }
+  return {
+    ...base,
+    route: String(route || '').trim() || null,
+    route_group: routeGroup,
+  };
+}
+
 module.exports = {
   AURORA_MODEL_POLICY_VERSION,
   normalizeAuroraLlmProvider,
   normalizeAuroraLlmModel,
+  isAuroraBlockedMainlineModel,
+  classifyAuroraGeminiRouteGroup,
   shouldAllowAuroraPublicLlmOverride,
   resolveAuroraGeminiMainlineModel,
   resolveAuroraPublicLlmRoute,
   validateAuroraModelSelection,
+  validateAuroraMainlineModelSelection,
 };
