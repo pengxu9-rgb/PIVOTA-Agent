@@ -127,6 +127,70 @@ test('purchasable fallback: explicit external sourceScope runs only the external
   assert.equal(out.actual_http_attempt_count, 0);
 });
 
+test('purchasable fallback: explicit external sourceScope falls back to backend external supplement when local seed search is empty', async () => {
+  const calls = [];
+  const out = await __internal.buildPurchasableFallbackCandidates({
+    query: 'lightweight moisturizer oily skin',
+    sourceScope: 'external_seed',
+    searchFn: async (params) => {
+      calls.push({
+        allowExternalSeed: params.allowExternalSeed === true,
+        fastMode: params.fastMode === true,
+        externalSeedStrategy: params.externalSeedStrategy,
+      });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'prod_backend_external_only',
+            merchant_id: 'external_seed',
+            name: 'Backend External Gel Cream',
+            canonical_pdp_url: 'https://example.com/pdp/backend-external-gel-cream',
+            source: 'external_seed',
+            retrieval_source: 'external_seed',
+          },
+          {
+            product_id: 'prod_backend_catalog_noise',
+            merchant_id: 'catalog',
+            name: 'Catalog Noise',
+            canonical_pdp_url: 'https://example.com/pdp/catalog-noise',
+            source: 'catalog',
+            retrieval_source: 'catalog',
+          },
+        ],
+        actual_http_attempt_count: 1,
+        attempted_base_urls: ['https://pivota-backend.test'],
+        attempted_paths: ['/agent/v1/products/search'],
+      };
+    },
+    externalSeedSearchFn: async ({ query, transportPolicyMode }) => {
+      calls.push({
+        externalSeedQuery: query,
+        transportPolicyMode,
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.deepEqual(calls, [
+    { externalSeedQuery: 'lightweight moisturizer oily skin', transportPolicyMode: 'default' },
+    { allowExternalSeed: true, fastMode: true, externalSeedStrategy: 'supplement_internal_first' },
+  ]);
+  assert.equal(out.selected_source, 'external_seed');
+  assert.equal(out.products.length, 1);
+  assert.equal(out.products[0].product_id, 'prod_backend_external_only');
+  assert.equal(out.products[0].retrieval_source, 'external_seed');
+  assert.equal(out.actual_http_attempt_count, 1);
+  assert.deepEqual(out.attempted_base_urls, ['https://pivota-backend.test']);
+  assert.deepEqual(out.attempted_paths, ['/agent/v1/products/search']);
+  assert.equal(out.stages.external_seed_local.products.length, 0);
+  assert.equal(out.stages.external_seed_backend.products.length, 2);
+});
+
 test('purchasable fallback: supplements from external seed when catalog is empty', async () => {
   const calls = [];
   const out = await __internal.buildPurchasableFallbackCandidates({

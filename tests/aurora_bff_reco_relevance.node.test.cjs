@@ -2908,7 +2908,7 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
   }
 });
 
-test('/v1/chat: framework retrieval supplements internal hits with external seeds and can surface an external top pick', async () => {
+test('/v1/chat: framework retrieval supplements missing support-role searches with external-seed fallback while preserving the external top pick', async () => {
   const originalGet = axios.get;
   const originalDbQuery = dbModule.query;
   const originalFallbackEnabled = process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
@@ -2926,7 +2926,7 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     const fastMode = config?.params?.fast_mode;
     observedQueries.push({ query, allowExternalSeed, externalSeedStrategy, fastMode });
 
-    if (query.includes('oil control')) {
+    if (query.includes('oil control') && !query.includes('sunscreen') && !query.includes('spf')) {
       return {
         status: 200,
         data: {
@@ -2963,7 +2963,10 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
                 source: 'external_seed',
                 url: 'https://example.com/laneige-gel-cream',
                 ingredient_tokens: ['glycerin', 'squalane'],
-                tag_tokens: ['lightweight moisturizer'],
+                benefit_tags: ['lightweight moisturizer', 'oil-free', 'breathable hydration'],
+                search_aliases: ['lightweight moisturizer', 'gel cream for oily skin'],
+                short_description: 'A lightweight gel-cream moisturizer for oily skin.',
+                tag_tokens: ['lightweight moisturizer', 'oil-free', 'breathable hydration'],
               },
             ],
           },
@@ -2989,7 +2992,10 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
                 source: 'external_seed',
                 url: 'https://example.com/supergoop-unseen',
                 ingredient_tokens: ['uv filters'],
-                tag_tokens: ['daily sunscreen'],
+                benefit_tags: ['spf', 'broad spectrum', 'lightweight sunscreen'],
+                search_aliases: ['daily sunscreen', 'broad spectrum sunscreen'],
+                short_description: 'A lightweight broad-spectrum sunscreen for oily skin.',
+                tag_tokens: ['daily sunscreen', 'broad spectrum', 'lightweight sunscreen'],
               },
             ],
           },
@@ -3083,13 +3089,26 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
     const payload = getRecommendationsPayload(response.body);
     assert.ok(payload);
     assert.equal(payload.recommendation_meta?.primary_role_id, 'oil_control_treatment');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 3);
     assert.equal(payload.recommendations[0]?.product_id, 'ext_oil_1');
     assert.equal(payload.recommendations[0]?.retrieval_source, 'external_seed');
     assert.ok(payload.recommendations.some((item) => item?.retrieval_source === 'external_seed'));
-    assert.ok(observedQueries.length <= 4);
-    assert.ok(observedQueries.every((entry) => entry.allowExternalSeed === false));
-    assert.ok(Number(payload.recommendation_meta?.executed_query_count || 0) <= 6);
-    assert.ok(Number(payload.recommendation_meta?.executed_upstream_attempt_count || 0) <= 4);
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'lightweight_moisturizer'));
+    assert.ok(payload.recommendations.some((item) => item?.matched_role_id === 'daily_sunscreen'));
+    const suggestedChipIds = (Array.isArray(response.body?.suggested_chips) ? response.body.suggested_chips : [])
+      .map((chip) => String(chip?.chip_id || '').trim())
+      .filter(Boolean);
+    assert.ok(
+      suggestedChipIds.includes('chip.start.routine')
+      || suggestedChipIds.includes('chip.action.reco_routine')
+      || suggestedChipIds.includes('tpl.action.routine_generate'),
+    );
+    assert.ok(observedQueries.length <= 6);
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && /(moisturizer|gel cream|lotion)/.test(entry.query)));
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && /(sunscreen|spf)/.test(entry.query)));
+    assert.ok(Number(payload.recommendation_meta?.executed_query_count || 0) <= 8);
+    assert.ok(Number(payload.recommendation_meta?.executed_upstream_attempt_count || 0) <= 6);
     assert.ok(Number(payload.recommendation_meta?.external_seed_used_count || 0) > 0);
     assert.ok(Number(payload.recommendation_meta?.selected_source_counts?.external_seed || 0) > 0);
   } finally {
@@ -3103,7 +3122,7 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
   }
 });
 
-test('__internal: framework recall planner emits primary stages first, then support-role internal stages', () => {
+test('__internal: framework recall planner emits primary stages first, then support-role internal and external-seed stages', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3137,18 +3156,158 @@ test('__internal: framework recall planner emits primary stages first, then supp
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 4);
+  assert.equal(plan.stages.length, 6);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 6);
+  assert.ok(plan.entries.length <= 8);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 2],
       ['framework_stage_b_primary_external_seed', 'external_seed', 2],
       ['framework_stage_c_support_lightweight_moisturizer', 'internal', 1],
+      ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 1],
       ['framework_stage_c_support_daily_sunscreen', 'internal', 1],
+      ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 1],
     ],
   );
+});
+
+test('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'step_aware',
+    queryLevels: [
+      {
+        ladder_level: 'step_stage_a_exact',
+        queries: [
+          { query: 'sunscreen', step: 'sunscreen', slot: 'am' },
+          { query: 'sunscreen oily skin', step: 'sunscreen', slot: 'am' },
+        ],
+      },
+      {
+        ladder_level: 'step_stage_b_same_family',
+        queries: [
+          { query: 'broad spectrum sunscreen', step: 'sunscreen', slot: 'am' },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(plan.mode, 'step_aware');
+  assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
+  assert.ok(Array.isArray(plan.stages));
+  assert.equal(plan.stages.length, 3);
+  assert.ok(Array.isArray(plan.entries));
+  assert.ok(plan.entries.length <= 5);
+  assert.deepEqual(
+    plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
+    [
+      ['step_stage_a_exact', 'internal', 2],
+      ['step_stage_b_same_family', 'internal', 1],
+      ['step_aware_stage_z_external_seed_fallback', 'external_seed', 2],
+    ],
+  );
+});
+
+test('/v1/chat: step-aware sunscreen typed reco falls back to external seed and keeps routine handoff', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const allowExternalSeed = config?.params?.allow_external_seed === true;
+    const externalSeedStrategy = String(config?.params?.external_seed_strategy || '').trim().toLowerCase();
+    observedQueries.push({ query, allowExternalSeed, externalSeedStrategy });
+    if (allowExternalSeed && (query.includes('sunscreen') || query.includes('spf'))) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'ext_spf_step_1',
+              merchant_id: 'merchant_ext_spf',
+              brand: 'Supergoop',
+              name: 'Unseen Sunscreen SPF 40',
+              display_name: 'Supergoop Unseen Sunscreen SPF 40',
+              category: 'sunscreen',
+              product_type: 'sunscreen',
+              source: 'external_seed',
+              url: 'https://example.com/supergoop-unseen',
+              ingredient_tokens: ['uv filters'],
+              tag_tokens: ['daily sunscreen', 'broad spectrum'],
+              short_description: 'A lightweight broad-spectrum sunscreen for oily skin.',
+            },
+          ],
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_step_sunscreen_external_uid',
+        'X-Trace-ID': 'trace_chat_step_sunscreen_external',
+        'X-Brief-ID': 'chat_step_sunscreen_external_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'i need a sunscreen for oily skin',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.source_mode, 'catalog_grounded');
+    assert.equal(payload.recommendation_meta?.resolved_target_step, 'sunscreen');
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_step_1');
+    assert.equal(payload.recommendations[0]?.retrieval_source, 'external_seed');
+    const suggestedChipIds = (Array.isArray(response.body?.suggested_chips) ? response.body.suggested_chips : [])
+      .map((chip) => String(chip?.chip_id || '').trim())
+      .filter(Boolean);
+    assert.ok(
+      suggestedChipIds.includes('chip.start.routine')
+      || suggestedChipIds.includes('chip.action.reco_routine')
+      || suggestedChipIds.includes('tpl.action.routine_generate'),
+    );
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), false);
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && /(sunscreen|spf)/.test(entry.query)));
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
 });
 
 test('__internal: framework-first transport policy constrains each planned query to one real HTTP attempt', async () => {

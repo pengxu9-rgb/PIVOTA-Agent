@@ -87,6 +87,13 @@ function buildFrameworkRoleQueries(role, concernText, maxQueries, { allowConcern
   return uniqueCaseInsensitiveStrings(out, maxQueries);
 }
 
+function buildFrameworkSupportStageId(roleId, sourceScope = 'internal') {
+  const normalizedRoleId = String(roleId || '').trim() || 'role';
+  return String(sourceScope || '').trim().toLowerCase() === 'external_seed'
+    ? `framework_stage_c_support_${normalizedRoleId}_external_seed`
+    : `framework_stage_c_support_${normalizedRoleId}`;
+}
+
 function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
   const targetObj = targetContext && typeof targetContext === 'object' && !Array.isArray(targetContext)
     ? targetContext
@@ -112,6 +119,41 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
   const concernText = String(targetObj?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
   const primaryRole = roles[0] || null;
   const supportRoles = roles.slice(1, 3);
+  const supportStages = supportRoles.flatMap((role) => {
+    const roleId = role?.role_id || null;
+    const preferredStep = role?.preferred_step || null;
+    const slot = Array.isArray(role?.routine_slots) ? role.routine_slots[0] || null : null;
+    return [
+      buildStage({
+        stageId: buildFrameworkSupportStageId(roleId, 'internal'),
+        roleId,
+        roleRank: role?.rank || null,
+        sourceScope: 'internal',
+        queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
+        concurrency: 1,
+        maxAttemptsForStage: 1,
+        stopOnViableMatch: false,
+        reasonForInclusion: 'support_role_internal',
+        runIf: 'if_surface_count_below_target',
+        preferredStep,
+        slot,
+      }),
+      buildStage({
+        stageId: buildFrameworkSupportStageId(roleId, 'external_seed'),
+        roleId,
+        roleRank: role?.rank || null,
+        sourceScope: 'external_seed',
+        queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
+        concurrency: 1,
+        maxAttemptsForStage: 1,
+        stopOnViableMatch: false,
+        reasonForInclusion: 'support_role_external_seed',
+        runIf: 'if_surface_count_below_target',
+        preferredStep,
+        slot,
+      }),
+    ].filter(Boolean);
+  });
 
   const stages = [
     buildStage({
@@ -140,20 +182,7 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
       runIf: 'if_no_primary_viable_or_transient_only',
       preferredStep: primaryRole?.preferred_step || null,
     }),
-    ...supportRoles.map((role) => buildStage({
-      stageId: `framework_stage_c_support_${String(role?.role_id || '').trim() || 'role'}`,
-      roleId: role?.role_id || null,
-      roleRank: role?.rank || null,
-      sourceScope: 'internal',
-      queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
-      concurrency: 1,
-      maxAttemptsForStage: 1,
-      stopOnViableMatch: false,
-      reasonForInclusion: 'support_role_internal',
-      runIf: 'if_surface_count_below_target',
-      preferredStep: role?.preferred_step || null,
-      slot: Array.isArray(role?.routine_slots) ? role.routine_slots[0] || null : null,
-    })),
+    ...supportStages,
   ].filter(Boolean);
   const entries = flattenPlanEntries(stages);
   const maxQueryEntries = entries.length;
@@ -168,10 +197,9 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
         framework_stage_a_primary_internal: 2,
         framework_stage_b_primary_external_seed: 1,
         ...Object.fromEntries(
-          supportRoles.map((role) => [
-            `framework_stage_c_support_${String(role?.role_id || '').trim() || 'role'}`,
-            1,
-          ]),
+          supportStages
+            .map((stage) => [String(stage?.stage_id || '').trim(), 1])
+            .filter(([stageId]) => Boolean(stageId)),
         ),
       },
     },
@@ -213,15 +241,43 @@ function buildStepAwareRecallPlan({ queryLevels } = {}) {
       remaining -= stage.entries.length;
     }
   }
+  const firstQuery = levels.flatMap((level) => (Array.isArray(level?.queries) ? level.queries : [])).find(Boolean) || null;
+  const shouldUseExternalSeedFallbackForStepAware = String(firstQuery?.step || '').trim().toLowerCase() === 'sunscreen';
+  const externalFallbackQueries = uniqueCaseInsensitiveStrings(
+    levels.flatMap((level) => (
+      Array.isArray(level?.queries)
+        ? level.queries.map((entry) => String(entry?.query || '').trim()).filter(Boolean)
+        : []
+    )),
+    2,
+  );
+  if (shouldUseExternalSeedFallbackForStepAware && externalFallbackQueries.length > 0) {
+    const externalStage = buildStage({
+      stageId: 'step_aware_stage_z_external_seed_fallback',
+      roleId: null,
+      roleRank: stages.length + 1,
+      sourceScope: 'external_seed',
+      queries: externalFallbackQueries,
+      concurrency: 1,
+      maxAttemptsForStage: Math.min(2, externalFallbackQueries.length),
+      stopOnViableMatch: true,
+      reasonForInclusion: 'step_aware_external_seed_fallback',
+      runIf: 'if_no_primary_viable_or_transient_only',
+      preferredStep: firstQuery?.step || null,
+      slot: firstQuery?.slot || null,
+    });
+    if (externalStage) stages.push(externalStage);
+  }
+  const entries = flattenPlanEntries(stages);
   return {
     version: RECO_RECALL_PLAN_VERSION,
     mode: 'step_aware',
     budget: {
-      max_query_entries: 6,
-      max_upstream_attempt_count: 6,
+      max_query_entries: entries.length,
+      max_upstream_attempt_count: entries.length,
     },
     stages,
-    entries: flattenPlanEntries(stages),
+    entries,
   };
 }
 

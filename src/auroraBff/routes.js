@@ -18152,17 +18152,8 @@ async function buildPurchasableFallbackCandidates({
     };
   }
   if (normalizedSourceScope === 'external_seed') {
-    const externalStage = await runExternalSeedSearch({
-      query: q,
-      limit,
-      logger,
-      transportPolicyMode: effectiveTransportPolicy.mode,
-      role,
-      preferredStep,
-    });
-    const externalProducts = Array.isArray(externalStage?.products) ? externalStage.products : [];
-    const rankedExternal = rankPurchasableRecoveryCandidates(
-      externalProducts.filter((product) => {
+    const rankExternalSeedProducts = (products) => rankPurchasableRecoveryCandidates(
+      (Array.isArray(products) ? products : []).filter((product) => {
         const sourceToken = String(
           pickFirstString(product?.retrieval_source, product?.retrievalSource, product?.source, product?.source_type) || '',
         ).trim().toLowerCase();
@@ -18178,20 +18169,93 @@ async function buildPurchasableFallbackCandidates({
       retrieval_source: 'external_seed',
       retrieval_reason: pickFirstTrimmed(product.retrieval_reason, product.retrievalReason, 'external_seed_supplement') || 'external_seed_supplement',
     }));
+    const hasRoleAlignedExternalSeedCandidate = (products) => {
+      const rows = Array.isArray(products) ? products : [];
+      if (!rows.length) return false;
+      const normalizedPreferredStep = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+      return rows.some((product) => {
+        if (!isPlainObject(product)) return false;
+        const stepResolution = normalizeCandidateStep(product, {});
+        const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
+        if (role) {
+          const candidateText = uniqCaseInsensitiveStrings([
+            buildConcernFrameworkCandidateText(product),
+            buildConcernCandidateText(product),
+          ], 2).join(' ').trim();
+          const roleScore = scoreConcernRoleCandidate(product, role, { candidateStep, candidateText });
+          if (!roleScore) return false;
+          const preferredRoleStep = normalizeRecoTargetStep(role?.preferred_step);
+          return Number(roleScore.score || 0) >= 0.58
+            && (
+              roleScore.semantic_fit_matched === true
+              || (
+                candidateStep
+                && candidateStep === preferredRoleStep
+                && preferredRoleStep !== 'treatment'
+              )
+            );
+        }
+        return normalizedPreferredStep ? candidateStep === normalizedPreferredStep : true;
+      });
+    };
+    const localExternalStage = await runExternalSeedSearch({
+      query: q,
+      limit,
+      logger,
+      transportPolicyMode: effectiveTransportPolicy.mode,
+      role,
+      preferredStep,
+    });
+    let backendExternalStage = null;
+    let rankedExternal = rankExternalSeedProducts(localExternalStage?.products);
+    const shouldFallbackToBackendExternal = !hasRoleAlignedExternalSeedCandidate(rankedExternal);
+    if (shouldFallbackToBackendExternal) {
+      rankedExternal = [];
+      backendExternalStage = await runSearch({
+        query: q,
+        limit,
+        logger,
+        timeoutMs,
+        deadlineMs,
+        allowExternalSeed: true,
+        externalSeedStrategy: normalizedExternalSeedStrategy || 'supplement_internal_first',
+        fastMode: true,
+        transportPolicy: effectiveTransportPolicy,
+      });
+      rankedExternal = rankExternalSeedProducts(backendExternalStage?.products);
+    }
+    const actualHttpAttemptCount = [localExternalStage, backendExternalStage].reduce((sum, stage) => {
+      const count = Number.isFinite(Number(stage?.actual_http_attempt_count))
+        ? Math.max(0, Math.trunc(Number(stage.actual_http_attempt_count)))
+        : 0;
+      return sum + count;
+    }, 0);
+    const attemptedBaseUrls = Array.from(new Set(
+      [localExternalStage, backendExternalStage].flatMap((stage) => Array.isArray(stage?.attempted_base_urls) ? stage.attempted_base_urls : []),
+    ));
+    const attemptedPaths = Array.from(new Set(
+      [localExternalStage, backendExternalStage].flatMap((stage) => Array.isArray(stage?.attempted_paths) ? stage.attempted_paths : []),
+    ));
     return {
-      ok: rankedExternal.length > 0 || externalStage?.ok === true,
+      ok: rankedExternal.length > 0 || localExternalStage?.ok === true || backendExternalStage?.ok === true,
       products: rankedExternal,
-      reason: rankedExternal.length > 0 ? null : String(externalStage?.reason || 'empty').trim() || 'empty',
+      reason: rankedExternal.length > 0
+        ? null
+        : String(
+            backendExternalStage?.reason
+            || localExternalStage?.reason
+            || 'empty',
+          ).trim() || 'empty',
       selected_source: rankedExternal.length > 0 ? 'external_seed' : 'none',
-      actual_http_attempt_count: Number.isFinite(Number(externalStage?.actual_http_attempt_count))
-        ? Number(externalStage.actual_http_attempt_count)
-        : 0,
-      attempted_base_urls: Array.isArray(externalStage?.attempted_base_urls) ? externalStage.attempted_base_urls : [],
-      attempted_paths: Array.isArray(externalStage?.attempted_paths) ? externalStage.attempted_paths : [],
+      actual_http_attempt_count: actualHttpAttemptCount,
+      attempted_base_urls: attemptedBaseUrls,
+      attempted_paths: attemptedPaths,
       transport_policy_mode: effectiveTransportPolicy.mode,
       stages: {
         catalog: null,
-        external_seed: externalStage,
+        external_seed: backendExternalStage || localExternalStage,
+        external_seed_local: localExternalStage,
+        external_seed_backend: backendExternalStage,
       },
     };
   }
@@ -31077,6 +31141,30 @@ function buildRecoEntryChips(language) {
       label: lang === 'CN' ? '先用低置信度方案' : 'Use low-confidence baseline',
       kind: 'quick_reply',
       data: {},
+    },
+  ];
+}
+
+function buildRecoSuccessFollowupChips(language) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  return [
+    {
+      chip_id: 'chip.action.reco_routine',
+      label: lang === 'CN' ? '生成早晚护肤 routine' : 'Build an AM/PM routine',
+      kind: 'quick_reply',
+      data: { reply_text: lang === 'CN' ? '生成一套早晚护肤 routine' : 'Build an AM/PM skincare routine' },
+    },
+    {
+      chip_id: 'chip.action.analyze_product',
+      label: lang === 'CN' ? '评估某个产品适合吗' : 'Evaluate a specific product',
+      kind: 'quick_reply',
+      data: { reply_text: lang === 'CN' ? '评估这款产品是否适合我' : 'Evaluate a specific product for me' },
+    },
+    {
+      chip_id: 'chip.start.dupes',
+      label: lang === 'CN' ? '找平替/对比替代品' : 'Find dupes / alternatives',
+      kind: 'quick_reply',
+      data: { reply_text: lang === 'CN' ? '帮我找平替并比较 tradeoffs' : 'Find dupes and compare tradeoffs' },
     },
   ];
 }
@@ -67730,7 +67818,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       const hasPayloadRecommendations = Array.isArray(payload?.recommendations) && payload.recommendations.length > 0;
 
       const suggestedChips = hasPayloadRecommendations
-        ? []
+        ? buildRecoSuccessFollowupChips(ctx.lang)
         : buildRecoEntryChips(ctx.lang);
       if (gateAdvisoryChips.length > 0) {
         const existing = new Set(suggestedChips.map((chip) => String(chip && chip.chip_id ? chip.chip_id : '').trim()).filter(Boolean));
@@ -68133,6 +68221,9 @@ function mountAuroraBffRoutes(app, { logger }) {
         : hasGuardedRecommendations;
       if (hasFinalRecommendations) {
         nextSessionPatch.next_state = 'S7_PRODUCT_RECO';
+        if (!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) {
+          guardedEnvelope.suggested_chips = buildRecoSuccessFollowupChips(ctx.lang);
+        }
       } else {
         delete nextSessionPatch.next_state;
         if (!Array.isArray(guardedEnvelope.suggested_chips) || guardedEnvelope.suggested_chips.length === 0) {
