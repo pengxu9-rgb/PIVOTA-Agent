@@ -52,13 +52,21 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
   const ingredientMatches = countConcernRoleSignalMatches(candidateText, role?.ingredient_hypotheses, 2);
   const productTypeMatches = countConcernRoleSignalMatches(candidateText, role?.product_type_hypotheses, 2);
+  const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
   const exactStep = Boolean(candidateStep && preferredStep && candidateStep === preferredStep);
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
   const semanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0 || productTypeMatches > 0;
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
-  else if (alternateStep) score += preferredStep === 'treatment' ? 0.08 : 0.18;
+  else if (alternateStep) {
+    // For abstract treatment roles, serum is the real catalog shape.
+    // Promote only when the candidate text carries role-level semantics,
+    // not when it matches by ingredient tokens alone.
+    score += preferredStep === 'treatment'
+      ? (strongSemanticFitMatched ? 0.22 : 0.08)
+      : 0.18;
+  }
   score += Math.min(0.27, fitKeywordMatches * 0.12);
   score += Math.min(0.18, queryTermMatches * 0.08);
   score += Math.min(0.16, ingredientMatches * 0.08);
@@ -75,6 +83,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     role,
     score: Number(score.toFixed(4)),
     semantic_fit_matched: semanticFitMatched,
+    strong_semantic_fit_matched: strongSemanticFitMatched,
     exact_step: exactStep,
     alternate_step: alternateStep,
   };
