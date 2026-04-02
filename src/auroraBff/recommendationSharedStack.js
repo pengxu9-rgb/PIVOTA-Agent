@@ -924,6 +924,7 @@ function hasExplicitSunscreenSignal(text) {
 
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
+  const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
   const structuredRaw = pickFirstTrimmed(
     row.product_type,
@@ -937,8 +938,6 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
   const semanticStepText = joinUniqueQueryParts(
     structuredRaw,
     resolutionText,
-    row.retrieval_query,
-    row.query,
   );
   if (hasExplicitSunscreenSignal(semanticStepText)) {
     return {
@@ -963,7 +962,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
       row.retrievalSlotStep,
     ),
   );
-  if (retrievalStep) {
+  if (retrievalStep && !stepAwareIntent) {
     return {
       candidate_step: retrievalStep,
       candidate_step_source: 'retrieval_step',
@@ -1017,7 +1016,7 @@ function normalizeCandidateStep(product, { targetContext } = {}) {
     };
   }
   const retrievalQuery = normalizeQueryToken(row.retrieval_query || row.query);
-  if (retrievalQuery && targetContext?.resolved_target_step) {
+  if (retrievalQuery && targetContext?.resolved_target_step && !stepAwareIntent) {
     const retrievalResolution = resolveRecoTargetStepIntent({
       text: retrievalQuery,
     });

@@ -3568,6 +3568,30 @@ test('__internal: step-aware sunscreen query ladder drops noisy acne and alias-o
   assert.equal(queries.includes('spf'), false);
 });
 
+test('__internal: step-aware reco does not let retrieval trace turn a serum into sunscreen semantics', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+  const out = recoShared.normalizeCandidateStep(
+    {
+      product_id: 'serum_wrong_step_1',
+      name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      category: 'Serum',
+      product_type: 'Serum',
+      retrieval_query: 'sunscreen oily skin',
+      retrieval_step: 'sunscreen',
+    },
+    {
+      targetContext: {
+        step_aware_intent: true,
+        resolved_target_step: 'sunscreen',
+      },
+    },
+  );
+
+  assert.equal(out.candidate_step, 'serum');
+  assert.equal(out.candidate_step_source, 'structured_category');
+});
+
 test('__internal: reco WARN safety text only surfaces travel UV warnings for travel-context reco asks', async () => {
   const { __internal } = loadRoutesFresh();
   const safetyDecision = {
