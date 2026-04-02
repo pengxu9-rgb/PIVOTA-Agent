@@ -101,8 +101,8 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
       version: RECO_RECALL_PLAN_VERSION,
       mode: 'framework_generic',
       budget: {
-        max_query_entries: 6,
-        max_upstream_attempt_count: 8,
+        max_query_entries: 4,
+        max_upstream_attempt_count: 4,
       },
       stages: [],
       entries: [],
@@ -111,8 +111,6 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
 
   const concernText = String(targetObj?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
   const primaryRole = roles[0] || null;
-  const secondaryRole = roles[1] || null;
-  const tertiaryRole = roles[2] || null;
 
   const stages = [
     buildStage({
@@ -141,45 +139,17 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
       runIf: 'if_no_primary_viable_or_transient_only',
       preferredStep: primaryRole?.preferred_step || null,
     }),
-    buildStage({
-      stageId: 'framework_stage_c_support_rank2_internal',
-      roleId: secondaryRole?.role_id || null,
-      roleRank: secondaryRole?.rank || 2,
-      sourceScope: 'internal',
-      queries: buildFrameworkRoleQueries(secondaryRole, concernText, 1, { allowConcernFallback: true }),
-      concurrency: 1,
-      maxAttemptsForStage: 1,
-      stopOnViableMatch: false,
-      reasonForInclusion: 'supporting_role_rank_2_internal',
-      runIf: 'if_surface_count_below_target',
-      preferredStep: secondaryRole?.preferred_step || null,
-    }),
-    buildStage({
-      stageId: 'framework_stage_c_support_rank3_internal',
-      roleId: tertiaryRole?.role_id || null,
-      roleRank: tertiaryRole?.rank || 3,
-      sourceScope: 'internal',
-      queries: buildFrameworkRoleQueries(tertiaryRole, concernText, 1, { allowConcernFallback: true }),
-      concurrency: 1,
-      maxAttemptsForStage: 1,
-      stopOnViableMatch: false,
-      reasonForInclusion: 'supporting_role_rank_3_internal',
-      runIf: 'if_surface_count_below_target',
-      preferredStep: tertiaryRole?.preferred_step || null,
-    }),
   ].filter(Boolean);
 
   return {
     version: RECO_RECALL_PLAN_VERSION,
     mode: 'framework_generic',
     budget: {
-      max_query_entries: 6,
-      max_upstream_attempt_count: 8,
+      max_query_entries: 4,
+      max_upstream_attempt_count: 4,
       stage_concurrency: {
         framework_stage_a_primary_internal: 2,
         framework_stage_b_primary_external_seed: 1,
-        framework_stage_c_support_rank2_internal: 1,
-        framework_stage_c_support_rank3_internal: 1,
       },
     },
     stages,

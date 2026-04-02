@@ -2967,7 +2967,7 @@ test('/v1/chat: framework retrieval supplements internal hits with external seed
   }
 });
 
-test('__internal: framework recall planner emits a staged six-query budget with primary external seed only in stage B', () => {
+test('__internal: framework recall planner emits a primary-only staged budget with external seed only in stage B', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3001,16 +3001,14 @@ test('__internal: framework recall planner emits a staged six-query budget with 
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 4);
+  assert.equal(plan.stages.length, 2);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 6);
+  assert.ok(plan.entries.length <= 4);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
       ['framework_stage_a_primary_internal', 'internal', 2],
       ['framework_stage_b_primary_external_seed', 'external_seed', 2],
-      ['framework_stage_c_support_rank2_internal', 'internal', 1],
-      ['framework_stage_c_support_rank3_internal', 'internal', 1],
     ],
   );
 });
@@ -3023,6 +3021,7 @@ test('__internal: framework-first transport policy constrains each planned query
     calls.push({
       url,
       query: config?.params?.query,
+      source: config?.params?.source,
     });
     return {
       status: 504,
@@ -3046,6 +3045,7 @@ test('__internal: framework-first transport policy constrains each planned query
     assert.equal(Array.isArray(out.attempted_paths), true);
     assert.equal(out.attempted_paths.length, 1);
     assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.source, 'shopping-agent');
   } finally {
     axios.get = originalGet;
   }
