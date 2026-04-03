@@ -452,7 +452,141 @@ function normalizeSeedImageUrls(seedData, row) {
   return out;
 }
 
-function normalizeOptions(rawVariant, optionName, optionValue) {
+function normalizeProductOptionNames(raw) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return Object.keys(raw).map((key) => String(key).trim()).filter(Boolean);
+  }
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((option) => {
+      if (typeof option === 'string') return option.trim();
+      if (option && typeof option === 'object') {
+        return String(option.name || option.title || option.label || '').trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function getSeedProductOptionNames(parsedSeedData) {
+  const candidates = [
+    parsedSeedData?.snapshot?.options,
+    parsedSeedData?.options,
+    parsedSeedData?.snapshot?.product?.options,
+    parsedSeedData?.product?.options,
+    parsedSeedData?.snapshot?.product_options,
+    parsedSeedData?.product_options,
+    parsedSeedData?.snapshot?.product?.product_options,
+    parsedSeedData?.product?.product_options,
+    parsedSeedData?.snapshot?.choices,
+    parsedSeedData?.choices,
+    parsedSeedData?.snapshot?.product?.choices,
+    parsedSeedData?.product?.choices,
+    parsedSeedData?.snapshot?.variantOptions,
+    parsedSeedData?.variantOptions,
+    parsedSeedData?.snapshot?.product?.variantOptions,
+    parsedSeedData?.product?.variantOptions,
+  ];
+  for (const candidate of candidates) {
+    const names = normalizeProductOptionNames(candidate);
+    if (names.length > 0) return names;
+  }
+  return [];
+}
+
+function getRawSeedVariants(parsedSeedData) {
+  const collections = [
+    parsedSeedData?.snapshot?.variants,
+    parsedSeedData?.variants,
+    parsedSeedData?.snapshot?.product?.variants,
+    parsedSeedData?.product?.variants,
+    parsedSeedData?.snapshot?.skus,
+    parsedSeedData?.skus,
+    parsedSeedData?.snapshot?.product?.skus,
+    parsedSeedData?.product?.skus,
+  ];
+  for (const collection of collections) {
+    if (Array.isArray(collection) && collection.length > 0) {
+      return collection;
+    }
+  }
+  return [];
+}
+
+function cloneJsonValue(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function stripLegacyVariantContainers(seedData) {
+  const next = cloneJsonValue(seedData);
+
+  delete next.variants;
+  delete next.skus;
+  delete next.variantOptions;
+  delete next.variant_options;
+  delete next.choices;
+  if (next.product && typeof next.product === 'object') {
+    delete next.product.variants;
+    delete next.product.skus;
+    delete next.product.variantOptions;
+    delete next.product.variant_options;
+    delete next.product.choices;
+  }
+
+  const snapshot = ensureJsonObject(next.snapshot);
+  delete snapshot.skus;
+  delete snapshot.variantOptions;
+  delete snapshot.variant_options;
+  delete snapshot.choices;
+  if (snapshot.product && typeof snapshot.product === 'object') {
+    delete snapshot.product.variants;
+    delete snapshot.product.skus;
+    delete snapshot.product.variantOptions;
+    delete snapshot.product.variant_options;
+    delete snapshot.product.choices;
+  }
+  next.snapshot = snapshot;
+  return next;
+}
+
+function normalizeOptions(rawVariant, optionName, optionValue, productOptionNames = []) {
+  const directOptionSources = [
+    rawVariant?.options,
+    rawVariant?.choices,
+    rawVariant?.variantOptions,
+    rawVariant?.variant_options,
+    rawVariant?.selections,
+    rawVariant?.selected_options,
+  ];
+
+  for (const source of directOptionSources) {
+    if (Array.isArray(source)) {
+      const normalized = source
+        .map((option) => {
+          if (option && typeof option === 'object' && option.name && option.value != null) {
+            return { name: String(option.name), value: String(option.value) };
+          }
+          if (option && typeof option === 'object') {
+            const name = option.name || option.option_name || option.label || option.key || option.title;
+            const value = option.value ?? option.option_value ?? option.selected ?? option.label_value;
+            if (name && value != null && value !== '') {
+              return { name: String(name), value: String(value) };
+            }
+          }
+          return null;
+        })
+        .filter(Boolean);
+      if (normalized.length > 0) return normalized;
+    }
+
+    if (source && typeof source === 'object') {
+      const normalized = Object.entries(source)
+        .map(([name, value]) => ({ name: String(name), value: String(value) }))
+        .filter((option) => option.name && option.value);
+      if (normalized.length > 0) return normalized;
+    }
+  }
+
   if (Array.isArray(rawVariant?.options)) {
     return rawVariant.options
       .map((option) => {
@@ -464,11 +598,16 @@ function normalizeOptions(rawVariant, optionName, optionValue) {
       .filter(Boolean);
   }
 
-  if (rawVariant?.options && typeof rawVariant.options === 'object') {
-    return Object.entries(rawVariant.options)
-      .map(([name, value]) => ({ name: String(name), value: String(value) }))
-      .filter((option) => option.name && option.value);
-  }
+  const tupleOptions = [rawVariant?.option1, rawVariant?.option2, rawVariant?.option3]
+    .map((value, index) => {
+      if (value == null || value === '') return null;
+      return {
+        name: productOptionNames[index] || `Option ${index + 1}`,
+        value: String(value),
+      };
+    })
+    .filter(Boolean);
+  if (tupleOptions.length > 0) return tupleOptions;
 
   if (optionName || optionValue) {
     return [{ name: optionName || 'Variant', value: optionValue || 'Default' }];
@@ -479,12 +618,8 @@ function normalizeOptions(rawVariant, optionName, optionValue) {
 
 function normalizeSeedVariants(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
-  const rawVariants =
-    Array.isArray(parsedSeedData.snapshot?.variants) && parsedSeedData.snapshot.variants.length > 0
-      ? parsedSeedData.snapshot.variants
-      : Array.isArray(parsedSeedData.variants)
-        ? parsedSeedData.variants
-        : [];
+  const rawVariants = getRawSeedVariants(parsedSeedData);
+  const productOptionNames = getSeedProductOptionNames(parsedSeedData);
 
   if (!rawVariants.length) return [];
 
@@ -560,12 +695,19 @@ function normalizeSeedVariants(seedData, row) {
       );
       const normalizedImageUrls = imageUrls.length > 0 ? imageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
-      const options = normalizeOptions(rawVariant, optionName, optionValue);
+      const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
       const url = normalizeHttpUrl(rawVariant.url);
       const availability = normalizeSeedAvailability(rawAvailability);
       const description = String(
         rawVariant.description || rawVariant.description_html || rawVariant.summary || rawVariant.body_html || '',
       ).trim();
+      const swatchHex = firstNonEmptyString(
+        rawVariant.color_hex,
+        rawVariant.swatch?.hex,
+        rawVariant.beauty_meta?.shade_hex,
+        rawVariant.shade_hex,
+        rawVariant.hex,
+      );
 
       return {
         id: variantId,
@@ -587,16 +729,37 @@ function normalizeSeedVariants(seedData, row) {
         image_url: imageUrl || undefined,
         images: normalizedImageUrls,
         image_urls: normalizedImageUrls,
+        ...(swatchHex ? { color_hex: swatchHex, swatch: { hex: swatchHex } } : {}),
+        ...(rawVariant.beauty_meta && typeof rawVariant.beauty_meta === 'object'
+          ? { beauty_meta: rawVariant.beauty_meta }
+          : {}),
         ...(url ? { url } : {}),
       };
     })
     .filter(Boolean);
 }
 
+function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
+  const nextSeedData = cloneJsonValue(ensureJsonObject(seedData));
+  const snapshot = ensureJsonObject(nextSeedData.snapshot);
+  const canonicalVariants = normalizeSeedVariants(nextSeedData, row);
+  if (canonicalVariants.length > 0) {
+    snapshot.variants = cloneJsonValue(canonicalVariants);
+  } else if (!Array.isArray(snapshot.variants)) {
+    snapshot.variants = [];
+  }
+  nextSeedData.snapshot = snapshot;
+
+  if (options.stripLegacy === true) {
+    return stripLegacyVariantContainers(nextSeedData);
+  }
+  return nextSeedData;
+}
+
 function buildExternalSeedProduct(row) {
   if (!row || typeof row !== 'object') return null;
 
-  const seedData = ensureJsonObject(row.seed_data);
+  const seedData = canonicalizeExternalSeedSnapshot(row.seed_data, row, { stripLegacy: false });
   const snapshot = ensureJsonObject(seedData.snapshot);
   const ingredientIntel = ensureJsonObject(seedData.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
@@ -848,5 +1011,6 @@ module.exports = {
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
+  canonicalizeExternalSeedSnapshot,
   buildExternalSeedProduct,
 };
