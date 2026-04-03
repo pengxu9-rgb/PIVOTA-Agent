@@ -2527,6 +2527,134 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(out.attempted_endpoints[0]).toBe('http://catalog-self.test/agent/v1/products/search');
   });
 
+  test('step-aware aurora reco transport policy keeps catalog search on self proxy main path', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+
+    nock('http://catalog-self.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'self_proxy_step_aware_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum Step Aware',
+            display_name: 'Alt Brand Alt Serum Step Aware',
+          },
+        ],
+      });
+
+    const upstreamScope = nock('http://catalog-upstream.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'upstream_should_not_run',
+            brand: 'Alt Brand',
+            name: 'Upstream Should Not Run',
+            display_name: 'Upstream Should Not Run',
+          },
+        ],
+      });
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const policy = __internal.buildRecoRecallTransportPolicy({ mode: 'step_aware' });
+    expect(policy.version).toBe('aurora_reco_recall_transport_policy_v2');
+    expect(policy.include_self_proxy).toBe(true);
+    expect(policy.max_base_urls).toBe(1);
+    expect(policy.allow_secondary_base_failover).toBe(false);
+
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'oily skin sunscreen',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+      transportPolicy: policy,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('self_proxy_step_aware_1');
+    expect(out.source_base_url).toBe('http://catalog-self.test');
+    expect(out.attempted_sources).toEqual(['http://catalog-self.test']);
+    expect(out.attempted_endpoints).toEqual(['http://catalog-self.test/agent/v1/products/search']);
+    expect(upstreamScope.isDone()).toBe(false);
+  });
+
+  test('framework-first-turn aurora reco transport policy keeps catalog search on self proxy main path', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+
+    nock('http://catalog-self.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'self_proxy_framework_1',
+            brand: 'Alt Brand',
+            name: 'Alt Serum Framework',
+            display_name: 'Alt Brand Alt Serum Framework',
+          },
+        ],
+      });
+
+    const upstreamScope = nock('http://catalog-upstream.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'upstream_framework_should_not_run',
+            brand: 'Alt Brand',
+            name: 'Upstream Framework Should Not Run',
+            display_name: 'Upstream Framework Should Not Run',
+          },
+        ],
+      });
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const policy = __internal.buildRecoRecallTransportPolicy({ mode: 'framework_first_turn' });
+    expect(policy.version).toBe('aurora_reco_recall_transport_policy_v2');
+    expect(policy.include_self_proxy).toBe(true);
+    expect(policy.max_base_urls).toBe(1);
+    expect(policy.allow_secondary_base_failover).toBe(false);
+
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'oil control treatment',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+      transportPolicy: policy,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('self_proxy_framework_1');
+    expect(out.source_base_url).toBe('http://catalog-self.test');
+    expect(out.attempted_sources).toEqual(['http://catalog-self.test']);
+    expect(out.attempted_endpoints).toEqual(['http://catalog-self.test/agent/v1/products/search']);
+    expect(upstreamScope.isDone()).toBe(false);
+  });
+
   test('catalog search auto-falls back to beauty path when generic route is empty', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';

@@ -1,4 +1,4 @@
-const RECO_RECALL_TRANSPORT_POLICY_VERSION = 'aurora_reco_recall_transport_policy_v1';
+const RECO_RECALL_TRANSPORT_POLICY_VERSION = 'aurora_reco_recall_transport_policy_v2';
 
 function normalizeRecoRecallTransportMode(value) {
   const token = String(value || '').trim().toLowerCase();
@@ -20,7 +20,7 @@ function buildRecoRecallTransportPolicy({ mode } = {}) {
       version: RECO_RECALL_TRANSPORT_POLICY_VERSION,
       mode: normalizedMode,
       include_local_fallback: false,
-      include_self_proxy: false,
+      include_self_proxy: true,
       max_base_urls: 1,
       max_paths: 1,
       allow_secondary_base_failover: false,
@@ -33,7 +33,7 @@ function buildRecoRecallTransportPolicy({ mode } = {}) {
       version: RECO_RECALL_TRANSPORT_POLICY_VERSION,
       mode: normalizedMode,
       include_local_fallback: false,
-      include_self_proxy: false,
+      include_self_proxy: true,
       max_base_urls: 1,
       max_paths: 1,
       allow_secondary_base_failover: false,
