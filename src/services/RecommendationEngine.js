@@ -703,30 +703,16 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
 
-  // In MOCK mode we may not have DATABASE_URL configured; use in-memory mock catalog
-  // so PDP recommendations are still non-empty and fast locally.
   if (!process.env.DATABASE_URL) {
-    try {
-      // Lazy require to avoid impacting production paths.
-      // eslint-disable-next-line global-require
-      const { mockProducts } = require('../mockProducts');
-      const out = [];
-
-      if (mid && Array.isArray(mockProducts?.[mid])) {
-        for (const p of mockProducts[mid]) out.push(toCandidate(p, { merchant_id: mid }));
-      }
-
-      for (const [merchant_id, products] of Object.entries(mockProducts || {})) {
-        if (!Array.isArray(products)) continue;
-        if (merchant_id === EXTERNAL_SEED_MERCHANT_ID) continue;
-        if (excludeMerchantId && merchant_id === String(excludeMerchantId || '').trim()) continue;
-        for (const p of products) out.push(toCandidate(p, { merchant_id }));
-      }
-
-      return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
-    } catch {
-      return [];
-    }
+    logger.warn(
+      {
+        merchant_id: mid || null,
+        exclude_merchant_id: excludeMerchantId ? String(excludeMerchantId || '').trim() : null,
+        limit: safeLimit,
+      },
+      'pdp recommendation internal candidate fetch skipped because DATABASE_URL is missing and mock catalog fallback is disabled',
+    );
+    return [];
   }
   const out = [];
 

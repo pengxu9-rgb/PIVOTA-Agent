@@ -2,7 +2,7 @@ describe('merchant category mapping guardrail', () => {
   function loadCategoriesService() {
     jest.resetModules();
 
-    process.env.API_MODE = 'MOCK';
+    process.env.API_MODE = 'REAL';
     process.env.PIVOTA_API_KEY = '';
     process.env.DATABASE_URL = 'postgres://test';
     process.env.TAXONOMY_ENABLED = 'true';
@@ -67,12 +67,6 @@ describe('merchant category mapping guardrail', () => {
       getCreatorConfig: (creatorId) => (creatorId ? { creatorId, merchantIds: ['m1'] } : undefined),
     }));
 
-    jest.doMock('../../src/mockProducts', () => ({
-      mockProducts: {
-        m1: [product],
-      },
-    }));
-
     jest.doMock('../../src/services/taxonomyStore', () => ({
       getTaxonomyView: async () => taxonomy,
     }));
@@ -84,6 +78,15 @@ describe('merchant category mapping guardrail', () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
+        if (text.includes('FROM products_cache')) {
+          return {
+            rows: [
+              {
+                product_data: product,
+              },
+            ],
+          };
+        }
         if (text.includes('FROM merchant_category_mapping')) {
           // Simulate a wrong merchant-level mapping that would otherwise
           // put brushes into lingerie-set.
@@ -122,4 +125,3 @@ describe('merchant category mapping guardrail', () => {
     expect(bySlug.get('lingerie-set')?.category.productCount).toBe(0);
   });
 });
-

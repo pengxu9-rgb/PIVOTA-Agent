@@ -12,7 +12,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('forwards allowed operation and returns upstream response', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query((q) => {
         return (
           q &&
@@ -24,7 +24,9 @@ describe('/agent/shop/v1/invoke gateway', () => {
         );
       })
       .reply(200, {
-        products: [{ id: 'p1' }],
+        status: 'success',
+        success: true,
+        products: [{ id: 'p1', product_id: 'p1', merchant_id: 'm1', title: 'Shoes' }],
       });
 
     const res = await request(app)
@@ -55,7 +57,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('fails open on upstream timeout-like failures without secondary ReferenceError', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(504, { error: 'UPSTREAM_TIMEOUT' });
     nock(process.env.PIVOTA_API_BASE)
@@ -78,7 +80,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('fails open on transport errors without secondary ReferenceError', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .replyWithError('socket hang up');
     nock(process.env.PIVOTA_API_BASE)
@@ -97,6 +99,59 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.error).toBeUndefined();
+  });
+
+  it('does not let API_MODE=MOCK take over product search', async () => {
+    const prevEnv = {
+      API_MODE: process.env.API_MODE,
+      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+    };
+    jest.resetModules();
+    process.env.API_MODE = 'MOCK';
+    process.env.PIVOTA_API_BASE = 'http://localhost:8080';
+    process.env.PIVOTA_API_KEY = 'test-token';
+
+    try {
+      const mockModeApp = require('../../src/server');
+
+      const strictMainScope = nock(process.env.PIVOTA_API_BASE)
+        .post('/agent/v2/products/search')
+        .query((q) => q && q.query === 'strict serum')
+        .reply(200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: 'strict_1',
+              product_id: 'strict_1',
+              merchant_id: 'm1',
+              title: 'Strict Serum',
+            },
+          ],
+        });
+
+      const res = await request(mockModeApp)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'find_products',
+          payload: {
+            search: { query: 'strict serum' },
+          },
+        })
+        .expect(200);
+
+      expect(strictMainScope.isDone()).toBe(true);
+      expect(Array.isArray(res.body.products)).toBe(true);
+      expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('strict_1');
+    } finally {
+      if (prevEnv.API_MODE === undefined) delete process.env.API_MODE;
+      else process.env.API_MODE = prevEnv.API_MODE;
+      if (prevEnv.PIVOTA_API_BASE === undefined) delete process.env.PIVOTA_API_BASE;
+      else process.env.PIVOTA_API_BASE = prevEnv.PIVOTA_API_BASE;
+      if (prevEnv.PIVOTA_API_KEY === undefined) delete process.env.PIVOTA_API_KEY;
+      else process.env.PIVOTA_API_KEY = prevEnv.PIVOTA_API_KEY;
+    }
   });
 
   it('semantic-contract discovery keeps shopping-agent semantic owner and emits stage ledger metadata', async () => {
@@ -218,7 +273,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)
@@ -277,7 +332,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)
@@ -352,7 +407,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)
@@ -411,7 +466,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)

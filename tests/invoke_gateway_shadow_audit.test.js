@@ -1,4 +1,5 @@
 const request = require('supertest');
+const nock = require('nock');
 
 describe('invoke gateway shadow audit', () => {
   const ORIGINAL_ENV = { ...process.env };
@@ -6,21 +7,44 @@ describe('invoke gateway shadow audit', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    nock.cleanAll();
+    nock.disableNetConnect();
+    nock.enableNetConnect((host) => {
+      const h = String(host || '');
+      return h.includes('127.0.0.1') || h.includes('localhost') || h === '::1';
+    });
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: 'test',
-      API_MODE: 'MOCK',
+      API_MODE: 'REAL',
       INVOKE_AUTH_BYPASS_IN_TEST: '1',
       PIVOTA_GATEWAY_GOVERNANCE_SHADOW_MODE: '1',
+      PIVOTA_API_BASE: 'http://pivota.test',
+      PIVOTA_API_KEY: 'test-key',
     };
     app = require('../src/server');
   });
 
   afterEach(() => {
+    nock.cleanAll();
+    nock.enableNetConnect();
     process.env = { ...ORIGINAL_ENV };
   });
 
   it('attaches shadow governance provenance for merchant-sweep MCP traffic without blocking the invoke response', async () => {
+    nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .set('X-Pivota-Invocation-Surface', 'mcp')

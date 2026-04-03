@@ -3,6 +3,11 @@ const path = require('path');
 
 const axios = require('axios');
 const OpenAI = require('openai');
+const {
+  resolveFindProductsGeminiApiKey,
+  resolveFindProductsLlmRuntime,
+  resolveFindProductsOpenAiApiKey,
+} = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 const DEFAULT_PROMPT_PATH = path.join(__dirname, '..', '..', 'prompts', 'product_rerank_prompt_v1.txt');
@@ -24,7 +29,7 @@ const MAX_OUTPUT_ITEMS = Math.min(
 );
 
 function isEnabled() {
-  return process.env.FIND_PRODUCTS_MULTI_RERANK_LLM_ENABLED === 'true';
+  return resolveFindProductsLlmRuntime('rerank').enabled;
 }
 
 let cachedPrompt = null;
@@ -36,21 +41,17 @@ function loadPromptTemplate() {
 }
 
 function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
+  const apiKey = resolveFindProductsOpenAiApiKey();
+  if (!apiKey) throw new Error('OPENAI_API_KEY or LLM_API_KEY is not set');
   const baseURL = process.env.OPENAI_BASE_URL || undefined;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(baseURL ? { baseURL } : {}) });
+  return new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
 }
 
 function getProviderChain() {
-  const primary = (process.env.PIVOTA_RERANK_LLM_PROVIDER || 'openai').toLowerCase();
-  const fallback = (process.env.PIVOTA_RERANK_LLM_FALLBACK_PROVIDER || 'gemini').toLowerCase();
-  // Keep stable order and de-dupe.
-  const out = [];
-  for (const p of [primary, fallback]) {
-    if (!p) continue;
-    if (!out.includes(p)) out.push(p);
-  }
-  return out.length ? out : ['openai'];
+  const runtime = resolveFindProductsLlmRuntime('rerank');
+  return Array.isArray(runtime.providerChain) && runtime.providerChain.length
+    ? runtime.providerChain
+    : ['openai'];
 }
 
 function getProductId(product) {
@@ -226,12 +227,11 @@ async function callOpenAI({ prompt }) {
 }
 
 async function callGemini({ prompt }) {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+  const apiKey = resolveFindProductsGeminiApiKey();
+  if (!apiKey) throw new Error('Gemini API key is not set');
 
   const baseURL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(DEFAULT_MODEL_GEMINI)}:generateContent?key=${encodeURIComponent(
-    process.env.GEMINI_API_KEY
-  )}`;
+  const url = `${baseURL}/v1beta/models/${encodeURIComponent(DEFAULT_MODEL_GEMINI)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const body = {
     systemInstruction: {

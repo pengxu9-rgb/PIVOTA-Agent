@@ -1375,6 +1375,10 @@ function buildStrictSemanticRewriteResult({
     owner: 'shopping_agent_semantic_rewrite',
     applied,
     mode: String(intentMeta?.mode || 'deterministic_fallback'),
+    provider: String(intentMeta?.provider || '').trim() || null,
+    enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
+    provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
+    fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
     normalized_query_pack: normalizedQueryPack,
     hard_filters: {
       target_step_family: targetStepFamily,

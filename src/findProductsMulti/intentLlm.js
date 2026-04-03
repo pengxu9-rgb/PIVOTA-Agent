@@ -7,16 +7,22 @@ const {
   extractHumanApparelCategories,
   TOY_KEYWORDS_STRONG,
 } = require('./intent');
+const {
+  resolveFindProductsGeminiApiKey,
+  resolveFindProductsLlmRuntime,
+  resolveFindProductsOpenAiApiKey,
+} = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
 function isEnabled() {
-  return process.env.PIVOTA_INTENT_LLM_ENABLED === 'true';
+  return resolveFindProductsLlmRuntime('semantic_rewrite').enabled;
 }
 
 function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
+  const apiKey = resolveFindProductsOpenAiApiKey();
+  if (!apiKey) throw new Error('OPENAI_API_KEY or LLM_API_KEY is not set');
   const baseURL = process.env.OPENAI_BASE_URL || undefined;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(baseURL ? { baseURL } : {}) });
+  return new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
 }
 
 function buildDeterministicIntentWithMeta(
@@ -459,8 +465,9 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
 }
 
 async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = []) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not set');
+  const apiKey = resolveFindProductsGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key is not set');
   }
 
   const model = resolveNonImageGeminiModel({
@@ -472,9 +479,7 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   const baseURL =
     (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
 
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(
-    process.env.GEMINI_API_KEY
-  )}`;
+  const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const systemText = `${buildSystemPrompt()}\n\n${buildDeveloperPrompt()}`;
   const userText = JSON.stringify(
@@ -517,17 +522,24 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
 }
 
 async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = []) {
-  if (!isEnabled()) {
-    return buildDeterministicIntentWithMeta(
+  const runtime = resolveFindProductsLlmRuntime('semantic_rewrite');
+  if (!runtime.enabled) {
+    const fallback = buildDeterministicIntentWithMeta(
       latest_user_query,
       recent_queries,
       recent_messages,
-      'llm_disabled',
+      runtime.disabledReason === 'master_disabled'
+        ? 'llm_master_disabled'
+        : runtime.disabledReason === 'feature_disabled'
+          ? 'llm_feature_disabled'
+          : 'llm_unconfigured',
     );
+    fallback.meta.enable_owner = runtime.enableOwner || null;
+    return fallback;
   }
   try {
-    const primary = (process.env.PIVOTA_INTENT_LLM_PROVIDER || 'openai').toLowerCase();
-    const fallback = (process.env.PIVOTA_INTENT_LLM_FALLBACK_PROVIDER || 'gemini').toLowerCase();
+    const primary = runtime.primaryProvider;
+    const fallback = runtime.fallbackProvider;
 
     const run = async (provider) => {
       if (provider === 'openai') {
@@ -548,6 +560,9 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
           mode: 'llm',
           provider: primary,
           fallback_reason: null,
+          enable_owner: runtime.enableOwner || null,
+          provider_owner: runtime.providerOwner || null,
+          fallback_owner: runtime.fallbackOwner || null,
         },
       };
     } catch (primaryErr) {
@@ -560,17 +575,24 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
           mode: 'llm',
           provider: fallback,
           fallback_reason: `primary_${primary}_failed`,
+          enable_owner: runtime.enableOwner || null,
+          provider_owner: runtime.providerOwner || null,
+          fallback_owner: runtime.fallbackOwner || null,
         },
       };
     }
   } catch (err) {
     // Fail-safe: never block search; fall back to deterministic extraction.
-    return buildDeterministicIntentWithMeta(
+    const fallback = buildDeterministicIntentWithMeta(
       latest_user_query,
       recent_queries,
       recent_messages,
       'llm_failed',
     );
+    fallback.meta.enable_owner = runtime.enableOwner || null;
+    fallback.meta.provider_owner = runtime.providerOwner || null;
+    fallback.meta.fallback_owner = runtime.fallbackOwner || null;
+    return fallback;
   }
 }
 
@@ -583,5 +605,9 @@ module.exports = {
   _debug: {
     applyHardOverrides,
     hasBeautyBrandOrProductSignal,
+    isEnabled,
+    resolveFindProductsGeminiApiKey,
+    resolveFindProductsLlmRuntime,
+    resolveFindProductsOpenAiApiKey,
   },
 };

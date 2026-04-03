@@ -2,7 +2,6 @@ const axios = require('axios');
 const logger = require('../logger');
 const { getCreatorConfig } = require('../creatorConfig');
 const { getAllPromotions } = require('../promotionStore');
-const { mockProducts } = require('../mockProducts');
 const { getTaxonomyView } = require('./taxonomyStore');
 const { query } = require('../db');
 const {
@@ -10,11 +9,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
 
-// Keep API mode resolution consistent with src/server.js so that
-// categories behave the same way as the main invoke endpoint.
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
-const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
-const USE_MOCK = API_MODE === 'MOCK';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 
 const CHANNEL_CREATOR = 'creator_agents';
@@ -1011,22 +1006,6 @@ async function loadCreatorProducts(creatorId) {
   const merchantIds = config.merchantIds || [];
   const externalSeedProducts = await loadExternalSeedProductsFromDb();
 
-  // MOCK mode: use local mockProducts catalog.
-  if (USE_MOCK) {
-    const indexedProducts = [];
-    const mids = merchantIds.length ? merchantIds : Object.keys(mockProducts);
-    for (const mid of mids) {
-      const list = mockProducts[mid] || [];
-      for (const product of list) {
-        const path = deriveCategoryPathFromProduct(product);
-        const leafId = buildCategoryIdFromSegments(path);
-        const slug = slugify(path[path.length - 1] || 'Other');
-        indexedProducts.push({ product, path, leafId, slug });
-      }
-    }
-    return { indexedProducts, merchantIds };
-  }
-
   // Prefer reading the full merchant catalog directly from the cache DB
   // when available so that category trees (including toys) reflect the
   // actual merchant portal inventory, not just the recall subset used
@@ -1075,7 +1054,9 @@ async function loadCreatorProducts(creatorId) {
     }
   }
 
-  // REAL / HYBRID mode: call upstream Agent Products Search.
+  // Categories should never depend on a local product mock. If cache-backed
+  // inventory is unavailable, fall through to the shared upstream search
+  // surface instead of inventing a separate catalog path.
   //
   // Rationale:
   // - Some deployments of /agent/shop/v1/invoke reject empty queries

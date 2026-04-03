@@ -5,8 +5,7 @@ const { randomUUID } = require('crypto');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
-// Default demo merchant id. This is aligned with the mock products merchant
-// so that demo promotions apply to the same catalog in MOCK mode.
+// Default demo merchant id for local promotion fixtures.
 const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
 
 // Remote backend configuration (pivota-backend internal API)

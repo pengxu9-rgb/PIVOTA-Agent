@@ -18,7 +18,6 @@ const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query } = require('./db');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
-const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const {
   buildOfferId,
   buildProductGroupId,
@@ -3909,7 +3908,7 @@ async function runCreatorCatalogAutoSync() {
 }
 
 // API Mode: MOCK (default), HYBRID, or REAL
-// MOCK: Use internal mock data
+// MOCK: checkout compatibility mocks only; product search/detail stay on the real main path
 // HYBRID: Real product search, mock payment
 // REAL: All real API calls (requires API key)
 // If API_MODE is not explicitly provided but an API key is configured,
@@ -3918,6 +3917,22 @@ const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
 const USE_MOCK = API_MODE === 'MOCK';
 const USE_HYBRID = API_MODE === 'HYBRID';
 const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
+const PRODUCT_CONTRACT_OPERATIONS = new Set([
+  'find_products',
+  'find_products_multi',
+  'find_similar_products',
+  'resolve_product_candidates',
+  'get_product_detail',
+  'get_pdp',
+  'get_pdp_v2',
+]);
+const INTERNAL_MOCK_ALLOWED_OPERATIONS = new Set([
+  'create_order',
+  'preview_quote',
+  'submit_payment',
+  'get_order_status',
+  'request_after_sales',
+]);
 const GATEWAY_GOVERNANCE_SHADOW_MODE = parseQueryBoolean(
   process.env.PIVOTA_GATEWAY_GOVERNANCE_SHADOW_MODE,
 ) !== false;
@@ -4307,6 +4322,10 @@ function buildSearchStageLedger({
         String(semanticRewriteResult?.owner || '').trim() || 'shopping_agent_semantic_rewrite',
       applied: Boolean(semanticRewriteResult?.applied),
       mode: String(semanticRewriteResult?.mode || 'deterministic_fallback'),
+      provider: String(semanticRewriteResult?.provider || '').trim() || null,
+      enable_owner: String(semanticRewriteResult?.enable_owner || '').trim() || null,
+      provider_owner: String(semanticRewriteResult?.provider_owner || '').trim() || null,
+      fallback_owner: String(semanticRewriteResult?.fallback_owner || '').trim() || null,
       latency_ms:
         Number.isFinite(Number(semanticRewriteResult?.latency_ms)) &&
         Number(semanticRewriteResult?.latency_ms) >= 0
@@ -11356,43 +11375,6 @@ function applyDealsToResponse(upstreamData, promotions, now = new Date(), creato
   return clone;
 }
 
-// Helper: compute similar products (simple heuristic: price band, exclude ids)
-function pickSimilarProducts(products, baseProductId, limit = 8, excludeIds = []) {
-  if (!Array.isArray(products)) return [];
-  const excludes = new Set(excludeIds || []);
-  excludes.add(baseProductId);
-
-  const base = products.find(
-    (p) => String(p.product_id || p.id) === String(baseProductId)
-  );
-  const basePrice = base ? Number(base.price || base.unit_price || 0) : null;
-
-  let candidates = products.filter(
-    (p) => !excludes.has(String(p.product_id || p.id))
-  );
-
-  if (basePrice && basePrice > 0) {
-    const min = basePrice * 0.7;
-    const max = basePrice * 1.3;
-    const priced = candidates.filter((p) => {
-      const price = Number(p.price || p.unit_price || 0);
-      return price >= min && price <= max;
-    });
-
-    if (priced.length) {
-      candidates = priced;
-    }
-
-    candidates.sort((a, b) => {
-      const pa = Math.abs(Number(a.price || a.unit_price || 0) - basePrice);
-      const pb = Math.abs(Number(b.price || b.unit_price || 0) - basePrice);
-      return pa - pb;
-    });
-  }
-
-  return candidates.slice(0, limit);
-}
-
 function deriveQueryFromProduct(product) {
   if (!product) return '';
   const title = (product.title || '').trim();
@@ -13947,7 +13929,13 @@ const healthRouteHandler = (req, res) => {
     startup_guards: {
       aurora_routes_critical: auroraStartupCritical,
     },
-    message: `Running in ${API_MODE} mode. ${USE_MOCK ? 'Using internal mock products.' : USE_HYBRID ? 'Real products, mock payment.' : 'Full real API integration.'}`
+    message: `Running in ${API_MODE} mode. ${
+      USE_MOCK
+        ? 'Product search stays on the real main path; only checkout compatibility mocks remain.'
+        : USE_HYBRID
+          ? 'Real products, mock payment.'
+          : 'Full real API integration.'
+    }`
       });
     })
     .catch((err) => {
@@ -17794,7 +17782,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	  }
 	  
 	  // HYBRID mode: Use real API for product search, mock for payments
-	  if (USE_HYBRID) {
+  if (USE_HYBRID) {
     const hybridMockOperations = ['submit_payment', 'request_after_sales'];
     if (hybridMockOperations.includes(operation)) {
       logger.info({ operation }, 'Hybrid mode: Using mock for this operation');
@@ -17805,8 +17793,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
   }
   
-  // Use mock API if configured or in hybrid mode for certain operations
-  const shouldUseMock = USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation));
+  const mockRequested =
+    USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation));
+  const productContractOperation = PRODUCT_CONTRACT_OPERATIONS.has(operation);
+  if (mockRequested && productContractOperation) {
+    logger.warn(
+      { operation, api_mode: API_MODE },
+      'Internal product mock path disabled; forcing strict real commerce path',
+    );
+  }
+
+  // Internal mocks are kept only for legacy checkout compatibility surfaces.
+  const shouldUseMock = mockRequested && INTERNAL_MOCK_ALLOWED_OPERATIONS.has(operation);
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.
@@ -17847,613 +17845,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       let mockResponse;
       
       switch (operation) {
-        case 'find_products': {
-          const search = effectivePayload.search || effectivePayload || {};
-          const products = searchProducts(
-            search.merchant_id || DEFAULT_MERCHANT_ID,
-            search.query,
-            search.price_max,
-            search.price_min,
-            search.category
-          );
-          
-          mockResponse = {
-            status: 'success',
-            success: true,
-            products: products,
-            results: products, // Alternative field name
-            data: { products: products }, // Alternative structure
-            total: products.length,
-            count: products.length, // Alternative count field
-            page: 1,
-            page_size: products.length
-          };
-          break;
-        }
-
-        case 'find_similar_products': {
-          const sim = payload.similar || {};
-          const productId =
-            sim.product_id ||
-            payload.product?.product_id ||
-            payload.product_id;
-          const limit = sim.limit || 8;
-          const merchantId =
-            sim.merchant_id || payload.search?.merchant_id || DEFAULT_MERCHANT_ID;
-          const excludeIds = sim.exclude_ids || [productId].filter(Boolean);
-
-          const all = searchProducts(merchantId, sim.query, undefined, undefined, undefined);
-          const picked = pickSimilarProducts(all, productId, limit, excludeIds);
-
-          mockResponse = {
-            status: 'success',
-            products: picked,
-            total: picked.length,
-            page: 1,
-            page_size: picked.length,
-          };
-          break;
-        }
-
-        case 'find_products_multi': {
-          const search = effectivePayload.search || effectivePayload || {};
-          const merchantId = String(search.merchant_id || search.merchantId || '').trim();
-          const merchantIdsRaw = search.merchant_ids || search.merchantIds;
-          const merchantIds = Array.isArray(merchantIdsRaw)
-            ? merchantIdsRaw.map((v) => String(v || '').trim()).filter(Boolean)
-            : [];
-          const searchAllMerchants =
-            search.search_all_merchants === true || search.searchAllMerchants === true;
-          const resolvedMerchantIds = merchantId
-            ? [merchantId]
-            : merchantIds.length
-              ? merchantIds
-              : searchAllMerchants
-                ? Object.keys(mockProducts)
-                : Object.keys(mockProducts);
-
-          const products = resolvedMerchantIds.flatMap((mid) =>
-            searchProducts(mid, search.query, search.price_max, search.price_min, search.category),
-          );
-
-          mockResponse = {
-            status: 'success',
-            success: true,
-            products,
-            results: products,
-            data: { products },
-            total: products.length,
-            count: products.length,
-            page: 1,
-            page_size: products.length,
-            metadata: {
-              query_source: 'mock_multi',
-              merchants_searched: resolvedMerchantIds.length
-            }
-          };
-          break;
-        }
-
-	        case 'resolve_product_candidates': {
-	          const productRef = payload.product_ref || payload.productRef || payload.product || {};
-	          const productId = String(
-	            productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
-	          ).trim();
-          const requestedMerchantId = String(
-            productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
-          ).trim();
-	          const options = payload.options || {};
-	          const limit = Math.min(Math.max(1, Number(options.limit || payload.limit || 10) || 10), 50);
-	          const includeOffers = options.include_offers !== false;
-	          const debug = options.debug === true || String(options.debug || '').trim().toLowerCase() === 'true';
-
-	          if (!productId) {
-	            return res.status(400).json({
-	              error: 'MISSING_PARAMETERS',
-	              message: 'product_ref.product_id is required',
-            });
-          }
-
-	          const currency = 'USD';
-	          const productGroupId =
-	            (productId === 'BOTTLE_001'
-	              ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
-	              : buildProductGroupId({
-	                  merchant_id: requestedMerchantId || DEFAULT_MERCHANT_ID,
-	                  product_id: productId,
-	                })) ||
-	            (productId === 'BOTTLE_001'
-	              ? `pg:mock:${productId}`
-	              : `pg:${requestedMerchantId || DEFAULT_MERCHANT_ID}:${productId}`);
-
-	          const toMoney = (amount, cur) => ({ amount: Number(amount) || 0, currency: cur || currency });
-
-	          const buildBottleOffers = () => {
-	            const offers = [
-              {
-                tier: 'cheap_slow',
-                risk_tier: 'standard',
-                merchant_id: 'merch_demo_cheap_slow',
-                merchant_name: 'Budget Seller',
-                fulfillment_type: 'merchant',
-                inventory: { in_stock: true },
-                price: toMoney(19.99, currency),
-                shipping: { method_label: 'Standard', eta_days_range: [7, 10], cost: toMoney(1.99, currency) },
-                returns: { return_window_days: 30, free_returns: true },
-              },
-              {
-                tier: 'fast_premium',
-                risk_tier: 'preferred',
-                merchant_id: 'merch_demo_fast_premium',
-                merchant_name: 'FastShip Plus',
-                fulfillment_type: 'merchant',
-                inventory: { in_stock: true },
-                price: toMoney(25.99, currency),
-                shipping: { method_label: 'Express', eta_days_range: [1, 2], cost: toMoney(8.99, currency) },
-                returns: { return_window_days: 30, free_returns: true },
-              },
-              {
-                tier: 'bad_returns',
-                risk_tier: 'high_risk',
-                merchant_id: 'merch_demo_bad_returns',
-                merchant_name: 'Strict Returns Co.',
-                fulfillment_type: 'merchant',
-                inventory: { in_stock: true },
-                price: toMoney(23.49, currency),
-                shipping: { method_label: 'Standard', eta_days_range: [3, 5], cost: toMoney(4.49, currency) },
-                returns: { return_window_days: 7, free_returns: false },
-              },
-	            ]
-	              .slice(0, limit)
-	              .map((o) => ({
-	                offer_id:
-	                  buildOfferId({
-	                    merchant_id: o.merchant_id,
-	                    product_group_id: productGroupId,
-	                    fulfillment_type: o.fulfillment_type,
-	                    tier: o.tier,
-	                  }) ||
-	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
-	                product_group_id: productGroupId,
-	                ...o,
-	              }));
-
-            const bestPriceOfferId =
-              offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0]?.offer_id || null;
-            const defaultOfferId =
-              offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
-
-            return {
-              offers,
-              bestPriceOfferId,
-              defaultOfferId,
-            };
-          };
-
-          let offers = [];
-          let bestPriceOfferId = null;
-          let defaultOfferId = null;
-
-          if (productId === 'BOTTLE_001') {
-            const bundle = buildBottleOffers();
-            offers = bundle.offers;
-            bestPriceOfferId = bundle.bestPriceOfferId;
-            defaultOfferId = bundle.defaultOfferId;
-          } else {
-            const mid = requestedMerchantId || DEFAULT_MERCHANT_ID;
-            const product = getProductById(mid, productId);
-            if (!product) {
-              return res.status(404).json({ error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
-	            }
-	            const single = {
-	              offer_id:
-	                buildOfferId({
-	                  merchant_id: mid,
-	                  product_group_id: productGroupId,
-	                  fulfillment_type: 'merchant',
-	                  tier: 'single',
-	                }) || `of:v1:${mid}:${productGroupId}:merchant:single`,
-	              product_group_id: productGroupId,
-	              tier: 'single',
-	              risk_tier: 'standard',
-	              merchant_id: mid,
-              merchant_name: product.merchant_name || product.store_name || null,
-              fulfillment_type: 'merchant',
-              inventory: { in_stock: Boolean(product.in_stock) },
-              price: toMoney(product.price, product.currency || currency),
-              shipping: product.shipping || undefined,
-              returns: product.returns || undefined,
-            };
-            offers = [single];
-            bestPriceOfferId = single.offer_id;
-            defaultOfferId = single.offer_id;
-          }
-
-	          mockResponse = {
-	            status: 'success',
-	            success: true,
-	            product_group_id: productGroupId,
-	            offers_count: offers.length,
-	            ...(includeOffers ? { offers } : {}),
-	            default_offer_id: defaultOfferId,
-	            best_price_offer_id: bestPriceOfferId,
-	            ...(debug ? { cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_CANDIDATES_TTL_MS } } : {}),
-	          };
-	          break;
-	        }
-        
-        case 'get_product_detail': {
-          const product = getProductById(
-            payload.product?.merchant_id || 'merch_208139f7600dbf42',
-            payload.product?.product_id
-          );
-          
-          if (product) {
-            const merchantId =
-              product.merchant_id || payload.product?.merchant_id || DEFAULT_MERCHANT_ID;
-            const productId = product.product_id || payload.product?.product_id;
-
-	            const platform = String(product.platform || '').trim();
-	            const platformProductId = String(product.platform_product_id || '').trim();
-	            const productGroupId =
-	              (platform && platformProductId
-	                ? buildProductGroupId({ platform, platform_product_id: platformProductId })
-	                : productId === 'BOTTLE_001'
-	                  ? buildProductGroupId({ platform: 'mock', platform_product_id: productId })
-	                  : buildProductGroupId({ merchant_id: merchantId, product_id: productId })) ||
-	              (platform && platformProductId
-	                ? `pg:${platform}:${platformProductId}`
-	                : productId === 'BOTTLE_001'
-	                  ? `pg:mock:${productId}`
-	                  : `pg:${merchantId}:${productId}`);
-
-            function toMoney(amount, currency) {
-              return { amount: Number(amount) || 0, currency: currency || 'USD' };
-            }
-
-            function buildBottleOffers() {
-              const currency = product.currency || 'USD';
-              const offers = [
-                {
-                  tier: 'cheap_slow',
-                  merchant_id: 'merch_demo_cheap_slow',
-                  merchant_name: 'Budget Seller',
-                  fulfillment_type: 'merchant',
-                  inventory: { in_stock: true },
-                  price: toMoney(19.99, currency),
-                  shipping: {
-                    method_label: 'Standard',
-                    eta_days_range: [7, 10],
-                    cost: toMoney(1.99, currency),
-                  },
-                  returns: { return_window_days: 30, free_returns: true },
-                },
-                {
-                  tier: 'fast_premium',
-                  merchant_id: 'merch_demo_fast_premium',
-                  merchant_name: 'FastShip Plus',
-                  fulfillment_type: 'merchant',
-                  inventory: { in_stock: true },
-                  price: toMoney(25.99, currency),
-                  shipping: {
-                    method_label: 'Express',
-                    eta_days_range: [1, 2],
-                    cost: toMoney(8.99, currency),
-                  },
-                  returns: { return_window_days: 30, free_returns: true },
-                },
-                {
-                  tier: 'bad_returns',
-                  merchant_id: 'merch_demo_bad_returns',
-                  merchant_name: 'Strict Returns Co.',
-                  fulfillment_type: 'merchant',
-                  inventory: { in_stock: true },
-                  price: toMoney(23.49, currency),
-                  shipping: {
-                    method_label: 'Standard',
-                    eta_days_range: [3, 5],
-                    cost: toMoney(4.49, currency),
-                  },
-                  returns: { return_window_days: 7, free_returns: false },
-                },
-	              ].map((o) => ({
-	                offer_id:
-	                  buildOfferId({
-	                    merchant_id: o.merchant_id,
-	                    product_group_id: productGroupId,
-	                    fulfillment_type: o.fulfillment_type,
-	                    tier: o.tier,
-	                  }) ||
-	                  `of:v1:${o.merchant_id}:${productGroupId}:${o.fulfillment_type || 'merchant'}:${o.tier || 'default'}`,
-	                product_group_id: productGroupId,
-	                ...o,
-	              }));
-
-              const bestPriceOfferId = offers.find((o) => o.tier === 'cheap_slow')?.offer_id || offers[0].offer_id;
-              const defaultOfferId = offers.find((o) => o.tier === 'fast_premium')?.offer_id || bestPriceOfferId;
-
-              return { offers, defaultOfferId, bestPriceOfferId };
-            }
-
-            const offerBundle =
-              productId === 'BOTTLE_001'
-                ? buildBottleOffers()
-	                : (() => {
-	                    const currency = product.currency || 'USD';
-	                    const single = {
-	                      offer_id:
-	                        buildOfferId({
-	                          merchant_id: merchantId,
-	                          product_group_id: productGroupId,
-	                          fulfillment_type: 'merchant',
-	                          tier: 'single',
-	                        }) || `of:v1:${merchantId}:${productGroupId}:merchant:single`,
-	                      product_group_id: productGroupId,
-	                      tier: 'single',
-	                      merchant_id: merchantId,
-                      merchant_name: product.merchant_name || product.store_name || null,
-                      fulfillment_type: 'merchant',
-                      inventory: { in_stock: Boolean(product.in_stock) },
-                      price: toMoney(product.price, currency),
-                      shipping: product.shipping || undefined,
-                      returns: product.returns || undefined,
-                    };
-                    return { offers: [single], defaultOfferId: single.offer_id, bestPriceOfferId: single.offer_id };
-                  })();
-
-            const pdpOptions = getPdpOptions(payload);
-            const includePdp = shouldIncludePdp(payload);
-            let relatedProducts = [];
-            if (pdpOptions.includeRecommendations) {
-              const bypassCache =
-                payload?.options?.no_cache === true ||
-                payload?.options?.cache_bypass === true ||
-                payload?.options?.bypass_cache === true;
-              try {
-                const rec = await recommendPdpProducts({
-                  pdp_product: product,
-                  k: payload.recommendations?.limit || 6,
-                  locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-                  currency: product.currency || 'USD',
-                  options: {
-                    debug: pdpOptions.debug,
-                    no_cache: bypassCache,
-                    cache_bypass: bypassCache,
-                    bypass_cache: bypassCache,
-                  },
-                });
-                relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-              } catch {
-                // non-blocking
-                relatedProducts = [];
-              }
-            }
-
-            mockResponse = {
-              status: 'success',
-              product: product,
-              product_group_id: productGroupId,
-              offers: offerBundle.offers,
-              offers_count: offerBundle.offers.length,
-              default_offer_id: offerBundle.defaultOfferId,
-              best_price_offer_id: offerBundle.bestPriceOfferId,
-              ...(includePdp
-                ? {
-                    pdp_payload: buildPdpPayload({
-                      product,
-                      relatedProducts,
-                      entryPoint: pdpOptions.entryPoint,
-                      experiment: pdpOptions.experiment,
-                      templateHint: pdpOptions.templateHint,
-                      includeEmptyReviews: pdpOptions.includeEmptyReviews,
-                      debug: pdpOptions.debug,
-                    }),
-                  }
-                : {}),
-            };
-          } else {
-            return res.status(404).json({
-              error: 'PRODUCT_NOT_FOUND',
-              message: 'Product not found'
-            });
-          }
-          break;
-        }
-
-	        case 'get_pdp': {
-	          const product = getProductById(
-	            payload.product?.merchant_id || 'merch_208139f7600dbf42',
-	            payload.product?.product_id
-	          );
-
-          if (!product) {
-            return res.status(404).json({
-              error: 'PRODUCT_NOT_FOUND',
-              message: 'Product not found',
-            });
-          }
-
-          const pdpOptions = getPdpOptions(payload);
-          let relatedProducts = [];
-          if (pdpOptions.includeRecommendations) {
-            const bypassCache =
-              payload?.options?.no_cache === true ||
-              payload?.options?.cache_bypass === true ||
-              payload?.options?.bypass_cache === true;
-            try {
-              const rec = await recommendPdpProducts({
-                pdp_product: product,
-                k: payload.recommendations?.limit || 6,
-                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-                currency: product.currency || 'USD',
-                options: {
-                  debug: pdpOptions.debug,
-                  no_cache: bypassCache,
-                  cache_bypass: bypassCache,
-                  bypass_cache: bypassCache,
-                },
-              });
-              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-            } catch {
-              // non-blocking
-              relatedProducts = [];
-            }
-          }
-
-	          mockResponse = {
-	            status: 'success',
-	            product,
-	            pdp_payload: buildPdpPayload({
-	              product,
-	              relatedProducts,
-	              entryPoint: pdpOptions.entryPoint,
-	              experiment: pdpOptions.experiment,
-	              templateHint: pdpOptions.templateHint,
-	              includeEmptyReviews: pdpOptions.includeEmptyReviews,
-	              debug: pdpOptions.debug,
-	            }),
-	          };
-	          break;
-	        }
-
-	        case 'get_pdp_v2': {
-	          const product = getProductById(
-	            payload.product?.merchant_id || DEFAULT_MERCHANT_ID,
-	            payload.product?.product_id,
-	          );
-
-	          if (!product) {
-	            return res.status(404).json({
-	              error: 'PRODUCT_NOT_FOUND',
-	              message: 'Product not found',
-	            });
-	          }
-
-	          const includeList = Array.isArray(payload.include)
-	            ? payload.include.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
-	            : [];
-	          const includeAll = includeList.includes('all');
-	          const wantsSimilar = includeAll || includeList.includes('similar') || includeList.includes('recommendations');
-	          const wantsOffers = includeAll || includeList.includes('offers');
-	          const wantsReviews = includeAll || includeList.includes('reviews_preview');
-
-	          const pdpOptions = getPdpOptions(payload);
-	          let relatedProducts = [];
-	          if (wantsSimilar) {
-	            const bypassCache =
-	              payload?.options?.no_cache === true ||
-	              payload?.options?.cache_bypass === true ||
-	              payload?.options?.bypass_cache === true;
-	            try {
-	              const rec = await recommendPdpProducts({
-	                pdp_product: product,
-	                k: payload.recommendations?.limit || 6,
-	                locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-	                currency: product.currency || 'USD',
-	                options: {
-	                  debug: pdpOptions.debug,
-	                  no_cache: bypassCache,
-	                  cache_bypass: bypassCache,
-	                  bypass_cache: bypassCache,
-	                },
-	              });
-	              relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
-	            } catch {
-	              // non-blocking
-	              relatedProducts = [];
-	            }
-	          }
-
-	          const pdpPayload = buildPdpPayload({
-	            product,
-	            relatedProducts,
-	            entryPoint: pdpOptions.entryPoint,
-	            experiment: pdpOptions.experiment,
-	            templateHint: pdpOptions.templateHint,
-	            includeEmptyReviews: wantsReviews || pdpOptions.includeEmptyReviews,
-	            debug: pdpOptions.debug,
-	          });
-
-	          const reviewsModule = Array.isArray(pdpPayload.modules)
-	            ? pdpPayload.modules.find((m) => m?.type === 'reviews_preview')
-	            : null;
-	          const recModule = Array.isArray(pdpPayload.modules)
-	            ? pdpPayload.modules.find((m) => m?.type === 'recommendations')
-	            : null;
-
-	          const modules = [
-	            {
-	              type: 'canonical',
-	              required: true,
-	              data: { pdp_payload: pdpPayload },
-	            },
-	          ];
-
-	          if (wantsOffers) {
-	            modules.push({
-	              type: 'offers',
-	              required: false,
-	              data: {
-	                offers_count: 1,
-	                offers: [
-	                  {
-	                    offer_id: `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`,
-	                    merchant_id: product.merchant_id || DEFAULT_MERCHANT_ID,
-	                    merchant_name: product.merchant_name || product.store_name || undefined,
-	                    price: normalizeOfferMoney(product.price, product.currency || 'USD'),
-	                  },
-	                ],
-	              },
-	            });
-	          }
-
-	          if (wantsReviews) {
-	            modules.push({
-	              type: 'reviews_preview',
-	              required: false,
-	              data: reviewsModule?.data || null,
-	              ...(reviewsModule?.data ? {} : { reason: 'unavailable' }),
-	            });
-	          }
-
-	          if (wantsSimilar) {
-	            modules.push({
-	              type: 'similar',
-	              required: false,
-	              data: recModule?.data || null,
-	              ...(recModule?.data ? {} : { reason: 'unavailable' }),
-	            });
-	          }
-
-	          const missing = [];
-	          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
-	          if (wantsSimilar && !recModule?.data) missing.push({ type: 'similar', reason: 'unavailable' });
-
-	          mockResponse = {
-	            status: 'success',
-	            pdp_version: '2.0',
-	            request_id: `mock_${Date.now()}`,
-	            build_id: SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null,
-	            generated_at: new Date().toISOString(),
-	            subject: { type: 'product', id: String(product.id || product.product_id || '') },
-	            capabilities: { client: metadata?.source || 'mock' },
-	            modules,
-	            warnings: [],
-	            missing,
-              metadata: {
-                detail_source: 'mock',
-                module_degrade: {
-                  applied: missing.length > 0,
-                  modules: missing.map((item) => ({
-                    type: item?.type || 'unknown',
-                    reason: item?.reason || 'unavailable',
-                  })),
-                },
-              },
-	          };
-	          break;
-	        }
-	        
 	        case 'create_order': {
 	          // Mock order creation
 	          const order = payload.order || {};
