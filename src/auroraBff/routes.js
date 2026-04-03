@@ -1168,12 +1168,6 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED = (() => {
   if (raw) return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
   return process.env.NODE_ENV !== 'test';
 })();
-const RECO_CATALOG_SEARCH_AURORA_SELF_PROXY_FIRST = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || 'true')
-    .trim()
-    .toLowerCase();
-  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
-})();
 const RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL = (() => {
   const explicit = String(
     process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL ||
@@ -3569,7 +3563,7 @@ function buildRecoCatalogSearchBaseUrlCandidates({
   includeLocalFallback = false,
   preferConfigured = RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS,
   includeSelfProxy = RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED,
-  preferSelfProxyFirst = RECO_CATALOG_SEARCH_AURORA_SELF_PROXY_FIRST,
+  preferSelfProxyFirst = false,
 } = {}) {
   const out = [];
   const seen = new Set();
@@ -3997,9 +3991,11 @@ async function searchPivotaBackendProducts({
   const shouldAttemptLocalSearchFallback =
     localSearchFallbackConfigured &&
     (forceLocalFallbackEnabled || RECO_PDP_LOCAL_SEARCH_FALLBACK_ON_TRANSIENT);
+  const preferSelfProxyFirst = effectiveTransportPolicy.prefer_self_proxy_first === true;
   const baseUrlCandidates = buildRecoCatalogSearchBaseUrlCandidates({
     includeLocalFallback: shouldAttemptLocalSearchFallback,
     includeSelfProxy: effectiveTransportPolicy.include_self_proxy !== false,
+    preferSelfProxyFirst,
   });
   const maxConfiguredPaths = Number.isFinite(Number(effectiveTransportPolicy.max_paths))
     ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_paths)))
@@ -18476,19 +18472,6 @@ async function buildRecoGenerateFromCatalog({
   if (!RECO_CATALOG_GROUNDED_ENABLED) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'disabled', total_ms: Date.now() - startedAt } };
   }
-  const catalogSearchBaseUrls = buildRecoCatalogSearchBaseUrlCandidates({
-    includeLocalFallback:
-      RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
-      RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED,
-  });
-  debugInfo.catalog_search_sources = catalogSearchBaseUrls.slice(0, 6);
-  debugInfo.catalog_search_source_health = getRecoCatalogSearchSourceHealthSnapshot(Date.now());
-  if (!catalogSearchBaseUrls.length) {
-    return {
-      structured: null,
-      debug: { ...debugInfo, skipped_reason: 'pivota_backend_not_configured', total_ms: Date.now() - startedAt },
-    };
-  }
   if (failFastBefore.open) {
     probeWhileOpen = beginRecoCatalogFailFastProbe(startedAt);
     if (!probeWhileOpen) {
@@ -18518,6 +18501,24 @@ async function buildRecoGenerateFromCatalog({
           queryLevels: sameFamilyQueryLevels,
         })
       : null;
+  const previewTransportPolicy = buildRecoRecallTransportPolicy({
+    mode: resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode),
+  });
+  const catalogSearchBaseUrls = buildRecoCatalogSearchBaseUrlCandidates({
+    includeLocalFallback:
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_CHAT_ENABLED &&
+      RECO_PDP_LOCAL_INVOKE_FALLBACK_ENABLED,
+    includeSelfProxy: previewTransportPolicy.include_self_proxy !== false,
+    preferSelfProxyFirst: previewTransportPolicy.prefer_self_proxy_first === true,
+  });
+  debugInfo.catalog_search_sources = catalogSearchBaseUrls.slice(0, 6);
+  debugInfo.catalog_search_source_health = getRecoCatalogSearchSourceHealthSnapshot(Date.now());
+  if (!catalogSearchBaseUrls.length) {
+    return {
+      structured: null,
+      debug: { ...debugInfo, skipped_reason: 'pivota_backend_not_configured', total_ms: Date.now() - startedAt },
+    };
+  }
   const queryLevels = buildRecoCatalogQueryLevels({
     targetContext,
     profileSummary,
