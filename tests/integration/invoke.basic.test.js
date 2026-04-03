@@ -535,6 +535,74 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
+  it('beauty mainline keeps treatment products when ambiguity only requires non-blocking clarify', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'treat_1',
+            product_id: 'treat_1',
+            merchant_id: 'merchant_treat',
+            title: 'Oil Control Treatment Serum',
+            name: 'Oil Control Treatment Serum',
+            display_name: 'Oil Control Treatment Serum',
+            category: 'skincare',
+            product_type: 'serum',
+          },
+          {
+            id: 'treat_2',
+            product_id: 'treat_2',
+            merchant_id: 'merchant_treat',
+            title: 'Salicylic Acid Oil Control Treatment',
+            name: 'Salicylic Acid Oil Control Treatment',
+            display_name: 'Salicylic Acid Oil Control Treatment',
+            category: 'skincare',
+            product_type: 'treatment',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          query: 'oil control treatment',
+          messages: [{ role: 'user', content: 'oil control treatment' }],
+        },
+        metadata: {},
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products.length).toBeGreaterThan(0);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        query_source: 'agent_products_search',
+      }),
+    );
+    expect(res.body.metadata?.search_stage_ledger?.final_decision).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_mainline',
+      }),
+    );
+    expect(String(res.body.metadata?.search_decision?.final_decision || '')).toBe(
+      'products_returned_with_clarification',
+    );
+    expect(Array.isArray(res.body.reason_codes)).toBe(true);
+    expect(res.body.reason_codes).toContain('AMBIGUITY_CLARIFY');
+    expect(res.body.reason_codes).not.toContain('FILTERED_TO_EMPTY');
+  });
+
   it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',

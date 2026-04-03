@@ -4569,6 +4569,13 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     String(rawUserQuery || '').trim() ||
     String(requestPayload?.search?.query || '').trim() ||
     '';
+  const semanticContract = normalizeSearchSemanticContract(
+    requestPayload?.search?.semantic_contract ||
+      requestPayload?.search?.semanticContract ||
+      metadata?.semantic_contract ||
+      metadata?.semanticContract,
+  );
+  const beautyDiscoveryMainline = isBeautyDiscoverySemanticContract(semanticContract);
   const metadataBrandEntities = Array.isArray(metadata?.brand_entities)
     ? metadata.brand_entities.map((item) => String(item || '').trim()).filter(Boolean)
     : [];
@@ -5009,10 +5016,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     } else {
       postQuality.context_fail_open_applied = false;
     }
+    const beautyMainlineNonBlockingClarify =
+      beautyDiscoveryMainline && postCandidateCount > 0;
     const forceClearForAmbiguousRecommend =
       intentNeedsClarification &&
-      String(queryClass || '') === 'exploratory';
+      String(queryClass || '') === 'exploratory' &&
+      !beautyMainlineNonBlockingClarify;
     const shouldClearProductsForClarify =
+      !beautyMainlineNonBlockingClarify &&
       !contextFailOpenApplied &&
       !clarifyBudgetExhausted &&
       (forceClearForAmbiguousRecommend ||
@@ -5042,6 +5053,9 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       });
       finalDecision = postCandidateCount > 0 ? 'products_returned_with_clarification' : 'clarify';
       lowConfidenceReasons.push('clarification_attached_non_blocking');
+      if (beautyMainlineNonBlockingClarify) {
+        lowConfidenceReasons.push('beauty_mainline_clarify_observed');
+      }
     } else if (clarifyBudgetExhausted) {
       postQuality.context_fail_open_applied = false;
       finalDecision = postCandidateCount > 0 ? 'products_returned' : 'clarify_skipped_budget_exhausted';
