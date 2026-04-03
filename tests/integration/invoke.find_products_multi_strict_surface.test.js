@@ -129,6 +129,108 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('strict surfaces skip resolver-first and keep strict invoke as sole owner', async () => {
+    const prevResolverFirstEnabled = process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_mid',
+        product_id: 'resolver_pid',
+      },
+      confidence: 1,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 6 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const queryText = 'The Ordinary Niacinamide 10% + Zinc 1%';
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'prod_strict_1',
+            merchant_id: 'merch_strict_1',
+            title: queryText,
+            price: 18,
+            currency: 'USD',
+            in_stock: true,
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_search',
+          serving_mode: 'eligible_only',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'agent_api_surface',
+        },
+      });
+
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            id: 'legacy_1',
+            merchant_id: 'legacy_m',
+            title: 'Legacy Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    try {
+      const app = require('../../src/server');
+      const res = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'find_products_multi',
+          payload: {
+            search: {
+              query: queryText,
+              limit: 10,
+              in_stock_only: true,
+              catalog_surface: 'agent_api',
+            },
+          },
+          metadata: {
+            source: 'shopping_agent',
+            catalog_surface: 'agent_api',
+          },
+        })
+        .expect(200);
+
+      expect(strictInvoke.isDone()).toBe(true);
+      expect(legacySearch.isDone()).toBe(false);
+      expect(resolveProductRef).not.toHaveBeenCalled();
+      expect(res.body.metadata).toEqual(
+        expect.objectContaining({
+          contract_bridge: expect.objectContaining({
+            resolved_contract: 'shop_invoke_strict',
+            legacy_fallback: false,
+          }),
+          gate_trace: expect.arrayContaining([
+            expect.objectContaining({
+              gate_id: 'resolver_first',
+              applied: false,
+              reason: 'strict_main_path',
+            }),
+          ]),
+        }),
+      );
+    } finally {
+      if (prevResolverFirstEnabled === undefined) delete process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED;
+      else process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = prevResolverFirstEnabled;
+    }
+  });
+
   test('keeps strict empty responses off legacy search fallback paths', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
@@ -217,6 +319,77 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         ingredient_intents: ['ascorbic_acid'],
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
+        contract_bridge: expect.objectContaining({
+          resolved_contract: 'shop_invoke_strict',
+          legacy_fallback: false,
+        }),
+      }),
+    );
+  });
+
+  test('strict surface exceptions do not invoke resolver fallback', async () => {
+    const resolveProductRef = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_mid',
+        product_id: 'resolver_pid',
+      },
+      confidence: 1,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 6 },
+    });
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef,
+    }));
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(502, {
+        detail: 'upstream exploded',
+      });
+
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .reply(200, {
+        status: 'success',
+        products: [
+          {
+            id: 'legacy_1',
+            merchant_id: 'legacy_m',
+            title: 'Legacy Vitamin C Serum',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'vitamin c serum',
+            limit: 10,
+            in_stock_only: true,
+            catalog_surface: 'agent_api',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'agent_api',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(legacySearch.isDone()).toBe(false);
+    expect(resolveProductRef).not.toHaveBeenCalled();
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,

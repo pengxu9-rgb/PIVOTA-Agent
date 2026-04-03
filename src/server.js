@@ -21804,6 +21804,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       queryClass: traceQueryClass,
       brandLike: resolverBrandLike,
     });
+    let resolverFirstSkipReason = 'disabled_or_not_lookup';
+    if (
+      operation === 'find_products_multi' &&
+      strictCommerceFindProductsMulti &&
+      shouldAttemptResolverFirst
+    ) {
+      shouldAttemptResolverFirst = false;
+      resolverFirstSkipReason = 'strict_main_path';
+    }
     if (
       operation === 'find_products_multi' &&
       FPM_GATE_SIMPLIFY_V1 &&
@@ -21811,6 +21820,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       resolverRemainingBudgetMs < FPM_LATENCY_GUARD_RESOLVER_MIN_REMAINING_MS
     ) {
       shouldAttemptResolverFirst = false;
+      resolverFirstSkipReason = 'budget_guard';
       fpmLatencyGuardApplied = true;
       fpmSkippedGatesDueToBudget.push('resolver_first');
       addFpmGateTrace({
@@ -21827,7 +21837,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         gateId: 'resolver_first',
         applied: false,
         decision: 'pass',
-        reason: 'disabled_or_not_lookup',
+        reason: resolverFirstSkipReason,
         costMsEstimate: 0,
         queryClass: traceQueryClass,
       });
