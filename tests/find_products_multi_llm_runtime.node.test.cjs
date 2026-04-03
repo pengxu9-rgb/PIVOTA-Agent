@@ -317,12 +317,14 @@ test('semantic rewrite input is compact and uses semantic contract summary inste
     );
     const parsed = JSON.parse(raw);
     assert.equal(Object.prototype.hasOwnProperty.call(parsed, 'schema'), false);
-    assert.deepEqual(parsed.output_contract.required_keys.slice(0, 4), [
+    assert.deepEqual(parsed.output_contract.top_level_keys.slice(0, 4), [
+      'intent_version',
       'language',
       'primary_domain',
-      'target_object.type',
-      'target_object.age_group',
+      'target_object',
     ]);
+    assert.equal(parsed.output_contract.shape.target_object.type, 'enum');
+    assert.equal(parsed.output_contract.shape.ambiguity.clarifying_questions, 'string_array_optional');
     assert.equal(parsed.semantic_contract.request_class, 'sunscreen');
     assert.equal(parsed.semantic_contract.source_surface, 'aurora_beauty_strict');
   });

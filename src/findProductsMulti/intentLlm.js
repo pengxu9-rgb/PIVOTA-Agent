@@ -52,24 +52,69 @@ const SEMANTIC_REWRITE_DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
 const SEMANTIC_REWRITE_OPENAI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI';
 const SEMANTIC_REWRITE_GEMINI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI';
 const INTENT_OUTPUT_CONTRACT = Object.freeze({
-  required_keys: [
+  top_level_keys: [
+    'intent_version',
     'language',
     'primary_domain',
-    'target_object.type',
-    'target_object.age_group',
+    'target_object',
+    'category',
+    'scenario',
+    'hard_constraints',
+    'soft_preferences',
+    'confidence',
+    'ambiguity',
+    'history_usage',
     'query_class',
-    'category.required',
-    'category.optional',
-    'scenario.name',
-    'scenario.signals',
-    'hard_constraints.must_exclude_domains',
-    'hard_constraints.must_exclude_keywords',
-    'history_usage.used',
-    'history_usage.reason',
-    'ambiguity.needs_clarification',
-    'ambiguity.questions',
-    'confidence.overall',
   ],
+  shape: {
+    intent_version: '1.0',
+    language: 'enum',
+    primary_domain: 'enum',
+    target_object: {
+      type: 'enum',
+      age_group: 'enum',
+      notes: 'string_optional',
+    },
+    category: {
+      required: 'string_array',
+      optional: 'string_array',
+    },
+    scenario: {
+      name: 'string',
+      signals: 'string_array',
+    },
+    hard_constraints: {
+      must_include_keywords: 'string_array_optional',
+      must_exclude_domains: 'string_array_optional',
+      must_exclude_keywords: 'string_array_optional',
+      in_stock_only: 'boolean_or_null',
+    },
+    soft_preferences: {
+      style: 'string_array_optional',
+      colors: 'string_array_optional',
+      brands: 'string_array_optional',
+      materials: 'string_array_optional',
+    },
+    confidence: {
+      overall: 'number_0_to_1',
+      domain: 'number_0_to_1',
+      target_object: 'number_0_to_1',
+      category: 'number_0_to_1',
+      notes: 'string_optional',
+    },
+    ambiguity: {
+      needs_clarification: 'boolean',
+      missing_slots: 'string_array',
+      clarifying_questions: 'string_array_optional',
+    },
+    history_usage: {
+      used: 'boolean',
+      reason: 'string',
+      used_queries: 'string_array_optional',
+      ignored_queries: 'string_array_optional',
+    },
+    query_class: 'enum_optional',
+  },
 });
 
 function isEnabled() {
@@ -356,10 +401,11 @@ function buildDeterministicIntentWithMeta(
 function buildSystemPrompt() {
   return [
     'You extract shopping intent for an e-commerce agent.',
-    'Return one JSON object only.',
+    'Return one minified JSON object on a single line.',
     'Latest user query dominates.',
     'History is only for explicit carry-over references.',
     'If semantic_contract is present, treat it as hard guidance for request class and step family.',
+    'Never use dotted keys like target_object.type; use nested objects only.',
     'If unsure, keep fields null/unknown and set ambiguity.needs_clarification=true.',
   ].join('\n');
 }
@@ -374,11 +420,13 @@ function buildDeveloperPrompt() {
     '- output_contract',
     '',
     'Rules:',
-    '- Fill output_contract keys only.',
+    '- Match output_contract.shape exactly.',
+    '- Use nested JSON objects exactly as shown in output_contract.shape; never flatten keys with dots.',
+    '- Output compact single-line JSON only. No pretty-printing, no markdown, no prose.',
     '- category.required is hard intent; category.optional is soft guesswork.',
     '- For human requests, exclude toy_accessory and doll/toy/Labubu cues in hard_constraints.',
     '- Set history_usage.used=false when latest query is already clear.',
-    '- Keep ambiguity.questions to at most 3 short questions.',
+    '- Keep ambiguity.clarifying_questions to at most 3 short questions.',
   ].join('\n');
 }
 
