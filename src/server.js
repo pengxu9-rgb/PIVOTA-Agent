@@ -15713,23 +15713,46 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
     });
   }
 
-  const fastpathResponse = await runGuidanceServerOwnedLadderSearch({
-    req,
-    search:
-      payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+  const publicSearchSource = String(payload?.metadata?.source || '').trim();
+  const forceStrictShoppingMainPath = isShoppingSource(publicSearchSource);
+  if (forceStrictShoppingMainPath) {
+    payload.search = {
+      ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
         ? payload.search
-        : {},
-    metadata:
-      payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+        : {}),
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+      allow_external_seed: false,
+    };
+    payload.metadata = {
+      ...(payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
         ? payload.metadata
-        : {},
-  });
-  if (fastpathResponse) {
-    await persistGuidanceSearchSeenProducts(
-      resolveGuidanceSearchSessionId({ req, query: req.query, metadata: payload?.metadata }),
-      Array.isArray(fastpathResponse?.products) ? fastpathResponse.products : [],
-    );
-    return res.json(fastpathResponse);
+        : {}),
+      source: normalizeAgentSource(publicSearchSource) || publicSearchSource,
+      catalog_surface: 'agent_api',
+      commerce_surface: 'agent_api',
+    };
+  }
+
+  if (!forceStrictShoppingMainPath) {
+    const fastpathResponse = await runGuidanceServerOwnedLadderSearch({
+      req,
+      search:
+        payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+          ? payload.search
+          : {},
+      metadata:
+        payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+          ? payload.metadata
+          : {},
+    });
+    if (fastpathResponse) {
+      await persistGuidanceSearchSeenProducts(
+        resolveGuidanceSearchSessionId({ req, query: req.query, metadata: payload?.metadata }),
+        Array.isArray(fastpathResponse?.products) ? fastpathResponse.products : [],
+      );
+      return res.json(fastpathResponse);
+    }
   }
 
   const directExternalSeedSearch =
@@ -15760,7 +15783,7 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
         directDecisionMode === 'guidance_only'
       )
     );
-  if (directExternalSeedOnly) {
+  if (!forceStrictShoppingMainPath && directExternalSeedOnly) {
     const directResponse = await searchExternalSeedOnlyProductsDirect({
       search: {
         ...directExternalSeedSearch,
@@ -15784,16 +15807,18 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
     }
   }
 
-  const ingredientIntentDirectResponse = await searchIngredientIntentProductsDirect({
-    search: directExternalSeedSearch,
-    metadata: directExternalSeedMetadata,
-  });
-  if (ingredientIntentDirectResponse) {
-    await persistGuidanceSearchSeenProducts(
-      resolveGuidanceSearchSessionId({ req, query: req.query, metadata: payload?.metadata }),
-      Array.isArray(ingredientIntentDirectResponse?.products) ? ingredientIntentDirectResponse.products : [],
-    );
-    return res.json(ingredientIntentDirectResponse);
+  if (!forceStrictShoppingMainPath) {
+    const ingredientIntentDirectResponse = await searchIngredientIntentProductsDirect({
+      search: directExternalSeedSearch,
+      metadata: directExternalSeedMetadata,
+    });
+    if (ingredientIntentDirectResponse) {
+      await persistGuidanceSearchSeenProducts(
+        resolveGuidanceSearchSessionId({ req, query: req.query, metadata: payload?.metadata }),
+        Array.isArray(ingredientIntentDirectResponse?.products) ? ingredientIntentDirectResponse.products : [],
+      );
+      return res.json(ingredientIntentDirectResponse);
+    }
   }
 
   req.body = {

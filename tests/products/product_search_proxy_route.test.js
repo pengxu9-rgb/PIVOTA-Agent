@@ -502,6 +502,66 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('shopping-agent source forces strict main path on public search route', async () => {
+    const queryText = 'oil control serum';
+    let capturedBody = null;
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'strict_1',
+              merchant_id: 'merch_strict',
+              title: 'Oil Control Serum',
+              in_stock: true,
+            },
+          ],
+          total: 1,
+          metadata: {
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+          },
+        };
+      });
+
+    const legacyV2 = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .reply(200, { status: 'success', success: true, products: [], total: 0 });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'shopping-agent',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(legacyV2.isDone()).toBe(false);
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        operation: 'find_products_multi',
+        metadata: expect.objectContaining({
+          request_source: 'shopping-agent',
+        }),
+        payload: expect.objectContaining({
+          search: expect.objectContaining({
+            query: queryText,
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+            allow_external_seed: false,
+          }),
+        }),
+      }),
+    );
+  });
+
   test('aurora source uses dedicated upstream base for primary and invoke fallback', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
