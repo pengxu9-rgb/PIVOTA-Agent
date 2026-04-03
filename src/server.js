@@ -21761,16 +21761,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : getUpstreamTimeoutMs(operation),
       ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
     };
-    const legacySearchAxiosConfig =
-      (operation === 'find_products' || operation === 'find_products_multi') &&
-      !(strictCommerceFindProductsMulti && operation === 'find_products_multi')
-        ? {
-            method: 'GET',
-            url: `${searchInvokeBase}/agent/v1/products/search${queryString}`,
-            headers: buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-            timeout: axiosConfig.timeout,
-          }
-        : null;
     const callTrackedUpstream = async (op, config) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
@@ -21998,25 +21988,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : {
                     attempted_contract: 'agent_v2',
                     resolved_contract: 'agent_v2',
-                    legacy_fallback: false,
-                  };
+                  legacy_fallback: false,
+                };
           }
         } catch (primaryErr) {
-          const legacyFallbackReason =
-            operation === 'find_products' || operation === 'find_products_multi'
-              ? getCanonicalSearchFallbackReason(primaryErr)
-              : null;
-          if (legacySearchAxiosConfig && legacyFallbackReason) {
-            response = await callTrackedUpstream(operation, legacySearchAxiosConfig);
-            searchContractBridgeMeta = {
-              attempted_contract: 'agent_v2',
-              resolved_contract: 'agent_v1',
-              legacy_fallback: true,
-              fallback_reason: legacyFallbackReason,
-            };
-          } else {
-            throw primaryErr;
-          }
+          throw primaryErr;
         }
         if (operation === 'get_product_detail') {
           productDetailCacheMeta = { hit: false, source: 'upstream' };

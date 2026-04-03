@@ -682,6 +682,57 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('v2 primary search failure does not fall back to legacy public search bridge', async () => {
+    const queryText = 'sunscreen oily skin';
+    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'false';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+
+    const primaryV2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(502, {
+        error: 'UPSTREAM_UNAVAILABLE',
+        message: 'v2 primary failed',
+      });
+
+    const legacyV1Scope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'legacy_bridge_should_not_run',
+            merchant_id: 'legacy_merch',
+            title: 'Legacy Bridge Should Not Run',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(primaryV2Scope.isDone()).toBe(true);
+    expect(legacyV1Scope.isDone()).toBe(false);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    const { metadata, proxySearchFallback } = readFallbackSections(resp);
+    expect(String(metadata?.query_source || '')).toBe('agent_products_error_fallback');
+    expect(String(metadata?.contract_bridge?.resolved_contract || '')).not.toBe('agent_v1');
+    expect(String(proxySearchFallback?.reason || '')).not.toContain('legacy');
+  });
+
   test('aurora source honors explicit allow_external_seed override from query params', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_ALLOW_EXTERNAL_SEED = 'true';
