@@ -1432,13 +1432,12 @@ function buildDeterministicStrictSemanticQueryPack({
     .map((value) => normalizeSemanticStepFamily(value))
     .filter(Boolean);
 
-  push(raw);
   push(primaryRoleLabel);
 
   if (targetStepFamily === 'sunscreen') {
-    if (semanticFamily && semanticFamily !== 'sunscreen') push(`${semanticFamily} sunscreen`);
     push('daily sunscreen');
     push('face sunscreen');
+    push(raw);
   } else if (targetStepFamily === 'treatment') {
     if (semanticFamily) {
       push(
@@ -1448,13 +1447,17 @@ function buildDeterministicStrictSemanticQueryPack({
       );
     }
     if (ingredientHypotheses[0]) push(`${ingredientHypotheses[0]} treatment`);
-    if (allowedStepFamilies.includes('serum')) push('face serum');
+    if (allowedStepFamilies.includes('serum')) push('oil control serum');
+    push(raw);
   } else if (targetStepFamily === 'moisturizer') {
-    if (semanticFamily && semanticFamily !== 'moisturizer') push(`${semanticFamily} moisturizer`);
     push('lightweight moisturizer');
     push('face moisturizer');
+    push(raw);
   } else if (targetStepFamily) {
     push(targetStepFamily);
+    push(raw);
+  } else {
+    push(raw);
   }
 
   if (
@@ -1644,20 +1647,11 @@ function buildSemanticOwnerSearchQuery({
   const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
     ? semanticRewriteResult.normalized_query_pack
     : [];
-  const joined = normalizedQueryPack
+  const primaryQuery = normalizedQueryPack
     .map((value) => String(value || '').trim())
-    .filter(Boolean)
-    .reduce((out, value) => {
-      const valueLower = value.toLowerCase();
-      if (!out.some((item) => item.toLowerCase() === valueLower || item.toLowerCase().includes(valueLower))) {
-        out.push(value);
-      }
-      return out;
-    }, [])
-    .join(' ')
-    .trim();
-  if (!joined) return String(fallbackQuery || '').trim();
-  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+    .find(Boolean);
+  if (!primaryQuery) return String(fallbackQuery || '').trim();
+  return primaryQuery.length > 220 ? primaryQuery.slice(0, 220).trim() : primaryQuery;
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {

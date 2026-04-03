@@ -351,7 +351,7 @@ describe('find_products_multi context building', () => {
       }),
     );
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expanded).toContain('best sunscreen for oily skin');
+    expect(expanded).toBe('daily sunscreen');
     expect(expanded).not.toContain('broad spectrum');
     expect(expanded).not.toContain('sun protection');
   });
@@ -409,8 +409,7 @@ describe('find_products_multi context building', () => {
         metadata: {},
       });
 
-      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
-      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('daily sunscreen');
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toBe('daily sunscreen');
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
           owner: 'shopping_agent_semantic_contract',
@@ -418,7 +417,7 @@ describe('find_products_multi context building', () => {
           llm_enrichment_attempted: false,
           llm_enrichment_applied: false,
           llm_enrichment_status: 'skipped_strict_contract_owner',
-          normalized_query_pack: ['best sunscreen for oily skin', 'daily sunscreen', 'face sunscreen'],
+          normalized_query_pack: ['daily sunscreen', 'face sunscreen', 'best sunscreen for oily skin'],
         }),
       );
     } finally {
@@ -479,6 +478,45 @@ describe('find_products_multi context building', () => {
       jest.dontMock('../src/findProductsMulti/intentLlm');
       jest.resetModules();
     }
+  });
+
+  test('framework generic semantic contract prioritizes role-aligned treatment query before raw concern text', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'Recommend acne-control products with low irritation.',
+          semantic_contract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'framework_generic',
+            request_class: 'generic_concern',
+            target_step_family: 'treatment',
+            primary_role_id: 'oil_control_treatment',
+            support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+            semantic_family: 'oil_control',
+            allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+            blocked_step_families: [],
+            ingredient_hypotheses: ['salicylic acid'],
+            source_surface: 'aurora_beauty_strict',
+          },
+        },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'Recommend acne-control products with low irritation.' }],
+      },
+      metadata: {},
+    });
+
+    expect(String(adjustedPayload?.search?.query || '').toLowerCase()).toBe('oil control treatment');
+    expect(expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_semantic_contract',
+        normalized_query_pack: [
+          'oil control treatment',
+          'oil control serum',
+          'salicylic acid treatment',
+        ],
+      }),
+    );
   });
 
   test('hydrating moisturizer expansion adds moisturizer-specific recall terms', async () => {

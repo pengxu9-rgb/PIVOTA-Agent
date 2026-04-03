@@ -173,9 +173,10 @@ describe('/agent/shop/v1/invoke gateway', () => {
           {
             id: 'spf_1',
             product_id: 'spf_1',
-            title: 'Oil Control Daily Sunscreen SPF 50',
-            name: 'Oil Control Daily Sunscreen SPF 50',
-            display_name: 'Oil Control Daily Sunscreen SPF 50',
+            merchant_id: 'merchant_spf',
+            title: 'Oil Control Daily Sunscreen for Oily Skin SPF 50',
+            name: 'Oil Control Daily Sunscreen for Oily Skin SPF 50',
+            display_name: 'Oil Control Daily Sunscreen for Oily Skin SPF 50',
             category: 'sunscreen',
             product_type: 'sunscreen',
           },
@@ -216,14 +217,19 @@ describe('/agent/shop/v1/invoke gateway', () => {
       })
       .expect(200);
 
-    expect(String(capturedQuery?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
-    expect(String(capturedQuery?.query || '').toLowerCase()).not.toContain('broad spectrum');
-    expect(String(capturedBody?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
-    expect(String(capturedBody?.query || '').toLowerCase()).not.toContain('broad spectrum');
+    expect(String(capturedQuery?.query || '').toLowerCase()).toBe('daily sunscreen');
+    expect(String(capturedBody?.query || '').toLowerCase()).toBe('daily sunscreen');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         semantic_owner: 'shopping_agent_semantic_contract',
         decision_owner: 'shopping_agent_semantic_contract',
+        semantic_owner_query_attempts: expect.arrayContaining([
+          expect.objectContaining({
+            query: 'daily sunscreen',
+            query_index: 0,
+            query_total: 3,
+          }),
+        ]),
         search_stage_ledger: expect.objectContaining({
           semantic_rewrite: expect.objectContaining({
             owner_locked: true,
@@ -235,6 +241,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
             llm_enrichment_applied: false,
             llm_enrichment_status: 'skipped_strict_contract_owner',
           }),
+          primary_search: expect.objectContaining({
+            query_pack_attempts: expect.arrayContaining([
+              expect.objectContaining({
+                query: 'daily sunscreen',
+                query_index: 0,
+                query_total: 3,
+              }),
+            ]),
+          }),
           final_decision: expect.objectContaining({
             owner: 'shopping_agent_semantic_contract',
           }),
@@ -242,6 +257,114 @@ describe('/agent/shop/v1/invoke gateway', () => {
         effective_timeout_ms: expect.objectContaining({
           gateway_total_budget_ms: 9000,
         }),
+      }),
+    );
+  });
+
+  it('semantic-contract discovery retries the next deterministic query when primary contract query is empty', async () => {
+    const attemptedQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/v2/products/search', (body) => {
+        attemptedQueries.push(String(body?.query || ''));
+        return true;
+      })
+      .query((query) => {
+        return true;
+      })
+      .times(2)
+      .reply(function reply(_uri, body) {
+        const query = String(body?.query || '').trim().toLowerCase();
+        if (query === 'daily sunscreen') {
+          return [
+            200,
+            {
+              status: 'success',
+              success: true,
+              products: [],
+              metadata: {
+                query_source: 'agent_products_recall_clarify',
+              },
+            },
+          ];
+        }
+        return [
+          200,
+          {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'spf_2',
+                product_id: 'spf_2',
+                merchant_id: 'merchant_spf',
+                title: 'Face Sunscreen for Oily Skin SPF 50',
+                name: 'Face Sunscreen for Oily Skin SPF 50',
+                display_name: 'Face Sunscreen for Oily Skin SPF 50',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_search',
+            },
+          },
+        ];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedQueries).toEqual(['daily sunscreen', 'face sunscreen']);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('spf_2');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner: 'shopping_agent_semantic_contract',
+        decision_owner: 'shopping_agent_semantic_contract',
+        semantic_owner_query_attempts: [
+          expect.objectContaining({
+            query: 'daily sunscreen',
+            query_index: 0,
+            query_total: 3,
+            result_count: 0,
+            adopted: false,
+          }),
+          expect.objectContaining({
+            query: 'face sunscreen',
+            query_index: 1,
+            query_total: 3,
+            result_count: 1,
+            adopted: true,
+          }),
+        ],
       }),
     );
   });

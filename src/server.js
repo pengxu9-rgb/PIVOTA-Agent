@@ -4295,6 +4295,7 @@ function buildSearchStageLedger({
   semanticOwnerLocked = false,
   primarySearchTimeoutMs = null,
   primaryPathUsed = null,
+  primaryQueryPackAttempts = null,
   primaryQualityGatePassed = null,
   primaryQualityReason = null,
   secondaryRetryApplied = false,
@@ -4394,6 +4395,9 @@ function buildSearchStageLedger({
       owner: 'shopping_agent_primary_search',
       applied: true,
       primary_path_used: String(primaryPathUsed || '').trim() || null,
+      query_pack_attempts: Array.isArray(primaryQueryPackAttempts)
+        ? primaryQueryPackAttempts
+        : [],
       timeout_ms:
         Number.isFinite(Number(primarySearchTimeoutMs)) && Number(primarySearchTimeoutMs) >= 0
           ? Number(primarySearchTimeoutMs)
@@ -22062,6 +22066,81 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
 
+    const normalizeSemanticOwnerQueryPack = (values = []) =>
+      Array.from(
+        new Set(
+          (Array.isArray(values) ? values : [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      ).slice(0, 3);
+    const semanticOwnerQueryPack =
+      operation === 'find_products_multi' && semanticOwnerControlled
+        ? normalizeSemanticOwnerQueryPack(semanticRewriteResultMeta?.normalized_query_pack)
+        : [];
+    const semanticOwnerQueryTotal = semanticOwnerQueryPack.length;
+    const buildVariantRequestBody = (baseRequestBody, queryValue, queryIndex) => {
+      const normalizedQuery = String(queryValue || '').trim();
+      if (!normalizedQuery || !baseRequestBody || typeof baseRequestBody !== 'object' || Array.isArray(baseRequestBody)) {
+        return baseRequestBody;
+      }
+      if (
+        operation === 'find_products_multi' &&
+        baseRequestBody.payload &&
+        typeof baseRequestBody.payload === 'object' &&
+        !Array.isArray(baseRequestBody.payload)
+      ) {
+        return {
+          ...baseRequestBody,
+          payload: {
+            ...baseRequestBody.payload,
+            search: {
+              ...(baseRequestBody.payload.search && typeof baseRequestBody.payload.search === 'object'
+                ? baseRequestBody.payload.search
+                : {}),
+              query: normalizedQuery,
+              ...(queryIndex != null ? { query_index: queryIndex } : {}),
+              ...(semanticOwnerQueryTotal > 0 ? { query_total: semanticOwnerQueryTotal } : {}),
+            },
+          },
+        };
+      }
+      if (
+        baseRequestBody.search &&
+        typeof baseRequestBody.search === 'object' &&
+        !Array.isArray(baseRequestBody.search)
+      ) {
+        return {
+          ...baseRequestBody,
+          search: {
+            ...baseRequestBody.search,
+            query: normalizedQuery,
+            ...(queryIndex != null ? { query_index: queryIndex } : {}),
+            ...(semanticOwnerQueryTotal > 0 ? { query_total: semanticOwnerQueryTotal } : {}),
+          },
+        };
+      }
+      if (Object.prototype.hasOwnProperty.call(baseRequestBody, 'query')) {
+        return {
+          ...baseRequestBody,
+          query: normalizedQuery,
+          ...(queryIndex != null ? { query_index: queryIndex } : {}),
+          ...(semanticOwnerQueryTotal > 0 ? { query_total: semanticOwnerQueryTotal } : {}),
+        };
+      }
+      return baseRequestBody;
+    };
+    if (semanticOwnerQueryPack.length > 0) {
+      const primarySemanticQuery = semanticOwnerQueryPack[0];
+      queryParams = {
+        ...queryParams,
+        query: primarySemanticQuery,
+        query_index: 0,
+        query_total: semanticOwnerQueryTotal,
+      };
+      requestBody = buildVariantRequestBody(requestBody, primarySemanticQuery, 0);
+    }
+
     // Make the upstream request
     const queryString =
       strictCommerceFindProductsMulti && operation === 'find_products_multi'
@@ -22714,76 +22793,198 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }),
       };
     }
-    let upstreamData = response.data;
-    if (
-      operation === 'find_products_multi' &&
-      ROUTE_DEBUG_ENABLED &&
-      (creatorCacheRouteDebug || creatorHumanApparelDirectRouteDebug || crossMerchantCacheRouteDebug)
-    ) {
-      upstreamData = {
-        ...upstreamData,
-        metadata: {
-          ...(upstreamData.metadata || {}),
-          route_debug: {
-            ...((upstreamData.metadata && upstreamData.metadata.route_debug) || {}),
-            ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
-            ...(creatorHumanApparelDirectRouteDebug
-              ? { creator_external_seed_direct: creatorHumanApparelDirectRouteDebug }
-              : {}),
-            ...(crossMerchantCacheRouteDebug ? { cross_merchant_cache: crossMerchantCacheRouteDebug } : {}),
-          },
-        },
-      };
-    }
-
-    if (operation === 'find_products' || operation === 'find_products_multi') {
-      upstreamData = normalizeAgentProductsListResponse(upstreamData, {
-        limit: queryParams?.limit,
-        offset: queryParams?.offset,
-      });
-      if (searchContractBridgeMeta) {
-        upstreamData = {
-          ...upstreamData,
+    const normalizeSearchOperationResponseData = ({
+      responseBody,
+      queryParamsOverride,
+      requestBodyOverride,
+      includeRouteDebug = false,
+    }) => {
+      let normalized = responseBody;
+      if (
+        includeRouteDebug &&
+        operation === 'find_products_multi' &&
+        ROUTE_DEBUG_ENABLED &&
+        (creatorCacheRouteDebug || creatorHumanApparelDirectRouteDebug || crossMerchantCacheRouteDebug)
+      ) {
+        normalized = {
+          ...normalized,
           metadata: {
-            ...(upstreamData?.metadata || {}),
-            contract_bridge: searchContractBridgeMeta,
+            ...(normalized?.metadata || {}),
+            route_debug: {
+              ...((normalized?.metadata && normalized.metadata.route_debug) || {}),
+              ...(creatorCacheRouteDebug ? { creator_cache: creatorCacheRouteDebug } : {}),
+              ...(creatorHumanApparelDirectRouteDebug
+                ? { creator_external_seed_direct: creatorHumanApparelDirectRouteDebug }
+                : {}),
+              ...(crossMerchantCacheRouteDebug ? { cross_merchant_cache: crossMerchantCacheRouteDebug } : {}),
+            },
           },
         };
       }
-      if (shoppingFreshMainlineSearch) {
-        upstreamData = normalizeShoppingFreshMainlineCacheResponse({
-          responseBody: upstreamData,
-          requestSource: metadata?.source,
-          queryParams,
-          intent: effectiveIntent,
-          queryClass: traceQueryClass,
-          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+
+      if (operation === 'find_products' || operation === 'find_products_multi') {
+        normalized = normalizeAgentProductsListResponse(normalized, {
+          limit: queryParamsOverride?.limit,
+          offset: queryParamsOverride?.offset,
         });
+        if (searchContractBridgeMeta) {
+          normalized = {
+            ...normalized,
+            metadata: {
+              ...(normalized?.metadata || {}),
+              contract_bridge: searchContractBridgeMeta,
+            },
+          };
+        }
+        if (shoppingFreshMainlineSearch) {
+          normalized = normalizeShoppingFreshMainlineCacheResponse({
+            responseBody: normalized,
+            requestSource: metadata?.source,
+            queryParams: queryParamsOverride,
+            intent: effectiveIntent,
+            queryClass: traceQueryClass,
+            queryText: String(rawUserQuery || extractSearchQueryText(queryParamsOverride) || '').trim(),
+          });
+        }
+        if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
+          normalized = recoverStrictMainPathResponseFromPrefetch({
+            responseBody: normalized,
+            invokeRequestBody: requestBodyOverride,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+          });
+          normalized = normalizeStrictCacheMainPathFallbackMetadata({
+            responseBody: normalized,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+          });
+          normalized = normalizeShoppingStrictMainlineCacheResponse({
+            responseBody: normalized,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+            invokeRequestBody: requestBodyOverride,
+            queryParams: queryParamsOverride,
+            intent: effectiveIntent,
+            queryClass: traceQueryClass,
+            queryText: String(rawUserQuery || extractSearchQueryText(queryParamsOverride) || '').trim(),
+          });
+          normalized = normalizeStrictMainlineResponseMetadata({
+            responseBody: normalized,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+            invokeRequestBody: requestBodyOverride,
+          });
+        }
       }
-      if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
-        upstreamData = recoverStrictMainPathResponseFromPrefetch({
-          responseBody: upstreamData,
-          invokeRequestBody: requestBody,
-          strictInvokeDecision: strictFindProductsMultiDecision,
+      return normalized;
+    };
+
+    let upstreamData = normalizeSearchOperationResponseData({
+      responseBody: response.data,
+      queryParamsOverride: queryParams,
+      requestBodyOverride: requestBody,
+      includeRouteDebug: true,
+    });
+    let semanticOwnerQueryAttempts =
+      semanticOwnerQueryPack.length > 0
+        ? [
+            {
+              query: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0],
+              query_index: 0,
+              query_total: semanticOwnerQueryTotal,
+              result_count: Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0,
+              adopted: Array.isArray(upstreamData?.products) ? upstreamData.products.length > 0 : false,
+            },
+          ]
+        : [];
+    if (
+      operation === 'find_products_multi' &&
+      semanticOwnerControlled &&
+      semanticOwnerQueryPack.length > 1 &&
+      response?.status >= 200 &&
+      response?.status < 300 &&
+      (!Array.isArray(upstreamData?.products) || upstreamData.products.length === 0)
+    ) {
+      const semanticOwnerRetryLimit = Math.min(
+        Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1) * 2,
+        80,
+      );
+      for (let queryIndex = 1; queryIndex < semanticOwnerQueryPack.length; queryIndex += 1) {
+        const remainingBudgetForSemanticOwner = getFpmRemainingBudgetMs();
+        if (
+          FPM_GATE_SIMPLIFY_V1 &&
+          remainingBudgetForSemanticOwner < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS
+        ) {
+          semanticOwnerQueryAttempts.push({
+            query: semanticOwnerQueryPack[queryIndex],
+            query_index: queryIndex,
+            query_total: semanticOwnerQueryTotal,
+            result_count: 0,
+            adopted: false,
+            skipped_reason: 'budget_guard',
+          });
+          break;
+        }
+        const variantQueryParams = {
+          ...queryParams,
+          query: semanticOwnerQueryPack[queryIndex],
+          query_index: queryIndex,
+          query_total: semanticOwnerQueryTotal,
+          offset: 0,
+          limit: semanticOwnerRetryLimit,
+        };
+        const variantRequestBody = buildVariantRequestBody(
+          requestBody,
+          semanticOwnerQueryPack[queryIndex],
+          queryIndex,
+        );
+        const variantQueryString =
+          strictCommerceFindProductsMulti && operation === 'find_products_multi'
+            ? ''
+            : buildQueryString(variantQueryParams);
+        const variantAxiosConfig = {
+          ...axiosConfig,
+          url: `${url}${variantQueryString}`,
+          ...(route.method !== 'GET' && Object.keys(variantRequestBody || {}).length > 0
+            ? { data: variantRequestBody }
+            : {}),
+        };
+        let variantResponse = null;
+        let variantUpstreamData = null;
+        try {
+          variantResponse = await callTrackedUpstream(operation, variantAxiosConfig);
+          variantUpstreamData = normalizeSearchOperationResponseData({
+            responseBody: variantResponse.data,
+            queryParamsOverride: variantQueryParams,
+            requestBodyOverride: variantRequestBody,
+          });
+        } catch (semanticOwnerRetryErr) {
+          semanticOwnerQueryAttempts.push({
+            query: semanticOwnerQueryPack[queryIndex],
+            query_index: queryIndex,
+            query_total: semanticOwnerQueryTotal,
+            result_count: 0,
+            adopted: false,
+            error: String(semanticOwnerRetryErr?.message || semanticOwnerRetryErr),
+          });
+          continue;
+        }
+        const variantProducts = Array.isArray(variantUpstreamData?.products)
+          ? variantUpstreamData.products
+          : [];
+        const shouldAdoptVariant = variantResponse?.status >= 200 && variantResponse?.status < 300 && variantProducts.length > 0;
+        semanticOwnerQueryAttempts.push({
+          query: semanticOwnerQueryPack[queryIndex],
+          query_index: queryIndex,
+          query_total: semanticOwnerQueryTotal,
+          result_count: variantProducts.length,
+          adopted: shouldAdoptVariant,
         });
-        upstreamData = normalizeStrictCacheMainPathFallbackMetadata({
-          responseBody: upstreamData,
-          strictInvokeDecision: strictFindProductsMultiDecision,
-        });
-        upstreamData = normalizeShoppingStrictMainlineCacheResponse({
-          responseBody: upstreamData,
-          strictInvokeDecision: strictFindProductsMultiDecision,
-          invokeRequestBody: requestBody,
-          queryParams,
-          intent: effectiveIntent,
-          queryClass: traceQueryClass,
-          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
-        });
-        upstreamData = normalizeStrictMainlineResponseMetadata({
-          responseBody: upstreamData,
-          strictInvokeDecision: strictFindProductsMultiDecision,
-          invokeRequestBody: requestBody,
-        });
+        if (shouldAdoptVariant) {
+          response = variantResponse;
+          upstreamData = variantUpstreamData;
+          queryParams = variantQueryParams;
+          requestBody = variantRequestBody;
+          axiosConfig.url = variantAxiosConfig.url;
+          if (route.method !== 'GET') axiosConfig.data = variantRequestBody;
+          break;
+        }
       }
     }
 
@@ -24844,6 +25045,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               semanticOwnerLocked: semanticOwnerControlled,
               primarySearchTimeoutMs: axiosConfig.timeout,
               primaryPathUsed,
+              primaryQueryPackAttempts: semanticOwnerQueryAttempts,
               primaryQualityGatePassed,
               primaryQualityReason: guidanceDirectSupplementValidHit
                 ? 'guidance_direct_valid_hit'
@@ -24988,6 +25190,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             low_confidence_reasons: normalizedLowConfidenceReasons,
             semantic_contract: semanticContractMeta,
             semantic_rewrite_result: semanticRewriteResultMeta,
+            semantic_owner_query_attempts: semanticOwnerQueryAttempts,
             semantic_owner: semanticOwnerDecision,
             decision_owner:
               existingMetaForGates.decision_owner ||
