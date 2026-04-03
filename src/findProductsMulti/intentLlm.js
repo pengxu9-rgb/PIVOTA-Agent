@@ -530,14 +530,9 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
       recent_messages,
       runtime.disabledReason === 'master_disabled'
         ? 'llm_master_disabled'
-        : runtime.disabledReason === 'feature_disabled'
-          ? 'llm_feature_disabled'
-          : 'llm_unconfigured',
+        : 'llm_unconfigured',
     );
     fallback.meta.enable_owner = runtime.enableOwner || null;
-    fallback.meta.legacy_feature_gate_ignored = runtime.legacyFeatureGateIgnored || null;
-    fallback.meta.legacy_feature_gate_value =
-      typeof runtime.legacyFeatureGateValue === 'boolean' ? runtime.legacyFeatureGateValue : null;
     return fallback;
   }
   try {
@@ -566,9 +561,6 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
           enable_owner: runtime.enableOwner || null,
           provider_owner: runtime.providerOwner || null,
           fallback_owner: runtime.fallbackOwner || null,
-          legacy_feature_gate_ignored: runtime.legacyFeatureGateIgnored || null,
-          legacy_feature_gate_value:
-            typeof runtime.legacyFeatureGateValue === 'boolean' ? runtime.legacyFeatureGateValue : null,
         },
       };
     } catch (primaryErr) {
@@ -584,9 +576,6 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
           enable_owner: runtime.enableOwner || null,
           provider_owner: runtime.providerOwner || null,
           fallback_owner: runtime.fallbackOwner || null,
-          legacy_feature_gate_ignored: runtime.legacyFeatureGateIgnored || null,
-          legacy_feature_gate_value:
-            typeof runtime.legacyFeatureGateValue === 'boolean' ? runtime.legacyFeatureGateValue : null,
         },
       };
     }
@@ -601,9 +590,6 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
     fallback.meta.enable_owner = runtime.enableOwner || null;
     fallback.meta.provider_owner = runtime.providerOwner || null;
     fallback.meta.fallback_owner = runtime.fallbackOwner || null;
-    fallback.meta.legacy_feature_gate_ignored = runtime.legacyFeatureGateIgnored || null;
-    fallback.meta.legacy_feature_gate_value =
-      typeof runtime.legacyFeatureGateValue === 'boolean' ? runtime.legacyFeatureGateValue : null;
     return fallback;
   }
 }

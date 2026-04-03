@@ -1379,11 +1379,6 @@ function buildStrictSemanticRewriteResult({
     enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
     provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
     fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
-    legacy_feature_gate_ignored: String(intentMeta?.legacy_feature_gate_ignored || '').trim() || null,
-    legacy_feature_gate_value:
-      typeof intentMeta?.legacy_feature_gate_value === 'boolean'
-        ? intentMeta.legacy_feature_gate_value
-        : null,
     normalized_query_pack: normalizedQueryPack,
     hard_filters: {
       target_step_family: targetStepFamily,

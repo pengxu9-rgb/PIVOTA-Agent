@@ -41,13 +41,11 @@ function resolveFeatureEnvNames(feature = 'semantic_rewrite') {
   const normalized = String(feature || '').trim().toLowerCase();
   if (normalized === 'rerank') {
     return {
-      featureEnabledEnv: 'FIND_PRODUCTS_MULTI_RERANK_LLM_ENABLED',
       featurePrimaryEnv: 'PIVOTA_RERANK_LLM_PROVIDER',
       featureFallbackEnv: 'PIVOTA_RERANK_LLM_FALLBACK_PROVIDER',
     };
   }
   return {
-    featureEnabledEnv: 'PIVOTA_INTENT_LLM_ENABLED',
     featurePrimaryEnv: 'PIVOTA_INTENT_LLM_PROVIDER',
     featureFallbackEnv: 'PIVOTA_INTENT_LLM_FALLBACK_PROVIDER',
   };
@@ -63,12 +61,10 @@ function parseExplicitBoolean(rawValue) {
 
 function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
   const {
-    featureEnabledEnv,
     featurePrimaryEnv,
     featureFallbackEnv,
   } = resolveFeatureEnvNames(feature);
   const masterEnabled = parseExplicitBoolean(getEnv('FIND_PRODUCTS_MULTI_LLM_ENABLED'));
-  const legacyFeatureEnabled = parseExplicitBoolean(getEnv(featureEnabledEnv));
   const openaiAvailable = Boolean(resolveFindProductsOpenAiApiKey());
   const geminiAvailable = Boolean(resolveFindProductsGeminiApiKey());
   const availableProviders = ['openai', 'gemini'].filter((provider) =>
@@ -87,8 +83,6 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
       providerChain: [],
       providerOwner: null,
       fallbackOwner: null,
-      legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
-      legacyFeatureGateValue: legacyFeatureEnabled,
     };
   }
 
@@ -104,8 +98,6 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
       providerChain: [],
       providerOwner: null,
       fallbackOwner: null,
-      legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
-      legacyFeatureGateValue: legacyFeatureEnabled,
     };
   }
 
@@ -145,8 +137,6 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
         : fallbackProvider
           ? 'provider_auto_select'
           : null,
-    legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
-    legacyFeatureGateValue: legacyFeatureEnabled,
   };
 }
 
