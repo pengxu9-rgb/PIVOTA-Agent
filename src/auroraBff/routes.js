@@ -1217,8 +1217,8 @@ const RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS = (() => {
   return Math.max(300, Math.min(5000, v));
 })();
 const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS || 1200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1200;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(300, Math.min(8000, v));
 })();
 const RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE = (() => {
@@ -3627,7 +3627,7 @@ function normalizeRecoCatalogSearchPath(value) {
   return path.replace(/\/+$/, '') || '';
 }
 
-function buildRecoCatalogSearchPathCandidates() {
+function buildRecoCatalogSearchPathCandidates({ forceGenericOnly = false } = {}) {
   const out = [];
   const seen = new Set();
   const genericPath = '/agent/v1/products/search';
@@ -3639,6 +3639,10 @@ function buildRecoCatalogSearchPathCandidates() {
     seen.add(normalized);
     out.push(normalized);
   };
+  if (forceGenericOnly === true) {
+    add(genericPath);
+    return out;
+  }
   if (RECO_CATALOG_SEARCH_PATHS) {
     const tokens = RECO_CATALOG_SEARCH_PATHS
       .split(/[\s,;|]+/)
@@ -3930,9 +3934,27 @@ async function searchPivotaBackendProducts({
   const effectiveSearchSource = sourceOverrideToken
     || (isMainPathMode ? RECO_CATALOG_MAIN_PATH_SEARCH_SOURCE : '')
     || RECO_CATALOG_SEARCH_SOURCE;
+  const effectiveTransportPolicy = isPlainObject(transportPolicy)
+    ? transportPolicy
+    : buildRecoRecallTransportPolicy({ mode: transportPolicy });
+  const transportPolicyMode = pickFirstTrimmed(effectiveTransportPolicy?.mode, 'default') || 'default';
+  const maxConfiguredPaths = Number.isFinite(Number(effectiveTransportPolicy.max_paths))
+    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_paths)))
+    : 0;
+  const maxConfiguredBaseUrls = Number.isFinite(Number(effectiveTransportPolicy.max_base_urls))
+    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_base_urls)))
+    : 0;
+  const strictSingleOwnerSelfProxyMainPath =
+    isMainPathMode &&
+    effectiveTransportPolicy.prefer_self_proxy_first === true &&
+    effectiveTransportPolicy.include_self_proxy !== false &&
+    maxConfiguredBaseUrls === 1 &&
+    maxConfiguredPaths === 1;
   const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const timeoutFloorForMode = isMainPathMode
-    ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
+  const timeoutFloorForMode = strictSingleOwnerSelfProxyMainPath
+    ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+    : isMainPathMode
+      ? RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS
     : isSelfProxyMode
       ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
       : 120;
@@ -3951,10 +3973,6 @@ async function searchPivotaBackendProducts({
   const getRemainingOverallMs = () => Math.max(0, effectiveDeadlineMs - Date.now());
   const hasOverallBudget = (minMs = 120) => getRemainingOverallMs() >= Math.max(40, Number(minMs) || 120);
   const useAllMerchants = searchAllMerchants === true;
-  const effectiveTransportPolicy = isPlainObject(transportPolicy)
-    ? transportPolicy
-    : buildRecoRecallTransportPolicy({ mode: transportPolicy });
-  const transportPolicyMode = pickFirstTrimmed(effectiveTransportPolicy?.mode, 'default') || 'default';
   const params = {
     query: q,
     search_all_merchants: useAllMerchants,
@@ -3975,6 +3993,7 @@ async function searchPivotaBackendProducts({
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
   if (productOnly !== undefined) params.product_only = productOnly === true;
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
+  const selfProxyBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   const forceLocalFallbackEnabled = forceLocalSearchFallback === true;
   const localSearchFallbackConfigured =
@@ -4000,19 +4019,15 @@ async function searchPivotaBackendProducts({
     includeSelfProxy: effectiveTransportPolicy.include_self_proxy !== false,
     preferSelfProxyFirst,
   });
-  const maxConfiguredPaths = Number.isFinite(Number(effectiveTransportPolicy.max_paths))
-    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_paths)))
-    : 0;
-  const pathCandidates = buildRecoCatalogSearchPathCandidates().slice(
+  const pathCandidates = buildRecoCatalogSearchPathCandidates({
+    forceGenericOnly: strictSingleOwnerSelfProxyMainPath,
+  }).slice(
     0,
     maxConfiguredPaths > 0 ? maxConfiguredPaths : undefined,
   );
   if (!baseUrlCandidates.length) {
     return { ok: false, products: [], reason: 'pivota_backend_not_configured', latency_ms: 0 };
   }
-  const maxConfiguredBaseUrls = Number.isFinite(Number(effectiveTransportPolicy.max_base_urls))
-    ? Math.max(0, Math.trunc(Number(effectiveTransportPolicy.max_base_urls)))
-    : 0;
   const allowSecondaryBaseFailover = effectiveTransportPolicy.allow_secondary_base_failover !== false;
   const allowSecondaryPathFailover = effectiveTransportPolicy.allow_secondary_path_failover !== false;
   const mapSearchFailureReason = ({ statusCode, errCode, errMessage } = {}) => {
@@ -4266,7 +4281,9 @@ async function searchPivotaBackendProducts({
     for (let pathIdx = 0; pathIdx < normalizedPaths.length; pathIdx += 1) {
       const pathToken = normalizeRecoCatalogSearchPath(normalizedPaths[pathIdx]) || '/agent/v1/products/search';
       const endpoint = `${normalizedBase}${pathToken}`;
-      const isLocalInvokeBase = localBaseUrl && normalizedBase === localBaseUrl;
+      const isSelfProxyBase =
+        (selfProxyBaseUrl && normalizedBase === selfProxyBaseUrl) ||
+        (localBaseUrl && normalizedBase === localBaseUrl);
       if (!hasOverallBudget(100)) {
         const exhausted = {
           ok: false,
@@ -4287,13 +4304,17 @@ async function searchPivotaBackendProducts({
       const remainingBudgetMs = timeoutForAttemptMs - elapsedMs;
       const remainingOverallMs = Math.max(0, getRemainingOverallMs() - deadlineReserveMs);
       const requestTimeoutMs = Math.trunc(Math.max(0, Math.min(remainingBudgetMs, remainingOverallMs)));
-      const requestTimeoutFloorMs = isLocalInvokeBase
+      const requestTimeoutFloorMs = isSelfProxyBase
         ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
         : normalizedMinTimeout;
+      const effectiveRequestTimeoutMs =
+        isSelfProxyBase && normalizedDeadlineMs <= 0
+          ? Math.max(requestTimeoutFloorMs, requestTimeoutMs)
+          : requestTimeoutMs;
       if (
-        !Number.isFinite(requestTimeoutMs) ||
-        requestTimeoutMs <= 40 ||
-        requestTimeoutMs < requestTimeoutFloorMs
+        !Number.isFinite(effectiveRequestTimeoutMs) ||
+        effectiveRequestTimeoutMs <= 40 ||
+        effectiveRequestTimeoutMs < requestTimeoutFloorMs
       ) {
         const failed = {
           ok: false,
@@ -4319,10 +4340,8 @@ async function searchPivotaBackendProducts({
       try {
         const resp = await axios.get(endpoint, {
           params,
-          headers: isLocalInvokeBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
-          timeout: isLocalInvokeBase
-            ? Math.max(50, Math.min(RECO_PDP_LOCAL_INVOKE_TIMEOUT_MS, requestTimeoutMs))
-            : requestTimeoutMs,
+          headers: isSelfProxyBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
+          timeout: effectiveRequestTimeoutMs,
           validateStatus: () => true,
         });
         const statusCode = Number.isFinite(Number(resp?.status)) ? Math.trunc(Number(resp.status)) : null;
@@ -16601,26 +16620,37 @@ async function executeRecoRecallPlanEntry({
   });
 }
 
-function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = null) {
+function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = null, { transportPolicyMode = '' } = {}) {
   const rows = Array.isArray(stageResults) ? stageResults : [];
   const primaryInternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_a_primary_internal') || null;
   const primaryExternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed') || null;
-  if (!primaryInternal || !primaryExternal) return '';
+  const normalizedTransportPolicyMode = String(transportPolicyMode || '').trim().toLowerCase();
+  if (!primaryInternal) return '';
   if (candidateState?.primary_role_matched === true) return '';
   const internalExecuted = Number.isFinite(Number(primaryInternal.executed_query_count))
     ? Math.max(0, Math.trunc(Number(primaryInternal.executed_query_count)))
     : 0;
-  const externalExecuted = Number.isFinite(Number(primaryExternal.executed_query_count))
-    ? Math.max(0, Math.trunc(Number(primaryExternal.executed_query_count)))
-    : 0;
   const internalTimeout = Number.isFinite(Number(primaryInternal.timeout_count))
     ? Math.max(0, Math.trunc(Number(primaryInternal.timeout_count)))
     : 0;
-  const externalTimeout = Number.isFinite(Number(primaryExternal.timeout_count))
-    ? Math.max(0, Math.trunc(Number(primaryExternal.timeout_count)))
-    : 0;
   const internalSelected = Number.isFinite(Number(primaryInternal.selected_count))
     ? Math.max(0, Math.trunc(Number(primaryInternal.selected_count)))
+    : 0;
+  if (
+    normalizedTransportPolicyMode === 'framework_first_turn' &&
+    !primaryExternal &&
+    internalExecuted > 0 &&
+    internalTimeout >= internalExecuted &&
+    internalSelected <= 0
+  ) {
+    return 'transient_timeout';
+  }
+  if (!primaryExternal) return '';
+  const externalExecuted = Number.isFinite(Number(primaryExternal.executed_query_count))
+    ? Math.max(0, Math.trunc(Number(primaryExternal.executed_query_count)))
+    : 0;
+  const externalTimeout = Number.isFinite(Number(primaryExternal.timeout_count))
+    ? Math.max(0, Math.trunc(Number(primaryExternal.timeout_count)))
     : 0;
   const externalSelected = Number.isFinite(Number(primaryExternal.selected_count))
     ? Math.max(0, Math.trunc(Number(primaryExternal.selected_count)))
@@ -16819,7 +16849,9 @@ async function collectRecoCandidatesFromRecallPlan({
     stageResults.push(stageResult);
 
     if (String(recallPlan?.mode || '').trim().toLowerCase() === 'framework_generic') {
-      const primaryStageTimeoutClass = deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState);
+      const primaryStageTimeoutClass = deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState, {
+        transportPolicyMode,
+      });
       if (primaryStageTimeoutClass === 'transient_timeout') {
         stopLevel = stage.stage_id || null;
         plannerStopReason = 'primary_transient_timeout';
@@ -16854,12 +16886,16 @@ async function collectRecoCandidatesFromRecallPlan({
     attemptedBaseUrlsByStage,
     attemptedPathsByStage,
     transportPolicyMode,
-    primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState),
+    primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState, {
+      transportPolicyMode,
+    }),
     candidateDropStage: deriveRecoCandidateDropStage({
       candidateState,
       executedQueryCount,
       stageResults,
-      primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState),
+      primaryStageTimeoutClass: deriveRecoPrimaryStageTimeoutClass(stageResults, candidateState, {
+        transportPolicyMode,
+      }),
     }),
   };
 }

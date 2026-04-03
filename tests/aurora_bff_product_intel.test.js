@@ -2696,6 +2696,113 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(upstreamScope.isDone()).toBe(false);
   });
 
+  test('strict self-proxy transport ignores beauty-route path override and pins generic search path', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PATHS =
+      '/agent/v1/beauty/products/search /agent/v1/products/search';
+    process.env.AURORA_BFF_RECO_CATALOG_BEAUTY_ROUTE_FIRST = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_ENABLE_BEAUTY_PATH_FALLBACK = 'true';
+
+    nock('http://catalog-self.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'self_proxy_generic_only_1',
+            brand: 'Alt Brand',
+            name: 'Generic Main Path Serum',
+            display_name: 'Alt Brand Generic Main Path Serum',
+          },
+        ],
+      });
+
+    const beautyScope = nock('http://catalog-self.test')
+      .get('/agent/v1/beauty/products/search')
+      .query(true)
+      .reply(500, {
+        ok: false,
+      });
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+    const policy = __internal.buildRecoRecallTransportPolicy({ mode: 'framework_first_turn' });
+
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'oil control treatment',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+      transportPolicy: policy,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('self_proxy_generic_only_1');
+    expect(out.attempted_endpoints).toEqual(['http://catalog-self.test/agent/v1/products/search']);
+    expect(beautyScope.isDone()).toBe(false);
+  });
+
+  test('framework-first-turn self proxy enforces elevated timeout floor for strict main path', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+
+    jest.resetModules();
+    const axios = require('axios');
+    const originalGet = axios.get;
+    const seenTimeouts = [];
+    axios.get = jest.fn(async (url, config = {}) => {
+      seenTimeouts.push({
+        url: String(url || ''),
+        timeout: Number(config?.timeout || 0),
+      });
+      return {
+        status: 200,
+        data: {
+          ok: true,
+          products: [
+            {
+              product_id: 'self_proxy_timeout_floor_1',
+              brand: 'Alt Brand',
+              name: 'Timeout Floor Serum',
+              display_name: 'Alt Brand Timeout Floor Serum',
+            },
+          ],
+        },
+      };
+    });
+
+    try {
+      const { __internal } = require('../src/auroraBff/routes');
+      const policy = __internal.buildRecoRecallTransportPolicy({ mode: 'framework_first_turn' });
+      const out = await __internal.searchPivotaBackendProducts({
+        query: 'oil control treatment',
+        limit: 3,
+        logger: { warn: jest.fn(), info: jest.fn() },
+        timeoutMs: 1200,
+        transportPolicy: policy,
+      });
+
+      expect(out.ok).toBe(true);
+      expect(seenTimeouts).toHaveLength(1);
+      expect(seenTimeouts[0].url).toBe('http://catalog-self.test/agent/v1/products/search');
+      expect(seenTimeouts[0].timeout).toBeGreaterThanOrEqual(5000);
+    } finally {
+      axios.get = originalGet;
+    }
+  });
+
   test('catalog search auto-falls back to beauty path when generic route is empty', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-primary.test';
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'false';

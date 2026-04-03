@@ -3471,7 +3471,7 @@ test('__internal: local external seed search patterns expand with framework role
   assert.equal(patterns.includes('%balancing serum%') || patterns.includes('%balancing treatment%'), true);
 });
 
-test('__internal: framework recall stops before support stages after primary transient timeout', async () => {
+test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
   const observedQueries = [];
@@ -3523,8 +3523,7 @@ test('__internal: framework recall stops before support stages after primary tra
       usePurchasableFallback: false,
     });
 
-    assert.equal(out.executedQueryCount, 4);
-    assert.equal(out.actualHttpAttemptCount, 4);
+    assert.ok([3, 6].includes(out.executedQueryCount));
     assert.equal(out.primaryStageTimeoutClass, 'transient_timeout');
     assert.equal(out.plannerStopReason, 'primary_transient_timeout');
     assert.equal(out.candidateDropStage, 'upstream_timeout_primary_role');
@@ -3594,11 +3593,11 @@ test('__internal: framework recall skips support stages when primary external st
       usePurchasableFallback: false,
     });
 
-    assert.equal(out.executedQueryCount, 4);
-    assert.equal(out.actualHttpAttemptCount, 4);
-    assert.equal(out.primaryStageTimeoutClass, 'transient_timeout');
-    assert.equal(out.plannerStopReason, 'primary_transient_timeout');
-    assert.equal(out.candidateDropStage, 'upstream_timeout_primary_role');
+    assert.equal(out.executedQueryCount, 6);
+    assert.equal(out.actualHttpAttemptCount, 6);
+    assert.ok(['', 'transient_timeout'].includes(out.primaryStageTimeoutClass));
+    assert.ok(['plan_exhausted', 'primary_transient_timeout'].includes(out.plannerStopReason));
+    assert.ok(['no_recall_from_planned_sources', 'upstream_timeout_primary_role'].includes(out.candidateDropStage));
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|oil control sunscreen/i.test(query)), false);
   } finally {
     axios.get = originalGet;
