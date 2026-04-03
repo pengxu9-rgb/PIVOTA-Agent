@@ -283,3 +283,74 @@ test('semantic rewrite input is compact and uses semantic contract summary inste
     assert.equal(parsed.semantic_contract.source_surface, 'aurora_beauty_strict');
   });
 });
+
+test('semantic rewrite llm failure preserves planned model metadata and exposes normalized gemini error details', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+      GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_GEMINI_API_KEY: undefined,
+      AURORA_RECO_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    },
+    async () => {
+      const axios = require('axios');
+      const originalPost = axios.post;
+      axios.post = async () => {
+        const err = new Error('Request failed with status code 503');
+        err.code = 'EUPSTREAM';
+        err.response = {
+          status: 503,
+          data: {
+            error: {
+              status: 'UNAVAILABLE',
+              message: 'provider overloaded',
+            },
+          },
+        };
+        throw err;
+      };
+
+      try {
+        const { extractIntentWithMeta } = loadIntentFresh();
+        const result = await extractIntentWithMeta('best sunscreen for oily skin', [], [], {
+          semanticContract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'step_aware',
+            request_class: 'sunscreen',
+            target_step_family: 'sunscreen',
+            primary_role_id: 'daily_sunscreen',
+            source_surface: 'aurora_beauty_strict',
+          },
+        });
+
+        assert.equal(result.meta.mode, 'deterministic_fallback');
+        assert.equal(result.meta.provider, 'rule_based');
+        assert.equal(result.meta.fallback_reason, 'llm_failed');
+        assert.deepEqual(result.meta.llm_provider_chain, ['gemini']);
+        assert.equal(result.meta.llm_primary_provider, 'gemini');
+        assert.equal(result.meta.llm_model, 'gemini-3-flash-preview');
+        assert.equal(
+          result.meta.llm_model_owner,
+          'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI',
+        );
+        assert.equal(result.meta.llm_error_class, 'provider_error');
+        assert.equal(result.meta.llm_error_stage, 'primary');
+        assert.equal(result.meta.llm_error_provider, 'gemini');
+        assert.equal(result.meta.llm_error_message, 'Request failed with status code 503');
+        assert.equal(result.meta.llm_upstream_status, 503);
+        assert.equal(result.meta.llm_upstream_error_code, 'UNAVAILABLE');
+        assert.equal(result.meta.llm_upstream_error_message, 'provider overloaded');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});

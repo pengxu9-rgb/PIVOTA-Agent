@@ -4330,6 +4330,18 @@ function buildSearchStageLedger({
       llm_fallback_provider: String(semanticRewriteResult?.llm_fallback_provider || '').trim() || null,
       llm_model: String(semanticRewriteResult?.llm_model || '').trim() || null,
       llm_model_owner: String(semanticRewriteResult?.llm_model_owner || '').trim() || null,
+      llm_error_class: String(semanticRewriteResult?.llm_error_class || '').trim() || null,
+      llm_error_stage: String(semanticRewriteResult?.llm_error_stage || '').trim() || null,
+      llm_error_provider: String(semanticRewriteResult?.llm_error_provider || '').trim() || null,
+      llm_error_message: String(semanticRewriteResult?.llm_error_message || '').trim() || null,
+      llm_upstream_status:
+        Number.isFinite(Number(semanticRewriteResult?.llm_upstream_status)) &&
+        Number(semanticRewriteResult?.llm_upstream_status) > 0
+          ? Number(semanticRewriteResult.llm_upstream_status)
+          : null,
+      llm_upstream_error_code: String(semanticRewriteResult?.llm_upstream_error_code || '').trim() || null,
+      llm_upstream_error_message:
+        String(semanticRewriteResult?.llm_upstream_error_message || '').trim() || null,
       enable_owner: String(semanticRewriteResult?.enable_owner || '').trim() || null,
       provider_owner: String(semanticRewriteResult?.provider_owner || '').trim() || null,
       fallback_owner: String(semanticRewriteResult?.fallback_owner || '').trim() || null,

@@ -1401,6 +1401,50 @@ function buildStrictSemanticRewriteResult({
   semanticContract = null,
   ambiguityScorePre = null,
 } = {}) {
+  const llmMeta = isPlainObject(intentMeta)
+    ? {
+        provider: String(intentMeta.provider || '').trim() || null,
+        enable_owner: String(intentMeta.enable_owner || '').trim() || null,
+        provider_owner: String(intentMeta.provider_owner || '').trim() || null,
+        fallback_owner: String(intentMeta.fallback_owner || '').trim() || null,
+        llm_provider_chain: Array.isArray(intentMeta.llm_provider_chain) ? intentMeta.llm_provider_chain : [],
+        llm_primary_provider: String(intentMeta.llm_primary_provider || '').trim() || null,
+        llm_fallback_provider: String(intentMeta.llm_fallback_provider || '').trim() || null,
+        llm_model: String(intentMeta.llm_model || '').trim() || null,
+        llm_model_owner: String(intentMeta.llm_model_owner || '').trim() || null,
+        llm_error_class: String(intentMeta.llm_error_class || '').trim() || null,
+        llm_error_stage: String(intentMeta.llm_error_stage || '').trim() || null,
+        llm_error_provider: String(intentMeta.llm_error_provider || '').trim() || null,
+        llm_error_message: String(intentMeta.llm_error_message || '').trim() || null,
+        llm_upstream_status:
+          Number.isFinite(Number(intentMeta.llm_upstream_status)) && Number(intentMeta.llm_upstream_status) > 0
+            ? Number(intentMeta.llm_upstream_status)
+            : null,
+        llm_upstream_error_code: String(intentMeta.llm_upstream_error_code || '').trim() || null,
+        llm_upstream_error_message: String(intentMeta.llm_upstream_error_message || '').trim() || null,
+        single_provider_locked: Boolean(intentMeta.single_provider_locked),
+        fallback_reason: String(intentMeta.fallback_reason || '').trim() || null,
+      }
+    : {
+        provider: null,
+        enable_owner: null,
+        provider_owner: null,
+        fallback_owner: null,
+        llm_provider_chain: [],
+        llm_primary_provider: null,
+        llm_fallback_provider: null,
+        llm_model: null,
+        llm_model_owner: null,
+        llm_error_class: null,
+        llm_error_stage: null,
+        llm_error_provider: null,
+        llm_error_message: null,
+        llm_upstream_status: null,
+        llm_upstream_error_code: null,
+        llm_upstream_error_message: null,
+        single_provider_locked: false,
+        fallback_reason: null,
+      };
   const contract = normalizeSearchSemanticContract(semanticContract);
   const normalizedRawQuery = String(rawQuery || '').trim();
   if (!contract) {
@@ -1408,21 +1452,11 @@ function buildStrictSemanticRewriteResult({
       owner: 'shopping_agent_semantic_rewrite',
       applied: false,
       mode: String(intentMeta?.mode || 'deterministic_fallback'),
-      provider: String(intentMeta?.provider || '').trim() || null,
-      enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
-      provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
-      fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
-      llm_provider_chain: Array.isArray(intentMeta?.llm_provider_chain) ? intentMeta.llm_provider_chain : [],
-      llm_primary_provider: String(intentMeta?.llm_primary_provider || '').trim() || null,
-      llm_fallback_provider: String(intentMeta?.llm_fallback_provider || '').trim() || null,
-      llm_model: String(intentMeta?.llm_model || '').trim() || null,
-      llm_model_owner: String(intentMeta?.llm_model_owner || '').trim() || null,
-      single_provider_locked: Boolean(intentMeta?.single_provider_locked),
+      ...llmMeta,
       normalized_query_pack: normalizedRawQuery ? [normalizedRawQuery] : [],
       hard_filters: {},
       soft_filters: {},
       latency_ms: null,
-      fallback_reason: intentMeta?.fallback_reason || null,
       needs_broadening: false,
     };
   }
@@ -1456,16 +1490,7 @@ function buildStrictSemanticRewriteResult({
     owner: 'shopping_agent_semantic_rewrite',
     applied,
     mode: String(intentMeta?.mode || 'deterministic_fallback'),
-    provider: String(intentMeta?.provider || '').trim() || null,
-    enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
-    provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
-    fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
-    llm_provider_chain: Array.isArray(intentMeta?.llm_provider_chain) ? intentMeta.llm_provider_chain : [],
-    llm_primary_provider: String(intentMeta?.llm_primary_provider || '').trim() || null,
-    llm_fallback_provider: String(intentMeta?.llm_fallback_provider || '').trim() || null,
-    llm_model: String(intentMeta?.llm_model || '').trim() || null,
-    llm_model_owner: String(intentMeta?.llm_model_owner || '').trim() || null,
-    single_provider_locked: Boolean(intentMeta?.single_provider_locked),
+    ...llmMeta,
     normalized_query_pack: normalizedQueryPack,
     hard_filters: {
       target_step_family: targetStepFamily,
@@ -1481,7 +1506,6 @@ function buildStrictSemanticRewriteResult({
       request_class: contract.request_class,
     },
     latency_ms: null,
-    fallback_reason: intentMeta?.fallback_reason || null,
     needs_broadening: Boolean(
       applied &&
       !targetStepFamily &&

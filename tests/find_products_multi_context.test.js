@@ -482,6 +482,135 @@ describe('find_products_multi context building', () => {
     }
   });
 
+  test('semantic rewrite llm failure preserves planned model and normalized error metadata in semantic_rewrite_result', async () => {
+    jest.resetModules();
+    jest.doMock('../src/findProductsMulti/intentLlm', () => ({
+      buildDeterministicIntentWithMeta: jest.fn((latestUserQuery) => ({
+        intent: {
+          language: 'en',
+          primary_domain: 'beauty',
+          target_object: { type: 'human', age_group: 'adult' },
+          query_class: 'category',
+          category: { required: [], optional: [] },
+          scenario: { name: 'general', signals: [] },
+          hard_constraints: { must_exclude_domains: [], must_exclude_keywords: [] },
+          history_usage: { used: false, reason: 'mocked llm failure' },
+          ambiguity: { needs_clarification: false, questions: [] },
+          confidence: { overall: 0.42 },
+        },
+        meta: {
+          applied: true,
+          mode: 'deterministic_fallback',
+          provider: 'rule_based',
+          fallback_reason: 'llm_failed',
+          llm_provider_chain: ['gemini'],
+          llm_primary_provider: 'gemini',
+          llm_model: 'gemini-3-flash-preview',
+          llm_model_owner: 'default_semantic_rewrite_gemini_model',
+          llm_error_class: 'provider_error',
+          llm_error_stage: 'primary',
+          llm_error_provider: 'gemini',
+          llm_error_message: 'Request failed with status code 503',
+          llm_upstream_status: 503,
+          llm_upstream_error_code: 'UNAVAILABLE',
+          llm_upstream_error_message: 'provider overloaded',
+          single_provider_locked: true,
+        },
+      })),
+      extractIntentWithMeta: jest.fn(async (latestUserQuery) => ({
+        intent: {
+          language: 'en',
+          primary_domain: 'beauty',
+          target_object: { type: 'human', age_group: 'adult' },
+          query_class: 'category',
+          category: { required: [], optional: [] },
+          scenario: { name: 'general', signals: [] },
+          hard_constraints: { must_exclude_domains: [], must_exclude_keywords: [] },
+          history_usage: { used: false, reason: 'mocked llm failure' },
+          ambiguity: { needs_clarification: false, questions: [] },
+          confidence: { overall: 0.42 },
+        },
+        meta: {
+          applied: true,
+          mode: 'deterministic_fallback',
+          provider: 'rule_based',
+          fallback_reason: 'llm_failed',
+          llm_provider_chain: ['gemini'],
+          llm_primary_provider: 'gemini',
+          llm_model: 'gemini-3-flash-preview',
+          llm_model_owner: 'default_semantic_rewrite_gemini_model',
+          llm_error_class: 'provider_error',
+          llm_error_stage: 'primary',
+          llm_error_provider: 'gemini',
+          llm_error_message: 'Request failed with status code 503',
+          llm_upstream_status: 503,
+          llm_upstream_error_code: 'UNAVAILABLE',
+          llm_upstream_error_message: 'provider overloaded',
+          single_provider_locked: true,
+        },
+      })),
+      _debug: {
+        resolveIntentLlmExecutionPlan: jest.fn(() => ({
+          enableOwner: 'provider_auto_enable',
+          providerOwner: 'provider_auto_select',
+          fallbackOwner: null,
+          providerChain: ['gemini'],
+          primaryProvider: 'gemini',
+          fallbackProvider: null,
+          primaryModel: 'gemini-3-flash-preview',
+          primaryModelOwner: 'default_semantic_rewrite_gemini_model',
+          singleProviderLocked: true,
+        })),
+      },
+    }));
+
+    try {
+      // eslint-disable-next-line global-require
+      const { buildFindProductsMultiContext: buildWithLlmFailure } = require('../src/findProductsMulti/policy');
+      const out = await buildWithLlmFailure({
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: 'best sunscreen for oily skin' }],
+        },
+        metadata: {},
+      });
+
+      expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+        expect.objectContaining({
+          llm_model: 'gemini-3-flash-preview',
+          llm_model_owner: 'default_semantic_rewrite_gemini_model',
+          llm_error_class: 'provider_error',
+          llm_error_stage: 'primary',
+          llm_error_provider: 'gemini',
+          llm_error_message: 'Request failed with status code 503',
+          llm_upstream_status: 503,
+          llm_upstream_error_code: 'UNAVAILABLE',
+          llm_upstream_error_message: 'provider overloaded',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/findProductsMulti/intentLlm');
+      jest.resetModules();
+    }
+  });
+
   test('context query expansion avoids brush terms for brand/product lookup follow-up', async () => {
     const { intent, adjustedPayload } = await buildFindProductsMultiContext({
       payload: {

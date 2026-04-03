@@ -45,6 +45,7 @@ const INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS = Math.max(
   128,
   Math.min(1024, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS || 384) || 384),
 );
+const INTENT_LLM_ERROR_MESSAGE_MAX_CHARS = 240;
 const SEMANTIC_REWRITE_DEFAULT_OPENAI_MODEL = 'gpt-5.1-mini';
 const SEMANTIC_REWRITE_DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
 const SEMANTIC_REWRITE_OPENAI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI';
@@ -159,19 +160,114 @@ function resolveIntentLlmExecutionPlan(options = {}) {
   };
 }
 
+function trimIntentLlmText(value, maxChars = INTENT_LLM_ERROR_MESSAGE_MAX_CHARS) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`;
+}
+
+function annotateIntentLlmError(error, meta = {}) {
+  if (!error || typeof error !== 'object') return error;
+  const existingMeta =
+    error.__intent_llm_meta && typeof error.__intent_llm_meta === 'object'
+      ? error.__intent_llm_meta
+      : {};
+  const nextMeta = {
+    ...existingMeta,
+    ...meta,
+  };
+  try {
+    Object.defineProperty(error, '__intent_llm_meta', {
+      value: nextMeta,
+      configurable: true,
+      enumerable: false,
+      writable: true,
+    });
+  } catch (_err) {
+    error.__intent_llm_meta = nextMeta;
+  }
+  return error;
+}
+
+function isIntentLlmTimeoutError(error) {
+  const code = String(error?.code || '').trim().toUpperCase();
+  const message = String(error?.message || '').trim().toLowerCase();
+  return (
+    code === 'ECONNABORTED' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ERR_CANCELED' ||
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('aborted')
+  );
+}
+
+function normalizeIntentLlmError(error = null) {
+  const annotatedMeta =
+    error && typeof error === 'object' && error.__intent_llm_meta && typeof error.__intent_llm_meta === 'object'
+      ? error.__intent_llm_meta
+      : {};
+  const upstreamStatus =
+    Number.isFinite(Number(error?.response?.status)) && Number(error.response.status) > 0
+      ? Number(error.response.status)
+      : null;
+  const upstreamErrorCode = trimIntentLlmText(
+    error?.response?.data?.error?.status ||
+      error?.response?.data?.error?.code ||
+      error?.code ||
+      error?.name ||
+      '',
+    96,
+  );
+  const upstreamErrorMessage = trimIntentLlmText(
+    error?.response?.data?.error?.message ||
+      error?.response?.data?.message ||
+      '',
+  );
+  const errorMessage = trimIntentLlmText(error?.message || upstreamErrorMessage || '');
+  let errorClass = 'provider_error';
+  if (isIntentLlmTimeoutError(error)) errorClass = 'timeout';
+  else if (error?.name === 'ZodError' || Array.isArray(error?.issues)) errorClass = 'schema_validation_failed';
+  else if (/did not return valid json/i.test(String(errorMessage || '').toLowerCase())) errorClass = 'invalid_json';
+  else if (/api key is not set|unsupported intent provider/i.test(String(errorMessage || '').toLowerCase())) {
+    errorClass = 'config_error';
+  }
+  return {
+    llm_error_class: errorClass,
+    llm_error_stage: trimIntentLlmText(annotatedMeta.stage || '', 48),
+    llm_error_provider: trimIntentLlmText(annotatedMeta.provider || '', 48),
+    llm_error_message: errorMessage,
+    llm_upstream_status: upstreamStatus,
+    llm_upstream_error_code: upstreamErrorCode,
+    llm_upstream_error_message: upstreamErrorMessage || errorMessage,
+  };
+}
+
 function applyIntentExecutionMeta(meta = {}, plan = {}, provider = null) {
   const normalizedProvider = String(provider || '').trim() || null;
+  const effectiveProvider =
+    normalizedProvider ||
+    (String(meta?.llm_primary_provider || '').trim() || String(plan?.primaryProvider || '').trim() || null);
   const effectiveModel =
     normalizedProvider === plan?.primaryProvider
       ? plan?.primaryModel
       : normalizedProvider === plan?.fallbackProvider
         ? plan?.fallbackModel
+        : effectiveProvider === plan?.primaryProvider
+          ? plan?.primaryModel
+          : effectiveProvider === plan?.fallbackProvider
+            ? plan?.fallbackModel
         : null;
   const effectiveModelOwner =
     normalizedProvider === plan?.primaryProvider
       ? plan?.primaryModelOwner
       : normalizedProvider === plan?.fallbackProvider
         ? plan?.fallbackModelOwner
+        : effectiveProvider === plan?.primaryProvider
+          ? plan?.primaryModelOwner
+          : effectiveProvider === plan?.fallbackProvider
+            ? plan?.fallbackModelOwner
         : null;
   return {
     ...meta,
@@ -181,8 +277,19 @@ function applyIntentExecutionMeta(meta = {}, plan = {}, provider = null) {
     llm_provider_chain: Array.isArray(plan?.providerChain) ? plan.providerChain : [],
     llm_primary_provider: String(plan?.primaryProvider || '').trim() || null,
     llm_fallback_provider: String(plan?.fallbackProvider || '').trim() || null,
-    llm_model: String(meta?.llm_model || effectiveModel || '').trim() || null,
-    llm_model_owner: String(meta?.llm_model_owner || effectiveModelOwner || '').trim() || null,
+    llm_model: String(meta?.llm_model || effectiveModel || plan?.primaryModel || '').trim() || null,
+    llm_model_owner:
+      String(meta?.llm_model_owner || effectiveModelOwner || plan?.primaryModelOwner || '').trim() || null,
+    llm_error_class: String(meta?.llm_error_class || '').trim() || null,
+    llm_error_stage: String(meta?.llm_error_stage || '').trim() || null,
+    llm_error_provider: String(meta?.llm_error_provider || '').trim() || null,
+    llm_error_message: trimIntentLlmText(meta?.llm_error_message || ''),
+    llm_upstream_status:
+      Number.isFinite(Number(meta?.llm_upstream_status)) && Number(meta.llm_upstream_status) > 0
+        ? Number(meta.llm_upstream_status)
+        : null,
+    llm_upstream_error_code: trimIntentLlmText(meta?.llm_upstream_error_code || '', 96),
+    llm_upstream_error_message: trimIntentLlmText(meta?.llm_upstream_error_message || ''),
     single_provider_locked: Boolean(plan?.singleProviderLocked),
   };
 }
@@ -766,24 +873,31 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
     const primary = plan.primaryProvider;
     const fallback = plan.fallbackProvider;
 
-    const run = async (provider) => {
-      if (provider === 'openai') {
-        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, {
-          ...options,
-          model: plan.primaryProvider === 'openai' ? plan.primaryModel : plan.fallbackModel,
+    const run = async (provider, stage) => {
+      try {
+        if (provider === 'openai') {
+          return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, {
+            ...options,
+            model: plan.primaryProvider === 'openai' ? plan.primaryModel : plan.fallbackModel,
+          });
+        }
+        if (provider === 'gemini') {
+          return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, {
+            ...options,
+            model: plan.primaryProvider === 'gemini' ? plan.primaryModel : plan.fallbackModel,
+          });
+        }
+        throw new Error(`Unsupported intent provider: ${provider}`);
+      } catch (err) {
+        throw annotateIntentLlmError(err, {
+          provider,
+          stage,
         });
       }
-      if (provider === 'gemini') {
-        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, {
-          ...options,
-          model: plan.primaryProvider === 'gemini' ? plan.primaryModel : plan.fallbackModel,
-        });
-      }
-      throw new Error(`Unsupported intent provider: ${provider}`);
     };
 
     try {
-      const intent = await run(primary);
+      const intent = await run(primary, 'primary');
       return {
         intent: applyHardOverrides(latest_user_query, intent),
         meta: applyIntentExecutionMeta({
@@ -795,7 +909,7 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
       };
     } catch (primaryErr) {
       if (!fallback || fallback === primary) throw primaryErr;
-      const intent = await run(fallback);
+      const intent = await run(fallback, 'fallback');
       return {
         intent: applyHardOverrides(latest_user_query, intent),
         meta: applyIntentExecutionMeta({
@@ -814,7 +928,10 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
       recent_messages,
       'llm_failed',
     );
-    fallback.meta = applyIntentExecutionMeta(fallback.meta, plan, null);
+    fallback.meta = applyIntentExecutionMeta({
+      ...(fallback.meta || {}),
+      ...normalizeIntentLlmError(err),
+    }, plan, null);
     return fallback;
   }
 }
@@ -831,6 +948,7 @@ module.exports = {
     compactSemanticContractForIntentLlm,
     hasBeautyBrandOrProductSignal,
     isEnabled,
+    normalizeIntentLlmError,
     resolveIntentGeminiModel,
     resolveIntentLlmExecutionPlan,
     resolveIntentOpenAiModel,
