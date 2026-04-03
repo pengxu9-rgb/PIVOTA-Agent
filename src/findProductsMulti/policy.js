@@ -1,6 +1,5 @@
 const {
   extractIntentWithMeta,
-  extractStrictSemanticRewriteWithMeta,
   buildDeterministicIntentWithMeta,
   _debug: intentLlmDebug = {},
 } = require('./intentLlm');
@@ -1396,6 +1395,80 @@ function normalizeSearchSemanticContract(raw) {
   };
 }
 
+const STRICT_SEMANTIC_OWNER = 'shopping_agent_semantic_contract';
+
+function normalizeSemanticQueryLabel(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function buildDeterministicStrictSemanticQueryPack({
+  rawQuery = '',
+  semanticContract = null,
+  ambiguityScorePre = null,
+} = {}) {
+  const contract = normalizeSearchSemanticContract(semanticContract);
+  const out = [];
+  const push = (value) => {
+    const normalized = normalizeSemanticQueryLabel(value);
+    if (!normalized) return;
+    if (out.some((item) => item === normalized || item.includes(normalized) || normalized.includes(item))) {
+      return;
+    }
+    out.push(normalized);
+  };
+
+  const raw = normalizeSemanticQueryLabel(rawQuery);
+  const targetStepFamily = normalizeSemanticStepFamily(contract?.target_step_family);
+  const primaryRoleLabel = normalizeSemanticQueryLabel(contract?.primary_role_id);
+  const semanticFamily = normalizeSemanticQueryLabel(contract?.semantic_family);
+  const ingredientHypotheses = normalizeSemanticStringList(contract?.ingredient_hypotheses, 8)
+    .map((value) => normalizeSemanticQueryLabel(value))
+    .filter(Boolean);
+  const allowedStepFamilies = normalizeSemanticStringList(contract?.allowed_step_families, 6)
+    .map((value) => normalizeSemanticStepFamily(value))
+    .filter(Boolean);
+
+  push(raw);
+  push(primaryRoleLabel);
+
+  if (targetStepFamily === 'sunscreen') {
+    if (semanticFamily && semanticFamily !== 'sunscreen') push(`${semanticFamily} sunscreen`);
+    push('daily sunscreen');
+    push('face sunscreen');
+  } else if (targetStepFamily === 'treatment') {
+    if (semanticFamily) {
+      push(
+        /\b(oil control|shine control|mattify|mattifying|balancing)\b/.test(semanticFamily)
+          ? `${semanticFamily} serum`
+          : `${semanticFamily} treatment`,
+      );
+    }
+    if (ingredientHypotheses[0]) push(`${ingredientHypotheses[0]} treatment`);
+    if (allowedStepFamilies.includes('serum')) push('face serum');
+  } else if (targetStepFamily === 'moisturizer') {
+    if (semanticFamily && semanticFamily !== 'moisturizer') push(`${semanticFamily} moisturizer`);
+    push('lightweight moisturizer');
+    push('face moisturizer');
+  } else if (targetStepFamily) {
+    push(targetStepFamily);
+  }
+
+  if (
+    contract?.request_class === 'generic_concern' &&
+    Number.isFinite(Number(ambiguityScorePre)) &&
+    Number(ambiguityScorePre) >= 0.7 &&
+    targetStepFamily
+  ) {
+    push(targetStepFamily);
+  }
+
+  return out.slice(0, 3);
+}
+
 function buildStrictSemanticRewriteResult({
   rawQuery,
   rewriteMeta = null,
@@ -1432,6 +1505,10 @@ function buildStrictSemanticRewriteResult({
         llm_upstream_error_message: String(rewriteMeta.llm_upstream_error_message || '').trim() || null,
         single_provider_locked: Boolean(rewriteMeta.single_provider_locked),
         fallback_reason: String(rewriteMeta.fallback_reason || '').trim() || null,
+        llm_enrichment_attempted: Boolean(rewriteMeta.llm_enrichment_attempted),
+        llm_enrichment_applied: Boolean(rewriteMeta.llm_enrichment_applied),
+        llm_enrichment_status: String(rewriteMeta.llm_enrichment_status || '').trim() || null,
+        llm_enrichment_mode: String(rewriteMeta.llm_enrichment_mode || '').trim() || null,
       }
     : {
         provider: null,
@@ -1455,6 +1532,10 @@ function buildStrictSemanticRewriteResult({
         llm_upstream_error_message: null,
         single_provider_locked: false,
         fallback_reason: null,
+        llm_enrichment_attempted: false,
+        llm_enrichment_applied: false,
+        llm_enrichment_status: null,
+        llm_enrichment_mode: null,
       };
   const contract = normalizeSearchSemanticContract(semanticContract);
   const normalizedRawQuery = String(rawQuery || '').trim();
@@ -1462,6 +1543,7 @@ function buildStrictSemanticRewriteResult({
     rewriteOutput && typeof rewriteOutput === 'object' && !Array.isArray(rewriteOutput)
       ? rewriteOutput
       : null;
+  const strictSemanticOwner = shouldUseSemanticContractQueryOwner(contract);
   if (!contract) {
     return {
       owner: 'shopping_agent_semantic_rewrite',
@@ -1477,9 +1559,15 @@ function buildStrictSemanticRewriteResult({
   }
 
   const normalizedQueryPack = normalizeSemanticStringList(
-    Array.isArray(normalizedRewriteOutput?.normalized_query_pack) &&
-      normalizedRewriteOutput.normalized_query_pack.length > 0
-      ? normalizedRewriteOutput.normalized_query_pack
+    strictSemanticOwner
+      ? buildDeterministicStrictSemanticQueryPack({
+          rawQuery: normalizedRawQuery,
+          semanticContract: contract,
+          ambiguityScorePre,
+        })
+      : Array.isArray(normalizedRewriteOutput?.normalized_query_pack) &&
+          normalizedRewriteOutput.normalized_query_pack.length > 0
+        ? normalizedRewriteOutput.normalized_query_pack
       : [
           normalizedRawQuery,
           contract.target_step_family && contract.semantic_family
@@ -1505,10 +1593,18 @@ function buildStrictSemanticRewriteResult({
   ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
 
   return {
-    owner: 'shopping_agent_semantic_rewrite',
+    owner: strictSemanticOwner ? STRICT_SEMANTIC_OWNER : 'shopping_agent_semantic_rewrite',
     applied,
-    mode: String(rewriteMeta?.mode || 'deterministic_fallback'),
+    mode: strictSemanticOwner
+      ? 'deterministic_contract'
+      : String(rewriteMeta?.mode || 'deterministic_fallback'),
     ...llmMeta,
+    ...(strictSemanticOwner
+      ? {
+          provider: 'rule_based',
+          fallback_reason: null,
+        }
+      : {}),
     normalized_query_pack: normalizedQueryPack,
     hard_filters: {
       target_step_family: targetStepFamily,
@@ -3580,7 +3676,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ? resolveIntentLlmExecutionPlan({ semanticContract })
     : null;
   const strictSemanticRewritePath = shouldUseSemanticContractQueryOwner(semanticContract);
-  const buildSemanticRewritePlanFallbackMeta = (fallbackReason) => ({
+  const buildSemanticRewritePlanMeta = (fallbackReason = null) => ({
     enable_owner:
       String(intentExecutionPlan?.enableOwner || '').trim() || null,
     provider_owner:
@@ -3614,41 +3710,21 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       latestUserQuery,
       recentQueries,
       recentMessages,
-      semanticRewriteTimeoutMs <= 0
-        ? 'semantic_rewrite_skipped_exact_lookup'
-        : 'semantic_rewrite_delegated_to_strict_owner',
+      'semantic_contract_owner',
     );
-    if (semanticRewriteTimeoutMs <= 0) {
-      semanticRewriteWithMeta = {
-        rewrite: null,
-        meta: {
-          ...(intentWithMeta.meta || {}),
-          ...buildSemanticRewritePlanFallbackMeta('semantic_rewrite_skipped_exact_lookup'),
-        },
-      };
-    } else {
-      semanticRewriteWithMeta = await Promise.race([
-        extractStrictSemanticRewriteWithMeta(latestUserQuery, recentQueries, recentMessages, {
-          timeoutMs: semanticRewriteTimeoutMs,
-          signal: semanticRewriteAbort?.signal || null,
-          semanticContract,
-        }),
-        new Promise((resolve) => {
-          semanticRewriteTimer = setTimeout(() => {
-            if (semanticRewriteAbort) semanticRewriteAbort.abort();
-            resolve({
-              rewrite: null,
-              meta: {
-                applied: true,
-                mode: 'deterministic_fallback',
-                provider: 'rule_based',
-                ...buildSemanticRewritePlanFallbackMeta('semantic_rewrite_timeout'),
-              },
-            });
-          }, semanticRewriteTimeoutMs);
-        }),
-      ]);
-    }
+    semanticRewriteWithMeta = {
+      rewrite: null,
+      meta: {
+        applied: true,
+        mode: 'deterministic_contract',
+        provider: 'rule_based',
+        ...buildSemanticRewritePlanMeta(null),
+        llm_enrichment_attempted: false,
+        llm_enrichment_applied: false,
+        llm_enrichment_status: 'skipped_strict_contract_owner',
+        llm_enrichment_mode: null,
+      },
+    };
   } else {
     intentWithMeta =
       semanticRewriteTimeoutMs <= 0
@@ -3675,7 +3751,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
                 );
                 fallback.meta = {
                   ...(fallback.meta || {}),
-                  ...buildSemanticRewritePlanFallbackMeta('semantic_rewrite_timeout'),
+                  ...buildSemanticRewritePlanMeta('semantic_rewrite_timeout'),
                 };
                 resolve(fallback);
               }, semanticRewriteTimeoutMs);
@@ -3695,6 +3771,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ? semanticRewriteWithMeta.rewrite
       : null
     : null;
+  const effectiveSemanticRewriteTimeoutMs = strictSemanticRewritePath ? 0 : semanticRewriteTimeoutMs;
   const intentParseLatencyMs = Math.max(0, Date.now() - intentStartedAt);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
   const brandDetection = detectBrandEntities(latestUserQuery, { candidateProducts: [] });
@@ -3796,7 +3873,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semanticContract,
     ambiguityScorePre,
   });
-  semanticRewriteResult.latency_ms = intentParseLatencyMs;
+  semanticRewriteResult.latency_ms = strictSemanticRewritePath ? 0 : intentParseLatencyMs;
   const semanticOwnerLocked = shouldUseSemanticContractQueryOwner(semanticContract);
 
   const expandedQuery = (() => {
@@ -4114,7 +4191,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semantic_rewrite_result: semanticRewriteResult,
     semantic_owner: semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
     semantic_owner_locked: semanticOwnerLocked,
-    semantic_rewrite_timeout_ms: semanticRewriteTimeoutMs,
+    semantic_rewrite_timeout_ms: effectiveSemanticRewriteTimeoutMs,
     intent_parse_latency_ms: intentParseLatencyMs,
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,

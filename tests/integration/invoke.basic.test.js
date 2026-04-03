@@ -222,16 +222,21 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(String(capturedBody?.query || '').toLowerCase()).not.toContain('broad spectrum');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        semantic_owner: 'shopping_agent_semantic_rewrite',
-        decision_owner: 'shopping_agent_semantic_rewrite',
+        semantic_owner: 'shopping_agent_semantic_contract',
+        decision_owner: 'shopping_agent_semantic_contract',
         search_stage_ledger: expect.objectContaining({
           semantic_rewrite: expect.objectContaining({
             owner_locked: true,
-            owner: 'shopping_agent_semantic_rewrite',
+            owner: 'shopping_agent_semantic_contract',
+            mode: 'deterministic_contract',
             single_provider_locked: true,
+            timeout_ms: 0,
+            llm_enrichment_attempted: false,
+            llm_enrichment_applied: false,
+            llm_enrichment_status: 'skipped_strict_contract_owner',
           }),
           final_decision: expect.objectContaining({
-            owner: 'shopping_agent_semantic_rewrite',
+            owner: 'shopping_agent_semantic_contract',
           }),
         }),
         effective_timeout_ms: expect.objectContaining({

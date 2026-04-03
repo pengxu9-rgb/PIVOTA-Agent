@@ -4362,6 +4362,12 @@ function buildSearchStageLedger({
           ? Number(semanticRewriteTimeoutMs)
           : null,
       fallback_reason: String(semanticRewriteResult?.fallback_reason || '').trim() || null,
+      llm_enrichment_attempted: Boolean(semanticRewriteResult?.llm_enrichment_attempted),
+      llm_enrichment_applied: Boolean(semanticRewriteResult?.llm_enrichment_applied),
+      llm_enrichment_status:
+        String(semanticRewriteResult?.llm_enrichment_status || '').trim() || null,
+      llm_enrichment_mode:
+        String(semanticRewriteResult?.llm_enrichment_mode || '').trim() || null,
       normalized_query_pack: Array.isArray(semanticRewriteResult?.normalized_query_pack)
         ? semanticRewriteResult.normalized_query_pack
         : [],

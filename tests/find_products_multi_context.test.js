@@ -334,12 +334,16 @@ describe('find_products_multi context building', () => {
       }),
     );
     expect(expansion_meta.semantic_owner_locked).toBe(true);
-    expect(expansion_meta.semantic_rewrite_timeout_ms).toBeGreaterThanOrEqual(5500);
+    expect(expansion_meta.semantic_rewrite_timeout_ms).toBe(0);
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
-        owner: 'shopping_agent_semantic_rewrite',
+        owner: 'shopping_agent_semantic_contract',
         applied: true,
+        mode: 'deterministic_contract',
         single_provider_locked: true,
+        llm_enrichment_attempted: false,
+        llm_enrichment_applied: false,
+        llm_enrichment_status: 'skipped_strict_contract_owner',
         hard_filters: expect.objectContaining({
           target_step_family: 'sunscreen',
           allowed_step_families: ['sunscreen'],
@@ -352,35 +356,15 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('sun protection');
   });
 
-  test('strict semantic rewrite path bypasses full intent llm and uses compact query pack output', async () => {
+  test('strict semantic contract owner bypasses llm rewrite and uses deterministic query pack output', async () => {
     jest.resetModules();
     jest.doMock('../src/findProductsMulti/intentLlm', () => {
       const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
       return {
         ...actual,
         extractIntentWithMeta: jest.fn(() => {
-          throw new Error('full intent llm should not run for aurora strict semantic rewrite');
+          throw new Error('full intent llm should not run for aurora strict contract owner');
         }),
-        extractStrictSemanticRewriteWithMeta: jest.fn(async () => ({
-          rewrite: {
-            normalized_query_pack: [
-              'oil control sunscreen',
-              'daily sunscreen for oily skin',
-            ],
-            needs_broadening: false,
-          },
-          meta: {
-            applied: true,
-            mode: 'llm',
-            provider: 'gemini',
-            llm_provider_chain: ['gemini'],
-            llm_primary_provider: 'gemini',
-            llm_model: 'gemini-3-flash-preview',
-            llm_model_owner: 'default_semantic_rewrite_gemini_model',
-            single_provider_locked: true,
-            fallback_reason: null,
-          },
-        })),
         _debug: {
           resolveIntentLlmExecutionPlan: jest.fn(() => ({
             enableOwner: 'provider_auto_enable',
@@ -425,12 +409,16 @@ describe('find_products_multi context building', () => {
         metadata: {},
       });
 
-      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('oil control sunscreen');
-      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('daily sunscreen for oily skin');
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('daily sunscreen');
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
-          mode: 'llm',
-          normalized_query_pack: ['oil control sunscreen', 'daily sunscreen for oily skin'],
+          owner: 'shopping_agent_semantic_contract',
+          mode: 'deterministic_contract',
+          llm_enrichment_attempted: false,
+          llm_enrichment_applied: false,
+          llm_enrichment_status: 'skipped_strict_contract_owner',
+          normalized_query_pack: ['best sunscreen for oily skin', 'daily sunscreen', 'face sunscreen'],
         }),
       );
     } finally {
@@ -642,30 +630,6 @@ describe('find_products_multi context building', () => {
           single_provider_locked: true,
         },
       })),
-      extractStrictSemanticRewriteWithMeta: jest.fn(async () => ({
-        rewrite: null,
-        meta: {
-          applied: true,
-          mode: 'deterministic_fallback',
-          provider: 'rule_based',
-          fallback_reason: 'llm_failed',
-          llm_provider_chain: ['gemini'],
-          llm_primary_provider: 'gemini',
-          llm_model: 'gemini-3-flash-preview',
-          llm_model_owner: 'default_semantic_rewrite_gemini_model',
-          llm_error_class: 'provider_error',
-          llm_error_stage: 'primary',
-          llm_error_provider: 'gemini',
-          llm_error_message: 'Request failed with status code 503',
-          llm_finish_reason: 'MAX_TOKENS',
-          llm_raw_preview: '{"lang',
-          llm_candidate_count: 1,
-          llm_upstream_status: 503,
-          llm_upstream_error_code: 'UNAVAILABLE',
-          llm_upstream_error_message: 'provider overloaded',
-          single_provider_locked: true,
-        },
-      })),
       _debug: {
         resolveIntentLlmExecutionPlan: jest.fn(() => ({
           enableOwner: 'provider_auto_enable',
@@ -711,18 +675,23 @@ describe('find_products_multi context building', () => {
 
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
+          owner: 'shopping_agent_semantic_contract',
+          mode: 'deterministic_contract',
           llm_model: 'gemini-3-flash-preview',
           llm_model_owner: 'default_semantic_rewrite_gemini_model',
-          llm_error_class: 'provider_error',
-          llm_error_stage: 'primary',
-          llm_error_provider: 'gemini',
-          llm_error_message: 'Request failed with status code 503',
-          llm_finish_reason: 'MAX_TOKENS',
-          llm_raw_preview: '{"lang',
-          llm_candidate_count: 1,
-          llm_upstream_status: 503,
-          llm_upstream_error_code: 'UNAVAILABLE',
-          llm_upstream_error_message: 'provider overloaded',
+          llm_error_class: null,
+          llm_error_stage: null,
+          llm_error_provider: null,
+          llm_error_message: null,
+          llm_finish_reason: null,
+          llm_raw_preview: null,
+          llm_candidate_count: null,
+          llm_upstream_status: null,
+          llm_upstream_error_code: null,
+          llm_upstream_error_message: null,
+          llm_enrichment_attempted: false,
+          llm_enrichment_applied: false,
+          llm_enrichment_status: 'skipped_strict_contract_owner',
         }),
       );
     } finally {

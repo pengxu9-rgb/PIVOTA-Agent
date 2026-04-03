@@ -1,6 +1,5 @@
 const OpenAI = require('openai');
 const axios = require('axios');
-const { z } = require('zod');
 const {
   PivotaIntentV1Zod,
   extractIntentRuleBased,
@@ -52,13 +51,6 @@ const SEMANTIC_REWRITE_DEFAULT_OPENAI_MODEL = 'gpt-5.1-mini';
 const SEMANTIC_REWRITE_DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
 const SEMANTIC_REWRITE_OPENAI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI';
 const SEMANTIC_REWRITE_GEMINI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI';
-const STRICT_SEMANTIC_REWRITE_OUTPUT_CONTRACT = Object.freeze({
-  top_level_keys: ['normalized_query_pack', 'needs_broadening'],
-  shape: {
-    normalized_query_pack: 'string_array_max_3_short_queries',
-    needs_broadening: 'boolean',
-  },
-});
 const INTENT_OUTPUT_CONTRACT = Object.freeze({
   top_level_keys: [
     'intent_version',
@@ -124,13 +116,6 @@ const INTENT_OUTPUT_CONTRACT = Object.freeze({
     query_class: 'enum_optional',
   },
 });
-const StrictSemanticRewriteV1Zod = z
-  .object({
-    normalized_query_pack: z.array(z.string().min(1).max(80)).min(1).max(3),
-    needs_broadening: z.boolean(),
-  })
-  .strict();
-
 function isEnabled() {
   return resolveFindProductsLlmRuntime('semantic_rewrite').enabled;
 }
@@ -444,35 +429,6 @@ function buildDeveloperPrompt() {
   ].join('\n');
 }
 
-function buildStrictSemanticRewriteSystemPrompt() {
-  return [
-    'You rewrite shopping search queries for a strict commerce agent.',
-    'Return one minified JSON object on a single line.',
-    'Only use nested JSON defined by output_contract.shape.',
-    'Do not output prose, markdown, pretty-printing, or dotted keys.',
-    'Honor semantic_contract as hard guidance for request class, role, and step family.',
-  ].join('\n');
-}
-
-function buildStrictSemanticRewriteDeveloperPrompt() {
-  return [
-    'Input:',
-    '- latest_user_query',
-    '- recent_queries',
-    '- recent_messages',
-    '- semantic_contract',
-    '- output_contract',
-    '',
-    'Rules:',
-    '- Return only output_contract top-level keys.',
-    '- normalized_query_pack must contain 1 to 3 short concrete search queries.',
-    '- Keep each query under 80 characters.',
-    '- Preserve target_step_family and blocked_step_families from semantic_contract.',
-    '- If semantic_contract is already specific, set needs_broadening=false.',
-    '- Prefer exact step/role alignment over broad recall.',
-  ].join('\n');
-}
-
 function truncateText(value, maxChars = INTENT_LLM_MAX_MESSAGE_CHARS) {
   const normalized = String(value || '').trim();
   if (!normalized) return '';
@@ -538,45 +494,6 @@ function compactSemanticContractForIntentLlm(contract) {
   };
 }
 
-function normalizeStrictSemanticQueryPack(values = [], fallbackQuery = '') {
-  const normalizedFallback = String(fallbackQuery || '').trim();
-  const candidates = Array.isArray(values) ? values : [];
-  const out = [];
-  for (const value of candidates) {
-    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!normalized) continue;
-    const dedupeKey = normalized.toLowerCase();
-    if (out.some((item) => item.toLowerCase() === dedupeKey)) continue;
-    out.push(normalized.slice(0, 80));
-    if (out.length >= 3) break;
-  }
-  if (!out.length && normalizedFallback) out.push(normalizedFallback.slice(0, 80));
-  return out;
-}
-
-function normalizeStrictSemanticRewriteOutput(raw = {}, fallbackQuery = '') {
-  const candidate =
-    raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? raw
-      : {};
-  return StrictSemanticRewriteV1Zod.parse({
-    normalized_query_pack: normalizeStrictSemanticQueryPack(
-      candidate.normalized_query_pack ||
-        candidate.normalizedQueryPack ||
-        candidate.query_pack ||
-        candidate.queryPack ||
-        candidate.queries ||
-        [],
-      fallbackQuery,
-    ),
-    needs_broadening: Boolean(
-      candidate.needs_broadening ??
-        candidate.needsBroadening ??
-        false,
-    ),
-  });
-}
-
 function buildIntentLlmInput(latestUserQuery, recentQueries = [], recentMessages = [], options = {}) {
   const semanticContract = compactSemanticContractForIntentLlm(options?.semanticContract);
   const compactHistory = Boolean(semanticContract);
@@ -586,17 +503,6 @@ function buildIntentLlmInput(latestUserQuery, recentQueries = [], recentMessages
     recent_messages: normalizeRecentMessagesForIntentLlm(recentMessages, { compactHistory }),
     ...(semanticContract ? { semantic_contract: semanticContract } : {}),
     output_contract: INTENT_OUTPUT_CONTRACT,
-  });
-}
-
-function buildStrictSemanticRewriteInput(latestUserQuery, recentQueries = [], recentMessages = [], options = {}) {
-  const semanticContract = compactSemanticContractForIntentLlm(options?.semanticContract);
-  return JSON.stringify({
-    latest_user_query: String(latestUserQuery || ''),
-    recent_queries: normalizeRecentQueriesForIntentLlm(recentQueries, { compactHistory: true }).slice(-1),
-    recent_messages: normalizeRecentMessagesForIntentLlm(recentMessages, { compactHistory: true }).slice(-1),
-    semantic_contract: semanticContract,
-    output_contract: STRICT_SEMANTIC_REWRITE_OUTPUT_CONTRACT,
   });
 }
 
@@ -972,45 +878,6 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
   return PivotaIntentV1Zod.parse(parsed);
 }
 
-async function extractStrictSemanticRewriteWithOpenAI(
-  latest_user_query,
-  recent_queries = [],
-  recent_messages = [],
-  options = {},
-) {
-  const model = String(options?.model || resolveIntentOpenAiModel().model || 'gpt-5.1-mini').trim() || 'gpt-5.1-mini';
-  const openai = getOpenAIClient();
-  const input = buildStrictSemanticRewriteInput(latest_user_query, recent_queries, recent_messages, options);
-  const messages = [
-    { role: 'system', content: buildStrictSemanticRewriteSystemPrompt() },
-    { role: 'developer', content: buildStrictSemanticRewriteDeveloperPrompt() },
-    { role: 'user', content: input },
-  ];
-  const completion = await openai.chat.completions.create(
-    {
-      model,
-      messages,
-      response_format: { type: 'json_object' },
-    },
-    options?.signal ? { signal: options.signal } : undefined,
-  );
-
-  const content = completion?.choices?.[0]?.message?.content || '';
-  let parsed;
-  try {
-    parsed = parseIntentJsonObject(content, 'Strict semantic rewrite');
-  } catch (err) {
-    throw annotateIntentLlmError(err, {
-      finish_reason:
-        String(completion?.choices?.[0]?.finish_reason || completion?.choices?.[0]?.finishReason || '').trim() ||
-        null,
-      raw_preview: trimIntentLlmText(content, 160),
-      candidate_count: Array.isArray(completion?.choices) ? completion.choices.length : null,
-    });
-  }
-  return normalizeStrictSemanticRewriteOutput(parsed, latest_user_query);
-}
-
 async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const apiKey = resolveFindProductsGeminiApiKey();
   if (!apiKey) {
@@ -1068,163 +935,9 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   return PivotaIntentV1Zod.parse(parsed);
 }
 
-async function extractStrictSemanticRewriteWithGemini(
-  latest_user_query,
-  recent_queries = [],
-  recent_messages = [],
-  options = {},
-) {
-  const apiKey = resolveFindProductsGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('Gemini API key is not set');
-  }
-
-  const model = String(options?.model || resolveIntentGeminiModel().model || 'gemini-3-flash-preview').trim() ||
-    'gemini-3-flash-preview';
-  const baseURL =
-    (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const systemText = `${buildStrictSemanticRewriteSystemPrompt()}\n\n${buildStrictSemanticRewriteDeveloperPrompt()}`;
-  const userText = buildStrictSemanticRewriteInput(latest_user_query, recent_queries, recent_messages, options);
-  const body = {
-    systemInstruction: { parts: [{ text: systemText }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: {
-      temperature: 0,
-      responseMimeType: 'application/json',
-      topK: 1,
-      topP: 0.1,
-      maxOutputTokens: 192,
-    },
-  };
-  const res = await axios.post(url, body, {
-    timeout: Math.max(
-      1000,
-      Math.min(
-        INTENT_LLM_PROVIDER_TIMEOUT_MS,
-        Number.isFinite(Number(options?.timeoutMs)) && Number(options.timeoutMs) > 0
-          ? Number(options.timeoutMs)
-          : INTENT_LLM_PROVIDER_TIMEOUT_MS,
-      ),
-    ),
-    ...(options?.signal ? { signal: options.signal } : {}),
-  });
-  const text =
-    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
-  let parsed;
-  try {
-    parsed = parseIntentJsonObject(text, 'Strict semantic rewrite');
-  } catch (err) {
-    throw annotateIntentLlmError(err, {
-      finish_reason:
-        String(res?.data?.candidates?.[0]?.finishReason || res?.data?.candidates?.[0]?.finish_reason || '').trim() ||
-        null,
-      raw_preview: trimIntentLlmText(text, 160),
-      candidate_count: Array.isArray(res?.data?.candidates) ? res.data.candidates.length : null,
-    });
-  }
-  return normalizeStrictSemanticRewriteOutput(parsed, latest_user_query);
-}
-
 async function extractIntent(latest_user_query, recent_queries = [], recent_messages = []) {
   const result = await extractIntentWithMeta(latest_user_query, recent_queries, recent_messages);
   return result.intent;
-}
-
-async function extractStrictSemanticRewriteWithMeta(
-  latest_user_query,
-  recent_queries = [],
-  recent_messages = [],
-  options = {},
-) {
-  const plan = resolveIntentLlmExecutionPlan(options);
-  if (!plan.enabled) {
-    return {
-      rewrite: null,
-      meta: applyIntentExecutionMeta({
-        applied: false,
-        mode: 'deterministic_fallback',
-        provider: 'rule_based',
-        fallback_reason:
-          plan.disabledReason === 'master_disabled'
-            ? 'llm_master_disabled'
-            : 'llm_unconfigured',
-      }, plan, null),
-    };
-  }
-  try {
-    const primary = plan.primaryProvider;
-    const fallback = plan.fallbackProvider;
-    const run = async (provider, stage) => {
-      try {
-        if (provider === 'openai') {
-          return await extractStrictSemanticRewriteWithOpenAI(
-            latest_user_query,
-            recent_queries,
-            recent_messages,
-            {
-              ...options,
-              model: plan.primaryProvider === 'openai' ? plan.primaryModel : plan.fallbackModel,
-            },
-          );
-        }
-        if (provider === 'gemini') {
-          return await extractStrictSemanticRewriteWithGemini(
-            latest_user_query,
-            recent_queries,
-            recent_messages,
-            {
-              ...options,
-              model: plan.primaryProvider === 'gemini' ? plan.primaryModel : plan.fallbackModel,
-            },
-          );
-        }
-        throw new Error(`Unsupported intent provider: ${provider}`);
-      } catch (err) {
-        throw annotateIntentLlmError(err, {
-          provider,
-          stage,
-        });
-      }
-    };
-
-    try {
-      const rewrite = await run(primary, 'primary');
-      return {
-        rewrite,
-        meta: applyIntentExecutionMeta({
-          applied: true,
-          mode: 'llm',
-          provider: primary,
-          fallback_reason: null,
-        }, plan, primary),
-      };
-    } catch (primaryErr) {
-      if (!fallback || fallback === primary) throw primaryErr;
-      const rewrite = await run(fallback, 'fallback');
-      return {
-        rewrite,
-        meta: applyIntentExecutionMeta({
-          applied: true,
-          mode: 'llm',
-          provider: fallback,
-          fallback_reason: `primary_${primary}_failed`,
-        }, plan, fallback),
-      };
-    }
-  } catch (err) {
-    return {
-      rewrite: null,
-      meta: applyIntentExecutionMeta({
-        applied: true,
-        mode: 'deterministic_fallback',
-        provider: 'rule_based',
-        fallback_reason: 'llm_failed',
-        ...normalizeIntentLlmError(err),
-      }, plan, null),
-    };
-  }
 }
 
 async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
@@ -1314,15 +1027,12 @@ module.exports = {
   extractIntentWithGemini,
   extractIntent,
   extractIntentWithMeta,
-  extractStrictSemanticRewriteWithMeta,
   _debug: {
     applyHardOverrides,
     buildIntentLlmInput,
-    buildStrictSemanticRewriteInput,
     compactSemanticContractForIntentLlm,
     hasBeautyBrandOrProductSignal,
     isEnabled,
-    normalizeStrictSemanticRewriteOutput,
     normalizeIntentLlmError,
     parseIntentJsonObject,
     resolveIntentGeminiModel,
