@@ -92,8 +92,8 @@ test('shopping llm auto-select prefers gemini for both semantic rewrite and rera
       FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
       FIND_PRODUCTS_MULTI_LLM_PROVIDER: undefined,
       FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER: undefined,
-      PIVOTA_INTENT_LLM_PROVIDER: undefined,
-      PIVOTA_INTENT_LLM_FALLBACK_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
       PIVOTA_RERANK_LLM_PROVIDER: undefined,
       PIVOTA_RERANK_LLM_FALLBACK_PROVIDER: undefined,
       OPENAI_API_KEY: 'sk-live-realish-openai-key',
@@ -111,7 +111,7 @@ test('shopping llm auto-select prefers gemini for both semantic rewrite and rera
 
       assert.equal(semanticRuntime.enabled, true);
       assert.equal(semanticRuntime.primaryProvider, 'gemini');
-      assert.deepEqual(semanticRuntime.providerChain, ['gemini', 'openai']);
+      assert.deepEqual(semanticRuntime.providerChain, ['gemini']);
       assert.equal(rerankRuntime.enabled, true);
       assert.equal(rerankRuntime.primaryProvider, 'gemini');
       assert.deepEqual(rerankRuntime.providerChain, ['gemini', 'openai']);
@@ -152,8 +152,8 @@ test('intent llm uses gemini fallback key aliases and enters llm mode without ex
       AURORA_SKIN_GEMINI_API_KEY: 'skin-gemini-key',
       GEMINI_API_KEY: undefined,
       GOOGLE_API_KEY: undefined,
-      PIVOTA_INTENT_LLM_PROVIDER: 'gemini',
-      PIVOTA_INTENT_LLM_FALLBACK_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
     },
     async () => {
       const axios = require('axios');
@@ -196,8 +196,8 @@ test('aurora strict semantic contract locks intent llm to a single provider and 
       FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER: undefined,
       OPENAI_API_KEY: 'sk-live-realish-openai-key',
       GEMINI_API_KEY: 'test-gemini-key',
-      PIVOTA_INTENT_MODEL: 'gpt-5.1-mini',
-      PIVOTA_INTENT_MODEL_GEMINI: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI: 'gpt-5.1-mini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
     },
     async () => {
       const { _debug } = loadIntentFresh();
@@ -219,7 +219,67 @@ test('aurora strict semantic contract locks intent llm to a single provider and 
       assert.deepEqual(plan.providerChain, ['gemini']);
       assert.equal(plan.singleProviderLocked, true);
       assert.equal(plan.primaryModel, 'gemini-3-flash-preview');
-      assert.ok(plan.primaryModelOwner);
+      assert.equal(plan.primaryModelOwner, 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI');
     },
   );
+});
+
+test('semantic rewrite ignores legacy shared model envs and keeps explicit model ownership local', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      OPENAI_API_KEY: 'sk-live-realish-openai-key',
+      GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_INTENT_MODEL: 'gpt-5.1-mini',
+      PIVOTA_INTENT_MODEL_GEMINI: 'gemini-1.5-flash',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI: undefined,
+    },
+    async () => {
+      const { _debug } = loadIntentFresh();
+      const geminiModel = _debug.resolveIntentGeminiModel();
+      const openaiModel = _debug.resolveIntentOpenAiModel();
+
+      assert.equal(geminiModel.model, 'gemini-3-flash-preview');
+      assert.equal(geminiModel.model_owner, 'default_semantic_rewrite_gemini_model');
+      assert.equal(openaiModel.model, 'gpt-5.1-mini');
+      assert.equal(openaiModel.model_owner, 'default_semantic_rewrite_openai_model');
+    },
+  );
+});
+
+test('semantic rewrite input is compact and uses semantic contract summary instead of raw schema dump', async () => {
+  await withEnv({}, async () => {
+    const { _debug } = loadIntentFresh();
+    const raw = _debug.buildIntentLlmInput(
+      'best sunscreen for oily skin',
+      ['need something for oily skin'],
+      [{ role: 'user', content: 'best sunscreen for oily skin' }],
+      {
+        semanticContract: {
+          version: 'beauty_semantic_contract_v1',
+          owner: 'aurora_reco_planner',
+          planner_mode: 'step_aware',
+          request_class: 'sunscreen',
+          target_step_family: 'sunscreen',
+          primary_role_id: 'daily_sunscreen',
+          support_role_ids: ['daily_sunscreen'],
+          semantic_family: 'sunscreen',
+          allowed_step_families: ['sunscreen'],
+          ingredient_hypotheses: [],
+          source_surface: 'aurora_beauty_strict',
+        },
+      },
+    );
+    const parsed = JSON.parse(raw);
+    assert.equal(Object.prototype.hasOwnProperty.call(parsed, 'schema'), false);
+    assert.deepEqual(parsed.output_contract.required_keys.slice(0, 4), [
+      'language',
+      'primary_domain',
+      'target_object.type',
+      'target_object.age_group',
+    ]);
+    assert.equal(parsed.semantic_contract.request_class, 'sunscreen');
+    assert.equal(parsed.semantic_contract.source_surface, 'aurora_beauty_strict');
+  });
 });

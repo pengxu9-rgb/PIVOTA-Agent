@@ -75,8 +75,8 @@ function resolveFeatureEnvNames(feature = 'semantic_rewrite') {
     };
   }
   return {
-    featurePrimaryEnv: 'PIVOTA_INTENT_LLM_PROVIDER',
-    featureFallbackEnv: 'PIVOTA_INTENT_LLM_FALLBACK_PROVIDER',
+    featurePrimaryEnv: 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER',
+    featureFallbackEnv: 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER',
   };
 }
 
@@ -146,16 +146,17 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
     geminiAvailable,
   });
   const primaryProvider = uniqueProviders([
-    masterPrimary,
     featurePrimary,
+    masterPrimary,
     inferredPrimary,
     'openai',
     'gemini',
   ]).find((provider) => availableProviders.includes(provider)) || availableProviders[0];
+  const allowImplicitFallback = normalizedFeature !== 'semantic_rewrite';
   const fallbackProvider = uniqueProviders([
-    masterFallback,
     featureFallback,
-    primaryProvider === 'openai' ? 'gemini' : 'openai',
+    masterFallback,
+    ...(allowImplicitFallback ? [primaryProvider === 'openai' ? 'gemini' : 'openai'] : []),
   ]).find((provider) => provider !== primaryProvider && availableProviders.includes(provider)) || null;
   const providerChain = [primaryProvider, ...(fallbackProvider ? [fallbackProvider] : [])];
 
@@ -168,12 +169,16 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
     primaryProvider,
     fallbackProvider,
     providerChain,
-    providerOwner: masterPrimary ? 'FIND_PRODUCTS_MULTI_LLM_PROVIDER' : featurePrimary ? featurePrimaryEnv : 'provider_auto_select',
-    fallbackOwner: masterFallback
-      ? 'FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER'
-      : featureFallback
+    providerOwner: featurePrimary
+      ? featurePrimaryEnv
+      : masterPrimary
+        ? 'FIND_PRODUCTS_MULTI_LLM_PROVIDER'
+        : 'provider_auto_select',
+    fallbackOwner: featureFallback
         ? featureFallbackEnv
-        : fallbackProvider
+        : masterFallback
+          ? 'FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER'
+          : allowImplicitFallback && fallbackProvider
           ? 'provider_auto_select'
           : null,
   };

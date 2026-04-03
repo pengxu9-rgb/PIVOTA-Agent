@@ -40,7 +40,7 @@ test('resolveNonImageGeminiModel falls back when shared model config points at a
   const resolved = resolveNonImageGeminiModel({
     model: 'gpt-5.1-mini',
     fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
-    envSource: 'PIVOTA_INTENT_MODEL',
+    envSource: 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI',
     callPath: 'unit_test',
   });
 

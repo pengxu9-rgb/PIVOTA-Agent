@@ -43,25 +43,30 @@ Provider selection is resolved centrally:
 
 - `FIND_PRODUCTS_MULTI_LLM_PROVIDER`
 - `FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER`
+- `FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER`
+- `FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER`
 
 Default provider order:
 
-- semantic rewrite: Gemini primary, OpenAI fallback
+- semantic rewrite: Gemini primary, no implicit fallback
 - rerank: Gemini primary, OpenAI fallback
 
 For Aurora beauty strict semantic-contract discovery, semantic rewrite is locked to a single backend provider so the main path does not cascade across multiple provider owners.
+Semantic rewrite no longer inherits provider config from `PIVOTA_INTENT_LLM_PROVIDER` or `PIVOTA_INTENT_LLM_FALLBACK_PROVIDER`.
 
 OpenAI:
 
 - `OPENAI_API_KEY` (required if provider is `openai`)
 - `OPENAI_BASE_URL` (optional; OpenAI-compatible endpoint)
-- `PIVOTA_INTENT_MODEL` (default: `gpt-5.1-mini`)
+- `FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI` (default: `gpt-5.1-mini`)
 
 Gemini:
 
 - `GEMINI_API_KEY` (required if provider is `gemini`)
 - `GEMINI_BASE_URL` (optional; default: `https://generativelanguage.googleapis.com`)
-- `PIVOTA_INTENT_MODEL_GEMINI` (default floor: `gemini-3-flash-preview`)
+- `FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI` (default floor: `gemini-3-flash-preview`)
+
+Semantic rewrite no longer inherits model config from `PIVOTA_INTENT_MODEL` or `PIVOTA_INTENT_MODEL_GEMINI`.
 
 ## `attributes.pivota` Product Tags
 

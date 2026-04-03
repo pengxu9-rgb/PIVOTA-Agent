@@ -1,6 +1,5 @@
 const OpenAI = require('openai');
 const axios = require('axios');
-const intentSchema = require('../schemas/intent.v1.json');
 const {
   PivotaIntentV1Zod,
   extractIntentRuleBased,
@@ -30,6 +29,46 @@ const INTENT_LLM_PROVIDER_TIMEOUT_MS = Math.max(
   1000,
   Math.min(15000, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_PROVIDER_TIMEOUT_MS || 6000) || 6000),
 );
+const INTENT_LLM_MAX_RECENT_QUERIES_WITH_CONTRACT = Math.max(
+  1,
+  Math.min(INTENT_LLM_MAX_RECENT_QUERIES, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_RECENT_QUERIES_WITH_CONTRACT || 2) || 2),
+);
+const INTENT_LLM_MAX_RECENT_MESSAGES_WITH_CONTRACT = Math.max(
+  1,
+  Math.min(INTENT_LLM_MAX_RECENT_MESSAGES, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_RECENT_MESSAGES_WITH_CONTRACT || 3) || 3),
+);
+const INTENT_LLM_MAX_MESSAGE_CHARS_WITH_CONTRACT = Math.max(
+  80,
+  Math.min(INTENT_LLM_MAX_MESSAGE_CHARS, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_MESSAGE_CHARS_WITH_CONTRACT || 160) || 160),
+);
+const INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS = Math.max(
+  128,
+  Math.min(1024, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS || 384) || 384),
+);
+const SEMANTIC_REWRITE_DEFAULT_OPENAI_MODEL = 'gpt-5.1-mini';
+const SEMANTIC_REWRITE_DEFAULT_GEMINI_MODEL = 'gemini-3-flash-preview';
+const SEMANTIC_REWRITE_OPENAI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI';
+const SEMANTIC_REWRITE_GEMINI_MODEL_ENV = 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI';
+const INTENT_OUTPUT_CONTRACT = Object.freeze({
+  required_keys: [
+    'language',
+    'primary_domain',
+    'target_object.type',
+    'target_object.age_group',
+    'query_class',
+    'category.required',
+    'category.optional',
+    'scenario.name',
+    'scenario.signals',
+    'hard_constraints.must_exclude_domains',
+    'hard_constraints.must_exclude_keywords',
+    'history_usage.used',
+    'history_usage.reason',
+    'ambiguity.needs_clarification',
+    'ambiguity.questions',
+    'confidence.overall',
+  ],
+});
 
 function isEnabled() {
   return resolveFindProductsLlmRuntime('semantic_rewrite').enabled;
@@ -63,22 +102,25 @@ function shouldLockSingleIntentProvider(options = {}) {
 }
 
 function resolveIntentOpenAiModel() {
+  const explicitModel = String(process.env[SEMANTIC_REWRITE_OPENAI_MODEL_ENV] || '').trim();
   return {
-    model: String(process.env.PIVOTA_INTENT_MODEL || 'gpt-5.1-mini').trim() || 'gpt-5.1-mini',
-    model_owner: process.env.PIVOTA_INTENT_MODEL ? 'PIVOTA_INTENT_MODEL' : 'default_openai_model',
+    model: explicitModel || SEMANTIC_REWRITE_DEFAULT_OPENAI_MODEL,
+    model_owner: explicitModel ? SEMANTIC_REWRITE_OPENAI_MODEL_ENV : 'default_semantic_rewrite_openai_model',
   };
 }
 
 function resolveIntentGeminiModel() {
   const resolved = resolveNonImageGeminiModel({
-    model: process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL,
-    fallbackModel: 'gemini-3-flash-preview',
-    envSource: process.env.PIVOTA_INTENT_MODEL_GEMINI ? 'PIVOTA_INTENT_MODEL_GEMINI' : 'PIVOTA_INTENT_MODEL',
+    model: process.env[SEMANTIC_REWRITE_GEMINI_MODEL_ENV],
+    fallbackModel: SEMANTIC_REWRITE_DEFAULT_GEMINI_MODEL,
+    envSource: process.env[SEMANTIC_REWRITE_GEMINI_MODEL_ENV]
+      ? SEMANTIC_REWRITE_GEMINI_MODEL_ENV
+      : 'default_semantic_rewrite_gemini_model',
     callPath: 'find_products_intent',
   });
   return {
     model: resolved.effectiveModel,
-    model_owner: resolved.envSource || 'default_gemini_model',
+    model_owner: resolved.envSource || 'default_semantic_rewrite_gemini_model',
   };
 }
 
@@ -177,38 +219,30 @@ function buildDeterministicIntentWithMeta(
 
 function buildSystemPrompt() {
   return [
-    'You are an intent extraction component for an e-commerce agent.',
-    'Output MUST be a single JSON object that conforms to the provided JSON Schema (PivotaIntentV1).',
-    'Do not output markdown, comments, or additional keys.',
-    '',
-    'Priority rule:',
-    '- The latest user query dominates domain + target_object decisions.',
-    '- Conversation history / recent_queries may ONLY be used as soft_preferences or to resolve explicit references like "same as before".',
-    '- Never let toy-related history override a clear human apparel request.',
-    '',
-    'If uncertain:',
-    '- Fill unknown fields with null/unknown,',
-    '- Lower confidence scores,',
-    '- Set ambiguity.needs_clarification=true and propose up to 3 clarifying questions.',
+    'You extract shopping intent for an e-commerce agent.',
+    'Return one JSON object only.',
+    'Latest user query dominates.',
+    'History is only for explicit carry-over references.',
+    'If semantic_contract is present, treat it as hard guidance for request class and step family.',
+    'If unsure, keep fields null/unknown and set ambiguity.needs_clarification=true.',
   ].join('\n');
 }
 
 function buildDeveloperPrompt() {
   return [
-    'Input fields:',
-    '1) latest_user_query: string',
-    '2) recent_queries: string[]',
-    '3) recent_messages: [{role, content}] (optional)',
+    'Input:',
+    '- latest_user_query',
+    '- recent_queries',
+    '- recent_messages',
+    '- semantic_contract (optional)',
+    '- output_contract',
     '',
-    'You must:',
-    '- Decide primary_domain and target_object.',
-    '- Extract required categories into category.required (hard).',
-    '- Put weaker guesses into category.optional (soft).',
-    '- Add hard_constraints.must_exclude_domains/keywords when appropriate:',
-    '  - If target_object=human, exclude toy_accessory and keywords like doll/toy/Labubu/娃娃/公仔.',
-    '- Set history_usage.used=false if the latest query is clear and history is unrelated.',
-    '',
-    'Return JSON only.',
+    'Rules:',
+    '- Fill output_contract keys only.',
+    '- category.required is hard intent; category.optional is soft guesswork.',
+    '- For human requests, exclude toy_accessory and doll/toy/Labubu cues in hard_constraints.',
+    '- Set history_usage.used=false when latest query is already clear.',
+    '- Keep ambiguity.questions to at most 3 short questions.',
   ].join('\n');
 }
 
@@ -219,29 +253,73 @@ function truncateText(value, maxChars = INTENT_LLM_MAX_MESSAGE_CHARS) {
   return `${normalized.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
 }
 
-function normalizeRecentQueriesForIntentLlm(recentQueries = []) {
+function normalizeRecentQueriesForIntentLlm(recentQueries = [], options = {}) {
+  const compactHistory = Boolean(options?.compactHistory);
+  const maxChars = compactHistory ? 80 : 120;
+  const maxItems = compactHistory ? INTENT_LLM_MAX_RECENT_QUERIES_WITH_CONTRACT : INTENT_LLM_MAX_RECENT_QUERIES;
   return (Array.isArray(recentQueries) ? recentQueries : [])
-    .map((value) => truncateText(value, 120))
+    .map((value) => truncateText(value, maxChars))
     .filter(Boolean)
-    .slice(-INTENT_LLM_MAX_RECENT_QUERIES);
+    .slice(-maxItems);
 }
 
-function normalizeRecentMessagesForIntentLlm(recentMessages = []) {
+function normalizeRecentMessagesForIntentLlm(recentMessages = [], options = {}) {
+  const compactHistory = Boolean(options?.compactHistory);
+  const maxChars = compactHistory ? INTENT_LLM_MAX_MESSAGE_CHARS_WITH_CONTRACT : INTENT_LLM_MAX_MESSAGE_CHARS;
+  const maxItems = compactHistory ? INTENT_LLM_MAX_RECENT_MESSAGES_WITH_CONTRACT : INTENT_LLM_MAX_RECENT_MESSAGES;
   return (Array.isArray(recentMessages) ? recentMessages : [])
     .map((message) => ({
       role: String(message?.role || '').trim() || 'user',
-      content: truncateText(message?.content, INTENT_LLM_MAX_MESSAGE_CHARS),
+      content: truncateText(message?.content, maxChars),
     }))
     .filter((message) => message.content)
-    .slice(-INTENT_LLM_MAX_RECENT_MESSAGES);
+    .slice(-maxItems);
 }
 
-function buildIntentLlmInput(latestUserQuery, recentQueries = [], recentMessages = []) {
+function compactSemanticContractForIntentLlm(contract) {
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) return null;
+  const owner = String(contract.owner || '').trim() || null;
+  const planner_mode = String(contract.planner_mode || contract.plannerMode || '').trim() || null;
+  const request_class = String(contract.request_class || contract.requestClass || '').trim() || null;
+  const target_step_family = String(contract.target_step_family || contract.targetStepFamily || '').trim() || null;
+  const primary_role_id = String(contract.primary_role_id || contract.primaryRoleId || '').trim() || null;
+  const semantic_family = String(contract.semantic_family || contract.semanticFamily || '').trim() || null;
+  const source_surface = String(contract.source_surface || contract.sourceSurface || '').trim() || null;
+  const support_role_ids = (Array.isArray(contract.support_role_ids) ? contract.support_role_ids : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const allowed_step_families = (Array.isArray(contract.allowed_step_families) ? contract.allowed_step_families : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const ingredient_hypotheses = (Array.isArray(contract.ingredient_hypotheses) ? contract.ingredient_hypotheses : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  return {
+    owner,
+    planner_mode,
+    request_class,
+    target_step_family,
+    primary_role_id,
+    support_role_ids,
+    semantic_family,
+    allowed_step_families,
+    ingredient_hypotheses,
+    source_surface,
+  };
+}
+
+function buildIntentLlmInput(latestUserQuery, recentQueries = [], recentMessages = [], options = {}) {
+  const semanticContract = compactSemanticContractForIntentLlm(options?.semanticContract);
+  const compactHistory = Boolean(semanticContract);
   return JSON.stringify({
     latest_user_query: String(latestUserQuery || ''),
-    recent_queries: normalizeRecentQueriesForIntentLlm(recentQueries),
-    recent_messages: normalizeRecentMessagesForIntentLlm(recentMessages),
-    schema: intentSchema,
+    recent_queries: normalizeRecentQueriesForIntentLlm(recentQueries, { compactHistory }),
+    recent_messages: normalizeRecentMessagesForIntentLlm(recentMessages, { compactHistory }),
+    ...(semanticContract ? { semantic_contract: semanticContract } : {}),
+    output_contract: INTENT_OUTPUT_CONTRACT,
   });
 }
 
@@ -580,7 +658,7 @@ function applyHardOverrides(latestQuery, intent) {
 async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const model = String(options?.model || resolveIntentOpenAiModel().model || 'gpt-5.1-mini').trim() || 'gpt-5.1-mini';
   const openai = getOpenAIClient();
-  const input = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages);
+  const input = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages, options);
 
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
@@ -626,7 +704,7 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const systemText = `${buildSystemPrompt()}\n\n${buildDeveloperPrompt()}`;
-  const userText = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages);
+  const userText = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages, options);
 
   const body = {
     systemInstruction: { parts: [{ text: systemText }] },
@@ -634,6 +712,9 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
     generationConfig: {
       temperature: 0,
       responseMimeType: 'application/json',
+      topK: 1,
+      topP: 0.1,
+      maxOutputTokens: INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS,
     },
   };
 
@@ -746,6 +827,8 @@ module.exports = {
   extractIntentWithMeta,
   _debug: {
     applyHardOverrides,
+    buildIntentLlmInput,
+    compactSemanticContractForIntentLlm,
     hasBeautyBrandOrProductSignal,
     isEnabled,
     resolveIntentGeminiModel,
