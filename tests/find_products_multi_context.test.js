@@ -318,6 +318,7 @@ describe('find_products_multi context building', () => {
       }),
     );
     expect(expansion_meta.semantic_owner_locked).toBe(true);
+    expect(expansion_meta.semantic_rewrite_timeout_ms).toBeGreaterThanOrEqual(5500);
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
         owner: 'shopping_agent_semantic_rewrite',

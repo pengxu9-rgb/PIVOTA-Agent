@@ -148,6 +148,13 @@ const FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS = Math.max(
     Number(process.env.FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS || 4500) || 4500,
   ),
 );
+const FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_STRICT_TIMEOUT_MS = Math.max(
+  FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS,
+  Math.min(
+    15000,
+    Number(process.env.FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_STRICT_TIMEOUT_MS || 5500) || 5500,
+  ),
+);
 const BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE =
   String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE || 'true').toLowerCase() !==
   'false';
@@ -206,6 +213,9 @@ const FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE =
 function resolveSemanticRewriteTimeoutMs(semanticContract = null) {
   const contract = normalizeSearchSemanticContract(semanticContract);
   if (contract?.request_class === 'exact_lookup') return 0;
+  if (contract?.source_surface === 'aurora_beauty_strict') {
+    return FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_STRICT_TIMEOUT_MS;
+  }
   return FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS;
 }
 
