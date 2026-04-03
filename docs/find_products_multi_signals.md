@@ -29,14 +29,27 @@ PivotaIntentV1 is validated by a strict schema stored in:
 The gateway may generate intent via:
 
 - Rule-based extraction (default)
-- LLM extraction (optional; enable with `PIVOTA_INTENT_LLM_ENABLED=true`)
+- LLM extraction (optional; controlled by `FIND_PRODUCTS_MULTI_LLM_ENABLED`)
 
-### LLM Provider Configuration (OpenAI primary, Gemini fallback)
+### LLM Provider Configuration
 
-The intent extractor supports a primary + fallback provider:
+Runtime enablement is controlled by a single owner:
 
-- `PIVOTA_INTENT_LLM_PROVIDER` (default: `openai`)
-- `PIVOTA_INTENT_LLM_FALLBACK_PROVIDER` (default: `gemini`)
+- `FIND_PRODUCTS_MULTI_LLM_ENABLED`
+  - `false`: disable shopping LLM features
+  - unset: auto-enable when at least one provider key is present
+
+Provider selection is resolved centrally:
+
+- `FIND_PRODUCTS_MULTI_LLM_PROVIDER`
+- `FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER`
+
+Default provider order:
+
+- semantic rewrite: Gemini primary, OpenAI fallback
+- rerank: Gemini primary, OpenAI fallback
+
+For Aurora beauty strict semantic-contract discovery, semantic rewrite is locked to a single backend provider so the main path does not cascade across multiple provider owners.
 
 OpenAI:
 
@@ -48,7 +61,7 @@ Gemini:
 
 - `GEMINI_API_KEY` (required if provider is `gemini`)
 - `GEMINI_BASE_URL` (optional; default: `https://generativelanguage.googleapis.com`)
-- `PIVOTA_INTENT_MODEL_GEMINI` (default: `gemini-1.5-flash`)
+- `PIVOTA_INTENT_MODEL_GEMINI` (default floor: `gemini-3-flash-preview`)
 
 ## `attributes.pivota` Product Tags
 

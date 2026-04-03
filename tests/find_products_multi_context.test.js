@@ -323,6 +323,7 @@ describe('find_products_multi context building', () => {
       expect.objectContaining({
         owner: 'shopping_agent_semantic_rewrite',
         applied: true,
+        single_provider_locked: true,
         hard_filters: expect.objectContaining({
           target_step_family: 'sunscreen',
           allowed_step_families: ['sunscreen'],
@@ -455,6 +456,8 @@ describe('find_products_multi context building', () => {
         expect.objectContaining({
           mode: 'deterministic_fallback',
           fallback_reason: 'semantic_rewrite_timeout',
+          llm_provider_chain: expect.any(Array),
+          single_provider_locked: false,
         }),
       );
     } finally {

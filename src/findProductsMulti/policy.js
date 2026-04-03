@@ -1,4 +1,8 @@
-const { extractIntentWithMeta, buildDeterministicIntentWithMeta } = require('./intentLlm');
+const {
+  extractIntentWithMeta,
+  buildDeterministicIntentWithMeta,
+  _debug: intentLlmDebug = {},
+} = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
@@ -1353,6 +1357,16 @@ function buildStrictSemanticRewriteResult({
       owner: 'shopping_agent_semantic_rewrite',
       applied: false,
       mode: String(intentMeta?.mode || 'deterministic_fallback'),
+      provider: String(intentMeta?.provider || '').trim() || null,
+      enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
+      provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
+      fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
+      llm_provider_chain: Array.isArray(intentMeta?.llm_provider_chain) ? intentMeta.llm_provider_chain : [],
+      llm_primary_provider: String(intentMeta?.llm_primary_provider || '').trim() || null,
+      llm_fallback_provider: String(intentMeta?.llm_fallback_provider || '').trim() || null,
+      llm_model: String(intentMeta?.llm_model || '').trim() || null,
+      llm_model_owner: String(intentMeta?.llm_model_owner || '').trim() || null,
+      single_provider_locked: Boolean(intentMeta?.single_provider_locked),
       normalized_query_pack: normalizedRawQuery ? [normalizedRawQuery] : [],
       hard_filters: {},
       soft_filters: {},
@@ -1395,6 +1409,12 @@ function buildStrictSemanticRewriteResult({
     enable_owner: String(intentMeta?.enable_owner || '').trim() || null,
     provider_owner: String(intentMeta?.provider_owner || '').trim() || null,
     fallback_owner: String(intentMeta?.fallback_owner || '').trim() || null,
+    llm_provider_chain: Array.isArray(intentMeta?.llm_provider_chain) ? intentMeta.llm_provider_chain : [],
+    llm_primary_provider: String(intentMeta?.llm_primary_provider || '').trim() || null,
+    llm_fallback_provider: String(intentMeta?.llm_fallback_provider || '').trim() || null,
+    llm_model: String(intentMeta?.llm_model || '').trim() || null,
+    llm_model_owner: String(intentMeta?.llm_model_owner || '').trim() || null,
+    single_provider_locked: Boolean(intentMeta?.single_provider_locked),
     normalized_query_pack: normalizedQueryPack,
     hard_filters: {
       target_step_family: targetStepFamily,
@@ -3416,6 +3436,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       metadata?.semanticContract,
   );
   const semanticRewriteTimeoutMs = resolveSemanticRewriteTimeoutMs(semanticContract);
+  const resolveIntentLlmExecutionPlan =
+    typeof intentLlmDebug.resolveIntentLlmExecutionPlan === 'function'
+      ? intentLlmDebug.resolveIntentLlmExecutionPlan
+      : null;
+  const intentExecutionPlan = resolveIntentLlmExecutionPlan
+    ? resolveIntentLlmExecutionPlan({ semanticContract })
+    : null;
 
   const intentStartedAt = Date.now();
   let semanticRewriteTimer = null;
@@ -3425,7 +3452,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       : null;
   const intentWithMeta =
     semanticRewriteTimeoutMs <= 0
-      ? buildDeterministicIntentWithMeta(
+        ? buildDeterministicIntentWithMeta(
           latestUserQuery,
           recentQueries,
           recentMessages,
@@ -3435,18 +3462,38 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
           extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages, {
             timeoutMs: semanticRewriteTimeoutMs,
             signal: semanticRewriteAbort?.signal || null,
+            semanticContract,
           }),
           new Promise((resolve) => {
             semanticRewriteTimer = setTimeout(() => {
               if (semanticRewriteAbort) semanticRewriteAbort.abort();
-              resolve(
-                buildDeterministicIntentWithMeta(
-                  latestUserQuery,
-                  recentQueries,
-                  recentMessages,
-                  'semantic_rewrite_timeout',
-                ),
+              const fallback = buildDeterministicIntentWithMeta(
+                latestUserQuery,
+                recentQueries,
+                recentMessages,
+                'semantic_rewrite_timeout',
               );
+              fallback.meta = {
+                ...(fallback.meta || {}),
+                enable_owner:
+                  String(fallback.meta?.enable_owner || intentExecutionPlan?.enableOwner || '').trim() || null,
+                provider_owner:
+                  String(fallback.meta?.provider_owner || intentExecutionPlan?.providerOwner || '').trim() || null,
+                fallback_owner:
+                  String(fallback.meta?.fallback_owner || intentExecutionPlan?.fallbackOwner || '').trim() || null,
+                llm_provider_chain: Array.isArray(intentExecutionPlan?.providerChain)
+                  ? intentExecutionPlan.providerChain
+                  : [],
+                llm_primary_provider:
+                  String(intentExecutionPlan?.primaryProvider || '').trim() || null,
+                llm_fallback_provider:
+                  String(intentExecutionPlan?.fallbackProvider || '').trim() || null,
+                llm_model: String(intentExecutionPlan?.primaryModel || '').trim() || null,
+                llm_model_owner:
+                  String(intentExecutionPlan?.primaryModelOwner || '').trim() || null,
+                single_provider_locked: Boolean(intentExecutionPlan?.singleProviderLocked),
+              };
+              resolve(fallback);
             }, semanticRewriteTimeoutMs);
           }),
         ]);

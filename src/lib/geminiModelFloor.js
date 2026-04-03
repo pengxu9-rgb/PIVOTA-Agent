@@ -51,7 +51,17 @@ function resolveNonImageGeminiModel(options) {
   const isImageGeneration = isGeminiImageGenerationModel(effectiveModel);
   let adjusted = false;
 
-  if (isGemini && !isImageGeneration && !isGeminiAtOrAboveNonImageFloor(effectiveModel)) {
+  if (configuredModel && !isGeminiModelName(configuredModel)) {
+    adjusted = true;
+    effectiveModel = fallbackModel;
+    emitFloorWarning({
+      event: 'gemini_model_non_gemini_fallback',
+      configured_model: configuredModel || null,
+      effective_model: effectiveModel,
+      env_source: envSource,
+      call_path: callPath,
+    });
+  } else if (isGemini && !isImageGeneration && !isGeminiAtOrAboveNonImageFloor(effectiveModel)) {
     adjusted = true;
     effectiveModel = NON_IMAGE_GEMINI_FLOOR_MODEL;
     emitFloorWarning({

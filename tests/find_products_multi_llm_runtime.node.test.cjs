@@ -86,6 +86,61 @@ test('find_products_multi llm runtime auto-enables from provider availability wh
   );
 });
 
+test('shopping llm auto-select prefers gemini for both semantic rewrite and rerank when both providers are available', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_LLM_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER: undefined,
+      PIVOTA_INTENT_LLM_PROVIDER: undefined,
+      PIVOTA_INTENT_LLM_FALLBACK_PROVIDER: undefined,
+      PIVOTA_RERANK_LLM_PROVIDER: undefined,
+      PIVOTA_RERANK_LLM_FALLBACK_PROVIDER: undefined,
+      OPENAI_API_KEY: 'sk-live-realish-openai-key',
+      LLM_API_KEY: undefined,
+      GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_GEMINI_API_KEY: undefined,
+      AURORA_RECO_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    },
+    async () => {
+      const { resolveFindProductsLlmRuntime } = loadRuntimeFresh();
+      const semanticRuntime = resolveFindProductsLlmRuntime('semantic_rewrite');
+      const rerankRuntime = resolveFindProductsLlmRuntime('rerank');
+
+      assert.equal(semanticRuntime.enabled, true);
+      assert.equal(semanticRuntime.primaryProvider, 'gemini');
+      assert.deepEqual(semanticRuntime.providerChain, ['gemini', 'openai']);
+      assert.equal(rerankRuntime.enabled, true);
+      assert.equal(rerankRuntime.primaryProvider, 'gemini');
+      assert.deepEqual(rerankRuntime.providerChain, ['gemini', 'openai']);
+    },
+  );
+});
+
+test('fake openai placeholder key is ignored so gemini remains the only available provider', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      OPENAI_API_KEY: 'fake-openai-key',
+      LLM_API_KEY: undefined,
+      GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_GEMINI_API_KEY: undefined,
+      AURORA_RECO_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    },
+    async () => {
+      const { resolveFindProductsLlmRuntime, resolveFindProductsOpenAiApiKey } = loadRuntimeFresh();
+      const semanticRuntime = resolveFindProductsLlmRuntime('semantic_rewrite');
+      assert.equal(resolveFindProductsOpenAiApiKey(), '');
+      assert.deepEqual(semanticRuntime.availableProviders, ['gemini']);
+      assert.deepEqual(semanticRuntime.providerChain, ['gemini']);
+    },
+  );
+});
+
 test('intent llm uses gemini fallback key aliases and enters llm mode without explicit feature flag', async () => {
   await withEnv(
     {
@@ -129,6 +184,42 @@ test('intent llm uses gemini fallback key aliases and enters llm mode without ex
       } finally {
         axios.post = originalPost;
       }
+    },
+  );
+});
+
+test('aurora strict semantic contract locks intent llm to a single provider and surfaces model metadata', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_LLM_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER: undefined,
+      OPENAI_API_KEY: 'sk-live-realish-openai-key',
+      GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_INTENT_MODEL: 'gpt-5.1-mini',
+      PIVOTA_INTENT_MODEL_GEMINI: undefined,
+    },
+    async () => {
+      const { _debug } = loadIntentFresh();
+      const plan = _debug.resolveIntentLlmExecutionPlan({
+        semanticContract: {
+          version: 'beauty_semantic_contract_v1',
+          owner: 'aurora_reco_planner',
+          planner_mode: 'step_aware',
+          request_class: 'sunscreen',
+          target_step_family: 'sunscreen',
+          primary_role_id: 'daily_sunscreen',
+          source_surface: 'aurora_beauty_strict',
+        },
+      });
+
+      assert.equal(plan.enabled, true);
+      assert.equal(plan.primaryProvider, 'gemini');
+      assert.equal(plan.fallbackProvider, null);
+      assert.deepEqual(plan.providerChain, ['gemini']);
+      assert.equal(plan.singleProviderLocked, true);
+      assert.equal(plan.primaryModel, 'gemini-3-flash-preview');
+      assert.ok(plan.primaryModelOwner);
     },
   );
 });

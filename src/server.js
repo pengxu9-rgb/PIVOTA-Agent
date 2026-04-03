@@ -4323,6 +4323,13 @@ function buildSearchStageLedger({
       applied: Boolean(semanticRewriteResult?.applied),
       mode: String(semanticRewriteResult?.mode || 'deterministic_fallback'),
       provider: String(semanticRewriteResult?.provider || '').trim() || null,
+      llm_provider_chain: Array.isArray(semanticRewriteResult?.llm_provider_chain)
+        ? semanticRewriteResult.llm_provider_chain
+        : [],
+      llm_primary_provider: String(semanticRewriteResult?.llm_primary_provider || '').trim() || null,
+      llm_fallback_provider: String(semanticRewriteResult?.llm_fallback_provider || '').trim() || null,
+      llm_model: String(semanticRewriteResult?.llm_model || '').trim() || null,
+      llm_model_owner: String(semanticRewriteResult?.llm_model_owner || '').trim() || null,
       enable_owner: String(semanticRewriteResult?.enable_owner || '').trim() || null,
       provider_owner: String(semanticRewriteResult?.provider_owner || '').trim() || null,
       fallback_owner: String(semanticRewriteResult?.fallback_owner || '').trim() || null,
@@ -4356,6 +4363,7 @@ function buildSearchStageLedger({
           ? semanticContract
           : null,
       owner_locked: Boolean(semanticOwnerLocked),
+      single_provider_locked: Boolean(semanticRewriteResult?.single_provider_locked),
     },
     primary_search: {
       owner: 'shopping_agent_primary_search',

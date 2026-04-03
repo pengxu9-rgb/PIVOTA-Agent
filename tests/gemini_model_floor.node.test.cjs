@@ -35,6 +35,20 @@ test('resolveNonImageGeminiModel keeps Gemini 3+ models unchanged', () => {
   assert.equal(resolved.effectiveModel, 'gemini-3-pro-preview');
 });
 
+test('resolveNonImageGeminiModel falls back when shared model config points at a non-Gemini model', () => {
+  resetGeminiModelFloorWarningsForTest();
+  const resolved = resolveNonImageGeminiModel({
+    model: 'gpt-5.1-mini',
+    fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+    envSource: 'PIVOTA_INTENT_MODEL',
+    callPath: 'unit_test',
+  });
+
+  assert.equal(resolved.adjusted, true);
+  assert.equal(resolved.configuredModel, 'gpt-5.1-mini');
+  assert.equal(resolved.effectiveModel, NON_IMAGE_GEMINI_FLOOR_MODEL);
+});
+
 test('image-generation Gemini models are excluded from the non-image floor logic', () => {
   resetGeminiModelFloorWarningsForTest();
   assert.equal(isGeminiImageGenerationModel('gemini-3.1-flash-image-preview'), true);

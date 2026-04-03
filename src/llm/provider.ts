@@ -58,8 +58,37 @@ function geminiApiKey(): string | undefined {
   return getEnv("GEMINI_API_KEY") || getEnv("PIVOTA_GEMINI_API_KEY") || getEnv("GOOGLE_API_KEY");
 }
 
+function isLikelyPlaceholderApiKey(value: unknown): boolean {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return true;
+  const lower = normalized.toLowerCase();
+  if (
+    [
+      "fake",
+      "placeholder",
+      "test",
+      "dummy",
+      "changeme",
+      "change-me",
+      "replace-me",
+      "replace_me",
+      "your-openai-api-key",
+      "your_openai_api_key",
+      "your-openai-key",
+      "your_openai_key",
+      "test-openai-key",
+      "fake-openai-key",
+      "fake-openai-api-key",
+    ].includes(lower)
+  ) {
+    return true;
+  }
+  return /(fake|placeholder|dummy|changeme|replace[-_]?me|test-openai)/i.test(normalized);
+}
+
 function openaiApiKey(): string | undefined {
-  return getEnv("OPENAI_API_KEY") || getEnv("LLM_API_KEY");
+  const candidate = getEnv("OPENAI_API_KEY") || getEnv("LLM_API_KEY");
+  return isLikelyPlaceholderApiKey(candidate) ? undefined : candidate;
 }
 
 function openaiBaseUrl(): string {
@@ -505,17 +534,11 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
     getEnv("PIVOTA_INTENT_LLM_PROVIDER");
 
   const inferredPrimary =
-    purpose === "layer2_lookspec"
-      ? Boolean(openaiApiKey())
-        ? "openai"
-        : geminiApiKey()
-          ? "gemini"
-          : "gemini"
+    geminiApiKey()
+      ? "gemini"
       : Boolean(openaiApiKey())
         ? "openai"
-        : geminiApiKey()
-          ? "gemini"
-          : "openai";
+        : "gemini";
 
   const primary = String(explicitPrimary || inferredPrimary).toLowerCase();
 

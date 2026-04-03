@@ -42,6 +42,109 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
 }
 
+function normalizeSemanticContractForExecutionPlan(contract) {
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) return null;
+  const requestClass = String(contract.request_class || contract.requestClass || '').trim().toLowerCase() || null;
+  const owner = String(contract.owner || '').trim().toLowerCase() || null;
+  const sourceSurface =
+    String(contract.source_surface || contract.sourceSurface || '').trim().toLowerCase() || null;
+  return {
+    owner,
+    request_class: requestClass,
+    source_surface: sourceSurface,
+  };
+}
+
+function shouldLockSingleIntentProvider(options = {}) {
+  const contract = normalizeSemanticContractForExecutionPlan(options?.semanticContract);
+  if (!contract) return false;
+  if (contract.request_class === 'exact_lookup') return false;
+  return contract.owner === 'aurora_reco_planner' && contract.source_surface === 'aurora_beauty_strict';
+}
+
+function resolveIntentOpenAiModel() {
+  return {
+    model: String(process.env.PIVOTA_INTENT_MODEL || 'gpt-5.1-mini').trim() || 'gpt-5.1-mini',
+    model_owner: process.env.PIVOTA_INTENT_MODEL ? 'PIVOTA_INTENT_MODEL' : 'default_openai_model',
+  };
+}
+
+function resolveIntentGeminiModel() {
+  const resolved = resolveNonImageGeminiModel({
+    model: process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL,
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: process.env.PIVOTA_INTENT_MODEL_GEMINI ? 'PIVOTA_INTENT_MODEL_GEMINI' : 'PIVOTA_INTENT_MODEL',
+    callPath: 'find_products_intent',
+  });
+  return {
+    model: resolved.effectiveModel,
+    model_owner: resolved.envSource || 'default_gemini_model',
+  };
+}
+
+function resolveIntentProviderModel(provider) {
+  if (provider === 'openai') return resolveIntentOpenAiModel();
+  if (provider === 'gemini') return resolveIntentGeminiModel();
+  return {
+    model: null,
+    model_owner: null,
+  };
+}
+
+function resolveIntentLlmExecutionPlan(options = {}) {
+  const runtime = resolveFindProductsLlmRuntime('semantic_rewrite');
+  const providerChainBase =
+    Array.isArray(runtime?.providerChain) && runtime.providerChain.length
+      ? runtime.providerChain.filter(Boolean)
+      : [];
+  const singleProviderLocked = shouldLockSingleIntentProvider(options);
+  const providerChain = singleProviderLocked ? providerChainBase.slice(0, 1) : providerChainBase;
+  const primaryProvider = providerChain[0] || runtime?.primaryProvider || null;
+  const fallbackProvider = providerChain[1] || null;
+  const primaryModelMeta = resolveIntentProviderModel(primaryProvider);
+  const fallbackModelMeta = resolveIntentProviderModel(fallbackProvider);
+
+  return {
+    ...runtime,
+    providerChain,
+    primaryProvider,
+    fallbackProvider,
+    primaryModel: primaryModelMeta.model,
+    primaryModelOwner: primaryModelMeta.model_owner,
+    fallbackModel: fallbackModelMeta.model,
+    fallbackModelOwner: fallbackModelMeta.model_owner,
+    singleProviderLocked,
+  };
+}
+
+function applyIntentExecutionMeta(meta = {}, plan = {}, provider = null) {
+  const normalizedProvider = String(provider || '').trim() || null;
+  const effectiveModel =
+    normalizedProvider === plan?.primaryProvider
+      ? plan?.primaryModel
+      : normalizedProvider === plan?.fallbackProvider
+        ? plan?.fallbackModel
+        : null;
+  const effectiveModelOwner =
+    normalizedProvider === plan?.primaryProvider
+      ? plan?.primaryModelOwner
+      : normalizedProvider === plan?.fallbackProvider
+        ? plan?.fallbackModelOwner
+        : null;
+  return {
+    ...meta,
+    enable_owner: String(meta?.enable_owner || plan?.enableOwner || '').trim() || null,
+    provider_owner: String(meta?.provider_owner || plan?.providerOwner || '').trim() || null,
+    fallback_owner: String(meta?.fallback_owner || plan?.fallbackOwner || '').trim() || null,
+    llm_provider_chain: Array.isArray(plan?.providerChain) ? plan.providerChain : [],
+    llm_primary_provider: String(plan?.primaryProvider || '').trim() || null,
+    llm_fallback_provider: String(plan?.fallbackProvider || '').trim() || null,
+    llm_model: String(meta?.llm_model || effectiveModel || '').trim() || null,
+    llm_model_owner: String(meta?.llm_model_owner || effectiveModelOwner || '').trim() || null,
+    single_provider_locked: Boolean(plan?.singleProviderLocked),
+  };
+}
+
 function buildDeterministicIntentWithMeta(
   latestUserQuery,
   recentQueries = [],
@@ -475,7 +578,7 @@ function applyHardOverrides(latestQuery, intent) {
 }
 
 async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
-  const model = process.env.PIVOTA_INTENT_MODEL || 'gpt-5.1-mini';
+  const model = String(options?.model || resolveIntentOpenAiModel().model || 'gpt-5.1-mini').trim() || 'gpt-5.1-mini';
   const openai = getOpenAIClient();
   const input = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages);
 
@@ -515,12 +618,8 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
     throw new Error('Gemini API key is not set');
   }
 
-  const model = resolveNonImageGeminiModel({
-    model: process.env.PIVOTA_INTENT_MODEL_GEMINI || process.env.PIVOTA_INTENT_MODEL,
-    fallbackModel: 'gemini-3-flash-preview',
-    envSource: process.env.PIVOTA_INTENT_MODEL_GEMINI ? 'PIVOTA_INTENT_MODEL_GEMINI' : 'PIVOTA_INTENT_MODEL',
-    callPath: 'find_products_intent',
-  }).effectiveModel;
+  const model = String(options?.model || resolveIntentGeminiModel().model || 'gemini-3-flash-preview').trim() ||
+    'gemini-3-flash-preview';
   const baseURL =
     (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
 
@@ -569,29 +668,35 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
 }
 
 async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
-  const runtime = resolveFindProductsLlmRuntime('semantic_rewrite');
-  if (!runtime.enabled) {
+  const plan = resolveIntentLlmExecutionPlan(options);
+  if (!plan.enabled) {
     const fallback = buildDeterministicIntentWithMeta(
       latest_user_query,
       recent_queries,
       recent_messages,
-      runtime.disabledReason === 'master_disabled'
+      plan.disabledReason === 'master_disabled'
         ? 'llm_master_disabled'
         : 'llm_unconfigured',
     );
-    fallback.meta.enable_owner = runtime.enableOwner || null;
+    fallback.meta = applyIntentExecutionMeta(fallback.meta, plan, null);
     return fallback;
   }
   try {
-    const primary = runtime.primaryProvider;
-    const fallback = runtime.fallbackProvider;
+    const primary = plan.primaryProvider;
+    const fallback = plan.fallbackProvider;
 
     const run = async (provider) => {
       if (provider === 'openai') {
-        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, options);
+        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, {
+          ...options,
+          model: plan.primaryProvider === 'openai' ? plan.primaryModel : plan.fallbackModel,
+        });
       }
       if (provider === 'gemini') {
-        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, options);
+        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, {
+          ...options,
+          model: plan.primaryProvider === 'gemini' ? plan.primaryModel : plan.fallbackModel,
+        });
       }
       throw new Error(`Unsupported intent provider: ${provider}`);
     };
@@ -600,30 +705,24 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
       const intent = await run(primary);
       return {
         intent: applyHardOverrides(latest_user_query, intent),
-        meta: {
+        meta: applyIntentExecutionMeta({
           applied: true,
           mode: 'llm',
           provider: primary,
           fallback_reason: null,
-          enable_owner: runtime.enableOwner || null,
-          provider_owner: runtime.providerOwner || null,
-          fallback_owner: runtime.fallbackOwner || null,
-        },
+        }, plan, primary),
       };
     } catch (primaryErr) {
       if (!fallback || fallback === primary) throw primaryErr;
       const intent = await run(fallback);
       return {
         intent: applyHardOverrides(latest_user_query, intent),
-        meta: {
+        meta: applyIntentExecutionMeta({
           applied: true,
           mode: 'llm',
           provider: fallback,
           fallback_reason: `primary_${primary}_failed`,
-          enable_owner: runtime.enableOwner || null,
-          provider_owner: runtime.providerOwner || null,
-          fallback_owner: runtime.fallbackOwner || null,
-        },
+        }, plan, fallback),
       };
     }
   } catch (err) {
@@ -634,9 +733,7 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
       recent_messages,
       'llm_failed',
     );
-    fallback.meta.enable_owner = runtime.enableOwner || null;
-    fallback.meta.provider_owner = runtime.providerOwner || null;
-    fallback.meta.fallback_owner = runtime.fallbackOwner || null;
+    fallback.meta = applyIntentExecutionMeta(fallback.meta, plan, null);
     return fallback;
   }
 }
@@ -651,6 +748,10 @@ module.exports = {
     applyHardOverrides,
     hasBeautyBrandOrProductSignal,
     isEnabled,
+    resolveIntentGeminiModel,
+    resolveIntentLlmExecutionPlan,
+    resolveIntentOpenAiModel,
+    resolveIntentProviderModel,
     resolveFindProductsGeminiApiKey,
     resolveFindProductsLlmRuntime,
     resolveFindProductsOpenAiApiKey,

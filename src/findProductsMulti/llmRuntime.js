@@ -23,8 +23,37 @@ function uniqueProviders(values) {
   return out;
 }
 
+function isLikelyPlaceholderApiKey(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return true;
+  const lower = normalized.toLowerCase();
+  if (
+    [
+      'fake',
+      'placeholder',
+      'test',
+      'dummy',
+      'changeme',
+      'change-me',
+      'replace-me',
+      'replace_me',
+      'your-openai-api-key',
+      'your_openai_api_key',
+      'your-openai-key',
+      'your_openai_key',
+      'test-openai-key',
+      'fake-openai-key',
+      'fake-openai-api-key',
+    ].includes(lower)
+  ) {
+    return true;
+  }
+  return /(fake|placeholder|dummy|changeme|replace[-_]?me|test-openai)/i.test(normalized);
+}
+
 function resolveFindProductsOpenAiApiKey() {
-  return getEnv('OPENAI_API_KEY') || getEnv('LLM_API_KEY');
+  const candidate = getEnv('OPENAI_API_KEY') || getEnv('LLM_API_KEY');
+  return isLikelyPlaceholderApiKey(candidate) ? '' : candidate;
 }
 
 function resolveFindProductsGeminiApiKey() {
@@ -51,6 +80,12 @@ function resolveFeatureEnvNames(feature = 'semantic_rewrite') {
   };
 }
 
+function resolveFeatureDefaultPrimary(feature = 'semantic_rewrite', availability = {}) {
+  const openaiAvailable = Boolean(availability?.openaiAvailable);
+  const geminiAvailable = Boolean(availability?.geminiAvailable);
+  return geminiAvailable ? 'gemini' : openaiAvailable ? 'openai' : '';
+}
+
 function parseExplicitBoolean(rawValue) {
   const normalized = String(rawValue || '').trim().toLowerCase();
   if (!normalized) return null;
@@ -64,6 +99,7 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
     featurePrimaryEnv,
     featureFallbackEnv,
   } = resolveFeatureEnvNames(feature);
+  const normalizedFeature = String(feature || '').trim().toLowerCase();
   const masterEnabled = parseExplicitBoolean(getEnv('FIND_PRODUCTS_MULTI_LLM_ENABLED'));
   const openaiAvailable = Boolean(resolveFindProductsOpenAiApiKey());
   const geminiAvailable = Boolean(resolveFindProductsGeminiApiKey());
@@ -105,7 +141,10 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
   const featurePrimary = normalizeProviderName(getEnv(featurePrimaryEnv));
   const masterFallback = normalizeProviderName(getEnv('FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER'));
   const featureFallback = normalizeProviderName(getEnv(featureFallbackEnv));
-  const inferredPrimary = openaiAvailable ? 'openai' : 'gemini';
+  const inferredPrimary = resolveFeatureDefaultPrimary(normalizedFeature, {
+    openaiAvailable,
+    geminiAvailable,
+  });
   const primaryProvider = uniqueProviders([
     masterPrimary,
     featurePrimary,
@@ -142,7 +181,9 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
 
 module.exports = {
   getEnv,
+  isLikelyPlaceholderApiKey,
   normalizeProviderName,
+  resolveFeatureDefaultPrimary,
   resolveFindProductsGeminiApiKey,
   resolveFindProductsLlmRuntime,
   resolveFindProductsOpenAiApiKey,

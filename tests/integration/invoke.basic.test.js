@@ -228,6 +228,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           semantic_rewrite: expect.objectContaining({
             owner_locked: true,
             owner: 'shopping_agent_semantic_rewrite',
+            single_provider_locked: true,
           }),
           final_decision: expect.objectContaining({
             owner: 'shopping_agent_semantic_rewrite',
