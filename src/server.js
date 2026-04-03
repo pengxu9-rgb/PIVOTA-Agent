@@ -5463,6 +5463,26 @@ function buildClarificationReplyText(clarification) {
   return `${question}\n${options.map((item, idx) => `${idx + 1}) ${item}`).join('\n')}`;
 }
 
+function shouldSkipFindProductsMultiRerank(response) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return false;
+  const metadata =
+    response.metadata && typeof response.metadata === 'object' && !Array.isArray(response.metadata)
+      ? response.metadata
+      : {};
+  if (metadata.shopping_exact_title_external_seed_applied === true) return true;
+  if (String(metadata.query_source || '').trim() === 'agent_products_search_exact_title_supplemented') {
+    return true;
+  }
+  if (metadata.external_seed_exact_title_recall_hit === true) return true;
+  const searchStageExactTitle =
+    metadata.search_stage_exact_title &&
+    typeof metadata.search_stage_exact_title === 'object' &&
+    !Array.isArray(metadata.search_stage_exact_title)
+      ? metadata.search_stage_exact_title
+      : null;
+  return searchStageExactTitle?.applied === true;
+}
+
 function firstQueryParamValue(value) {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -24457,29 +24477,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       try {
         const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
-        const reranked = await maybeRerankFindProductsMultiResponse({
-          response: maybePolicy,
-          userQuery: rawUserQuery,
-          limit,
-        });
-        if (reranked?.applied) {
-          maybePolicy = reranked.response;
-          if (ROUTE_DEBUG_ENABLED) {
-            maybePolicy = {
-              ...maybePolicy,
-              metadata: {
-                ...(maybePolicy.metadata && typeof maybePolicy.metadata === 'object' ? maybePolicy.metadata : {}),
-                route_debug: {
-                  ...((maybePolicy.metadata && maybePolicy.metadata.route_debug) || {}),
-                  llm_rerank: {
-                    applied: true,
-                    provider: reranked.provider || null,
-                    items_count: reranked.items_count || null,
-                    duration_ms: reranked.duration_ms || null,
+        if (!shouldSkipFindProductsMultiRerank(maybePolicy)) {
+          const reranked = await maybeRerankFindProductsMultiResponse({
+            response: maybePolicy,
+            userQuery: rawUserQuery,
+            limit,
+          });
+          if (reranked?.applied) {
+            maybePolicy = reranked.response;
+            if (ROUTE_DEBUG_ENABLED) {
+              maybePolicy = {
+                ...maybePolicy,
+                metadata: {
+                  ...(maybePolicy.metadata && typeof maybePolicy.metadata === 'object' ? maybePolicy.metadata : {}),
+                  route_debug: {
+                    ...((maybePolicy.metadata && maybePolicy.metadata.route_debug) || {}),
+                    llm_rerank: {
+                      applied: true,
+                      provider: reranked.provider || null,
+                      items_count: reranked.items_count || null,
+                      duration_ms: reranked.duration_ms || null,
+                    },
                   },
                 },
-              },
-            };
+              };
+            }
           }
         }
       } catch (err) {

@@ -242,6 +242,20 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
   test('rescues shopping exact-title lookups with direct external-seed exact matches on the mainline', async () => {
     process.env.DATABASE_URL = 'postgres://shopping-exact-title-rescue';
 
+    const rerankSpy = jest.fn(async ({ response }) => ({
+      applied: true,
+      response: {
+        ...response,
+        products: [...(Array.isArray(response?.products) ? response.products : [])].reverse(),
+      },
+      provider: 'test',
+      items_count: Array.isArray(response?.products) ? response.products.length : 0,
+      duration_ms: 1,
+    }));
+    jest.doMock('../../src/findProductsMulti/rerankLlm', () => ({
+      maybeRerankFindProductsMultiResponse: rerankSpy,
+    }));
+
     jest.doMock('../../src/db', () => ({
       query: jest.fn(async (sql) => {
         const text = String(sql || '');
@@ -358,6 +372,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(rerankSpy).not.toHaveBeenCalled();
     expect(resp.body.products[0]).toEqual(
       expect.objectContaining({
         product_id: 'ext_multicalm_exact',
