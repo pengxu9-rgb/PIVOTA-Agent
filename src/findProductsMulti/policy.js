@@ -81,6 +81,57 @@ const SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY = Math.max(
   0,
   Math.min(1, Number(process.env.SEARCH_CLARIFY_MAX_DOMAIN_ENTROPY || 0.5)),
 );
+
+const BEAUTY_EXACT_TITLE_FORM_FACTOR_TOKENS = new Set([
+  'serum',
+  'essence',
+  'ampoule',
+  'toner',
+  'lotion',
+  'cleanser',
+  'cleanse',
+  'wash',
+  'cream',
+  'moisturizer',
+  'moisturiser',
+  'mask',
+  'balm',
+  'oil',
+  'sunscreen',
+  'sunblock',
+  'gel',
+  'mist',
+  'treatment',
+]);
+
+const BEAUTY_EXACT_TITLE_GENERIC_TOKENS = new Set([
+  'face',
+  'facial',
+  'skin',
+  'skincare',
+  'care',
+  'body',
+  'eye',
+  'hand',
+  'travel',
+  'size',
+  'jumbo',
+  'mini',
+  'daily',
+  'gentle',
+  'repair',
+  'hydrating',
+  'hydration',
+  'barrier',
+  'foam',
+  'foaming',
+  'with',
+  'and',
+  'plus',
+  'default',
+  'title',
+  ...BEAUTY_EXACT_TITLE_FORM_FACTOR_TOKENS,
+]);
 const SEARCH_SCENARIO_ANCHOR_MODE = ['raw', 'derived', 'off'].includes(
   String(process.env.SEARCH_SCENARIO_ANCHOR_MODE || 'raw').toLowerCase(),
 )
@@ -1433,6 +1484,42 @@ function buildSemanticOwnerSearchQuery({
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   const normalizedResolverQuery = normalizeResolverLookupText(rawQuery);
   const resolverQueryTokens = tokenizeResolverLookupQuery(normalizedResolverQuery);
+  const looksLikeBeautyExactTitleLookupQuery = (() => {
+    if (String(intent?.primary_domain || '').toLowerCase() !== 'beauty') return false;
+    const raw = String(rawQuery || '').trim();
+    if (!raw || raw.length > 96) return false;
+    if (/[?？]/.test(raw)) return false;
+    const lower = raw.toLowerCase();
+    if (
+      /推荐|best|for\s|适合|怎么|如何|教程|guide|tips|budget|under\s|above\s|at least|gift|礼物|清单|what to buy|need to buy|checklist/i.test(
+        lower,
+      )
+    ) {
+      return false;
+    }
+    if (resolverQueryTokens.length < 3 || resolverQueryTokens.length > 8) return false;
+    const hasFormFactor = resolverQueryTokens.some((token) =>
+      BEAUTY_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').toLowerCase()),
+    );
+    if (!hasFormFactor) return false;
+    const informativeTokens = resolverQueryTokens.filter((token) => {
+      const normalized = String(token || '').trim().toLowerCase();
+      return (
+        normalized &&
+        !BEAUTY_EXACT_TITLE_GENERIC_TOKENS.has(normalized) &&
+        normalized.length >= 3
+      );
+    });
+    if (!informativeTokens.length) return false;
+    const hasStrongTitleSignal =
+      /[-/+]/.test(raw) ||
+      /\d/.test(raw) ||
+      ((raw.match(/\b[A-Z][A-Za-z0-9'’+-]*\b/g) || []).length >= 2);
+    if (hasStrongTitleSignal) {
+      return informativeTokens.length >= 1;
+    }
+    return informativeTokens.length >= 2;
+  })();
   const stableAliasLookupMatch =
     resolveKnownStableLookupAlias && normalizedResolverQuery && resolverQueryTokens.length >= 3
       ? resolveKnownStableLookupAlias({
@@ -1447,6 +1534,12 @@ function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
     String(stableAliasLookupMatch.product_ref.product_id || '').trim() &&
     String(stableAliasLookupMatch.product_ref.merchant_id || '').trim();
   const explicit = normalizeQueryClass(intent?.query_class, { defaultValue: null });
+  if (
+    looksLikeBeautyExactTitleLookupQuery &&
+    (!explicit || explicit === 'exploratory' || explicit === 'category')
+  ) {
+    return 'lookup';
+  }
   if (stableAliasLookupClassified && (!explicit || explicit === 'exploratory' || explicit === 'category')) {
     return 'lookup';
   }

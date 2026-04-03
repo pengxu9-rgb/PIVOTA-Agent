@@ -151,6 +151,94 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     );
   });
 
+  test('keeps title-like beauty exact product queries on raw lookup text', async () => {
+    let capturedBody = null;
+    let capturedPath = null;
+
+    const invokeUpstream = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        capturedPath = 'invoke';
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'ext_multicalm',
+              merchant_id: 'external_seed',
+              title: 'Multi-Calm Cream Cleanser',
+              source: 'external_seed',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        };
+      });
+
+    const directUpstream = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        capturedPath = 'search';
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'ext_multicalm',
+              merchant_id: 'external_seed',
+              title: 'Multi-Calm Cream Cleanser',
+              source: 'external_seed',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Multi-Calm Cream Cleanser',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(capturedPath).toBeTruthy();
+    const forwardedQuery =
+      capturedPath === 'search'
+        ? String(capturedBody?.query || '')
+        : String(capturedBody?.payload?.search?.query || '');
+    expect(forwardedQuery).toBe('Multi-Calm Cream Cleanser');
+    expect(invokeUpstream.isDone() || directUpstream.isDone()).toBe(true);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+      }),
+    );
+  });
+
   test('returns strict empty instead of adopting cache or resolver fallback on upstream failure', async () => {
     const upstreamSearch = nock('http://pivota.test')
       .post('/agent/v2/products/search')
