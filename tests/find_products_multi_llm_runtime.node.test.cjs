@@ -90,6 +90,38 @@ test('find_products_multi llm runtime auto-enables from provider availability wh
   );
 });
 
+test('legacy feature-specific llm disable flags no longer override the unified shopping llm owner', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      PIVOTA_INTENT_LLM_ENABLED: 'false',
+      FIND_PRODUCTS_MULTI_RERANK_LLM_ENABLED: 'false',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+      AURORA_RECO_GEMINI_API_KEY: undefined,
+      PIVOTA_GEMINI_API_KEY: 'pivota-gemini-key',
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+    },
+    async () => {
+      const { resolveFindProductsLlmRuntime } = loadRuntimeFresh();
+      const semanticRuntime = resolveFindProductsLlmRuntime('semantic_rewrite');
+      const rerankRuntime = resolveFindProductsLlmRuntime('rerank');
+
+      assert.equal(semanticRuntime.enabled, true);
+      assert.equal(semanticRuntime.enableOwner, 'provider_auto_enable');
+      assert.equal(semanticRuntime.legacyFeatureGateIgnored, 'PIVOTA_INTENT_LLM_ENABLED');
+      assert.equal(semanticRuntime.legacyFeatureGateValue, false);
+
+      assert.equal(rerankRuntime.enabled, true);
+      assert.equal(rerankRuntime.enableOwner, 'provider_auto_enable');
+      assert.equal(rerankRuntime.legacyFeatureGateIgnored, 'FIND_PRODUCTS_MULTI_RERANK_LLM_ENABLED');
+      assert.equal(rerankRuntime.legacyFeatureGateValue, false);
+    },
+  );
+});
+
 test('intent llm uses gemini fallback key aliases and enters llm mode without explicit feature flag', async () => {
   await withEnv(
     {
@@ -131,6 +163,56 @@ test('intent llm uses gemini fallback key aliases and enters llm mode without ex
         assert.equal(result.meta.mode, 'llm');
         assert.equal(result.meta.provider, 'gemini');
         assert.equal(result.intent.primary_domain, 'beauty');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
+test('intent llm still enters llm mode when legacy intent gate is false but provider keys are present', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      PIVOTA_INTENT_LLM_ENABLED: 'false',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+      AURORA_RECO_GEMINI_API_KEY: undefined,
+      PIVOTA_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: 'skin-gemini-key',
+      GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+      PIVOTA_INTENT_LLM_PROVIDER: 'gemini',
+      PIVOTA_INTENT_LLM_FALLBACK_PROVIDER: undefined,
+    },
+    async () => {
+      const axios = require('axios');
+      const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
+      const originalPost = axios.post;
+      axios.post = async () => ({
+        data: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify(extractIntentRuleBased('best sunscreen for oily skin', [], [])),
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      try {
+        const { extractIntentWithMeta } = loadIntentFresh();
+        const result = await extractIntentWithMeta('best sunscreen for oily skin', [], []);
+        assert.equal(result.meta.mode, 'llm');
+        assert.equal(result.meta.provider, 'gemini');
+        assert.equal(result.meta.enable_owner, 'provider_auto_enable');
+        assert.equal(result.meta.legacy_feature_gate_ignored, 'PIVOTA_INTENT_LLM_ENABLED');
+        assert.equal(result.meta.legacy_feature_gate_value, false);
       } finally {
         axios.post = originalPost;
       }

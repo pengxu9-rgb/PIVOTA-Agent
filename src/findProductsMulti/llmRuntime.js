@@ -68,7 +68,7 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
     featureFallbackEnv,
   } = resolveFeatureEnvNames(feature);
   const masterEnabled = parseExplicitBoolean(getEnv('FIND_PRODUCTS_MULTI_LLM_ENABLED'));
-  const featureEnabled = parseExplicitBoolean(getEnv(featureEnabledEnv));
+  const legacyFeatureEnabled = parseExplicitBoolean(getEnv(featureEnabledEnv));
   const openaiAvailable = Boolean(resolveFindProductsOpenAiApiKey());
   const geminiAvailable = Boolean(resolveFindProductsGeminiApiKey());
   const availableProviders = ['openai', 'gemini'].filter((provider) =>
@@ -87,21 +87,8 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
       providerChain: [],
       providerOwner: null,
       fallbackOwner: null,
-    };
-  }
-
-  if (featureEnabled === false) {
-    return {
-      feature,
-      enabled: false,
-      disabledReason: 'feature_disabled',
-      enableOwner: featureEnabledEnv,
-      availableProviders,
-      primaryProvider: null,
-      fallbackProvider: null,
-      providerChain: [],
-      providerOwner: null,
-      fallbackOwner: null,
+      legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
+      legacyFeatureGateValue: legacyFeatureEnabled,
     };
   }
 
@@ -110,13 +97,15 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
       feature,
       enabled: false,
       disabledReason: 'no_provider_configured',
-      enableOwner: masterEnabled != null ? 'FIND_PRODUCTS_MULTI_LLM_ENABLED' : featureEnabledEnv,
+      enableOwner: masterEnabled != null ? 'FIND_PRODUCTS_MULTI_LLM_ENABLED' : 'provider_auto_enable',
       availableProviders,
       primaryProvider: null,
       fallbackProvider: null,
       providerChain: [],
       providerOwner: null,
       fallbackOwner: null,
+      legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
+      legacyFeatureGateValue: legacyFeatureEnabled,
     };
   }
 
@@ -143,12 +132,7 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
     feature,
     enabled: true,
     disabledReason: null,
-    enableOwner:
-      masterEnabled != null
-        ? 'FIND_PRODUCTS_MULTI_LLM_ENABLED'
-        : featureEnabled != null
-          ? featureEnabledEnv
-          : 'provider_auto_enable',
+    enableOwner: masterEnabled != null ? 'FIND_PRODUCTS_MULTI_LLM_ENABLED' : 'provider_auto_enable',
     availableProviders,
     primaryProvider,
     fallbackProvider,
@@ -161,6 +145,8 @@ function resolveFindProductsLlmRuntime(feature = 'semantic_rewrite') {
         : fallbackProvider
           ? 'provider_auto_select'
           : null,
+    legacyFeatureGateIgnored: legacyFeatureEnabled != null ? featureEnabledEnv : null,
+    legacyFeatureGateValue: legacyFeatureEnabled,
   };
 }
 
