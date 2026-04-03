@@ -1169,7 +1169,7 @@ const RECO_CATALOG_SEARCH_SELF_PROXY_ENABLED = (() => {
   return process.env.NODE_ENV !== 'test';
 })();
 const RECO_CATALOG_SEARCH_AURORA_SELF_PROXY_FIRST = (() => {
-  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || 'false')
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_AURORA_SELF_PROXY_FIRST || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
