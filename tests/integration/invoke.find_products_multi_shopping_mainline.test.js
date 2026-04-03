@@ -239,6 +239,141 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     );
   });
 
+  test('rescues shopping exact-title lookups with direct external-seed exact matches on the mainline', async () => {
+    process.env.DATABASE_URL = 'postgres://shopping-exact-title-rescue';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        if (text.includes('external_seed_exact_title_recall')) {
+          return {
+            rows: [
+              {
+                id: 'seed_multicalm_exact',
+                external_product_id: 'ext_multicalm_exact',
+                destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                domain: 'seed.example.com',
+                title: 'Multi-Calm Cream Cleanser',
+                image_url: 'https://cdn.example.com/multi-calm.jpg',
+                price_amount: '29',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Seed Beauty',
+                  snapshot: {
+                    title: 'Multi-Calm Cream Cleanser',
+                    brand: 'Seed Beauty',
+                    destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                    canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                  },
+                },
+                updated_at: '2025-01-01T00:00:00.000Z',
+                created_at: '2025-01-01T00:00:00.000Z',
+              },
+            ],
+          };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_generic_cleanser_1',
+              external_product_id: 'ext_generic_cleanser_1',
+              destination_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
+              canonical_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
+              domain: 'seed.example.com',
+              title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+              image_url: 'https://cdn.example.com/ultra-gentle.jpg',
+              price_amount: '42',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                snapshot: {
+                  title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+                  destination_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
+                  canonical_url: 'https://seed.example.com/products/ultra-gentle-cleanser',
+                },
+              },
+              updated_at: '2026-01-01T00:00:00.000Z',
+              created_at: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        };
+      }),
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'ext_wrong_1',
+            merchant_id: 'external_seed',
+            title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+            source: 'external_seed',
+          },
+          {
+            product_id: 'ext_wrong_2',
+            merchant_id: 'external_seed',
+            title: 'Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size',
+            source: 'external_seed',
+          },
+        ],
+        total: 2,
+        metadata: {
+          query_source: 'agent_products_search',
+          route_health: {
+            primary_path_used: 'upstream_stage',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Multi-Calm Cream Cleanser',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_multicalm_exact',
+        merchant_id: 'external_seed',
+        title: 'Multi-Calm Cream Cleanser',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search_exact_title_supplemented',
+        shopping_exact_title_external_seed_applied: true,
+        shopping_exact_title_external_seed_match_count: 1,
+      }),
+    );
+  });
+
   test('returns strict empty instead of adopting cache or resolver fallback on upstream failure', async () => {
     const upstreamSearch = nock('http://pivota.test')
       .post('/agent/v2/products/search')

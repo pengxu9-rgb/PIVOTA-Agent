@@ -2901,6 +2901,101 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
+  test('external_seed_only exact-title search prioritizes exact rows ahead of newer generic matches', async () => {
+    process.env.DATABASE_URL = 'postgres://seed-direct-exact-title';
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        if (text.includes('external_seed_exact_title_recall')) {
+          return {
+            rows: [
+              {
+                id: 'seed_multicalm_exact',
+                external_product_id: 'ext_multicalm_exact',
+                destination_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                canonical_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                domain: 'shop.example.com',
+                title: 'Multi-Calm Cream Cleanser',
+                image_url: 'https://cdn.example.com/multi-calm-cleanser.jpg',
+                price_amount: '31',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Seed Beauty',
+                  snapshot: {
+                    title: 'Multi-Calm Cream Cleanser',
+                    brand: 'Seed Beauty',
+                    destination_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                    canonical_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                  },
+                },
+                updated_at: '2025-01-01T00:00:00.000Z',
+                created_at: '2025-01-01T00:00:00.000Z',
+              },
+            ],
+          };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_generic_cleanser_1',
+              external_product_id: 'ext_generic_cleanser_1',
+              destination_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+              canonical_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+              domain: 'shop.example.com',
+              title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+              image_url: 'https://cdn.example.com/ultra-gentle-cleanser.jpg',
+              price_amount: '42',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                snapshot: {
+                  title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+                  destination_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+                  canonical_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+                },
+              },
+              updated_at: '2026-01-01T00:00:00.000Z',
+              created_at: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        };
+      }),
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+        query: 'Multi-Calm Cream Cleanser',
+        limit: '8',
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_multicalm_exact',
+        merchant_id: 'external_seed',
+        title: 'Multi-Calm Cream Cleanser',
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_external_seed_direct',
+        external_seed_exact_title_recall_attempted: true,
+        external_seed_exact_title_recall_hit: true,
+      }),
+    );
+  });
+
   test('ingredient-intent search uses direct KB and attached-seed recall before invoke fallback', async () => {
     process.env.DATABASE_URL = 'postgres://ingredient-recall-direct-test';
     jest.doMock('../../src/services/ingredientProductRecall', () => ({
