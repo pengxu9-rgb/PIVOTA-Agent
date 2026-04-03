@@ -188,6 +188,50 @@ test('intent llm uses gemini fallback key aliases and enters llm mode without ex
   );
 });
 
+test('gemini semantic rewrite preserves multipart JSON without injecting invalid separators', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
+      GEMINI_API_KEY: 'test-gemini-key',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+    },
+    async () => {
+      const axios = require('axios');
+      const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
+      const originalPost = axios.post;
+      const raw = JSON.stringify(extractIntentRuleBased('best sunscreen for oily skin', [], []));
+      const splitAt = raw.indexOf('beauty') + 3;
+      axios.post = async () => ({
+        data: {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { text: raw.slice(0, splitAt) },
+                  { text: raw.slice(splitAt) },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      try {
+        const { extractIntentWithMeta } = loadIntentFresh();
+        const result = await extractIntentWithMeta('best sunscreen for oily skin', [], []);
+        assert.equal(result.meta.mode, 'llm');
+        assert.equal(result.meta.provider, 'gemini');
+        assert.equal(result.intent.primary_domain, 'beauty');
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('aurora strict semantic contract locks intent llm to a single provider and surfaces model metadata', async () => {
   await withEnv(
     {

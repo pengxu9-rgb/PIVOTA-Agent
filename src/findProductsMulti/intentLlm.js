@@ -12,6 +12,7 @@ const {
   resolveFindProductsOpenAiApiKey,
 } = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
+const { extractJsonObject, parseJsonOnlyObject } = require('../auroraBff/jsonExtract');
 
 const INTENT_LLM_MAX_RECENT_QUERIES = Math.max(
   1,
@@ -242,6 +243,22 @@ function normalizeIntentLlmError(error = null) {
     llm_upstream_error_code: upstreamErrorCode,
     llm_upstream_error_message: upstreamErrorMessage || errorMessage,
   };
+}
+
+function parseIntentJsonObject(rawText, sourceLabel = 'Intent LLM') {
+  const text = String(rawText || '').trim();
+  if (!text) {
+    throw new Error(`${sourceLabel} returned empty JSON response`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    const recovered = parseJsonOnlyObject(text) || extractJsonObject(text);
+    if (recovered && typeof recovered === 'object' && !Array.isArray(recovered)) {
+      return recovered;
+    }
+    throw new Error(`${sourceLabel} did not return valid JSON: ${String(err)}`);
+  }
 }
 
 function applyIntentExecutionMeta(meta = {}, plan = {}, provider = null) {
@@ -787,13 +804,7 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
   );
 
   const content = completion?.choices?.[0]?.message?.content || '';
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch (err) {
-    throw new Error(`Intent LLM did not return valid JSON: ${String(err)}`);
-  }
-
+  const parsed = parseIntentJsonObject(content, 'Intent LLM');
   return PivotaIntentV1Zod.parse(parsed);
 }
 
@@ -838,15 +849,8 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
     ...(options?.signal ? { signal: options.signal } : {}),
   });
   const text =
-    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`Gemini intent did not return valid JSON: ${String(err)}`);
-  }
-
+    res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
+  const parsed = parseIntentJsonObject(text, 'Gemini intent');
   return PivotaIntentV1Zod.parse(parsed);
 }
 
@@ -949,6 +953,7 @@ module.exports = {
     hasBeautyBrandOrProductSignal,
     isEnabled,
     normalizeIntentLlmError,
+    parseIntentJsonObject,
     resolveIntentGeminiModel,
     resolveIntentLlmExecutionPlan,
     resolveIntentOpenAiModel,
