@@ -232,6 +232,71 @@ test('gemini semantic rewrite preserves multipart JSON without injecting invalid
   );
 });
 
+test('strict semantic rewrite returns compact query pack from gemini JSON', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
+      GEMINI_API_KEY: 'test-gemini-key',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+    },
+    async () => {
+      const axios = require('axios');
+      const originalPost = axios.post;
+      axios.post = async () => ({
+        data: {
+          candidates: [
+            {
+              finishReason: 'STOP',
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      normalized_query_pack: [
+                        'oil control sunscreen',
+                        'daily sunscreen for oily skin',
+                      ],
+                      needs_broadening: false,
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+
+      try {
+        const { extractStrictSemanticRewriteWithMeta } = loadIntentFresh();
+        const result = await extractStrictSemanticRewriteWithMeta('best sunscreen for oily skin', [], [], {
+          semanticContract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'step_aware',
+            request_class: 'sunscreen',
+            target_step_family: 'sunscreen',
+            primary_role_id: 'daily_sunscreen',
+            source_surface: 'aurora_beauty_strict',
+          },
+        });
+
+        assert.equal(result.meta.mode, 'llm');
+        assert.equal(result.meta.provider, 'gemini');
+        assert.deepEqual(result.rewrite.normalized_query_pack, [
+          'oil control sunscreen',
+          'daily sunscreen for oily skin',
+        ]);
+        assert.equal(result.rewrite.needs_broadening, false);
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});
+
 test('aurora strict semantic contract locks intent llm to a single provider and surfaces model metadata', async () => {
   await withEnv(
     {
@@ -327,6 +392,37 @@ test('semantic rewrite input is compact and uses semantic contract summary inste
     assert.equal(parsed.output_contract.shape.ambiguity.clarifying_questions, 'string_array_optional');
     assert.equal(parsed.semantic_contract.request_class, 'sunscreen');
     assert.equal(parsed.semantic_contract.source_surface, 'aurora_beauty_strict');
+  });
+});
+
+test('strict semantic rewrite input uses tiny query-pack contract', async () => {
+  await withEnv({}, async () => {
+    const { _debug } = loadIntentFresh();
+    const raw = _debug.buildStrictSemanticRewriteInput(
+      'best sunscreen for oily skin',
+      ['need sunscreen'],
+      [{ role: 'user', content: 'best sunscreen for oily skin' }],
+      {
+        semanticContract: {
+          version: 'beauty_semantic_contract_v1',
+          owner: 'aurora_reco_planner',
+          planner_mode: 'step_aware',
+          request_class: 'sunscreen',
+          target_step_family: 'sunscreen',
+          primary_role_id: 'daily_sunscreen',
+          support_role_ids: ['daily_sunscreen'],
+          semantic_family: 'sunscreen',
+          allowed_step_families: ['sunscreen'],
+          ingredient_hypotheses: [],
+          source_surface: 'aurora_beauty_strict',
+        },
+      },
+    );
+    const parsed = JSON.parse(raw);
+    assert.deepEqual(parsed.output_contract.top_level_keys, ['normalized_query_pack', 'needs_broadening']);
+    assert.equal(parsed.output_contract.shape.normalized_query_pack, 'string_array_max_3_short_queries');
+    assert.equal(parsed.output_contract.shape.needs_broadening, 'boolean');
+    assert.equal(parsed.semantic_contract.target_step_family, 'sunscreen');
   });
 });
 

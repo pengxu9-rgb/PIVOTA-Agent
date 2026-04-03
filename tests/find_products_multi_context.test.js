@@ -352,6 +352,93 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('sun protection');
   });
 
+  test('strict semantic rewrite path bypasses full intent llm and uses compact query pack output', async () => {
+    jest.resetModules();
+    jest.doMock('../src/findProductsMulti/intentLlm', () => {
+      const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
+      return {
+        ...actual,
+        extractIntentWithMeta: jest.fn(() => {
+          throw new Error('full intent llm should not run for aurora strict semantic rewrite');
+        }),
+        extractStrictSemanticRewriteWithMeta: jest.fn(async () => ({
+          rewrite: {
+            normalized_query_pack: [
+              'oil control sunscreen',
+              'daily sunscreen for oily skin',
+            ],
+            needs_broadening: false,
+          },
+          meta: {
+            applied: true,
+            mode: 'llm',
+            provider: 'gemini',
+            llm_provider_chain: ['gemini'],
+            llm_primary_provider: 'gemini',
+            llm_model: 'gemini-3-flash-preview',
+            llm_model_owner: 'default_semantic_rewrite_gemini_model',
+            single_provider_locked: true,
+            fallback_reason: null,
+          },
+        })),
+        _debug: {
+          resolveIntentLlmExecutionPlan: jest.fn(() => ({
+            enableOwner: 'provider_auto_enable',
+            providerOwner: 'provider_auto_select',
+            fallbackOwner: null,
+            providerChain: ['gemini'],
+            primaryProvider: 'gemini',
+            fallbackProvider: null,
+            primaryModel: 'gemini-3-flash-preview',
+            primaryModelOwner: 'default_semantic_rewrite_gemini_model',
+            singleProviderLocked: true,
+          })),
+        },
+      };
+    });
+
+    try {
+      // eslint-disable-next-line global-require
+      const { buildFindProductsMultiContext: buildStrictSemanticContext } = require('../src/findProductsMulti/policy');
+      const out = await buildStrictSemanticContext({
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: ['treatment', 'moisturizer'],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: 'best sunscreen for oily skin' }],
+        },
+        metadata: {},
+      });
+
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('oil control sunscreen');
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toContain('daily sunscreen for oily skin');
+      expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+        expect.objectContaining({
+          mode: 'llm',
+          normalized_query_pack: ['oil control sunscreen', 'daily sunscreen for oily skin'],
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/findProductsMulti/intentLlm');
+      jest.resetModules();
+    }
+  });
+
   test('exact lookup semantic contract skips semantic rewrite budget entirely', async () => {
     jest.resetModules();
     jest.doMock('../src/findProductsMulti/intentLlm', () => {
@@ -533,6 +620,30 @@ describe('find_products_multi context building', () => {
           ambiguity: { needs_clarification: false, questions: [] },
           confidence: { overall: 0.42 },
         },
+        meta: {
+          applied: true,
+          mode: 'deterministic_fallback',
+          provider: 'rule_based',
+          fallback_reason: 'llm_failed',
+          llm_provider_chain: ['gemini'],
+          llm_primary_provider: 'gemini',
+          llm_model: 'gemini-3-flash-preview',
+          llm_model_owner: 'default_semantic_rewrite_gemini_model',
+          llm_error_class: 'provider_error',
+          llm_error_stage: 'primary',
+          llm_error_provider: 'gemini',
+          llm_error_message: 'Request failed with status code 503',
+          llm_finish_reason: 'MAX_TOKENS',
+          llm_raw_preview: '{"lang',
+          llm_candidate_count: 1,
+          llm_upstream_status: 503,
+          llm_upstream_error_code: 'UNAVAILABLE',
+          llm_upstream_error_message: 'provider overloaded',
+          single_provider_locked: true,
+        },
+      })),
+      extractStrictSemanticRewriteWithMeta: jest.fn(async () => ({
+        rewrite: null,
         meta: {
           applied: true,
           mode: 'deterministic_fallback',
