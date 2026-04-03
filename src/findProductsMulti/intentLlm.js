@@ -19,6 +19,36 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...(baseURL ? { baseURL } : {}) });
 }
 
+function buildDeterministicIntentWithMeta(
+  latestUserQuery,
+  recentQueries = [],
+  recentMessages = [],
+  fallbackReason = 'deterministic_fallback',
+) {
+  const intent = extractIntentRuleBased(latestUserQuery, recentQueries, recentMessages);
+  try {
+    return {
+      intent: applyHardOverrides(latestUserQuery, intent),
+      meta: {
+        applied: true,
+        mode: 'deterministic_fallback',
+        provider: 'rule_based',
+        fallback_reason: String(fallbackReason || '').trim() || 'deterministic_fallback',
+      },
+    };
+  } catch (_err) {
+    return {
+      intent,
+      meta: {
+        applied: true,
+        mode: 'deterministic_fallback',
+        provider: 'rule_based',
+        fallback_reason: 'hard_override_failed',
+      },
+    };
+  }
+}
+
 function buildSystemPrompt() {
   return [
     'You are an intent extraction component for an e-commerce agent.',
@@ -482,13 +512,18 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
 }
 
 async function extractIntent(latest_user_query, recent_queries = [], recent_messages = []) {
+  const result = await extractIntentWithMeta(latest_user_query, recent_queries, recent_messages);
+  return result.intent;
+}
+
+async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = []) {
   if (!isEnabled()) {
-    const intent = extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
-    try {
-      return applyHardOverrides(latest_user_query, intent);
-    } catch (err) {
-      return intent;
-    }
+    return buildDeterministicIntentWithMeta(
+      latest_user_query,
+      recent_queries,
+      recent_messages,
+      'llm_disabled',
+    );
   }
   try {
     const primary = (process.env.PIVOTA_INTENT_LLM_PROVIDER || 'openai').toLowerCase();
@@ -506,23 +541,45 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
 
     try {
       const intent = await run(primary);
-      return applyHardOverrides(latest_user_query, intent);
+      return {
+        intent: applyHardOverrides(latest_user_query, intent),
+        meta: {
+          applied: true,
+          mode: 'llm',
+          provider: primary,
+          fallback_reason: null,
+        },
+      };
     } catch (primaryErr) {
       if (!fallback || fallback === primary) throw primaryErr;
       const intent = await run(fallback);
-      return applyHardOverrides(latest_user_query, intent);
+      return {
+        intent: applyHardOverrides(latest_user_query, intent),
+        meta: {
+          applied: true,
+          mode: 'llm',
+          provider: fallback,
+          fallback_reason: `primary_${primary}_failed`,
+        },
+      };
     }
   } catch (err) {
     // Fail-safe: never block search; fall back to deterministic extraction.
-    const intent = extractIntentRuleBased(latest_user_query, recent_queries, recent_messages);
-    return applyHardOverrides(latest_user_query, intent);
+    return buildDeterministicIntentWithMeta(
+      latest_user_query,
+      recent_queries,
+      recent_messages,
+      'llm_failed',
+    );
   }
 }
 
 module.exports = {
+  buildDeterministicIntentWithMeta,
   extractIntentWithOpenAI,
   extractIntentWithGemini,
   extractIntent,
+  extractIntentWithMeta,
   _debug: {
     applyHardOverrides,
     hasBeautyBrandOrProductSignal,

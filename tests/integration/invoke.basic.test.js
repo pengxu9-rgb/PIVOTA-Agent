@@ -99,6 +99,92 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.error).toBeUndefined();
   });
 
+  it('semantic-contract discovery keeps shopping-agent semantic owner and emits stage ledger metadata', async () => {
+    let capturedQuery = null;
+    let capturedBody = null;
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/v2/products/search', (body) => {
+        capturedBody = body;
+        return true;
+      })
+      .query((query) => {
+        capturedQuery = query;
+        return true;
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'spf_1',
+            product_id: 'spf_1',
+            title: 'Oil Control Daily Sunscreen SPF 50',
+            name: 'Oil Control Daily Sunscreen SPF 50',
+            display_name: 'Oil Control Daily Sunscreen SPF 50',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(String(capturedQuery?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
+    expect(String(capturedQuery?.query || '').toLowerCase()).not.toContain('broad spectrum');
+    expect(String(capturedBody?.query || '').toLowerCase()).toContain('best sunscreen for oily skin');
+    expect(String(capturedBody?.query || '').toLowerCase()).not.toContain('broad spectrum');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner: 'shopping_agent_semantic_rewrite',
+        decision_owner: 'shopping_agent_semantic_rewrite',
+        search_stage_ledger: expect.objectContaining({
+          semantic_rewrite: expect.objectContaining({
+            owner_locked: true,
+            owner: 'shopping_agent_semantic_rewrite',
+          }),
+          final_decision: expect.objectContaining({
+            owner: 'shopping_agent_semantic_rewrite',
+          }),
+        }),
+        effective_timeout_ms: expect.objectContaining({
+          gateway_total_budget_ms: 9000,
+        }),
+      }),
+    );
+  });
+
   it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',

@@ -82,6 +82,7 @@ const {
 const {
   RECO_RECALL_PLAN_VERSION,
   buildRecoRecallPlan,
+  buildRecoSearchSemanticContract,
 } = require('./recoRecallPlanner');
 const {
   getRecoRecallSelectedCount,
@@ -1066,6 +1067,11 @@ const RECO_CATALOG_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SEARCH_TIMEOUT_MS || 1800);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1800;
   return Math.max(400, Math.min(12000, v));
+})();
+const RECO_CATALOG_SEMANTIC_OWNER_TIMEOUT_FLOOR_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_STRICT_DISCOVERY_TIMEOUT_MS || 5500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5500;
+  return Math.max(1800, Math.min(12000, v));
 })();
 const PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_PHOTO_MODULES_ACTION_RECO_SEARCH_TIMEOUT_MS || 900);
@@ -3923,6 +3929,10 @@ async function searchPivotaBackendProducts({
   targetStepFamily = '',
   semanticFamily = '',
   productOnly = undefined,
+  semanticContract = null,
+  traceId = null,
+  queryIndex = null,
+  queryTotal = null,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -3992,6 +4002,16 @@ async function searchPivotaBackendProducts({
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
   if (productOnly !== undefined) params.product_only = productOnly === true;
+  if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
+  if (Number.isFinite(Number(queryTotal))) params.query_total = Math.max(1, Math.trunc(Number(queryTotal)));
+  if (traceId) params.trace_id = String(traceId).trim();
+  if (semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)) {
+    try {
+      params.semantic_contract = JSON.stringify(semanticContract);
+    } catch (_err) {
+      // Ignore malformed semantic contracts and keep the main path bounded.
+    }
+  }
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const selfProxyBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_CATALOG_SEARCH_SELF_PROXY_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
@@ -4259,6 +4279,9 @@ async function searchPivotaBackendProducts({
       attempted_endpoints: pathAttempts.map((item) => item.endpoint),
       attempted_paths: pathAttempts.map((item) => item.path).filter(Boolean),
       attempted_base_urls: normalizedBase ? [normalizedBase] : [],
+      attempted_request_timeouts_ms: pathAttempts
+        .map((item) => (Number.isFinite(Number(item.request_timeout_ms)) ? Math.trunc(Number(item.request_timeout_ms)) : null))
+        .filter((value) => value != null),
       actual_http_attempt_count: pathAttempts.length,
       transport_policy_mode: transportPolicyMode,
     });
@@ -4304,12 +4327,12 @@ async function searchPivotaBackendProducts({
       const remainingBudgetMs = timeoutForAttemptMs - elapsedMs;
       const remainingOverallMs = Math.max(0, getRemainingOverallMs() - deadlineReserveMs);
       const requestTimeoutMs = Math.trunc(Math.max(0, Math.min(remainingBudgetMs, remainingOverallMs)));
-      const requestTimeoutFloorMs = isSelfProxyBase
-        ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
-        : normalizedMinTimeout;
-      const effectiveRequestTimeoutMs =
-        isSelfProxyBase && normalizedDeadlineMs <= 0
-          ? Math.max(requestTimeoutFloorMs, requestTimeoutMs)
+        const requestTimeoutFloorMs = isSelfProxyBase
+          ? RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS
+          : normalizedMinTimeout;
+        const effectiveRequestTimeoutMs =
+          isSelfProxyBase && normalizedDeadlineMs <= 0
+            ? Math.max(requestTimeoutFloorMs, requestTimeoutMs)
           : requestTimeoutMs;
       if (
         !Number.isFinite(effectiveRequestTimeoutMs) ||
@@ -4340,7 +4363,10 @@ async function searchPivotaBackendProducts({
       try {
         const resp = await axios.get(endpoint, {
           params,
-          headers: isSelfProxyBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders(),
+          headers: {
+            ...(isSelfProxyBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders()),
+            ...(traceId ? { 'X-Trace-ID': String(traceId).trim() } : {}),
+          },
           timeout: effectiveRequestTimeoutMs,
           validateStatus: () => true,
         });
@@ -4359,12 +4385,13 @@ async function searchPivotaBackendProducts({
           };
           pathAttempts.push({
             endpoint,
-            path: pathToken,
-            ok: false,
-            reason,
-            status_code: statusCode,
-            products: 0,
-          });
+          path: pathToken,
+          ok: false,
+          reason,
+          status_code: statusCode,
+          products: 0,
+          request_timeout_ms: effectiveRequestTimeoutMs,
+        });
           lastFailure = failed;
           const shouldTryNextPath =
             allowSecondaryPathFailover &&
@@ -4399,13 +4426,14 @@ async function searchPivotaBackendProducts({
           };
           pathAttempts.push({
             endpoint,
-            path: pathToken,
-            ok: false,
-            reason: bodyReason,
-            status_code: statusCode,
-            products: 0,
-            ...searchMeta,
-          });
+          path: pathToken,
+          ok: false,
+          reason: bodyReason,
+          status_code: statusCode,
+          products: 0,
+          request_timeout_ms: effectiveRequestTimeoutMs,
+          ...searchMeta,
+        });
           lastFailure = failed;
           const shouldTryNextPath =
             allowSecondaryPathFailover &&
@@ -4437,6 +4465,7 @@ async function searchPivotaBackendProducts({
           reason: result.reason || null,
           status_code: statusCode,
           products: products.length,
+          request_timeout_ms: effectiveRequestTimeoutMs,
           ...searchMeta,
         });
         if (products.length > 0) {
@@ -4484,6 +4513,7 @@ async function searchPivotaBackendProducts({
           reason,
           status_code: statusCode,
           products: 0,
+          request_timeout_ms: effectiveRequestTimeoutMs,
           resolver_first_applied: false,
           resolver_first_skipped_for_aurora: false,
         });
@@ -16586,6 +16616,10 @@ async function executeRecoRecallPlanEntry({
   usePurchasableFallback = false,
   transportPolicyMode = '',
   targetContext = null,
+  semanticContract = null,
+  traceId = null,
+  queryIndex = null,
+  queryTotal = null,
 } = {}) {
   const sourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase() === 'external_seed'
     ? 'external_seed'
@@ -16617,6 +16651,10 @@ async function executeRecoRecallPlanEntry({
     externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
     fastMode: sourceScope !== 'external_seed',
     transportPolicy: buildRecoRecallTransportPolicy({ mode: transportPolicyMode }),
+    semanticContract,
+    traceId,
+    queryIndex,
+    queryTotal,
   });
 }
 
@@ -16700,6 +16738,8 @@ async function collectRecoCandidatesFromRecallPlan({
   timeoutMs,
   limit = 6,
   usePurchasableFallback = false,
+  semanticContract = null,
+  traceId = null,
 } = {}) {
   const rawCandidates = [];
   const searchResults = [];
@@ -16717,8 +16757,11 @@ async function collectRecoCandidatesFromRecallPlan({
   const planStages = Array.isArray(recallPlan?.stages) ? recallPlan.stages : [];
   const transportPolicyMode = resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode);
   const actualHttpAttemptsByStage = {};
+  const effectiveRequestTimeoutMsByStage = {};
+  const plannerQueryCountByStage = {};
   const attemptedBaseUrlsByStage = {};
   const attemptedPathsByStage = {};
+  let plannerEntryCursor = 0;
 
   for (const stage of planStages) {
     const runDecision = shouldRunRecoRecallStage(stage, { stageResults, candidateState });
@@ -16745,10 +16788,15 @@ async function collectRecoCandidatesFromRecallPlan({
       0,
       Math.max(1, Number(stage?.max_attempts_for_stage || 1)),
     );
+    plannerQueryCountByStage[String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`] =
+      entries.length;
     const stageRows = await mapWithConcurrency(
       entries,
       Math.max(1, Number(stage?.concurrency || 1)),
-      async (entry) => ({
+      async (entry) => {
+        const plannerQueryIndex = plannerEntryCursor;
+        plannerEntryCursor += 1;
+        return ({
         queryEntry: entry,
         out: await executeRecoRecallPlanEntry({
           entry,
@@ -16758,13 +16806,19 @@ async function collectRecoCandidatesFromRecallPlan({
           usePurchasableFallback,
           transportPolicyMode,
           targetContext,
+          semanticContract,
+          traceId,
+          queryIndex: plannerQueryIndex,
+          queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
         }),
-      }),
+      });
+      },
     );
 
     let timeoutCount = 0;
     let transientCount = 0;
     let stageActualHttpAttemptCount = 0;
+    let stageEffectiveRequestTimeoutMs = 0;
     const stageAttemptedBaseUrls = new Set();
     const stageAttemptedPaths = new Set();
     for (const row of stageRows) {
@@ -16775,6 +16829,15 @@ async function collectRecoCandidatesFromRecallPlan({
         ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
         : 0;
       stageActualHttpAttemptCount += actualAttemptsForRow;
+      const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
+        ? out.attempted_request_timeouts_ms
+        : [];
+      for (const timeoutValue of attemptTimeouts) {
+        const normalizedTimeout = Number.isFinite(Number(timeoutValue))
+          ? Math.max(0, Math.trunc(Number(timeoutValue)))
+          : 0;
+        stageEffectiveRequestTimeoutMs = Math.max(stageEffectiveRequestTimeoutMs, normalizedTimeout);
+      }
       for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
         const normalizedBaseUrl = String(baseUrl || '').trim();
         if (normalizedBaseUrl) stageAttemptedBaseUrls.add(normalizedBaseUrl);
@@ -16821,6 +16884,7 @@ async function collectRecoCandidatesFromRecallPlan({
     const stageId = String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`;
     stageTimeoutCounts[stageId] = timeoutCount;
     actualHttpAttemptsByStage[stageId] = stageActualHttpAttemptCount;
+    effectiveRequestTimeoutMsByStage[stageId] = stageEffectiveRequestTimeoutMs;
     attemptedBaseUrlsByStage[stageId] = Array.from(stageAttemptedBaseUrls);
     attemptedPathsByStage[stageId] = Array.from(stageAttemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
@@ -16883,6 +16947,8 @@ async function collectRecoCandidatesFromRecallPlan({
     executedUpstreamAttemptCount,
     actualHttpAttemptCount,
     actualHttpAttemptsByStage,
+    effectiveRequestTimeoutMsByStage,
+    plannerQueryCountByStage,
     attemptedBaseUrlsByStage,
     attemptedPathsByStage,
     transportPolicyMode,
@@ -18502,6 +18568,7 @@ async function buildRecoGenerateFromCatalog({
   const debugInfo = {
     enabled: RECO_CATALOG_GROUNDED_ENABLED,
     search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+    configured_search_timeout_ms: RECO_CATALOG_SEARCH_TIMEOUT_MS,
     search_concurrency: RECO_CATALOG_SEARCH_CONCURRENCY,
     purchasable_fallback_enabled: fallbackEnabled,
     external_seed_supplement_enabled: allowExternalSeedSupplement,
@@ -18541,6 +18608,30 @@ async function buildRecoGenerateFromCatalog({
           queryLevels: sameFamilyQueryLevels,
         })
       : null;
+  const semanticContract = recallPlan
+    ? buildRecoSearchSemanticContract({
+        mode: recallPlan?.mode,
+        targetContext,
+        queryLevels: sameFamilyQueryLevels,
+      })
+    : null;
+  const semanticOwnerControlledSearch = Boolean(
+    semanticContract &&
+      semanticContract.owner === 'aurora_reco_planner' &&
+      semanticContract.source_surface === 'aurora_beauty_strict' &&
+      semanticContract.request_class !== 'exact_lookup',
+  );
+  if (semanticOwnerControlledSearch && !probeWhileOpen) {
+    searchTimeoutEffectiveMs = Math.max(
+      searchTimeoutEffectiveMs,
+      RECO_CATALOG_SEMANTIC_OWNER_TIMEOUT_FLOOR_MS,
+    );
+  }
+  debugInfo.search_timeout_ms = searchTimeoutEffectiveMs;
+  debugInfo.configured_search_timeout_ms = searchTimeoutEffectiveMs;
+  debugInfo.semantic_owner_timeout_floor_ms = semanticOwnerControlledSearch
+    ? RECO_CATALOG_SEMANTIC_OWNER_TIMEOUT_FLOOR_MS
+    : null;
   const previewTransportPolicy = buildRecoRecallTransportPolicy({
     mode: resolveRecoRecallTransportModeForPlannerMode(recallPlan?.mode),
   });
@@ -18579,6 +18670,8 @@ async function buildRecoGenerateFromCatalog({
         timeoutMs: searchTimeoutEffectiveMs,
         limit: 6,
         usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
+        semanticContract,
+        traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
       })
     : await collectRecoCandidatesFromQueryLevels({
         queryLevels,
@@ -18731,6 +18824,14 @@ async function buildRecoGenerateFromCatalog({
     isPlainObject(collected?.actualHttpAttemptsByStage)
       ? collected.actualHttpAttemptsByStage
       : {};
+  const effectiveRequestTimeoutMsByStage =
+    isPlainObject(collected?.effectiveRequestTimeoutMsByStage)
+      ? collected.effectiveRequestTimeoutMsByStage
+      : {};
+  const plannerQueryCountByStage =
+    isPlainObject(collected?.plannerQueryCountByStage)
+      ? collected.plannerQueryCountByStage
+      : {};
   const attemptedBaseUrlsByStage =
     isPlainObject(collected?.attemptedBaseUrlsByStage)
       ? collected.attemptedBaseUrlsByStage
@@ -18781,6 +18882,8 @@ async function buildRecoGenerateFromCatalog({
     timeout_count: timeoutCount,
     stage_timeout_counts: stageTimeoutCounts,
     actual_http_attempts_by_stage: actualHttpAttemptsByStage,
+    effective_request_timeout_ms_by_stage: effectiveRequestTimeoutMsByStage,
+    planner_query_count_by_stage: plannerQueryCountByStage,
     attempted_base_urls_by_stage: attemptedBaseUrlsByStage,
     attempted_paths_by_stage: attemptedPathsByStage,
     status_counts: statusCounts,
@@ -18794,6 +18897,7 @@ async function buildRecoGenerateFromCatalog({
     step_resolution_version: targetContext && targetContext.step_resolution_version ? targetContext.step_resolution_version : null,
     planner_mode: recallPlan?.mode || null,
     planner_budget: isPlainObject(recallPlan?.budget) ? recallPlan.budget : null,
+    semantic_contract: semanticContract,
     transport_policy_mode: pickFirstTrimmed(collected?.transportPolicyMode) || null,
     query_plan: Array.isArray(recallPlan?.entries) ? recallPlan.entries : null,
     stage_results: Array.isArray(collected?.stageResults) ? collected.stageResults : null,

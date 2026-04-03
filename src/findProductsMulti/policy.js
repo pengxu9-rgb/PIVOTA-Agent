@@ -1,4 +1,4 @@
-const { extractIntent } = require('./intentLlm');
+const { extractIntentWithMeta, buildDeterministicIntentWithMeta } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
@@ -38,6 +38,7 @@ const resolveKnownStableLookupAlias =
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v40';
+const BEAUTY_SEMANTIC_CONTRACT_VERSION = 'beauty_semantic_contract_v1';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -139,6 +140,13 @@ const BEAUTY_DIVERSITY_MIN_BUCKETS = Math.max(
 const BEAUTY_DIVERSITY_TOOLS_MAX_RATIO = Math.max(
   0,
   Math.min(1, Number(process.env.FIND_PRODUCTS_MULTI_BEAUTY_TOOLS_MAX_RATIO || 0.4)),
+);
+const FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS = Math.max(
+  800,
+  Math.min(
+    15000,
+    Number(process.env.FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS || 2500) || 2500,
+  ),
 );
 const BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE =
   String(process.env.FIND_PRODUCTS_MULTI_BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE || 'true').toLowerCase() !==
@@ -1252,6 +1260,174 @@ function normalizeQueryClass(value, options = {}) {
     return normalizedDefault;
   }
   return 'exploratory';
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeSemanticStepFamily(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'cream' || normalized === 'gel cream') return 'moisturizer';
+  if (normalized === 'sun care' || normalized === 'sun protection') return 'sunscreen';
+  return normalized;
+}
+
+function normalizeSemanticStringList(values, max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = String(raw || '').trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(max) || 1)) break;
+  }
+  return out;
+}
+
+function normalizeSearchSemanticContract(raw) {
+  const contract = isPlainObject(raw) ? raw : null;
+  if (!contract) return null;
+  const version = String(contract.version || BEAUTY_SEMANTIC_CONTRACT_VERSION).trim();
+  const requestClass = String(contract.request_class || contract.requestClass || '').trim().toLowerCase();
+  const plannerMode = String(contract.planner_mode || contract.plannerMode || '').trim().toLowerCase();
+  if (!requestClass || !plannerMode) return null;
+  return {
+    version,
+    owner: String(contract.owner || 'aurora_reco_planner').trim() || 'aurora_reco_planner',
+    planner_mode: plannerMode,
+    request_class: requestClass,
+    target_step_family: normalizeSemanticStepFamily(
+      contract.target_step_family || contract.targetStepFamily,
+    ),
+    primary_role_id: String(contract.primary_role_id || contract.primaryRoleId || '').trim() || null,
+    support_role_ids: normalizeSemanticStringList(
+      contract.support_role_ids || contract.supportRoleIds,
+      6,
+    ),
+    semantic_family: String(contract.semantic_family || contract.semanticFamily || '').trim().toLowerCase() || null,
+    allowed_step_families: normalizeSemanticStringList(
+      (Array.isArray(contract.allowed_step_families) ? contract.allowed_step_families : contract.allowedStepFamilies) || [],
+      6,
+    ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean),
+    blocked_step_families: normalizeSemanticStringList(
+      (Array.isArray(contract.blocked_step_families) ? contract.blocked_step_families : contract.blockedStepFamilies) || [],
+      6,
+    ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean),
+    ingredient_hypotheses: normalizeSemanticStringList(
+      contract.ingredient_hypotheses || contract.ingredientHypotheses,
+      8,
+    ),
+    source_surface: String(contract.source_surface || contract.sourceSurface || '').trim().toLowerCase() || null,
+  };
+}
+
+function buildStrictSemanticRewriteResult({
+  rawQuery,
+  intentMeta = null,
+  semanticContract = null,
+  ambiguityScorePre = null,
+} = {}) {
+  const contract = normalizeSearchSemanticContract(semanticContract);
+  const normalizedRawQuery = String(rawQuery || '').trim();
+  if (!contract) {
+    return {
+      owner: 'shopping_agent_semantic_rewrite',
+      applied: false,
+      mode: String(intentMeta?.mode || 'deterministic_fallback'),
+      normalized_query_pack: normalizedRawQuery ? [normalizedRawQuery] : [],
+      hard_filters: {},
+      soft_filters: {},
+      latency_ms: null,
+      fallback_reason: intentMeta?.fallback_reason || null,
+      needs_broadening: false,
+    };
+  }
+
+  const normalizedQueryPack = normalizeSemanticStringList(
+    [
+      normalizedRawQuery,
+      contract.target_step_family && contract.semantic_family
+        ? contract.semantic_family === contract.target_step_family
+          ? contract.target_step_family
+          : `${contract.semantic_family.replace(/_/g, ' ')} ${contract.target_step_family}`
+        : '',
+      contract.target_step_family === 'treatment' && contract.ingredient_hypotheses[0]
+        ? `${contract.ingredient_hypotheses[0]} treatment`
+        : '',
+    ],
+    3,
+  ).map((value) => String(value || '').trim()).filter(Boolean);
+  const applied = contract.request_class !== 'exact_lookup';
+  const targetStepFamily = contract.target_step_family || null;
+  const allowedStepFamilies = normalizeSemanticStringList([
+    ...(Array.isArray(contract.allowed_step_families) ? contract.allowed_step_families : []),
+    targetStepFamily,
+  ], 6).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
+  const blockedStepFamilies = normalizeSemanticStringList(
+    contract.blocked_step_families,
+    6,
+  ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
+
+  return {
+    owner: 'shopping_agent_semantic_rewrite',
+    applied,
+    mode: String(intentMeta?.mode || 'deterministic_fallback'),
+    normalized_query_pack: normalizedQueryPack,
+    hard_filters: {
+      target_step_family: targetStepFamily,
+      allowed_step_families: allowedStepFamilies,
+      blocked_step_families: blockedStepFamilies,
+      ingredient_hypotheses: contract.ingredient_hypotheses,
+    },
+    soft_filters: {
+      primary_role_id: contract.primary_role_id,
+      support_role_ids: contract.support_role_ids,
+      semantic_family: contract.semantic_family,
+      planner_mode: contract.planner_mode,
+      request_class: contract.request_class,
+    },
+    latency_ms: null,
+    fallback_reason: intentMeta?.fallback_reason || null,
+    needs_broadening: Boolean(
+      applied &&
+      !targetStepFamily &&
+      Number.isFinite(Number(ambiguityScorePre)) &&
+      Number(ambiguityScorePre) >= 0.7
+    ),
+  };
+}
+
+function shouldUseSemanticContractQueryOwner(semanticContract = null) {
+  const contract = normalizeSearchSemanticContract(semanticContract);
+  if (!contract) return false;
+  if (contract.request_class === 'exact_lookup') return false;
+  return contract.owner === 'aurora_reco_planner' && contract.source_surface === 'aurora_beauty_strict';
+}
+
+function buildSemanticOwnerSearchQuery({
+  semanticRewriteResult = null,
+  fallbackQuery = '',
+} = {}) {
+  const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
+    ? semanticRewriteResult.normalized_query_pack
+    : [];
+  const joined = normalizedQueryPack
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .reduce((out, value) => {
+      const valueLower = value.toLowerCase();
+      if (!out.some((item) => item.toLowerCase() === valueLower || item.toLowerCase().includes(valueLower))) {
+        out.push(value);
+      }
+      return out;
+    }, [])
+    .join(' ')
+    .trim();
+  if (!joined) return String(fallbackQuery || '').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
@@ -3214,7 +3390,27 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ? queryFromMessages
       : queryFromSearch;
 
-  const intent = await extractIntent(latestUserQuery, recentQueries, recentMessages);
+  const intentStartedAt = Date.now();
+  let semanticRewriteTimer = null;
+  const intentWithMeta = await Promise.race([
+    extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages),
+    new Promise((resolve) => {
+      semanticRewriteTimer = setTimeout(() => {
+        resolve(
+          buildDeterministicIntentWithMeta(
+            latestUserQuery,
+            recentQueries,
+            recentMessages,
+            'semantic_rewrite_timeout',
+          ),
+        );
+      }, FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS);
+    }),
+  ]);
+  if (semanticRewriteTimer) clearTimeout(semanticRewriteTimer);
+  const intent = intentWithMeta?.intent || null;
+  const intentMeta = isPlainObject(intentWithMeta?.meta) ? intentWithMeta.meta : null;
+  const intentParseLatencyMs = Math.max(0, Date.now() - intentStartedAt);
   const pruned = pruneRecentQueries(latestUserQuery, recentQueries, intent);
   const brandDetection = detectBrandEntities(latestUserQuery, { candidateProducts: [] });
   const brandQueryDetected = Boolean(brandDetection?.brand_like);
@@ -3244,6 +3440,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       payload?.expansionMode,
   );
   let queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
+  const semanticContract = normalizeSearchSemanticContract(
+    search?.semantic_contract ||
+      search?.semanticContract ||
+      metadata?.semantic_contract ||
+      metadata?.semanticContract,
+  );
+  if (semanticContract?.request_class === 'exact_lookup') {
+    queryClass = 'lookup';
+  }
   if (
     brandQueryWithoutCategory &&
     (!queryClass || ['lookup', 'attribute'].includes(String(queryClass || '')))
@@ -3305,6 +3510,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rewrite_drift_risk: clamp01(rewriteDriftRisk),
     use_association_only: Boolean(aggressiveGatePassed),
   };
+  const semanticRewriteResult = buildStrictSemanticRewriteResult({
+    rawQuery: latestUserQuery,
+    intentMeta,
+    semanticContract,
+    ambiguityScorePre,
+  });
+  semanticRewriteResult.latency_ms = intentParseLatencyMs;
+  const semanticOwnerLocked = shouldUseSemanticContractQueryOwner(semanticContract);
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
@@ -3588,6 +3801,13 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     return candidate.length > maxCombinedLength ? candidate.slice(0, maxCombinedLength).trim() : candidate;
   })();
 
+  const effectiveExpandedQuery = semanticOwnerLocked
+    ? buildSemanticOwnerSearchQuery({
+        semanticRewriteResult,
+        fallbackQuery: expandedWithAssociation || latestUserQuery,
+      })
+    : expandedWithAssociation;
+
   const adjustedPayload = {
     ...(payload || {}),
     user: {
@@ -3597,7 +3817,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     search: {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
-      ...(expandedWithAssociation ? { query: expandedWithAssociation } : {}),
+      ...(effectiveExpandedQuery ? { query: effectiveExpandedQuery } : {}),
+      ...(semanticContract ? { semantic_contract: semanticContract } : {}),
     },
   };
 
@@ -3606,9 +3827,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
     raw_query: latestUserQuery,
-    expanded_query: expandedWithAssociation,
-    applied: Boolean(expandedWithAssociation && String(expandedWithAssociation) !== String(latestUserQuery)),
+    expanded_query: effectiveExpandedQuery,
+    applied: Boolean(effectiveExpandedQuery && String(effectiveExpandedQuery) !== String(latestUserQuery)),
     query_class: queryClass,
+    semantic_contract: semanticContract,
+    semantic_rewrite_result: semanticRewriteResult,
+    semantic_owner: semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
+    semantic_owner_locked: semanticOwnerLocked,
+    semantic_rewrite_timeout_ms: FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS,
+    intent_parse_latency_ms: intentParseLatencyMs,
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,
     ambiguity_score_pre: ambiguityScorePre,

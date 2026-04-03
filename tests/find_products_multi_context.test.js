@@ -284,6 +284,56 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('brush');
   });
 
+  test('aurora semantic contract locks backend semantic owner and avoids generic expansion drift', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'best sunscreen for oily skin',
+          semantic_contract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'step_aware',
+            request_class: 'sunscreen',
+            target_step_family: 'sunscreen',
+            primary_role_id: 'daily_sunscreen',
+            support_role_ids: [],
+            semantic_family: 'sunscreen',
+            allowed_step_families: ['sunscreen'],
+            blocked_step_families: [],
+            ingredient_hypotheses: [],
+            source_surface: 'aurora_beauty_strict',
+          },
+        },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'best sunscreen for oily skin' }],
+      },
+      metadata: {},
+    });
+
+    expect(adjustedPayload.search.semantic_contract).toEqual(
+      expect.objectContaining({
+        owner: 'aurora_reco_planner',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+      }),
+    );
+    expect(expansion_meta.semantic_owner_locked).toBe(true);
+    expect(expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_semantic_rewrite',
+        applied: true,
+        hard_filters: expect.objectContaining({
+          target_step_family: 'sunscreen',
+          allowed_step_families: ['sunscreen'],
+        }),
+      }),
+    );
+    const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(expanded).toContain('best sunscreen for oily skin');
+    expect(expanded).not.toContain('broad spectrum');
+    expect(expanded).not.toContain('sun protection');
+  });
+
   test('hydrating moisturizer expansion adds moisturizer-specific recall terms', async () => {
     const { adjustedPayload } = await buildFindProductsMultiContext({
       payload: {
@@ -319,6 +369,43 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('foundation');
     expect(expanded).not.toContain('concealer');
     expect(expanded).not.toContain('mascara');
+  });
+
+  test('semantic rewrite timeout falls back deterministically without hanging the request', async () => {
+    jest.resetModules();
+    jest.doMock('../src/findProductsMulti/intentLlm', () => {
+      const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
+      return {
+        ...actual,
+        extractIntentWithMeta: jest.fn(() => new Promise(() => {})),
+      };
+    });
+
+    try {
+      // eslint-disable-next-line global-require
+      const { buildFindProductsMultiContext: buildWithTimeout } = require('../src/findProductsMulti/policy');
+      const startedAt = Date.now();
+      const out = await buildWithTimeout({
+        payload: {
+          search: { query: 'best sunscreen for oily skin' },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: 'best sunscreen for oily skin' }],
+        },
+        metadata: {},
+      });
+
+      expect(Date.now() - startedAt).toBeLessThan(5000);
+      expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBeGreaterThanOrEqual(800);
+      expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+        expect.objectContaining({
+          mode: 'deterministic_fallback',
+          fallback_reason: 'semantic_rewrite_timeout',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/findProductsMulti/intentLlm');
+      jest.resetModules();
+    }
   });
 
   test('context query expansion avoids brush terms for brand/product lookup follow-up', async () => {

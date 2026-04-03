@@ -1,4 +1,5 @@
 const RECO_RECALL_PLAN_VERSION = 'aurora_reco_recall_plan_v1';
+const BEAUTY_SEMANTIC_CONTRACT_VERSION = 'beauty_semantic_contract_v1';
 
 function uniqueCaseInsensitiveStrings(values, max = 12) {
   const out = [];
@@ -19,6 +20,163 @@ function normalizeConcernQueryToken(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeSemanticStepFamily(value) {
+  const normalized = normalizeConcernQueryToken(value).toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'gel cream' || normalized === 'cream') return 'moisturizer';
+  if (normalized === 'sun care' || normalized === 'sun protection') return 'sunscreen';
+  return normalized;
+}
+
+function buildSemanticStepFamilyList(values, { includeSerumForTreatment = false } = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const normalized = normalizeSemanticStepFamily(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  if (includeSerumForTreatment && seen.has('treatment') && !seen.has('serum')) {
+    out.push('serum');
+  }
+  return out.slice(0, 6);
+}
+
+function deriveSemanticFamilyFromRole(role = null) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return null;
+  const candidates = [
+    roleObj.semantic_family,
+    roleObj.semanticFamily,
+    roleObj.family,
+    roleObj.role_family,
+    roleObj.roleFamily,
+  ];
+  for (const raw of candidates) {
+    const normalized = normalizeConcernQueryToken(raw).toLowerCase();
+    if (normalized) return normalized;
+  }
+  const roleId = normalizeConcernQueryToken(roleObj.role_id).toLowerCase();
+  if (!roleId) return null;
+  if (roleId.includes('oil_control') || roleId.includes('shine_control') || roleId.includes('mattify')) {
+    return 'oil_control';
+  }
+  if (roleId.includes('sunscreen') || roleId.includes('spf') || roleId.includes('uv')) {
+    return 'sunscreen';
+  }
+  if (roleId.includes('moisturizer') || roleId.includes('barrier')) {
+    return 'moisturizer';
+  }
+  return roleId.replace(/_+/g, ' ');
+}
+
+function pickSemanticFamily(targetContext = null, primaryRole = null) {
+  const candidates = [
+    targetContext?.semantic_plan?.semantic_family,
+    targetContext?.semantic_plan?.semanticFamily,
+    targetContext?.framework_summary?.semantic_family,
+    targetContext?.framework_summary?.semanticFamily,
+    deriveSemanticFamilyFromRole(primaryRole),
+  ];
+  for (const raw of candidates) {
+    const normalized = normalizeConcernQueryToken(raw).toLowerCase();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function buildFrameworkSemanticContract({ targetContext } = {}) {
+  const roles = Array.isArray(targetContext?.framework_roles)
+    ? [...targetContext.framework_roles]
+        .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
+        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
+    : [];
+  const primaryRole = roles[0] || null;
+  if (!primaryRole) return null;
+  const supportRoles = roles.slice(1, 3);
+  const targetStepFamily = normalizeSemanticStepFamily(primaryRole?.preferred_step || primaryRole?.step);
+  const ingredientHypotheses = uniqueCaseInsensitiveStrings([
+    ...(Array.isArray(primaryRole?.ingredient_hypotheses) ? primaryRole.ingredient_hypotheses : []),
+    ...(Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
+      ? targetContext.semantic_plan.ingredient_hypotheses
+      : []),
+  ], 8);
+  return {
+    version: BEAUTY_SEMANTIC_CONTRACT_VERSION,
+    owner: 'aurora_reco_planner',
+    planner_mode: 'framework_generic',
+    request_class: 'generic_concern',
+    target_step_family: targetStepFamily,
+    primary_role_id: normalizeConcernQueryToken(primaryRole?.role_id) || null,
+    support_role_ids: supportRoles
+      .map((role) => normalizeConcernQueryToken(role?.role_id))
+      .filter(Boolean)
+      .slice(0, 4),
+    semantic_family: pickSemanticFamily(targetContext, primaryRole),
+    allowed_step_families: buildSemanticStepFamilyList(
+      [
+        targetStepFamily,
+        ...supportRoles.map((role) => role?.preferred_step || role?.step),
+      ],
+      { includeSerumForTreatment: true },
+    ),
+    blocked_step_families: [],
+    ingredient_hypotheses: ingredientHypotheses,
+    source_surface: 'aurora_beauty_strict',
+  };
+}
+
+function buildStepAwareSemanticContract({ targetContext, queryLevels } = {}) {
+  const targetStepFamily = normalizeSemanticStepFamily(
+    targetContext?.resolved_target_step ||
+    queryLevels?.[0]?.queries?.[0]?.step,
+  );
+  if (!targetStepFamily) return null;
+  return {
+    version: BEAUTY_SEMANTIC_CONTRACT_VERSION,
+    owner: 'aurora_reco_planner',
+    planner_mode: 'step_aware',
+    request_class: targetStepFamily === 'sunscreen' ? 'sunscreen' : 'routine_followup',
+    target_step_family: targetStepFamily,
+    primary_role_id: normalizeConcernQueryToken(targetContext?.primary_role_id) || `${targetStepFamily}_primary`,
+    support_role_ids: [],
+    semantic_family: normalizeConcernQueryToken(
+      targetContext?.semantic_plan?.semantic_family ||
+      targetContext?.step_aware_intent?.semantic_family ||
+      targetStepFamily,
+    ).toLowerCase() || null,
+    allowed_step_families: buildSemanticStepFamilyList([targetStepFamily], {
+      includeSerumForTreatment: targetStepFamily === 'treatment',
+    }),
+    blocked_step_families: [],
+    ingredient_hypotheses: uniqueCaseInsensitiveStrings(
+      Array.isArray(targetContext?.semantic_plan?.ingredient_hypotheses)
+        ? targetContext.semantic_plan.ingredient_hypotheses
+        : [],
+      8,
+    ),
+    source_surface: 'aurora_beauty_strict',
+  };
+}
+
+function buildExactLookupSemanticContract() {
+  return {
+    version: BEAUTY_SEMANTIC_CONTRACT_VERSION,
+    owner: 'aurora_reco_planner',
+    planner_mode: 'exact_product',
+    request_class: 'exact_lookup',
+    target_step_family: null,
+    primary_role_id: null,
+    support_role_ids: [],
+    semantic_family: null,
+    allowed_step_families: [],
+    blocked_step_families: [],
+    ingredient_hypotheses: [],
+    source_surface: 'aurora_beauty_strict',
+  };
 }
 
 function scoreTreatmentIngredientHypothesis(value) {
@@ -285,15 +443,13 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
 function buildStepAwareRecallPlan({ queryLevels } = {}) {
   const levels = Array.isArray(queryLevels) ? queryLevels : [];
   const stages = [];
-  let remaining = 6;
   for (const level of levels) {
-    if (remaining <= 0) break;
     const levelObj = level && typeof level === 'object' && !Array.isArray(level) ? level : null;
     if (!levelObj) continue;
     const queries = (Array.isArray(levelObj.queries) ? levelObj.queries : [])
       .map((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : null))
       .filter(Boolean)
-      .slice(0, Math.min(2, remaining));
+      .slice(0, 2);
     if (!queries.length) continue;
     const first = queries[0];
     const stage = buildStage({
@@ -310,10 +466,7 @@ function buildStepAwareRecallPlan({ queryLevels } = {}) {
       preferredStep: first?.step || null,
       slot: first?.slot || null,
     });
-    if (stage) {
-      stages.push(stage);
-      remaining -= stage.entries.length;
-    }
+    if (stage) stages.push(stage);
   }
   const firstQuery = levels.flatMap((level) => (Array.isArray(level?.queries) ? level.queries : [])).find(Boolean) || null;
   const shouldUseExternalSeedFallbackForStepAware = String(firstQuery?.step || '').trim().toLowerCase() === 'sunscreen';
@@ -415,7 +568,23 @@ function buildRecoRecallPlan({ mode, targetContext = null, queryLevels = null, q
   };
 }
 
+function buildRecoSearchSemanticContract({ mode, targetContext = null, queryLevels = null, queries = null } = {}) {
+  const normalizedMode = String(mode || '').trim().toLowerCase();
+  if (normalizedMode === 'framework_generic') {
+    return buildFrameworkSemanticContract({ targetContext });
+  }
+  if (normalizedMode === 'step_aware') {
+    return buildStepAwareSemanticContract({ targetContext, queryLevels });
+  }
+  if (normalizedMode === 'product_grounding_exact') {
+    return buildExactLookupSemanticContract({ queries });
+  }
+  return null;
+}
+
 module.exports = {
+  BEAUTY_SEMANTIC_CONTRACT_VERSION,
   RECO_RECALL_PLAN_VERSION,
   buildRecoRecallPlan,
+  buildRecoSearchSemanticContract,
 };
