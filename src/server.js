@@ -24168,7 +24168,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : 'upstream_stage';
       const fallbackTriggered =
         Boolean(fallbackMeta?.applied) ||
-        isRecoverableStrictSoftFallbackQuerySource(querySource) ||
+        isErrorSoftFallbackQuerySource(querySource) ||
         (isStrictEmpty && Boolean(fallbackMeta?.reason));
       const fallbackReason =
         (fallbackMeta && typeof fallbackMeta.reason === 'string' && fallbackMeta.reason.trim()) ||

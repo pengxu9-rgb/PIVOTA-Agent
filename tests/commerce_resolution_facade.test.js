@@ -1226,7 +1226,7 @@ describe('Commerce resolution facade', () => {
       },
       reason_codes: ['SEMANTIC_RETRY_EXHAUSTED', 'AMBIGUITY_CLARIFY'],
       metadata: {
-        query_source: 'agent_products_error_fallback',
+        query_source: 'agent_products_recall_clarify',
         upstream_status: 0,
         upstream_error_code: null,
         upstream_error_message: null,
@@ -1243,7 +1243,7 @@ describe('Commerce resolution facade', () => {
           },
         },
         proxy_search_fallback: {
-          applied: true,
+          applied: false,
           reason: 'primary_irrelevant_no_fallback',
           route: null,
           upstream_status: 0,
@@ -1251,6 +1251,70 @@ describe('Commerce resolution facade', () => {
           upstream_error_message: null,
         },
       },
+    });
+  });
+
+  test('soft fallback clarification keeps semantic-retry clarify outside degraded fallback ownership', () => {
+    const runtime = createCommerceResolutionRuntime({
+      isUpstreamQuotaExhausted() {
+        return false;
+      },
+      shouldClarifyOnQuota() {
+        return false;
+      },
+      normalizeTravelLookupSlotState() {
+        return { asked_slots: [], resolved_slots: {} };
+      },
+      parseQueryJsonObject() {
+        return null;
+      },
+      firstQueryParamValue(value) {
+        return value;
+      },
+      hasTravelLookupSlotState() {
+        return false;
+      },
+      buildClarification() {
+        return {
+          question: 'Which texture do you prefer?',
+          options: ['Gel', 'Cream'],
+          reason_code: 'CLARIFY_TEXTURE',
+        };
+      },
+      buildClarificationReplyText(clarification) {
+        return clarification.question;
+      },
+      normalizeAgentProductsListResponse(body) {
+        return body;
+      },
+      parseQueryNumber(value) {
+        return Number(value);
+      },
+    });
+
+    expect(
+      runtime.buildProxySearchSoftFallbackResponse({
+        queryParams: { query: 'best sunscreen for oily skin', limit: '6' },
+        reason: 'semantic_retry_exhausted',
+        queryClass: 'exploratory',
+        intent: {
+          language: 'en',
+          query_class: 'exploratory',
+          primary_domain: 'beauty',
+        },
+        queryText: 'best sunscreen for oily skin',
+        querySource: 'agent_products_semantic_retry_exhausted',
+        semanticRetryApplied: true,
+        semanticRetryQuery: 'oily skin sunscreen',
+        semanticRetryHits: 2,
+      }).metadata.proxy_search_fallback,
+    ).toEqual({
+      applied: false,
+      reason: 'semantic_retry_exhausted',
+      route: null,
+      upstream_status: 0,
+      upstream_error_code: null,
+      upstream_error_message: null,
     });
   });
 

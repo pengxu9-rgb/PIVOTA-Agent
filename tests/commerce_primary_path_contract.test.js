@@ -102,4 +102,35 @@ describe('commerce primary path contract helper', () => {
     expect(assessment.decisionLocked).toBe(true);
     expect(assessment.observerNodes).toContain('governance_shadow_block_observed');
   });
+
+  test('does not mark recall clarify as degraded when no fallback was adopted', () => {
+    const assessment = assessPrimaryPath({
+      metadata: {
+        query_source: 'agent_products_recall_clarify',
+        proxy_search_fallback: {
+          applied: false,
+          reason: 'primary_irrelevant_no_fallback',
+        },
+        route_health: {
+          fallback_triggered: false,
+          fallback_reason: 'primary_irrelevant_no_fallback',
+          primary_path_used: 'upstream_stage',
+        },
+        search_trace: {
+          final_decision: 'clarify',
+        },
+        search_decision: {
+          final_decision: 'clarify',
+          decision_authority: 'agent_products_search',
+          decision_locked: true,
+          decision_lock_reason: 'clarify_contract',
+        },
+      },
+    });
+
+    expect(assessment.degraded).toBe(false);
+    expect(assessment.reasons).toEqual([]);
+    expect(assessment.querySource).toBe('agent_products_search');
+    expect(assessment.decisionLocked).toBe(true);
+  });
 });

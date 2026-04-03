@@ -57,6 +57,10 @@ function isRecoverableStrictSoftFallbackQuerySource(value) {
   return isRecoverableClarifySoftFallbackQuerySource(value);
 }
 
+function shouldMarkSoftFallbackApplied(querySource) {
+  return isErrorSoftFallbackQuerySource(querySource);
+}
+
 function resolveSoftFallbackQuerySource({ reason = null, semanticRetryApplied = false } = {}) {
   if (semanticRetryApplied) {
     return AGENT_PRODUCTS_SEMANTIC_RETRY_EXHAUSTED_QUERY_SOURCE;
@@ -1518,7 +1522,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     intent = null,
     queryClass = null,
     queryText = '',
-    querySource = AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE,
+    querySource = null,
     semanticRetryApplied = false,
     semanticRetryQuery = null,
     semanticRetryHits = 0,
@@ -1596,6 +1600,13 @@ function createCommerceResolutionRuntime(deps = {}) {
       : null;
     const resolvedReply =
       shouldClarify && clarification ? buildClarificationReplyTextImpl(clarification) : reply;
+    const normalizedQuerySource = String(
+      querySource ||
+        resolveSoftFallbackQuerySource({
+          reason,
+          semanticRetryApplied,
+        }),
+    );
     const normalized = normalizeAgentProductsListResponseImpl(
       {
         status: 'success',
@@ -1626,7 +1637,7 @@ function createCommerceResolutionRuntime(deps = {}) {
             }
           : {}),
         metadata: {
-          query_source: String(querySource || AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE),
+          query_source: normalizedQuerySource,
           upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
           upstream_error_code: upstreamCode ? String(upstreamCode) : null,
           upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
@@ -1650,7 +1661,7 @@ function createCommerceResolutionRuntime(deps = {}) {
       },
     );
     return applyProxySearchFallbackMetadata(normalized, {
-      applied: true,
+      applied: shouldMarkSoftFallbackApplied(normalizedQuerySource),
       reason: reason || 'error_soft_fallback',
       route: route || null,
       upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,

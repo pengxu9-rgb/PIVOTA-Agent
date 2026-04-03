@@ -4,8 +4,6 @@ const {
 
 const FALLBACK_QUERY_SOURCES = new Set([
   'agent_products_error_fallback',
-  'agent_products_recall_clarify',
-  'agent_products_semantic_retry_exhausted',
   'agent_products_resolver_fallback',
   'agent_products_resolver_ref_fallback',
 ]);
