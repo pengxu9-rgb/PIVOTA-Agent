@@ -2550,6 +2550,88 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     expect(upstreamScope.isDone()).toBe(false);
   });
 
+  test('step-aware transport policy preserves self proxy first even when upstream source health is warmer', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
+    process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED = 'true';
+    process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_BASE_URL = 'http://catalog-self.test';
+    process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
+
+    jest.resetModules();
+    const { __internal } = require('../src/auroraBff/routes');
+
+    nock('http://catalog-upstream.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'upstream_seed_success_1',
+            brand: 'Alt Brand',
+            name: 'Upstream Seed Success',
+            display_name: 'Upstream Seed Success',
+          },
+        ],
+      });
+
+    const warmup = await __internal.searchPivotaBackendProducts({
+      query: 'peptide serum',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+    });
+    expect(warmup.ok).toBe(true);
+    expect(warmup.source_base_url).toBe('http://catalog-upstream.test');
+
+    nock('http://catalog-self.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'self_proxy_after_warmup_1',
+            brand: 'Alt Brand',
+            name: 'Self Proxy After Warmup',
+            display_name: 'Self Proxy After Warmup',
+          },
+        ],
+      });
+
+    const upstreamScope = nock('http://catalog-upstream.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        ok: true,
+        products: [
+          {
+            product_id: 'upstream_should_not_run_after_warmup',
+            brand: 'Alt Brand',
+            name: 'Upstream Should Not Run After Warmup',
+            display_name: 'Upstream Should Not Run After Warmup',
+          },
+        ],
+      });
+
+    const policy = __internal.buildRecoRecallTransportPolicy({ mode: 'step_aware' });
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'oily skin sunscreen',
+      limit: 3,
+      logger: { warn: jest.fn(), info: jest.fn() },
+      timeoutMs: 1200,
+      transportPolicy: policy,
+    });
+
+    expect(out.ok).toBe(true);
+    expect(out.products[0].product_id).toBe('self_proxy_after_warmup_1');
+    expect(out.source_base_url).toBe('http://catalog-self.test');
+    expect(out.attempted_sources).toEqual(['http://catalog-self.test']);
+    expect(upstreamScope.isDone()).toBe(false);
+  });
+
   test('framework-first-turn aurora reco transport policy keeps catalog search on self proxy main path', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';

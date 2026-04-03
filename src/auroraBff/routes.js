@@ -3742,10 +3742,10 @@ function getRecoCatalogSearchSourceHealthSnapshot(nowMs = Date.now()) {
   return out;
 }
 
-function rankRecoCatalogSearchBaseUrls(baseUrls, nowMs = Date.now()) {
+function rankRecoCatalogSearchBaseUrls(baseUrls, nowMs = Date.now(), { preserveFirst = false } = {}) {
   const normalized = Array.isArray(baseUrls) ? baseUrls.map((item) => normalizeBaseUrlForRecoCatalogSearch(item)).filter(Boolean) : [];
   if (!normalized.length) return [];
-  return normalized
+  const ranked = normalized
     .map((baseUrl, idx) => {
       const state = getRecoCatalogSearchSourceState(baseUrl) || {};
       const deprioritizedUntilMs = Number(state.deprioritized_until_ms || 0);
@@ -3764,6 +3764,9 @@ function rankRecoCatalogSearchBaseUrls(baseUrls, nowMs = Date.now()) {
       return a.idx - b.idx;
     })
     .map((item) => item.base_url);
+  if (!preserveFirst || ranked.length <= 1) return ranked;
+  const first = normalized[0];
+  return [first, ...ranked.filter((item) => item !== first)];
 }
 
 const recoCatalogFailFastState = {
@@ -4507,8 +4510,9 @@ async function searchPivotaBackendProducts({
   };
 
   const nowMs = Date.now();
+  const preserveFirstBaseUrl = effectiveTransportPolicy.prefer_self_proxy_first === true;
   const orderedBaseUrls = RECO_CATALOG_MULTI_SOURCE_ENABLED
-    ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs)
+    ? rankRecoCatalogSearchBaseUrls(baseUrlCandidates, nowMs, { preserveFirst: preserveFirstBaseUrl })
     : baseUrlCandidates.slice(0, 1);
   const effectiveOrderedBaseUrls = orderedBaseUrls.slice(
     0,
