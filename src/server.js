@@ -1703,6 +1703,8 @@ const {
   getResolverFallbackAdoptionDecision,
   buildProxySearchResolverFallbackResponse,
   buildDirectResolverFallbackResponse,
+  isErrorSoftFallbackQuerySource,
+  isRecoverableStrictSoftFallbackQuerySource,
   normalizePrimaryClarifyContract,
   buildInvokeResolverFallbackResponse,
   applyProxySearchFallbackMetadata,
@@ -15875,7 +15877,7 @@ function recoverStrictMainPathResponseFromPrefetch({
     .trim()
     .toLowerCase();
   const recoverableStrictSoftFallback =
-    querySource === 'agent_products_error_fallback' || finalDecision === 'strict_empty';
+    isRecoverableStrictSoftFallbackQuerySource(querySource) || finalDecision === 'strict_empty';
   if (products.length > 0 || hasClarification) return responseBody;
   if (
     metadata?.route_health?.fallback_triggered === true &&
@@ -23815,7 +23817,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const isCacheLookupSource =
         querySource === 'cache_cross_merchant_search' ||
         querySource === 'cache_cross_merchant_search_supplemented';
-      const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
+      const isErrorSoftFallbackSource = isErrorSoftFallbackQuerySource(querySource);
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
       const isLookupSoftFallbackSource =
         isErrorSoftFallbackSource && (isLookupPolicyQuery || isAliasLookupQuery);
@@ -24166,11 +24168,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : 'upstream_stage';
       const fallbackTriggered =
         Boolean(fallbackMeta?.applied) ||
-        querySource === 'agent_products_error_fallback' ||
+        isRecoverableStrictSoftFallbackQuerySource(querySource) ||
         (isStrictEmpty && Boolean(fallbackMeta?.reason));
       const fallbackReason =
         (fallbackMeta && typeof fallbackMeta.reason === 'string' && fallbackMeta.reason.trim()) ||
-        (querySource === 'agent_products_error_fallback' ? 'error_soft_fallback' : null);
+        (isErrorSoftFallbackQuerySource(querySource) ? 'error_soft_fallback' : null);
       const cacheStage = crossMerchantCacheRouteDebug
         ? {
             hit: Boolean(crossMerchantCacheRouteDebug.cache_hit),

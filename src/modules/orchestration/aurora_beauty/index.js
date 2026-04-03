@@ -300,8 +300,11 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     const normalizedReasonCodes = Array.isArray(reasonCodes)
       ? reasonCodes.map((item) => String(item || '').trim()).filter(Boolean)
       : [];
-    const legacyFallbackSource =
-      String(querySource || '').trim() === 'agent_products_error_fallback';
+    const legacyFallbackSource = new Set([
+      'agent_products_error_fallback',
+      'agent_products_recall_clarify',
+      'agent_products_semantic_retry_exhausted',
+    ]).has(String(querySource || '').trim());
     const suppressLegacyClarification =
       normalizedUiSurface === 'ingredient_plan_guidance_only' &&
       (Boolean(clarification?.question) ||

@@ -158,6 +158,29 @@ describe('Aurora beauty orchestration facade', () => {
     });
   });
 
+  test('guidance-only surface also suppresses recall-clarify query sources', () => {
+    const runtime = createAuroraBeautyOrchestrationRuntime({
+      normalizeSearchUiSurface(value) {
+        return String(value || '').trim().toLowerCase();
+      },
+    });
+
+    expect(
+      runtime.buildGuidanceOnlyClarificationPlan({
+        uiSurface: 'ingredient_plan_guidance_only',
+        clarification: null,
+        reasonCodes: [],
+        querySource: 'agent_products_recall_clarify',
+      }),
+    ).toEqual({
+      uiSurface: 'ingredient_plan_guidance_only',
+      guidanceOnlySurface: true,
+      suppressLegacyClarification: true,
+      filteredReasonCodes: [],
+      legacyFallbackSuppressed: true,
+    });
+  });
+
   test('guidance-only search state plan owns session loading and persistence decisions', () => {
     const runtime = createAuroraBeautyOrchestrationRuntime({
       normalizeSearchUiSurface(value) {

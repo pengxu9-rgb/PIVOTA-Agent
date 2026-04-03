@@ -737,6 +737,51 @@ describe('Commerce resolution facade', () => {
     });
   });
 
+  test('primary clarify normalization also accepts recall clarify query sources', () => {
+    const runtime = createCommerceResolutionRuntime();
+
+    expect(
+      runtime.normalizePrimaryClarifyContract({
+        products: [],
+        clarification: {
+          question: 'Which finish are you after?',
+        },
+        metadata: {
+          query_source: 'agent_products_recall_clarify',
+          upstream_status: 200,
+          search_decision: {
+            final_decision: 'clarify',
+            clarify_triggered: true,
+          },
+          search_trace: {
+            final_decision: 'clarify',
+            fallback_reason: 'primary_irrelevant_no_fallback',
+          },
+          route_health: {
+            fallback_triggered: true,
+            fallback_reason: 'primary_irrelevant_no_fallback',
+          },
+          proxy_search_fallback: {
+            applied: true,
+            reason: 'primary_irrelevant_no_fallback',
+            route: 'invoke_primary_irrelevant',
+          },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          query_source: 'agent_products_search',
+          primary_clarify_contract: expect.objectContaining({
+            normalized: true,
+            original_query_source: 'agent_products_recall_clarify',
+            original_fallback_reason: 'primary_irrelevant_no_fallback',
+          }),
+        }),
+      }),
+    );
+  });
+
   test('resolver reference-only result is built through execution facade', () => {
     const runtime = createCommerceResolutionRuntime();
 
@@ -1409,6 +1454,7 @@ describe('Commerce resolution facade', () => {
       expect.objectContaining({
         decision: 'clarify',
         reason: 'primary_irrelevant_no_fallback',
+        querySource: 'agent_products_recall_clarify',
         rejectionReason: 'secondary_below_usable_threshold',
         adoptUsableThreshold: 3,
         fallbackRelevant: true,

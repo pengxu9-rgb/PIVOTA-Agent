@@ -20,6 +20,53 @@ const BEAUTY_FORM_FACTOR_TOKENS = new Set([
   'sunscreen',
 ]);
 
+const AGENT_PRODUCTS_SEARCH_QUERY_SOURCE = 'agent_products_search';
+const AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE = 'agent_products_error_fallback';
+const AGENT_PRODUCTS_RECALL_CLARIFY_QUERY_SOURCE = 'agent_products_recall_clarify';
+const AGENT_PRODUCTS_SEMANTIC_RETRY_EXHAUSTED_QUERY_SOURCE =
+  'agent_products_semantic_retry_exhausted';
+const RECOVERABLE_CLARIFY_FALLBACK_QUERY_SOURCES = new Set([
+  AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE,
+  AGENT_PRODUCTS_RECALL_CLARIFY_QUERY_SOURCE,
+  AGENT_PRODUCTS_SEMANTIC_RETRY_EXHAUSTED_QUERY_SOURCE,
+]);
+const RECALL_EXHAUSTION_FALLBACK_REASONS = new Set([
+  'fallback_not_better',
+  'primary_irrelevant_no_fallback',
+  'primary_irrelevant_skip_secondary',
+  'primary_low_quality_no_fallback',
+  'primary_low_quality_skip_secondary',
+  'primary_monoculture_no_fallback',
+  'primary_monoculture_skip_secondary',
+  'resolver_miss_skip_secondary',
+]);
+
+function normalizeQuerySourceToken(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isErrorSoftFallbackQuerySource(value) {
+  return normalizeQuerySourceToken(value) === AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE;
+}
+
+function isRecoverableClarifySoftFallbackQuerySource(value) {
+  return RECOVERABLE_CLARIFY_FALLBACK_QUERY_SOURCES.has(normalizeQuerySourceToken(value));
+}
+
+function isRecoverableStrictSoftFallbackQuerySource(value) {
+  return isRecoverableClarifySoftFallbackQuerySource(value);
+}
+
+function resolveSoftFallbackQuerySource({ reason = null, semanticRetryApplied = false } = {}) {
+  if (semanticRetryApplied) {
+    return AGENT_PRODUCTS_SEMANTIC_RETRY_EXHAUSTED_QUERY_SOURCE;
+  }
+  if (RECALL_EXHAUSTION_FALLBACK_REASONS.has(normalizeQuerySourceToken(reason))) {
+    return AGENT_PRODUCTS_RECALL_CLARIFY_QUERY_SOURCE;
+  }
+  return AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE;
+}
+
 function createCommerceResolutionRuntime(deps = {}) {
   const isAuroraSourceImpl =
     typeof deps.isAuroraSource === 'function' ? deps.isAuroraSource : () => false;
@@ -1295,7 +1342,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     if (!metadata) return body;
 
     const querySource = String(metadata.query_source || '').trim().toLowerCase();
-    if (querySource !== 'agent_products_error_fallback') return body;
+    if (!isRecoverableClarifySoftFallbackQuerySource(querySource)) return body;
 
     const clarification =
       body.clarification && typeof body.clarification === 'object' && !Array.isArray(body.clarification)
@@ -1361,7 +1408,7 @@ function createCommerceResolutionRuntime(deps = {}) {
 
     const nextMetadata = {
       ...metadata,
-      query_source: 'agent_products_search',
+      query_source: AGENT_PRODUCTS_SEARCH_QUERY_SOURCE,
       proxy_search_fallback: fallbackMeta
         ? {
             ...fallbackMeta,
@@ -1393,7 +1440,7 @@ function createCommerceResolutionRuntime(deps = {}) {
           ? {
               ...searchDecision,
               final_decision: 'clarify',
-              decision_authority: 'agent_products_search',
+              decision_authority: AGENT_PRODUCTS_SEARCH_QUERY_SOURCE,
               decision_locked: true,
               decision_lock_reason: 'primary_clarify_contract',
               fallback_reason: null,
@@ -1471,7 +1518,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     intent = null,
     queryClass = null,
     queryText = '',
-    querySource = 'agent_products_error_fallback',
+    querySource = AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE,
     semanticRetryApplied = false,
     semanticRetryQuery = null,
     semanticRetryHits = 0,
@@ -1579,7 +1626,7 @@ function createCommerceResolutionRuntime(deps = {}) {
             }
           : {}),
         metadata: {
-          query_source: String(querySource || 'agent_products_error_fallback'),
+          query_source: String(querySource || AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE),
           upstream_status: Number.isFinite(Number(upstreamStatus)) ? Number(upstreamStatus) : null,
           upstream_error_code: upstreamCode ? String(upstreamCode) : null,
           upstream_error_message: upstreamMessage ? String(upstreamMessage) : null,
@@ -2056,10 +2103,11 @@ function createCommerceResolutionRuntime(deps = {}) {
       rejectionReason: adopted ? null : rejectionReason || nonAdoptReason,
       querySource:
         adopted || decision === 'strict_empty'
-          ? 'agent_products_error_fallback'
-          : meta.semantic_retry_applied
-          ? 'agent_products_semantic_retry_exhausted'
-          : 'agent_products_error_fallback',
+          ? AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE
+          : resolveSoftFallbackQuerySource({
+              reason: nonAdoptReason,
+              semanticRetryApplied: meta.semantic_retry_applied,
+            }),
       fallbackRelevant,
       fallbackRecallImproved,
       strongAdoptionEvidence,
@@ -2087,10 +2135,8 @@ function createCommerceResolutionRuntime(deps = {}) {
     fallbackNotBetterReason = null,
   } = {}) {
     const semanticRetryExhausted = Boolean(semanticRetryApplied);
-    const querySource = secondaryFallbackOutcome?.querySource ||
-      (semanticRetryExhausted
-        ? 'agent_products_semantic_retry_exhausted'
-        : 'agent_products_error_fallback');
+    const fallbackQuerySource =
+      secondaryFallbackOutcome?.querySource || AGENT_PRODUCTS_ERROR_FALLBACK_QUERY_SOURCE;
     const irrelevantReason = skipSecondaryFallback
       ? primaryMonoculture
         ? 'primary_monoculture_skip_secondary'
@@ -2115,6 +2161,16 @@ function createCommerceResolutionRuntime(deps = {}) {
         : skipSecondaryFallback
         ? 'resolver_miss_skip_secondary'
         : 'fallback_not_better');
+    const clarifyQuerySource =
+      secondaryFallbackOutcome?.querySource ||
+      resolveSoftFallbackQuerySource({
+        reason: primaryIrrelevant
+          ? irrelevantReason
+          : primaryLowQualityNonempty
+          ? lowQualityReason
+          : exhaustedReason,
+        semanticRetryApplied: semanticRetryExhausted,
+      });
     const clarifyAfterFallback = Boolean(
       shouldFallback &&
         !primaryIrrelevant &&
@@ -2134,8 +2190,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'authority_locked',
         reason: String(decisionLockReason || '').trim() || 'decision_locked',
-        querySource: String(decisionAuthority || '').trim() || querySource,
-        resolution_authority: String(decisionAuthority || '').trim() || querySource,
+        querySource: String(decisionAuthority || '').trim() || fallbackQuerySource,
+        resolution_authority: String(decisionAuthority || '').trim() || fallbackQuerySource,
         fallback_applied: false,
         fallback_reason_codes: [String(decisionLockReason || '').trim() || 'decision_locked'],
       };
@@ -2145,8 +2201,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: irrelevantReason,
-        querySource,
-        resolution_authority: querySource,
+        querySource: clarifyQuerySource,
+        resolution_authority: clarifyQuerySource,
         fallback_applied: Boolean(shouldFallback),
         fallback_reason_codes: [irrelevantReason],
       };
@@ -2156,8 +2212,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: lowQualityReason,
-        querySource,
-        resolution_authority: querySource,
+        querySource: clarifyQuerySource,
+        resolution_authority: clarifyQuerySource,
         fallback_applied: true,
         fallback_reason_codes: [lowQualityReason],
       };
@@ -2167,8 +2223,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'strict_empty',
         reason: unusableReason,
-        querySource,
-        resolution_authority: querySource,
+        querySource: fallbackQuerySource,
+        resolution_authority: fallbackQuerySource,
         fallback_applied: true,
         fallback_reason_codes: [unusableReason],
       };
@@ -2178,7 +2234,7 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'upstream_returned',
         reason: shouldFallback ? exhaustedReason : 'not_needed',
-        querySource: 'agent_products_search',
+        querySource: AGENT_PRODUCTS_SEARCH_QUERY_SOURCE,
         resolution_authority: 'primary_upstream',
         fallback_applied: false,
         fallback_reason_codes: [],
@@ -2189,8 +2245,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'clarify',
         reason: exhaustedReason,
-        querySource,
-        resolution_authority: querySource,
+        querySource: clarifyQuerySource,
+        resolution_authority: clarifyQuerySource,
         fallback_applied: true,
         fallback_reason_codes: [exhaustedReason],
       };
@@ -2200,8 +2256,8 @@ function createCommerceResolutionRuntime(deps = {}) {
       return {
         decision: 'strict_empty',
         reason: exhaustedReason,
-        querySource,
-        resolution_authority: querySource,
+        querySource: fallbackQuerySource,
+        resolution_authority: fallbackQuerySource,
         fallback_applied: true,
         fallback_reason_codes: [exhaustedReason],
       };
@@ -2210,8 +2266,8 @@ function createCommerceResolutionRuntime(deps = {}) {
     return {
       decision: 'strict_empty',
       reason: shouldFallback ? exhaustedReason : 'no_candidates',
-      querySource,
-      resolution_authority: shouldFallback ? querySource : 'primary_upstream',
+      querySource: fallbackQuerySource,
+      resolution_authority: shouldFallback ? fallbackQuerySource : 'primary_upstream',
       fallback_applied: Boolean(shouldFallback),
       fallback_reason_codes: [shouldFallback ? exhaustedReason : 'no_candidates'],
     };
@@ -2943,6 +2999,9 @@ function createCommerceResolutionRuntime(deps = {}) {
     buildCacheMissResolverFallbackDiagnosedResponse,
     buildProxySearchResolverFallbackResponse,
     buildDirectResolverFallbackResponse,
+    isErrorSoftFallbackQuerySource,
+    isRecoverableClarifySoftFallbackQuerySource,
+    isRecoverableStrictSoftFallbackQuerySource,
     normalizePrimaryClarifyContract,
     buildInvokeResolverFallbackResponse,
     applyProxySearchFallbackMetadata,
