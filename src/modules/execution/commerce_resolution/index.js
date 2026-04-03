@@ -919,9 +919,17 @@ function createCommerceResolutionRuntime(deps = {}) {
     );
   }
 
-  function shouldAllowResolverFallback(operation) {
+  function shouldAllowResolverFallback(
+    operation,
+    { metadata = null, queryText = '', queryClass = null } = {},
+  ) {
     if (!(operation === 'find_products' || operation === 'find_products_multi')) return false;
-    return getResolverFallbackEnabled();
+    if (!getResolverFallbackEnabled()) return false;
+    const source = normalizeAgentSourceImpl(metadata?.source);
+    if (isAuroraSourceImpl(source) && !isStrongResolverLookupQuery(queryText, queryClass)) {
+      return false;
+    }
+    return true;
   }
 
   function shouldAllowSecondaryFallback(operation, { forceSecondaryFallback = false } = {}) {

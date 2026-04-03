@@ -20867,7 +20867,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             checkoutToken,
             source,
           });
-          if (cacheResolverFallbackPlan.shouldAttemptResolverFallback) {
+          const allowCacheResolverFallback = shouldAllowResolverFallback('find_products_multi', {
+            metadata: { ...(metadata || {}), source },
+            queryText: cacheQueryText,
+            queryClass: traceQueryClass,
+          });
+          if (cacheResolverFallbackPlan.shouldAttemptResolverFallback && allowCacheResolverFallback) {
             try {
               const resolverFallback = await queryResolveSearchFallback(
                 cacheResolverFallbackPlan.request,
@@ -22152,7 +22157,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             brandLike: secondarySkipBrandLike,
           },
         );
-        const allowResolverFallback = shouldAllowResolverFallback(operation);
+        const allowResolverFallback = shouldAllowResolverFallback(operation, {
+          metadata: {
+            ...(metadata || {}),
+            source:
+              req?.query?.source ||
+              metadata?.source ||
+              req?.body?.metadata?.source ||
+              req?.body?.payload?.metadata?.source ||
+              queryParams?.source ||
+              effectivePayload?.metadata?.source ||
+              effectivePayload?.context?.source ||
+              null,
+          },
+          queryText,
+          queryClass: traceQueryClass,
+        });
         const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
           forceSecondaryFallback:
             auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,
@@ -22592,7 +22612,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         costMsEstimate: 25,
         queryClass: traceQueryClass,
       });
-      const allowResolverFallback = shouldAllowResolverFallback(operation);
+      const allowResolverFallback = shouldAllowResolverFallback(operation, {
+        metadata: {
+          ...(metadata || {}),
+          source:
+            req?.query?.source ||
+            metadata?.source ||
+            req?.body?.metadata?.source ||
+            req?.body?.payload?.metadata?.source ||
+            queryParams?.source ||
+            effectivePayload?.metadata?.source ||
+            effectivePayload?.context?.source ||
+            null,
+        },
+        queryText,
+        queryClass: traceQueryClass,
+      });
       const allowSecondaryFallback = shouldAllowSecondaryFallback(operation, {
         forceSecondaryFallback:
           auroraFallbackOverrides.forceSecondaryFallback || forceCreatorHumanApparelFallback,

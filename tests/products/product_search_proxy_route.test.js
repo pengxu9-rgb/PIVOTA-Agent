@@ -806,7 +806,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     }));
 
     nock('http://pivota.test')
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
@@ -962,7 +962,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     }));
 
     nock('http://pivota.test')
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query((q) => String(q.query || '').includes(queryText))
       .reply(504, {
         status: 'error',
@@ -1364,7 +1364,7 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     });
 
     nock('http://pivota.test')
-      .get('/agent/v1/products/search')
+      .post('/agent/v2/products/search')
       .query((q) => String(q.query || '').includes(queryText))
       .reply(200, {
         status: 'success',
@@ -1393,6 +1393,60 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     expect(resp.body.products.length).toBeGreaterThan(0);
     expect(resolverSpy).not.toHaveBeenCalled();
     expect(String(resp.body?.metadata?.search_trace?.final_decision || '').toLowerCase()).not.toBe('resolver_stage');
+  });
+
+  test('aurora non-lookup queries do not use resolver fallback after primary failure', async () => {
+    const queryText = 'best sunscreen for oily skin';
+    process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED = 'true';
+    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'false';
+    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'false';
+    delete process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK;
+    delete process.env.PROXY_SEARCH_AURORA_FORCE_INVOKE_FALLBACK;
+
+    const resolverSpy = jest.fn().mockResolvedValue({
+      resolved: true,
+      product_ref: {
+        merchant_id: 'resolver_mid',
+        product_id: 'resolver_pid',
+      },
+      confidence: 0.98,
+      reason: 'stable_alias_ref',
+      metadata: { latency_ms: 8 },
+    });
+
+    jest.doMock('../../src/services/productGroundingResolver', () => ({
+      resolveProductRef: resolverSpy,
+    }));
+
+    nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query((q) => String(q.query || '').includes(queryText))
+      .reply(504, {
+        status: 'error',
+        error: {
+          code: 'UPSTREAM_TIMEOUT',
+          message: 'Search timeout',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resolverSpy).not.toHaveBeenCalled();
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products).toHaveLength(0);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+      }),
+    );
   });
 
   test('aurora source detects same-brand external monoculture and forces semantic retry fallback', async () => {

@@ -1600,6 +1600,9 @@ describe('Commerce resolution facade', () => {
   test('resolver fallback allow gate is owned by execution facade', () => {
     const enabledRuntime = createCommerceResolutionRuntime({
       resolverFallbackEnabled: true,
+      isAuroraSource(source) {
+        return String(source || '').trim().toLowerCase() === 'aurora-bff';
+      },
     });
     const disabledRuntime = createCommerceResolutionRuntime({
       resolverFallbackEnabled: false,
@@ -1608,6 +1611,20 @@ describe('Commerce resolution facade', () => {
     expect(enabledRuntime.shouldAllowResolverFallback('find_products_multi')).toBe(true);
     expect(disabledRuntime.shouldAllowResolverFallback('find_products_multi')).toBe(false);
     expect(enabledRuntime.shouldAllowResolverFallback('create_order')).toBe(false);
+    expect(
+      enabledRuntime.shouldAllowResolverFallback('find_products_multi', {
+        metadata: { source: 'aurora-bff' },
+        queryText: 'best sunscreen for oily skin',
+        queryClass: 'scenario',
+      }),
+    ).toBe(false);
+    expect(
+      enabledRuntime.shouldAllowResolverFallback('find_products_multi', {
+        metadata: { source: 'aurora-bff' },
+        queryText: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        queryClass: 'lookup',
+      }),
+    ).toBe(true);
   });
 
   test('secondary fallback allow gate is owned by execution facade', () => {
