@@ -265,4 +265,98 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     );
     expect(resp.body.metadata.query_source).not.toBe('cache_multi_intent');
   });
+
+  test('does not let shopping cache-stage short-circuit fresh upstream search', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) {
+          return { rows: [{ total: 1 }] };
+        }
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_cache_1',
+                merchant_name: 'Cache Merchant',
+                product_data: {
+                  id: 'cache_only_product',
+                  product_id: 'cache_only_product',
+                  merchant_id: 'merch_cache_1',
+                  title: 'Cached Niacinamide Serum',
+                  description: 'Should not short-circuit shopping mainline',
+                  status: 'published',
+                  inventory_quantity: 6,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    let capturedBody = null;
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .query(true)
+      .reply(200, function reply(_uri, body) {
+        capturedBody = body;
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'fresh_upstream_1',
+              merchant_id: 'merch_fresh_1',
+              title: 'Fresh Niacinamide Serum',
+              description: 'Fresh upstream result',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        };
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(capturedBody).toEqual(
+      expect.objectContaining({
+        operation: 'find_products_multi',
+        metadata: expect.objectContaining({
+          source: 'shopping_agent',
+        }),
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+      }),
+    );
+  });
 });

@@ -20960,6 +20960,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheTransitionPlan.forceSearchFirstForExpandedQuery;
           const bypassCacheStrictEmptyForUnified =
             cacheTransitionPlan.bypassCacheStrictEmptyForUnified;
+          const blockShoppingCacheStageReturn = isShoppingSource(source);
           crossMerchantCacheRouteDebug = applyGuidanceOnlyCacheRouteDebugOutcome({
             cacheRouteDebug: crossMerchantCacheRouteDebug,
             effectiveCacheHit,
@@ -20977,6 +20978,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
           if (
             effectiveCacheHit &&
+            !blockShoppingCacheStageReturn &&
             internalProductsAfterAnchor.length > 0 &&
             (cacheRelevant || relaxCacheRelevanceGate)
           ) {
@@ -21004,7 +21006,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               retrievalSources: fromCache.retrieval_sources || [],
               cacheRouteDebug: crossMerchantCacheRouteDebug,
             });
-            return res.json(cacheHitOutcome.response);
+            if (!blockShoppingCacheStageReturn) {
+              return res.json(cacheHitOutcome.response);
+            }
           }
           const {
             queryClassForEarlyDecision,
@@ -21056,7 +21060,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               flagsSnapshot: traceFlagsSnapshot,
               retrievalSources: fromCache.retrieval_sources || [],
             });
-            if (earlyDecisionOutcome.shouldReturn) {
+            if (earlyDecisionOutcome.shouldReturn && !blockShoppingCacheStageReturn) {
               return res.json(earlyDecisionOutcome.response);
             }
           }
@@ -21103,7 +21107,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   flagsSnapshot: traceFlagsSnapshot,
                   intent: effectiveIntent,
                 });
-              if (cacheResolverFallbackOutcome.shouldReturnResolverFallback) {
+              if (
+                cacheResolverFallbackOutcome.shouldReturnResolverFallback &&
+                !blockShoppingCacheStageReturn
+              ) {
                 return res.json(cacheResolverFallbackOutcome.response);
               }
             } catch (resolverFallbackErr) {
@@ -21165,7 +21172,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               candidateCount: Number(effectiveProducts.length || 0),
               relevantCount: Number(internalProductsAfterAnchor.length || 0),
             });
-            return res.json(strictEmptyDiagnosed);
+            if (!blockShoppingCacheStageReturn) {
+              return res.json(strictEmptyDiagnosed);
+            }
           }
           const cacheMissLoggingArtifacts = buildGuidanceOnlyCacheMissLoggingArtifacts({
             source,
