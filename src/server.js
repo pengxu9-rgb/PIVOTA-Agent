@@ -15999,6 +15999,30 @@ function extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody = {}
   };
 }
 
+function resolveStrictBudgetMetadata(existingMetadata = {}, fallbackMetadata = {}) {
+  const keys = [
+    'budget_currency',
+    'budget_price_min',
+    'budget_price_max',
+    'budget_fx_applied',
+    'budget_fx_rate',
+    'budget_fx_source',
+    'budget_fx_candidate_currency',
+    'budget_fx_unresolved',
+  ];
+  const out = {};
+  for (const key of keys) {
+    if (existingMetadata[key] !== undefined && existingMetadata[key] !== null) {
+      out[key] = existingMetadata[key];
+      continue;
+    }
+    if (fallbackMetadata[key] !== undefined && fallbackMetadata[key] !== null) {
+      out[key] = fallbackMetadata[key];
+    }
+  }
+  return out;
+}
+
 function productMatchesStrictBudgetConstraint(product, budgetConstraint = null) {
   if (!budgetConstraint) return true;
   const item = isPlainRecord(product) ? product : {};
@@ -16270,6 +16294,283 @@ function normalizeStrictCacheMainPathFallbackMetadata({
   return {
     ...responseBody,
     metadata: nextMetadata,
+  };
+}
+
+function normalizeStrictMainlineResponseMetadata({
+  responseBody = null,
+  strictInvokeDecision = null,
+  invokeRequestBody = {},
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!strictInvokeDecision?.strictConstraintQuery) return responseBody;
+
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
+  const budgetMetadata = extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody);
+  const ingredientIntents = uniqueStrings([
+    ...(Array.isArray(metadata.ingredient_intents) ? metadata.ingredient_intents : []),
+    ...(Array.isArray(strictInvokeDecision?.ingredientIntents)
+      ? strictInvokeDecision.ingredientIntents
+      : []),
+  ]);
+
+  return {
+    ...responseBody,
+    metadata: {
+      ...resolveStrictBudgetMetadata(metadata, budgetMetadata),
+      ...metadata,
+      strict_constraint_query: true,
+      strict_constraint_reason:
+        strictInvokeDecision.strictConstraintReason ||
+        metadata.strict_constraint_reason ||
+        null,
+      ...(ingredientIntents.length > 0 ? { ingredient_intents: ingredientIntents } : {}),
+      contract_bridge: {
+        ...(isPlainRecord(metadata.contract_bridge) ? metadata.contract_bridge : {}),
+        attempted_contract: 'shop_invoke_strict',
+        resolved_contract: 'shop_invoke_strict',
+        legacy_fallback: false,
+      },
+    },
+  };
+}
+
+function normalizeShoppingStrictMainlineCacheResponse({
+  responseBody = null,
+  strictInvokeDecision = null,
+  invokeRequestBody = {},
+  queryParams = {},
+  intent = null,
+  queryClass = null,
+  queryText = '',
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!strictInvokeDecision?.strictConstraintQuery) return responseBody;
+
+  const requestSource = String(
+    invokeRequestBody?.metadata?.source ||
+      invokeRequestBody?.payload?.metadata?.source ||
+      invokeRequestBody?.payload?.context?.source ||
+      '',
+  ).trim();
+  if (!isShoppingSource(requestSource)) return responseBody;
+
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
+  const querySource = String(metadata.query_source || '').trim().toLowerCase();
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim().toLowerCase();
+  const strictPrefetchRecovered = metadata.strict_prefetch_recovered === true;
+  const strictPrefetchRecoverySource = toNonEmptyStringOrNull(
+    metadata.strict_prefetch_recovery_source,
+  );
+  const hasBlockedCachePath =
+    querySource.startsWith('cache_') ||
+    primaryPathUsed === 'cache_stage' ||
+    strictPrefetchRecovered ||
+    Boolean(strictPrefetchRecoverySource);
+
+  if (!hasBlockedCachePath) return responseBody;
+
+  const strictReason = 'shopping_mainline_cache_blocked';
+  const strictSource = 'agent_products_error_fallback';
+  const strictEmpty = buildStrictEmptyFallbackResponse({
+    body: null,
+    queryParams,
+    reason: strictReason,
+    route: 'shopping_mainline_cache_blocked',
+    querySource: strictSource,
+    intent,
+    queryClass,
+    queryText,
+  });
+
+  const strictEmptyMetadata = isPlainRecord(strictEmpty?.metadata) ? strictEmpty.metadata : {};
+  const strictEmptyRouteHealth = isPlainRecord(strictEmptyMetadata.route_health)
+    ? strictEmptyMetadata.route_health
+    : {};
+  const strictEmptySearchTrace = isPlainRecord(strictEmptyMetadata.search_trace)
+    ? strictEmptyMetadata.search_trace
+    : {};
+  const strictEmptySearchDecision = isPlainRecord(strictEmptyMetadata.search_decision)
+    ? strictEmptyMetadata.search_decision
+    : {};
+  const budgetMetadata = extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody);
+  const contractBridge = isPlainRecord(metadata.contract_bridge) ? metadata.contract_bridge : {};
+  const ingredientIntents = uniqueStrings([
+    ...(Array.isArray(metadata.ingredient_intents) ? metadata.ingredient_intents : []),
+    ...(Array.isArray(strictInvokeDecision?.ingredientIntents)
+      ? strictInvokeDecision.ingredientIntents
+      : []),
+  ]);
+  const matchedIngredientIds = uniqueStrings(
+    Array.isArray(metadata.matched_ingredient_ids) ? metadata.matched_ingredient_ids : [],
+  );
+
+  return {
+    ...strictEmpty,
+    metadata: {
+      ...strictEmptyMetadata,
+      ...resolveStrictBudgetMetadata(metadata, budgetMetadata),
+      ...(metadata.service_version ? { service_version: metadata.service_version } : {}),
+      query_source: strictSource,
+      strict_constraint_query: true,
+      strict_constraint_reason:
+        strictInvokeDecision.strictConstraintReason ||
+        metadata.strict_constraint_reason ||
+        null,
+      ...(ingredientIntents.length > 0 ? { ingredient_intents: ingredientIntents } : {}),
+      ...(matchedIngredientIds.length > 0 ? { matched_ingredient_ids: matchedIngredientIds } : {}),
+      ...(toNonEmptyStringOrNull(metadata.serving_mode)
+        ? { serving_mode: toNonEmptyStringOrNull(metadata.serving_mode) }
+        : {}),
+      ...(Array.isArray(metadata.visible_option_intents)
+        ? { visible_option_intents: metadata.visible_option_intents }
+        : {}),
+      ...(toNonEmptyStringOrNull(metadata.surface_reason)
+        ? { surface_reason: toNonEmptyStringOrNull(metadata.surface_reason) }
+        : {}),
+      contract_bridge: {
+        ...contractBridge,
+        attempted_contract: 'shop_invoke_strict',
+        resolved_contract: 'shop_invoke_strict',
+        legacy_fallback: false,
+      },
+      proxy_search_fallback: {
+        applied: true,
+        reason: strictReason,
+        route: 'shopping_mainline_cache_blocked',
+      },
+      route_health: {
+        ...strictEmptyRouteHealth,
+        fallback_triggered: true,
+        fallback_reason: strictReason,
+        primary_path_used: 'upstream_stage',
+      },
+      search_trace: {
+        ...strictEmptySearchTrace,
+        final_decision: 'strict_empty',
+      },
+      search_decision: {
+        ...strictEmptySearchDecision,
+        final_decision: 'strict_empty',
+      },
+      shopping_mainline_cache_blocked: true,
+      blocked_cache_query_source: querySource || null,
+      blocked_cache_primary_path_used: primaryPathUsed || null,
+      ...(strictPrefetchRecoverySource
+        ? { blocked_cache_recovery_source: strictPrefetchRecoverySource }
+        : {}),
+    },
+  };
+}
+
+function normalizeShoppingFreshMainlineCacheResponse({
+  responseBody = null,
+  requestSource = null,
+  queryParams = {},
+  intent = null,
+  queryClass = null,
+  queryText = '',
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!isShoppingSource(requestSource)) return responseBody;
+
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
+  const querySource = String(metadata.query_source || '').trim().toLowerCase();
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim().toLowerCase();
+  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+  const searchDecision = isPlainRecord(metadata.search_decision) ? metadata.search_decision : {};
+  const strictPrefetchRecovered = metadata.strict_prefetch_recovered === true;
+  const strictPrefetchRecoverySource = toNonEmptyStringOrNull(
+    metadata.strict_prefetch_recovery_source,
+  );
+  const hasBlockedCachePath =
+    querySource.startsWith('cache_') ||
+    primaryPathUsed === 'cache_stage' ||
+    String(searchTrace.final_decision || '').trim().toLowerCase() === 'cache_returned' ||
+    String(searchDecision.final_decision || '').trim().toLowerCase() === 'cache_returned' ||
+    strictPrefetchRecovered ||
+    Boolean(strictPrefetchRecoverySource);
+
+  if (!hasBlockedCachePath) return responseBody;
+
+  const strictReason = 'shopping_mainline_cache_blocked';
+  const strictSource = 'agent_products_error_fallback';
+  const strictEmpty = buildStrictEmptyFallbackResponse({
+    body: null,
+    queryParams,
+    reason: strictReason,
+    route: 'shopping_mainline_cache_blocked',
+    querySource: strictSource,
+    intent,
+    queryClass,
+    queryText,
+  });
+
+  const strictEmptyMetadata = isPlainRecord(strictEmpty?.metadata) ? strictEmpty.metadata : {};
+  const strictEmptyRouteHealth = isPlainRecord(strictEmptyMetadata.route_health)
+    ? strictEmptyMetadata.route_health
+    : {};
+  const strictEmptySearchTrace = isPlainRecord(strictEmptyMetadata.search_trace)
+    ? strictEmptyMetadata.search_trace
+    : {};
+  const strictEmptySearchDecision = isPlainRecord(strictEmptyMetadata.search_decision)
+    ? strictEmptyMetadata.search_decision
+    : {};
+  const contractBridge = isPlainRecord(metadata.contract_bridge) ? metadata.contract_bridge : {};
+
+  return {
+    ...strictEmpty,
+    metadata: {
+      ...strictEmptyMetadata,
+      ...(metadata.service_version ? { service_version: metadata.service_version } : {}),
+      ...(toNonEmptyStringOrNull(metadata.serving_mode)
+        ? { serving_mode: toNonEmptyStringOrNull(metadata.serving_mode) }
+        : {}),
+      ...(Array.isArray(metadata.visible_category_intents)
+        ? { visible_category_intents: metadata.visible_category_intents }
+        : {}),
+      ...(Array.isArray(metadata.visible_attribute_intents)
+        ? { visible_attribute_intents: metadata.visible_attribute_intents }
+        : {}),
+      ...(Array.isArray(metadata.visible_option_intents)
+        ? { visible_option_intents: metadata.visible_option_intents }
+        : {}),
+      ...(toNonEmptyStringOrNull(metadata.surface_reason)
+        ? { surface_reason: toNonEmptyStringOrNull(metadata.surface_reason) }
+        : {}),
+      contract_bridge: {
+        ...contractBridge,
+        legacy_fallback: false,
+      },
+      query_source: strictSource,
+      proxy_search_fallback: {
+        applied: true,
+        reason: strictReason,
+        route: 'shopping_mainline_cache_blocked',
+      },
+      route_health: {
+        ...strictEmptyRouteHealth,
+        fallback_triggered: true,
+        fallback_reason: strictReason,
+        primary_path_used: 'upstream_stage',
+      },
+      search_trace: {
+        ...strictEmptySearchTrace,
+        final_decision: 'strict_empty',
+      },
+      search_decision: {
+        ...strictEmptySearchDecision,
+        final_decision: 'strict_empty',
+      },
+      shopping_mainline_cache_blocked: true,
+      blocked_cache_query_source: querySource || null,
+      blocked_cache_primary_path_used: primaryPathUsed || null,
+      ...(strictPrefetchRecoverySource
+        ? { blocked_cache_recovery_source: strictPrefetchRecoverySource }
+        : {}),
+    },
   };
 }
 
@@ -22637,6 +22938,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           },
         };
       }
+      if (shoppingFreshMainlineSearch) {
+        upstreamData = normalizeShoppingFreshMainlineCacheResponse({
+          responseBody: upstreamData,
+          requestSource: metadata?.source,
+          queryParams,
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        });
+      }
       if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
         upstreamData = recoverStrictMainPathResponseFromPrefetch({
           responseBody: upstreamData,
@@ -22646,6 +22957,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         upstreamData = normalizeStrictCacheMainPathFallbackMetadata({
           responseBody: upstreamData,
           strictInvokeDecision: strictFindProductsMultiDecision,
+        });
+        upstreamData = normalizeShoppingStrictMainlineCacheResponse({
+          responseBody: upstreamData,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+          invokeRequestBody: requestBody,
+          queryParams,
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        });
+        upstreamData = normalizeStrictMainlineResponseMetadata({
+          responseBody: upstreamData,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+          invokeRequestBody: requestBody,
         });
       }
     }
@@ -22673,10 +22998,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let semanticRetryHits = 0;
     let secondaryFallbackMeta = null;
     let secondaryFallbackOutcome = null;
+    const shoppingMainlineCacheBlocked =
+      shoppingFreshMainlineSearch &&
+      upstreamData &&
+      typeof upstreamData === 'object' &&
+      !Array.isArray(upstreamData) &&
+      upstreamData?.metadata?.shopping_mainline_cache_blocked === true;
 
     if (
       (operation === 'find_products' || operation === 'find_products_multi') &&
-      !(operation === 'find_products_multi' && strictCommerceFindProductsMulti)
+      !(operation === 'find_products_multi' && strictCommerceFindProductsMulti) &&
+      !shoppingMainlineCacheBlocked
     ) {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
       const requestedLimit = Math.min(
