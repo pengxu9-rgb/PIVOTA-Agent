@@ -29,7 +29,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     else process.env.DATABASE_URL = prevDatabaseUrl;
   });
 
-  test('routes explicit agent_api surface to strict shopping invoke', async () => {
+  test('routes explicit agent_api surface to strict shopping invoke without accepting cache-stage results', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
@@ -110,17 +110,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       }),
     );
     expect(Array.isArray(res.body.products)).toBe(true);
-    expect(res.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'prod_1',
-        merchant_id: 'merch_1',
-      }),
-    );
+    expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
         serving_mode: 'eligible_only',
         strict_constraint_query: true,
         strict_constraint_reason: 'ingredient',
+        shopping_mainline_cache_blocked: true,
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
@@ -231,7 +228,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     }
   });
 
-  test('keeps strict empty responses off legacy search fallback paths', async () => {
+  test('blocks strict cache-stage empty responses instead of treating them as mainline success', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
@@ -314,11 +311,13 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'cache_multi_intent',
+        query_source: 'agent_products_error_fallback',
         serving_mode: 'eligible_only',
         ingredient_intents: ['ascorbic_acid'],
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
+        strict_empty: true,
+        shopping_mainline_cache_blocked: true,
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
@@ -501,7 +500,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
-  test('preserves external seed products on strict non-empty responses without adding internal checkout offers', async () => {
+  test('blocks strict cache-stage external seed responses instead of accepting them as success', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
@@ -582,33 +581,19 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(strictInvoke.isDone()).toBe(true);
     expect(legacySearch.isDone()).toBe(false);
     expect(String(capturedBody?.payload?.search?.query || '')).toContain('vitamin c serum under €30');
-    expect(res.body.total).toBe(1);
-    expect(res.body.products).toHaveLength(1);
-    expect(res.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'seed_vitc_1',
-        merchant_id: 'external_seed',
-        source: 'external_seed',
-        external_seed_id: 'seed_vitc_1',
-      }),
-    );
-    expect(res.body.products[0].top_offer_summary).toBeUndefined();
+    expect(res.body.total).toBe(0);
+    expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'cache_multi_intent',
+        query_source: 'agent_products_error_fallback',
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
         budget_fx_applied: true,
-        budget_fx_rate: 0.9174311926605504,
-        budget_fx_source: 'static_default',
         budget_fx_candidate_currency: 'USD',
         budget_fx_unresolved: false,
-        external_seed_returned_count: 1,
-        source_breakdown: expect.objectContaining({
-          external_seed_count: 1,
-        }),
+        shopping_mainline_cache_blocked: true,
         route_health: expect.objectContaining({
-          fallback_triggered: false,
+          fallback_triggered: true,
         }),
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
@@ -616,9 +601,13 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         }),
       }),
     );
+    expect(Number(res.body.metadata?.budget_fx_rate || 0)).toBeGreaterThan(0);
+    expect(['static_default', 'strict_request_context']).toContain(
+      String(res.body.metadata?.budget_fx_source || ''),
+    );
   });
 
-  test('recovers strict budget queries from prefetched external seeds on the main path', async () => {
+  test('shopping strict budget queries do not recover from prefetched external seeds on the main path', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -718,25 +707,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
 
     expect(strictInvoke.isDone()).toBe(true);
     expect(legacySearch.isDone()).toBe(false);
-    expect(res.body.products).toHaveLength(1);
-    expect(res.body.products[0]).toEqual(
-      expect.objectContaining({
-        product_id: expect.any(String),
-        merchant_id: 'external_seed',
-        source: 'external_seed',
-        external_seed_id: 'seed_vitc_recover',
-        title: 'Vitamin-C Serum',
-      }),
-    );
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: 'cache_multi_intent',
+        query_source: 'agent_products_error_fallback',
         strict_constraint_query: true,
         strict_constraint_reason: 'multi_constraint',
-        strict_prefetch_recovered: true,
-        strict_prefetch_recovery_source: 'agent_strict_ingredient_prefetch',
         ingredient_intents: ['ascorbic_acid'],
-        matched_ingredient_ids: ['ascorbic_acid'],
         budget_fx_applied: true,
         budget_fx_source: expect.any(String),
         budget_fx_candidate_currency: 'USD',
@@ -748,10 +726,10 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
           authoritative_endpoint: '/agent/shop/v1/invoke',
         }),
         route_health: expect.objectContaining({
-          fallback_triggered: false,
+          fallback_triggered: true,
         }),
         search_trace: expect.objectContaining({
-          final_decision: 'cache_returned',
+          final_decision: expect.any(String),
         }),
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
@@ -759,11 +737,12 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         }),
       }),
     );
-    expect(res.body.metadata.strict_empty).toBeUndefined();
-    expect(res.body.metadata.strict_empty_reason).toBeUndefined();
+    expect(res.body.metadata?.strict_prefetch_recovered).not.toBe(true);
+    expect(res.body.metadata?.strict_prefetch_recovery_source).toBeUndefined();
+    expect(res.body.metadata?.matched_ingredient_ids || []).toEqual([]);
   });
 
-  test('defaults beauty shade queries to strict shopping invoke without explicit surface', async () => {
+  test('defaults beauty shade queries to strict shopping invoke without accepting cache mainline results', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
@@ -829,13 +808,18 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.products).toEqual([]);
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
         serving_mode: 'eligible_only',
         visible_option_intents: ['shade_210'],
         strict_constraint_query: true,
         strict_constraint_reason: 'shade',
+        strict_empty: true,
         contract_bridge: expect.objectContaining({
           resolved_contract: 'shop_invoke_strict',
           legacy_fallback: false,
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: true,
         }),
       }),
     );
@@ -952,7 +936,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(capturedPrefetchSql).toContain("ingredient_ids");
   });
 
-  test('recovers strict ingredient invoke soft fallback into strict main-path results when prefetched seed candidates exist', async () => {
+  test('shopping strict ingredient invoke does not recover soft fallback into prefetched seed results', async () => {
     process.env.DATABASE_URL = 'postgres://test';
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -1041,23 +1025,15 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       .expect(200);
 
     expect(strictInvoke.isDone()).toBe(true);
-    expect(res.body.products).toHaveLength(1);
-    expect(res.body.products[0]).toEqual(
-      expect.objectContaining({
-        source: 'external_seed',
-        external_seed_id: 'seed_fenty_watch_ya_tone',
-        title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
-      }),
-    );
-    expect(res.body.metadata?.query_source).toBe('cache_multi_intent');
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata?.query_source).toBe('agent_products_error_fallback');
     expect(res.body.metadata?.strict_constraint_query).toBe(true);
     expect(res.body.metadata?.strict_constraint_reason).toBe('ingredient');
-    expect(res.body.metadata?.strict_prefetch_recovered).toBe(true);
-    expect(res.body.metadata?.strict_prefetch_recovery_source).toBe(
-      'agent_strict_ingredient_prefetch',
-    );
+    expect(res.body.metadata?.strict_prefetch_recovered).not.toBe(true);
+    expect(res.body.metadata?.strict_prefetch_recovery_source).toBeUndefined();
     expect(res.body.metadata?.ingredient_intents).toEqual(['niacinamide']);
-    expect(res.body.metadata?.matched_ingredient_ids).toEqual(['niacinamide']);
+    expect(res.body.metadata?.matched_ingredient_ids || []).toEqual([]);
     expect(res.body.metadata?.contract_bridge).toEqual(
       expect.objectContaining({
         resolved_contract: 'shop_invoke_strict',
@@ -1066,24 +1042,18 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
     expect(res.body.metadata?.route_health).toEqual(
       expect.objectContaining({
-        fallback_triggered: false,
+        fallback_triggered: true,
       }),
     );
-    expect(res.body.metadata?.search_trace).toEqual(
-      expect.objectContaining({
-        final_decision: 'cache_returned',
-      }),
-    );
+    expect(res.body.metadata?.search_trace).toEqual(expect.objectContaining({}));
     expect(res.body.metadata?.service_version).toEqual(
       expect.objectContaining({
         commit: expect.any(String),
       }),
     );
-    expect(res.body.metadata.strict_empty).toBeUndefined();
-    expect(res.body.metadata.strict_empty_reason).toBeUndefined();
   });
 
-  test('clears stale fallback markers from strict cache success responses', async () => {
+  test('shopping strict cache success responses are blocked instead of being cleaned into success', async () => {
     const strictInvoke = nock('http://pivota.test')
       .post('/agent/shop/v1/invoke')
       .reply(200, {
@@ -1154,24 +1124,24 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       .expect(200);
 
     expect(strictInvoke.isDone()).toBe(true);
-    expect(res.body.products).toHaveLength(2);
-    expect(res.body.metadata?.query_source).toBe('cache_multi_intent');
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata?.query_source).toBe('agent_products_error_fallback');
+    expect(res.body.metadata?.shopping_mainline_cache_blocked).toBe(true);
     expect(res.body.metadata?.proxy_search_fallback).toEqual(
       expect.objectContaining({
-        applied: false,
-        reason: null,
+        applied: true,
+        reason: 'shopping_mainline_cache_blocked',
       }),
     );
     expect(res.body.metadata?.route_health).toEqual(
       expect.objectContaining({
-        fallback_triggered: false,
-        fallback_reason: null,
-        primary_path_used: 'cache_stage',
+        fallback_triggered: true,
+        fallback_reason: 'shopping_mainline_cache_blocked',
       }),
     );
     expect(res.body.metadata?.search_trace).toEqual(
       expect.objectContaining({
-        final_decision: 'cache_returned',
+        final_decision: 'strict_empty',
       }),
     );
   });

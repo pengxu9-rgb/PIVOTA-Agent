@@ -29,7 +29,7 @@ describe('Aurora commerce core search contracts', () => {
     }
   });
 
-  test('aurora-bff default commerce search source is propagated downstream', async () => {
+  test('aurora-bff main-path retrieval defaults to shopping-agent downstream source', async () => {
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
 
     const seen = [];
@@ -37,7 +37,7 @@ describe('Aurora commerce core search contracts', () => {
       .get('/agent/v1/products/search')
       .query((q) => {
         seen.push({ ...q });
-        return String(q.query || '') === 'serum' && String(q.source || '') === 'aurora-bff';
+        return String(q.query || '') === 'serum' && String(q.source || '') === 'shopping-agent';
       })
       .reply(200, {
         ok: true,
@@ -52,8 +52,8 @@ describe('Aurora commerce core search contracts', () => {
     });
 
     expect(out.ok).toBe(true);
-    expect(out.search_source).toBe('aurora-bff');
-    expect(seen[0].source).toBe('aurora-bff');
+    expect(out.search_source).toBe('shopping-agent');
+    expect(seen[0].source).toBe('shopping-agent');
   });
 
   test('aurora-bff can explicitly align downstream retrieval to shopping_agent semantics', async () => {

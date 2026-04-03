@@ -359,4 +359,70 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       }),
     );
   });
+
+  test('blocks cache-stage upstream responses instead of treating them as shopping success', async () => {
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'cached_1',
+            merchant_id: 'merch_cache_1',
+            title: 'Cached Hydrating Face Cream',
+            description: 'Old cache result',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'cache_multi_intent',
+          route_health: {
+            primary_path_used: 'cache_stage',
+          },
+          search_trace: {
+            final_decision: 'cache_returned',
+          },
+          service_version: {
+            build_id: 'cache-build',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'hydrating face cream',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+        strict_empty_reason: 'shopping_mainline_cache_blocked',
+        shopping_mainline_cache_blocked: true,
+        blocked_cache_query_source: 'cache_multi_intent',
+        blocked_cache_primary_path_used: 'cache_stage',
+      }),
+    );
+  });
 });
