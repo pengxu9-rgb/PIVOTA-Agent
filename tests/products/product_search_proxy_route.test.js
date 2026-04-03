@@ -562,7 +562,72 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
     );
   });
 
-  test('aurora source uses dedicated upstream base for primary and invoke fallback', async () => {
+  test('aurora source bypasses route-level external-seed direct path and enters invoke main path', async () => {
+    const queryText = 'oil control serum';
+
+    const directSeedScope = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query((q) => {
+        return (
+          String(q.query || '') === queryText &&
+          String(q.external_seed_only || '').toLowerCase() === 'true' &&
+          String(q.merchant_id || '') === 'external_seed'
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'seed_direct_should_not_run',
+            merchant_id: 'external_seed',
+            title: 'Seed Direct Should Not Run',
+          },
+        ],
+        total: 1,
+      });
+
+    const invokePrimaryScope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'invoke_main_aurora_1',
+            merchant_id: 'merch_strict',
+            title: 'Oil Control Serum Main Path',
+            in_stock: true,
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: queryText,
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+        merchant_id: 'external_seed',
+        external_seed_only: 'true',
+      });
+
+    expect(resp.status).toBe(200);
+    expect(invokePrimaryScope.isDone()).toBe(true);
+    expect(directSeedScope.isDone()).toBe(false);
+    expect(Array.isArray(resp.body.products)).toBe(true);
+    expect(resp.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'invoke_main_aurora_1',
+        merchant_id: 'merch_strict',
+      }),
+    );
+  });
+
+  test('aurora source bypasses route-level dedicated upstream base and lets invoke main path own search', async () => {
     const queryText = 'Copper peptide serum';
     process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora-upstream.test';
     process.env.PROXY_SEARCH_AURORA_FORCE_SECONDARY_FALLBACK = 'true';
@@ -581,21 +646,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
         total: 0,
       });
 
-    const auroraFallbackScope = nock('http://aurora-upstream.test')
-      .post('/agent/shop/v1/invoke', (body) => {
-        return (
-          body &&
-          body.operation === 'find_products_multi' &&
-          body.payload &&
-          body.payload.search &&
-          String(body.payload.search.query || '') === queryText &&
-          body.payload.search.fast_mode === true &&
-          body.payload.search.allow_stale_cache === false &&
-          body.payload.search.allow_external_seed === false &&
-          String(body.payload.search.external_seed_strategy || '').length > 0 &&
-          String(body.metadata?.source || '') === 'aurora-bff'
-        );
-      })
+    const invokeMainPathScope = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
       .reply(200, {
         status: 'success',
         success: true,
@@ -619,8 +671,8 @@ describe('GET /agent/v1/products/search proxy fallback', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(auroraPrimaryScope.isDone()).toBe(true);
-    expect(auroraFallbackScope.isDone()).toBe(true);
+    expect(auroraPrimaryScope.isDone()).toBe(false);
+    expect(invokeMainPathScope.isDone()).toBe(true);
     expect(Array.isArray(resp.body.products)).toBe(true);
     expect(resp.body.products[0]).toEqual(
       expect.objectContaining({

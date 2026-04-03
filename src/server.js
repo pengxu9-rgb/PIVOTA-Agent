@@ -15715,6 +15715,8 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
 
   const publicSearchSource = String(payload?.metadata?.source || '').trim();
   const forceStrictShoppingMainPath = isShoppingSource(publicSearchSource);
+  const forceAuroraInvokeMainPath = isAuroraSource(publicSearchSource);
+  const forceDirectInvokeMainPath = forceStrictShoppingMainPath || forceAuroraInvokeMainPath;
   if (forceStrictShoppingMainPath) {
     payload.search = {
       ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
@@ -15734,7 +15736,7 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
     };
   }
 
-  if (!forceStrictShoppingMainPath) {
+  if (!forceDirectInvokeMainPath) {
     const fastpathResponse = await runGuidanceServerOwnedLadderSearch({
       req,
       search:
@@ -15783,7 +15785,7 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
         directDecisionMode === 'guidance_only'
       )
     );
-  if (!forceStrictShoppingMainPath && directExternalSeedOnly) {
+  if (!forceDirectInvokeMainPath && directExternalSeedOnly) {
     const directResponse = await searchExternalSeedOnlyProductsDirect({
       search: {
         ...directExternalSeedSearch,
@@ -15807,7 +15809,7 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
     }
   }
 
-  if (!forceStrictShoppingMainPath) {
+  if (!forceDirectInvokeMainPath) {
     const ingredientIntentDirectResponse = await searchIngredientIntentProductsDirect({
       search: directExternalSeedSearch,
       metadata: directExternalSeedMetadata,
