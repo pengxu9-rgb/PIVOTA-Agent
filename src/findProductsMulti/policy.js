@@ -1416,6 +1416,12 @@ function buildStrictSemanticRewriteResult({
         llm_error_stage: String(intentMeta.llm_error_stage || '').trim() || null,
         llm_error_provider: String(intentMeta.llm_error_provider || '').trim() || null,
         llm_error_message: String(intentMeta.llm_error_message || '').trim() || null,
+        llm_finish_reason: String(intentMeta.llm_finish_reason || '').trim() || null,
+        llm_raw_preview: String(intentMeta.llm_raw_preview || '').trim() || null,
+        llm_candidate_count:
+          Number.isFinite(Number(intentMeta.llm_candidate_count)) && Number(intentMeta.llm_candidate_count) >= 0
+            ? Number(intentMeta.llm_candidate_count)
+            : null,
         llm_upstream_status:
           Number.isFinite(Number(intentMeta.llm_upstream_status)) && Number(intentMeta.llm_upstream_status) > 0
             ? Number(intentMeta.llm_upstream_status)
@@ -1439,6 +1445,9 @@ function buildStrictSemanticRewriteResult({
         llm_error_stage: null,
         llm_error_provider: null,
         llm_error_message: null,
+        llm_finish_reason: null,
+        llm_raw_preview: null,
+        llm_candidate_count: null,
         llm_upstream_status: null,
         llm_upstream_error_code: null,
         llm_upstream_error_message: null,

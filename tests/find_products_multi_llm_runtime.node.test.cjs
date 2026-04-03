@@ -398,3 +398,57 @@ test('semantic rewrite llm failure preserves planned model metadata and exposes 
     },
   );
 });
+
+test('semantic rewrite invalid json surfaces finish reason and raw preview from gemini response', async () => {
+  await withEnv(
+    {
+      FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
+      FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
+      GEMINI_API_KEY: 'test-gemini-key',
+      OPENAI_API_KEY: undefined,
+      LLM_API_KEY: undefined,
+    },
+    async () => {
+      const axios = require('axios');
+      const originalPost = axios.post;
+      axios.post = async () => ({
+        data: {
+          candidates: [
+            {
+              finishReason: 'MAX_TOKENS',
+              content: {
+                parts: [{ text: '{"lang' }],
+              },
+            },
+          ],
+        },
+      });
+
+      try {
+        const { extractIntentWithMeta } = loadIntentFresh();
+        const result = await extractIntentWithMeta('best sunscreen for oily skin', [], [], {
+          semanticContract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'step_aware',
+            request_class: 'sunscreen',
+            target_step_family: 'sunscreen',
+            primary_role_id: 'daily_sunscreen',
+            source_surface: 'aurora_beauty_strict',
+          },
+        });
+
+        assert.equal(result.meta.mode, 'deterministic_fallback');
+        assert.equal(result.meta.fallback_reason, 'llm_failed');
+        assert.equal(result.meta.llm_error_class, 'invalid_json');
+        assert.equal(result.meta.llm_finish_reason, 'MAX_TOKENS');
+        assert.equal(result.meta.llm_raw_preview, '{"lang');
+        assert.equal(result.meta.llm_candidate_count, 1);
+      } finally {
+        axios.post = originalPost;
+      }
+    },
+  );
+});

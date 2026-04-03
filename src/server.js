@@ -4334,6 +4334,13 @@ function buildSearchStageLedger({
       llm_error_stage: String(semanticRewriteResult?.llm_error_stage || '').trim() || null,
       llm_error_provider: String(semanticRewriteResult?.llm_error_provider || '').trim() || null,
       llm_error_message: String(semanticRewriteResult?.llm_error_message || '').trim() || null,
+      llm_finish_reason: String(semanticRewriteResult?.llm_finish_reason || '').trim() || null,
+      llm_raw_preview: String(semanticRewriteResult?.llm_raw_preview || '').trim() || null,
+      llm_candidate_count:
+        Number.isFinite(Number(semanticRewriteResult?.llm_candidate_count)) &&
+        Number(semanticRewriteResult?.llm_candidate_count) >= 0
+          ? Number(semanticRewriteResult.llm_candidate_count)
+          : null,
       llm_upstream_status:
         Number.isFinite(Number(semanticRewriteResult?.llm_upstream_status)) &&
         Number(semanticRewriteResult?.llm_upstream_status) > 0

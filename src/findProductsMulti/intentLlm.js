@@ -239,6 +239,12 @@ function normalizeIntentLlmError(error = null) {
     llm_error_stage: trimIntentLlmText(annotatedMeta.stage || '', 48),
     llm_error_provider: trimIntentLlmText(annotatedMeta.provider || '', 48),
     llm_error_message: errorMessage,
+    llm_finish_reason: trimIntentLlmText(annotatedMeta.finish_reason || '', 48),
+    llm_raw_preview: trimIntentLlmText(annotatedMeta.raw_preview || '', 160),
+    llm_candidate_count:
+      Number.isFinite(Number(annotatedMeta.candidate_count)) && Number(annotatedMeta.candidate_count) >= 0
+        ? Number(annotatedMeta.candidate_count)
+        : null,
     llm_upstream_status: upstreamStatus,
     llm_upstream_error_code: upstreamErrorCode,
     llm_upstream_error_message: upstreamErrorMessage || errorMessage,
@@ -301,6 +307,12 @@ function applyIntentExecutionMeta(meta = {}, plan = {}, provider = null) {
     llm_error_stage: String(meta?.llm_error_stage || '').trim() || null,
     llm_error_provider: String(meta?.llm_error_provider || '').trim() || null,
     llm_error_message: trimIntentLlmText(meta?.llm_error_message || ''),
+    llm_finish_reason: trimIntentLlmText(meta?.llm_finish_reason || '', 48),
+    llm_raw_preview: trimIntentLlmText(meta?.llm_raw_preview || '', 160),
+    llm_candidate_count:
+      Number.isFinite(Number(meta?.llm_candidate_count)) && Number(meta.llm_candidate_count) >= 0
+        ? Number(meta.llm_candidate_count)
+        : null,
     llm_upstream_status:
       Number.isFinite(Number(meta?.llm_upstream_status)) && Number(meta.llm_upstream_status) > 0
         ? Number(meta.llm_upstream_status)
@@ -804,7 +816,18 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
   );
 
   const content = completion?.choices?.[0]?.message?.content || '';
-  const parsed = parseIntentJsonObject(content, 'Intent LLM');
+  let parsed;
+  try {
+    parsed = parseIntentJsonObject(content, 'Intent LLM');
+  } catch (err) {
+    throw annotateIntentLlmError(err, {
+      finish_reason:
+        String(completion?.choices?.[0]?.finish_reason || completion?.choices?.[0]?.finishReason || '').trim() ||
+        null,
+      raw_preview: trimIntentLlmText(content, 160),
+      candidate_count: Array.isArray(completion?.choices) ? completion.choices.length : null,
+    });
+  }
   return PivotaIntentV1Zod.parse(parsed);
 }
 
@@ -850,7 +873,18 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   });
   const text =
     res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
-  const parsed = parseIntentJsonObject(text, 'Gemini intent');
+  let parsed;
+  try {
+    parsed = parseIntentJsonObject(text, 'Gemini intent');
+  } catch (err) {
+    throw annotateIntentLlmError(err, {
+      finish_reason:
+        String(res?.data?.candidates?.[0]?.finishReason || res?.data?.candidates?.[0]?.finish_reason || '').trim() ||
+        null,
+      raw_preview: trimIntentLlmText(text, 160),
+      candidate_count: Array.isArray(res?.data?.candidates) ? res.data.candidates.length : null,
+    });
+  }
   return PivotaIntentV1Zod.parse(parsed);
 }
 
