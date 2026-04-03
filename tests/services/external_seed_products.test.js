@@ -1,6 +1,7 @@
 const {
   availabilityToInStock,
   buildExternalSeedProduct,
+  canonicalizeExternalSeedSnapshot,
   normalizeSeedVariants,
 } = require('../../src/services/externalSeedProducts');
 
@@ -63,6 +64,105 @@ describe('externalSeedProducts helper', () => {
         image_url: 'https://example.com/p3.jpg',
       }),
     );
+  });
+
+  test('normalizes nested product variants and tuple option fields into named options', () => {
+    const row = {
+      id: 'eps_nested_variant_1',
+      canonical_url: 'https://example.com/p/multi-size-shirt',
+      destination_url: 'https://example.com/p/multi-size-shirt',
+      title: 'Multi Size Shirt',
+      seed_data: {
+        snapshot: {
+          product: {
+            options: [{ name: 'Color' }, { name: 'Size' }],
+            variants: [
+              {
+                id: 'SKU-RED-S',
+                sku: 'SKU-RED-S',
+                option1: 'Red',
+                option2: 'S',
+                price: '29.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                color_hex: '#ff0000',
+                image_url: 'https://example.com/red-s.jpg',
+              },
+              {
+                id: 'SKU-RED-M',
+                sku: 'SKU-RED-M',
+                option1: 'Red',
+                option2: 'M',
+                price: '29.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://example.com/red-m.jpg',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        sku: 'SKU-RED-S',
+        options: [
+          { name: 'Color', value: 'Red' },
+          { name: 'Size', value: 'S' },
+        ],
+        color_hex: '#ff0000',
+        swatch: { hex: '#ff0000' },
+      }),
+    );
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.variants).toHaveLength(2);
+    expect(product.variants[0].options).toEqual([
+      { name: 'Color', value: 'Red' },
+      { name: 'Size', value: 'S' },
+    ]);
+  });
+
+  test('canonicalizes legacy variant containers into snapshot variants and strips legacy copies', () => {
+    const seedData = {
+      variants: [
+        {
+          id: 'SKU-WIX-1',
+          sku: 'SKU-WIX-1',
+          option_name: 'Size',
+          option_value: '30ml',
+          price: '24.00',
+          currency: 'USD',
+        },
+      ],
+      product: {
+        variants: [
+          {
+            id: 'SKU-WIX-2',
+            sku: 'SKU-WIX-2',
+            option_name: 'Size',
+            option_value: '50ml',
+            price: '30.00',
+            currency: 'USD',
+          },
+        ],
+      },
+      snapshot: {},
+    };
+
+    const out = canonicalizeExternalSeedSnapshot(seedData, { id: 'eps_legacy_variant_1' }, { stripLegacy: true });
+    expect(out.snapshot.variants).toHaveLength(1);
+    expect(out.snapshot.variants[0]).toEqual(
+      expect.objectContaining({
+        sku: 'SKU-WIX-1',
+        options: [{ name: 'Size', value: '30ml' }],
+      }),
+    );
+    expect(out.variants).toBeUndefined();
+    expect(out.product.variants).toBeUndefined();
   });
 
   test('prefers snapshot fields and keeps stock unknown when variants are unknown', () => {
