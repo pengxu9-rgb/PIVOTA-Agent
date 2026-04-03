@@ -4485,9 +4485,11 @@ test('__internal: framework reco query collection runs per-level catalog searche
   const originalGet = axios.get;
   let inFlight = 0;
   let maxInFlight = 0;
+  const observedParams = [];
 
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    observedParams.push(config?.params || {});
     inFlight += 1;
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 40));
@@ -4555,6 +4557,13 @@ test('__internal: framework reco query collection runs per-level catalog searche
     assert.ok(Array.isArray(out.searchResults));
     assert.equal(out.searchResults.length, 3);
     assert.ok(maxInFlight >= 2);
+    assert.equal(observedParams.length, 3);
+    for (const params of observedParams) {
+      assert.equal(params?.query_step_strength, 'strong_goal_family');
+      assert.equal(params?.target_step_family, 'serum');
+      assert.equal(params?.semantic_family, 'oil_control_treatment');
+      assert.equal(params?.product_only, true);
+    }
   } finally {
     axios.get = originalGet;
   }

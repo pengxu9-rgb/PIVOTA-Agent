@@ -3918,6 +3918,10 @@ async function searchPivotaBackendProducts({
   externalSeedStrategy = '',
   fastMode = true,
   transportPolicy = null,
+  queryStepStrength = '',
+  targetStepFamily = '',
+  semanticFamily = '',
+  productOnly = undefined,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -3966,6 +3970,13 @@ async function searchPivotaBackendProducts({
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
   if (normalizedExternalSeedStrategy) params.external_seed_strategy = normalizedExternalSeedStrategy;
   if (fastMode !== undefined) params.fast_mode = fastMode === true;
+  const normalizedQueryStepStrength = String(queryStepStrength || '').trim().toLowerCase();
+  if (normalizedQueryStepStrength) params.query_step_strength = normalizedQueryStepStrength;
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
+  if (normalizedTargetStepFamily) params.target_step_family = normalizedTargetStepFamily;
+  const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
+  if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
+  if (productOnly !== undefined) params.product_only = productOnly === true;
   const primaryBaseUrl = normalizeBaseUrlForRecoCatalogSearch(PIVOTA_BACKEND_BASE_URL);
   const localBaseUrl = normalizeBaseUrlForRecoCatalogSearch(RECO_PDP_LOCAL_INVOKE_BASE_URL);
   const forceLocalFallbackEnabled = forceLocalSearchFallback === true;
@@ -17494,6 +17505,15 @@ async function collectRecoCandidatesFromQueryLevels({
         const queryExternalSeedStrategy = queryAllowExternalSeed
           ? String(queryEntry?.external_seed_strategy || externalSeedStrategy || 'supplement_internal_first').trim().toLowerCase()
           : 'on_empty_only';
+        const normalizedPreferredStep = normalizeRecoTargetStep(queryEntry?.preferred_step || queryEntry?.step);
+        const targetStepFamily = normalizedPreferredStep === 'treatment'
+          ? 'serum'
+          : normalizedPreferredStep;
+        const isPrimaryRoleQuery = String(queryEntry?.role_id || '').trim() !== ''
+          && String(queryEntry?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim();
+        const queryStepStrength = isPrimaryRoleQuery || Number(queryEntry?.role_rank || 99) <= 1
+          ? 'strong_goal_family'
+          : 'supportive_family';
         const out = usePurchasableFallback
           ? await buildPurchasableFallbackCandidates({
               query: queryEntry.query,
@@ -17512,6 +17532,10 @@ async function collectRecoCandidatesFromQueryLevels({
               allowExternalSeed: false,
               fastMode: true,
               transportPolicy: buildRecoRecallTransportPolicy({ mode: 'step_aware' }),
+              queryStepStrength,
+              targetStepFamily,
+              semanticFamily: queryEntry?.role_id || '',
+              productOnly: true,
             });
         return {
           queryEntry,
