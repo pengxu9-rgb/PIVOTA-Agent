@@ -8584,6 +8584,288 @@ async function persistGuidanceSearchSeenProducts(sessionId, products) {
   }
 }
 
+function normalizeExactTitleLookupText(text) {
+  return normalizeSearchTextForMatch(text).replace(/\s+/g, ' ').trim();
+}
+
+function compactExactTitleLookupText(text) {
+  return normalizeExactTitleLookupText(text).replace(/\s+/g, '');
+}
+
+function hasStrongExactTitleLookupMatch(product, queryText) {
+  const normalizedQuery = normalizeExactTitleLookupText(queryText);
+  if (!normalizedQuery) return false;
+
+  const compactQuery = compactExactTitleLookupText(queryText);
+  const titleOnly = normalizeExactTitleLookupText(product?.title || product?.name || '');
+  const compactTitleOnly = compactExactTitleLookupText(product?.title || product?.name || '');
+  if (!titleOnly) return false;
+
+  if (titleOnly === normalizedQuery) return true;
+  if (compactQuery && compactTitleOnly === compactQuery) return true;
+  if (titleOnly.startsWith(`${normalizedQuery} `)) return true;
+  if (titleOnly.includes(`${normalizedQuery} -`)) return true;
+  if (titleOnly.includes(`${normalizedQuery} |`)) return true;
+  if (titleOnly.includes(`${normalizedQuery} /`)) return true;
+  return false;
+}
+
+function shouldRunExternalSeedExactTitleRecall({
+  queryText,
+  queryTokens,
+  ingredientIntent = false,
+} = {}) {
+  const raw = String(queryText || '').trim();
+  if (!raw || raw.length > 96 || /[?]/.test(raw)) return false;
+  const normalizedTokens = Array.isArray(queryTokens) ? queryTokens.filter(Boolean) : [];
+  const tokenCount = normalizedTokens.length;
+  if (tokenCount < 2 || tokenCount > 8) return false;
+  const hasBeautyFormFactorToken = normalizedTokens.some(
+    (token) =>
+      BEAUTY_FORM_FACTOR_TOKENS.has(token) ||
+      ['cleanser', 'cream', 'serum', 'mask', 'toner', 'moisturizer', 'lotion', 'gel', 'balm', 'oil'].includes(token),
+  );
+  if (!hasBeautyFormFactorToken) return false;
+  const titleLikeSignal =
+    /-/.test(raw) ||
+    /\d/.test(raw) ||
+    (raw.match(/\b[A-Z][A-Za-z0-9-]+\b/g) || []).length >= 2;
+  if (!titleLikeSignal) return false;
+  const explicitLookupLike = isLookupStyleSearchQuery(raw, extractSearchAnchorTokens(raw));
+  if (ingredientIntent && !explicitLookupLike && !titleLikeSignal) return false;
+  return explicitLookupLike || titleLikeSignal;
+}
+
+function shouldAttemptShoppingExactTitleExternalSeedRescue({
+  source = null,
+  queryText,
+  queryClass = null,
+  requestedAllowExternalSeed = false,
+  requestedPage = 1,
+  primaryProducts = [],
+} = {}) {
+  if (!isShoppingSource(source)) return false;
+  if (requestedAllowExternalSeed !== true) return false;
+  if (Math.max(1, Number(requestedPage || 1) || 1) > 1) return false;
+
+  const safeQueryText = String(queryText || '').trim();
+  if (!safeQueryText) return false;
+  const normalizedQuery = normalizeSearchTextForMatch(safeQueryText);
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const lookupLike =
+    String(queryClass || '').trim().toLowerCase() === 'lookup' ||
+    shouldRunExternalSeedExactTitleRecall({
+      queryText: safeQueryText,
+      queryTokens,
+      ingredientIntent: false,
+    });
+  if (!lookupLike) return false;
+  if (hasStrongExactTitleLookupMatch(primaryProducts[0], safeQueryText)) return false;
+  if ((Array.isArray(primaryProducts) ? primaryProducts : []).some((product) => hasStrongExactTitleLookupMatch(product, safeQueryText))) {
+    return false;
+  }
+  return true;
+}
+
+async function queryExternalSeedExactTitleRows({
+  market,
+  tool,
+  normalizedQuery,
+  compactNormalizedQuery,
+  inStockOnly,
+  limit,
+} = {}) {
+  const normalizedTitleExpr =
+    "trim(regexp_replace(regexp_replace(lower(coalesce(title, '')), '[^a-z0-9]+', ' ', 'g'), ' +', ' ', 'g'))";
+  const compactTitleExpr =
+    "regexp_replace(lower(coalesce(title, '')), '[^a-z0-9]+', '', 'g')";
+  const normalizedPattern = `%${String(normalizedQuery || '').trim()}%`;
+  const compactPattern = `%${String(compactNormalizedQuery || '').trim()}%`;
+  const sqlParams = [market, tool, normalizedQuery, compactNormalizedQuery, normalizedPattern, compactPattern];
+  const filters = [
+    `(
+      ${normalizedTitleExpr} = $3
+      OR ${compactTitleExpr} = $4
+      OR ${normalizedTitleExpr} LIKE $5
+      OR ${compactTitleExpr} LIKE $6
+    )`,
+  ];
+
+  if (inStockOnly) {
+    filters.push(
+      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+    );
+  }
+
+  sqlParams.push(limit);
+  const limitBind = `$${sqlParams.length}`;
+  const result = await query(
+    `
+      /* external_seed_exact_title_recall */
+      SELECT
+        id,
+        external_product_id,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        updated_at,
+        created_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (tool = '*' OR tool = $2)
+        AND ${filters.join('\n        AND ')}
+      ORDER BY
+        CASE
+          WHEN ${normalizedTitleExpr} = $3 OR ${compactTitleExpr} = $4 THEN 0
+          WHEN ${normalizedTitleExpr} LIKE $5 OR ${compactTitleExpr} LIKE $6 THEN 1
+          ELSE 2
+        END ASC,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST
+      LIMIT ${limitBind}
+    `,
+    sqlParams,
+  );
+  return Array.isArray(result?.rows) ? result.rows : [];
+}
+
+async function resolveShoppingExactTitleExternalSeedSupplement({
+  queryText,
+  requestedLimit,
+  queryParams,
+  metadata,
+  payload,
+  checkoutToken,
+} = {}) {
+  const directSupplement = await searchExternalSeedOnlyProductsDirect({
+    search: {
+      query: queryText,
+      limit: Math.max(8, Math.min(24, requestedLimit)),
+      offset: 0,
+      merchant_id: 'external_seed',
+      external_seed_only: true,
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'unified_relevance',
+      in_stock_only:
+        parseQueryBoolean(
+          queryParams?.in_stock_only ??
+            queryParams?.inStockOnly ??
+            payload?.search?.in_stock_only ??
+            payload?.search?.inStockOnly,
+        ) !== false,
+      source: metadata?.source || null,
+      catalog_surface:
+        firstQueryParamValue(
+          queryParams?.catalog_surface ||
+            queryParams?.catalogSurface ||
+            payload?.search?.catalog_surface ||
+            payload?.search?.catalogSurface,
+        ) || null,
+    },
+    metadata: {
+      source: metadata?.source || null,
+      relevance_query_text: queryText,
+      ui_surface: metadata?.ui_surface || queryParams?.ui_surface || queryParams?.uiSurface || null,
+      decision_mode: metadata?.decision_mode || queryParams?.decision_mode || queryParams?.decisionMode || null,
+    },
+  });
+
+  const directProducts = Array.isArray(directSupplement?.products)
+    ? directSupplement.products
+    : [];
+  if (directProducts.some((product) => hasStrongExactTitleLookupMatch(product, queryText))) {
+    return directSupplement;
+  }
+
+  const safeQueryText = String(queryText || '').trim();
+  const normalizedExactTitleQuery = normalizeExactTitleLookupText(safeQueryText);
+  const compactExactTitleQuery = compactExactTitleLookupText(safeQueryText);
+  const inStockOnly =
+    parseQueryBoolean(
+      queryParams?.in_stock_only ??
+        queryParams?.inStockOnly ??
+        payload?.search?.in_stock_only ??
+        payload?.search?.inStockOnly,
+    ) !== false;
+  if (normalizedExactTitleQuery && compactExactTitleQuery && process.env.DATABASE_URL) {
+    try {
+      const exactTitleRows = await queryExternalSeedExactTitleRows({
+        market:
+          String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() ||
+          'US',
+        tool: 'creator_agents',
+        normalizedQuery: normalizedExactTitleQuery,
+        compactNormalizedQuery: compactExactTitleQuery,
+        inStockOnly,
+        limit: Math.max(8, Math.min(24, requestedLimit)),
+      });
+      const exactTitleProducts = exactTitleRows
+        .map((row) => buildExternalSeedProduct(row))
+        .filter((product) => product && hasStrongExactTitleLookupMatch(product, safeQueryText));
+      if (exactTitleProducts.length > 0) {
+        const limitedProducts = exactTitleProducts.slice(0, Math.max(1, Math.min(24, requestedLimit)));
+        return {
+          status: 'success',
+          success: true,
+          products: limitedProducts,
+          total: limitedProducts.length,
+          page: 1,
+          page_size: limitedProducts.length,
+          reply: null,
+          metadata: {
+            query_source: 'agent_products_external_seed_exact_title_direct',
+            external_seed_only_requested: true,
+            external_seed_exact_title_recall_attempted: true,
+            external_seed_exact_title_recall_hit: true,
+            external_seed_exact_title_match_count: limitedProducts.length,
+            external_seed_rows_fetched: exactTitleRows.length,
+            external_seed_rows_built: exactTitleProducts.length,
+            external_seed_returned_count: limitedProducts.length,
+            source_breakdown: {
+              internal_count: 0,
+              external_seed_count: limitedProducts.length,
+              stale_cache_used: false,
+              strategy_applied: 'shopping_exact_title_external_seed_db_recall',
+            },
+          },
+        };
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          query_text: safeQueryText,
+        },
+        'shopping exact-title external seed db recall failed',
+      );
+    }
+  }
+
+  if (directSupplement) return directSupplement;
+
+  return await fetchExternalSeedSupplementFromBackend({
+    queryParams: {
+      ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams) ? queryParams : {}),
+      query: queryText,
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'unified_relevance',
+    },
+    checkoutToken,
+    neededCount: Math.max(4, Math.min(12, requestedLimit)),
+    source: metadata?.source,
+  });
+}
+
 function scoreDirectExternalSeedProduct({
   product,
   queryText,
@@ -8596,6 +8878,10 @@ function scoreDirectExternalSeedProduct({
   queryStepStrength = null,
   decisionMode = null,
 }) {
+  const normalizedExactTitle = normalizeExactTitleLookupText(queryText);
+  const compactExactTitle = compactExactTitleLookupText(queryText);
+  const normalizedTitleOnly = normalizeExactTitleLookupText(product?.title || product?.name || '');
+  const compactTitleOnly = compactExactTitleLookupText(product?.title || product?.name || '');
   const titleText = normalizeSearchTextForMatch(
     [
       product?.title,
@@ -8657,6 +8943,19 @@ function scoreDirectExternalSeedProduct({
   const candidateAliasHits = countIngredientIntentPhraseMatches(candidateText, recallProfile?.alias_phrases);
   let score = 0;
 
+  if (normalizedExactTitle && normalizedTitleOnly === normalizedExactTitle) score += 120;
+  else if (compactExactTitle && compactTitleOnly === compactExactTitle) score += 112;
+  else if (
+    normalizedExactTitle &&
+    (
+      normalizedTitleOnly.startsWith(`${normalizedExactTitle} `) ||
+      normalizedTitleOnly.includes(`${normalizedExactTitle} -`) ||
+      normalizedTitleOnly.includes(`${normalizedExactTitle} |`) ||
+      normalizedTitleOnly.includes(`${normalizedExactTitle} /`)
+    )
+  ) {
+    score += 56;
+  }
   if (normalizedQuery && titleText.includes(normalizedQuery)) score += 24;
   else if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 12;
   score += titleAnchorHits * 10;
@@ -8921,6 +9220,52 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     });
     const perVariantLimit = retrievalBudget.per_variant_limit;
     const rawProductCap = retrievalBudget.raw_product_cap;
+    const shouldRunExactTitleRecall = shouldRunExternalSeedExactTitleRecall({
+      queryText: relevanceQueryText,
+      queryTokens,
+      ingredientIntent,
+    });
+
+    if (shouldRunExactTitleRecall) {
+      const exactTitleStartedAt = Date.now();
+      try {
+        const exactTitleRows = await queryExternalSeedExactTitleRows({
+          market,
+          tool,
+          normalizedQuery: normalizeExactTitleLookupText(relevanceQueryText),
+          compactNormalizedQuery: compactExactTitleLookupText(relevanceQueryText),
+          inStockOnly,
+          limit: Math.min(perVariantLimit, 24),
+        });
+        variantQueryDebug.push({
+          query: relevanceQueryText,
+          pattern_count: 1,
+          row_count: exactTitleRows.length,
+          duration_ms: Date.now() - exactTitleStartedAt,
+          exact_title_recall: true,
+          lean_sql_applied: false,
+        });
+        for (const row of exactTitleRows) {
+          const product = buildExternalSeedProduct(row);
+          if (!product) continue;
+          const key = buildSearchProductKey(product);
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          rawProducts.push(product);
+          if (rawProducts.length >= rawProductCap) break;
+        }
+      } catch (err) {
+        variantQueryDebug.push({
+          query: relevanceQueryText,
+          pattern_count: 1,
+          row_count: 0,
+          duration_ms: Date.now() - exactTitleStartedAt,
+          exact_title_recall: true,
+          lean_sql_applied: false,
+          error: err?.message || String(err),
+        });
+      }
+    }
 
     const variantResults = await Promise.all(
       retrievalQueries.map(async (retrievalQuery) => {
@@ -9124,6 +9469,11 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
       if (blocked) serviceRowsFilteredCount += 1;
       return !blocked;
     });
+    const exactTitleMatches = shouldRunExactTitleRecall
+      ? productOnlyProducts.filter((product) =>
+          hasStrongExactTitleLookupMatch(product, relevanceQueryText),
+        )
+      : [];
 
     const skincareHitDecision = buildSharedBeautySkincareHitQualityDecision({
       queryText: relevanceQueryText,
@@ -9139,7 +9489,10 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         .map((product) => buildSearchDecisionProductKey(product))
         .filter(Boolean),
     );
-    const scopedProducts = guidanceFastpath
+    const exactTitleBypassApplied = exactTitleMatches.length > 0;
+    const scopedProducts = exactTitleBypassApplied
+      ? productOnlyProducts
+      : guidanceFastpath
       ? productOnlyProducts
       : skincareHitDecision?.applied && skincareHitDecision?.hit_quality !== 'valid_hit'
       ? []
@@ -9181,6 +9534,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         external_seed_rows_fetched: rawProducts.length,
         external_seed_rows_built: scopedProducts.length,
         external_seed_returned_count: responseProducts.length,
+        external_seed_exact_title_recall_attempted: shouldRunExactTitleRecall,
+        external_seed_exact_title_recall_hit: exactTitleMatches.length > 0,
+        external_seed_exact_title_match_count: exactTitleMatches.length,
         raw_result_count: skincareHitDecision?.applied
           ? skincareHitDecision.raw_result_count
           : productOnlyProducts.length,
@@ -9223,7 +9579,9 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         search_decision: {
           contract_version:
             skincareHitDecision?.contract_version || BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
-          hit_quality: skincareHitDecision?.applied
+          hit_quality: exactTitleBypassApplied
+            ? 'valid_hit'
+            : skincareHitDecision?.applied
             ? skincareHitDecision.hit_quality
             : pagedProducts.length > 0
             ? 'valid_hit'
@@ -9231,6 +9589,8 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
           invalid_hit_reason: skincareHitDecision?.applied
             ? skincareHitDecision.invalid_hit_reason
             : null,
+          exact_title_bypass_applied: exactTitleBypassApplied,
+          exact_title_match_count: exactTitleMatches.length,
           query_bucket: skincareHitDecision?.applied ? skincareHitDecision.query_bucket : null,
           query_target_step_family:
             skincareHitDecision?.applied
@@ -14569,7 +14929,15 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
   }
 
   const publicSearchSource = String(payload?.metadata?.source || '').trim();
-  const forceStrictShoppingMainPath = isShoppingSource(publicSearchSource);
+  const rawSearch =
+    payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+      ? payload.search
+      : {};
+  const explicitShoppingExternalSeedOnly =
+    rawSearch?.external_seed_only === true &&
+    String(rawSearch?.merchant_id || '').trim() === 'external_seed';
+  const forceStrictShoppingMainPath =
+    isShoppingSource(publicSearchSource) && !explicitShoppingExternalSeedOnly;
   const forceAuroraInvokeMainPath = isAuroraSource(publicSearchSource);
   const forceDirectInvokeMainPath = forceStrictShoppingMainPath || forceAuroraInvokeMainPath;
   if (forceStrictShoppingMainPath) {
@@ -22470,6 +22838,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryParams?.query_total ??
           queryParams?.queryTotal,
       );
+      let shoppingExactTitleSupplementMeta = null;
 
       if (
         guidanceOnlyDiscovery &&
@@ -22552,6 +22921,111 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           if (guidanceDirectSupplementOutcome.applied) {
             upstreamData = guidanceDirectSupplementOutcome.response;
           }
+        }
+      }
+
+      const primaryProductsBeforeExactTitleSupplement = Array.isArray(upstreamData?.products)
+        ? upstreamData.products
+        : [];
+      if (
+        operation === 'find_products_multi' &&
+        queryText &&
+        shouldAttemptShoppingExactTitleExternalSeedRescue({
+          source: metadata?.source,
+          queryText,
+          queryClass: traceQueryClass,
+          requestedAllowExternalSeed,
+          requestedPage: requestedFindProductsMultiPage,
+          primaryProducts: primaryProductsBeforeExactTitleSupplement,
+        })
+      ) {
+        const exactTitleSupplement = await resolveShoppingExactTitleExternalSeedSupplement({
+          queryText,
+          requestedLimit,
+          queryParams,
+          metadata,
+          payload: effectivePayload,
+          checkoutToken,
+        });
+        const directProducts = Array.isArray(exactTitleSupplement?.products)
+          ? exactTitleSupplement.products
+          : [];
+        const exactMatches = directProducts.filter((product) =>
+          hasStrongExactTitleLookupMatch(product, queryText),
+        );
+        if (exactMatches.length > 0) {
+          const seen = new Set();
+          const mergedProducts = [];
+          for (const product of exactMatches) {
+            const key = buildSearchProductKey(product);
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            mergedProducts.push(product);
+          }
+          for (const product of primaryProductsBeforeExactTitleSupplement) {
+            const key = buildSearchProductKey(product);
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            mergedProducts.push(product);
+            if (mergedProducts.length >= requestedLimit) break;
+          }
+          upstreamData = normalizeAgentProductsListResponse(
+            {
+              ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+                ? upstreamData
+                : {}),
+              products: mergedProducts,
+              total: Math.max(
+                Number(upstreamData?.total || 0) || 0,
+                mergedProducts.length,
+              ),
+              metadata: {
+                ...(upstreamData?.metadata && typeof upstreamData.metadata === 'object'
+                  ? upstreamData.metadata
+                  : {}),
+                query_source: 'agent_products_search_exact_title_supplemented',
+                shopping_exact_title_external_seed_applied: true,
+                shopping_exact_title_external_seed_match_count: exactMatches.length,
+                external_seed_executed: true,
+                external_seed_skip_reason: null,
+                external_seed_cache_hit: false,
+                external_seed_exact_title_recall_attempted: true,
+                external_seed_exact_title_recall_hit: true,
+                source_breakdown: {
+                  ...(
+                    upstreamData?.metadata?.source_breakdown &&
+                    typeof upstreamData.metadata.source_breakdown === 'object'
+                      ? upstreamData.metadata.source_breakdown
+                      : {}
+                  ),
+                  internal_count: Math.max(
+                    0,
+                    mergedProducts.filter((product) => !isExternalSeedProduct(product)).length,
+                  ),
+                  external_seed_count: mergedProducts.filter((product) => isExternalSeedProduct(product)).length,
+                  stale_cache_used: false,
+                  strategy_applied: 'shopping_exact_title_external_seed_rescue',
+                },
+              },
+            },
+            {
+              limit: queryParams?.limit,
+              offset: queryParams?.offset,
+            },
+          );
+          shoppingExactTitleSupplementMeta = {
+            attempted: true,
+            applied: true,
+            added_count: exactMatches.length,
+            reason: 'shopping_exact_title_external_seed_rescue',
+          };
+        } else {
+          shoppingExactTitleSupplementMeta = {
+            attempted: true,
+            applied: false,
+            added_count: 0,
+            reason: 'shopping_exact_title_external_seed_no_match',
+          };
         }
       }
 
@@ -23359,6 +23833,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          ...upstreamData,
 	          metadata: {
 	            ...(upstreamData.metadata && typeof upstreamData.metadata === 'object' ? upstreamData.metadata : {}),
+		            ...(shoppingExactTitleSupplementMeta
+                  ? {
+                      search_stage_exact_title: shoppingExactTitleSupplementMeta,
+                    }
+                  : {}),
 		            semantic_retry_applied: Boolean(semanticRetryApplied),
                 semantic_retry_actual_attempted: semanticRetryActualAttempted,
 		            semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
@@ -23399,6 +23878,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     : {}
                 ),
 	                semantic_retry_applied: Boolean(semanticRetryApplied),
+                  ...(shoppingExactTitleSupplementMeta
+                    ? {
+                        search_stage_exact_title: shoppingExactTitleSupplementMeta,
+                      }
+                    : {}),
                   semantic_retry_actual_attempted: semanticRetryActualAttempted,
 	                semantic_retry_query: semanticRetryQuery ? String(semanticRetryQuery) : null,
 	                semantic_retry_hits: Math.max(0, Number(semanticRetryHits || 0) || 0),
