@@ -19831,6 +19831,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     strictConstraintQuery: false,
     strictConstraintReason: null,
   };
+  const shoppingFreshMainlineSearch =
+    (operation === 'find_products' || operation === 'find_products_multi') &&
+    isShoppingSource(metadata?.source);
   let creatorCacheRouteDebug = null;
   let creatorHumanApparelDirectRouteDebug = null;
   let crossMerchantCacheRouteDebug = null;
@@ -20219,7 +20222,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // browse feed directly from products_cache.
       const isCrossMerchantBrowseColdStart =
         !isCreatorUi && queryText.length === 0 && !hasMerchantScope;
-      if (!strictCommerceFindProductsMulti && isCrossMerchantBrowseColdStart && process.env.DATABASE_URL) {
+      if (
+        !shoppingFreshMainlineSearch &&
+        !strictCommerceFindProductsMulti &&
+        isCrossMerchantBrowseColdStart &&
+        process.env.DATABASE_URL
+      ) {
         try {
           const page = search.page || 1;
           const limit = search.limit || search.page_size || 20;
@@ -20324,7 +20332,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !isCreatorUi &&
         (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
         !hasMerchantScope;
-      if (!strictCommerceFindProductsMulti && isCrossMerchantQuerySearch && process.env.DATABASE_URL) {
+      if (
+        !shoppingFreshMainlineSearch &&
+        !strictCommerceFindProductsMulti &&
+        isCrossMerchantQuerySearch &&
+        process.env.DATABASE_URL
+      ) {
         let cacheStageBudgetMs = 0;
         try {
           const cacheStageStartedAt = Date.now();
@@ -22127,6 +22140,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        if (shoppingFreshMainlineSearch) {
+          response = {
+            status: 200,
+            data: buildStrictEmptyFallbackResponse({
+              body: null,
+              queryParams,
+              reason:
+                err?.code === 'ECONNABORTED'
+                  ? 'shopping_mainline_timeout'
+                  : 'shopping_mainline_exception',
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: 'shopping_mainline_primary_exception',
+              intent: effectiveIntent,
+              queryClass: traceQueryClass,
+              queryText,
+            }),
+          };
+        }
         if (operation === 'find_products_multi' && strictCommerceFindProductsMulti) {
           response = {
             status: 200,
@@ -22280,6 +22313,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (!response) {
           if (
             operation === 'find_products_multi' &&
+            !shoppingFreshMainlineSearch &&
             crossMerchantCacheProtectedResponse &&
             Array.isArray(crossMerchantCacheProtectedResponse.products) &&
             crossMerchantCacheProtectedResponse.products.length > 0
@@ -22333,6 +22367,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (!response) throw err;
+    }
+    if (
+      shoppingFreshMainlineSearch &&
+      (operation === 'find_products' || operation === 'find_products_multi') &&
+      Number(response?.status || 0) >= 500
+    ) {
+      response = {
+        status: 200,
+        data: buildStrictEmptyFallbackResponse({
+          body: null,
+          queryParams,
+          reason: 'shopping_mainline_upstream_5xx',
+          upstreamStatus: Number(response?.status || 0) || null,
+          route: 'shopping_mainline_primary_status',
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        }),
+      };
     }
     let upstreamData = response.data;
     if (
@@ -22911,7 +22964,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       }
 
-      if (shouldFallback) {
+      if (shouldFallback && !shoppingFreshMainlineSearch) {
         let replacedByFallback = false;
 
         if (allowResolverFallback && !skipSecondaryFallback) {
@@ -23719,6 +23772,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     if (
       operation === 'find_products_multi' &&
+      !shoppingFreshMainlineSearch &&
       crossMerchantCacheProtectedResponse &&
       Array.isArray(crossMerchantCacheProtectedResponse.products) &&
       crossMerchantCacheProtectedResponse.products.length > 0
@@ -24415,6 +24469,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
       if (
         operation === 'find_products_multi' &&
+        !shoppingFreshMainlineSearch &&
         crossMerchantCacheProtectedResponse &&
         Array.isArray(crossMerchantCacheProtectedResponse.products) &&
         crossMerchantCacheProtectedResponse.products.length > 0

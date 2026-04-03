@@ -336,13 +336,70 @@ function buildVariants(product) {
   }
 
   return rawVariants.map((v, idx) => {
+    const attrs =
+      v && typeof v.variant_attributes === 'object' && !Array.isArray(v.variant_attributes)
+        ? v.variant_attributes
+        : {};
     const variantId = v.variant_id || v.id || v.sku || v.sku_id || `${product.product_id}-${idx + 1}`;
     const title = v.title || v.name || v.option_title || v.sku_name || `Variant ${idx + 1}`;
+    const productOptionNames = Array.isArray(product.options)
+      ? product.options
+          .map((option) =>
+            typeof option === 'string'
+              ? option
+              : option?.name || option?.title || option?.label || null,
+          )
+          .filter(Boolean)
+      : Array.isArray(product.product_options)
+        ? product.product_options
+            .map((option) =>
+              typeof option === 'string'
+                ? option
+                : option?.name || option?.title || option?.label || null,
+            )
+            .filter(Boolean)
+        : [];
+    const selectedOptions = Array.isArray(attrs.selected_options)
+      ? attrs.selected_options
+      : Array.isArray(attrs.options)
+        ? attrs.options
+        : [];
+    const fallbackTupleOptions = [v.option1, v.option2, v.option3]
+      .map((value, optionIndex) => {
+        if (value == null || value === '') return null;
+        return {
+          name: productOptionNames[optionIndex] || `Option ${optionIndex + 1}`,
+          value: String(value),
+        };
+      })
+      .filter(Boolean);
     const options = Array.isArray(v.options)
       ? v.options
       : typeof v.options === 'object' && v.options
         ? Object.entries(v.options).map(([name, value]) => ({ name, value: String(value) }))
-        : [];
+        : selectedOptions.length
+          ? selectedOptions
+              .map((option, optionIndex) => {
+                if (!option || typeof option !== 'object') return null;
+                const name =
+                  option.name ||
+                  option.option_name ||
+                  option.key ||
+                  productOptionNames[optionIndex] ||
+                  `Option ${optionIndex + 1}`;
+                const value =
+                  option.value ??
+                  option.option_value ??
+                  option.label ??
+                  option.title;
+                if (!name || value == null || value === '') return null;
+                return {
+                  name: String(name),
+                  value: String(value),
+                };
+              })
+              .filter(Boolean)
+          : fallbackTupleOptions;
 
     let inStock;
     if (typeof v.in_stock === 'boolean') {
@@ -388,7 +445,7 @@ function buildVariants(product) {
 
     return {
       variant_id: String(variantId),
-      sku_id: v.sku_id || v.sku || v.sku_code,
+      sku_id: v.sku_id || v.sku || v.sku_code || attrs.sku,
       title: String(title),
       options,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
@@ -604,16 +661,28 @@ function resolveIngredientSourceMeta(product, prefersPdpField = false) {
 }
 
 function buildIngredientsModule(product, detailSections) {
+  const directIngredientsPayload =
+    product.ingredients_inci ||
+    product.ingredientsInci ||
+    product.inci_ingredients ||
+    product.inciIngredients ||
+    null;
   const rawText =
+    normalizeTextValue(directIngredientsPayload?.raw_text || directIngredientsPayload?.text) ||
     normalizeTextValue(product.raw_ingredient_text_clean) ||
     normalizeTextValue(product.pdp_ingredients_raw) ||
     normalizeTextValue(
       detailSections.find((section) => matchesSectionHeading(section, INGREDIENT_SECTION_HEADING_RE))
         ?.content,
     );
+  const directItems = normalizeStringList(
+    directIngredientsPayload?.items || directIngredientsPayload?.list || directIngredientsPayload,
+  );
   const inciItems = normalizeStringList(product.inci_list);
   const tokenItems = normalizeStringList(product.ingredient_tokens);
-  const normalizedItems = inciItems.length
+  const normalizedItems = directItems.length
+    ? directItems
+    : inciItems.length
     ? inciItems
     : tokenItems.length
       ? tokenItems
@@ -654,13 +723,31 @@ function buildActiveIngredientsModule(product, detailSections) {
 }
 
 function buildHowToUseModule(product, detailSections) {
+  const directHowToUsePayload =
+    product.how_to_use ||
+    product.howToUse ||
+    product.directions ||
+    product.instructions ||
+    product.usage ||
+    null;
   const rawText =
+    normalizeTextValue(
+      directHowToUsePayload?.raw_text ||
+      directHowToUsePayload?.text ||
+      directHowToUsePayload?.body,
+    ) ||
     normalizeTextValue(product.pdp_how_to_use_raw) ||
     normalizeTextValue(
       detailSections.find((section) => matchesSectionHeading(section, HOW_TO_USE_SECTION_HEADING_RE))
         ?.content,
     );
-  const steps = splitHowToUseSteps(rawText);
+  const directSteps = normalizeStringList(
+    directHowToUsePayload?.steps ||
+    directHowToUsePayload?.items ||
+    directHowToUsePayload?.list,
+    8,
+  );
+  const steps = directSteps.length ? directSteps : splitHowToUseSteps(rawText);
   if (!rawText && !steps.length) return null;
   return {
     title: 'How to use',
