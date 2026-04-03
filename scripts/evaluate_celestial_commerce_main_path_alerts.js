@@ -3,6 +3,11 @@ const fs = require('fs');
 const path = require('path');
 const { FALLBACK_QUERY_SOURCES } = require('./lib/commerce_primary_path');
 
+const RECALL_EXHAUSTION_QUERY_SOURCES = new Set([
+  'agent_products_recall_clarify',
+  'agent_products_semantic_retry_exhausted',
+]);
+
 function parseArgs(argv) {
   const out = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -115,8 +120,10 @@ function buildMetrics({ stagingMatrixSummary = {}, searchStabilitySummary = {}, 
     FALLBACK_QUERY_SOURCES.has(normalizeAuthority(item.decisionAuthority, item.querySource)),
   ).length;
   const agentProductsErrorFallbackCount = records.filter(
-    (item) =>
-      normalizeAuthority(item.decisionAuthority, item.querySource) === 'agent_products_error_fallback',
+    (item) => normalizeAuthority(item.querySource) === 'agent_products_error_fallback',
+  ).length;
+  const recallExhaustionCount = records.filter((item) =>
+    RECALL_EXHAUSTION_QUERY_SOURCES.has(normalizeAuthority(item.querySource)),
   ).length;
   const serviceVersionCommitMissingCount = records.filter(
     (item) => item.serviceVersionCommitPresent !== true,
@@ -143,6 +150,7 @@ function buildMetrics({ stagingMatrixSummary = {}, searchStabilitySummary = {}, 
     decision_unlocked_count: decisionUnlockedCount,
     fallback_authority_count: fallbackAuthorityCount,
     agent_products_error_fallback_count: agentProductsErrorFallbackCount,
+    recall_exhaustion_count: recallExhaustionCount,
     service_version_commit_missing_count: serviceVersionCommitMissingCount,
     governance_would_enforce_count: governanceWouldEnforceCount,
     authority_counts: authorityCounts,
@@ -241,6 +249,7 @@ function buildMarkdown({
   lines.push(
     `| agent_products_error_fallback_count | ${evaluation.metrics.agent_products_error_fallback_count} |`,
   );
+  lines.push(`| recall_exhaustion_count | ${evaluation.metrics.recall_exhaustion_count} |`);
   lines.push(
     `| service_version_commit_missing_count | ${evaluation.metrics.service_version_commit_missing_count} |`,
   );

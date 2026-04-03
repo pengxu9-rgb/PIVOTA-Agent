@@ -426,6 +426,10 @@ function writeArtifacts(args, payload) {
       String(payload.main_path_alerts.metrics.agent_products_error_fallback_count || 0),
     ]),
     markdownTableRow([
+      'recall_exhaustion_count',
+      String(payload.main_path_alerts.metrics.recall_exhaustion_count || 0),
+    ]),
+    markdownTableRow([
       'service_version_commit_missing_count',
       String(payload.main_path_alerts.metrics.service_version_commit_missing_count || 0),
     ]),

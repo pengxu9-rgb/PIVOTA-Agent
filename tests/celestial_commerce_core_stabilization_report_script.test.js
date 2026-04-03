@@ -417,6 +417,7 @@ describe('Celestial commerce-core stabilization report script', () => {
           metrics: {
             total_records: 2,
             fallback_authority_count: 1,
+            recall_exhaustion_count: 3,
           },
           alerts: [{ key: 'max_fallback_authority_count', status: 'red', observed: 1, comparator: 'max', target: 0 }],
         },
@@ -458,5 +459,6 @@ describe('Celestial commerce-core stabilization report script', () => {
       expect.arrayContaining([expect.stringContaining('main-path alert status is red')]),
     );
     expect(report).toContain('## Main-Path Alerts');
+    expect(report).toContain('| recall_exhaustion_count | 3 |');
   });
 });

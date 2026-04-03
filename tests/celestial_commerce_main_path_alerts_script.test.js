@@ -229,5 +229,6 @@ describe('Celestial commerce main-path alerts script', () => {
     expect(payload.overall_status).toBe('green');
     expect(summary.metrics.fallback_authority_count).toBe(0);
     expect(summary.metrics.agent_products_error_fallback_count).toBe(0);
+    expect(summary.metrics.recall_exhaustion_count).toBe(1);
   });
 });
