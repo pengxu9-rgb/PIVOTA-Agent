@@ -14,6 +14,23 @@ const {
 } = require('./llmRuntime');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 
+const INTENT_LLM_MAX_RECENT_QUERIES = Math.max(
+  1,
+  Math.min(6, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_RECENT_QUERIES || 4) || 4),
+);
+const INTENT_LLM_MAX_RECENT_MESSAGES = Math.max(
+  1,
+  Math.min(8, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_RECENT_MESSAGES || 6) || 6),
+);
+const INTENT_LLM_MAX_MESSAGE_CHARS = Math.max(
+  80,
+  Math.min(600, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_MAX_MESSAGE_CHARS || 240) || 240),
+);
+const INTENT_LLM_PROVIDER_TIMEOUT_MS = Math.max(
+  1000,
+  Math.min(15000, Number(process.env.FIND_PRODUCTS_MULTI_INTENT_LLM_PROVIDER_TIMEOUT_MS || 6000) || 6000),
+);
+
 function isEnabled() {
   return resolveFindProductsLlmRuntime('semantic_rewrite').enabled;
 }
@@ -90,6 +107,39 @@ function buildDeveloperPrompt() {
     '',
     'Return JSON only.',
   ].join('\n');
+}
+
+function truncateText(value, maxChars = INTENT_LLM_MAX_MESSAGE_CHARS) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+}
+
+function normalizeRecentQueriesForIntentLlm(recentQueries = []) {
+  return (Array.isArray(recentQueries) ? recentQueries : [])
+    .map((value) => truncateText(value, 120))
+    .filter(Boolean)
+    .slice(-INTENT_LLM_MAX_RECENT_QUERIES);
+}
+
+function normalizeRecentMessagesForIntentLlm(recentMessages = []) {
+  return (Array.isArray(recentMessages) ? recentMessages : [])
+    .map((message) => ({
+      role: String(message?.role || '').trim() || 'user',
+      content: truncateText(message?.content, INTENT_LLM_MAX_MESSAGE_CHARS),
+    }))
+    .filter((message) => message.content)
+    .slice(-INTENT_LLM_MAX_RECENT_MESSAGES);
+}
+
+function buildIntentLlmInput(latestUserQuery, recentQueries = [], recentMessages = []) {
+  return JSON.stringify({
+    latest_user_query: String(latestUserQuery || ''),
+    recent_queries: normalizeRecentQueriesForIntentLlm(recentQueries),
+    recent_messages: normalizeRecentMessagesForIntentLlm(recentMessages),
+    schema: intentSchema,
+  });
 }
 
 function includesAny(haystack, needles) {
@@ -424,34 +474,29 @@ function applyHardOverrides(latestQuery, intent) {
   return PivotaIntentV1Zod.parse(patched);
 }
 
-async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = []) {
+async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const model = process.env.PIVOTA_INTENT_MODEL || 'gpt-5.1-mini';
   const openai = getOpenAIClient();
+  const input = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages);
 
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
     { role: 'developer', content: buildDeveloperPrompt() },
     {
       role: 'user',
-      content: JSON.stringify(
-        {
-          latest_user_query: String(latest_user_query || ''),
-          recent_queries: Array.isArray(recent_queries) ? recent_queries : [],
-          recent_messages: Array.isArray(recent_messages) ? recent_messages : [],
-          schema: intentSchema,
-        },
-        null,
-        2
-      ),
+      content: input,
     },
   ];
 
-  const completion = await openai.chat.completions.create({
-    model,
-    messages,
-    // Best-effort hint; model/policy may ignore.
-    response_format: { type: 'json_object' },
-  });
+  const completion = await openai.chat.completions.create(
+    {
+      model,
+      messages,
+      // Best-effort hint; model/policy may ignore.
+      response_format: { type: 'json_object' },
+    },
+    options?.signal ? { signal: options.signal } : undefined,
+  );
 
   const content = completion?.choices?.[0]?.message?.content || '';
   let parsed;
@@ -464,7 +509,7 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
   return PivotaIntentV1Zod.parse(parsed);
 }
 
-async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = []) {
+async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const apiKey = resolveFindProductsGeminiApiKey();
   if (!apiKey) {
     throw new Error('Gemini API key is not set');
@@ -482,16 +527,7 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const systemText = `${buildSystemPrompt()}\n\n${buildDeveloperPrompt()}`;
-  const userText = JSON.stringify(
-    {
-      latest_user_query: String(latest_user_query || ''),
-      recent_queries: Array.isArray(recent_queries) ? recent_queries : [],
-      recent_messages: Array.isArray(recent_messages) ? recent_messages : [],
-      schema: intentSchema,
-    },
-    null,
-    2
-  );
+  const userText = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages);
 
   const body = {
     systemInstruction: { parts: [{ text: systemText }] },
@@ -502,7 +538,18 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
     },
   };
 
-  const res = await axios.post(url, body, { timeout: 12000 });
+  const res = await axios.post(url, body, {
+    timeout: Math.max(
+      1000,
+      Math.min(
+        INTENT_LLM_PROVIDER_TIMEOUT_MS,
+        Number.isFinite(Number(options?.timeoutMs)) && Number(options.timeoutMs) > 0
+          ? Number(options.timeoutMs)
+          : INTENT_LLM_PROVIDER_TIMEOUT_MS,
+      ),
+    ),
+    ...(options?.signal ? { signal: options.signal } : {}),
+  });
   const text =
     res?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n') || '';
 
@@ -521,7 +568,7 @@ async function extractIntent(latest_user_query, recent_queries = [], recent_mess
   return result.intent;
 }
 
-async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = []) {
+async function extractIntentWithMeta(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const runtime = resolveFindProductsLlmRuntime('semantic_rewrite');
   if (!runtime.enabled) {
     const fallback = buildDeterministicIntentWithMeta(
@@ -541,10 +588,10 @@ async function extractIntentWithMeta(latest_user_query, recent_queries = [], rec
 
     const run = async (provider) => {
       if (provider === 'openai') {
-        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages);
+        return await extractIntentWithOpenAI(latest_user_query, recent_queries, recent_messages, options);
       }
       if (provider === 'gemini') {
-        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages);
+        return await extractIntentWithGemini(latest_user_query, recent_queries, recent_messages, options);
       }
       throw new Error(`Unsupported intent provider: ${provider}`);
     };

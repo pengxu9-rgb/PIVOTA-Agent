@@ -334,6 +334,60 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('sun protection');
   });
 
+  test('exact lookup semantic contract skips semantic rewrite budget entirely', async () => {
+    jest.resetModules();
+    jest.doMock('../src/findProductsMulti/intentLlm', () => {
+      const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
+      return {
+        ...actual,
+        extractIntentWithMeta: jest.fn(() => {
+          throw new Error('semantic rewrite should be skipped for exact lookup');
+        }),
+      };
+    });
+
+    try {
+      // eslint-disable-next-line global-require
+      const { buildFindProductsMultiContext: buildWithExactLookup } = require('../src/findProductsMulti/policy');
+      const out = await buildWithExactLookup({
+        payload: {
+          search: {
+            query: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'exact_product',
+              request_class: 'exact_lookup',
+              target_step_family: null,
+              primary_role_id: null,
+              support_role_ids: [],
+              semantic_family: null,
+              allowed_step_families: [],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+          user: { recent_queries: [] },
+          messages: [{ role: 'user', content: 'The Ordinary Niacinamide 10% + Zinc 1%' }],
+        },
+        metadata: {},
+      });
+
+      expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBe(0);
+      expect(out.expansion_meta.semantic_owner_locked).toBe(false);
+      expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+        expect.objectContaining({
+          applied: false,
+          fallback_reason: 'semantic_rewrite_skipped_exact_lookup',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/findProductsMulti/intentLlm');
+      jest.resetModules();
+    }
+  });
+
   test('hydrating moisturizer expansion adds moisturizer-specific recall terms', async () => {
     const { adjustedPayload } = await buildFindProductsMultiContext({
       payload: {
@@ -394,7 +448,7 @@ describe('find_products_multi context building', () => {
         metadata: {},
       });
 
-      expect(Date.now() - startedAt).toBeLessThan(5000);
+      expect(Date.now() - startedAt).toBeLessThan(6500);
       expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBeGreaterThanOrEqual(800);
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({

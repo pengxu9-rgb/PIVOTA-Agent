@@ -145,7 +145,7 @@ const FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS = Math.max(
   800,
   Math.min(
     15000,
-    Number(process.env.FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS || 2500) || 2500,
+    Number(process.env.FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS || 4500) || 4500,
   ),
 );
 const BEAUTY_DIVERSITY_STRICT_EMPTY_ON_FAILURE =
@@ -202,6 +202,12 @@ const FIND_PRODUCTS_MULTI_BUDGET_FX_SOURCE =
   (String(process.env.FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES || '').trim().length > 0
     ? 'env_usd_base_rates'
     : 'static_default');
+
+function resolveSemanticRewriteTimeoutMs(semanticContract = null) {
+  const contract = normalizeSearchSemanticContract(semanticContract);
+  if (contract?.request_class === 'exact_lookup') return 0;
+  return FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS;
+}
 
 // Reason codes (atomic; safe to log/aggregate).
 const REASON_CODES = {
@@ -3393,24 +3399,47 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
+  const semanticContract = normalizeSearchSemanticContract(
+    search?.semantic_contract ||
+      search?.semanticContract ||
+      metadata?.semantic_contract ||
+      metadata?.semanticContract,
+  );
+  const semanticRewriteTimeoutMs = resolveSemanticRewriteTimeoutMs(semanticContract);
 
   const intentStartedAt = Date.now();
   let semanticRewriteTimer = null;
-  const intentWithMeta = await Promise.race([
-    extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages),
-    new Promise((resolve) => {
-      semanticRewriteTimer = setTimeout(() => {
-        resolve(
-          buildDeterministicIntentWithMeta(
-            latestUserQuery,
-            recentQueries,
-            recentMessages,
-            'semantic_rewrite_timeout',
-          ),
-        );
-      }, FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS);
-    }),
-  ]);
+  const semanticRewriteAbort =
+    semanticRewriteTimeoutMs > 0 && typeof AbortController === 'function'
+      ? new AbortController()
+      : null;
+  const intentWithMeta =
+    semanticRewriteTimeoutMs <= 0
+      ? buildDeterministicIntentWithMeta(
+          latestUserQuery,
+          recentQueries,
+          recentMessages,
+          'semantic_rewrite_skipped_exact_lookup',
+        )
+      : await Promise.race([
+          extractIntentWithMeta(latestUserQuery, recentQueries, recentMessages, {
+            timeoutMs: semanticRewriteTimeoutMs,
+            signal: semanticRewriteAbort?.signal || null,
+          }),
+          new Promise((resolve) => {
+            semanticRewriteTimer = setTimeout(() => {
+              if (semanticRewriteAbort) semanticRewriteAbort.abort();
+              resolve(
+                buildDeterministicIntentWithMeta(
+                  latestUserQuery,
+                  recentQueries,
+                  recentMessages,
+                  'semantic_rewrite_timeout',
+                ),
+              );
+            }, semanticRewriteTimeoutMs);
+          }),
+        ]);
   if (semanticRewriteTimer) clearTimeout(semanticRewriteTimer);
   const intent = intentWithMeta?.intent || null;
   const intentMeta = isPlainObject(intentWithMeta?.meta) ? intentWithMeta.meta : null;
@@ -3444,12 +3473,6 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       payload?.expansionMode,
   );
   let queryClass = inferQueryClassFromIntentAndQuery(intent, latestUserQuery);
-  const semanticContract = normalizeSearchSemanticContract(
-    search?.semantic_contract ||
-      search?.semanticContract ||
-      metadata?.semantic_contract ||
-      metadata?.semanticContract,
-  );
   if (semanticContract?.request_class === 'exact_lookup') {
     queryClass = 'lookup';
   }
@@ -3838,7 +3861,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semantic_rewrite_result: semanticRewriteResult,
     semantic_owner: semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
     semantic_owner_locked: semanticOwnerLocked,
-    semantic_rewrite_timeout_ms: FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_TIMEOUT_MS,
+    semantic_rewrite_timeout_ms: semanticRewriteTimeoutMs,
     intent_parse_latency_ms: intentParseLatencyMs,
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,

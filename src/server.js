@@ -24125,7 +24125,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             search_stage_ledger: searchStageLedger,
             effective_timeout_ms: {
               semantic_rewrite_timeout_ms:
-                Number(findProductsExpansionMeta?.semantic_rewrite_timeout_ms || 0) || null,
+                Number.isFinite(Number(findProductsExpansionMeta?.semantic_rewrite_timeout_ms)) &&
+                Number(findProductsExpansionMeta?.semantic_rewrite_timeout_ms) >= 0
+                  ? Number(findProductsExpansionMeta.semantic_rewrite_timeout_ms)
+                  : null,
               primary_search_timeout_ms: Number(axiosConfig.timeout || 0) || null,
               gateway_total_budget_ms: Number(FPM_GATEWAY_TOTAL_BUDGET_MS || 0) || null,
             },
