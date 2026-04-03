@@ -130,9 +130,11 @@ function createSourcePolicyRuntime(config = {}) {
       auroraSource ? auroraExternalSeedStrategy : 'supplement_internal_first',
     );
     const externalSeedStrategy =
-      !auroraSource && normalizedStrategy === 'unified_relevance'
-        ? 'supplement_internal_first'
-        : normalizedStrategy;
+      isShoppingSource(source) || auroraSource
+        ? normalizedStrategy
+        : normalizedStrategy === 'unified_relevance'
+          ? 'supplement_internal_first'
+          : normalizedStrategy;
     return {
       ...params,
       allow_external_seed: allowExternalSeed,
