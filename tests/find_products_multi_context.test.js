@@ -426,6 +426,41 @@ describe('find_products_multi context building', () => {
     }
   });
 
+  test('beauty query without explicit semantic contract derives the same mainline contract for invoke-style payloads', async () => {
+    const out = await buildFindProductsMultiContext({
+      payload: {
+        query: 'best sunscreen for oily skin',
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'best sunscreen for oily skin' }],
+      },
+      metadata: {},
+    });
+
+    expect(out.adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        query: 'daily sunscreen',
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
+        target_step_family: 'sunscreen',
+        semantic_family: 'oil_control',
+        semantic_contract: expect.objectContaining({
+          owner: 'shopping_agent_beauty_contract_builder',
+          request_class: 'sunscreen',
+          target_step_family: 'sunscreen',
+          source_surface: 'shopping_agent_public_beauty',
+        }),
+      }),
+    );
+    expect(out.expansion_meta.semantic_owner_locked).toBe(true);
+    expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_mainline',
+        mode: 'deterministic_contract',
+        normalized_query_pack: ['daily sunscreen', 'face sunscreen', 'best sunscreen for oily skin'],
+      }),
+    );
+  });
+
   test('exact lookup semantic contract skips semantic rewrite budget entirely', async () => {
     jest.resetModules();
     jest.doMock('../src/findProductsMulti/intentLlm', () => {

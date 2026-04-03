@@ -3953,12 +3953,43 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
-  const semanticContract = normalizeSearchSemanticContract(
+  const normalizedSearchInput = {
+    ...topLevelSearchCompat,
+    ...(search && typeof search === 'object' ? search : {}),
+  };
+  let semanticContract = normalizeSearchSemanticContract(
     search?.semantic_contract ||
       search?.semanticContract ||
       metadata?.semantic_contract ||
       metadata?.semanticContract,
   );
+  if (!semanticContract && latestUserQuery) {
+    const derivedBeautySemanticContract = buildBeautyDiscoverySemanticContract({
+      rawQuery: latestUserQuery,
+      search: normalizedSearchInput,
+      metadata,
+    });
+    if (derivedBeautySemanticContract) {
+      semanticContract = derivedBeautySemanticContract;
+    }
+  }
+  const semanticContractIsBeautyDiscovery = isBeautyDiscoverySemanticContract(semanticContract);
+  const effectiveCatalogSurface =
+    String(
+      search?.catalog_surface ||
+        search?.catalogSurface ||
+        topLevelSearchCompat?.catalog_surface ||
+        '',
+    ).trim().toLowerCase() || (semanticContractIsBeautyDiscovery ? 'beauty' : '');
+  const effectiveCommerceSurface =
+    String(search?.commerce_surface || search?.commerceSurface || '').trim().toLowerCase() ||
+    effectiveCatalogSurface;
+  const effectiveTargetStepFamily =
+    String(search?.target_step_family || search?.targetStepFamily || '').trim() ||
+    String(semanticContract?.target_step_family || '').trim();
+  const effectiveSemanticFamily =
+    String(search?.semantic_family || search?.semanticFamily || '').trim() ||
+    String(semanticContract?.semantic_family || '').trim();
   const semanticRewriteTimeoutMs = resolveSemanticRewriteTimeoutMs(semanticContract);
   const resolveIntentLlmExecutionPlan =
     typeof intentLlmDebug.resolveIntentLlmExecutionPlan === 'function'
@@ -4467,6 +4498,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
       ...(effectiveExpandedQuery ? { query: effectiveExpandedQuery } : {}),
+      ...(effectiveCatalogSurface ? { catalog_surface: effectiveCatalogSurface } : {}),
+      ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
+      ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
+      ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
       ...(semanticContract ? { semantic_contract: semanticContract } : {}),
     },
   };

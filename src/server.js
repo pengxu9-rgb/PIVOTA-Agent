@@ -25247,6 +25247,37 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const fallbackReason =
         (fallbackMeta && typeof fallbackMeta.reason === 'string' && fallbackMeta.reason.trim()) ||
         (isErrorSoftFallbackQuerySource(querySource) ? 'error_soft_fallback' : null);
+      const blockingGateInfo = (() => {
+        const preGateCount = Array.isArray(rawProductsForQualityGate)
+          ? rawProductsForQualityGate.length
+          : 0;
+        const postGateCount = Array.isArray(products) ? products.length : 0;
+        if (preGateCount <= 0 || postGateCount > 0) return null;
+        if (invalidHitApplied) {
+          return {
+            blocking_gate_id: 'beauty_skincare_hit_quality',
+            pre_gate_count: preGateCount,
+            post_gate_count: postGateCount,
+            blocking_reason:
+              String(
+                skincareHitDecision.invalid_hit_reason ||
+                  skincareHitDecision.hit_quality ||
+                  'invalid_hit',
+              ).trim() || 'invalid_hit',
+          };
+        }
+        if (isStrictEmpty) {
+          return {
+            blocking_gate_id: 'beauty_mainline_strict_empty',
+            pre_gate_count: preGateCount,
+            post_gate_count: postGateCount,
+            blocking_reason:
+              String(fallbackReason || searchDecision?.invalid_hit_reason || 'strict_empty').trim() ||
+              'strict_empty',
+          };
+        }
+        return null;
+      })();
       const cacheStage = crossMerchantCacheRouteDebug
         ? {
             hit: Boolean(crossMerchantCacheRouteDebug.cache_hit),
@@ -25485,8 +25516,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             semantic_owner_query_attempts: semanticOwnerQueryAttempts,
             semantic_owner: semanticOwnerDecision,
             decision_owner:
-              existingMetaForGates.decision_owner ||
               semanticOwnerDecision ||
+              existingMetaForGates.decision_owner ||
               querySource,
             search_stage_ledger: searchStageLedger,
             effective_timeout_ms: {
@@ -25498,6 +25529,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               primary_search_timeout_ms: Number(axiosConfig.timeout || 0) || null,
               gateway_total_budget_ms: Number(FPM_GATEWAY_TOTAL_BUDGET_MS || 0) || null,
             },
+            ...(blockingGateInfo ? blockingGateInfo : {}),
+            ...(blockingGateInfo
+              ? {
+                  search_decision: {
+                    ...(existingMetaForGates.search_decision &&
+                    typeof existingMetaForGates.search_decision === 'object' &&
+                    !Array.isArray(existingMetaForGates.search_decision)
+                      ? existingMetaForGates.search_decision
+                      : {}),
+                    ...blockingGateInfo,
+                  },
+                }
+              : {}),
           },
         };
       }
