@@ -209,4 +209,60 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       }),
     );
   });
+
+  test('does not recover shopping strict queries from prefetched external seed cache', async () => {
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: {
+          query_source: 'agent_products_error_fallback',
+          strict_empty: true,
+          strict_empty_reason: 'shopping_mainline_timeout',
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          external_seed_candidates: [
+            {
+              product_id: 'ext_prefetched_1',
+              merchant_id: 'external_seed',
+              title: 'Prefetched recovery product',
+              price: 12.5,
+              currency: 'USD',
+            },
+          ],
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        strict_empty: true,
+      }),
+    );
+    expect(resp.body.metadata.query_source).not.toBe('cache_multi_intent');
+  });
 });

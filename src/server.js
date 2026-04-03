@@ -16018,6 +16018,13 @@ function recoverStrictMainPathResponseFromPrefetch({
 } = {}) {
   if (!isPlainRecord(responseBody)) return responseBody;
   if (!strictInvokeDecision?.strictConstraintQuery) return responseBody;
+  const requestSource = String(
+    invokeRequestBody?.metadata?.source ||
+      invokeRequestBody?.payload?.metadata?.source ||
+      invokeRequestBody?.payload?.context?.source ||
+      '',
+  ).trim();
+  if (isShoppingSource(requestSource)) return responseBody;
   const prefetchedCandidates = Array.isArray(invokeRequestBody?.metadata?.external_seed_candidates)
     ? invokeRequestBody.metadata.external_seed_candidates.filter((item) => isPlainRecord(item))
     : [];
