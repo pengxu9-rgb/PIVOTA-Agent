@@ -246,6 +246,22 @@ describe('find_products_multi context building', () => {
     expect(expansion_meta?.brand_query_detected).toBe(false);
   });
 
+  test('hyphenated beauty product titles stay on raw lookup text instead of skincare category expansion', async () => {
+    const { adjustedPayload, expansion_meta, intent } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'Multi-Calm Cream Cleanser' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'Multi-Calm Cream Cleanser' }],
+      },
+      metadata: {},
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).toBe('Multi-Calm Cream Cleanser');
+    expect(expansion_meta?.query_class).toBe('lookup');
+    expect(String(expansion_meta?.expanded_query || '')).toBe('Multi-Calm Cream Cleanser');
+    expect(intent?.primary_domain).toBe('beauty');
+  });
+
   test('generic sunscreen query routes to beauty attribute instead of lookup', () => {
     const intent = extractIntentRuleBased('Face SPF50+ PA++++ sunscreen', [], []);
     expect(intent.primary_domain).toBe('beauty');
