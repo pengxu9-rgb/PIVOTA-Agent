@@ -16621,9 +16621,12 @@ async function executeRecoRecallPlanEntry({
   queryIndex = null,
   queryTotal = null,
 } = {}) {
-  const sourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase() === 'external_seed'
-    ? 'external_seed'
-    : 'internal';
+  const sourceScope = (() => {
+    const normalizedSourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase();
+    if (normalizedSourceScope === 'external_seed') return 'external_seed';
+    if (normalizedSourceScope === 'hybrid') return 'hybrid';
+    return 'internal';
+  })();
   const roleId = String(entry?.role_id || '').trim();
   const role = Array.isArray(targetContext?.framework_roles)
     ? targetContext.framework_roles.find((item) => String(item?.role_id || '').trim() === roleId) || null
@@ -16634,8 +16637,8 @@ async function executeRecoRecallPlanEntry({
       limit,
       logger,
       timeoutMs,
-      allowExternalSeed: sourceScope === 'external_seed',
-      externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
+      allowExternalSeed: sourceScope !== 'internal',
+      externalSeedStrategy: sourceScope === 'internal' ? 'on_empty_only' : 'supplement_internal_first',
       sourceScope,
       transportPolicyMode,
       role,
@@ -16647,8 +16650,8 @@ async function executeRecoRecallPlanEntry({
     limit,
     logger,
     timeoutMs,
-    allowExternalSeed: sourceScope === 'external_seed',
-    externalSeedStrategy: sourceScope === 'external_seed' ? 'supplement_internal_first' : 'on_empty_only',
+    allowExternalSeed: sourceScope !== 'internal',
+    externalSeedStrategy: sourceScope === 'internal' ? 'on_empty_only' : 'supplement_internal_first',
     fastMode: sourceScope !== 'external_seed',
     transportPolicy: buildRecoRecallTransportPolicy({ mode: transportPolicyMode }),
     semanticContract,
@@ -16660,6 +16663,23 @@ async function executeRecoRecallPlanEntry({
 
 function deriveRecoPrimaryStageTimeoutClass(stageResults = [], candidateState = null, { transportPolicyMode = '' } = {}) {
   const rows = Array.isArray(stageResults) ? stageResults : [];
+  const beautyMainlineStages = rows.filter((row) => String(row?.stage_id || '').trim().startsWith('beauty_mainline_query_'));
+  if (beautyMainlineStages.length > 0) {
+    const selectedCount = getRecoRecallSelectedCount(candidateState);
+    if (selectedCount > 0) return '';
+    const executed = beautyMainlineStages.reduce(
+      (sum, row) => sum + (Number.isFinite(Number(row?.executed_query_count)) ? Math.max(0, Number(row.executed_query_count)) : 0),
+      0,
+    );
+    const timeoutCount = beautyMainlineStages.reduce(
+      (sum, row) => sum + (Number.isFinite(Number(row?.timeout_count)) ? Math.max(0, Number(row.timeout_count)) : 0),
+      0,
+    );
+    const transientOnly = beautyMainlineStages.length > 0 && beautyMainlineStages.every((row) => row?.transient_only === true);
+    if (executed > 0 && timeoutCount >= executed) return 'transient_timeout';
+    if (transientOnly) return 'transient_timeout';
+    return '';
+  }
   const primaryInternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_a_primary_internal') || null;
   const primaryExternal = rows.find((row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed') || null;
   const normalizedTransportPolicyMode = String(transportPolicyMode || '').trim().toLowerCase();

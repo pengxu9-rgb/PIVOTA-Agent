@@ -340,6 +340,16 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     const shadeOptionIntents = extractStrictFindProductsMultiShadeOptionIntents(rawQuery, beautyQueryProfile);
     const hasIngredientConstraint = ingredientIntents.length > 0;
     const hasShadeConstraint = shadeOptionIntents.length > 0;
+    if (!hasIngredientConstraint && !hasShadeConstraint && explicitStrictSurface) {
+      return {
+        enabled: true,
+        catalogSurface: requestedCatalogSurface,
+        strictConstraintQuery: false,
+        strictConstraintReason: 'agent_api_surface',
+        ingredientIntents,
+        shadeOptionIntents,
+      };
+    }
     if (!hasIngredientConstraint && !hasShadeConstraint) {
       return {
         enabled: false,
@@ -651,6 +661,9 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
             commerce_surface: requestedCatalogSurface,
           }
         : {}),
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'unified_relevance',
       ...(
         resolvedStrictInvokeDecision?.strictConstraintQuery && String(rawQueryText || '').trim()
           ? { query: String(rawQueryText || '').trim() }

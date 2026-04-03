@@ -120,6 +120,9 @@ const {
   createCommerceResolutionRuntime,
 } = require('./modules/execution/commerce_resolution');
 const {
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  buildBeautyDiscoverySemanticContract,
+  isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
 } = require('./findProductsMulti/policy');
 const {
@@ -4279,12 +4282,8 @@ function isSemanticOwnerControlledSearch({
       ? semanticRewriteResult
       : null;
   if (!contract || !rewrite) return false;
-  if (contract.request_class === 'exact_lookup') return false;
-  return (
-    contract.owner === 'aurora_reco_planner' &&
-    contract.source_surface === 'aurora_beauty_strict' &&
-    rewrite.applied === true
-  );
+  if (!isBeautyDiscoverySemanticContract(contract)) return false;
+  return rewrite.applied === true && String(rewrite.owner || '').trim() === BEAUTY_DISCOVERY_MAINLINE_OWNER;
 }
 
 function buildSearchStageLedger({
@@ -5815,7 +5814,7 @@ function applyTravelLookupContinuationFromQuery({ query, search, metadata }) {
       search.allow_external_seed = true;
     }
     if (search.allow_external_seed === true && !String(search.external_seed_strategy || '').trim()) {
-      search.external_seed_strategy = 'supplement_internal_first';
+      search.external_seed_strategy = 'unified_relevance';
     }
     metadata.search_allow_external_seed = search.allow_external_seed === true;
     if (String(search.external_seed_strategy || '').trim()) {
@@ -8168,6 +8167,18 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     }
   }
 
+  if (!search.semantic_contract && textQuery) {
+    const derivedBeautySemanticContract = buildBeautyDiscoverySemanticContract({
+      rawQuery: textQuery,
+      search,
+      metadata,
+    });
+    if (derivedBeautySemanticContract) {
+      search.semantic_contract = derivedBeautySemanticContract;
+      if (!search.catalog_surface) search.catalog_surface = 'beauty';
+    }
+  }
+
   const payload = { search };
   if (context) payload.context = context;
   if (Object.keys(metadata).length > 0) payload.metadata = metadata;
@@ -8654,6 +8665,13 @@ function shouldRunExternalSeedExactTitleRecall({
 } = {}) {
   const raw = String(queryText || '').trim();
   if (!raw || raw.length > 96 || /[?]/.test(raw)) return false;
+  if (
+    /\b(under|below|over|above|less than|more than)\s+\d+\b/i.test(raw) ||
+    /\b\d+\s*(usd|eur|gbp|cny)\b/i.test(raw) ||
+    /(?:€|\$|£)\s*\d+/.test(raw)
+  ) {
+    return false;
+  }
   const normalizedTokens = Array.isArray(queryTokens) ? queryTokens.filter(Boolean) : [];
   const tokenCount = normalizedTokens.length;
   if (tokenCount < 2 || tokenCount > 8) return false;
@@ -10063,6 +10081,18 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     ),
   ).slice(0, 8);
   const normalizedSource = String(source || '').trim().toLowerCase();
+  const requestedExternalSeedStrategy = normalizeExternalSeedStrategy(
+    firstQueryParamValue(query.external_seed_strategy ?? query.externalSeedStrategy),
+    guidanceContext.is_guidance_only
+      ? 'unified_relevance'
+      : normalizedSource === 'aurora-bff' || normalizedSource === 'aurora-chatbox'
+        ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY
+        : 'unified_relevance',
+  );
+  const externalSeedStrategy =
+    guidanceContext.is_guidance_only || isShoppingSource(source)
+      ? 'unified_relevance'
+      : requestedExternalSeedStrategy;
   const externalSupplementApiBase =
     normalizedSource === 'aurora-bff' || normalizedSource === 'aurora-chatbox'
       ? PIVOTA_API_BASE
@@ -10095,7 +10125,7 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       offset: 0,
       allow_external_seed: true,
       allow_stale_cache: false,
-      external_seed_strategy: 'supplement_internal_first',
+      external_seed_strategy: externalSeedStrategy,
       fast_mode: guidanceContext.is_guidance_recall_first ? false : true,
       ...(guidanceContext.is_guidance_only
         ? {
@@ -16987,6 +17017,225 @@ function normalizeShoppingFreshMainlineCacheResponse({
   };
 }
 
+function isShoppingBlockedFinalQuerySource(querySource = '') {
+  const normalized = String(querySource || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized.startsWith('cache_')) return true;
+  if (
+    normalized === 'agent_products_error_fallback' ||
+    normalized === 'agent_products_resolver_ref_fallback' ||
+    normalized === 'agent_products_resolver_fallback'
+  ) {
+    return true;
+  }
+  return normalized.includes('invoke_outer_cache_guard');
+}
+
+function resolveShoppingBlockedFinalReason({
+  querySource = '',
+  primaryPathUsed = '',
+  finalDecision = '',
+  fallbackReason = '',
+} = {}) {
+  const normalizedQuerySource = String(querySource || '').trim().toLowerCase();
+  const normalizedPrimaryPath = String(primaryPathUsed || '').trim().toLowerCase();
+  const normalizedFinalDecision = String(finalDecision || '').trim().toLowerCase();
+  const normalizedFallbackReason = String(fallbackReason || '').trim().toLowerCase();
+
+  if (
+    normalizedQuerySource.startsWith('cache_') ||
+    normalizedPrimaryPath === 'cache_stage' ||
+    normalizedFinalDecision === 'cache_returned' ||
+    normalizedFallbackReason === 'invoke_outer_cache_guard'
+  ) {
+    return 'shopping_mainline_cache_blocked';
+  }
+  if (
+    normalizedQuerySource.includes('resolver') ||
+    normalizedPrimaryPath === 'resolver_stage' ||
+    normalizedFinalDecision === 'resolver_returned'
+  ) {
+    return 'shopping_mainline_resolver_blocked';
+  }
+  return 'shopping_mainline_fallback_blocked';
+}
+
+function normalizeShoppingFinalSearchResponse({
+  responseBody = null,
+  requestSource = null,
+  queryParams = {},
+  intent = null,
+  queryClass = null,
+  queryText = '',
+} = {}) {
+  if (!isPlainRecord(responseBody)) return responseBody;
+  if (!isShoppingSource(requestSource)) return responseBody;
+
+  const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
+  const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
+  const searchTrace = isPlainRecord(metadata.search_trace) ? metadata.search_trace : {};
+  const searchDecision = isPlainRecord(metadata.search_decision) ? metadata.search_decision : {};
+  const proxySearchFallback = isPlainRecord(metadata.proxy_search_fallback)
+    ? metadata.proxy_search_fallback
+    : {};
+  const querySource = String(metadata.query_source || '').trim();
+  const strictEmptyReason = String(metadata.strict_empty_reason || '').trim().toLowerCase();
+  const primaryPathUsed = String(routeHealth.primary_path_used || '').trim();
+  const finalDecision = String(
+    searchTrace.final_decision || searchDecision.final_decision || metadata.final_decision || '',
+  ).trim();
+  const fallbackReason = String(
+    routeHealth.fallback_reason ||
+      searchTrace.fallback_reason ||
+      searchDecision.fallback_reason ||
+      proxySearchFallback.reason ||
+      '',
+  ).trim();
+  const hasClarification = Boolean(responseBody?.clarification?.question);
+  const hasBlockedSource = isShoppingBlockedFinalQuerySource(querySource);
+  const hasBlockedDecision =
+    String(finalDecision || '').trim().toLowerCase() === 'cache_returned' ||
+    String(finalDecision || '').trim().toLowerCase() === 'resolver_returned';
+  const hasBlockedPrimaryPath = ['cache_stage', 'resolver_stage', 'invoke_outer_cache_guard'].includes(
+    String(primaryPathUsed || '').trim().toLowerCase(),
+  );
+
+  if (
+    metadata.strict_empty === true &&
+    (
+      strictEmptyReason.startsWith('shopping_mainline_') ||
+      metadata.shopping_mainline_cache_blocked === true ||
+      metadata.shopping_mainline_resolver_blocked === true
+    )
+  ) {
+    return responseBody;
+  }
+
+  if (!hasBlockedSource && !hasBlockedDecision && !hasBlockedPrimaryPath) {
+    return responseBody;
+  }
+
+  const strictReason = resolveShoppingBlockedFinalReason({
+    querySource,
+    primaryPathUsed,
+    finalDecision,
+    fallbackReason,
+  });
+  const blockedFields = {
+    shopping_blocked_query_source: querySource || null,
+    shopping_blocked_primary_path_used: primaryPathUsed || null,
+    shopping_blocked_final_decision: finalDecision || null,
+    ...(fallbackReason ? { shopping_blocked_fallback_reason: fallbackReason } : {}),
+  };
+
+  if (hasClarification) {
+    return {
+      ...responseBody,
+      products: [],
+      total: 0,
+      reply: null,
+      metadata: {
+        ...metadata,
+        ...blockedFields,
+        query_source: 'agent_products_search',
+        route_health: {
+          ...routeHealth,
+          fallback_triggered: false,
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+        },
+        search_trace: {
+          ...searchTrace,
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+          final_decision: 'clarify',
+        },
+        search_decision: {
+          ...searchDecision,
+          fallback_reason: null,
+          primary_path_used: 'upstream_stage',
+          final_decision: 'clarify',
+        },
+      },
+    };
+  }
+
+  const strictEmpty = buildStrictEmptyFallbackResponse({
+    body: null,
+    queryParams,
+    reason: strictReason,
+    route: 'shopping_final_source_blocked',
+    querySource: 'agent_products_error_fallback',
+    intent,
+    queryClass,
+    queryText,
+  });
+  const strictEmptyMetadata = isPlainRecord(strictEmpty?.metadata) ? strictEmpty.metadata : {};
+  const strictEmptyRouteHealth = isPlainRecord(strictEmptyMetadata.route_health)
+    ? strictEmptyMetadata.route_health
+    : {};
+  const strictEmptySearchTrace = isPlainRecord(strictEmptyMetadata.search_trace)
+    ? strictEmptyMetadata.search_trace
+    : {};
+  const strictEmptySearchDecision = isPlainRecord(strictEmptyMetadata.search_decision)
+    ? strictEmptyMetadata.search_decision
+    : {};
+
+  return {
+    ...strictEmpty,
+    metadata: {
+      ...metadata,
+      ...strictEmptyMetadata,
+      ...(metadata.service_version ? { service_version: metadata.service_version } : {}),
+      ...(toNonEmptyStringOrNull(metadata.serving_mode)
+        ? { serving_mode: toNonEmptyStringOrNull(metadata.serving_mode) }
+        : {}),
+      ...(toNonEmptyStringOrNull(metadata.surface_reason)
+        ? { surface_reason: toNonEmptyStringOrNull(metadata.surface_reason) }
+        : {}),
+      contract_bridge: {
+        ...(isPlainRecord(metadata.contract_bridge) ? metadata.contract_bridge : {}),
+        legacy_fallback: false,
+      },
+      ...blockedFields,
+      ...(strictReason === 'shopping_mainline_cache_blocked'
+        ? {
+            shopping_mainline_cache_blocked: true,
+            blocked_cache_query_source: querySource || null,
+            blocked_cache_primary_path_used: primaryPathUsed || null,
+          }
+        : {}),
+      query_source: 'agent_products_error_fallback',
+      proxy_search_fallback: {
+        ...(isPlainRecord(strictEmptyMetadata.proxy_search_fallback)
+          ? strictEmptyMetadata.proxy_search_fallback
+          : {}),
+        ...(isPlainRecord(metadata.proxy_search_fallback) ? metadata.proxy_search_fallback : {}),
+        applied:
+          isPlainRecord(metadata.proxy_search_fallback) &&
+          typeof metadata.proxy_search_fallback.applied === 'boolean'
+            ? metadata.proxy_search_fallback.applied
+            : true,
+        reason: strictReason,
+      },
+      route_health: {
+        ...strictEmptyRouteHealth,
+        fallback_triggered: true,
+        fallback_reason: strictReason,
+        primary_path_used: 'upstream_stage',
+      },
+      search_trace: {
+        ...strictEmptySearchTrace,
+        final_decision: 'strict_empty',
+      },
+      search_decision: {
+        ...strictEmptySearchDecision,
+        final_decision: 'strict_empty',
+      },
+    },
+  };
+}
+
 async function handleOffersResolveOperation({
   payload,
   metadata,
@@ -21512,7 +21761,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? {
                 commerce_surface: strictSurfaceState.commerceSurface,
                 catalog_surface: strictSurfaceState.commerceSurface,
-                allow_external_seed: false,
+                allow_external_seed: true,
+                allow_stale_cache: false,
+                external_seed_strategy: 'unified_relevance',
               }
             : search.allow_external_seed !== undefined
               ? { allow_external_seed: search.allow_external_seed }
@@ -22899,7 +23150,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       semanticOwnerQueryPack.length > 1 &&
       response?.status >= 200 &&
       response?.status < 300 &&
-      (!Array.isArray(upstreamData?.products) || upstreamData.products.length === 0)
+      (
+        !Array.isArray(upstreamData?.products) ||
+        upstreamData.products.length === 0 ||
+        Boolean(upstreamData?.clarification?.question)
+      )
     ) {
       const semanticOwnerRetryLimit = Math.min(
         Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1) * 2,
@@ -23020,7 +23275,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     if (
       (operation === 'find_products' || operation === 'find_products_multi') &&
-      !(operation === 'find_products_multi' && strictCommerceFindProductsMulti) &&
       !shoppingMainlineCacheBlocked
     ) {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
@@ -23203,11 +23457,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             mergedProducts.push(product);
             if (mergedProducts.length >= requestedLimit) break;
           }
+          const baseUpstreamData =
+            upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
+              ? upstreamData
+              : {};
+          const { clarification: _ignoredClarification, ...upstreamDataWithoutClarification } = baseUpstreamData;
           upstreamData = normalizeAgentProductsListResponse(
             {
-              ...(upstreamData && typeof upstreamData === 'object' && !Array.isArray(upstreamData)
-                ? upstreamData
-                : {}),
+              ...upstreamDataWithoutClarification,
               products: mergedProducts,
               total: Math.max(
                 Number(upstreamData?.total || 0) || 0,
@@ -23806,6 +24063,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
               fallbackNotBetterReason: fallbackReason,
             });
+            const semanticOwnerRawProductsPresent =
+              semanticOwnerControlled &&
+              Array.isArray(upstreamData?.products) &&
+              upstreamData.products.length > 0;
             const currentUpstreamMeta =
               upstreamData &&
               typeof upstreamData === 'object' &&
@@ -23836,7 +24097,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   currentUpstreamMeta?.proxy_search_fallback?.upstream_error_message ||
                   '',
               ).trim() || null;
-            if (primaryOutcomeDecision.decision === 'clarify') {
+            if (
+              semanticOwnerRawProductsPresent &&
+              (primaryOutcomeDecision.decision === 'clarify' ||
+                primaryOutcomeDecision.decision === 'strict_empty')
+            ) {
+              const preservedMeta =
+                upstreamData?.metadata && typeof upstreamData.metadata === 'object'
+                  ? { ...upstreamData.metadata }
+                  : {};
+              const preservedFallbackMeta =
+                preservedMeta.proxy_search_fallback &&
+                typeof preservedMeta.proxy_search_fallback === 'object'
+                  ? { ...preservedMeta.proxy_search_fallback }
+                  : {};
+              upstreamData = {
+                ...upstreamData,
+                metadata: {
+                  ...preservedMeta,
+                  proxy_search_fallback: {
+                    ...preservedFallbackMeta,
+                    applied: false,
+                    reason: null,
+                    upstream_status: primaryFallbackUpstreamStatus,
+                    upstream_error_code: primaryFallbackUpstreamCode,
+                    upstream_error_message: primaryFallbackUpstreamMessage,
+                  },
+                  primary_outcome_decision: primaryOutcomeDecision.decision,
+                  primary_outcome_reason: primaryOutcomeDecision.reason,
+                  primary_outcome_query_source: primaryOutcomeDecision.querySource,
+                },
+              };
+            } else if (primaryOutcomeDecision.decision === 'clarify') {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
                 reason: primaryOutcomeDecision.reason,
@@ -25248,6 +25540,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           strictSurfaceState.commerceSurface,
         );
       }
+
+      enriched = normalizeShoppingFinalSearchResponse({
+        responseBody: enriched,
+        requestSource:
+          metadata?.source ||
+          effectivePayload?.metadata?.source ||
+          effectivePayload?.context?.source ||
+          req?.query?.source ||
+          queryParams?.source ||
+          null,
+        queryParams,
+        intent: effectiveIntent,
+        queryClass: traceQueryClass,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+      });
     }
 
     return res.status(response.status).json(enriched);
@@ -25333,7 +25640,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ) === 'travel_lookup'
             ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
             : cacheGuardDiagnosed;
-        return res.status(200).json(finalCacheGuardBody);
+        const normalizedShoppingCacheGuardBody = normalizeShoppingFinalSearchResponse({
+          responseBody: finalCacheGuardBody,
+          requestSource:
+            metadata?.source ||
+            effectivePayload?.metadata?.source ||
+            effectivePayload?.context?.source ||
+            queryParams?.source ||
+            null,
+          queryParams,
+          intent: effectiveIntent,
+          queryClass: traceQueryClass,
+          queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        });
+        return res.status(200).json(normalizedShoppingCacheGuardBody);
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =

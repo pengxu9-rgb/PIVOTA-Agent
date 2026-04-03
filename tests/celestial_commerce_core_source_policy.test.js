@@ -71,7 +71,7 @@ describe('Celestial commerce core source policy module', () => {
       query: 'serum',
       allow_external_seed: true,
       allow_stale_cache: false,
-      external_seed_strategy: 'supplement_internal_first',
+      external_seed_strategy: 'unified_relevance',
       fast_mode: true,
     });
 

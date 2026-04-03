@@ -112,6 +112,70 @@ describe('search dedupe policy', () => {
     expect(payload.search.fast_mode).toBe(true);
   });
 
+  test('public beauty discovery derives a deterministic semantic contract for sunscreen queries', () => {
+    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
+      query: 'best sunscreen for oily skin',
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    });
+
+    expect(payload.search.semantic_contract).toEqual(
+      expect.objectContaining({
+        version: 'beauty_semantic_contract_v1',
+        owner: 'shopping_agent_beauty_contract_builder',
+        planner_mode: 'step_aware',
+        request_class: 'sunscreen',
+        target_step_family: 'sunscreen',
+        primary_role_id: 'daily_sunscreen',
+        source_surface: 'shopping_agent_public_beauty',
+      }),
+    );
+  });
+
+  test('public beauty exact lookup does not auto-derive a discovery semantic contract', () => {
+    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
+      query: 'The Ordinary Niacinamide 10% + Zinc 1%',
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    });
+
+    expect(payload.search.semantic_contract).toBeUndefined();
+  });
+
+  test('public beauty barrier-repair moisturizer query still derives a discovery contract', () => {
+    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
+      query: 'moisturizer barrier repair Ceramide NP barrier repair',
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+    });
+
+    expect(payload.search.semantic_contract).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_contract_builder',
+        target_step_family: 'moisturizer',
+        primary_role_id: 'barrier_moisturizer',
+      }),
+    );
+  });
+
+  test('guidance-only beauty serum query derives a discovery contract instead of falling back to generic lookup', () => {
+    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
+      query: 'barrier repair serum',
+      source: 'aurora_chatbox',
+      catalog_surface: 'beauty',
+      ui_surface: 'ingredient_plan_guidance_only',
+      target_step_family: 'serum',
+    });
+
+    expect(payload.search.semantic_contract).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_contract_builder',
+        target_step_family: 'treatment',
+        source_surface: 'shopping_agent_public_beauty',
+      }),
+    );
+  });
+
   test('fallback clarification honors resolved travel lookup slot state', () => {
     const body = app._debug.buildProxySearchSoftFallbackResponse({
       queryParams: {

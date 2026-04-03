@@ -337,7 +337,7 @@ describe('find_products_multi context building', () => {
     expect(expansion_meta.semantic_rewrite_timeout_ms).toBe(0);
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
-        owner: 'shopping_agent_semantic_contract',
+        owner: 'shopping_agent_beauty_mainline',
         applied: true,
         mode: 'deterministic_contract',
         single_provider_locked: true,
@@ -412,7 +412,7 @@ describe('find_products_multi context building', () => {
       expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toBe('daily sunscreen');
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
-          owner: 'shopping_agent_semantic_contract',
+          owner: 'shopping_agent_beauty_mainline',
           mode: 'deterministic_contract',
           llm_enrichment_attempted: false,
           llm_enrichment_applied: false,
@@ -509,7 +509,7 @@ describe('find_products_multi context building', () => {
     expect(String(adjustedPayload?.search?.query || '').toLowerCase()).toBe('oil control treatment');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
-        owner: 'shopping_agent_semantic_contract',
+        owner: 'shopping_agent_beauty_mainline',
         normalized_query_pack: [
           'oil control treatment',
           'oil control serum',
@@ -713,7 +713,7 @@ describe('find_products_multi context building', () => {
 
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
-          owner: 'shopping_agent_semantic_contract',
+          owner: 'shopping_agent_beauty_mainline',
           mode: 'deterministic_contract',
           llm_model: 'gemini-3-flash-preview',
           llm_model_owner: 'default_semantic_rewrite_gemini_model',

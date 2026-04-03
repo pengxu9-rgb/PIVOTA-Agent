@@ -43,6 +43,9 @@ const resolveKnownStableLookupAlias =
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v40';
 const BEAUTY_SEMANTIC_CONTRACT_VERSION = 'beauty_semantic_contract_v1';
+const BEAUTY_DISCOVERY_CONTRACT_OWNER = 'shopping_agent_beauty_contract_builder';
+const BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline';
+const BEAUTY_DISCOVERY_PUBLIC_SURFACE = 'shopping_agent_public_beauty';
 const STRATEGY_VERSION = 'ambiguity_gate_v2';
 const SEARCH_AMBIGUITY_GATE_ENABLED =
   String(process.env.SEARCH_AMBIGUITY_GATE_ENABLED || 'true').toLowerCase() !== 'false';
@@ -1395,7 +1398,7 @@ function normalizeSearchSemanticContract(raw) {
   };
 }
 
-const STRICT_SEMANTIC_OWNER = 'shopping_agent_semantic_contract';
+const STRICT_SEMANTIC_OWNER = BEAUTY_DISCOVERY_MAINLINE_OWNER;
 
 function normalizeSemanticQueryLabel(value) {
   return String(value || '')
@@ -1403,6 +1406,304 @@ function normalizeSemanticQueryLabel(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+function normalizeSemanticContractIdentifier(value, fallback = '') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (normalized) return normalized;
+  return String(fallback || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || null;
+}
+
+function inferBeautyIngredientHypotheses(rawQuery = '') {
+  const normalized = String(rawQuery || '').toLowerCase();
+  const out = [];
+  const push = (value) => {
+    if (!value) return;
+    if (out.includes(value)) return;
+    out.push(value);
+  };
+  if (/\bsalicylic(?:\s+acid)?\b|水杨酸|水楊酸/.test(normalized)) push('salicylic acid');
+  if (/\bniacinamide\b|烟酰胺|煙酰胺/.test(normalized)) push('niacinamide');
+  if (/\bretinol\b|\bretinoid\b|视黄醇|視黃醇/.test(normalized)) push('retinol');
+  if (/\bvitamin\s*c\b|抗坏血酸|抗壞血酸/.test(normalized)) push('vitamin c');
+  if (/\bceramide\b|神经酰胺|神經醯胺/.test(normalized)) push('ceramide');
+  if (/\bpanthenol\b|泛醇/.test(normalized)) push('panthenol');
+  if (/\bcica\b|积雪草|積雪草/.test(normalized)) push('cica');
+  if (/\bhyaluronic\b|透明质酸|透明質酸|玻尿酸/.test(normalized)) push('hyaluronic acid');
+  return out.slice(0, 8);
+}
+
+function inferBeautySemanticFamily(rawQuery = '', targetStepFamily = null) {
+  const normalized = String(rawQuery || '').toLowerCase();
+  if (!normalized) return targetStepFamily || null;
+  if (
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|pores|acne|blemish|breakout)\b/.test(
+      normalized,
+    ) || /控油|祛痘|痘痘|闭口|閉口|毛孔|出油/.test(normalized)
+  ) {
+    return 'oil_control';
+  }
+  if (
+    /\b(barrier|repair|soothing|sensitive|ceramide|panthenol|cica|calming)\b/.test(normalized) ||
+    /屏障|修护|修護|舒缓|舒緩|敏感肌|神经酰胺|神經醯胺|泛醇/.test(normalized)
+  ) {
+    return 'barrier_repair';
+  }
+  if (
+    /\b(brightening|dark spot|vitamin c|tone|glow)\b/.test(normalized) ||
+    /提亮|淡斑|暗沉|焕亮|煥亮/.test(normalized)
+  ) {
+    return 'brightening';
+  }
+  if (
+    /\b(retinol|retinoid|wrinkle|firming|anti-aging|anti aging)\b/.test(normalized) ||
+    /抗老|抗皱|抗皺|紧致|緊緻|视黄醇|視黃醇/.test(normalized)
+  ) {
+    return 'anti_aging';
+  }
+  if (targetStepFamily === 'sunscreen') return 'sunscreen';
+  if (targetStepFamily === 'moisturizer') return 'moisturizer';
+  if (targetStepFamily === 'cleanser') return 'cleanser';
+  if (targetStepFamily === 'toner') return 'toner';
+  return targetStepFamily || null;
+}
+
+function inferBeautyTargetStepFamily({
+  rawQuery = '',
+  explicitTargetStepFamily = null,
+  explicitSemanticFamily = null,
+  profile = null,
+} = {}) {
+  const explicitStep = normalizeSemanticStepFamily(explicitTargetStepFamily);
+  if (explicitStep) {
+    if (explicitStep === 'serum') return 'treatment';
+    return explicitStep;
+  }
+  const normalized = String(rawQuery || '').toLowerCase();
+  if (!normalized) return null;
+  if (
+    /\b(sunscreen|spf\b|sunblock|sun protection|uv|broad spectrum)\b/.test(normalized) ||
+    /防晒|防曬|日焼け止め/.test(normalized)
+  ) {
+    return 'sunscreen';
+  }
+  const hasTreatmentSignal =
+    /\b(serum|treatment|ampoule|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|oily skin|oil control|shine control|mattify)\b/.test(
+      normalized,
+    ) || /精华|精華|美容液|祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
+  if (
+    (
+      /\b(moisturi(?:z|s)er|gel cream|barrier cream|face cream|cream|lotion)\b/.test(normalized) ||
+      /保湿|保濕|面霜|乳液|霜/.test(normalized)
+    ) &&
+    !hasTreatmentSignal
+  ) {
+    return 'moisturizer';
+  }
+  if (
+    /\b(cleanser|face wash|cleansing|wash)\b/.test(normalized) ||
+    /洁面|潔面|洗面奶|洗面乳|洗顔料/.test(normalized)
+  ) {
+    return 'cleanser';
+  }
+  if (
+    /\b(toner|face mist|essence lotion)\b/.test(normalized) ||
+    /化妆水|化妝水|爽肤水|爽膚水/.test(normalized)
+  ) {
+    return 'toner';
+  }
+  if (hasTreatmentSignal) return 'treatment';
+  if (String(explicitSemanticFamily || '').trim()) return 'treatment';
+  if (String(profile?.bucket || '').trim().toLowerCase() === 'skincare') return 'treatment';
+  return null;
+}
+
+function resolveBeautyPrimaryRoleId({
+  targetStepFamily = null,
+  semanticFamily = null,
+  rawQuery = '',
+} = {}) {
+  const normalizedStep = normalizeSemanticStepFamily(targetStepFamily);
+  const normalizedFamily = normalizeSemanticContractIdentifier(semanticFamily, normalizedStep || 'beauty');
+  const normalizedQuery = String(rawQuery || '').toLowerCase();
+  if (normalizedStep === 'sunscreen') return 'daily_sunscreen';
+  if (normalizedStep === 'moisturizer') {
+    if (
+      /\b(barrier|repair|ceramide|soothing|sensitive|panthenol|cica)\b/.test(normalizedQuery) ||
+      /屏障|修护|修護|神经酰胺|神經醯胺|舒缓|舒緩|泛醇/.test(normalizedQuery)
+    ) {
+      return 'barrier_moisturizer';
+    }
+    return 'lightweight_moisturizer';
+  }
+  if (normalizedStep === 'treatment') return `${normalizedFamily || 'general'}_treatment`;
+  if (normalizedStep === 'cleanser') return 'daily_cleanser';
+  if (normalizedStep === 'toner') return 'daily_toner';
+  return `${normalizedStep || 'beauty'}_primary`;
+}
+
+function shouldForceBeautyDiscoveryContract({
+  rawQuery = '',
+  targetStepFamily = null,
+  semanticFamily = null,
+  ingredientHypotheses = [],
+  guidanceOnlyDiscovery = false,
+} = {}) {
+  const normalizedQuery = String(rawQuery || '').trim().toLowerCase();
+  if (!normalizedQuery || !targetStepFamily) return false;
+  const brandLike = Boolean(detectBrandEntities(rawQuery, { candidateProducts: [] })?.brand_like);
+  if (brandLike) return false;
+
+  const hasRoleSignal =
+    /\b(serum|treatment|ampoule|essence|moisturi(?:z|s)er|cream|gel cream|lotion|cleanser|face wash|toner|mist|sunscreen|spf\b|sunblock)\b/.test(
+      normalizedQuery,
+    ) || /精华|精華|美容液|面霜|乳液|洁面|潔面|化妆水|化妝水|防晒|防曬|日焼け止め/.test(normalizedQuery);
+  const hasConcernSignal =
+    /\b(barrier|repair|oily skin|oil control|shine control|mattify|mattifying|sensitive|soothing|calming|hydrating|acne|blemish|breakout|dark spot|brightening|firming|anti-aging|anti aging)\b/.test(
+      normalizedQuery,
+    ) ||
+    /屏障|修护|修護|控油|出油|敏感肌|舒缓|舒緩|补水|補水|祛痘|痘痘|淡斑|提亮|抗老/.test(normalizedQuery);
+
+  if (guidanceOnlyDiscovery && hasRoleSignal) return true;
+  return hasRoleSignal && (hasConcernSignal || ingredientHypotheses.length > 0 || Boolean(semanticFamily));
+}
+
+function buildBeautyDiscoverySemanticContract({
+  rawQuery = '',
+  search = null,
+  metadata = null,
+  intent = null,
+} = {}) {
+  const normalizedQuery = String(rawQuery || '').trim();
+  if (!normalizedQuery) return null;
+  const searchObj = isPlainObject(search) ? search : {};
+  const metadataObj = isPlainObject(metadata) ? metadata : {};
+  const catalogSurface = String(
+    searchObj.catalog_surface || searchObj.catalogSurface || metadataObj.catalog_surface || '',
+  ).trim().toLowerCase();
+  const source = String(metadataObj.source || searchObj.source || '').trim().toLowerCase();
+  const uiSurface = String(
+    searchObj.ui_surface || searchObj.uiSurface || metadataObj.ui_surface || '',
+  ).trim().toLowerCase();
+  const decisionMode = String(
+    searchObj.decision_mode || searchObj.decisionMode || metadataObj.decision_mode || '',
+  ).trim().toLowerCase();
+  const guidanceOnlyDiscovery =
+    uiSurface === 'ingredient_plan_guidance_only' || decisionMode === 'guidance_only';
+
+  const syntheticIntent = {
+    ...(isPlainObject(intent) ? intent : {}),
+    primary_domain: 'beauty',
+  };
+  const profile = buildBeautyQueryProfile({
+    rawQuery: normalizedQuery,
+    queryClass: syntheticIntent?.query_class || null,
+    intent: syntheticIntent,
+  });
+  const beautyScoped =
+    catalogSurface === 'beauty' ||
+    source === 'aurora-bff' ||
+    source === 'shopping-agent' ||
+    profile?.isBeautyQuery === true;
+  if (!beautyScoped || profile?.isBeautyQuery !== true) return null;
+
+  const explicitTargetStepFamily = searchObj.target_step_family || searchObj.targetStepFamily;
+  const explicitSemanticFamily = String(
+    searchObj.semantic_family || searchObj.semanticFamily || '',
+  ).trim().toLowerCase() || null;
+  const targetStepFamily = inferBeautyTargetStepFamily({
+    rawQuery: normalizedQuery,
+    explicitTargetStepFamily,
+    explicitSemanticFamily,
+    profile,
+  });
+  if (!targetStepFamily) return null;
+
+  const semanticFamily = explicitSemanticFamily || inferBeautySemanticFamily(normalizedQuery, targetStepFamily);
+  const ingredientHypotheses = inferBeautyIngredientHypotheses(normalizedQuery);
+  const queryClass = inferQueryClassFromIntentAndQuery(syntheticIntent, normalizedQuery);
+  const forceDiscoveryContract = shouldForceBeautyDiscoveryContract({
+    rawQuery: normalizedQuery,
+    targetStepFamily,
+    semanticFamily,
+    ingredientHypotheses,
+    guidanceOnlyDiscovery,
+  });
+  if (queryClass === 'non_shopping') return null;
+  if (queryClass === 'lookup' && !forceDiscoveryContract) return null;
+  const supportRoleIds =
+    targetStepFamily === 'treatment'
+      ? ['lightweight_moisturizer', 'daily_sunscreen']
+      : targetStepFamily === 'moisturizer'
+        ? ['daily_sunscreen']
+        : [];
+  const allowedStepFamilies = normalizeSemanticStringList(
+    targetStepFamily === 'treatment'
+      ? ['treatment', 'serum']
+      : [targetStepFamily],
+    6,
+  ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
+  const blockedStepFamilies = normalizeSemanticStringList(
+    targetStepFamily === 'sunscreen'
+      ? ['treatment', 'moisturizer', 'cleanser', 'toner']
+      : targetStepFamily === 'moisturizer'
+        ? ['treatment']
+        : [],
+    6,
+  ).map((value) => normalizeSemanticStepFamily(value)).filter(Boolean);
+
+  return {
+    version: BEAUTY_SEMANTIC_CONTRACT_VERSION,
+    owner: BEAUTY_DISCOVERY_CONTRACT_OWNER,
+    planner_mode: targetStepFamily === 'sunscreen' ? 'step_aware' : 'framework_generic',
+    request_class: targetStepFamily === 'sunscreen' ? 'sunscreen' : 'generic_concern',
+    target_step_family: targetStepFamily,
+    primary_role_id: resolveBeautyPrimaryRoleId({
+      targetStepFamily,
+      semanticFamily,
+      rawQuery: normalizedQuery,
+    }),
+    support_role_ids: supportRoleIds,
+    semantic_family: semanticFamily,
+    allowed_step_families: allowedStepFamilies,
+    blocked_step_families: blockedStepFamilies,
+    ingredient_hypotheses: ingredientHypotheses,
+    source_surface: BEAUTY_DISCOVERY_PUBLIC_SURFACE,
+  };
+}
+
+function isBeautyDiscoverySemanticContract(semanticContract = null) {
+  const contract = normalizeSearchSemanticContract(semanticContract);
+  if (!contract) return false;
+  if (contract.request_class === 'exact_lookup') return false;
+  const owner = String(contract.owner || '').trim().toLowerCase();
+  const sourceSurface = String(contract.source_surface || '').trim().toLowerCase();
+  const ownerAllowed =
+    owner === 'aurora_reco_planner' || owner === BEAUTY_DISCOVERY_CONTRACT_OWNER;
+  const sourceAllowed =
+    sourceSurface === 'aurora_beauty_strict' ||
+    sourceSurface === BEAUTY_DISCOVERY_PUBLIC_SURFACE;
+  return ownerAllowed && sourceAllowed;
+}
+
+function buildBeautyDiscoveryQueryPackFromContract({
+  rawQuery = '',
+  semanticContract = null,
+  ambiguityScorePre = null,
+} = {}) {
+  return buildDeterministicStrictSemanticQueryPack({
+    rawQuery,
+    semanticContract,
+    ambiguityScorePre,
+  });
 }
 
 function buildDeterministicStrictSemanticQueryPack({
@@ -1634,10 +1935,7 @@ function buildStrictSemanticRewriteResult({
 }
 
 function shouldUseSemanticContractQueryOwner(semanticContract = null) {
-  const contract = normalizeSearchSemanticContract(semanticContract);
-  if (!contract) return false;
-  if (contract.request_class === 'exact_lookup') return false;
-  return contract.owner === 'aurora_reco_planner' && contract.source_surface === 'aurora_beauty_strict';
+  return isBeautyDiscoverySemanticContract(semanticContract);
 }
 
 function buildSemanticOwnerSearchQuery({
@@ -5164,6 +5462,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
 module.exports = {
   buildFindProductsMultiContext,
   applyFindProductsMultiPolicy,
+  BEAUTY_DISCOVERY_CONTRACT_OWNER,
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  buildBeautyDiscoverySemanticContract,
+  buildBeautyDiscoveryQueryPackFromContract,
+  isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
   pruneRecentQueries,
 };

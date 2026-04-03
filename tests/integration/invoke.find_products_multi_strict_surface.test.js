@@ -228,6 +228,111 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     }
   });
 
+  test('strict surfaces rescue raw exact-title external-seed matches before clarify finalizes', async () => {
+    process.env.DATABASE_URL = 'postgres://strict-exact-title-rescue';
+
+    jest.doMock('../../src/db', () => ({
+      query: jest.fn(async (sql) => {
+        const text = String(sql || '');
+        if (!text.includes('external_seed_exact_title_recall')) {
+          return { rows: [] };
+        }
+        return {
+          rows: [
+            {
+              id: 'seed_multicalm_exact',
+              external_product_id: 'ext_multicalm_exact',
+              destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+              canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+              domain: 'seed.example.com',
+              title: 'Multi-Calm Cream Cleanser',
+              image_url: 'https://cdn.example.com/multi-calm.jpg',
+              price_amount: '29',
+              price_currency: 'USD',
+              availability: 'in stock',
+              seed_data: {
+                brand: 'Seed Beauty',
+                snapshot: {
+                  title: 'Multi-Calm Cream Cleanser',
+                  brand: 'Seed Beauty',
+                  destination_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                  canonical_url: 'https://seed.example.com/products/multi-calm-cream-cleanser',
+                },
+              },
+              updated_at: '2025-01-01T00:00:00.000Z',
+              created_at: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        };
+      }),
+    }));
+
+    const strictInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        clarification: {
+          question: 'Which cleanser format do you want?',
+        },
+        metadata: {
+          query_source: 'agent_products_recall_clarify',
+          strict_constraint_query: true,
+          strict_constraint_reason: 'agent_api_surface',
+        },
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Multi-Calm Cream Cleanser',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'agent_api',
+          commerce_surface: 'agent_api',
+        },
+      })
+      .expect(200);
+
+    expect(strictInvoke.isDone()).toBe(true);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_multicalm_exact',
+        merchant_id: 'external_seed',
+        title: 'Multi-Calm Cream Cleanser',
+      }),
+    );
+    expect(res.body.clarification).toBeUndefined();
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search_exact_title_supplemented',
+        shopping_exact_title_external_seed_applied: true,
+        shopping_exact_title_external_seed_match_count: 1,
+        contract_bridge: expect.objectContaining({
+          resolved_contract: 'shop_invoke_strict',
+          legacy_fallback: false,
+        }),
+      }),
+    );
+  });
+
   test('blocks strict cache-stage empty responses instead of treating them as mainline success', async () => {
     let capturedBody = null;
     const strictInvoke = nock('http://pivota.test')

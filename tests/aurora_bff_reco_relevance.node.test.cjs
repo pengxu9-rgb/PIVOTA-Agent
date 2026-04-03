@@ -3156,28 +3156,22 @@ test('__internal: framework recall planner emits primary stages first, then supp
   assert.equal(plan.mode, 'framework_generic');
   assert.equal(plan.version, 'aurora_reco_recall_plan_v1');
   assert.ok(Array.isArray(plan.stages));
-  assert.equal(plan.stages.length, 6);
+  assert.equal(plan.stages.length, 3);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 10);
+  assert.equal(plan.entries.length, 3);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
-      ['framework_stage_a_primary_internal', 'internal', 3],
-      ['framework_stage_b_primary_external_seed', 'external_seed', 3],
-      ['framework_stage_c_support_lightweight_moisturizer', 'internal', 1],
-      ['framework_stage_c_support_lightweight_moisturizer_external_seed', 'external_seed', 1],
-      ['framework_stage_c_support_daily_sunscreen', 'internal', 1],
-      ['framework_stage_c_support_daily_sunscreen_external_seed', 'external_seed', 1],
+      ['beauty_mainline_query_1', 'hybrid', 1],
+      ['beauty_mainline_query_2', 'hybrid', 1],
+      ['beauty_mainline_query_3', 'hybrid', 1],
     ],
   );
-  assert.deepEqual(
-    plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'shine control serum', 'mattifying serum'],
-  );
-  assert.deepEqual(
-    plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'shine control serum', 'mattifying serum'],
-  );
+  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
+    'oil control treatment',
+    'oil control serum',
+    'im oily skin, what product should i use?',
+  ]);
 });
 
 test('__internal: framework recall planner prefers ingredient-led treatment query when a treatment-strength active is available', () => {
@@ -3201,14 +3195,11 @@ test('__internal: framework recall planner prefers ingredient-led treatment quer
     },
   });
 
-  assert.deepEqual(
-    plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
-  );
-  assert.deepEqual(
-    plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
-  );
+  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
+    'oil control treatment',
+    'oil control serum',
+    'salicylic acid treatment',
+  ]);
 });
 
 test('__internal: framework recall planner injects canonical shine-control serum ladder when live planner only emits oil-balance phrasing', () => {
@@ -3233,14 +3224,11 @@ test('__internal: framework recall planner injects canonical shine-control serum
     },
   });
 
-  assert.deepEqual(
-    plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
-  );
-  assert.deepEqual(
-    plan.stages[1]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'Salicylic acid treatment', 'shine control serum'],
-  );
+  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
+    'oil control treatment',
+    'oil control serum',
+    'salicylic acid treatment',
+  ]);
 });
 
 test('__internal: framework recall planner falls back to role label query when treatment role lacks enough query terms', () => {
@@ -3263,10 +3251,11 @@ test('__internal: framework recall planner falls back to role label query when t
     },
   });
 
-  assert.deepEqual(
-    plan.stages[0]?.entries?.map((entry) => entry?.query),
-    ['oil control serum', 'oil control treatment', 'im oily skin, what product should i use? treatment'],
-  );
+  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
+    'oil control treatment',
+    'oil control serum',
+    'im oily skin, what product should i use?',
+  ]);
 });
 
 test('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
@@ -3295,15 +3284,20 @@ test('__internal: step-aware recall planner appends bounded external-seed fallba
   assert.ok(Array.isArray(plan.stages));
   assert.equal(plan.stages.length, 3);
   assert.ok(Array.isArray(plan.entries));
-  assert.ok(plan.entries.length <= 5);
+  assert.equal(plan.entries.length, 3);
   assert.deepEqual(
     plan.stages.map((stage) => [stage.stage_id, stage.source_scope, stage.entries.length]),
     [
-      ['step_stage_a_exact', 'internal', 2],
-      ['step_stage_b_same_family', 'internal', 1],
-      ['step_aware_stage_z_external_seed_fallback', 'external_seed', 2],
+      ['beauty_mainline_query_1', 'hybrid', 1],
+      ['beauty_mainline_query_2', 'hybrid', 1],
+      ['beauty_mainline_query_3', 'hybrid', 1],
     ],
   );
+  assert.deepEqual(plan.entries.map((entry) => entry?.query), [
+    'daily sunscreen',
+    'face sunscreen',
+    'sunscreen',
+  ]);
 });
 
 test('/v1/chat: step-aware sunscreen typed reco falls back to external seed and keeps routine handoff', async () => {

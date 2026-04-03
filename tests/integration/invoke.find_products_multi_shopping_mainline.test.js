@@ -598,6 +598,69 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     );
   });
 
+  test('blocks resolver fallback responses from becoming shopping final answers', async () => {
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'resolver_1',
+            merchant_id: 'merchant_resolver',
+            title: 'Resolver fallback product',
+          },
+        ],
+        total: 1,
+        metadata: {
+          query_source: 'agent_products_resolver_fallback',
+          route_health: {
+            primary_path_used: 'resolver_stage',
+          },
+          search_trace: {
+            final_decision: 'resolver_returned',
+          },
+          search_decision: {
+            final_decision: 'resolver_returned',
+          },
+        },
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'barrier repair cream',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_error_fallback',
+        strict_empty: true,
+        strict_empty_reason: 'shopping_mainline_resolver_blocked',
+        shopping_blocked_query_source: 'agent_products_resolver_fallback',
+      }),
+    );
+  });
+
   test('blocks cache-stage upstream responses instead of treating them as shopping success', async () => {
     const upstreamSearch = nock('http://pivota.test')
       .post('/agent/v2/products/search')

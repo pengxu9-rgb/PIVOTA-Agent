@@ -1,5 +1,9 @@
 const RECO_RECALL_PLAN_VERSION = 'aurora_reco_recall_plan_v1';
 const BEAUTY_SEMANTIC_CONTRACT_VERSION = 'beauty_semantic_contract_v1';
+const {
+  buildBeautyDiscoveryQueryPackFromContract,
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+} = require('../findProductsMulti/policy');
 
 function uniqueCaseInsensitiveStrings(values, max = 12) {
   const out = [];
@@ -141,7 +145,9 @@ function buildStepAwareSemanticContract({ targetContext, queryLevels } = {}) {
     planner_mode: 'step_aware',
     request_class: targetStepFamily === 'sunscreen' ? 'sunscreen' : 'routine_followup',
     target_step_family: targetStepFamily,
-    primary_role_id: normalizeConcernQueryToken(targetContext?.primary_role_id) || `${targetStepFamily}_primary`,
+    primary_role_id:
+      normalizeConcernQueryToken(targetContext?.primary_role_id) ||
+      (targetStepFamily === 'sunscreen' ? 'daily_sunscreen' : `${targetStepFamily}_primary`),
     support_role_ids: [],
     semantic_family: normalizeConcernQueryToken(
       targetContext?.semantic_plan?.semantic_family ||
@@ -176,6 +182,77 @@ function buildExactLookupSemanticContract() {
     blocked_step_families: [],
     ingredient_hypotheses: [],
     source_surface: 'aurora_beauty_strict',
+  };
+}
+
+function inferBeautyMainlineSlot(targetStepFamily = null) {
+  return normalizeSemanticStepFamily(targetStepFamily) === 'sunscreen' ? 'am' : 'other';
+}
+
+function deriveBeautyMainlineRawQuery({ mode, targetContext = null, queryLevels = null } = {}) {
+  const normalizedMode = String(mode || '').trim().toLowerCase();
+  if (normalizedMode === 'framework_generic') {
+    return normalizeConcernQueryToken(targetContext?.framework_summary?.concern_text || '');
+  }
+  if (normalizedMode === 'step_aware') {
+    const firstQuery = (Array.isArray(queryLevels) ? queryLevels : [])
+      .flatMap((level) => (Array.isArray(level?.queries) ? level.queries : []))
+      .find((entry) => String(entry?.query || '').trim());
+    return normalizeConcernQueryToken(firstQuery?.query || '');
+  }
+  return '';
+}
+
+function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery = '' } = {}) {
+  const contract = semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)
+    ? semanticContract
+    : null;
+  if (!contract || contract.request_class === 'exact_lookup') {
+    return {
+      version: RECO_RECALL_PLAN_VERSION,
+      mode: String(mode || '').trim().toLowerCase() || 'unknown',
+      budget: {
+        max_query_entries: 0,
+        max_upstream_attempt_count: 0,
+      },
+      stages: [],
+      entries: [],
+      semantic_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+    };
+  }
+  const queries = buildBeautyDiscoveryQueryPackFromContract({
+    rawQuery,
+    semanticContract: contract,
+  });
+  const preferredStep = normalizeSemanticStepFamily(contract.target_step_family);
+  const slot = inferBeautyMainlineSlot(preferredStep);
+  const stages = queries
+    .map((query, index) => buildStage({
+      stageId: `beauty_mainline_query_${index + 1}`,
+      roleId: index === 0 ? contract.primary_role_id || null : null,
+      roleRank: index + 1,
+      sourceScope: 'hybrid',
+      queries: [query],
+      concurrency: 1,
+      maxAttemptsForStage: 1,
+      stopOnViableMatch: true,
+      reasonForInclusion: index === 0 ? 'beauty_mainline_primary' : 'beauty_mainline_rescue',
+      runIf: index === 0 ? 'always' : 'if_no_primary_viable_or_transient_only',
+      preferredStep,
+      slot,
+    }))
+    .filter(Boolean);
+  const entries = flattenPlanEntries(stages);
+  return {
+    version: RECO_RECALL_PLAN_VERSION,
+    mode: String(mode || '').trim().toLowerCase() || 'unknown',
+    budget: {
+      max_query_entries: entries.length,
+      max_upstream_attempt_count: entries.length,
+    },
+    stages,
+    entries,
+    semantic_owner: BEAUTY_DISCOVERY_MAINLINE_OWNER,
   };
 }
 
@@ -262,9 +339,12 @@ function buildStage({
     stage_id: String(stageId || '').trim() || 'stage',
     role_id: roleId ? String(roleId).trim() : null,
     role_rank: Number.isFinite(Number(roleRank)) ? Number(roleRank) : null,
-    source_scope: String(sourceScope || 'internal').trim().toLowerCase() === 'external_seed'
-      ? 'external_seed'
-      : 'internal',
+    source_scope: (() => {
+      const normalizedSourceScope = String(sourceScope || 'internal').trim().toLowerCase();
+      if (normalizedSourceScope === 'external_seed') return 'external_seed';
+      if (normalizedSourceScope === 'hybrid') return 'hybrid';
+      return 'internal';
+    })(),
     concurrency: Math.max(1, Number(concurrency) || 1),
     max_attempts_for_stage: Math.max(1, Number(maxAttemptsForStage) || 1),
     stop_on_viable_match: stopOnViableMatch === true,
@@ -327,185 +407,28 @@ function buildFrameworkSupportStageId(roleId, sourceScope = 'internal') {
 }
 
 function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
-  const targetObj = targetContext && typeof targetContext === 'object' && !Array.isArray(targetContext)
-    ? targetContext
-    : null;
-  const roles = Array.isArray(targetObj?.framework_roles)
-    ? [...targetObj.framework_roles]
-        .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
-        .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
-    : [];
-  if (!roles.length) {
-    return {
-      version: RECO_RECALL_PLAN_VERSION,
-      mode: 'framework_generic',
-      budget: {
-        max_query_entries: 4,
-        max_upstream_attempt_count: 4,
-      },
-      stages: [],
-      entries: [],
-    };
-  }
-
-  const concernText = String(targetObj?.framework_summary?.concern_text || '').trim().replace(/\s+/g, ' ');
-  const primaryRole = roles[0] || null;
-  const supportRoles = roles.slice(1, 3);
-  const supportStages = supportRoles.flatMap((role) => {
-    const roleId = role?.role_id || null;
-    const preferredStep = role?.preferred_step || null;
-    const slot = Array.isArray(role?.routine_slots) ? role.routine_slots[0] || null : null;
-    return [
-      buildStage({
-        stageId: buildFrameworkSupportStageId(roleId, 'internal'),
-        roleId,
-        roleRank: role?.rank || null,
-        sourceScope: 'internal',
-        queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
-        concurrency: 1,
-        maxAttemptsForStage: 1,
-        stopOnViableMatch: false,
-        reasonForInclusion: 'support_role_internal',
-        runIf: 'if_surface_count_below_target',
-        preferredStep,
-        slot,
-      }),
-      buildStage({
-        stageId: buildFrameworkSupportStageId(roleId, 'external_seed'),
-        roleId,
-        roleRank: role?.rank || null,
-        sourceScope: 'external_seed',
-        queries: buildFrameworkRoleQueries(role, concernText, 1, { allowConcernFallback: false }),
-        concurrency: 1,
-        maxAttemptsForStage: 1,
-        stopOnViableMatch: false,
-        reasonForInclusion: 'support_role_external_seed',
-        runIf: 'if_surface_count_below_target',
-        preferredStep,
-        slot,
-      }),
-    ].filter(Boolean);
-  });
-
-  const stages = [
-    buildStage({
-      stageId: 'framework_stage_a_primary_internal',
-      roleId: primaryRole?.role_id || null,
-      roleRank: primaryRole?.rank || 1,
-      sourceScope: 'internal',
-      queries: buildFrameworkRoleQueries(primaryRole, concernText, 3, { allowConcernFallback: true }),
-      concurrency: 2,
-      maxAttemptsForStage: 3,
-      stopOnViableMatch: true,
-      reasonForInclusion: 'primary_role_internal',
-      runIf: 'always',
-      preferredStep: primaryRole?.preferred_step || null,
-    }),
-    buildStage({
-      stageId: 'framework_stage_b_primary_external_seed',
-      roleId: primaryRole?.role_id || null,
-      roleRank: primaryRole?.rank || 1,
-      sourceScope: 'external_seed',
-      queries: buildFrameworkRoleQueries(primaryRole, concernText, 3, { allowConcernFallback: true }),
-      concurrency: 1,
-      maxAttemptsForStage: 3,
-      stopOnViableMatch: true,
-      reasonForInclusion: 'primary_role_external_seed',
-      runIf: 'if_no_primary_viable_or_transient_only',
-      preferredStep: primaryRole?.preferred_step || null,
-    }),
-    ...supportStages,
-  ].filter(Boolean);
-  const entries = flattenPlanEntries(stages);
-  const maxQueryEntries = entries.length;
-
-  return {
-    version: RECO_RECALL_PLAN_VERSION,
+  const semanticContract = buildFrameworkSemanticContract({ targetContext });
+  return buildBeautyMainlineRecallPlan({
     mode: 'framework_generic',
-    budget: {
-      max_query_entries: maxQueryEntries,
-      max_upstream_attempt_count: maxQueryEntries,
-      stage_concurrency: {
-        framework_stage_a_primary_internal: 2,
-        framework_stage_b_primary_external_seed: 1,
-        ...Object.fromEntries(
-          supportStages
-            .map((stage) => [String(stage?.stage_id || '').trim(), 1])
-            .filter(([stageId]) => Boolean(stageId)),
-        ),
-      },
-    },
-    stages,
-    entries,
-  };
+    semanticContract,
+    rawQuery: deriveBeautyMainlineRawQuery({
+      mode: 'framework_generic',
+      targetContext,
+    }),
+  });
 }
 
-function buildStepAwareRecallPlan({ queryLevels } = {}) {
-  const levels = Array.isArray(queryLevels) ? queryLevels : [];
-  const stages = [];
-  for (const level of levels) {
-    const levelObj = level && typeof level === 'object' && !Array.isArray(level) ? level : null;
-    if (!levelObj) continue;
-    const queries = (Array.isArray(levelObj.queries) ? levelObj.queries : [])
-      .map((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : null))
-      .filter(Boolean)
-      .slice(0, 2);
-    if (!queries.length) continue;
-    const first = queries[0];
-    const stage = buildStage({
-      stageId: String(levelObj.ladder_level || `step_level_${stages.length + 1}`).trim() || `step_level_${stages.length + 1}`,
-      roleId: null,
-      roleRank: stages.length + 1,
-      sourceScope: 'internal',
-      queries: queries.map((entry) => entry.query),
-      concurrency: 2,
-      maxAttemptsForStage: queries.length,
-      stopOnViableMatch: false,
-      reasonForInclusion: 'step_aware_internal',
-      runIf: 'always',
-      preferredStep: first?.step || null,
-      slot: first?.slot || null,
-    });
-    if (stage) stages.push(stage);
-  }
-  const firstQuery = levels.flatMap((level) => (Array.isArray(level?.queries) ? level.queries : [])).find(Boolean) || null;
-  const shouldUseExternalSeedFallbackForStepAware = String(firstQuery?.step || '').trim().toLowerCase() === 'sunscreen';
-  const externalFallbackQueries = uniqueCaseInsensitiveStrings(
-    levels.flatMap((level) => (
-      Array.isArray(level?.queries)
-        ? level.queries.map((entry) => String(entry?.query || '').trim()).filter(Boolean)
-        : []
-    )),
-    2,
-  );
-  if (shouldUseExternalSeedFallbackForStepAware && externalFallbackQueries.length > 0) {
-    const externalStage = buildStage({
-      stageId: 'step_aware_stage_z_external_seed_fallback',
-      roleId: null,
-      roleRank: stages.length + 1,
-      sourceScope: 'external_seed',
-      queries: externalFallbackQueries,
-      concurrency: 1,
-      maxAttemptsForStage: Math.min(2, externalFallbackQueries.length),
-      stopOnViableMatch: true,
-      reasonForInclusion: 'step_aware_external_seed_fallback',
-      runIf: 'if_no_primary_viable_or_transient_only',
-      preferredStep: firstQuery?.step || null,
-      slot: firstQuery?.slot || null,
-    });
-    if (externalStage) stages.push(externalStage);
-  }
-  const entries = flattenPlanEntries(stages);
-  return {
-    version: RECO_RECALL_PLAN_VERSION,
+function buildStepAwareRecallPlan({ targetContext = null, queryLevels } = {}) {
+  const semanticContract = buildStepAwareSemanticContract({ targetContext, queryLevels });
+  return buildBeautyMainlineRecallPlan({
     mode: 'step_aware',
-    budget: {
-      max_query_entries: entries.length,
-      max_upstream_attempt_count: entries.length,
-    },
-    stages,
-    entries,
-  };
+    semanticContract,
+    rawQuery: deriveBeautyMainlineRawQuery({
+      mode: 'step_aware',
+      targetContext,
+      queryLevels,
+    }),
+  });
 }
 
 function buildProductGroundingExactRecallPlan({ queries } = {}) {
@@ -551,7 +474,7 @@ function buildRecoRecallPlan({ mode, targetContext = null, queryLevels = null, q
     return buildFrameworkGenericRecallPlan({ targetContext });
   }
   if (normalizedMode === 'step_aware') {
-    return buildStepAwareRecallPlan({ queryLevels });
+    return buildStepAwareRecallPlan({ targetContext, queryLevels });
   }
   if (normalizedMode === 'product_grounding_exact') {
     return buildProductGroundingExactRecallPlan({ queries });
