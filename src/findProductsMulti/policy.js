@@ -1815,6 +1815,7 @@ function buildDeterministicStrictSemanticQueryPack({
 
     pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
+    if (ingredientHypotheses[0]) push(`${ingredientHypotheses[0]} treatment`);
     if (semanticFamily) {
       push(
         /\b(oil control|shine control|mattify|mattifying|balancing)\b/.test(semanticFamily)
@@ -1822,7 +1823,6 @@ function buildDeterministicStrictSemanticQueryPack({
           : `${semanticFamily} treatment`,
       );
     }
-    if (ingredientHypotheses[0]) push(`${ingredientHypotheses[0]} treatment`);
     if (allowedStepFamilies.includes('serum')) push('oil control serum');
     push(raw);
   } else if (targetStepFamily === 'moisturizer') {

@@ -949,7 +949,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       })
       .expect(200);
 
-    expect(attemptedQueries).toEqual(['oil control treatment', 'oil control serum']);
+    expect(attemptedQueries).toEqual(['oil control treatment', 'salicylic acid treatment']);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products).toHaveLength(1);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('treat_valid_1');
@@ -964,7 +964,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           hit_quality: 'invalid_hit',
         }),
         expect.objectContaining({
-          query: 'oil control serum',
+          query: 'salicylic acid treatment',
           query_index: 1,
           adopted: true,
           hit_quality: 'valid_hit',
@@ -1083,8 +1083,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
     expect(attemptedPrimaryQueries).toEqual([
       'oil control treatment',
-      'oil control serum',
       'salicylic acid treatment',
+      'oil control serum',
     ]);
     expect(attemptedExternalQueries).toEqual([
       'salicylic acid treatment',
@@ -1097,11 +1097,271 @@ describe('/agent/shop/v1/invoke gateway', () => {
         semantic_owner_external_rescue_applied: true,
         semantic_owner_external_rescue_query: 'salicylic acid treatment',
         semantic_owner_external_rescue_queries_attempted: expect.arrayContaining([
-          'oil control serum',
-          'oil control treatment',
           'salicylic acid treatment',
+          'oil control treatment',
+          'oil control serum',
         ]),
       }),
+    );
+  });
+
+  it('beauty semantic-owner defers cache_all_platforms valid treatment hits and prefers external rescue', async () => {
+    const attemptedPrimaryQueries = [];
+    const attemptedExternalQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() === 'true') return false;
+        attemptedPrimaryQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(3)
+      .reply(function replyPrimaryTreatment(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const primaryQuery = String(url.searchParams.get('query') || '');
+        if (primaryQuery === 'oil control treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'cache_treat_valid_1',
+                product_id: 'cache_treat_valid_1',
+                merchant_id: 'merchant_cache',
+                title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                category: 'skincare',
+                product_type: 'serum',
+                query_source: 'cache_all_platforms',
+              },
+            ],
+            metadata: {
+              query_source: 'cache_all_platforms',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        }];
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() !== 'true') return false;
+        attemptedExternalQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(6)
+      .reply(function replyExternalTreatment(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const rescueQuery = String(url.searchParams.get('query') || '');
+        if (rescueQuery === 'salicylic acid treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'external_treat_2',
+                product_id: 'external_treat_2',
+                merchant_id: 'external_seed',
+                title: 'Salicylic Acid Oil Control Treatment',
+                name: 'Salicylic Acid Oil Control Treatment',
+                display_name: 'Salicylic Acid Oil Control Treatment',
+                category: 'external',
+                product_type: 'external',
+                source: 'external_seed',
+                description: 'Face treatment with salicylic acid for oily skin and blemish control.',
+                how_to_use: 'Apply to oily areas after cleansing.',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_external_seed_direct',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_external_seed_direct',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedPrimaryQueries).toEqual([
+      'oil control treatment',
+      'salicylic acid treatment',
+      'oil control serum',
+    ]);
+    expect(attemptedExternalQueries[0]).toBe('salicylic acid treatment');
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_treat_2');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_external_rescue_applied: true,
+        semantic_owner_external_rescue_query: 'salicylic acid treatment',
+      }),
+    );
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'oil control treatment',
+          query_index: 0,
+          adopted: false,
+          hit_quality: 'valid_hit',
+          last_resort_cache_candidate: true,
+        }),
+      ]),
+    );
+  });
+
+  it('beauty semantic-owner falls back to last-resort cache only after fresh rescue misses', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() !== 'true')
+      .times(3)
+      .reply(function replyPrimaryTreatment(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const primaryQuery = String(url.searchParams.get('query') || '');
+        if (primaryQuery === 'oil control treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'cache_treat_valid_2',
+                product_id: 'cache_treat_valid_2',
+                merchant_id: 'merchant_cache',
+                title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                category: 'skincare',
+                product_type: 'serum',
+                query_source: 'cache_all_platforms',
+              },
+            ],
+            metadata: {
+              query_source: 'cache_all_platforms',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        }];
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() === 'true')
+      .times(6)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('cache_treat_valid_2');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_last_resort_cache_applied: true,
+        semantic_owner_last_resort_cache_query: 'oil control treatment',
+      }),
+    );
+    expect(res.body.metadata?.source_breakdown?.strategy_applied).toBe(
+      'semantic_owner_last_resort_cache',
+    );
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'oil control treatment',
+          query_index: 0,
+          adopted: true,
+          adoption_mode: 'last_resort_cache',
+          hit_quality: 'valid_hit',
+          last_resort_cache_candidate: true,
+        }),
+      ]),
     );
   });
 

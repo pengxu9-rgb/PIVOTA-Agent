@@ -22670,21 +22670,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       fallbackQuery = '',
     } = {}) => {
       const rescueQueries = [];
+      if (semanticOwnerTargetStepFamily === 'treatment') {
+        for (const hypothesis of semanticOwnerIngredientHypotheses.slice(0, 2)) {
+          rescueQueries.push(`${hypothesis} treatment`, `${hypothesis} serum`);
+        }
+        if (semanticOwnerSemanticFamily === 'oil_control') {
+          rescueQueries.push('oil control treatment', 'oil control serum');
+        }
+      }
       if (ignoredAttempt?.query) rescueQueries.push(ignoredAttempt.query);
       for (const attempt of Array.isArray(queryAttempts) ? [...queryAttempts].reverse() : []) {
-        if (attempt?.observation_candidate_ignored === true && String(attempt?.query || '').trim()) {
+        if (
+          (
+            attempt?.observation_candidate_ignored === true ||
+            attempt?.last_resort_cache_candidate === true
+          ) &&
+          String(attempt?.query || '').trim()
+        ) {
           rescueQueries.push(String(attempt.query || '').trim());
         }
       }
       if (fallbackQuery) rescueQueries.push(fallbackQuery);
-      if (semanticOwnerTargetStepFamily === 'treatment') {
-        if (semanticOwnerSemanticFamily === 'oil_control') {
-          rescueQueries.push('oil control treatment', 'oil control serum');
-        }
-        for (const hypothesis of semanticOwnerIngredientHypotheses.slice(0, 2)) {
-          rescueQueries.push(`${hypothesis} treatment`, `${hypothesis} serum`);
-        }
-      }
       return normalizeSemanticOwnerRescueQueryPack(rescueQueries);
     };
     const semanticOwnerMinQueriesBeforeBudgetGuard =
@@ -22837,12 +22843,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryStepStrength,
         mode: decisionMode,
       });
+      const rankedProducts =
+        Array.isArray(hitDecision?.ranked_products) && hitDecision.ranked_products.length > 0
+          ? hitDecision.ranked_products
+          : products;
+      const sourceSummary = summarizeSharedCandidateSources(rankedProducts.slice(0, 5));
+      const lastResortCacheCandidate =
+        semanticOwnerControlled &&
+        hitDecision?.applied === true &&
+        hitDecision.hit_quality === 'valid_hit' &&
+        isSemanticOwnerLastResortCacheSourceSummary(sourceSummary);
       return {
         adopt: hitDecision?.applied === true
-          ? hitDecision.hit_quality === 'valid_hit'
+          ? hitDecision.hit_quality === 'valid_hit' && !lastResortCacheCandidate
           : products.length > 0,
         hitDecision,
         beautyScoped: true,
+        last_resort_cache_candidate: lastResortCacheCandidate,
+        source_summary: sourceSummary,
       };
     };
     const SEMANTIC_OWNER_CACHE_INVALID_OBSERVATION_REASONS = new Set([
@@ -22852,6 +22870,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invalid_hit_adjacent_noise_dominant',
       'invalid_hit_tools_dominant',
     ]);
+    const isSemanticOwnerLastResortCacheSourceSummary = (sourceSummary = {}) => {
+      const cacheFreshCount = Number(sourceSummary?.source_tier_counts?.cache_fresh || 0) || 0;
+      const freshInternalCount = Number(sourceSummary?.source_tier_counts?.fresh_internal || 0) || 0;
+      const freshExternalCount = Number(sourceSummary?.source_tier_counts?.fresh_external || 0) || 0;
+      const cacheStaleCount = Number(sourceSummary?.source_tier_counts?.cache_stale || 0) || 0;
+      const cacheOwnerPaths = Array.isArray(sourceSummary?.cache_owner_paths)
+        ? sourceSummary.cache_owner_paths.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+      const topSourceOwner = String(sourceSummary?.top_candidate_provenance?.source_owner || '')
+        .trim()
+        .toLowerCase();
+      return (
+        cacheFreshCount > 0 &&
+        freshInternalCount <= 0 &&
+        freshExternalCount <= 0 &&
+        cacheStaleCount <= 0 &&
+        (cacheOwnerPaths.includes('cache_all_platforms') || topSourceOwner === 'cache_all_platforms')
+      );
+    };
     const describeSemanticOwnerObservationFallback = ({ upstreamData, hitDecision, queryText }) => {
       const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
       if (!products.length) {
@@ -22859,15 +22896,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           score: -1,
           ignore: false,
           ignore_reason: null,
+          last_resort_cache_candidate: false,
           source_summary: summarizeSharedCandidateSources([]),
         };
       }
       if (!hitDecision?.applied) {
+        const sourceSummary = summarizeSharedCandidateSources(products.slice(0, 5));
         return {
           score: products.length,
           ignore: false,
           ignore_reason: null,
-          source_summary: summarizeSharedCandidateSources(products.slice(0, 5)),
+          last_resort_cache_candidate: isSemanticOwnerLastResortCacheSourceSummary(sourceSummary),
+          source_summary: sourceSummary,
         };
       }
       const rankedProducts =
@@ -22898,6 +22938,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         hitDecision?.hit_quality === 'invalid_hit' &&
         pureCacheOnly &&
         SEMANTIC_OWNER_CACHE_INVALID_OBSERVATION_REASONS.has(normalizedInvalidReason);
+      const lastResortCacheCandidate =
+        hitDecision?.hit_quality === 'valid_hit' &&
+        isSemanticOwnerLastResortCacheSourceSummary(sourceSummary);
       const score = (
         Number(hitDecision.exact_step_topk_count || 0) * 1000 +
         Number(hitDecision.strong_goal_family_topk_count || 0) * 100 +
@@ -22916,6 +22959,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         score: ignore ? -1 : score,
         ignore,
         ignore_reason: ignore ? 'pure_cache_invalid_hit' : null,
+        last_resort_cache_candidate: lastResortCacheCandidate,
         source_summary: sourceSummary,
       };
     };
@@ -23700,6 +23744,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let semanticOwnerAdoptedByValidHit = primarySemanticOwnerAdoption.adopt === true;
     let semanticOwnerIgnoredObservationCandidate =
       semanticOwnerControlled && primarySemanticOwnerObservation.ignore === true;
+    let semanticOwnerDeferredLastResortCache =
+      semanticOwnerControlled && primarySemanticOwnerAdoption.last_resort_cache_candidate === true;
+    let semanticOwnerLastResortCacheApplied = false;
+    let semanticOwnerLastResortCacheQuery = null;
     let semanticOwnerCacheSourceIsolated = false;
     let semanticOwnerCacheSourceIsolationReason = null;
     let semanticOwnerExternalRescueQueriesAttempted = [];
@@ -23716,6 +23764,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             queryParams,
             requestBody,
             queryIndex: 0,
+            last_resort_cache_candidate:
+              primarySemanticOwnerObservation.last_resort_cache_candidate === true,
           }
         : null;
     let semanticOwnerQueryAttempts =
@@ -23734,6 +23784,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     post_quality_result_count: Array.isArray(primarySemanticOwnerAdoption.hitDecision.valid_products)
                       ? primarySemanticOwnerAdoption.hitDecision.valid_products.length
                       : 0,
+                    last_resort_cache_candidate:
+                      primarySemanticOwnerAdoption.last_resort_cache_candidate === true,
                     observation_candidate_ignored: primarySemanticOwnerObservation.ignore === true,
                     observation_ignore_reason: primarySemanticOwnerObservation.ignore_reason || null,
                   }
@@ -23855,9 +23907,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const fallbackCandidate = variantObservationFallback;
           if (fallbackCandidate.ignore) {
             semanticOwnerIgnoredObservationCandidate = true;
-          } else if (
-            !semanticOwnerObservationFallback ||
-            fallbackCandidate.score > semanticOwnerObservationFallback.score
+          }
+          if (variantAdoption.last_resort_cache_candidate === true) {
+            semanticOwnerDeferredLastResortCache = true;
+          }
+          if (
+            !fallbackCandidate.ignore &&
+            (
+              !semanticOwnerObservationFallback ||
+              fallbackCandidate.score > semanticOwnerObservationFallback.score
+            )
           ) {
             semanticOwnerObservationFallback = {
               score: fallbackCandidate.score,
@@ -23866,6 +23925,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               queryParams: variantQueryParams,
               requestBody: variantRequestBody,
               queryIndex,
+              last_resort_cache_candidate:
+                fallbackCandidate.last_resort_cache_candidate === true,
             };
           }
         }
@@ -23882,6 +23943,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 post_quality_result_count: Array.isArray(variantAdoption.hitDecision.valid_products)
                   ? variantAdoption.hitDecision.valid_products.length
                   : 0,
+                last_resort_cache_candidate:
+                  variantAdoption.last_resort_cache_candidate === true,
                 observation_candidate_ignored: variantObservationFallback?.ignore === true,
                 observation_ignore_reason: variantObservationFallback?.ignore_reason || null,
               }
@@ -23907,8 +23970,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
       !semanticOwnerAdoptedByValidHit &&
-      !semanticOwnerObservationFallback &&
-      semanticOwnerIgnoredObservationCandidate &&
+      (semanticOwnerIgnoredObservationCandidate || semanticOwnerDeferredLastResortCache) &&
       semanticOwnerQueryPack.length > 0
     ) {
       const semanticOwnerExternalRescueAttempt = [...semanticOwnerQueryAttempts]
@@ -23916,7 +23978,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         .find(
           (attempt) =>
             attempt &&
-            attempt.observation_candidate_ignored === true &&
+            (
+              attempt.observation_candidate_ignored === true ||
+              attempt.last_resort_cache_candidate === true
+            ) &&
             String(attempt.query || '').trim(),
         );
       const semanticOwnerExternalRescueQueries = buildSemanticOwnerExternalRescueQueryPack({
@@ -24019,6 +24084,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 chosenAttempt.adopted = true;
                 chosenAttempt.adoption_mode = 'external_seed_rescue';
               }
+              semanticOwnerAdoptedByValidHit = true;
+              semanticOwnerObservationFallback = null;
               semanticOwnerExternalRescueApplied = true;
               break;
             }
@@ -24032,7 +24099,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             );
           }
         }
-        if (!semanticOwnerExternalRescueApplied) {
+        if (!semanticOwnerExternalRescueApplied && !semanticOwnerObservationFallback) {
           semanticOwnerCacheSourceIsolated = true;
           semanticOwnerCacheSourceIsolationReason = 'pure_cache_invalid_hit';
           const isolatedBody = normalizeAgentProductsListResponse(
@@ -24087,7 +24154,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const chosenAttempt = semanticOwnerQueryAttempts[semanticOwnerObservationFallback.queryIndex];
       if (chosenAttempt && chosenAttempt.adopted !== true) {
         chosenAttempt.adopted = true;
-        chosenAttempt.adoption_mode = 'observation_only';
+        chosenAttempt.adoption_mode =
+          semanticOwnerObservationFallback.last_resort_cache_candidate === true
+            ? 'last_resort_cache'
+            : 'observation_only';
+      }
+      if (semanticOwnerObservationFallback.last_resort_cache_candidate === true) {
+        semanticOwnerLastResortCacheApplied = true;
+        semanticOwnerLastResortCacheQuery = String(queryParams?.query || '').trim() || null;
       }
     }
 
@@ -26392,6 +26466,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : null,
         ...(semanticOwnerCacheSourceIsolated
           ? { strategy_applied: 'semantic_owner_cache_source_isolated' }
+          : semanticOwnerLastResortCacheApplied
+          ? { strategy_applied: 'semantic_owner_last_resort_cache' }
           : {}),
       };
       enriched = {
@@ -26542,6 +26618,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   semantic_owner_cache_source_isolated: true,
                   semantic_owner_cache_source_isolation_reason:
                     semanticOwnerCacheSourceIsolationReason || 'pure_cache_invalid_hit',
+                }
+              : {}),
+            ...(semanticOwnerLastResortCacheApplied
+              ? {
+                  semantic_owner_last_resort_cache_applied: true,
+                  semantic_owner_last_resort_cache_query:
+                    semanticOwnerLastResortCacheQuery || null,
                 }
               : {}),
             semantic_owner: semanticOwnerDecision,

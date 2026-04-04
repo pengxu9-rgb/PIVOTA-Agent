@@ -588,8 +588,8 @@ describe('find_products_multi context building', () => {
         owner: 'shopping_agent_beauty_mainline',
         normalized_query_pack: [
           'oil control treatment',
-          'oil control serum',
           'salicylic acid treatment',
+          'oil control serum',
         ],
       }),
     );
