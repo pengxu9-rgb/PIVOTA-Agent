@@ -601,14 +601,125 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.blocking_reason).toBeUndefined();
   });
 
+  it('public beauty search applies source priors and exposes provenance on broad beauty results', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'dog_noise_1',
+            product_id: 'dog_noise_1',
+            merchant_id: 'external_seed',
+            title: 'Reflective Dog Harness for Small Dogs',
+            name: 'Reflective Dog Harness for Small Dogs',
+            display_name: 'Reflective Dog Harness for Small Dogs',
+            category: 'pet accessories',
+            product_type: 'harness',
+            source: 'external_seed',
+            pivota: { domain: 'other' },
+            target_object: 'unknown',
+            reason_codes: ['OBJ_UNCERTAIN', 'CAT_PARENT'],
+          },
+          {
+            id: 'cache_spf_1',
+            product_id: 'cache_spf_1',
+            merchant_id: 'merchant_cache',
+            title: 'Daily Face Sunscreen SPF 46',
+            name: 'Daily Face Sunscreen SPF 46',
+            display_name: 'Daily Face Sunscreen SPF 46',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            source: 'products_cache',
+          },
+          {
+            id: 'internal_spf_1',
+            product_id: 'internal_spf_1',
+            merchant_id: 'merchant_internal',
+            title: 'Oil Control Sunscreen SPF 50',
+            name: 'Oil Control Sunscreen SPF 50',
+            display_name: 'Oil Control Sunscreen SPF 50',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            source: 'upstream',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'best sunscreen for oily skin',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      })
+      .expect(200);
+
+    expect(res.body.metadata?.decision_owner).toBe('shopping_agent_beauty_mainline');
+    expect(res.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+      }),
+    );
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('internal_spf_1');
+    expect(res.body.metadata?.source_breakdown).toEqual(
+      expect.objectContaining({
+        internal_count: 2,
+        external_seed_count: 1,
+        stable_prior_count: 0,
+        source_tier_counts: expect.objectContaining({
+          fresh_internal: 1,
+          fresh_external: 1,
+          cache_fresh: 1,
+        }),
+        source_quality_counts: expect.objectContaining({
+          trusted: 1,
+          mixed: 2,
+        }),
+        cache_owner_paths: expect.arrayContaining(['products_cache']),
+        top_candidate_provenance: expect.objectContaining({
+          source_channel: 'internal_search',
+          source_tier: 'fresh_internal',
+          source_quality_class: 'trusted',
+        }),
+      }),
+    );
+    expect(res.body.metadata?.search_stage_ledger?.primary_search).toEqual(
+      expect.objectContaining({
+        source_tier_counts: expect.objectContaining({
+          fresh_internal: 1,
+          fresh_external: 1,
+          cache_fresh: 1,
+        }),
+        top_candidate_provenance: expect.objectContaining({
+          source_tier: 'fresh_internal',
+        }),
+      }),
+    );
+    expect(res.body.metadata?.search_decision).toEqual(
+      expect.objectContaining({
+        source_tier_counts: expect.objectContaining({
+          fresh_internal: 1,
+          fresh_external: 1,
+          cache_fresh: 1,
+        }),
+        top_candidate_provenance: expect.objectContaining({
+          source_channel: 'internal_search',
+        }),
+      }),
+    );
+  });
+
   it('invoke beauty search derives the same beauty mainline contract without requiring semantic_contract input', async () => {
     let capturedQuery = null;
-    let capturedBody = null;
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search', (body) => {
-        capturedBody = body;
-        return true;
-      })
+      .get('/agent/v1/products/search')
       .query((query) => {
         capturedQuery = query;
         return true;
@@ -646,19 +757,12 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(String(capturedQuery?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
-    expect(capturedBody).toEqual(
+    expect(capturedQuery).toEqual(
       expect.objectContaining({
         query: 'lightweight sunscreen oily skin',
-        catalog_surface: 'beauty',
-        commerce_surface: 'beauty',
-        target_step_family: 'sunscreen',
-        semantic_family: 'oil_control',
-        semantic_contract: expect.objectContaining({
-          owner: 'shopping_agent_beauty_contract_builder',
-          request_class: 'sunscreen',
-          target_step_family: 'sunscreen',
-          source_surface: 'shopping_agent_public_beauty',
-        }),
+        in_stock_only: 'true',
+        limit: '20',
+        offset: '0',
       }),
     );
     expect(res.body.metadata).toEqual(
@@ -667,6 +771,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
         decision_owner: 'shopping_agent_beauty_mainline',
         semantic_contract: expect.objectContaining({
           owner: 'shopping_agent_beauty_contract_builder',
+          request_class: 'sunscreen',
+          target_step_family: 'sunscreen',
         }),
         search_stage_ledger: expect.objectContaining({
           final_decision: expect.objectContaining({
@@ -688,7 +794,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('beauty mainline keeps treatment products when ambiguity only requires non-blocking clarify', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
         status: 'success',

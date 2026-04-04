@@ -19,6 +19,9 @@ const {
   isBeautyBucketCompatibleForQuery,
 } = require('./beautyQueryProfile');
 const {
+  summarizeCandidateSources,
+} = require('../shared/beautyRecoCoarseClassifier');
+const {
   _internals: productGroundingResolverInternals = {},
 } = require('../services/productGroundingResolver');
 
@@ -2812,12 +2815,7 @@ function syncResponsePaginationCounts(response, listCount) {
     const { list } = getResponseProductList(next);
     return Array.isArray(list) ? list : [];
   })();
-  const externalCount = sourceList.filter((product) => {
-    if (!product || typeof product !== 'object') return false;
-    const merchantId = String(product.merchant_id || product.merchantId || '').trim();
-    const source = String(product.source || '').trim().toLowerCase();
-    return merchantId === 'external_seed' || source === 'external_seed';
-  }).length;
+  const sourceSummary = summarizeCandidateSources(sourceList);
   const metadata =
     next.metadata && typeof next.metadata === 'object' && !Array.isArray(next.metadata)
       ? { ...next.metadata }
@@ -2831,8 +2829,31 @@ function syncResponsePaginationCounts(response, listCount) {
         : {};
     metadata.source_breakdown = {
       ...existingBreakdown,
-      internal_count: Math.max(0, count - externalCount),
-      external_seed_count: externalCount,
+      internal_count: Math.max(0, Number(sourceSummary.internal_live || 0) || 0),
+      external_seed_count: Math.max(0, Number(sourceSummary.external_supplement || 0) || 0),
+      stable_prior_count: Math.max(0, Number(sourceSummary.stable_prior || 0) || 0),
+      stale_cache_used:
+        Number(sourceSummary.source_tier_counts?.cache_stale || 0) > 0,
+      source_channel_counts:
+        sourceSummary.source_channel_counts && typeof sourceSummary.source_channel_counts === 'object'
+          ? sourceSummary.source_channel_counts
+          : {},
+      source_tier_counts:
+        sourceSummary.source_tier_counts && typeof sourceSummary.source_tier_counts === 'object'
+          ? sourceSummary.source_tier_counts
+          : {},
+      source_quality_counts:
+        sourceSummary.source_quality_counts && typeof sourceSummary.source_quality_counts === 'object'
+          ? sourceSummary.source_quality_counts
+          : {},
+      cache_owner_paths: Array.isArray(sourceSummary.cache_owner_paths)
+        ? sourceSummary.cache_owner_paths
+        : [],
+      top_candidate_provenance:
+        sourceSummary.top_candidate_provenance &&
+        typeof sourceSummary.top_candidate_provenance === 'object'
+          ? sourceSummary.top_candidate_provenance
+          : null,
     };
     next.metadata = metadata;
   }

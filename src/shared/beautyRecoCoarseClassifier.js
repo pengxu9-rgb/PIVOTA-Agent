@@ -42,6 +42,7 @@ const PEEL_RE = /\b(peel|exfoliant|exfoliating|resurfacing)\b/i;
 const SPF_RE = /\b(spf\s*\d+|spf|sunscreen|sun screen|uv filters?)\b/i;
 const CLEANSER_RE = /\b(cleanser|cleanse|cleansing|face wash|facial wash|wash[- ]off|wash off|foaming wash|cream cleanser)\b/i;
 const HAIR_RE = /\b(hair|scalp|frizz|heat protectant|styling|conditioner|shampoo|leave[- ]?in|blowout|curl cream)\b/i;
+const PET_RE = /\b(dog|dogs|puppy|puppies|cat|cats|kitten|kittens|pet|pets|harness|leash|collar)\b/i;
 const BRIGHTENING_RE = /\b(brightening|vitamin c|glow|radiance)\b/i;
 const MOISTURIZER_GUIDANCE_FAMILY_RE = /\b(moisturizer|moisturiser|cream|lotion|gel cream|balm)\b/i;
 const SERUM_GUIDANCE_FAMILY_RE = /\b(serum|ampoule|essence)\b/i;
@@ -63,6 +64,18 @@ const GUIDANCE_INGREDIENT_TOKEN_SPECS = Object.freeze([
   { key: 'allantoin', re: /\ballantoin\b/i },
   { key: 'hyaluronic', re: /\b(hyalur|hyaluronic)\b/i },
 ]);
+const SOURCE_TIER_SCORE_ADJUSTMENTS = Object.freeze({
+  fresh_internal: 28,
+  fresh_external: 2,
+  cache_fresh: -14,
+  cache_stale: -32,
+  fallback: -48,
+});
+const SOURCE_QUALITY_SCORE_ADJUSTMENTS = Object.freeze({
+  trusted: 12,
+  mixed: 0,
+  degraded: -16,
+});
 
 function normalizeGuidanceIntentStrength(value) {
   const normalized = asString(value).toLowerCase();
@@ -673,6 +686,183 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function normalizeReasonCodes(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => asString(item).toUpperCase())
+    .filter(Boolean);
+}
+
+function buildCandidateProvenance(product) {
+  const explicitOrigin = asString(product?.candidate_origin).toLowerCase();
+  const retrievalReason = asString(product?.retrieval_reason).toLowerCase();
+  const merchantId = asString(product?.merchant_id || product?.merchantId).toLowerCase();
+  const rawSource = asString(product?.source).toLowerCase();
+  const querySource = asString(product?.query_source || product?.metadata?.query_source).toLowerCase();
+  const detailSource = asString(product?.__detail_source).toLowerCase();
+  const combinedSourceSignals = [
+    explicitOrigin,
+    retrievalReason,
+    rawSource,
+    querySource,
+    detailSource,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const sourceOwner =
+    pickFirstTrimmed(
+      explicitOrigin === 'stable_prior' ? 'stable_prior' : '',
+      /\bexact_title\b/.test(combinedSourceSignals) ? 'exact_title_rescue' : '',
+      rawSource,
+      querySource,
+      detailSource,
+      explicitOrigin,
+      retrievalReason,
+      merchantId === 'external_seed' ? 'external_seed' : '',
+      'internal_search',
+    ).toLowerCase() || 'internal_search';
+
+  if (explicitOrigin === 'stable_prior' || retrievalReason.includes('catalog_transient_fallback')) {
+    return {
+      legacy_origin: 'stable_prior',
+      source_channel: 'transient_fallback',
+      source_tier: 'fallback',
+      source_quality_class: 'degraded',
+      source_owner: sourceOwner,
+    };
+  }
+
+  const exactTitleRescue =
+    explicitOrigin === 'exact_title_rescue' ||
+    /\bexact_title\b/.test(combinedSourceSignals);
+  const cacheStale =
+    rawSource === 'products_cache_stale' ||
+    querySource === 'products_cache_stale' ||
+    detailSource === 'stale_cache' ||
+    /\bstale[_-]?cache\b/.test(combinedSourceSignals);
+  const cacheFresh =
+    !cacheStale &&
+    (
+      rawSource === 'products_cache' ||
+      rawSource === 'products_cache_relaxed' ||
+      rawSource === 'catalog_cache' ||
+      rawSource === 'internal_cache' ||
+      querySource === 'products_cache' ||
+      querySource === 'cache_multi_intent' ||
+      detailSource === 'fresh_cache' ||
+      /\b(products_cache|catalog_cache|internal_cache|cache_multi_intent|cache_stage)\b/.test(
+        combinedSourceSignals,
+      )
+    );
+  const externalSeed =
+    merchantId === 'external_seed' ||
+    rawSource === 'external_seed' ||
+    querySource.includes('external_seed');
+
+  if (exactTitleRescue) {
+    return {
+      legacy_origin: externalSeed ? 'external_supplement' : 'internal_live',
+      source_channel: 'exact_title_rescue',
+      source_tier: cacheFresh ? 'cache_fresh' : externalSeed ? 'fresh_external' : 'fresh_internal',
+      source_quality_class: cacheFresh ? 'mixed' : externalSeed ? 'mixed' : 'trusted',
+      source_owner: sourceOwner,
+    };
+  }
+
+  if (cacheStale) {
+    return {
+      legacy_origin: externalSeed ? 'external_supplement' : 'internal_live',
+      source_channel: 'products_cache_stale',
+      source_tier: 'cache_stale',
+      source_quality_class: 'degraded',
+      source_owner: sourceOwner,
+    };
+  }
+
+  if (cacheFresh) {
+    return {
+      legacy_origin: externalSeed ? 'external_supplement' : 'internal_live',
+      source_channel: 'products_cache',
+      source_tier: 'cache_fresh',
+      source_quality_class: externalSeed ? 'mixed' : 'mixed',
+      source_owner: sourceOwner,
+    };
+  }
+
+  if (externalSeed) {
+    return {
+      legacy_origin: 'external_supplement',
+      source_channel: 'external_seed',
+      source_tier: 'fresh_external',
+      source_quality_class: 'mixed',
+      source_owner: sourceOwner,
+    };
+  }
+
+  return {
+    legacy_origin: 'internal_live',
+    source_channel: 'internal_search',
+    source_tier: 'fresh_internal',
+    source_quality_class: 'trusted',
+    source_owner: sourceOwner,
+  };
+}
+
+function summarizeCandidateSources(products) {
+  const summary = {
+    internal_live: 0,
+    external_supplement: 0,
+    stable_prior: 0,
+    source_channel_counts: {
+      internal_search: 0,
+      external_seed: 0,
+      products_cache: 0,
+      products_cache_stale: 0,
+      exact_title_rescue: 0,
+      transient_fallback: 0,
+    },
+    source_tier_counts: {
+      fresh_internal: 0,
+      fresh_external: 0,
+      cache_fresh: 0,
+      cache_stale: 0,
+      fallback: 0,
+    },
+    source_quality_counts: {
+      trusted: 0,
+      mixed: 0,
+      degraded: 0,
+    },
+    cache_owner_paths: [],
+    top_candidate_provenance: null,
+  };
+  const cacheOwnerPaths = new Set();
+  const rows = Array.isArray(products) ? products : [];
+  for (const product of rows) {
+    const provenance = buildCandidateProvenance(product);
+    summary[provenance.legacy_origin] =
+      Number(summary[provenance.legacy_origin] || 0) + 1;
+    summary.source_channel_counts[provenance.source_channel] =
+      Number(summary.source_channel_counts[provenance.source_channel] || 0) + 1;
+    summary.source_tier_counts[provenance.source_tier] =
+      Number(summary.source_tier_counts[provenance.source_tier] || 0) + 1;
+    summary.source_quality_counts[provenance.source_quality_class] =
+      Number(summary.source_quality_counts[provenance.source_quality_class] || 0) + 1;
+    if (
+      (provenance.source_channel === 'products_cache' ||
+        provenance.source_channel === 'products_cache_stale') &&
+      provenance.source_owner
+    ) {
+      cacheOwnerPaths.add(provenance.source_owner);
+    }
+  }
+  summary.cache_owner_paths = Array.from(cacheOwnerPaths);
+  if (rows.length > 0) {
+    summary.top_candidate_provenance = buildCandidateProvenance(rows[0]);
+  }
+  return summary;
+}
+
 function buildBeautyCandidateText(product, { includeRetrieval = true } = {}) {
   if (!product || typeof product !== 'object') return '';
   const parts = [
@@ -902,6 +1092,22 @@ function scoreBeautyCandidateForTarget(product, {
     queryStepStrength,
     mode,
   });
+  const provenance = buildCandidateProvenance(product);
+  const reasonCodes = new Set(
+    normalizeReasonCodes(product?.reason_codes).concat(
+      normalizeReasonCodes(product?.pivota?.reason_codes),
+    ),
+  );
+  const pivotaDomain = asString(
+    product?.pivota?.domain || product?.pivota_domain || product?.pivotaDomain,
+  ).toLowerCase();
+  const targetObject = asString(
+    product?.target_object?.type ||
+      product?.target_object ||
+      product?.targetObject?.type ||
+      product?.targetObject,
+  ).toLowerCase();
+  const candidateText = buildBeautyCandidateText(product, { includeRetrieval: true });
   let score = 0;
   if (coarse.domain_scope === 'skincare') score += 40;
   if (coarse.usage_scope === 'face') score += 20;
@@ -931,7 +1137,14 @@ function scoreBeautyCandidateForTarget(product, {
   if (coarse.domain_scope === 'makeup') score -= 60;
   if (coarse.domain_scope === 'beauty_service' || coarse.object_type === 'service') score -= 120;
   if (coarse.domain_scope === 'beauty_tool' || coarse.object_type === 'brush' || coarse.object_type === 'tool') score -= 100;
-  return { score, coarse };
+  score += Number(SOURCE_TIER_SCORE_ADJUSTMENTS[provenance.source_tier] || 0);
+  score += Number(SOURCE_QUALITY_SCORE_ADJUSTMENTS[provenance.source_quality_class] || 0);
+  if (pivotaDomain === 'other') score -= 70;
+  if (targetObject === 'unknown') score -= 22;
+  if (reasonCodes.has('OBJ_UNCERTAIN')) score -= 24;
+  if (reasonCodes.has('CAT_PARENT')) score -= 12;
+  if (PET_RE.test(candidateText)) score -= 240;
+  return { score, coarse, provenance };
 }
 
 function rerankBeautySkincareProductsByTargetFamily(products, {
@@ -1006,26 +1219,11 @@ function buildCandidateFamilyVariantKey(product) {
 }
 
 function buildCandidateOrigin(product) {
-  const explicitOrigin = asString(product?.candidate_origin).toLowerCase();
-  if (explicitOrigin === 'stable_prior') return 'stable_prior';
-  const retrievalReason = asString(product?.retrieval_reason).toLowerCase();
-  if (retrievalReason.includes('catalog_transient_fallback')) return 'stable_prior';
-  const merchantId = asString(product?.merchant_id || product?.merchantId).toLowerCase();
-  if (merchantId === 'external_seed') return 'external_supplement';
-  return 'internal_live';
+  return buildCandidateProvenance(product).legacy_origin;
 }
 
 function countCandidateOrigins(products) {
-  const counts = {
-    internal_live: 0,
-    external_supplement: 0,
-    stable_prior: 0,
-  };
-  for (const product of Array.isArray(products) ? products : []) {
-    const origin = buildCandidateOrigin(product);
-    counts[origin] = Number(counts[origin] || 0) + 1;
-  }
-  return counts;
+  return summarizeCandidateSources(products);
 }
 
 function countDistinctSupportiveCandidates(rows) {
@@ -1658,6 +1856,7 @@ function buildBeautySkincareHitQualityDecision({
     surface_reason: surfaceReason,
     raw_result_count: rawProducts.length,
     products_returned_count: hitQuality === 'valid_hit' ? displayableProducts.length : 0,
+    ranked_products: rankedProducts,
     valid_products: hitQuality === 'valid_hit' ? displayableProducts : [],
     decision_capability: buildRecommendationDecisionCapabilityOutput({
       normalized_intent: normalizedIntent,
@@ -1681,6 +1880,8 @@ function buildBeautySkincareHitQualityDecision({
 module.exports = {
   BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   buildBeautyCandidateText,
+  buildCandidateProvenance,
+  summarizeCandidateSources,
   resolveBeautyCoarseStepFamily,
   normalizeGuidanceIntentStrength,
   classifyBeautyGuidanceQueryStrength,

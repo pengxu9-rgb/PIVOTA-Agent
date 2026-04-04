@@ -632,7 +632,7 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('mascara');
   });
 
-  test('semantic rewrite timeout falls back deterministically without hanging the request', async () => {
+  test('broad beauty query auto-derives deterministic contract owner without hanging on llm rewrite timeouts', async () => {
     jest.resetModules();
     jest.doMock('../src/findProductsMulti/intentLlm', () => {
       const actual = jest.requireActual('../src/findProductsMulti/intentLlm');
@@ -656,13 +656,16 @@ describe('find_products_multi context building', () => {
       });
 
       expect(Date.now() - startedAt).toBeLessThan(6500);
-      expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBeGreaterThanOrEqual(800);
+      expect(out.expansion_meta.semantic_rewrite_timeout_ms).toBe(0);
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
-          mode: 'deterministic_fallback',
-          fallback_reason: 'semantic_rewrite_timeout',
+          owner: 'shopping_agent_beauty_mainline',
+          mode: 'deterministic_contract',
+          fallback_reason: null,
           llm_provider_chain: expect.any(Array),
           single_provider_locked: false,
+          llm_enrichment_attempted: false,
+          llm_enrichment_status: 'skipped_strict_contract_owner',
         }),
       );
     } finally {

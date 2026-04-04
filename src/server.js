@@ -143,6 +143,7 @@ const {
 const {
   BEAUTY_SEARCH_DECISION_CONTRACT_VERSION,
   buildBeautyCandidateText: buildSharedBeautyCandidateText,
+  summarizeCandidateSources: summarizeSharedCandidateSources,
   resolveBeautyCoarseStepFamily: resolveSharedBeautyCoarseStepFamily,
   classifyBeautyCoarseCandidate: classifySharedBeautyCoarseCandidate,
   buildBeautySkincareHitQualityDecision: buildSharedBeautySkincareHitQualityDecision,
@@ -4295,6 +4296,10 @@ function buildSearchStageLedger({
   primarySearchTimeoutMs = null,
   primaryPathUsed = null,
   primaryQueryPackAttempts = null,
+  primarySourceTierCounts = null,
+  primarySourceQualityCounts = null,
+  primaryCacheOwnerPaths = null,
+  primaryTopCandidateProvenance = null,
   primaryQualityGatePassed = null,
   primaryQualityReason = null,
   secondaryRetryApplied = false,
@@ -4397,6 +4402,25 @@ function buildSearchStageLedger({
       query_pack_attempts: Array.isArray(primaryQueryPackAttempts)
         ? primaryQueryPackAttempts
         : [],
+      source_tier_counts:
+        primarySourceTierCounts &&
+        typeof primarySourceTierCounts === 'object' &&
+        !Array.isArray(primarySourceTierCounts)
+          ? primarySourceTierCounts
+          : {},
+      source_quality_counts:
+        primarySourceQualityCounts &&
+        typeof primarySourceQualityCounts === 'object' &&
+        !Array.isArray(primarySourceQualityCounts)
+          ? primarySourceQualityCounts
+          : {},
+      cache_owner_paths: Array.isArray(primaryCacheOwnerPaths) ? primaryCacheOwnerPaths : [],
+      top_candidate_provenance:
+        primaryTopCandidateProvenance &&
+        typeof primaryTopCandidateProvenance === 'object' &&
+        !Array.isArray(primaryTopCandidateProvenance)
+          ? primaryTopCandidateProvenance
+          : null,
       timeout_ms:
         Number.isFinite(Number(primarySearchTimeoutMs)) && Number(primarySearchTimeoutMs) >= 0
           ? Number(primarySearchTimeoutMs)
@@ -8331,23 +8355,7 @@ function buildSerumCanaryBackboneQueries(queryText) {
 }
 
 function countCandidateOriginBreakdown(products) {
-  const counts = {
-    internal_live: 0,
-    external_supplement: 0,
-    stable_prior: 0,
-  };
-  for (const product of Array.isArray(products) ? products : []) {
-    const explicitOrigin = String(product?.candidate_origin || '').trim().toLowerCase();
-    const retrievalReason = String(product?.retrieval_reason || '').trim().toLowerCase();
-    if (explicitOrigin === 'stable_prior' || retrievalReason.includes('catalog_transient_fallback')) {
-      counts.stable_prior += 1;
-      continue;
-    }
-    const merchantId = String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase();
-    if (merchantId === 'external_seed') counts.external_supplement += 1;
-    else counts.internal_live += 1;
-  }
-  return counts;
+  return summarizeSharedCandidateSources(products);
 }
 
 async function runGuidanceServerOwnedLadderSearch({
@@ -23078,11 +23086,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     resolved_contract: 'shop_invoke_strict',
                     legacy_fallback: false,
                   }
+                : strictBeautyDirectSearch
+                ? {
+                    attempted_contract: 'agent_v1_search_beauty_mainline',
+                    resolved_contract: 'agent_v1_search_beauty_mainline',
+                    legacy_fallback: false,
+                  }
                 : {
                     attempted_contract: 'agent_v2',
                     resolved_contract: 'agent_v2',
-                  legacy_fallback: false,
-                };
+                    legacy_fallback: false,
+                  };
           }
         } catch (primaryErr) {
           throw primaryErr;
@@ -25674,16 +25688,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 return productKey && validProductKeys.has(productKey);
               })
             : [];
+        const rankedProductsForReturn = Array.isArray(skincareHitDecision.ranked_products)
+          ? skincareHitDecision.ranked_products
+          : [];
         const nextProducts =
           observationOnlyBeautySkincareHitQualityGate
-            ? (rawProductsBeforeQualityGate.length > 0
+            ? (rankedProductsForReturn.length > 0
+                ? rankedProductsForReturn
+                : rawProductsBeforeQualityGate.length > 0
                 ? rawProductsBeforeQualityGate
                 : rawProductsForQualityGate)
             : skincareHitDecision.hit_quality === 'valid_hit'
-            ? (policyScopedValidProducts.length > 0
-                ? policyScopedValidProducts
-                : Array.isArray(skincareHitDecision.valid_products)
+            ? (Array.isArray(skincareHitDecision.valid_products)
+                && skincareHitDecision.valid_products.length > 0
                 ? skincareHitDecision.valid_products
+                : policyScopedValidProducts.length > 0
+                ? policyScopedValidProducts
                 : [])
             : [];
         const guidanceOnlyPatches = buildGuidanceOnlySearchDecisionPatches({
@@ -25955,6 +25975,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const normalizedDecisionObserverNodes = normalizeDecisionObserverNodes(
         decisionObserverNodes,
       );
+      const sourceObservabilityProducts =
+        Array.isArray(products) && products.length > 0
+          ? products
+          : Array.isArray(rawProductsForQualityGate)
+          ? rawProductsForQualityGate
+          : [];
+      const sourceObservability = countCandidateOriginBreakdown(sourceObservabilityProducts);
       const searchStageLedger =
         operation === 'find_products_multi'
           ? buildSearchStageLedger({
@@ -25966,6 +25993,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               primarySearchTimeoutMs: axiosConfig.timeout,
               primaryPathUsed,
               primaryQueryPackAttempts: semanticOwnerQueryAttempts,
+              primarySourceTierCounts: sourceObservability.source_tier_counts,
+              primarySourceQualityCounts: sourceObservability.source_quality_counts,
+              primaryCacheOwnerPaths: sourceObservability.cache_owner_paths,
+              primaryTopCandidateProvenance: sourceObservability.top_candidate_provenance,
               primaryQualityGatePassed,
               primaryQualityReason: guidanceDirectSupplementValidHit
                 ? 'guidance_direct_valid_hit'
@@ -25995,6 +26026,63 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               decisionOwner: semanticOwnerDecision || querySource,
             })
           : null;
+      const mergedSourceBreakdown = {
+        ...(
+          existingMeta?.source_breakdown &&
+          typeof existingMeta.source_breakdown === 'object' &&
+          !Array.isArray(existingMeta.source_breakdown)
+            ? existingMeta.source_breakdown
+            : {}
+        ),
+        internal_count: Math.max(0, Number(sourceObservability.internal_live || 0) || 0),
+        external_seed_count: Math.max(0, Number(sourceObservability.external_supplement || 0) || 0),
+        stable_prior_count: Math.max(0, Number(sourceObservability.stable_prior || 0) || 0),
+        stale_cache_used: Number(sourceObservability.source_tier_counts?.cache_stale || 0) > 0,
+        source_channel_counts:
+          sourceObservability.source_channel_counts &&
+          typeof sourceObservability.source_channel_counts === 'object'
+            ? sourceObservability.source_channel_counts
+            : {},
+        source_tier_counts:
+          sourceObservability.source_tier_counts &&
+          typeof sourceObservability.source_tier_counts === 'object'
+            ? sourceObservability.source_tier_counts
+            : {},
+        source_quality_counts:
+          sourceObservability.source_quality_counts &&
+          typeof sourceObservability.source_quality_counts === 'object'
+            ? sourceObservability.source_quality_counts
+            : {},
+        cache_owner_paths: Array.isArray(sourceObservability.cache_owner_paths)
+          ? sourceObservability.cache_owner_paths
+          : [],
+        top_candidate_provenance:
+          sourceObservability.top_candidate_provenance &&
+          typeof sourceObservability.top_candidate_provenance === 'object'
+            ? sourceObservability.top_candidate_provenance
+            : null,
+      };
+      enriched = {
+        ...enriched,
+        metadata: {
+          ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
+          source_breakdown: mergedSourceBreakdown,
+          search_decision: {
+            ...(
+              existingMeta?.search_decision &&
+              typeof existingMeta.search_decision === 'object' &&
+              !Array.isArray(existingMeta.search_decision)
+                ? existingMeta.search_decision
+                : {}
+            ),
+            source_tier_counts: mergedSourceBreakdown.source_tier_counts,
+            source_quality_counts: mergedSourceBreakdown.source_quality_counts,
+            cache_owner_paths: mergedSourceBreakdown.cache_owner_paths,
+            top_candidate_provenance: mergedSourceBreakdown.top_candidate_provenance,
+          },
+        },
+      };
+      existingMeta = enriched?.metadata && typeof enriched.metadata === 'object' ? enriched.metadata : existingMeta;
 
       enriched = withSearchDiagnostics(enriched, {
         route_health: buildSearchRouteHealth({
