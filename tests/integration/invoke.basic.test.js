@@ -541,6 +541,66 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
+  it('public beauty search keeps non-empty broad-query candidates when beauty hit quality is observation-only', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(3)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'noise_1',
+            product_id: 'noise_1',
+            merchant_id: 'merchant_noise',
+            title: 'Cooling Body Lotion',
+            name: 'Cooling Body Lotion',
+            display_name: 'Cooling Body Lotion',
+            category: 'bodycare',
+            product_type: 'lotion',
+          },
+          {
+            id: 'noise_2',
+            product_id: 'noise_2',
+            merchant_id: 'merchant_noise',
+            title: 'Spa Facial Service',
+            name: 'Spa Facial Service',
+            display_name: 'Spa Facial Service',
+            category: 'beauty service',
+            product_type: 'service',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'best sunscreen for oily skin',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products.length).toBeGreaterThan(0);
+    expect(res.body.metadata?.decision_owner).toBe('shopping_agent_beauty_mainline');
+    expect(res.body.metadata?.search_decision?.quality_gate_mode).toBe('observe_only');
+    expect(res.body.metadata?.search_decision?.hit_quality_observation).toEqual(
+      expect.objectContaining({
+        hit_quality: 'invalid_hit',
+        invalid_hit_reason: 'invalid_hit_all_non_skincare',
+        raw_result_count: 2,
+        products_returned_count: 0,
+      }),
+    );
+    expect(res.body.metadata?.blocking_gate_id).toBeUndefined();
+    expect(res.body.metadata?.blocking_reason).toBeUndefined();
+  });
+
   it('invoke beauty search derives the same beauty mainline contract without requiring semantic_contract input', async () => {
     let capturedQuery = null;
     let capturedBody = null;

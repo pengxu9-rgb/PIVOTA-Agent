@@ -25676,7 +25676,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : [];
         const nextProducts =
           observationOnlyBeautySkincareHitQualityGate
-            ? rawProductsBeforeQualityGate
+            ? (rawProductsBeforeQualityGate.length > 0
+                ? rawProductsBeforeQualityGate
+                : rawProductsForQualityGate)
             : skincareHitDecision.hit_quality === 'valid_hit'
             ? (policyScopedValidProducts.length > 0
                 ? policyScopedValidProducts
@@ -25818,7 +25820,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         typeof existingMeta.search_decision === 'object'
           ? existingMeta.search_decision
           : null;
-      const invalidHitApplied = skincareHitDecision.applied && skincareHitDecision.hit_quality === 'invalid_hit';
+      const invalidHitApplied =
+        skincareHitDecision.applied &&
+        skincareHitDecision.hit_quality === 'invalid_hit' &&
+        !observationOnlyBeautySkincareHitQualityGate;
       const isStrictEmpty =
         SEARCH_STRICT_EMPTY_ENABLED &&
         queryText.length > 0 &&
