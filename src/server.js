@@ -146,6 +146,7 @@ const {
   summarizeCandidateSources: summarizeSharedCandidateSources,
   resolveBeautyCoarseStepFamily: resolveSharedBeautyCoarseStepFamily,
   classifyBeautyCoarseCandidate: classifySharedBeautyCoarseCandidate,
+  scoreBeautyCandidateForTarget: scoreSharedBeautyCandidateForTarget,
   buildBeautySkincareHitQualityDecision: buildSharedBeautySkincareHitQualityDecision,
   normalizeGuidanceIntentStrength: normalizeSharedGuidanceIntentStrength,
   classifyBeautyGuidanceQueryStrength: classifySharedBeautyGuidanceQueryStrength,
@@ -8159,13 +8160,31 @@ function filterBeautySpecificCacheProducts(products, queryText, options = {}) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
-  const filtered = list.filter((product) =>
+  let filtered = list.filter((product) =>
     isSupplementCandidateRelevant(product, queryText, {
       normalizedQuery,
       anchorTokens,
       queryTokens,
     }),
   );
+  if (bucket === 'skincare' && filtered.length > 0) {
+    const resolvedTargetStepFamily = normalizeRecoTargetStep(
+      resolveRecoTargetStepIntent({ focus: queryText, text: queryText })?.resolved_target_step,
+    );
+    filtered = filtered.filter((product) => {
+      const coarse = classifySharedBeautyCoarseCandidate(product, {
+        queryTargetStepFamily: resolvedTargetStepFamily,
+        queryText,
+        guidanceOnlyDiscovery: false,
+        mode: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+      });
+      return Boolean(
+        coarse.domain_scope === 'skincare' &&
+          coarse.object_type === 'product' &&
+          coarse.usage_scope === 'face',
+      );
+    });
+  }
   const afterMix = computeBeautyBucketMix(filtered, Math.max(1, filtered.length || 1));
   return {
     products: filtered,
@@ -22780,16 +22799,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         beautyScoped: true,
       };
     };
-    const scoreSemanticOwnerObservationFallback = ({ upstreamData, hitDecision }) => {
+    const scoreSemanticOwnerObservationFallback = ({ upstreamData, hitDecision, queryText }) => {
       const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
       if (!products.length) return -1;
       if (!hitDecision?.applied) return products.length;
+      const rankedProducts =
+        Array.isArray(hitDecision?.ranked_products) && hitDecision.ranked_products.length > 0
+          ? hitDecision.ranked_products
+          : products;
+      const sourceSummary = summarizeSharedCandidateSources(rankedProducts.slice(0, 5));
+      const scoredTopRows = rankedProducts.slice(0, 5).map((product) =>
+        scoreSharedBeautyCandidateForTarget(product, {
+          queryTargetStepFamily: hitDecision?.query_target_step_family || null,
+          queryText,
+          queryStepStrength: hitDecision?.query_step_strength || null,
+          mode: BEAUTY_DISCOVERY_MAINLINE_OWNER,
+        }),
+      );
+      const topScore = Number(scoredTopRows[0]?.score || 0) || 0;
+      const meanTopScore =
+        scoredTopRows.length > 0
+          ? scoredTopRows.reduce((sum, row) => sum + Number(row?.score || 0), 0) / scoredTopRows.length
+          : 0;
       return (
         Number(hitDecision.exact_step_topk_count || 0) * 1000 +
         Number(hitDecision.strong_goal_family_topk_count || 0) * 100 +
         Number(hitDecision.supportive_same_family_topk_count || 0) * 25 +
         Number(hitDecision.same_family_topk_count || 0) * 10 +
-        Number(hitDecision.raw_result_count || products.length || 0)
+        Number(hitDecision.raw_result_count || products.length || 0) +
+        topScore * 4 +
+        meanTopScore +
+        Number(sourceSummary.source_tier_counts?.fresh_internal || 0) * 18 +
+        Number(sourceSummary.source_tier_counts?.fresh_external || 0) * 12 -
+        Number(sourceSummary.source_tier_counts?.cache_fresh || 0) * 24 -
+        Number(sourceSummary.source_tier_counts?.cache_stale || 0) * 40 -
+        Number(sourceSummary.source_quality_counts?.degraded || 0) * 24
       );
     };
     if (semanticOwnerQueryPack.length > 0) {
@@ -23575,6 +23619,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             score: scoreSemanticOwnerObservationFallback({
               upstreamData,
               hitDecision: primarySemanticOwnerAdoption.hitDecision,
+              queryText: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0] || '',
             }),
             response,
             upstreamData,
@@ -23705,6 +23750,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const fallbackScore = scoreSemanticOwnerObservationFallback({
             upstreamData: variantUpstreamData,
             hitDecision: variantAdoption.hitDecision,
+            queryText: semanticOwnerQueryPack[queryIndex],
           });
           if (!semanticOwnerObservationFallback || fallbackScore > semanticOwnerObservationFallback.score) {
             semanticOwnerObservationFallback = {

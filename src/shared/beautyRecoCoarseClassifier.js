@@ -56,6 +56,7 @@ const GUIDANCE_SENSITIVITY_RE = /\b(sensitive|fragrance[- ]free|gentle|soothing|
 const GUIDANCE_HYDRATION_RE = /\b(hydrat\w*|dehydrat\w*|hyalur\w*|sodium hyaluronate|gel cream)\b/i;
 const SERUM_TREATMENT_CUE_RE = /\b(serum|concentrate|booster|treatment)\b/i;
 const SERUM_ADJACENT_LIQUID_RE = /\b(toner|mist|treatment lotion|hydrating liquid|essence lotion)\b/i;
+const CACHE_OWNER_RE = /\b(?:cache(?:[_-][a-z0-9]+)+|[a-z0-9]+_cache(?:[_-][a-z0-9]+)*)\b/i;
 const GUIDANCE_INGREDIENT_TOKEN_SPECS = Object.freeze([
   { key: 'ceramide', re: /\b(ceramides?|phyto.?ceramides?)\b/i },
   { key: 'panthenol', re: /\b(panthenol|vitamin[- ]?b5|b5)\b/i },
@@ -66,10 +67,10 @@ const GUIDANCE_INGREDIENT_TOKEN_SPECS = Object.freeze([
 ]);
 const SOURCE_TIER_SCORE_ADJUSTMENTS = Object.freeze({
   fresh_internal: 28,
-  fresh_external: 2,
-  cache_fresh: -14,
-  cache_stale: -32,
-  fallback: -48,
+  fresh_external: 6,
+  cache_fresh: -30,
+  cache_stale: -44,
+  fallback: -56,
 });
 const SOURCE_QUALITY_SCORE_ADJUSTMENTS = Object.freeze({
   trusted: 12,
@@ -693,6 +694,19 @@ function normalizeReasonCodes(value) {
     .filter(Boolean);
 }
 
+function looksLikeCacheSourceSignal(value) {
+  const normalized = asString(value).toLowerCase();
+  if (!normalized) return false;
+  if (normalized === 'fresh_cache' || normalized === 'stale_cache') return true;
+  if (normalized.startsWith('cache_')) return true;
+  if (normalized.includes('products_cache')) return true;
+  if (normalized.includes('catalog_cache')) return true;
+  if (normalized.includes('internal_cache')) return true;
+  if (normalized.includes('cache_multi_intent')) return true;
+  if (normalized.includes('cache_stage')) return true;
+  return CACHE_OWNER_RE.test(normalized);
+}
+
 function buildCandidateProvenance(product) {
   const explicitOrigin = asString(product?.candidate_origin).toLowerCase();
   const retrievalReason = asString(product?.retrieval_reason).toLowerCase();
@@ -749,10 +763,13 @@ function buildCandidateProvenance(product) {
       rawSource === 'internal_cache' ||
       querySource === 'products_cache' ||
       querySource === 'cache_multi_intent' ||
+      looksLikeCacheSourceSignal(querySource) ||
+      looksLikeCacheSourceSignal(sourceOwner) ||
       detailSource === 'fresh_cache' ||
       /\b(products_cache|catalog_cache|internal_cache|cache_multi_intent|cache_stage)\b/.test(
         combinedSourceSignals,
-      )
+      ) ||
+      looksLikeCacheSourceSignal(combinedSourceSignals)
     );
   const externalSeed =
     merchantId === 'external_seed' ||
@@ -879,9 +896,24 @@ function buildBeautyCandidateText(product, { includeRetrieval = true } = {}) {
     product.type,
     product.description,
     product.subtitle,
+    product.how_to_use,
+    product.howToUse,
+    product.usage,
+    product.usage_instructions,
+    product.instructions,
+    product.benefits,
+    product.claims,
+    product.key_ingredients,
+    product.active_ingredients,
+    product.activeIngredients,
+    product.skin_concerns,
+    product.why_we_love_it,
     ...(Array.isArray(product.tags) ? product.tags : []),
     ...(Array.isArray(product.tag_tokens) ? product.tag_tokens : []),
     ...(Array.isArray(product.ingredient_tokens) ? product.ingredient_tokens : []),
+    ...(Array.isArray(product.how_to_use_steps) ? product.how_to_use_steps : []),
+    ...(Array.isArray(product.benefit_bullets) ? product.benefit_bullets : []),
+    ...(Array.isArray(product.highlights) ? product.highlights : []),
     ...(includeRetrieval ? [product.retrieval_query, product.query] : []),
   ]
     .map((item) => asString(item))
@@ -951,6 +983,15 @@ function classifyBeautyCoarseCandidate(product, {
   const hasBodyCue = BODY_RE.test(lower);
   const hasFaceCue = FACE_RE.test(lower);
   const hasServiceCue = SERVICE_RE.test(lower) || (SERVICE_FRENCH_RE.test(lower) && SERVICE_RE.test(lower));
+  const hasSkincareCue =
+    rawBucket === 'skincare' ||
+    Boolean(candidateStep) ||
+    SPF_RE.test(lower) ||
+    CLEANSER_RE.test(lower) ||
+    SERUM_GUIDANCE_FAMILY_RE.test(lower) ||
+    TREATMENT_GUIDANCE_FAMILY_RE.test(lower) ||
+    MOISTURIZER_GUIDANCE_FAMILY_RE.test(lower) ||
+    BRIGHTENING_RE.test(lower);
 
   let domainScope = 'unknown';
   if (hasServiceCue) {
@@ -961,7 +1002,7 @@ function classifyBeautyCoarseCandidate(product, {
     domainScope = 'bodycare';
   } else if (MAKEUP_RE.test(lower) || rawBucket === 'makeup') {
     domainScope = 'makeup';
-  } else if (rawBucket === 'skincare' || candidateStep) {
+  } else if (hasSkincareCue) {
     domainScope = 'skincare';
   }
 
@@ -1139,6 +1180,7 @@ function scoreBeautyCandidateForTarget(product, {
   if (coarse.domain_scope === 'beauty_tool' || coarse.object_type === 'brush' || coarse.object_type === 'tool') score -= 100;
   score += Number(SOURCE_TIER_SCORE_ADJUSTMENTS[provenance.source_tier] || 0);
   score += Number(SOURCE_QUALITY_SCORE_ADJUSTMENTS[provenance.source_quality_class] || 0);
+  if (/^cache_/.test(provenance.source_owner || '')) score -= 18;
   if (pivotaDomain === 'other') score -= 70;
   if (targetObject === 'unknown') score -= 22;
   if (reasonCodes.has('OBJ_UNCERTAIN')) score -= 24;

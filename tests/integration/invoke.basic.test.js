@@ -632,7 +632,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
             display_name: 'Daily Face Sunscreen SPF 46',
             category: 'sunscreen',
             product_type: 'sunscreen',
-            source: 'products_cache',
+            query_source: 'cache_all_platforms',
           },
           {
             id: 'internal_spf_1',
@@ -682,7 +682,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           trusted: 1,
           mixed: 2,
         }),
-        cache_owner_paths: expect.arrayContaining(['products_cache']),
+        cache_owner_paths: expect.arrayContaining(['cache_all_platforms']),
         top_candidate_provenance: expect.objectContaining({
           source_channel: 'internal_search',
           source_tier: 'fresh_internal',
@@ -965,6 +965,116 @@ describe('/agent/shop/v1/invoke gateway', () => {
         }),
         expect.objectContaining({
           query: 'oil control serum',
+          query_index: 1,
+          adopted: true,
+          hit_quality: 'valid_hit',
+        }),
+      ]),
+    );
+  });
+
+  it('beauty semantic-owner sunscreen retries past cache noise and adopts external sunscreen candidate', async () => {
+    const attemptedQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        attemptedQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(2)
+      .reply(function replyVariant() {
+        const latestQuery = attemptedQueries[attemptedQueries.length - 1];
+        if (latestQuery === 'lightweight sunscreen oily skin') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'dog_noise_1',
+                product_id: 'dog_noise_1',
+                merchant_id: 'merchant_cache',
+                title: 'Reflective Dog Harness for Small Dogs',
+                name: 'Reflective Dog Harness for Small Dogs',
+                display_name: 'Reflective Dog Harness for Small Dogs',
+                category: null,
+                product_type: null,
+                query_source: 'cache_all_platforms',
+              },
+            ],
+            metadata: {
+              query_source: 'cache_all_platforms',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: 'external_spf_1',
+              product_id: 'external_spf_1',
+              merchant_id: 'external_seed',
+              title: 'UV Filters SPF 45 Serum',
+              name: 'UV Filters SPF 45 Serum',
+              display_name: 'UV Filters SPF 45 Serum',
+              category: 'external',
+              product_type: 'external',
+              source: 'external_seed',
+              description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+              how_to_use: 'Apply to face every morning as the final skincare step before sun exposure.',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedQueries).toEqual(['lightweight sunscreen oily skin', 'oil control sunscreen']);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_1');
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'lightweight sunscreen oily skin',
+          query_index: 0,
+          adopted: false,
+          hit_quality: 'invalid_hit',
+          invalid_hit_reason: 'invalid_hit_all_non_skincare',
+        }),
+        expect.objectContaining({
+          query: 'oil control sunscreen',
           query_index: 1,
           adopted: true,
           hit_quality: 'valid_hit',
