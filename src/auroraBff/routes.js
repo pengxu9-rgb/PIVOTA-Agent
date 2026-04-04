@@ -80636,6 +80636,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         let alternativesDebug = null;
         let matcherFallbackUsed = false;
         let recoTimeoutDegraded = false;
+        let recoTimeoutDegradedWarning = null;
         let upstreamFailureCode = '';
         let llmFailureClass = '';
         let recoLlmTrace = null;
@@ -81105,7 +81106,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         if (recoTimeoutDegraded) {
           logger?.info({ kind: 'metric', name: 'aurora.skin.reco.timeout_degraded_rate', value: 1 }, 'metric');
           recordAuroraSkinFlowMetric({ stage: 'reco_timeout_degraded', hit: true });
-          const llmTraceRef = buildRecoLlmTraceRef(recoLlmTrace);
           const timeoutDegradedSourceMode = inferRecoSourceMode(
             recoContract?.source_mode,
             recoContract?.source,
@@ -81126,81 +81126,15 @@ function mountAuroraBffRoutes(app, { logger }) {
             ),
           ) || (
             genericConcernRecoMainline || hasDeterministicRecoTarget
-              ? 'upstream_timeout_primary_role'
-              : 'needs_more_context'
+                ? 'upstream_timeout_primary_role'
+                : 'needs_more_context'
           );
-          const confNode =
-            latestArtifact &&
-            latestArtifact.overall_confidence &&
-            typeof latestArtifact.overall_confidence === 'object'
-              ? latestArtifact.overall_confidence
-              : { score: 0.45, level: 'low', rationale: ['reco_budget_timeout'] };
-          const cards = [
-            {
-              card_id: `conf_${ctx.request_id}`,
-              type: 'confidence_notice',
-              payload: {
-                ...buildConfidenceNoticeCardPayload({
-                language: ctx.lang,
-                reason: timeoutDegradedReason,
-                confidence: confNode,
-                actions: ['retry_recommendations', 'upload_daylight_and_indoor_white', 'update_current_routine'],
-                details: [ctx.lang === 'CN' ? '推荐阶段超时，已切换保守降级输出。' : 'Recommendation stage timed out; switched to conservative degraded output.'],
-                }),
-                ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
-              },
-            },
-          ];
-          if (mappedIngredientPlan) {
-            cards.push(buildIngredientPlanCard(mappedIngredientPlan, ctx.request_id));
-          }
-          const sessionPatch = {};
-          appendLatestArtifactToSessionPatch(sessionPatch, latestArtifact && latestArtifact.artifact_id);
-          appendLatestRecoContextToSessionPatch(sessionPatch, latestRecoContextPatch);
-          attachAnalysisContextUsageToSessionPatch(sessionPatch, chatAnalysisTaskContext);
-          const envelope = buildEnvelope(ctx, {
-            assistant_message: makeAssistantMessage(
-              ctx.lang === 'CN'
-                ? '推荐阶段暂时超时了。我先保守降级，不返回商品卡；你可以稍后重试，或补充照片与当前护肤流程后再继续。'
-                : "The recommendation step timed out. I’m degrading safely for now without returning product cards; retry shortly, or add photos/current routine and continue.",
-            ),
-            suggested_chips: refinementChips,
-            cards,
-            session_patch: sessionPatch,
-            events: applyRecoContractToRecoRequestedEvents([
-              makeEvent(ctx, 'reco_timeout_degraded', {
-                source: 'upstream_timeout',
-                ...(upstreamFailureCode ? { upstream_failure_code: upstreamFailureCode } : {}),
-                failure_class: 'timeout',
-                ...(llmTraceRef ? { llm_trace_ref: llmTraceRef } : {}),
-              }),
-            ], recoContract, {
-              ctx,
-              emitIfMissing: true,
-              eventData: {
-                ...buildRecoRequestedEventData({
-                  explicit: true,
-                  source: 'upstream_timeout',
-                  sourceDetail: normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail),
-                  recomputeFromProfileUpdate: shouldAutoRerunRecommendationsFromProfilePatch === true,
-                  reason: timeoutDegradedReason,
-                  telemetryReason: 'timeout_degraded',
-                  failureClass: 'timeout',
-                  llmTraceRef,
-                  upstreamFailureCode,
-                }),
-                gated: true,
-                ...(recoMainlineStatus ? { mainline_status: recoMainlineStatus } : { mainline_status: 'upstream_timeout' }),
-                ...(recoCatalogSkipReason ? { catalog_skip_reason: recoCatalogSkipReason } : {}),
-                source_mode: timeoutDegradedSourceMode,
-                grounding_status: 'ungrounded',
-                grounded_count: 0,
-                ungrounded_count: 0,
-                ...(recoMetaPromptTemplateId ? { prompt_template_id: recoMetaPromptTemplateId } : {}),
-              },
-            }).events,
-          });
-          return sendChatEnvelope(envelope);
+          recoTimeoutDegradedWarning = {
+            reco_timeout_degraded_warning: true,
+            reco_timeout_degraded_reason: timeoutDegradedReason,
+            reco_timeout_degraded_source_mode: timeoutDegradedSourceMode,
+            ...(upstreamFailureCode ? { reco_timeout_degraded_upstream_failure_code: upstreamFailureCode } : {}),
+          };
         }
         const promptContractOkFromTrace =
           isPlainObject(upstreamDebug && upstreamDebug.llm_prompt_trace)
@@ -81229,7 +81163,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           if (
             !payloadHasRecs
             && !noCandidatesMode
-            && !recoTimeoutDegraded
             && !ingredientRecoOptInRequested
             && !travelRecoHandoff
           ) {
@@ -81359,6 +81292,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             ),
             ...(recoLlmTrace ? { llm_trace: recoLlmTrace } : {}),
             ...(genericGoalDrivenNeedsMoreContextWarning || {}),
+            ...(recoTimeoutDegradedWarning || {}),
           };
           payload.metadata = {
             ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
@@ -81367,6 +81301,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             mainline_status: recoMainlineStatus || (initialHasRecs ? 'grounded_success' : 'empty_structured'),
             catalog_skip_reason: recoCatalogSkipReason || null,
             ...(genericGoalDrivenNeedsMoreContextWarning || {}),
+            ...(recoTimeoutDegradedWarning || {}),
             ...(verifiedCandidateRestoreApplied ? { verified_candidate_restore_applied: true, verified_candidate_restore_count: verifiedCandidateRestoreCount } : {}),
             ...(Array.isArray(chatBeautyMainlineBridge?.recommendations) && chatBeautyMainlineBridge.recommendations.length > 0
               ? {
@@ -81454,6 +81389,13 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload,
             applyRecoContentSpineToPayload(payload, recoIngredientContext || latestRecoContextPatch),
           );
+          if (genericGoalDrivenNeedsMoreContextWarning || recoTimeoutDegradedWarning) {
+            payload.metadata = {
+              ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
+              ...(genericGoalDrivenNeedsMoreContextWarning || {}),
+              ...(recoTimeoutDegradedWarning || {}),
+            };
+          }
           const finalSelectedProductCandidates = extractRecoContextProductCandidatesFromRecommendations(
             Array.isArray(payload?.recommendations) ? payload.recommendations : [],
             {

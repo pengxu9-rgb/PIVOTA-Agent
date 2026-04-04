@@ -5212,6 +5212,97 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
   }
 });
 
+test('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
+  const originalGet = axios.get;
+  const observedCalls = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => {
+      const err = new Error('upstream timeout');
+      err.code = 'ECONNABORTED';
+      throw err;
+    },
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    observedCalls.push({
+      query: String(config?.params?.query || '').trim().toLowerCase(),
+      catalogSurface: String(config?.params?.catalog_surface || ''),
+    });
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'ext_spf_timeout_bridge_1',
+            merchant_id: 'external_seed',
+            brand: 'First Aid Beauty',
+            name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+            display_name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+            category: 'external',
+            product_type: 'external',
+            source: 'external_seed',
+            url: 'https://example.com/ultra-light-spf-30',
+            short_description: 'A lightweight sunscreen for oily skin.',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          final_decision: 'products_returned',
+        },
+      },
+    };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_step_timeout_bridge_uid',
+        'X-Trace-ID': 'trace_chat_step_timeout_bridge',
+        'X-Brief-ID': 'chat_step_timeout_bridge_brief',
+        'X-Agent-API-Key': 'ak_live_timeout_bridge_test',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'what sunscreen should i use for oily skin?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['sun protection', 'oil control'],
+            },
+          },
+        },
+        message: 'what sunscreen should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_timeout_bridge_1');
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceCard, null);
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'daily sunscreen'
+        && entry.catalogSurface === ''),
+      JSON.stringify(observedCalls),
+    );
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
