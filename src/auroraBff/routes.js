@@ -2934,14 +2934,22 @@ function buildPivotaBackendAuthHeaders(req) {
   const checkoutToken = getCheckoutToken(req);
   if (checkoutToken) return { 'X-Checkout-Token': checkoutToken };
   if (PIVOTA_BACKEND_AGENT_API_KEY) {
-    return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
+    return {
+      'X-Agent-API-Key': PIVOTA_BACKEND_AGENT_API_KEY,
+      'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY,
+      Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}`,
+    };
   }
   return {};
 }
 
 function buildPivotaBackendAgentHeaders() {
   if (PIVOTA_BACKEND_AGENT_API_KEY) {
-    return { 'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY, Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}` };
+    return {
+      'X-Agent-API-Key': PIVOTA_BACKEND_AGENT_API_KEY,
+      'X-API-Key': PIVOTA_BACKEND_AGENT_API_KEY,
+      Authorization: `Bearer ${PIVOTA_BACKEND_AGENT_API_KEY}`,
+    };
   }
   return {};
 }

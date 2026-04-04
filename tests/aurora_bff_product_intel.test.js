@@ -2497,6 +2497,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
 
     nock('http://catalog-self.test')
+      .matchHeader('x-agent-api-key', 'test-api-key')
       .matchHeader('x-api-key', 'test-api-key')
       .matchHeader('authorization', 'Bearer test-api-key')
       .get('/agent/v1/products/search')
