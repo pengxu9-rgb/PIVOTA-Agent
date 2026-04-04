@@ -138,6 +138,38 @@ describe('Shopping agent strict find_products_multi runtime', () => {
     });
   });
 
+  test('keeps explicit strict surfaces enabled for exact-title beauty lookups', () => {
+    const { runtime } = createTestRuntime({ hasDatabaseUrl: false });
+
+    expect(
+      runtime.getStrictFindProductsMultiConstraintDecision({
+        search: { query: 'Multi-Calm Cream Cleanser' },
+        metadata: { catalog_surface: 'agent_api' },
+      }),
+    ).toMatchObject({
+      enabled: true,
+      catalogSurface: 'agent_api',
+      strictConstraintQuery: false,
+      strictConstraintReason: 'agent_api_surface',
+      ingredientIntents: [],
+      shadeOptionIntents: [],
+    });
+
+    expect(
+      runtime.getStrictFindProductsMultiConstraintDecision({
+        search: { query: 'Multi-Calm Cream Cleanser' },
+        metadata: {},
+      }),
+    ).toMatchObject({
+      enabled: false,
+      catalogSurface: null,
+      strictConstraintQuery: false,
+      strictConstraintReason: null,
+      ingredientIntents: [],
+      shadeOptionIntents: [],
+    });
+  });
+
   test('prefetches only strict ingredient external seed matches', async () => {
     const rows = [
       {
