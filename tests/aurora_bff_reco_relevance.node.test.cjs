@@ -5120,6 +5120,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     observedCalls.push({
       query,
       semanticContractOwner: String(semanticContract?.owner || ''),
+      semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
       catalogSurface: String(config?.params?.catalog_surface || ''),
       fastMode: config?.params?.fast_mode,
       timeoutMs: Number(config?.timeout || 0),
@@ -5127,7 +5128,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       forwardedAuthorization: String(config?.headers?.Authorization || ''),
     });
     if (
-      query === 'what sunscreen should i use for oily skin?'
+      query === 'daily sunscreen'
       && String(config?.params?.catalog_surface || '') === 'beauty'
     ) {
       return {
@@ -5198,12 +5199,15 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
     assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_bridge_attempts));
     assert.ok(payload.recommendation_meta.beauty_mainline_bridge_attempts.length >= 1);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied_query, 'daily sunscreen');
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
     assert.ok(
       observedCalls.some((entry) =>
-        entry.query === 'what sunscreen should i use for oily skin?'
+        entry.query === 'daily sunscreen'
+        && entry.semanticContractOwner === 'aurora_reco_planner'
+        && entry.semanticContractTargetStep === 'sunscreen'
         && entry.catalogSurface === 'beauty'
         && entry.fastMode === undefined
         && entry.timeoutMs >= 5000
@@ -5219,7 +5223,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
 
 test('/v1/chat: generic concern late beauty mainline rescue uses primary-role query and still returns products', async () => {
   const originalGet = axios.get;
-  const observedQueries = [];
+  const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
     auroraChatImpl: async () => ({
       intent: 'recommend_products',
@@ -5236,7 +5240,19 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
   axios.get = async (url, config = {}) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
     const query = String(config?.params?.query || '').trim().toLowerCase();
-    observedQueries.push(query);
+    const semanticContract = (() => {
+      try {
+        return JSON.parse(String(config?.params?.semantic_contract || '{}'));
+      } catch (_err) {
+        return null;
+      }
+    })();
+    observedCalls.push({
+      query,
+      semanticContractOwner: String(semanticContract?.owner || ''),
+      semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
+      semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
+    });
     if (query === 'oil control serum') {
       return {
         status: 200,
@@ -5307,8 +5323,16 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
       payload.recommendation_meta.beauty_mainline_bridge_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'oil control serum'),
       JSON.stringify(payload.recommendation_meta.beauty_mainline_bridge_attempts),
     );
-    assert.equal(observedQueries.includes('what products should i use for oily skin?'), true);
-    assert.equal(observedQueries.includes('oil control serum'), true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied_query, 'oil control serum');
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'oil control serum'
+        && entry.semanticContractOwner === 'aurora_reco_planner'
+        && entry.semanticContractTargetStep === 'treatment'
+        && entry.semanticContractPrimaryRole === 'oil_control_treatment'),
+      JSON.stringify(observedCalls),
+    );
+    assert.equal(observedCalls.some((entry) => entry.query === 'what products should i use for oily skin?'), false);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);

@@ -95,6 +95,7 @@ const {
 } = require('./recoRecallTransportPolicy');
 const {
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  buildBeautyDiscoveryQueryPackFromContract,
 } = require('../findProductsMulti/policy');
 const {
   resolveAuroraGeminiMainlineModel,
@@ -17399,7 +17400,7 @@ function buildRecoRowsFromBridgeProducts(products, {
   });
 }
 
-function buildBeautyMainlineRescueQueries({
+function buildBeautyMainlineRescuePlan({
   primaryQuery = '',
   fallbackMessage = '',
   targetContext = null,
@@ -17416,9 +17417,6 @@ function buildBeautyMainlineRescueQueries({
     seen.add(key);
     out.push(query);
   };
-
-  push(primaryQuery);
-  push(fallbackMessage);
 
   const effectiveTargetContext = (() => {
     if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) return targetContext;
@@ -17437,6 +17435,32 @@ function buildBeautyMainlineRescueQueries({
       },
     );
   })();
+  const semanticContract = (() => {
+    if (Array.isArray(effectiveTargetContext?.framework_roles) && effectiveTargetContext.framework_roles.length > 0) {
+      return buildRecoSearchSemanticContract({
+        mode: 'framework_generic',
+        targetContext: effectiveTargetContext,
+      });
+    }
+    const normalizedResolvedStep = normalizeRecoTargetStep(effectiveTargetContext?.resolved_target_step);
+    if (effectiveTargetContext?.step_aware_intent || normalizedResolvedStep) {
+      return buildRecoSearchSemanticContract({
+        mode: 'step_aware',
+        targetContext: effectiveTargetContext,
+      });
+    }
+    return null;
+  })();
+  const contractQueryPack = semanticContract
+    ? buildBeautyDiscoveryQueryPackFromContract({
+        rawQuery: pickFirstTrimmed(primaryQuery, fallbackMessage),
+        semanticContract,
+      })
+    : [];
+
+  for (const query of Array.isArray(contractQueryPack) ? contractQueryPack : []) {
+    push(query);
+  }
 
   const frameworkRoles = Array.isArray(effectiveTargetContext?.framework_roles) ? effectiveTargetContext.framework_roles : [];
   const primaryRoleId = String(effectiveTargetContext?.primary_role_id || '').trim();
@@ -17452,8 +17476,18 @@ function buildBeautyMainlineRescueQueries({
   }
 
   push(pickFirstTrimmed(effectiveTargetContext?.resolved_target_step));
+  push(primaryQuery);
+  push(fallbackMessage);
 
-  return out.slice(0, 4);
+  return {
+    queries: out.slice(0, 4),
+    semanticContract,
+    targetContext: effectiveTargetContext,
+  };
+}
+
+function buildBeautyMainlineRescueQueries(args = {}) {
+  return buildBeautyMainlineRescuePlan(args).queries;
 }
 
 async function bridgeRecoToBeautyMainlineSearch({
@@ -17461,6 +17495,7 @@ async function bridgeRecoToBeautyMainlineSearch({
   logger,
   query,
   targetContext = null,
+  semanticContract = null,
   deadlineAtMs = null,
   debug = false,
   authHeaders = null,
@@ -17489,7 +17524,7 @@ async function bridgeRecoToBeautyMainlineSearch({
     deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
     searchSourceOverride: 'aurora-bff',
     fastMode: undefined,
-    semanticContract: null,
+    semanticContract,
     traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
     authHeaders: authHeaders || ctx?.backend_auth_headers || null,
   });
@@ -17500,7 +17535,9 @@ async function bridgeRecoToBeautyMainlineSearch({
   });
   return {
     recommendations,
-    semanticContract: null,
+    semanticContract: semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)
+      ? semanticContract
+      : null,
     searchResult,
     attempted_query: String(query || '').trim(),
     timeout_ms: effectiveTimeoutMs,
@@ -17512,19 +17549,22 @@ async function bridgeRecoToBeautyMainlineSearchQueries({
   logger,
   queries = [],
   targetContext = null,
+  semanticContract = null,
   deadlineAtMs = null,
   debug = false,
   authHeaders = null,
   timeoutMs = 0,
   minTimeoutMs = 0,
 } = {}) {
-  const normalizedQueries = buildBeautyMainlineRescueQueries({
-    primaryQuery: Array.isArray(queries) ? queries[0] : '',
-    fallbackMessage: Array.isArray(queries) ? queries[1] : '',
-    targetContext,
-  });
-  for (const extraQuery of Array.isArray(queries) ? queries.slice(2) : []) {
-    normalizedQueries.push(...buildBeautyMainlineRescueQueries({ primaryQuery: extraQuery }));
+  const normalizedQueries = [];
+  const seenQueries = new Set();
+  for (const candidate of Array.isArray(queries) ? queries : []) {
+    const normalizedQuery = String(candidate || '').trim();
+    if (!normalizedQuery) continue;
+    const key = normalizedQuery.toLowerCase();
+    if (seenQueries.has(key)) continue;
+    seenQueries.add(key);
+    normalizedQueries.push(normalizedQuery);
   }
 
   const attempts = [];
@@ -17535,6 +17575,7 @@ async function bridgeRecoToBeautyMainlineSearchQueries({
       logger,
       query: candidateQuery,
       targetContext,
+      semanticContract,
       deadlineAtMs,
       debug,
       authHeaders,
@@ -17557,13 +17598,20 @@ async function bridgeRecoToBeautyMainlineSearchQueries({
         attempted: true,
         attempts,
         applied_query: String(candidateQuery || '').trim(),
+        semanticContract:
+          semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)
+            ? semanticContract
+            : bridged?.semanticContract || null,
       };
     }
   }
 
   return {
     recommendations: [],
-    semanticContract: null,
+    semanticContract:
+      semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)
+        ? semanticContract
+        : lastResult?.semanticContract || null,
     searchResult: lastResult?.searchResult || null,
     attempted: normalizedQueries.length > 0,
     attempts,
@@ -61963,16 +62011,18 @@ async function generateProductRecommendations({
     && promptContract.ok !== false
     && (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0)
   ) {
+    const bridgePlan = buildBeautyMainlineRescuePlan({
+      primaryQuery: userAsk,
+      fallbackMessage: userAsk,
+      targetContext,
+      profileSummary,
+    });
     const bridgedReco = await bridgeRecoToBeautyMainlineSearchQueries({
       ctx,
       logger,
-      queries: buildBeautyMainlineRescueQueries({
-        primaryQuery: userAsk,
-        fallbackMessage: userAsk,
-        targetContext,
-        profileSummary,
-      }),
-      targetContext,
+      queries: bridgePlan.queries,
+      targetContext: bridgePlan.targetContext || targetContext,
+      semanticContract: bridgePlan.semanticContract,
       deadlineAtMs,
       debug,
     });
@@ -81318,7 +81368,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             && !ingredientRecoOptInRequested
             && !travelRecoHandoff
           ) {
-            const bridgeQueries = buildBeautyMainlineRescueQueries({
+            const bridgePlan = buildBeautyMainlineRescuePlan({
               primaryQuery: pickFirstTrimmed(
                 recoRequestMessageForMainline,
                 payload?.recommendation_meta?.semantic_query,
@@ -81328,12 +81378,13 @@ function mountAuroraBffRoutes(app, { logger }) {
               profileSummary: summarizeProfileForContext(profile),
               fallbackFocus: recoFocusForMainline,
             });
-            if (bridgeQueries.length > 0) {
+            if (bridgePlan.queries.length > 0) {
               chatBeautyMainlineBridge = await bridgeRecoToBeautyMainlineSearchQueries({
                 ctx,
                 logger,
-                queries: bridgeQueries,
-                targetContext: chatRecoTargetContext,
+                queries: bridgePlan.queries,
+                targetContext: bridgePlan.targetContext || chatRecoTargetContext,
+                semanticContract: bridgePlan.semanticContract,
                 debug: debugUpstream,
                 timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
                 minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
