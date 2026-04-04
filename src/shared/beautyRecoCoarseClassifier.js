@@ -550,6 +550,29 @@ function classifySharedTreatmentTargetRelevance({
   const offerType = detectBeautyOfferType(lower);
   const candidateHasTreatmentCue = TREATMENT_GOAL_RE.test(lower);
   const queryHasTreatmentCue = TREATMENT_GOAL_RE.test(normalizedQuery) || /\btreatment\b/.test(normalizedQuery);
+  const queryHasOilControlCue =
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore)\b/.test(
+      normalizedQuery,
+    );
+  const queryHasExplicitAcneCue = /\b(acne|blemish|breakout|congestion)\b/.test(normalizedQuery);
+  const queryHasSpotCue =
+    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/.test(
+      normalizedQuery,
+    );
+  const candidateHasNiacinamide = /\bniacinamide\b/.test(lower);
+  const candidateHasSalicylic = /\bsalicylic(?:\s+acid)?\b/.test(lower);
+  const candidateHasZinc = /\bzinc\b/.test(lower);
+  const candidateHasOilControlCue =
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/.test(
+      lower,
+    );
+  const candidateHasAcneCue = /\b(acne|blemish|breakout|clarifying)\b/.test(lower);
+  const candidateIsSpotLike =
+    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/.test(
+      lower,
+    );
+  const candidateHasOilControlSignal =
+    candidateHasNiacinamide || candidateHasSalicylic || candidateHasZinc || candidateHasOilControlCue;
   const looksLikeTreatmentFamily =
     coarse.candidate_step === 'treatment' ||
     coarse.candidate_step === 'serum' ||
@@ -604,6 +627,44 @@ function classifySharedTreatmentTargetRelevance({
   }
   if (looksLikeAdjacentLiquid) {
     return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'adjacent_liquid' };
+  }
+  if (queryHasOilControlCue && !queryHasExplicitAcneCue && !queryHasSpotCue) {
+    if (candidateIsSpotLike) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 0,
+        ingredient_overlap: false,
+      };
+    }
+    if (candidateHasOilControlSignal) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'strong_goal_family',
+        noise_reason: null,
+        relevance_channel:
+          candidateHasNiacinamide || candidateHasSalicylic ? 'ingredient-strong' : 'goal-strong',
+        overlay_score:
+          candidateHasNiacinamide && candidateHasZinc
+            ? 4
+            : candidateHasNiacinamide || candidateHasSalicylic
+              ? 3
+              : 2,
+        ingredient_overlap: candidateHasNiacinamide || candidateHasSalicylic,
+      };
+    }
+    if (candidateHasAcneCue) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 0,
+        ingredient_overlap: false,
+      };
+    }
   }
   if (
     candidateHasTreatmentCue &&
