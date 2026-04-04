@@ -22759,6 +22759,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? normalizeSemanticOwnerQueryPack(semanticRewriteResultMeta?.normalized_query_pack)
         : [];
     const semanticOwnerQueryTotal = semanticOwnerQueryPack.length;
+    const semanticOwnerIngredientHypotheses = Array.isArray(semanticContractMeta?.ingredient_hypotheses)
+      ? Array.from(
+          new Set(
+            semanticContractMeta.ingredient_hypotheses
+              .map((value) => String(value || '').trim())
+              .filter(Boolean),
+          ),
+        )
+      : [];
     const semanticOwnerTargetStepFamily = normalizeRecoTargetStep(
       semanticContractMeta?.target_step_family ||
         semanticContractMeta?.primary_step_family ||
@@ -22785,6 +22794,37 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           metadata?.query_step_strength,
       ) || '',
     ).trim();
+    const normalizeSemanticOwnerRescueQueryPack = (values = []) =>
+      Array.from(
+        new Set(
+          (Array.isArray(values) ? values : [])
+            .map((value) => String(value || '').trim())
+            .filter(Boolean),
+        ),
+      ).slice(0, 6);
+    const buildSemanticOwnerExternalRescueQueryPack = ({
+      ignoredAttempt = null,
+      queryAttempts = [],
+      fallbackQuery = '',
+    } = {}) => {
+      const rescueQueries = [];
+      if (ignoredAttempt?.query) rescueQueries.push(ignoredAttempt.query);
+      for (const attempt of Array.isArray(queryAttempts) ? [...queryAttempts].reverse() : []) {
+        if (attempt?.observation_candidate_ignored === true && String(attempt?.query || '').trim()) {
+          rescueQueries.push(String(attempt.query || '').trim());
+        }
+      }
+      if (fallbackQuery) rescueQueries.push(fallbackQuery);
+      if (semanticOwnerTargetStepFamily === 'treatment') {
+        if (semanticOwnerSemanticFamily === 'oil_control') {
+          rescueQueries.push('oil control treatment', 'oil control serum');
+        }
+        for (const hypothesis of semanticOwnerIngredientHypotheses.slice(0, 2)) {
+          rescueQueries.push(`${hypothesis} treatment`, `${hypothesis} serum`);
+        }
+      }
+      return normalizeSemanticOwnerRescueQueryPack(rescueQueries);
+    };
     const semanticOwnerMinQueriesBeforeBudgetGuard =
       semanticOwnerQueryTotal > 0
         ? Math.min(semanticOwnerQueryTotal, 3)
@@ -23798,6 +23838,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let semanticOwnerAdoptedByValidHit = primarySemanticOwnerAdoption.adopt === true;
     let semanticOwnerIgnoredObservationCandidate =
       semanticOwnerControlled && primarySemanticOwnerObservation.ignore === true;
+    let semanticOwnerCacheSourceIsolated = false;
+    let semanticOwnerCacheSourceIsolationReason = null;
+    let semanticOwnerExternalRescueQueriesAttempted = [];
     let semanticOwnerObservationFallback =
       semanticOwnerControlled &&
       primarySemanticOwnerAdoption.adopt !== true &&
@@ -24014,18 +24057,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             attempt.observation_candidate_ignored === true &&
             String(attempt.query || '').trim(),
         );
-      const semanticOwnerExternalRescueQuery =
-        String(
-          semanticOwnerExternalRescueAttempt?.query ||
-            semanticOwnerQueryPack[semanticOwnerQueryPack.length - 1] ||
+      const semanticOwnerExternalRescueQueries = buildSemanticOwnerExternalRescueQueryPack({
+        ignoredAttempt: semanticOwnerExternalRescueAttempt,
+        queryAttempts: semanticOwnerQueryAttempts,
+        fallbackQuery:
+          String(
             queryParams?.query ||
-            '',
-        ).trim() ||
-        String(queryParams?.query || '').trim();
-      if (semanticOwnerExternalRescueQuery) {
+              semanticOwnerQueryPack[semanticOwnerQueryPack.length - 1] ||
+              rawUserQuery ||
+              '',
+          ).trim(),
+      });
+      if (semanticOwnerExternalRescueQueries.length > 0) {
+        semanticOwnerExternalRescueQueriesAttempted = semanticOwnerExternalRescueQueries;
         const rescueQueryParams = {
           ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams) ? queryParams : {}),
-          query: semanticOwnerExternalRescueQuery,
           allow_external_seed: true,
           allow_stale_cache: false,
           external_seed_strategy: 'unified_relevance',
@@ -24041,74 +24087,126 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1),
           SEARCH_LIMIT_MAX,
         );
-        try {
-          const externalRescue = await fetchExternalSeedSupplementFromBackend({
-            queryParams: rescueQueryParams,
-            checkoutToken,
-            neededCount: rescueLimit,
-            source: metadata?.source,
-          });
-          const rescueProducts = Array.isArray(externalRescue?.products) ? externalRescue.products : [];
-          if (rescueProducts.length > 0) {
-            const rescueBody = normalizeAgentProductsListResponse(
-              {
-                status: 'success',
-                success: true,
-                products: rescueProducts,
-                total: rescueProducts.length,
-                page: semanticOwnerExternalRescuePage,
-                page_size: rescueProducts.length,
-                reply: null,
-                metadata: {
-                  query_source: 'agent_products_search',
-                  semantic_owner_external_rescue_applied: true,
-                  semantic_owner_external_rescue_query: semanticOwnerExternalRescueQuery,
-                  external_seed_rows_fetched: Math.max(
-                    rescueProducts.length,
-                    Number(externalRescue?.metadata?.external_seed_rows_raw || 0) || 0,
-                  ),
-                  external_seed_rows_built: rescueProducts.length,
-                  external_seed_returned_count: rescueProducts.length,
-                  source_breakdown: {
-                    internal_count: 0,
-                    external_seed_count: rescueProducts.length,
-                    stale_cache_used: false,
-                    strategy_applied: 'semantic_owner_external_rescue',
+        let semanticOwnerExternalRescueApplied = false;
+        for (const semanticOwnerExternalRescueQuery of semanticOwnerExternalRescueQueries) {
+          try {
+            const externalRescue = await fetchExternalSeedSupplementFromBackend({
+              queryParams: {
+                ...rescueQueryParams,
+                query: semanticOwnerExternalRescueQuery,
+              },
+              checkoutToken,
+              neededCount: rescueLimit,
+              source: metadata?.source,
+            });
+            const rescueProducts = Array.isArray(externalRescue?.products) ? externalRescue.products : [];
+            if (rescueProducts.length > 0) {
+              const rescueBody = normalizeAgentProductsListResponse(
+                {
+                  status: 'success',
+                  success: true,
+                  products: rescueProducts,
+                  total: rescueProducts.length,
+                  page: semanticOwnerExternalRescuePage,
+                  page_size: rescueProducts.length,
+                  reply: null,
+                  metadata: {
+                    query_source: 'agent_products_search',
+                    semantic_owner_external_rescue_applied: true,
+                    semantic_owner_external_rescue_query: semanticOwnerExternalRescueQuery,
+                    semantic_owner_external_rescue_queries_attempted: semanticOwnerExternalRescueQueries,
+                    external_seed_rows_fetched: Math.max(
+                      rescueProducts.length,
+                      Number(externalRescue?.metadata?.external_seed_rows_raw || 0) || 0,
+                    ),
+                    external_seed_rows_built: rescueProducts.length,
+                    external_seed_returned_count: rescueProducts.length,
+                    source_breakdown: {
+                      internal_count: 0,
+                      external_seed_count: rescueProducts.length,
+                      stale_cache_used: false,
+                      strategy_applied: 'semantic_owner_external_rescue',
+                    },
                   },
                 },
-              },
-              {
-                limit: rescueLimit,
-                offset: 0,
-              },
-            );
-            response = { status: 200, data: rescueBody };
-            upstreamData = normalizeSearchOperationResponseData({
-              responseBody: rescueBody,
-              queryParamsOverride: rescueQueryParams,
-              requestBodyOverride: requestBody,
-            });
-            queryParams = rescueQueryParams;
-            const chosenAttempt =
-              semanticOwnerQueryAttempts.find(
-                (attempt) =>
-                  attempt &&
-                  attempt.query_index === semanticOwnerExternalRescueAttempt?.query_index &&
-                  String(attempt.query || '').trim() === semanticOwnerExternalRescueQuery,
-              ) || semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
-            if (chosenAttempt && chosenAttempt.adopted !== true) {
-              chosenAttempt.adopted = true;
-              chosenAttempt.adoption_mode = 'external_seed_rescue';
+                {
+                  limit: rescueLimit,
+                  offset: 0,
+                },
+              );
+              response = { status: 200, data: rescueBody };
+              upstreamData = normalizeSearchOperationResponseData({
+                responseBody: rescueBody,
+                queryParamsOverride: {
+                  ...rescueQueryParams,
+                  query: semanticOwnerExternalRescueQuery,
+                },
+                requestBodyOverride: requestBody,
+              });
+              queryParams = {
+                ...rescueQueryParams,
+                query: semanticOwnerExternalRescueQuery,
+              };
+              const chosenAttempt =
+                semanticOwnerQueryAttempts.find(
+                  (attempt) =>
+                    attempt &&
+                    String(attempt.query || '').trim() === semanticOwnerExternalRescueQuery,
+                ) || semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
+              if (chosenAttempt && chosenAttempt.adopted !== true) {
+                chosenAttempt.adopted = true;
+                chosenAttempt.adoption_mode = 'external_seed_rescue';
+              }
+              semanticOwnerExternalRescueApplied = true;
+              break;
             }
+          } catch (semanticOwnerExternalRescueErr) {
+            logger.warn(
+              {
+                err: semanticOwnerExternalRescueErr?.message || String(semanticOwnerExternalRescueErr),
+                query: semanticOwnerExternalRescueQuery,
+              },
+              'semantic-owner external rescue failed after pure cache invalid query pack',
+            );
           }
-        } catch (semanticOwnerExternalRescueErr) {
-          logger.warn(
+        }
+        if (!semanticOwnerExternalRescueApplied) {
+          semanticOwnerCacheSourceIsolated = true;
+          semanticOwnerCacheSourceIsolationReason = 'pure_cache_invalid_hit';
+          const isolatedBody = normalizeAgentProductsListResponse(
             {
-              err: semanticOwnerExternalRescueErr?.message || String(semanticOwnerExternalRescueErr),
-              query: semanticOwnerExternalRescueQuery,
+              status: 'success',
+              success: true,
+              products: [],
+              total: 0,
+              page: semanticOwnerExternalRescuePage,
+              page_size: 0,
+              reply: null,
+              metadata: {
+                query_source: 'agent_products_recall_clarify',
+                semantic_owner_cache_source_isolated: true,
+                semantic_owner_cache_source_isolation_reason: 'pure_cache_invalid_hit',
+                semantic_owner_external_rescue_queries_attempted: semanticOwnerExternalRescueQueries,
+                source_breakdown: {
+                  internal_count: 0,
+                  external_seed_count: 0,
+                  stale_cache_used: false,
+                  strategy_applied: 'semantic_owner_cache_source_isolated',
+                },
+              },
             },
-            'semantic-owner external rescue failed after pure cache invalid query pack',
+            {
+              limit: rescueLimit,
+              offset: 0,
+            },
           );
+          response = { status: 200, data: isolatedBody };
+          upstreamData = normalizeSearchOperationResponseData({
+            responseBody: isolatedBody,
+            queryParamsOverride: rescueQueryParams,
+            requestBodyOverride: requestBody,
+          });
+          queryParams = rescueQueryParams;
         }
       }
     }
@@ -26430,6 +26528,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           typeof sourceObservability.top_candidate_provenance === 'object'
             ? sourceObservability.top_candidate_provenance
             : null,
+        ...(semanticOwnerCacheSourceIsolated
+          ? { strategy_applied: 'semantic_owner_cache_source_isolated' }
+          : {}),
       };
       enriched = {
         ...enriched,
@@ -26568,6 +26669,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             semantic_contract: semanticContractMeta,
             semantic_rewrite_result: semanticRewriteResultMeta,
             semantic_owner_query_attempts: semanticOwnerQueryAttempts,
+            ...(semanticOwnerExternalRescueQueriesAttempted.length > 0
+              ? {
+                  semantic_owner_external_rescue_queries_attempted:
+                    semanticOwnerExternalRescueQueriesAttempted,
+                }
+              : {}),
+            ...(semanticOwnerCacheSourceIsolated
+              ? {
+                  semantic_owner_cache_source_isolated: true,
+                  semantic_owner_cache_source_isolation_reason:
+                    semanticOwnerCacheSourceIsolationReason || 'pure_cache_invalid_hit',
+                }
+              : {}),
             semantic_owner: semanticOwnerDecision,
             decision_owner:
               semanticOwnerDecision ||

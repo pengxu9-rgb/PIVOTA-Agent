@@ -671,16 +671,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.source_breakdown).toEqual(
       expect.objectContaining({
         internal_count: 2,
-        external_seed_count: 1,
+        external_seed_count: 0,
         stable_prior_count: 0,
         source_tier_counts: expect.objectContaining({
           fresh_internal: 1,
-          fresh_external: 1,
           cache_fresh: 1,
         }),
         source_quality_counts: expect.objectContaining({
           trusted: 1,
-          mixed: 2,
+          mixed: 1,
         }),
         cache_owner_paths: expect.arrayContaining(['cache_all_platforms']),
         top_candidate_provenance: expect.objectContaining({
@@ -694,7 +693,6 @@ describe('/agent/shop/v1/invoke gateway', () => {
       expect.objectContaining({
         source_tier_counts: expect.objectContaining({
           fresh_internal: 1,
-          fresh_external: 1,
           cache_fresh: 1,
         }),
         top_candidate_provenance: expect.objectContaining({
@@ -706,7 +704,6 @@ describe('/agent/shop/v1/invoke gateway', () => {
       expect.objectContaining({
         source_tier_counts: expect.objectContaining({
           fresh_internal: 1,
-          fresh_external: 1,
           cache_fresh: 1,
         }),
         top_candidate_provenance: expect.objectContaining({
@@ -973,6 +970,222 @@ describe('/agent/shop/v1/invoke gateway', () => {
           hit_quality: 'valid_hit',
         }),
       ]),
+    );
+  });
+
+  it('beauty semantic-owner treatment uses ingredient-led external rescue after pure cache invalid queries', async () => {
+    const attemptedPrimaryQueries = [];
+    const attemptedExternalQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() === 'true') return false;
+        attemptedPrimaryQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(3)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'dog_noise_treat_1',
+            product_id: 'dog_noise_treat_1',
+            merchant_id: 'merchant_cache',
+            title: 'Reflective Dog Harness',
+            name: 'Reflective Dog Harness',
+            display_name: 'Reflective Dog Harness',
+            category: null,
+            product_type: null,
+            query_source: 'cache_all_platforms',
+          },
+        ],
+        metadata: {
+          query_source: 'cache_all_platforms',
+        },
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() !== 'true') return false;
+        attemptedExternalQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(4)
+      .reply(function replyExternalTreatment(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const rescueQuery = String(url.searchParams.get('query') || '');
+        if (rescueQuery === 'salicylic acid treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'external_treat_1',
+                product_id: 'external_treat_1',
+                merchant_id: 'external_seed',
+                title: 'Salicylic Acid Oil Control Treatment',
+                name: 'Salicylic Acid Oil Control Treatment',
+                display_name: 'Salicylic Acid Oil Control Treatment',
+                category: 'external',
+                product_type: 'external',
+                source: 'external_seed',
+                description: 'Face treatment with salicylic acid for oily skin and blemish control.',
+                how_to_use: 'Apply to oily areas after cleansing.',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_external_seed_direct',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_external_seed_direct',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedPrimaryQueries).toEqual([
+      'oil control treatment',
+      'oil control serum',
+      'salicylic acid treatment',
+    ]);
+    expect(attemptedExternalQueries).toEqual([
+      'salicylic acid treatment',
+    ]);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_treat_1');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_external_rescue_applied: true,
+        semantic_owner_external_rescue_query: 'salicylic acid treatment',
+        semantic_owner_external_rescue_queries_attempted: expect.arrayContaining([
+          'oil control serum',
+          'oil control treatment',
+          'salicylic acid treatment',
+        ]),
+      }),
+    );
+  });
+
+  it('beauty semantic-owner isolates pure cache invalid treatment noise when rescue also fails', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() !== 'true')
+      .times(3)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'dog_noise_treat_2',
+            product_id: 'dog_noise_treat_2',
+            merchant_id: 'merchant_cache',
+            title: 'Dog Leash for Running',
+            name: 'Dog Leash for Running',
+            display_name: 'Dog Leash for Running',
+            category: null,
+            product_type: null,
+            query_source: 'cache_all_platforms',
+          },
+        ],
+        metadata: {
+          query_source: 'cache_all_platforms',
+        },
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() === 'true')
+      .times(4)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(0);
+    expect(res.body.metadata?.semantic_owner_cache_source_isolated).toBe(true);
+    expect(res.body.metadata?.semantic_owner_cache_source_isolation_reason).toBe('pure_cache_invalid_hit');
+    expect(res.body.metadata?.semantic_owner_external_rescue_queries_attempted).toEqual(
+      expect.arrayContaining([
+        'salicylic acid treatment',
+      ]),
+    );
+    expect(res.body.metadata?.source_breakdown?.strategy_applied).toBe(
+      'semantic_owner_cache_source_isolated',
     );
   });
 
