@@ -81279,7 +81279,6 @@ function mountAuroraBffRoutes(app, { logger }) {
             && !recoTimeoutDegraded
             && !ingredientRecoOptInRequested
             && !travelRecoHandoff
-            && (hasDeterministicRecoTarget || genericConcernRecoMainline)
           ) {
             const bridgeQuery = pickFirstTrimmed(
               recoRequestMessageForMainline,
