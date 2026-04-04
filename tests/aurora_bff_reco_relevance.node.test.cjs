@@ -5123,6 +5123,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     observedCalls.push({
       query,
       semanticContractOwner: String(semanticContract?.owner || ''),
+      catalogSurface: String(config?.params?.catalog_surface || ''),
     });
     if (
       query === 'what sunscreen should i use for oily skin?'
@@ -5198,6 +5199,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     assert.ok(
       observedCalls.some((entry) =>
         entry.query === 'what sunscreen should i use for oily skin?'
+        && entry.catalogSurface === 'beauty'
         && entry.semanticContractOwner === 'shopping_agent_beauty_contract_builder'),
     );
   } finally {

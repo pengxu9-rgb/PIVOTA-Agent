@@ -3922,6 +3922,7 @@ async function searchPivotaBackendProducts({
   minTimeoutMs = 300,
   mode = 'main_path',
   searchAllMerchants = true,
+  catalogSurface = '',
   deadlineMs = 0,
   forceLocalSearchFallback = false,
   searchSourceOverride = '',
@@ -3995,6 +3996,8 @@ async function searchPivotaBackendProducts({
     offset: 0,
     source: effectiveSearchSource,
   };
+  const normalizedCatalogSurface = String(catalogSurface || '').trim().toLowerCase();
+  if (normalizedCatalogSurface) params.catalog_surface = normalizedCatalogSurface;
   if (allowExternalSeed !== undefined) params.allow_external_seed = allowExternalSeed === true;
   const normalizedExternalSeedStrategy = String(externalSeedStrategy || '').trim().toLowerCase();
   if (normalizedExternalSeedStrategy) params.external_seed_strategy = normalizedExternalSeedStrategy;
@@ -17398,6 +17401,7 @@ async function bridgeRecoToBeautyMainlineSearch({
     minTimeoutMs: RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
     mode: 'main_path',
     searchAllMerchants: true,
+    catalogSurface: 'beauty',
     deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
     searchSourceOverride: 'aurora-bff',
     fastMode: true,
