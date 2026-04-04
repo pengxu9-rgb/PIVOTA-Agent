@@ -1441,6 +1441,14 @@ function inferBeautyIngredientHypotheses(rawQuery = '') {
   if (/\bpanthenol\b|泛醇/.test(normalized)) push('panthenol');
   if (/\bcica\b|积雪草|積雪草/.test(normalized)) push('cica');
   if (/\bhyaluronic\b|透明质酸|透明質酸|玻尿酸/.test(normalized)) push('hyaluronic acid');
+  if (
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|acne|blemish|breakout)\b/.test(
+      normalized,
+    ) || /控油|祛痘|痘痘|闭口|閉口|出油/.test(normalized)
+  ) {
+    push('niacinamide');
+    push('salicylic acid');
+  }
   return out.slice(0, 8);
 }
 
@@ -1815,13 +1823,11 @@ function buildDeterministicStrictSemanticQueryPack({
 
     pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
-    if (ingredientHypotheses[0]) push(`${ingredientHypotheses[0]} treatment`);
     if (semanticFamily) {
-      push(
-        /\b(oil control|shine control|mattify|mattifying|balancing)\b/.test(semanticFamily)
-          ? `${semanticFamily} serum`
-          : `${semanticFamily} treatment`,
-      );
+      push(`${semanticFamily} treatment`);
+    }
+    for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
+      push(`${hypothesis} treatment`);
     }
     if (allowedStepFamilies.includes('serum')) push('oil control serum');
     push(raw);

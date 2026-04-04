@@ -502,6 +502,45 @@ describe('find_products_multi context building', () => {
     );
   });
 
+  test('oil-control treatment query derives ingredient-led treatment query pack before serum fallback', async () => {
+    const out = await buildFindProductsMultiContext({
+      payload: {
+        query: 'oil control treatment',
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'oil control treatment' }],
+      },
+      metadata: {},
+    });
+
+    expect(out.adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        query: 'oil control treatment',
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
+        target_step_family: 'treatment',
+        semantic_family: 'oil_control',
+        semantic_contract: expect.objectContaining({
+          owner: 'shopping_agent_beauty_contract_builder',
+          request_class: 'generic_concern',
+          target_step_family: 'treatment',
+          ingredient_hypotheses: ['niacinamide', 'salicylic acid'],
+        }),
+      }),
+    );
+    expect(out.expansion_meta.semantic_owner_locked).toBe(true);
+    expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_mainline',
+        mode: 'deterministic_contract',
+        normalized_query_pack: [
+          'oil control treatment',
+          'niacinamide treatment',
+          'salicylic acid treatment',
+        ],
+      }),
+    );
+  });
+
   test('exact lookup semantic contract skips semantic rewrite budget entirely', async () => {
     jest.resetModules();
     jest.doMock('../src/findProductsMulti/intentLlm', () => {
