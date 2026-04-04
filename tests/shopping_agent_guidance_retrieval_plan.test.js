@@ -116,6 +116,24 @@ describe('Shopping agent guidance retrieval plan module', () => {
         'serum',
       ),
     ).toEqual(['panthenol', 'panthenol serum', 'vitamin b5', 'vitamin b5 serum']);
+
+    expect(
+      runtime.buildBeautyFamilySupplementQueries('best sunscreen for oily skin', {
+        target_step_family: 'sunscreen',
+      }),
+    ).toEqual([
+      'lightweight face sunscreen',
+      'matte face sunscreen',
+      'face sunscreen lotion',
+      'sunscreen milk',
+      'mineral face sunscreen',
+    ]);
+
+    expect(
+      runtime.buildBeautyFamilySupplementQueries('spf serum for oily skin', {
+        target_step_family: 'sunscreen',
+      }),
+    ).toEqual(['spf serum', 'uv filters serum']);
   });
 
   test('builds server-owned ladder attempts with strong and supportive query clusters', () => {

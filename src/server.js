@@ -1454,6 +1454,7 @@ const {
 const {
   resolveGuidanceSearchStepStrength,
   buildGuidanceRecallSupplementQueries,
+  buildBeautyFamilySupplementQueries,
   buildIngredientRecallQueryVariants,
   buildGuidanceSearchNormalizedIntent,
   getGuidanceFastpathRemainingBudgetMs,
@@ -9153,6 +9154,7 @@ function scoreDirectExternalSeedProduct({
   const normalizedDecisionMode = normalizeRecommendationDecisionMode(decisionMode, {
     guidanceOnlyDiscovery: normalizeSearchUiSurface(uiSurface) === 'ingredient_plan_guidance_only',
   });
+  const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const effectiveQueryStepStrength = shouldUseSharedTargetRelevancePipeline({
     mode: normalizedDecisionMode,
     targetStepFamily,
@@ -9165,6 +9167,19 @@ function scoreDirectExternalSeedProduct({
     buildFallbackCandidateText(product) ||
     titleText ||
     auxiliaryText;
+  const titleHasPrimarySunscreenForm =
+    /\b(face sunscreen|sunscreen|sun screen|sunblock|sun fluid|sun lotion|sun milk|sun cream|mineral sunscreen|mineral sun fluid|mineral sun lotion)\b/.test(
+      titleText,
+    );
+  const titleHasSunscreenFormFactor =
+    /\b(lotion|fluid|milk|cream|mineral|zinc oxide|broad spectrum)\b/.test(titleText);
+  const titleHasSerumCue = /\bserum\b/.test(titleText);
+  const queryRequestsSunscreenSerum =
+    /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(normalizedQuery);
+  const queryRequestsOilySunscreen =
+    /\b(oily skin|oil control|shine control|mattify|mattifying|non-greasy|non greasy|sebum|matte)\b/.test(
+      normalizedQuery,
+    );
   const coarse = classifySharedBeautyCoarseCandidate(product, {
     queryTargetStepFamily: targetStepFamily,
     queryText,
@@ -9219,6 +9234,17 @@ function scoreDirectExternalSeedProduct({
       if (coarse?.usage_scope === 'body') score -= 10;
       if (coarse?.domain_scope === 'bodycare') score -= 10;
       if (/\b(ceramide|barrier|repair|soothing|sensitive)\b/.test(titleText)) score += 6;
+    }
+  }
+
+  if (normalizedTargetStepFamily === 'sunscreen') {
+    if (titleHasPrimarySunscreenForm) score += 28;
+    if (titleHasSunscreenFormFactor) score += 12;
+    if (queryRequestsOilySunscreen && /\b(lightweight|matte|oil control|non-greasy|non greasy)\b/.test(titleText)) {
+      score += 10;
+    }
+    if (titleHasSerumCue && !queryRequestsSunscreenSerum) {
+      score -= titleHasPrimarySunscreenForm ? 18 : 52;
     }
   }
 
@@ -9413,6 +9439,15 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
         target_step_family: targetStepFamily,
       })
     : [];
+  const beautyFamilyQueryVariants = buildBeautyFamilySupplementQueries(relevanceQueryText, {
+    target_step_family: targetStepFamily,
+    semantic_family:
+      metadata?.semantic_family ||
+      metadata?.semanticFamily ||
+      search?.semantic_family ||
+      search?.semanticFamily ||
+      null,
+  });
   const ingredientRecallQueryVariants = ingredientIntentDetected
     ? buildIngredientRecallQueryVariants(relevanceQueryText, recallProfile, targetStepFamily)
     : [];
@@ -9426,12 +9461,13 @@ async function searchExternalSeedOnlyProductsDirect({ search = {}, metadata = {}
     new Set(
       (
         retrievalQueryVariantsOverride.length > 0
-          ? retrievalQueryVariantsOverride
+          ? [...retrievalQueryVariantsOverride, ...beautyFamilyQueryVariants]
           : [
               queryText,
               ...ingredientRecallQueryVariants,
               ...serumCanaryQueryVariants,
               ...guidanceFamilyQueryVariants,
+              ...beautyFamilyQueryVariants,
             ]
       )
         .map((item) => String(item || '').trim())
