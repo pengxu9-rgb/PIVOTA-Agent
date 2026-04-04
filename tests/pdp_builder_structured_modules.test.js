@@ -208,4 +208,35 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
     );
   });
+
+  test('normalizes encoded whitespace in sdcdn Tom Ford asset names', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_2',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_1.png?width=650px&height=750px',
+      },
+      relatedProducts: [
+        {
+          id: 'rec_tf_2',
+          merchant_id: 'external_seed',
+          title: 'TF Rec 2',
+          image_url:
+            'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
+          price: '90.00',
+          currency: 'USD',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_0.png?width=650px&height=750px',
+    );
+  });
 });

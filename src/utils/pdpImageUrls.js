@@ -42,11 +42,18 @@ function rewriteKnownSdcdnMirror(parsed) {
 function normalizeShopifyLikeFilename(filename) {
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
-  const matched = trimmed.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
+  let decoded = trimmed;
+  try {
+    decoded = decodeURIComponent(trimmed);
+  } catch {
+    decoded = trimmed;
+  }
+  const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
+  const matched = compacted.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (matched) {
     return `${matched[1]}.${matched[2]}`;
   }
-  return trimmed;
+  return compacted;
 }
 
 function normalizePdpImageUrl(value) {
