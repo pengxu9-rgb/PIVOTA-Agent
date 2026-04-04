@@ -22850,7 +22850,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     };
     const semanticOwnerMinQueriesBeforeBudgetGuard =
       semanticOwnerQueryTotal > 0
-        ? Math.min(semanticOwnerQueryTotal, 3)
+        ? semanticOwnerTargetStepFamily === 'treatment'
+          ? Math.min(semanticOwnerQueryTotal, 2)
+          : Math.min(semanticOwnerQueryTotal, 3)
         : semanticOwnerTargetStepFamily === 'sunscreen'
           ? 2
           : 1;
@@ -23960,8 +23962,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const allowRequiredSemanticOwnerRetry =
           queryIndex < semanticOwnerMinQueriesBeforeBudgetGuard &&
           (
-            remainingBudgetForSemanticOwner >= 250 ||
-            (semanticOwnerIgnoredObservationCandidate && remainingBudgetForSemanticOwner >= 100)
+            semanticOwnerTargetStepFamily === 'treatment' ||
+            remainingBudgetForSemanticOwner >=
+              (semanticOwnerIgnoredObservationCandidate ? 100 : 250)
           );
         if (
           FPM_GATE_SIMPLIFY_V1 &&
@@ -24245,15 +24248,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               response = rescueResponse;
               upstreamData = rescueUpstreamData;
               queryParams = rescueQueryParamsApplied;
-              const chosenAttempt =
-                semanticOwnerQueryAttempts.find(
-                  (attempt) =>
-                    attempt &&
-                    String(attempt.query || '').trim() === semanticOwnerExternalRescueQuery,
-                ) || semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
+              const chosenAttempt = semanticOwnerQueryAttempts.find(
+                (attempt) =>
+                  attempt &&
+                  String(attempt.query || '').trim() === semanticOwnerExternalRescueQuery &&
+                  !attempt.skipped_reason &&
+                  !attempt.error,
+              );
               if (chosenAttempt && chosenAttempt.adopted !== true) {
                 chosenAttempt.adopted = true;
                 chosenAttempt.adoption_mode = 'external_seed_rescue';
+              } else if (!chosenAttempt) {
+                const matchedQueryIndex = semanticOwnerQueryPack.findIndex(
+                  (query) => String(query || '').trim() === semanticOwnerExternalRescueQuery,
+                );
+                semanticOwnerQueryAttempts.push({
+                  query: semanticOwnerExternalRescueQuery,
+                  query_index:
+                    matchedQueryIndex >= 0 ? matchedQueryIndex : semanticOwnerQueryAttempts.length,
+                  query_total: semanticOwnerQueryTotal,
+                  result_count: rescueProducts.length,
+                  adopted: true,
+                  adoption_mode: 'external_seed_rescue',
+                  rescue_only: true,
+                });
               }
               semanticOwnerAdoptedByValidHit = true;
               semanticOwnerObservationFallback = null;
