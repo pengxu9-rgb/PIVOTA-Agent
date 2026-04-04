@@ -954,7 +954,10 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
     expect(attemptedQueries).toEqual(['oil control treatment', 'oil control serum']);
     expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('treat_valid_1');
+    expect(res.body.metadata?.search_decision?.quality_gate_mode || null).toBe(null);
+    expect(res.body.metadata?.search_decision?.hit_quality).toBe('valid_hit');
     expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

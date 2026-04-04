@@ -26027,6 +26027,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               mode: requestedDecisionMode,
             })
           : { applied: false, hit_quality: null };
+      const promoteObservedValidBeautyHit =
+        observationOnlyBeautySkincareHitQualityGate &&
+        skincareHitDecision?.hit_quality === 'valid_hit' &&
+        skincareHitDecision?.success_contract_result?.satisfied === true;
+      const effectiveObservationOnlyBeautySkincareHitQualityGate =
+        observationOnlyBeautySkincareHitQualityGate && !promoteObservedValidBeautyHit;
       if (skincareHitDecision.applied) {
         const existingSearchDecision =
           existingMeta &&
@@ -26042,7 +26048,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             .filter(Boolean),
         );
         const blockingBeautySkincareHitQualityGate =
-          !observationOnlyBeautySkincareHitQualityGate &&
+          !effectiveObservationOnlyBeautySkincareHitQualityGate &&
           skincareHitDecision.hit_quality === 'invalid_hit';
         const policyScopedValidProducts =
           skincareHitDecision.hit_quality === 'valid_hit'
@@ -26055,7 +26061,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? skincareHitDecision.ranked_products
           : [];
         const nextProducts =
-          observationOnlyBeautySkincareHitQualityGate
+          effectiveObservationOnlyBeautySkincareHitQualityGate
             ? (rankedProductsForReturn.length > 0
                 ? rankedProductsForReturn
                 : rawProductsBeforeQualityGate.length > 0
@@ -26086,7 +26092,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         const nextSearchDecision = {
           ...existingSearchDecision,
-          ...(observationOnlyBeautySkincareHitQualityGate
+          ...(effectiveObservationOnlyBeautySkincareHitQualityGate
             ? {
                 quality_gate_mode: 'observe_only',
                 hit_quality_observation: {
@@ -26206,7 +26212,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const invalidHitApplied =
         skincareHitDecision.applied &&
         skincareHitDecision.hit_quality === 'invalid_hit' &&
-        !observationOnlyBeautySkincareHitQualityGate;
+        !effectiveObservationOnlyBeautySkincareHitQualityGate;
       const isStrictEmpty =
         SEARCH_STRICT_EMPTY_ENABLED &&
         queryText.length > 0 &&
