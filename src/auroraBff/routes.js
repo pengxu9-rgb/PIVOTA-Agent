@@ -17399,6 +17399,63 @@ function buildRecoRowsFromBridgeProducts(products, {
   });
 }
 
+function buildBeautyMainlineRescueQueries({
+  primaryQuery = '',
+  fallbackMessage = '',
+  targetContext = null,
+  profileSummary = null,
+  fallbackFocus = '',
+} = {}) {
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (!query) return;
+    const key = query.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(query);
+  };
+
+  push(primaryQuery);
+  push(fallbackMessage);
+
+  const effectiveTargetContext = (() => {
+    if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) return targetContext;
+    const normalizedResolvedStep = normalizeRecoTargetStep(targetContext?.resolved_target_step);
+    if (normalizedResolvedStep) return targetContext;
+    return buildConcernTargetContextFromSemanticPlan(
+      buildConcernSemanticPlanFallback({
+        text: pickFirstTrimmed(primaryQuery, fallbackMessage),
+        focus: fallbackFocus,
+        profileSummary,
+      }),
+      {
+        text: pickFirstTrimmed(primaryQuery, fallbackMessage),
+        focus: fallbackFocus,
+        entryType: 'chat',
+      },
+    );
+  })();
+
+  const frameworkRoles = Array.isArray(effectiveTargetContext?.framework_roles) ? effectiveTargetContext.framework_roles : [];
+  const primaryRoleId = String(effectiveTargetContext?.primary_role_id || '').trim();
+  const primaryRole =
+    frameworkRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId)
+    || frameworkRoles[0]
+    || null;
+  if (primaryRole) {
+    for (const term of Array.isArray(primaryRole?.query_terms) ? primaryRole.query_terms : []) {
+      push(term);
+    }
+    push(pickFirstTrimmed(primaryRole?.label));
+  }
+
+  push(pickFirstTrimmed(effectiveTargetContext?.resolved_target_step));
+
+  return out.slice(0, 4);
+}
+
 async function bridgeRecoToBeautyMainlineSearch({
   ctx,
   logger,
@@ -17407,13 +17464,25 @@ async function bridgeRecoToBeautyMainlineSearch({
   deadlineAtMs = null,
   debug = false,
   authHeaders = null,
+  timeoutMs = 0,
+  minTimeoutMs = 0,
 } = {}) {
+  const effectiveTimeoutMs = Math.max(
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+    RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
+    Number.isFinite(Number(timeoutMs)) ? Math.trunc(Number(timeoutMs)) : 0,
+  );
+  const effectiveMinTimeoutMs = Math.max(
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+    RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
+    Number.isFinite(Number(minTimeoutMs)) ? Math.trunc(Number(minTimeoutMs)) : 0,
+  );
   const searchResult = await searchPivotaBackendProducts({
     query,
     limit: 6,
     logger,
-    timeoutMs: RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
-    minTimeoutMs: RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
+    timeoutMs: effectiveTimeoutMs,
+    minTimeoutMs: effectiveMinTimeoutMs,
     mode: 'main_path',
     searchAllMerchants: true,
     catalogSurface: 'beauty',
@@ -17433,6 +17502,74 @@ async function bridgeRecoToBeautyMainlineSearch({
     recommendations,
     semanticContract: null,
     searchResult,
+    attempted_query: String(query || '').trim(),
+    timeout_ms: effectiveTimeoutMs,
+  };
+}
+
+async function bridgeRecoToBeautyMainlineSearchQueries({
+  ctx,
+  logger,
+  queries = [],
+  targetContext = null,
+  deadlineAtMs = null,
+  debug = false,
+  authHeaders = null,
+  timeoutMs = 0,
+  minTimeoutMs = 0,
+} = {}) {
+  const normalizedQueries = buildBeautyMainlineRescueQueries({
+    primaryQuery: Array.isArray(queries) ? queries[0] : '',
+    fallbackMessage: Array.isArray(queries) ? queries[1] : '',
+    targetContext,
+  });
+  for (const extraQuery of Array.isArray(queries) ? queries.slice(2) : []) {
+    normalizedQueries.push(...buildBeautyMainlineRescueQueries({ primaryQuery: extraQuery }));
+  }
+
+  const attempts = [];
+  let lastResult = null;
+  for (const candidateQuery of normalizedQueries) {
+    const bridged = await bridgeRecoToBeautyMainlineSearch({
+      ctx,
+      logger,
+      query: candidateQuery,
+      targetContext,
+      deadlineAtMs,
+      debug,
+      authHeaders,
+      timeoutMs,
+      minTimeoutMs,
+    });
+    const resultCount = Array.isArray(bridged?.recommendations) ? bridged.recommendations.length : 0;
+    attempts.push({
+      query: String(candidateQuery || '').trim(),
+      result_count: resultCount,
+      reason: pickFirstTrimmed(bridged?.searchResult?.reason) || null,
+      decision_owner: pickFirstTrimmed(bridged?.searchResult?.decision_owner) || null,
+      query_source: pickFirstTrimmed(bridged?.searchResult?.query_source) || null,
+      timeout_ms: Number.isFinite(Number(bridged?.timeout_ms)) ? Number(bridged.timeout_ms) : null,
+    });
+    lastResult = bridged;
+    if (resultCount > 0) {
+      return {
+        ...bridged,
+        attempted: true,
+        attempts,
+        applied_query: String(candidateQuery || '').trim(),
+      };
+    }
+  }
+
+  return {
+    recommendations: [],
+    semanticContract: null,
+    searchResult: lastResult?.searchResult || null,
+    attempted: normalizedQueries.length > 0,
+    attempts,
+    applied_query: null,
+    timeout_ms:
+      Number.isFinite(Number(lastResult?.timeout_ms)) ? Number(lastResult.timeout_ms) : Math.max(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS, RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS),
   };
 }
 
@@ -61826,10 +61963,15 @@ async function generateProductRecommendations({
     && promptContract.ok !== false
     && (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0)
   ) {
-    const bridgedReco = await bridgeRecoToBeautyMainlineSearch({
+    const bridgedReco = await bridgeRecoToBeautyMainlineSearchQueries({
       ctx,
       logger,
-      query: userAsk,
+      queries: buildBeautyMainlineRescueQueries({
+        primaryQuery: userAsk,
+        fallbackMessage: userAsk,
+        targetContext,
+        profileSummary,
+      }),
       targetContext,
       deadlineAtMs,
       debug,
@@ -61846,6 +61988,10 @@ async function generateProductRecommendations({
         mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
         recommendation_meta: {
           ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+          beauty_mainline_bridge_attempted: Boolean(bridgedReco?.attempted),
+          beauty_mainline_bridge_attempt_count: Array.isArray(bridgedReco?.attempts) ? bridgedReco.attempts.length : 0,
+          beauty_mainline_bridge_attempts: Array.isArray(bridgedReco?.attempts) ? bridgedReco.attempts.slice(0, 4) : [],
+          beauty_mainline_bridge_timeout_ms: Number.isFinite(Number(bridgedReco?.timeout_ms)) ? Number(bridgedReco.timeout_ms) : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
           beauty_mainline_bridge_applied: true,
           beauty_mainline_bridge_owner: pickFirstTrimmed(
             bridgedReco.searchResult?.decision_owner,
@@ -61854,9 +62000,14 @@ async function generateProductRecommendations({
           beauty_mainline_bridge_query_source: pickFirstTrimmed(bridgedReco.searchResult?.query_source) || null,
           beauty_mainline_bridge_result_count: bridgedReco.recommendations.length,
           beauty_mainline_bridge_contract_owner: pickFirstTrimmed(bridgedReco.semanticContract?.owner) || null,
+          beauty_mainline_bridge_applied_query: pickFirstTrimmed(bridgedReco?.applied_query) || null,
         },
         metadata: {
           ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+          beauty_mainline_bridge_attempted: Boolean(bridgedReco?.attempted),
+          beauty_mainline_bridge_attempt_count: Array.isArray(bridgedReco?.attempts) ? bridgedReco.attempts.length : 0,
+          beauty_mainline_bridge_attempts: Array.isArray(bridgedReco?.attempts) ? bridgedReco.attempts.slice(0, 4) : [],
+          beauty_mainline_bridge_timeout_ms: Number.isFinite(Number(bridgedReco?.timeout_ms)) ? Number(bridgedReco.timeout_ms) : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
           beauty_mainline_bridge_applied: true,
           beauty_mainline_bridge_owner: pickFirstTrimmed(
             bridgedReco.searchResult?.decision_owner,
@@ -61865,6 +62016,7 @@ async function generateProductRecommendations({
           beauty_mainline_bridge_query_source: pickFirstTrimmed(bridgedReco.searchResult?.query_source) || null,
           beauty_mainline_bridge_result_count: bridgedReco.recommendations.length,
           beauty_mainline_bridge_contract_owner: pickFirstTrimmed(bridgedReco.semanticContract?.owner) || null,
+          beauty_mainline_bridge_applied_query: pickFirstTrimmed(bridgedReco?.applied_query) || null,
         },
       };
       delete nextPayload.products_empty_reason;
@@ -81166,18 +81318,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             && !ingredientRecoOptInRequested
             && !travelRecoHandoff
           ) {
-            const bridgeQuery = pickFirstTrimmed(
-              recoRequestMessageForMainline,
-              payload?.recommendation_meta?.semantic_query,
-              message,
-            );
-            if (bridgeQuery) {
-              chatBeautyMainlineBridge = await bridgeRecoToBeautyMainlineSearch({
+            const bridgeQueries = buildBeautyMainlineRescueQueries({
+              primaryQuery: pickFirstTrimmed(
+                recoRequestMessageForMainline,
+                payload?.recommendation_meta?.semantic_query,
+              ),
+              fallbackMessage: message,
+              targetContext: chatRecoTargetContext,
+              profileSummary: summarizeProfileForContext(profile),
+              fallbackFocus: recoFocusForMainline,
+            });
+            if (bridgeQueries.length > 0) {
+              chatBeautyMainlineBridge = await bridgeRecoToBeautyMainlineSearchQueries({
                 ctx,
                 logger,
-                query: bridgeQuery,
+                queries: bridgeQueries,
                 targetContext: chatRecoTargetContext,
                 debug: debugUpstream,
+                timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+                minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
               });
             }
             if (Array.isArray(chatBeautyMainlineBridge?.recommendations) && chatBeautyMainlineBridge.recommendations.length > 0) {
@@ -81208,9 +81367,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             payload.recommendation_confidence_score = artifactConfidenceScore;
           }
           if (!payloadHasRecs && !noCandidatesMode) {
-            if (!hasRecoArtifact) {
-              payload.failure_reason = String(payload.failure_reason || '').trim() || 'artifact_missing';
-            } else if (lowConfidenceArtifact) {
+            if (lowConfidenceArtifact) {
               payload.failure_reason = String(payload.failure_reason || '').trim() || 'low_confidence';
             }
           }
@@ -81283,6 +81440,21 @@ function mountAuroraBffRoutes(app, { logger }) {
                   beauty_mainline_bridge_query_source: pickFirstTrimmed(chatBeautyMainlineBridge.searchResult?.query_source) || null,
                   beauty_mainline_bridge_result_count: chatBeautyMainlineBridge.recommendations.length,
                   beauty_mainline_bridge_contract_owner: pickFirstTrimmed(chatBeautyMainlineBridge.semanticContract?.owner) || null,
+                  beauty_mainline_bridge_applied_query: pickFirstTrimmed(chatBeautyMainlineBridge.applied_query) || null,
+                }
+              : {}),
+            ...(chatBeautyMainlineBridge?.attempted
+              ? {
+                  beauty_mainline_bridge_attempted: true,
+                  beauty_mainline_bridge_attempt_count: Array.isArray(chatBeautyMainlineBridge.attempts)
+                    ? chatBeautyMainlineBridge.attempts.length
+                    : 0,
+                  beauty_mainline_bridge_attempts: Array.isArray(chatBeautyMainlineBridge.attempts)
+                    ? chatBeautyMainlineBridge.attempts.slice(0, 4)
+                    : [],
+                  beauty_mainline_bridge_timeout_ms: Number.isFinite(Number(chatBeautyMainlineBridge.timeout_ms))
+                    ? Number(chatBeautyMainlineBridge.timeout_ms)
+                    : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
                 }
               : {}),
             prompt_template_id: pickFirstTrimmed(
@@ -81313,6 +81485,21 @@ function mountAuroraBffRoutes(app, { logger }) {
                   beauty_mainline_bridge_query_source: pickFirstTrimmed(chatBeautyMainlineBridge.searchResult?.query_source) || null,
                   beauty_mainline_bridge_result_count: chatBeautyMainlineBridge.recommendations.length,
                   beauty_mainline_bridge_contract_owner: pickFirstTrimmed(chatBeautyMainlineBridge.semanticContract?.owner) || null,
+                  beauty_mainline_bridge_applied_query: pickFirstTrimmed(chatBeautyMainlineBridge.applied_query) || null,
+                }
+              : {}),
+            ...(chatBeautyMainlineBridge?.attempted
+              ? {
+                  beauty_mainline_bridge_attempted: true,
+                  beauty_mainline_bridge_attempt_count: Array.isArray(chatBeautyMainlineBridge.attempts)
+                    ? chatBeautyMainlineBridge.attempts.length
+                    : 0,
+                  beauty_mainline_bridge_attempts: Array.isArray(chatBeautyMainlineBridge.attempts)
+                    ? chatBeautyMainlineBridge.attempts.slice(0, 4)
+                    : [],
+                  beauty_mainline_bridge_timeout_ms: Number.isFinite(Number(chatBeautyMainlineBridge.timeout_ms))
+                    ? Number(chatBeautyMainlineBridge.timeout_ms)
+                    : RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
                 }
               : {}),
           };

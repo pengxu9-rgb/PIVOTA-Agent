@@ -5122,6 +5122,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       semanticContractOwner: String(semanticContract?.owner || ''),
       catalogSurface: String(config?.params?.catalog_surface || ''),
       fastMode: config?.params?.fast_mode,
+      timeoutMs: Number(config?.timeout || 0),
       forwardedAgentApiKey: String(config?.headers?.['X-Agent-API-Key'] || ''),
       forwardedAuthorization: String(config?.headers?.Authorization || ''),
     });
@@ -5192,8 +5193,11 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
     assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_bridge_1');
     assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied, true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_attempted, true);
     assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_owner, 'shopping_agent_beauty_mainline');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_bridge_attempts));
+    assert.ok(payload.recommendation_meta.beauty_mainline_bridge_attempts.length >= 1);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
@@ -5202,10 +5206,112 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
         entry.query === 'what sunscreen should i use for oily skin?'
         && entry.catalogSurface === 'beauty'
         && entry.fastMode === undefined
+        && entry.timeoutMs >= 5000
         && entry.forwardedAgentApiKey === 'ak_live_bridge_test'
         && entry.forwardedAuthorization === 'Bearer ak_live_bridge_test'),
       JSON.stringify(observedCalls),
     );
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
+test('/v1/chat: generic concern late beauty mainline rescue uses primary-role query and still returns products', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    if (query === 'oil control serum') {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'generic_bridge_1',
+              merchant_id: 'external_seed',
+              brand: 'GoalSkin',
+              name: 'Oil Control Serum',
+              display_name: 'Oil Control Serum',
+              category: 'skincare',
+              product_type: 'serum',
+              source: 'external_seed',
+              url: 'https://example.com/oil-control-serum',
+              short_description: 'A lightweight serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_generic_bridge_uid',
+        'X-Trace-ID': 'trace_chat_generic_bridge',
+        'X-Brief-ID': 'chat_generic_bridge_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'what products should i use for oily skin?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        message: 'what products should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'generic_bridge_1');
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied, true);
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_bridge_attempts));
+    assert.ok(
+      payload.recommendation_meta.beauty_mainline_bridge_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'oil control serum'),
+      JSON.stringify(payload.recommendation_meta.beauty_mainline_bridge_attempts),
+    );
+    assert.equal(observedQueries.includes('what products should i use for oily skin?'), true);
+    assert.equal(observedQueries.includes('oil control serum'), true);
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceCard, null);
   } finally {
     axios.get = originalGet;
     harness.restore();
