@@ -11,6 +11,7 @@
         "enum": [
           "find_products",
           "find_products_multi",
+          "get_discovery_feed",
           "get_product_detail",
           "offers.resolve",
           "preview_quote",
@@ -51,9 +52,39 @@
             },
             "additionalProperties": true
           },
+          "surface": {
+            "type": "string",
+            "description": "Used when operation = get_discovery_feed",
+            "enum": ["home_hot_deals", "browse_products"]
+          },
+          "page": {
+            "type": "integer",
+            "description": "Used when operation = get_discovery_feed",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Used when operation = get_discovery_feed",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "debug": {
+            "description": "Optional discovery debug control. `true` enables rank_debug. Object form also supports `top_candidates`.",
+            "oneOf": [
+              { "type": "boolean" },
+              {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "top_candidates": { "type": "integer", "minimum": 1, "maximum": 25 }
+                },
+                "additionalProperties": true
+              }
+            ]
+          },
           "context": {
             "type": "object",
-            "description": "Optional conversational context used by find_products_multi to avoid repeated clarifications.",
+            "description": "Optional context used by find_products_multi clarifications and by get_discovery_feed personalization.",
             "properties": {
               "resolved_slots": {
                 "type": "object",
@@ -79,6 +110,39 @@
                   "used_rounds": { "type": "integer", "minimum": 0 }
                 },
                 "additionalProperties": true
+              },
+              "recent_views": {
+                "type": "array",
+                "description": "Used by get_discovery_feed. Recent browse-history snapshots, newest first, max 50.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "merchant_id": { "type": "string" },
+                    "product_id": { "type": "string" },
+                    "title": { "type": "string" },
+                    "description": { "type": "string" },
+                    "brand": { "type": "string" },
+                    "category": { "type": "string" },
+                    "product_type": { "type": "string" },
+                    "viewed_at": { "type": "string", "description": "ISO timestamp" },
+                    "history_source": { "type": "string", "description": "Optional: account | session" }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "recent_queries": {
+                "type": "array",
+                "description": "Used by get_discovery_feed as weak context. Max 8.",
+                "items": { "type": "string" }
+              },
+              "auth_state": {
+                "type": "string",
+                "description": "Used by get_discovery_feed",
+                "enum": ["authenticated", "anonymous"]
+              },
+              "locale": {
+                "type": "string",
+                "description": "Used by get_discovery_feed"
               }
             },
             "additionalProperties": true

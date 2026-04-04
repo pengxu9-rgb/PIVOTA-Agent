@@ -9,7 +9,6 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
 
-const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 
 const CHANNEL_CREATOR = 'creator_agents';

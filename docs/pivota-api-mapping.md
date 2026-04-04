@@ -8,6 +8,7 @@ Gateway entry: `POST /agent/shop/v1/invoke`
 
 Real production routing (gateway -> upstream):
 - `operation = "find_products"` → `GET {PIVOTA_API_BASE}/agent/v1/products/search`
+- `operation = "get_discovery_feed"` → gateway-owned discovery contract; internally recalls one or more `GET {PIVOTA_BACKEND_BASE_URL | PIVOTA_API_BASE}/agent/v1/products/search` browse/search pools and applies server-side discovery scoring
 - `operation = "get_product_detail"` → `GET {PIVOTA_API_BASE}/agent/v1/products/{merchant_id}/{product_id}`
 - `operation = "preview_quote"` → `POST {PIVOTA_API_BASE}/agent/v1/quotes/preview`
 - `operation = "create_order"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/create`
@@ -37,6 +38,19 @@ For each operation, align required/optional fields and note any differences.
 - Additional upstream params:
   - `?in_stock_only=true` (default)
   - `?category=` (optional filter)
+
+### 2.1.1 get_discovery_feed
+- Gateway receives: `payload.surface`, `payload.page`, `payload.limit`, `payload.context`
+- Upstream does not currently expose a dedicated discovery endpoint
+- Gateway-owned mapping:
+  - `payload.context.recent_views` and `payload.context.recent_queries` stay inside the gateway and are used to build the discovery profile
+  - Gateway recalls candidates from `GET /agent/v1/products/search`
+    - `browse_products` uses empty-query browse recall first
+    - `home_hot_deals` uses an interest query when available, then browse recall fill
+  - Gateway applies surface-specific ranking, suppression, and metadata before responding
+- Notes:
+  - Public callers should keep using `POST /agent/shop/v1/invoke`
+  - External callers should not bind directly to raw `/agent/v1/products/search` semantics for discovery
 
 ### 2.2 get_product_detail
 - Gateway receives: `payload.product` (JSON body)

@@ -278,6 +278,11 @@ try {
 }
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
+const {
+  DiscoveryCatalogUnavailableError,
+  DiscoveryValidationError,
+  getDiscoveryFeed,
+} = require('./services/discoveryFeed');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -3913,31 +3918,14 @@ async function runCreatorCatalogAutoSync() {
 }
 
 // API Mode: MOCK (default), HYBRID, or REAL
-// MOCK: checkout compatibility mocks only; product search/detail stay on the real main path
-// HYBRID: Real product search, mock payment
+// MOCK/HYBRID: Deprecated for shopping runtime; requests still use live upstream paths.
 // REAL: All real API calls (requires API key)
 // If API_MODE is not explicitly provided but an API key is configured,
 // default to REAL so tests and production behave sensibly.
 const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
 const USE_MOCK = API_MODE === 'MOCK';
 const USE_HYBRID = API_MODE === 'HYBRID';
-const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
-const PRODUCT_CONTRACT_OPERATIONS = new Set([
-  'find_products',
-  'find_products_multi',
-  'find_similar_products',
-  'resolve_product_candidates',
-  'get_product_detail',
-  'get_pdp',
-  'get_pdp_v2',
-]);
-const INTERNAL_MOCK_ALLOWED_OPERATIONS = new Set([
-  'create_order',
-  'preview_quote',
-  'submit_payment',
-  'get_order_status',
-  'request_after_sales',
-]);
+const REAL_API_ENABLED = Boolean(PIVOTA_API_KEY);
 const GATEWAY_GOVERNANCE_SHADOW_MODE = parseQueryBoolean(
   process.env.PIVOTA_GATEWAY_GOVERNANCE_SHADOW_MODE,
 ) !== false;
@@ -14642,7 +14630,7 @@ const healthRouteHandler = (req, res) => {
     features: {
       product_search: true,
       order_creation: true,
-      payment: USE_MOCK || USE_HYBRID ? 'mock' : 'real',
+      payment: 'real',
       tracking: true,
       layer1_compatibility: true,
       find_products_multi_vector_enabled:
@@ -14652,11 +14640,9 @@ const healthRouteHandler = (req, res) => {
       aurora_routes_critical: auroraStartupCritical,
     },
     message: `Running in ${API_MODE} mode. ${
-      USE_MOCK
-        ? 'Product search stays on the real main path; only checkout compatibility mocks remain.'
-        : USE_HYBRID
-          ? 'Real products, mock payment.'
-          : 'Full real API integration.'
+      USE_MOCK || USE_HYBRID
+        ? 'Shopping runtime mocks are deprecated and ignored; live upstream paths are used.'
+        : 'Full real API integration.'
     }`
       });
     })
@@ -19080,30 +19066,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    return res.status(guardrails.blocked.status).json(guardrails.blocked.body);
 	  }
 	  
-	  // HYBRID mode: Use real API for product search, mock for payments
-  if (USE_HYBRID) {
-    const hybridMockOperations = ['submit_payment', 'request_after_sales'];
-    if (hybridMockOperations.includes(operation)) {
-      logger.info({ operation }, 'Hybrid mode: Using mock for this operation');
-      // Fall through to mock handler
-    } else {
-      logger.info({ operation }, 'Hybrid mode: Using real API for this operation');
-      // Fall through to real API handler
-    }
-  }
-  
-  const mockRequested =
-    USE_MOCK || (USE_HYBRID && ['submit_payment', 'request_after_sales'].includes(operation));
-  const productContractOperation = PRODUCT_CONTRACT_OPERATIONS.has(operation);
-  if (mockRequested && productContractOperation) {
-    logger.warn(
+  if (USE_MOCK || USE_HYBRID) {
+    logger.info(
       { operation, api_mode: API_MODE },
-      'Internal product mock path disabled; forcing strict real commerce path',
+      'Shopping runtime mock mode is deprecated; continuing with live upstream handling',
     );
   }
 
-  // Internal mocks are kept only for legacy checkout compatibility surfaces.
-  const shouldUseMock = mockRequested && INTERNAL_MOCK_ALLOWED_OPERATIONS.has(operation);
+  if (operation === 'get_discovery_feed') {
+    try {
+      const discoveryResponse = await getDiscoveryFeed(effectivePayload);
+      const promotions = await getActivePromotions(now, creatorId);
+      const enriched = applyDealsToResponse(discoveryResponse, promotions, now, creatorId);
+      return res.json(enriched);
+    } catch (err) {
+      if (err instanceof DiscoveryValidationError || Number(err?.statusCode) === 400) {
+        return res.status(400).json({
+          error: err.code || 'INVALID_DISCOVERY_REQUEST',
+          message: err.message || 'Invalid discovery feed request',
+        });
+      }
+      if (err instanceof DiscoveryCatalogUnavailableError || Number(err?.statusCode) === 503) {
+        return res.status(503).json({
+          error: err.code || 'DISCOVERY_CATALOG_UNAVAILABLE',
+          message: err.message || 'Discovery catalog is unavailable',
+        });
+      }
+      logger.error(
+        { err: err?.message || String(err), operation },
+        'get_discovery_feed failed',
+      );
+      return res.status(500).json({
+        error: 'DISCOVERY_FEED_FAILED',
+        message: 'Failed to build discovery feed',
+      });
+    }
+  }
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.
@@ -19137,142 +19135,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     return res.json(enriched);
   }
   
-  if (shouldUseMock) {
-    logger.info({ operation, mock: true }, 'Using internal mock data with rich product catalog');
-    
-    try {
-      let mockResponse;
-      
-      switch (operation) {
-	        case 'create_order': {
-	          // Mock order creation
-	          const order = payload.order || {};
-          const offerIdRaw =
-            order.offer_id || order.offerId || payload.offer_id || payload.offerId || null;
-          const offerId = String(offerIdRaw || '').trim() || null;
-          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
-          const items = Array.isArray(order.items) ? order.items : [];
-          const merchantId =
-            merchantFromOffer ||
-            items[0]?.merchant_id ||
-            order.merchant_id ||
-            payload.merchant_id ||
-            null;
-
-          mockResponse = {
-            status: 'success',
-            order_id: `ORD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
-            total: items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0) || 0,
-            currency: 'USD',
-            status: 'pending',
-            ...(offerId ? { resolved_offer_id: offerId } : {}),
-            ...(merchantId ? { resolved_merchant_id: merchantId } : {}),
-          };
-          const orderLines = buildOrderLineSnapshots(order, {
-            orderId: mockResponse.order_id,
-            resolvedOfferId: offerId,
-            resolvedMerchantId: merchantId,
-          });
-          if (orderLines.length) {
-            mockResponse.order_lines = orderLines;
-          }
-          break;
-        }
-
-        case 'preview_quote': {
-          const quote = payload.quote || {};
-          const offerIdRaw =
-            quote.offer_id || quote.offerId || payload.offer_id || payload.offerId || null;
-          const offerId = String(offerIdRaw || '').trim() || null;
-          const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
-          const resolvedMerchantId =
-            merchantFromOffer || quote.merchant_id || payload.merchant_id || null;
-
-          const items = quote.items || [];
-          const subtotal = items.reduce(
-            (sum, item) => sum + (Number(item.unit_price || item.price || 0) * Number(item.quantity || 0)),
-            0
-          );
-          mockResponse = {
-            quote_id: `q_${Date.now().toString(36)}`,
-            expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-            engine: 'mock',
-            currency: 'USD',
-            pricing: {
-              subtotal,
-              discount_total: 0,
-              shipping_fee: 0,
-              tax: 0,
-              total: subtotal,
-            },
-            promotion_lines: [],
-            line_items: items.map((it) => ({
-              variant_id: it.variant_id || it.sku_id || it.sku || it.product_id,
-              quantity: it.quantity,
-              unit_price_original: it.unit_price || it.price || 0,
-              unit_price_effective: it.unit_price || it.price || 0,
-              line_discount_total: 0,
-              compare_at_savings: 0,
-            })),
-            ...(offerId ? { resolved_offer_id: offerId } : {}),
-            ...(resolvedMerchantId ? { resolved_merchant_id: resolvedMerchantId } : {}),
-          };
-          break;
-        }
-        
-        case 'submit_payment': {
-          // Mock payment submission
-          mockResponse = {
-            status: 'success',
-            payment_id: `PAY_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase(),
-            status: 'processing',
-            message: 'Payment is being processed'
-          };
-          break;
-        }
-        
-        case 'get_order_status': {
-          // Mock order status
-          mockResponse = {
-            status: 'success',
-            order: {
-              order_id: payload.order?.order_id,
-              status: 'processing',
-              created_at: new Date().toISOString(),
-              total: 50.00,
-              currency: 'USD'
-            }
-          };
-          break;
-        }
-        
-        default:
-          return res.status(400).json({
-            error: 'UNSUPPORTED_OPERATION',
-            message: `Operation ${operation} not implemented in mock mode`
-          });
-      }
-      
-      let maybePolicy = mockResponse;
-      if (operation === 'find_products_multi') {
-        maybePolicy = applyFindProductsMultiPolicyIfNeeded({
-          response: mockResponse,
-          intent: effectiveIntent,
-          requestPayload: effectivePayload,
-          metadata: policyMetadata,
-          rawUserQuery,
-        });
-      }
-
-      const promotions = await getActivePromotions(now, creatorId);
-      const enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
-      return res.json(enriched);
-    } catch (err) {
-      logger.error({ err: err.message }, 'Mock handler error');
-      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE' });
-    }
-  }
-
 	  if (operation === 'get_pdp_v2') {
 	    const pdpV2StartedAt = Date.now();
 	    const pdpV2PhaseTimings = {};

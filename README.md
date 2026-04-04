@@ -12,7 +12,7 @@ The Pivota Shopping Agent provides a standardized interface for Large Language M
 - 🤖 **LLM-Optimized**: Designed for integration with ChatGPT, Claude, Gemini, and other AI platforms
 - 🔐 **Secure Gateway**: Handles authentication and request routing to Pivota Infrastructure
 - 🌐 **Protocol Support**: Native support for ACP and AP2 protocols
-- 🧪 **Development Mode**: Includes mock API for testing without real transactions
+- 🧪 **Development Mode**: Supports local verification against live contracts and test fixtures
 
 ## Quick Start
 
@@ -44,11 +44,7 @@ cp env.example .env
 ### Running the Gateway
 
 ```bash
-# Start with mock API (development)
-npm run mock:pivota  # Terminal 1
-npm start           # Terminal 2
-
-# Or start with real API (production)
+# Start the gateway
 npm start
 ```
 
@@ -146,7 +142,6 @@ PIVOTA-Agent/
 │   ├── schema.js      # Request validation schemas
 │   └── logger.js      # Structured logging
 ├── scripts/
-│   ├── mock-pivota-api.js     # Mock API for development
 │   ├── demo-openai-pivota.mjs # OpenAI integration demo
 │   └── demo-openai-status.mjs # Order status demo
 ├── docs/

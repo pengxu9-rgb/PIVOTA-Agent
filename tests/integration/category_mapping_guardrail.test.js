@@ -80,11 +80,7 @@ describe('merchant category mapping guardrail', () => {
         const text = String(sql || '');
         if (text.includes('FROM products_cache')) {
           return {
-            rows: [
-              {
-                product_data: product,
-              },
-            ],
+            rows: [{ product_data: product }],
           };
         }
         if (text.includes('FROM merchant_category_mapping')) {
