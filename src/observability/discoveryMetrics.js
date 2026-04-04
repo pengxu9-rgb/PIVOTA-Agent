@@ -4,6 +4,8 @@ const CANDIDATE_BUCKETS = [0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, Infinity];
 const requestsCounter = new Map();
 const latencyHistogramBySurface = new Map();
 const candidateHistogramByStage = new Map();
+const recallRequestsCounter = new Map();
+const recallLatencyHistogramByStep = new Map();
 const lastSnapshotBySurface = new Map();
 
 function cleanLabel(value, fallback = 'unknown') {
@@ -154,6 +156,17 @@ function observeDiscoveryCandidateCount({ surface, stage, count } = {}) {
   );
 }
 
+function recordDiscoveryRecallStep({ surface, step, status, latencyMs, cacheHit } = {}) {
+  const labels = {
+    surface: cleanLabel(surface, 'unknown'),
+    step: cleanLabel(step, 'unknown'),
+    status: cleanLabel(status, 'unknown'),
+    cache_hit: cacheHit ? 'true' : 'false',
+  };
+  incCounter(recallRequestsCounter, labels, 1);
+  observeHistogram(recallLatencyHistogramByStep, labels, latencyMs, LATENCY_BUCKETS_MS);
+}
+
 function setLastDiscoverySnapshot(snapshot = {}) {
   const surface = cleanLabel(snapshot.surface, 'unknown');
   lastSnapshotBySurface.set(surface, {
@@ -192,6 +205,18 @@ function renderDiscoveryMetricsPrometheus() {
     CANDIDATE_BUCKETS,
   );
 
+  lines.push('# HELP discovery_feed_recall_requests_total Total discovery recall steps by surface/step/status/cache.');
+  lines.push('# TYPE discovery_feed_recall_requests_total counter');
+  renderCounter(lines, 'discovery_feed_recall_requests_total', recallRequestsCounter);
+
+  renderHistogram(
+    lines,
+    'discovery_feed_recall_latency_ms',
+    'Discovery feed recall step latency in milliseconds by surface/step/status/cache.',
+    recallLatencyHistogramByStep,
+    LATENCY_BUCKETS_MS,
+  );
+
   return `${lines.join('\n')}\n`;
 }
 
@@ -199,6 +224,8 @@ function resetDiscoveryMetricsForTest() {
   requestsCounter.clear();
   latencyHistogramBySurface.clear();
   candidateHistogramByStage.clear();
+  recallRequestsCounter.clear();
+  recallLatencyHistogramByStep.clear();
   lastSnapshotBySurface.clear();
 }
 
@@ -206,6 +233,7 @@ module.exports = {
   getLastDiscoverySnapshot,
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
+  recordDiscoveryRecallStep,
   recordDiscoveryFeedRequest,
   renderDiscoveryMetricsPrometheus,
   resetDiscoveryMetricsForTest,

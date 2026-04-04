@@ -97,13 +97,9 @@ describe('/agent/shop/v1/invoke get_discovery_feed via products/search', () => {
     );
     expect(res.body.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: 'interest_pool', status: 200 }),
-        expect.objectContaining({ label: 'browse_pool', status: 200 }),
+        expect.objectContaining({ label: 'interest_pool', status: 200, latency_ms: expect.any(Number) }),
       ]),
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
-    expect(
-      capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'query') || !String(params.query || '').trim()),
-    ).toBe(true);
   });
 });

@@ -33,7 +33,7 @@ From repo root:
 npm run deploy:verify:production
 ```
 
-This checks `x-service-commit` from `/v1/session/bootstrap` against local `HEAD` short SHA.
+This checks `/version.commit`, with `/healthz.version.commit` as fallback, against local `HEAD` short SHA.
 
 ## Emergency Exception
 

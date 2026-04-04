@@ -43,6 +43,8 @@ Production source of truth remains GitHub `main` plus Railway auto-deploy.
 npm run deploy:verify:production
 ```
 
+Deploy consistency uses `/version`, with `/healthz.version.commit` as fallback. It does not rely on invoke payload metadata.
+
 4. Run discovery smoke:
 
 ```bash
@@ -57,6 +59,7 @@ The smoke gate validates:
 
 - `get_discovery_feed` is accepted on the public gateway
 - `metadata.candidate_source=products_search`
+- deploy provenance is already verified separately via `/version`
 - cold-start `home_hot_deals` returns `cold_start_curated`
 - history-seeded `home_hot_deals` returns `personalized_interest`
 - history-seeded `browse_products` page 1 suppresses the exact recent-view product

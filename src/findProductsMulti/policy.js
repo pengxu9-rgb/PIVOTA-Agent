@@ -19,6 +19,9 @@ const {
   isBeautyBucketCompatibleForQuery,
 } = require('./beautyQueryProfile');
 const {
+  createStrictFindProductsMultiRuntime,
+} = require('../modules/decisioning/shopping_agent/strictFindProductsMulti');
+const {
   summarizeCandidateSources,
 } = require('../shared/beautyRecoCoarseClassifier');
 const {
@@ -42,6 +45,9 @@ const resolveKnownStableLookupAlias =
   typeof productGroundingResolverInternals.resolveKnownStableProductRef === 'function'
     ? productGroundingResolverInternals.resolveKnownStableProductRef
     : null;
+const strictFindProductsMultiRuntime = createStrictFindProductsMultiRuntime({
+  buildBeautyQueryProfile,
+});
 
 const DEBUG_STATS_ENABLED = process.env.FIND_PRODUCTS_MULTI_DEBUG_STATS === '1';
 const POLICY_VERSION = 'find_products_multi_policy_v40';
@@ -4015,13 +4021,56 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ...topLevelSearchCompat,
     ...(search && typeof search === 'object' ? search : {}),
   };
+  const requestedCatalogSurface = String(
+    normalizedSearchInput?.catalog_surface ||
+      normalizedSearchInput?.catalogSurface ||
+      metadata?.catalog_surface ||
+      metadata?.catalogSurface ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const explicitStrictCatalogSurface = ['agent_api', 'acp', 'ucp'].includes(requestedCatalogSurface);
+  const normalizedSource = String(metadata?.source || normalizedSearchInput?.source || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-');
+  const strictQueryOwnerSourceEligible = ['shopping-agent', 'aurora-bff'].includes(normalizedSource);
+  const strictQueryOwnerDecision = latestUserQuery
+    ? strictFindProductsMultiRuntime.getStrictFindProductsMultiConstraintDecision({
+        search: {
+          ...normalizedSearchInput,
+          query: latestUserQuery,
+        },
+        metadata,
+      })
+    : {
+        enabled: false,
+        catalogSurface: null,
+        strictConstraintQuery: false,
+        strictConstraintReason: null,
+      };
+  const preserveStrictQueryOwner =
+    Boolean(strictQueryOwnerDecision.enabled) &&
+    (explicitStrictCatalogSurface || strictQueryOwnerSourceEligible);
   let semanticContract = normalizeSearchSemanticContract(
     search?.semantic_contract ||
       search?.semanticContract ||
       metadata?.semantic_contract ||
       metadata?.semanticContract,
   );
-  if (!semanticContract && latestUserQuery) {
+  const allowDerivedBeautySemanticContract =
+    !semanticContract &&
+    Boolean(latestUserQuery) &&
+    (
+      !normalizedSource ||
+      normalizedSource === 'aurora-bff' ||
+      requestedCatalogSurface === 'beauty' ||
+      explicitStrictCatalogSurface ||
+      Boolean(strictQueryOwnerDecision.enabled)
+    );
+  if (allowDerivedBeautySemanticContract) {
     const derivedBeautySemanticContract = buildBeautyDiscoverySemanticContract({
       rawQuery: latestUserQuery,
       search: normalizedSearchInput,
@@ -4032,7 +4081,11 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     }
   }
   const semanticContractIsBeautyDiscovery = isBeautyDiscoverySemanticContract(semanticContract);
+  const strictOwnerCatalogSurface = preserveStrictQueryOwner
+    ? String(strictQueryOwnerDecision.catalogSurface || 'agent_api').trim().toLowerCase() || 'agent_api'
+    : '';
   const effectiveCatalogSurface =
+    strictOwnerCatalogSurface ||
     String(
       search?.catalog_surface ||
         search?.catalogSurface ||
@@ -4040,6 +4093,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         '',
     ).trim().toLowerCase() || (semanticContractIsBeautyDiscovery ? 'beauty' : '');
   const effectiveCommerceSurface =
+    strictOwnerCatalogSurface ||
     String(search?.commerce_surface || search?.commerceSurface || '').trim().toLowerCase() ||
     effectiveCatalogSurface;
   const effectiveTargetStepFamily =
@@ -4056,7 +4110,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const intentExecutionPlan = resolveIntentLlmExecutionPlan
     ? resolveIntentLlmExecutionPlan({ semanticContract })
     : null;
-  const strictSemanticRewritePath = shouldUseSemanticContractQueryOwner(semanticContract);
+  const strictSemanticRewritePath =
+    !preserveStrictQueryOwner && shouldUseSemanticContractQueryOwner(semanticContract);
   const buildSemanticRewritePlanMeta = (fallbackReason = null) => ({
     enable_owner:
       String(intentExecutionPlan?.enableOwner || '').trim() || null,
@@ -4256,6 +4311,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   });
   semanticRewriteResult.latency_ms = strictSemanticRewritePath ? 0 : intentParseLatencyMs;
   const semanticOwnerLocked = shouldUseSemanticContractQueryOwner(semanticContract);
+  const semanticOwnerLockedEffective = preserveStrictQueryOwner ? false : semanticOwnerLocked;
+  const adjustedSemanticContract = preserveStrictQueryOwner ? null : semanticContract;
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
@@ -4539,7 +4596,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     return candidate.length > maxCombinedLength ? candidate.slice(0, maxCombinedLength).trim() : candidate;
   })();
 
-  const effectiveExpandedQuery = semanticOwnerLocked
+  const effectiveExpandedQuery = preserveStrictQueryOwner
+    ? latestUserQuery
+    : semanticOwnerLocked
     ? buildSemanticOwnerSearchQuery({
         semanticRewriteResult,
         fallbackQuery: expandedWithAssociation || latestUserQuery,
@@ -4560,7 +4619,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
       ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
-      ...(semanticContract ? { semantic_contract: semanticContract } : {}),
+      ...(adjustedSemanticContract ? { semantic_contract: adjustedSemanticContract } : {}),
     },
   };
 
@@ -4572,10 +4631,11 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     expanded_query: effectiveExpandedQuery,
     applied: Boolean(effectiveExpandedQuery && String(effectiveExpandedQuery) !== String(latestUserQuery)),
     query_class: queryClass,
-    semantic_contract: semanticContract,
+    semantic_contract: adjustedSemanticContract,
     semantic_rewrite_result: semanticRewriteResult,
-    semantic_owner: semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
-    semantic_owner_locked: semanticOwnerLocked,
+    semantic_owner:
+      !preserveStrictQueryOwner && semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
+    semantic_owner_locked: semanticOwnerLockedEffective,
     semantic_rewrite_timeout_ms: effectiveSemanticRewriteTimeoutMs,
     intent_parse_latency_ms: intentParseLatencyMs,
     rewrite_gate: rewriteGate,

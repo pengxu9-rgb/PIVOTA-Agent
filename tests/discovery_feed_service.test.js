@@ -48,8 +48,11 @@ describe('discovery feed service', () => {
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
+      DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
+      DISCOVERY_POOL_CACHE_TTL_MS: process.env.DISCOVERY_POOL_CACHE_TTL_MS,
     };
     resetDiscoveryMetricsForTest();
+    _internals.resetBrowsePoolCache();
     nock.cleanAll();
   });
 
@@ -325,6 +328,7 @@ describe('discovery feed service', () => {
     expect(metrics).toContain(
       'discovery_feed_candidates_count{stage="returned",surface="home_hot_deals"} 1',
     );
+    expect(metrics).toContain('discovery_feed_recall_requests_total 0');
   });
 
   test('loads discovery candidates from products/search and emits recall summary in debug mode', async () => {
@@ -401,14 +405,21 @@ describe('discovery feed service', () => {
     );
     expect(response.metadata.rank_debug.recall_summary).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: 'interest_pool', status: 200 }),
-        expect.objectContaining({ label: 'browse_pool', status: 200 }),
+        expect.objectContaining({ label: 'interest_pool', status: 200, latency_ms: expect.any(Number) }),
+        expect.objectContaining({ label: 'browse_pool', status: 200, latency_ms: expect.any(Number) }),
       ]),
     );
     expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
     expect(
       capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'query') || !String(params.query || '').trim()),
     ).toBe(true);
+    const metrics = renderDiscoveryMetricsPrometheus();
+    expect(metrics).toContain(
+      'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="interest_pool",surface="home_hot_deals"} 1',
+    );
+    expect(metrics).toContain(
+      'discovery_feed_recall_requests_total{cache_hit="false",status="success",step="browse_pool",surface="home_hot_deals"} 1',
+    );
   });
 
   test('browse_products suppresses exact recent views on page 1 and can allow them on later pages', async () => {
@@ -463,6 +474,143 @@ describe('discovery feed service', () => {
 
     expect(pageOne.products.map((product) => product.product_id)).not.toContain('recent_exact');
     expect(pageTwo.products.map((product) => product.product_id)).toContain('recent_exact');
+  });
+
+  test('browse_products reuses a short ttl pool cache to keep pagination stable', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    let callCount = 0;
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(() => {
+        callCount += 1;
+        return [
+          200,
+          {
+            products: Array.from({ length: 6 }, (_, idx) =>
+              makeProduct({
+                merchant_id: `m${idx + 1}`,
+                product_id: `browse_${idx + 1}`,
+                title: `Browse ${idx + 1}`,
+                category: 'Skincare',
+                product_type: 'Serum',
+              }),
+            ),
+          },
+        ];
+      });
+
+    const basePayload = {
+      surface: 'browse_products',
+      limit: 2,
+      debug: true,
+      context: {
+        auth_state: 'authenticated',
+        locale: 'en-US',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'seed_alpha',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+          },
+        ],
+        recent_queries: ['repair serum'],
+      },
+    };
+
+    const pageOne = await getDiscoveryFeed(basePayload);
+    const pageTwo = await getDiscoveryFeed({
+      ...basePayload,
+      page: 2,
+    });
+
+    expect(callCount).toBe(1);
+    expect(pageOne.products).toHaveLength(2);
+    expect(pageTwo.products).toHaveLength(2);
+    expect(pageTwo.metadata?.rank_debug?.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'browse_pool_cache', cache_hit: true }),
+      ]),
+    );
+  });
+
+  test('dominant beauty discovery filters pet and sleepwear candidates from top results', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'beauty_seed',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['vitamin c serum'],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'beauty_1',
+            title: 'Vitamin C Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'beauty_2',
+            title: 'Barrier Repair Cream',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'pet_1',
+            title: 'Reflective Dog Leash',
+            brand: 'Paws',
+            category: 'Pet',
+            product_type: 'Leash',
+          }),
+          makeProduct({
+            merchant_id: 'm4',
+            product_id: 'sleepwear_1',
+            title: 'Satin Sleepwear Set',
+            brand: 'Cloud',
+            category: 'Sleepwear',
+            product_type: 'Pajama',
+          }),
+        ],
+      },
+    );
+
+    const ids = response.products.map((product) => product.product_id);
+    expect(ids).toEqual(expect.arrayContaining(['beauty_1', 'beauty_2']));
+    expect(ids).not.toContain('pet_1');
+    expect(ids).not.toContain('sleepwear_1');
+    expect(response.metadata.rank_debug?.profile_summary).toEqual(
+      expect.objectContaining({
+        dominant_domain: 'beauty',
+      }),
+    );
   });
 
   test('cold start returns curated metadata with no personalization source', async () => {

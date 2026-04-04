@@ -793,7 +793,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       }),
     );
     expect(Number(res.body.metadata?.budget_fx_rate || 0)).toBeGreaterThan(0);
-    expect(['static_default', 'strict_request_context']).toContain(
+    expect(['fx_table', 'static_default', 'strict_request_context']).toContain(
       String(res.body.metadata?.budget_fx_source || ''),
     );
   });

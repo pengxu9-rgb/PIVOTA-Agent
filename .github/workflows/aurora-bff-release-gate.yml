@@ -116,7 +116,10 @@ jobs:
 
           deployed=""
           for i in {1..80}; do
-            deployed="$(curl -sSI "$BASE_URL/v1/session/bootstrap" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-service-commit" {print $2}' | head -n 1 || true)"
+            deployed="$(curl -fsS --max-time 20 "$COMMERCE_CORE_PROD_SMOKE_BASE_URL/version" 2>/dev/null | python3 -c 'import json,sys; text=sys.stdin.read().strip(); print((json.loads(text).get(\"commit\") or \"\").strip()) if text else None' 2>/dev/null || true)"
+            if [[ -z "${deployed:-}" ]]; then
+              deployed="$(curl -fsS --max-time 20 "$COMMERCE_CORE_PROD_SMOKE_BASE_URL/healthz" 2>/dev/null | python3 -c 'import json,sys; text=sys.stdin.read().strip(); print((json.loads(text).get(\"version\",{}).get(\"commit\") or \"\").strip()) if text else None' 2>/dev/null || true)"
+            fi
             echo "$i deployed_commit=${deployed:-missing}"
             if [[ -n "${deployed:-}" && "$deployed" == "$target" ]]; then
               echo "Deployment matches."

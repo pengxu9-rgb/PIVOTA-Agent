@@ -3,6 +3,7 @@ const logger = require('../logger');
 const {
   observeDiscoveryCandidateCount,
   observeDiscoveryFeedLatency,
+  recordDiscoveryRecallStep,
   recordDiscoveryFeedRequest,
   setLastDiscoverySnapshot,
 } = require('../observability/discoveryMetrics');
@@ -17,17 +18,72 @@ const {
   },
 } = require('./RecommendationEngine');
 
-const SCORING_VERSION = 'discovery_v1';
+const SCORING_VERSION = 'discovery_v2';
 const MAX_RECENT_VIEWS = 50;
 const MAX_RECENT_QUERIES = 8;
 const MAX_ANCHORS = 5;
-const MAX_CANDIDATE_FETCH = 800;
+const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
-const PRODUCTS_SEARCH_PAGE_SIZE = 100;
-const MAX_PRODUCTS_SEARCH_CALLS = 4;
+const PRODUCTS_SEARCH_PAGE_SIZE = 60;
+const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
+const HOME_INTEREST_RECALL_LIMIT = 60;
+const HOME_BROWSE_FILL_LIMIT = 60;
+const DOMAIN_KEYWORDS = {
+  beauty: [
+    'beauty',
+    'skincare',
+    'makeup',
+    'serum',
+    'toner',
+    'cream',
+    'cleanser',
+    'moisturizer',
+    'moisturiser',
+    'lotion',
+    'essence',
+    'ampoule',
+    'sunscreen',
+    'spf',
+    'retinol',
+    'hyaluronic',
+    'salicylic',
+    'peptide',
+    'vitamin c',
+    'lip oil',
+    'lip balm',
+    'lipstick',
+    'gloss',
+  ],
+  pet: ['pet', 'dog', 'cat', 'leash', 'harness', 'collar', 'pet toy', 'litter'],
+  sleepwear: ['sleepwear', 'nightwear', 'nightgown', 'pajama', 'pyjama', 'robe', 'loungewear'],
+  apparel: [
+    'apparel',
+    'clothing',
+    'dress',
+    'shirt',
+    'blouse',
+    'pants',
+    'jeans',
+    'sweater',
+    'hoodie',
+    'jacket',
+    'coat',
+    'vest',
+    'skirt',
+    'legging',
+    'bra',
+    'underwear',
+    'shoe',
+    'sneaker',
+    'bag',
+    'tote',
+  ],
+};
+const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 'other', 'product', 'products', 'unknown']);
+const browsePoolCache = new Map();
 
 class DiscoveryValidationError extends Error {
   constructor(message) {
@@ -95,10 +151,22 @@ function getDiscoveryProductsSearchTimeoutMs() {
   return clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS, 6500, 1000, 20000);
 }
 
+function getDiscoveryRecallBudgetMs() {
+  return clampInt(process.env.DISCOVERY_RECALL_BUDGET_MS, 1800, 500, 10000);
+}
+
+function getDiscoveryPoolCacheTtlMs() {
+  return clampInt(process.env.DISCOVERY_POOL_CACHE_TTL_MS, 45000, 1000, 300000);
+}
+
 function buildProductKey(merchantId, productId) {
   const mid = String(merchantId || '').trim();
   const pid = String(productId || '').trim();
   return mid && pid ? `${mid}::${pid}` : '';
+}
+
+function normalizeCacheText(value) {
+  return normalizeText(value || '').slice(0, 120);
 }
 
 function getTopMapKeys(map, limit = 5) {
@@ -106,6 +174,135 @@ function getTopMapKeys(map, limit = 5) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([key]) => key);
+}
+
+function isWeakCategoryLabel(value) {
+  return WEAK_CATEGORY_LABELS.has(normalizeText(value || ''));
+}
+
+function scoreDomainHints(text, weight = 1) {
+  const normalized = normalizeText(text || '');
+  if (!normalized) return new Map();
+  const scores = new Map();
+  Object.entries(DOMAIN_KEYWORDS).forEach(([domain, keywords]) => {
+    let score = 0;
+    for (const keyword of keywords) {
+      if (normalized.includes(normalizeText(keyword))) score += 1;
+    }
+    if (score > 0) {
+      scores.set(domain, roundMetric(score * weight));
+    }
+  });
+  return scores;
+}
+
+function mergeDomainScores(target, source) {
+  if (!(target instanceof Map) || !(source instanceof Map)) return target;
+  for (const [domain, score] of source.entries()) {
+    target.set(domain, roundMetric((target.get(domain) || 0) + Number(score || 0)));
+  }
+  return target;
+}
+
+function inferDominantDomain(domainScores) {
+  const entries = Array.from(domainScores instanceof Map ? domainScores.entries() : []).sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
+  if (entries.length === 0) return { domain: null, score: 0 };
+  const [topDomain, topScore] = entries[0];
+  const runnerUp = Number(entries[1]?.[1] || 0);
+  if (!(topScore >= 2)) return { domain: null, score: topScore };
+  if (topScore < runnerUp * 1.2 && topScore - runnerUp < 1) {
+    return { domain: null, score: topScore };
+  }
+  return { domain: topDomain, score: topScore };
+}
+
+function inferBeautyCategory(text) {
+  const normalized = normalizeText(text || '');
+  if (!normalized) return null;
+  if (normalized.includes('serum') || normalized.includes('ampoule') || normalized.includes('essence')) {
+    return 'serum';
+  }
+  if (normalized.includes('toner')) return 'toner';
+  if (normalized.includes('cleanser')) return 'cleanser';
+  if (normalized.includes('sunscreen') || normalized.includes('spf')) return 'sunscreen';
+  if (normalized.includes('lip')) return 'lip';
+  if (
+    normalized.includes('cream') ||
+    normalized.includes('moisturizer') ||
+    normalized.includes('moisturiser') ||
+    normalized.includes('lotion')
+  ) {
+    return 'moisturizer';
+  }
+  return 'beauty';
+}
+
+function inferPetCategory(text) {
+  const normalized = normalizeText(text || '');
+  if (!normalized) return null;
+  if (normalized.includes('leash')) return 'leash';
+  if (normalized.includes('harness')) return 'harness';
+  if (normalized.includes('collar')) return 'collar';
+  return 'pet';
+}
+
+function inferApparelCategory(text) {
+  const normalized = normalizeText(text || '');
+  if (!normalized) return null;
+  if (DOMAIN_KEYWORDS.sleepwear.some((keyword) => normalized.includes(normalizeText(keyword)))) {
+    return 'sleepwear';
+  }
+  if (normalized.includes('sweater')) return 'sweater';
+  if (normalized.includes('dress')) return 'dress';
+  if (normalized.includes('jacket') || normalized.includes('coat') || normalized.includes('vest')) {
+    return 'outerwear';
+  }
+  return 'apparel';
+}
+
+function inferCandidateTaxonomy({ merchantId, title, description, rawCategory, rawProductType }) {
+  const signalText = [rawProductType, rawCategory, title, description].filter(Boolean).join(' ');
+  const domainScores = scoreDomainHints(signalText, 1);
+  const { domain } = inferDominantDomain(domainScores);
+  const normalizedCategory = normalizeText(rawProductType || rawCategory || '');
+  const normalizedParent = normalizeText(rawCategory || '');
+  const needsInference =
+    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isWeakCategoryLabel(normalizedCategory) ||
+    isWeakCategoryLabel(normalizedParent);
+
+  let category = !isWeakCategoryLabel(normalizedCategory) ? normalizedCategory : '';
+  let parentCategory = !isWeakCategoryLabel(normalizedParent) ? normalizedParent : '';
+
+  if (needsInference) {
+    if (domain === 'beauty') {
+      category = inferBeautyCategory(signalText) || category;
+      parentCategory = 'skincare';
+    } else if (domain === 'pet') {
+      category = inferPetCategory(signalText) || category;
+      parentCategory = 'pet';
+    } else if (domain === 'sleepwear') {
+      category = 'sleepwear';
+      parentCategory = 'apparel';
+    } else if (domain === 'apparel') {
+      category = inferApparelCategory(signalText) || category;
+      parentCategory = 'apparel';
+    }
+  }
+
+  if (!parentCategory && category) {
+    if (domain === 'beauty') parentCategory = 'skincare';
+    if (domain === 'pet') parentCategory = 'pet';
+    if (domain === 'sleepwear' || domain === 'apparel') parentCategory = 'apparel';
+  }
+
+  return {
+    category: category || '',
+    parentCategory: parentCategory || '',
+    domain: domain || 'unknown',
+  };
 }
 
 function normalizeRecentView(raw, idx) {
@@ -267,9 +464,11 @@ function buildDiscoveryProfile(context = {}) {
   const brandAffinity = new Map();
   const categoryAffinity = new Map();
   const queryTokens = new Set();
+  const domainScores = new Map();
 
   recentQueries.forEach((queryText) => {
     tokenize(queryText).forEach((token) => queryTokens.add(token));
+    mergeDomainScores(domainScores, scoreDomainHints(queryText, 1.5));
   });
 
   recentViews.forEach((view, idx) => {
@@ -284,6 +483,13 @@ function buildDiscoveryProfile(context = {}) {
       if (!key) return;
       categoryAffinity.set(key, (categoryAffinity.get(key) || 0) + weight);
     });
+    mergeDomainScores(
+      domainScores,
+      scoreDomainHints(
+        [view.title, view.description, view.brand, view.category, view.product_type].filter(Boolean).join(' '),
+        weight,
+      ),
+    );
   });
 
   const anchors = [];
@@ -305,10 +511,14 @@ function buildDiscoveryProfile(context = {}) {
   const personalizationSource = inferPersonalizationSource(recentViews, context.auth_state);
   const hasInterestSignals =
     historyItemsUsed > 0 && (brandAffinity.size > 0 || categoryAffinity.size > 0 || anchors.length > 0);
+  const dominantDomain = inferDominantDomain(domainScores);
 
   return {
     brandAffinity,
     categoryAffinity,
+    domainScores,
+    dominantDomain: dominantDomain.domain,
+    dominantDomainScore: dominantDomain.score,
     anchors,
     historyItemsUsed,
     personalizationSource,
@@ -341,12 +551,19 @@ function normalizeCandidateProduct(product, browseRank = 0) {
   if (!merchantId || !productId) return null;
   if (!isCandidateSellable(product)) return null;
   const brand = getBrandName(product);
-  const category =
-    getLeafCategory(product) ||
-    normalizeText(product.category || product.product_type || product.productType || '');
-  const parentCategory = getParentCategory(product) || normalizeText(product.category || '');
   const title = String(product.title || product.name || '').trim();
   const description = String(product.description || '').trim();
+  const rawCategory = String(product.category || '').trim();
+  const rawProductType = String(product.product_type || product.productType || '').trim();
+  const inferredTaxonomy = inferCandidateTaxonomy({
+    merchantId,
+    title,
+    description,
+    rawCategory: getParentCategory(product) || rawCategory,
+    rawProductType: getLeafCategory(product) || rawProductType,
+  });
+  const category = inferredTaxonomy.category || normalizeText(rawProductType || rawCategory || '');
+  const parentCategory = inferredTaxonomy.parentCategory || normalizeText(rawCategory || '');
   const tokens = tokenize([title, description, brand, category, parentCategory].filter(Boolean).join(' '));
   return {
     raw: {
@@ -364,6 +581,7 @@ function normalizeCandidateProduct(product, browseRank = 0) {
     brand,
     category,
     parentCategory,
+    domain: inferredTaxonomy.domain || 'unknown',
     tokens,
     browseRank,
   };
@@ -396,61 +614,170 @@ function buildDiscoveryInterestQuery(request, profile) {
   return terms.slice(0, 4).join(' ').trim();
 }
 
-function buildDiscoveryRecallPlan(request, profile, limit) {
-  const safeLimit = Math.max(40, Math.min(limit, MAX_CANDIDATE_FETCH));
-  const pageSize = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
-  const maxCalls = clampInt(
-    process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
-    MAX_PRODUCTS_SEARCH_CALLS,
-    1,
-    8,
-  );
-
-  const buildBrowseSteps = (maxItems, startOffset = 0, label = 'browse_pool') => {
-    const steps = [];
-    for (
-      let offset = startOffset, seenItems = 0;
-      seenItems < maxItems && steps.length < maxCalls;
-      offset += pageSize, seenItems += pageSize
-    ) {
-      steps.push({
-        label,
-        query: '',
-        offset,
-        limit: Math.min(pageSize, maxItems - seenItems),
-      });
-    }
-    return steps;
-  };
-
+function resolveDiscoveryCandidateLimit(request) {
   if (request?.surface === 'browse_products') {
-    return buildBrowseSteps(safeLimit);
+    const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
+    return clampInt(pageNeed, 72, 24, MAX_CANDIDATE_FETCH);
+  }
+  const homeNeed = Math.max(request?.limit * 4, 60);
+  return clampInt(homeNeed, 60, 24, MAX_CANDIDATE_FETCH);
+}
+
+function buildDiscoveryContextCacheKey(request) {
+  return JSON.stringify({
+    surface: request?.surface || 'unknown',
+    locale: String(request?.context?.locale || '').trim(),
+    auth_state: String(request?.context?.auth_state || '').trim(),
+    recent_queries: uniqStrings(request?.context?.recent_queries, 6).map(normalizeCacheText),
+    recent_views: (Array.isArray(request?.context?.recent_views) ? request.context.recent_views : [])
+      .slice(0, 12)
+      .map((view) => ({
+        merchant_id: String(view?.merchant_id || '').trim(),
+        product_id: String(view?.product_id || '').trim(),
+        brand: normalizeCacheText(view?.brand),
+        category: normalizeCacheText(view?.product_type || view?.category),
+      })),
+  });
+}
+
+function getBrowsePoolCache(request, requiredLimit) {
+  const key = buildDiscoveryContextCacheKey(request);
+  const entry = browsePoolCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.storedAt > getDiscoveryPoolCacheTtlMs()) {
+    browsePoolCache.delete(key);
+    return null;
+  }
+  const minimumPagePool = Math.max((request?.page || 1) * (request?.limit || 0), request?.limit || 0);
+  const minimumRequired = Math.min(requiredLimit, Math.max(minimumPagePool, request?.limit || 0));
+  if (!Array.isArray(entry.products) || entry.products.length < minimumRequired) {
+    return null;
+  }
+  return {
+    key,
+    products: entry.products.slice(0, requiredLimit),
+    recallSummary: Array.isArray(entry.recallSummary) ? entry.recallSummary : [],
+    storedAt: entry.storedAt,
+  };
+}
+
+function setBrowsePoolCache(request, products, recallSummary) {
+  const key = buildDiscoveryContextCacheKey(request);
+  browsePoolCache.set(key, {
+    storedAt: Date.now(),
+    products: Array.isArray(products) ? [...products] : [],
+    recallSummary: Array.isArray(recallSummary) ? [...recallSummary] : [],
+  });
+  if (browsePoolCache.size > 50) {
+    const oldestKey = Array.from(browsePoolCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
+    if (oldestKey) browsePoolCache.delete(oldestKey);
+  }
+}
+
+function buildDiscoveryRecallPlan(request, profile, limit) {
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
+  if (request?.surface === 'browse_products') {
+    const firstLimit = Math.min(PRODUCTS_SEARCH_PAGE_SIZE, safeLimit);
+    const remaining = Math.max(0, safeLimit - firstLimit);
+    return [
+      {
+        label: 'browse_pool',
+        query: '',
+        offset: 0,
+        limit: firstLimit,
+      },
+      ...(remaining > 0
+        ? [
+            {
+              label: 'browse_pool',
+              query: '',
+              offset: firstLimit,
+              limit: Math.min(PRODUCTS_SEARCH_PAGE_SIZE, remaining),
+            },
+          ]
+        : []),
+    ];
   }
 
   const interestQuery = buildDiscoveryInterestQuery(request, profile);
-  const plan = [];
-  if (interestQuery) {
-    plan.push({
+  if (!interestQuery) {
+    return [
+      {
+        label: 'cold_start_curated',
+        query: '',
+        offset: 0,
+        limit: Math.min(HOME_BROWSE_FILL_LIMIT, safeLimit),
+      },
+    ];
+  }
+
+  const interestLimit = Math.min(HOME_INTEREST_RECALL_LIMIT, safeLimit);
+  const remaining = Math.max(0, safeLimit - interestLimit);
+  return [
+    {
       label: 'interest_pool',
       query: interestQuery,
       offset: 0,
-      limit: pageSize,
-    });
-  }
+      limit: interestLimit,
+    },
+    ...(remaining > 0
+      ? [
+          {
+            label: 'browse_pool',
+            query: '',
+            offset: 0,
+            limit: Math.min(HOME_BROWSE_FILL_LIMIT, remaining),
+          },
+        ]
+      : []),
+  ].slice(0, clampInt(process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS, MAX_PRODUCTS_SEARCH_CALLS, 1, 4));
+}
 
-  const remainingItems = Math.max(pageSize, safeLimit - plan.reduce((sum, step) => sum + step.limit, 0));
-  const remainingCalls = Math.max(0, maxCalls - plan.length);
-  const browseSteps = buildBrowseSteps(remainingItems, 0).slice(0, remainingCalls);
-  return [...plan, ...browseSteps];
+function getRecallEnoughThreshold(request, safeLimit) {
+  if (request?.surface === 'browse_products') {
+    return Math.min(safeLimit, request.page * request.limit + Math.max(request.limit, 12));
+  }
+  return Math.min(safeLimit, Math.max(request.limit * 2, 24));
 }
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
-  const safeLimit = Math.max(40, Math.min(limit, MAX_CANDIDATE_FETCH));
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   const baseUrl = getDiscoveryProductsSearchBaseUrl();
   if (!baseUrl) {
     throw new DiscoveryCatalogUnavailableError(
       'PIVOTA_BACKEND_BASE_URL or PIVOTA_API_BASE is not configured for discovery feed',
     );
+  }
+
+  if (request?.surface === 'browse_products') {
+    const cacheEntry = getBrowsePoolCache(request, safeLimit);
+    if (cacheEntry) {
+      const cacheAgeMs = Date.now() - cacheEntry.storedAt;
+      recordDiscoveryRecallStep({
+        surface: request.surface,
+        step: 'browse_pool_cache',
+        status: 'cache_hit',
+        latencyMs: 0,
+        cacheHit: true,
+      });
+      return {
+        products: cacheEntry.products,
+        recallSummary: [
+          {
+            label: 'browse_pool_cache',
+            query: null,
+            offset: 0,
+            limit: safeLimit,
+            status: 200,
+            returned: cacheEntry.products.length,
+            latency_ms: 0,
+            cache_hit: true,
+            cache_age_ms: cacheAgeMs,
+          },
+          ...cacheEntry.recallSummary.map((step) => ({ ...step, cache_hit: true })),
+        ],
+      };
+    }
   }
 
   const requestHeaders = {};
@@ -465,8 +792,17 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
   const seenKeys = new Set();
   const recallSummary = [];
   let successCount = 0;
+  const recallStartedAt = Date.now();
+  const recallBudgetMs = getDiscoveryRecallBudgetMs();
+  const enoughThreshold = getRecallEnoughThreshold(request, safeLimit);
+  let truncatedByBudget = false;
 
   for (const step of recallPlan) {
+    if (Date.now() - recallStartedAt >= recallBudgetMs) {
+      truncatedByBudget = true;
+      break;
+    }
+    const stepStartedAt = Date.now();
     try {
       const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
         params: {
@@ -485,6 +821,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         : Array.isArray(resp.data?.results)
           ? resp.data.results
           : [];
+      const stepLatencyMs = Date.now() - stepStartedAt;
 
       recallSummary.push({
         label: step.label,
@@ -493,6 +830,15 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         limit: step.limit,
         status: Number(resp.status || 0) || null,
         returned: products.length,
+        latency_ms: stepLatencyMs,
+        cache_hit: false,
+      });
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: step.label,
+        status: resp.status >= 200 && resp.status < 300 ? 'success' : `http_${resp.status}`,
+        latencyMs: stepLatencyMs,
+        cacheHit: false,
       });
 
       if (!(resp.status >= 200 && resp.status < 300)) continue;
@@ -507,8 +853,13 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         mergedProducts.push(product);
         if (mergedProducts.length >= safeLimit) break;
       }
-      if (mergedProducts.length >= safeLimit) break;
+      if (mergedProducts.length >= safeLimit || mergedProducts.length >= enoughThreshold) break;
+      if (Date.now() - recallStartedAt >= recallBudgetMs) {
+        truncatedByBudget = true;
+        break;
+      }
     } catch (err) {
+      const stepLatencyMs = Date.now() - stepStartedAt;
       recallSummary.push({
         label: step.label,
         query: step.query || null,
@@ -516,7 +867,16 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
         limit: step.limit,
         status: null,
         returned: 0,
+        latency_ms: stepLatencyMs,
+        cache_hit: false,
         error: err?.message || String(err),
+      });
+      recordDiscoveryRecallStep({
+        surface: request?.surface,
+        step: step.label,
+        status: 'error',
+        latencyMs: stepLatencyMs,
+        cacheHit: false,
       });
     }
   }
@@ -533,6 +893,17 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     throw new DiscoveryCatalogUnavailableError('Failed to load discovery candidates from products/search');
   }
 
+  if (truncatedByBudget && recallSummary.length > 0) {
+    recallSummary[recallSummary.length - 1] = {
+      ...recallSummary[recallSummary.length - 1],
+      truncated_by_budget: true,
+    };
+  }
+
+  if (request?.surface === 'browse_products' && mergedProducts.length > 0) {
+    setBrowsePoolCache(request, mergedProducts, recallSummary);
+  }
+
   return {
     products: mergedProducts,
     recallSummary,
@@ -544,7 +915,7 @@ async function loadCatalogCandidates({
   profile = null,
   limit = MAX_CANDIDATE_FETCH,
 } = {}) {
-  const safeLimit = Math.max(40, Math.min(limit, MAX_CANDIDATE_FETCH));
+  const safeLimit = clampInt(limit, resolveDiscoveryCandidateLimit(request), 24, MAX_CANDIDATE_FETCH);
   return loadProductsSearchCandidates({
     request,
     profile,
@@ -590,10 +961,18 @@ function scoreCandidate(candidate, profile, surface) {
     anchorScore * 0.18 +
     recentQueryScore * 0.05;
   const browseBase = Math.max(0, 1 - candidate.browseRank / MAX_CANDIDATE_FETCH);
+  const domainScore =
+    profile?.dominantDomain && candidate.domain
+      ? profile.dominantDomain === candidate.domain
+        ? 1
+        : candidate.domain === 'unknown'
+          ? 0.2
+          : 0
+      : 0;
   const finalScore =
     surface === 'home_hot_deals'
-      ? interestScore + browseBase * 0.12
-      : browseBase * 0.82 + interestScore * 0.45;
+      ? interestScore * 0.88 + browseBase * 0.08 + domainScore * 0.16
+      : browseBase * 0.74 + interestScore * 0.38 + domainScore * 0.12;
   return {
     brandScore,
     categoryScore,
@@ -601,8 +980,32 @@ function scoreCandidate(candidate, profile, surface) {
     recentQueryScore,
     interestScore,
     browseBase,
+    domainScore,
     finalScore,
   };
+}
+
+function getDiscoveryRejectReason(entry, profile) {
+  if (!entry || !profile?.dominantDomain) return null;
+  if (profile.dominantDomain !== 'beauty') return null;
+  if (entry.candidate.domain === 'beauty') return null;
+
+  const strongBeautySignal =
+    entry.scores.categoryScore >= 0.35 ||
+    entry.scores.anchorScore >= 0.22 ||
+    entry.scores.recentQueryScore >= 0.34 ||
+    entry.scores.interestScore >= 0.28;
+
+  if (entry.candidate.domain === 'pet' || entry.candidate.domain === 'sleepwear') {
+    return 'filtered_dominant_domain';
+  }
+  if (entry.candidate.domain === 'apparel') {
+    return strongBeautySignal ? null : 'filtered_dominant_domain';
+  }
+  if (entry.candidate.domain === 'unknown') {
+    return strongBeautySignal ? null : 'filtered_relevance_floor';
+  }
+  return strongBeautySignal ? null : 'filtered_relevance_floor';
 }
 
 function compareHomeEntries(a, b) {
@@ -621,6 +1024,7 @@ function compareBrowseEntries(a, b) {
 
 function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
+  const profile = options.profile || null;
   const ranked = [...scoredCandidates].sort(compareHomeEntries);
 
   const selected = [];
@@ -628,6 +1032,11 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
   const brandCounts = new Map();
   const rankedEligible = [];
   for (const entry of ranked) {
+    const rejectReason = getDiscoveryRejectReason(entry, profile);
+    if (rejectReason) {
+      if (decisions) decisions.set(entry.candidate.key, rejectReason);
+      continue;
+    }
     if (viewedKeys.has(entry.candidate.key)) {
       if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
       continue;
@@ -671,20 +1080,22 @@ function selectHomeProducts(scoredCandidates, viewedKeys, limit, options = {}) {
 
 function selectBrowseProducts(scoredCandidates, viewedKeys, page, limit, options = {}) {
   const collectDebug = options.collectDebug === true;
+  const profile = options.profile || null;
   const ranked = [...scoredCandidates].sort(compareBrowseEntries);
   const decisions = collectDebug ? new Map() : null;
 
   const orderedPool = [];
-  if (page <= 1) {
-    for (const entry of ranked) {
-      if (viewedKeys.has(entry.candidate.key)) {
-        if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
-        continue;
-      }
-      orderedPool.push(entry);
+  for (const entry of ranked) {
+    const rejectReason = getDiscoveryRejectReason(entry, profile);
+    if (rejectReason) {
+      if (decisions) decisions.set(entry.candidate.key, rejectReason);
+      continue;
     }
-  } else {
-    orderedPool.push(...ranked);
+    if (page <= 1 && viewedKeys.has(entry.candidate.key)) {
+      if (decisions) decisions.set(entry.candidate.key, 'filtered_recent_view');
+      continue;
+    }
+    orderedPool.push(entry);
   }
 
   const start = (page - 1) * limit;
@@ -782,6 +1193,7 @@ function buildRankDebug({
       brand: entry.candidate.raw.brand || entry.candidate.brand || null,
       category: entry.candidate.raw.category || entry.candidate.parentCategory || null,
       product_type: entry.candidate.raw.product_type || entry.candidate.category || null,
+      domain: entry.candidate.domain || 'unknown',
       scores: {
         final_score: roundMetric(entry.scores.finalScore),
         interest_score: roundMetric(entry.scores.interestScore),
@@ -790,11 +1202,15 @@ function buildRankDebug({
         category_score: roundMetric(entry.scores.categoryScore),
         anchor_score: roundMetric(entry.scores.anchorScore),
         recent_query_score: roundMetric(entry.scores.recentQueryScore),
+        domain_score: roundMetric(entry.scores.domainScore),
       },
     })),
     profile_summary: {
       top_brands: topMapEntries(profile.brandAffinity, 5),
       top_categories: topMapEntries(profile.categoryAffinity, 5),
+      dominant_domain: profile.dominantDomain || null,
+      dominant_domain_score: roundMetric(profile.dominantDomainScore || 0),
+      domain_scores: topMapEntries(profile.domainScores || new Map(), 4),
       anchors: (profile.anchors || []).slice(0, MAX_ANCHORS).map((anchor) => ({
         merchant_id: anchor.merchant_id || null,
         product_id: anchor.product_id || null,
@@ -810,6 +1226,10 @@ function buildRankDebug({
       limit: Number(step?.limit || 0),
       status: step?.status == null ? null : Number(step.status),
       returned: Number(step?.returned || 0),
+      latency_ms: Number(step?.latency_ms || 0),
+      cache_hit: step?.cache_hit === true,
+      ...(step?.cache_age_ms != null ? { cache_age_ms: Number(step.cache_age_ms || 0) } : {}),
+      ...(step?.truncated_by_budget ? { truncated_by_budget: true } : {}),
       ...(step?.error ? { error: String(step.error) } : {}),
     })),
   };
@@ -840,7 +1260,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       : await loadCatalogCandidates({
           request,
           profile,
-          limit: options.candidateLimit || MAX_CANDIDATE_FETCH,
+          limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
       ? candidateLoadResult.products
@@ -896,7 +1316,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         scoredCandidates,
         viewedKeys,
         request.limit,
-        { collectDebug: request.debug.enabled },
+        { collectDebug: request.debug.enabled, profile },
       );
       if (request.debug.enabled) {
         selectedEntries = homeSelection.selected;
@@ -916,7 +1336,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         viewedKeys,
         request.page,
         request.limit,
-        { collectDebug: request.debug.enabled },
+        { collectDebug: request.debug.enabled, profile },
       );
       selectedEntries = browseSelection.pageItems;
       total = browseSelection.orderedPool.length;
@@ -959,6 +1379,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidate_source: candidateSource,
       candidate_counts: candidateCounts,
       request_latency_ms: latencyMs,
+      ...(profile.dominantDomain ? { dominant_domain: profile.dominantDomain } : {}),
     };
 
     if (request.debug.enabled) {
@@ -1009,6 +1430,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       limit: request.limit,
       returned_count: selectedEntries.length,
       latency_ms: latencyMs,
+      dominant_domain: profile.dominantDomain || null,
     });
     logger.info(
       {
@@ -1057,6 +1479,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidate_source: candidateSource,
       candidate_counts: candidateCounts,
       latency_ms: latencyMs,
+      dominant_domain: profile?.dominantDomain || null,
       error_code: err?.code || err?.name || 'UNKNOWN_ERROR',
       error_message: err?.message || 'Unknown discovery error',
     });
@@ -1070,11 +1493,16 @@ module.exports = {
   buildDiscoveryProfile,
   getDiscoveryFeed,
   _internals: {
+    buildDiscoveryContextCacheKey,
+    buildDiscoveryRecallPlan,
+    getDiscoveryPoolCacheTtlMs,
     normalizeDiscoveryRequest,
     normalizeCandidateProduct,
+    resolveDiscoveryCandidateLimit,
     scoreCandidate,
     selectBrowseProducts,
     selectHomeProducts,
     buildProductKey,
+    resetBrowsePoolCache: () => browsePoolCache.clear(),
   },
 };
