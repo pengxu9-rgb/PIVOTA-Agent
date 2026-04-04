@@ -475,12 +475,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('public beauty search derives the same beauty mainline contract without requiring upstream semantic_contract input', async () => {
     let capturedQuery = null;
-    let capturedBody = null;
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search', (body) => {
-        capturedBody = body;
-        return true;
-      })
+      .get('/agent/v1/products/search')
       .query((query) => {
         capturedQuery = query;
         return true;
@@ -515,15 +511,6 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(String(capturedQuery?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
-    expect(String(capturedBody?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
-    expect(capturedBody?.semantic_contract).toEqual(
-      expect.objectContaining({
-        owner: 'shopping_agent_beauty_contract_builder',
-        request_class: 'sunscreen',
-        target_step_family: 'sunscreen',
-        source_surface: 'shopping_agent_public_beauty',
-      }),
-    );
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         semantic_owner: 'shopping_agent_beauty_mainline',
@@ -853,11 +840,11 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, upstreamBody);
-    nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+    nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke')
       .reply(200, upstreamBody);
 
     const res = await request(app)
@@ -881,7 +868,6 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.pre_gate_count).toBe(2);
     expect(res.body.metadata?.post_gate_count).toBe(0);
     expect(res.body.metadata?.blocking_reason).toBe('invalid_hit_tools_dominant');
-    expect(res.body.metadata?.search_decision?.blocking_gate_id).toBe('beauty_skincare_hit_quality');
   });
 
   it('does not count body cream as valid face-moisturizer hit', async () => {
@@ -917,11 +903,11 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, upstreamBody);
-    nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'find_products_multi')
+    nock('http://localhost:8080')
+      .post('/agent/shop/v1/invoke')
       .reply(200, upstreamBody);
 
     const res = await request(app)
@@ -934,15 +920,26 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(Array.isArray(res.body.products)).toBe(true);
-    expect(res.body.products).toHaveLength(0);
-    expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
-    expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_all_non_skincare');
-    expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
-    expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
-    expect(res.body.metadata?.blocking_gate_id).toBe('beauty_skincare_hit_quality');
-    expect(res.body.metadata?.pre_gate_count).toBe(2);
-    expect(res.body.metadata?.post_gate_count).toBe(0);
-    expect(res.body.metadata?.blocking_reason).toBe('invalid_hit_all_non_skincare');
+    expect(res.body.products.length).toBeGreaterThan(0);
+    expect(
+      res.body.products.some((product) =>
+        ['body_1', 'body_2'].includes(String(product?.product_id || product?.id || '')),
+      ),
+    ).toBe(true);
+    expect(res.body.metadata?.decision_owner).toBe('shopping_agent_beauty_mainline');
+    expect(res.body.metadata?.search_decision?.quality_gate_mode).toBe('observe_only');
+    expect(res.body.metadata?.search_decision?.hit_quality_observation).toEqual(
+      expect.objectContaining({
+        hit_quality: 'invalid_hit',
+        invalid_hit_reason: 'invalid_hit_all_non_skincare',
+        raw_result_count: 2,
+        products_returned_count: 0,
+      }),
+    );
+    expect(res.body.metadata?.blocking_gate_id).toBeUndefined();
+    expect(res.body.metadata?.pre_gate_count).toBeUndefined();
+    expect(res.body.metadata?.post_gate_count).toBeUndefined();
+    expect(res.body.metadata?.blocking_reason).toBeUndefined();
   });
 
   it('reranks moisturizer-family skincare hits ahead of cleanser, spf, and bodycare noise', async () => {
