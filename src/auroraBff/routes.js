@@ -18742,15 +18742,44 @@ async function buildRecoGenerateFromCatalog({
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
-  const fallbackSelectedCandidates = frameworkMode && selectedCandidates.length === 0
+  const frameworkFallbackSelectedCandidates = frameworkMode && selectedCandidates.length === 0
     ? (Array.isArray(candidateState.viable_candidate_pool)
       ? candidateState.viable_candidate_pool.filter((item) => Number(item?.framework_score || 0) >= 0.72).slice(0, 1)
       : [])
     : [];
+  const stepAwareFallbackSelectedCandidates =
+    !frameworkMode && targetContext?.step_aware_intent && selectedCandidates.length === 0
+      ? (Array.isArray(candidateState.soft_mismatch)
+        ? candidateState.soft_mismatch
+          .filter((entry) => isPlainObject(entry?.product))
+          .filter((entry) => Number(entry?.selection_score || entry?.step_fit_score || entry?.score || 0) >= 0.42)
+          .slice(0, 2)
+          .map((entry) => ({
+            ...entry.product,
+            candidate_step: pickFirstTrimmed(entry?.candidate_step, entry?.product?.candidate_step) || null,
+            candidate_step_source:
+              pickFirstTrimmed(entry?.candidate_step_source, entry?.product?.candidate_step_source)
+              || 'step_aware_soft_mismatch',
+            candidate_step_confidence:
+              pickFirstTrimmed(entry?.candidate_step_confidence, entry?.product?.candidate_step_confidence)
+              || 'low',
+            step_aware_soft_match_reason: pickFirstTrimmed(entry?.reason) || 'step_unresolved',
+            step_aware_soft_match_score: Number.isFinite(Number(entry?.selection_score))
+              ? Number(entry.selection_score)
+              : Number.isFinite(Number(entry?.step_fit_score))
+                ? Number(entry.step_fit_score)
+                : Number.isFinite(Number(entry?.score))
+                  ? Number(entry.score)
+                  : null,
+          }))
+        : [])
+      : [];
   const surfacedCandidates =
     selectedCandidates.length > 0
       ? selectedCandidates
-      : fallbackSelectedCandidates;
+      : frameworkMode
+        ? frameworkFallbackSelectedCandidates
+        : stepAwareFallbackSelectedCandidates;
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,
@@ -18772,7 +18801,7 @@ async function buildRecoGenerateFromCatalog({
         language: ctx && ctx.lang ? ctx.lang : 'EN',
         debug,
       })
-    : selectedCandidates.map((picked, index) => {
+    : surfacedCandidates.map((picked, index) => {
         const stepToken = pickFirstTrimmed(
           targetContext && targetContext.resolved_target_step,
           picked.product_type,
@@ -18956,6 +18985,14 @@ async function buildRecoGenerateFromCatalog({
     hard_reject_count: Number(candidateState.hard_reject_count || 0),
     candidate_drop_stage: candidateDropStage,
     selected_candidate_count: Number(candidateState.selected_candidate_count || 0),
+    surfaced_candidate_count: surfacedCandidates.length,
+    fallback_surfaced_candidate_count: Math.max(0, surfacedCandidates.length - selectedCandidates.length),
+    fallback_surfaced_reason:
+      selectedCandidates.length > 0
+        ? null
+        : frameworkMode
+          ? (frameworkFallbackSelectedCandidates.length > 0 ? 'framework_viable_pool' : null)
+          : (stepAwareFallbackSelectedCandidates.length > 0 ? 'step_aware_soft_mismatch' : null),
     weak_viable_pool: Boolean(candidateState.weak_viable_pool),
     average_context_fit_score: Number(candidateState.average_context_fit_score || 0),
     overall_target_fidelity_satisfied: Boolean(candidateState.overall_target_fidelity_satisfied),
@@ -61068,6 +61105,7 @@ async function generateProductRecommendations({
   const stepAwareHasRecommendations =
     Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0;
   const stepAwareMainlineFailureBlocking = Boolean(stepAwareMainlineFailure && !stepAwareHasRecommendations);
+  let stepAwarePoolWarningNonBlocking = false;
   if (stepAwareMainlineFailureBlocking) {
     effectiveFailureClass = stepAwareMainlineFailure.effectiveFailureClass || effectiveFailureClass;
     failureOrigin = stepAwareMainlineFailure.failureOrigin || failureOrigin;
@@ -61125,9 +61163,32 @@ async function generateProductRecommendations({
     }
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.products_empty_reason = 'prompt_contract_mismatch';
-  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success && !stepAwareHasRecommendations) {
-    norm.payload.recommendations = [];
-    norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
+  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
+    const stepAwareWarningReason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
+    if (stepAwareHasRecommendations) {
+      stepAwarePoolWarningNonBlocking = true;
+      const nextPayload = {
+        ...norm.payload,
+        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
+        recommendation_meta: {
+          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+          step_aware_pool_warning_reason: stepAwareWarningReason,
+          step_aware_pool_warning_non_blocking: true,
+        },
+        metadata: {
+          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+          step_aware_pool_warning_reason: stepAwareWarningReason,
+          step_aware_pool_warning_non_blocking: true,
+        },
+      };
+      if (Object.prototype.hasOwnProperty.call(nextPayload, 'products_empty_reason')) {
+        delete nextPayload.products_empty_reason;
+      }
+      norm.payload = nextPayload;
+    } else {
+      norm.payload.recommendations = [];
+      norm.payload.products_empty_reason = stepAwareWarningReason;
+    }
   }
   const effectiveGroundingStatus =
     stepAwareMainlineFailureBlocking
@@ -61650,7 +61711,11 @@ async function generateProductRecommendations({
         });
     const returnedProductsWarningNonBlocking =
       finalRecommendations.length > 0
-      && (frameworkMainlineWarningNonBlocking || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking));
+      && (
+        frameworkMainlineWarningNonBlocking
+        || stepAwarePoolWarningNonBlocking
+        || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking)
+      );
     const normalizedFailureClass = normalizeRecoEffectiveFailureClass(failureSignals.effective_failure_class || 'none');
     if (
       returnedProductsWarningNonBlocking

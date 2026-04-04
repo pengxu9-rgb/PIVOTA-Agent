@@ -4997,6 +4997,103 @@ test('/v1/chat: framework weak pool with a valid primary product still returns r
   }
 });
 
+test('/v1/chat: step-aware sunscreen soft-mismatch candidates still return recommendations', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const allowExternalSeed = config?.params?.allow_external_seed === true;
+    observedQueries.push({ query, allowExternalSeed });
+    if (allowExternalSeed && (query.includes('sunscreen') || query.includes('spf'))) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'ext_spf_soft_1',
+              merchant_id: 'merchant_ext_spf_soft',
+              brand: 'Face Theory',
+              name: 'Daily Balance Face Lotion',
+              display_name: 'Daily Balance Face Lotion',
+              category: 'external',
+              product_type: 'external',
+              source: 'external_seed',
+              url: 'https://example.com/daily-balance-face-lotion',
+              short_description: 'A lightweight face lotion for oily skin.',
+              tag_tokens: ['face lotion', 'oil control'],
+              search_aliases: ['daily face lotion'],
+            },
+          ],
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_step_soft_uid',
+        'X-Trace-ID': 'trace_chat_step_soft',
+        'X-Brief-ID': 'chat_step_soft_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'what sunscreen should i use for oily skin?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['sun protection', 'oil control'],
+            },
+          },
+        },
+        message: 'what sunscreen should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_soft_1');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.step_aware_pool_warning_non_blocking, true);
+    assert.ok(
+      ['weak_viable_pool', 'no_viable_candidates_for_target'].includes(
+        String(payload.recommendation_meta?.step_aware_pool_warning_reason || ''),
+      ),
+    );
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceCard, null);
+    assert.ok(observedQueries.some((entry) => entry.allowExternalSeed === true && /(sunscreen|spf)/.test(entry.query)));
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
