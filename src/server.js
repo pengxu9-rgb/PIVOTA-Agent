@@ -4766,11 +4766,24 @@ function decideGenericSkincareCachePreference({
   queryClass = null,
   beautyBucket = null,
   strictConstraintQuery = false,
+  semanticContract = null,
+  catalogSurface = null,
+  source = null,
   upstreamResponse = null,
   cacheResponse = null,
 } = {}) {
   const queryText = String(rawQuery || '').trim();
   const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  const legacyBeautyCacheBypass = resolveLegacyBeautyCacheOwnerBypass({
+    search: {
+      ...(catalogSurface ? { catalog_surface: catalogSurface } : {}),
+      ...(semanticContract ? { semantic_contract: semanticContract } : {}),
+    },
+    metadata: source ? { source } : {},
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass,
+    strictConstraintQuery,
+  });
   const beautyQueryProfile = buildBeautyQueryProfile({
     rawQuery: queryText,
     queryClass: normalizedQueryClass || undefined,
@@ -4809,6 +4822,19 @@ function decideGenericSkincareCachePreference({
     cacheInternalProducts.length > 0 &&
     upstreamProducts.length > 0 &&
     !upstreamQuerySource.startsWith('cache_');
+
+  if (legacyBeautyCacheBypass.bypass) {
+    return {
+      evaluated: false,
+      decision: 'keep_upstream',
+      reason: 'beauty_mainline_cache_override_disabled',
+      cache_owner_bypass_reason: legacyBeautyCacheBypass.reason,
+      beauty_bucket: effectiveBeautyBucket || null,
+      cache_internal_count: cacheInternalProducts.length,
+      upstream_external_only: upstreamExternalOnly,
+      upstream_query_source: upstreamQuerySource || null,
+    };
+  }
 
   if (!genericSerumCategoryQuery) {
     return {
@@ -4865,6 +4891,105 @@ function decideGenericSkincareCachePreference({
     cache_internal_count: cacheInternalProducts.length,
     upstream_external_only: upstreamExternalOnly,
     upstream_query_source: upstreamQuerySource || null,
+  };
+}
+
+function resolveLegacyBeautyCacheOwnerBypass({
+  search = null,
+  metadata = null,
+  rawQuery = '',
+  queryClass = null,
+  strictConstraintQuery = false,
+} = {}) {
+  const normalizedSearch = isPlainRecord(search) ? search : {};
+  const normalizedMetadata = isPlainRecord(metadata) ? metadata : {};
+  const queryText = String(rawQuery || normalizedSearch.query || '').trim();
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  if (!queryText) {
+    return {
+      bypass: false,
+      reason: 'missing_query',
+      semanticContract: null,
+    };
+  }
+  if (strictConstraintQuery) {
+    return {
+      bypass: false,
+      reason: 'strict_constraint_query',
+      semanticContract: null,
+    };
+  }
+  const anchorTokens = extractSearchAnchorTokens(queryText);
+  const lookupLike =
+    normalizedQueryClass === 'lookup' ||
+    isLookupStyleSearchQuery(queryText, anchorTokens) ||
+    isKnownLookupAliasQuery(queryText);
+  if (lookupLike) {
+    return {
+      bypass: false,
+      reason: 'lookup_query',
+      semanticContract: null,
+    };
+  }
+  const explicitSemanticContract = isPlainRecord(
+    normalizedSearch.semantic_contract ||
+      normalizedSearch.semanticContract ||
+      normalizedMetadata.semantic_contract ||
+      normalizedMetadata.semanticContract,
+  )
+    ? normalizedSearch.semantic_contract ||
+      normalizedSearch.semanticContract ||
+      normalizedMetadata.semantic_contract ||
+      normalizedMetadata.semanticContract
+    : null;
+  if (isBeautyDiscoverySemanticContract(explicitSemanticContract)) {
+    return {
+      bypass: true,
+      reason: 'beauty_mainline_contract',
+      semanticContract: explicitSemanticContract,
+    };
+  }
+  const derivedSemanticContract = buildBeautyDiscoverySemanticContract({
+    rawQuery: queryText,
+    search: normalizedSearch,
+    metadata: normalizedMetadata,
+  });
+  if (isBeautyDiscoverySemanticContract(derivedSemanticContract)) {
+    return {
+      bypass: true,
+      reason: 'beauty_mainline_derived_contract',
+      semanticContract: derivedSemanticContract,
+    };
+  }
+  const catalogSurface = String(
+    normalizedSearch.catalog_surface ||
+      normalizedSearch.catalogSurface ||
+      normalizedMetadata.catalog_surface ||
+      '',
+  )
+    .trim()
+    .toLowerCase();
+  const source = String(normalizedMetadata.source || normalizedSearch.source || '')
+    .trim()
+    .toLowerCase();
+  const beautyQueryProfile = buildBeautyQueryProfile({
+    rawQuery: queryText,
+    queryClass: normalizedQueryClass || undefined,
+  });
+  if (
+    beautyQueryProfile?.isBeautyQuery === true &&
+    (catalogSurface === 'beauty' || source === 'aurora-bff' || source === 'shopping-agent')
+  ) {
+    return {
+      bypass: true,
+      reason: 'beauty_scoped_query',
+      semanticContract: null,
+    };
+  }
+  return {
+    bypass: false,
+    reason: 'not_beauty_discovery',
+    semanticContract: null,
   };
 }
 
@@ -16492,6 +16617,23 @@ function recoverStrictMainPathResponseFromPrefetch({
       '',
   ).trim();
   if (isShoppingSource(requestSource)) return responseBody;
+  const legacyBeautyCacheBypass = resolveLegacyBeautyCacheOwnerBypass({
+    search: invokeRequestBody?.payload?.search,
+    metadata: {
+      ...(isPlainRecord(invokeRequestBody?.payload?.metadata) ? invokeRequestBody.payload.metadata : {}),
+      ...(isPlainRecord(invokeRequestBody?.metadata) ? invokeRequestBody.metadata : {}),
+    },
+    rawQuery:
+      invokeRequestBody?.payload?.search?.query ||
+      invokeRequestBody?.payload?.query ||
+      '',
+    queryClass:
+      invokeRequestBody?.payload?.search?.query_class ||
+      invokeRequestBody?.payload?.metadata?.query_class ||
+      null,
+    strictConstraintQuery: Boolean(strictInvokeDecision?.strictConstraintQuery),
+  });
+  if (legacyBeautyCacheBypass.bypass) return responseBody;
   const prefetchedCandidates = Array.isArray(invokeRequestBody?.metadata?.external_seed_candidates)
     ? invokeRequestBody.metadata.external_seed_candidates.filter((item) => isPlainRecord(item))
     : [];
@@ -20859,6 +21001,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const cachePolicyQueryClass = String(
         traceQueryClass || effectiveIntent?.query_class || '',
       ).toLowerCase();
+      const legacyBeautyCacheBypass = resolveLegacyBeautyCacheOwnerBypass({
+        search: effectivePayload?.search || search,
+        metadata,
+        rawQuery: cacheQueryText,
+        queryClass: cachePolicyQueryClass,
+        strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
+      });
       const cacheBeautyQueryProfile = buildBeautyQueryProfile({
         rawQuery: cacheQueryText,
         queryClass: cachePolicyQueryClass,
@@ -20887,11 +21036,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !isCreatorUi &&
         (cacheQueryText.length > 0 || expandedCacheSearchQueryText.length > 0) &&
         !hasMerchantScope;
+      if (legacyBeautyCacheBypass.bypass) {
+        crossMerchantCacheRouteDebug = {
+          attempted: false,
+          bypassed: true,
+          bypass_reason: legacyBeautyCacheBypass.reason,
+          mode: 'query_search',
+          query: cacheQueryText,
+          beauty_query_bucket: cacheBeautyQueryProfile?.bucket || null,
+        };
+      }
       if (
         !shoppingFreshMainlineSearch &&
         !strictCommerceFindProductsMulti &&
         isCrossMerchantQuerySearch &&
-        process.env.DATABASE_URL
+        process.env.DATABASE_URL &&
+        !legacyBeautyCacheBypass.bypass
       ) {
         let cacheStageBudgetMs = 0;
         try {
@@ -24795,6 +24955,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       Array.isArray(crossMerchantCacheProtectedResponse.products) &&
       crossMerchantCacheProtectedResponse.products.length > 0
     ) {
+      const serumCacheOverrideBypass = resolveLegacyBeautyCacheOwnerBypass({
+        search: effectivePayload?.search || queryParams,
+        metadata,
+        rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryClass: traceQueryClass || effectiveIntent?.query_class || null,
+        strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
+      });
       const cachePreferenceDecision = decideGenericSkincareCachePreference({
         rawQuery: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
         queryClass: traceQueryClass || effectiveIntent?.query_class || null,
@@ -24807,6 +24974,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           })?.bucket ||
           null,
         strictConstraintQuery: Boolean(strictFindProductsMultiDecision?.strictConstraintQuery),
+        semanticContract:
+          effectivePayload?.search?.semantic_contract ||
+          effectivePayload?.search?.semanticContract ||
+          serumCacheOverrideBypass.semanticContract ||
+          null,
+        catalogSurface:
+          effectivePayload?.search?.catalog_surface ||
+          effectivePayload?.search?.catalogSurface ||
+          queryParams?.catalog_surface ||
+          queryParams?.catalogSurface ||
+          null,
+        source: metadata?.source || null,
         upstreamResponse: upstreamData,
         cacheResponse: crossMerchantCacheProtectedResponse,
       });
@@ -26020,6 +26199,7 @@ module.exports._debug = {
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
   decideGenericSkincareCachePreference,
+  resolveLegacyBeautyCacheOwnerBypass,
   resolveCommerceSourceProfile,
   getDefaultEntryLayerForSource,
   buildCommerceLayerDispatchPlan,

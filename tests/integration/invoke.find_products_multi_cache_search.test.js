@@ -2328,15 +2328,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('aurora-bff serum contract stays decision-locked on internal cache hits and suppresses external supplement adoption', async () => {
+  test('aurora-bff beauty discovery bypasses legacy internal cache stage and goes to upstream mainline', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
-    process.env.PROXY_SEARCH_AURORA_API_BASE = 'http://aurora.test';
 
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
         if (text.includes('COUNT(*)::int AS total')) {
-          return { rows: [{ total: 4 }] };
+          return { rows: [{ total: 2 }] };
         }
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return {
@@ -2356,15 +2355,15 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 },
               },
               {
-                merchant_id: 'merch_skin',
-                merchant_name: 'Skin Shop',
+                merchant_id: 'merch_wrong',
+                merchant_name: 'Wrong Scope Shop',
                 product_data: {
-                  id: 'prod_ordinary',
-                  product_id: 'prod_ordinary',
-                  merchant_id: 'merch_skin',
-                  title: 'The Ordinary Niacinamide 10% + Zinc 1%',
-                  description: 'niacinamide serum for uneven tone',
-                  product_type: 'Serum',
+                  id: 'prod_wrong',
+                  product_id: 'prod_wrong',
+                  merchant_id: 'merch_wrong',
+                  title: 'Peptide Lip Treatment Strawberry Glaze',
+                  description: 'cache pollution candidate',
+                  product_type: 'Lip Treatment',
                   status: 'published',
                   inventory_quantity: 8,
                 },
@@ -2376,31 +2375,34 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    const externalSupplement = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
+    let capturedBody = null;
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search', (body) => {
+        capturedBody = body;
+        return true;
+      })
+      .query(true)
       .reply(200, {
         status: 'success',
         success: true,
         products: [
           {
-            id: 'ext_serum_1',
-            product_id: 'ext_serum_1',
-            merchant_id: 'external_seed',
-            source: 'external_seed',
-            title: 'UV Filters SPF 45 Serum',
-            description: 'spf serum candidate',
-            product_type: 'external',
-            status: 'active',
+            id: 'upstream_treat_1',
+            product_id: 'upstream_treat_1',
+            merchant_id: 'merch_live',
+            title: 'Clarifying Oil Control Treatment',
+            description: 'fresh upstream treatment result',
+            product_type: 'Treatment',
+            category: 'skincare',
+            status: 'published',
           },
         ],
         total: 1,
-      });
-    const auroraExternalSupplement = nock('http://aurora.test')
-      .get('/agent/v1/products/search')
-      .query((q) => String(q.merchant_id || '') === 'external_seed' && String(q.query || '').includes('serum'))
-      .reply(500, {
-        error: 'AURORA_SUPPLEMENT_SHOULD_NOT_BE_CALLED',
+        metadata: {
+          query_source: 'agent_products_search',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          decision_owner: 'shopping_agent_beauty_mainline',
+        },
       });
 
     const app = require('../../src/server');
@@ -2410,7 +2412,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'serum',
+            query: 'oil control treatment',
             page: 1,
             limit: 5,
             in_stock_only: true,
@@ -2422,37 +2424,79 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata).toEqual(
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(capturedBody).toEqual(
       expect.objectContaining({
-        query_source: 'cache_cross_merchant_search',
-        source_breakdown: expect.objectContaining({
-          internal_count: 2,
-          external_seed_count: 0,
-          strategy_applied: 'cache_only',
-        }),
-        cache_stage_selected_source: 'internal_cache',
-        search_decision: expect.objectContaining({
-          decision_authority: 'cache_cross_merchant_search',
-          decision_locked: true,
-          decision_lock_reason: 'guidance_cache_success_contract',
-        }),
-        route_health: expect.objectContaining({
-          observer_nodes: expect.arrayContaining(['governance_shadow_block_observed']),
+        query: 'oil control treatment',
+        catalog_surface: 'beauty',
+        commerce_surface: 'beauty',
+        semantic_contract: expect.objectContaining({
+          owner: 'shopping_agent_beauty_contract_builder',
+          target_step_family: 'treatment',
         }),
       }),
     );
-    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual(
-      expect.arrayContaining([
-        'Winona Soothing Repair Serum',
-        'The Ordinary Niacinamide 10% + Zinc 1%',
-      ]),
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'agent_products_search',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        decision_owner: 'shopping_agent_beauty_mainline',
+        route_debug: expect.objectContaining({
+          cross_merchant_cache: expect.objectContaining({
+            attempted: false,
+            bypassed: true,
+          }),
+        }),
+      }),
     );
-    expect(resp.body.products.map((item) => String(item?.title || ''))).not.toContain('UV Filters SPF 45 Serum');
-    expect(externalSupplement.isDone()).toBe(false);
-    expect(auroraExternalSupplement.isDone()).toBe(false);
+    expect(resp.body.products.map((item) => String(item?.title || ''))).toEqual([
+      'Clarifying Oil Control Treatment',
+    ]);
   });
 
-  test('serum cache preference helper prefers internal skincare cache when upstream is external-only', async () => {
+  test('serum cache preference helper keeps upstream when beauty mainline contract is active', async () => {
+    const app = require('../../src/server');
+    const decision = app._debug.decideGenericSkincareCachePreference({
+      rawQuery: 'oil control treatment',
+      queryClass: 'category',
+      beautyBucket: 'skincare',
+      strictConstraintQuery: false,
+      semanticContract: {
+        version: 'beauty_semantic_contract_v1',
+        owner: 'aurora_reco_planner',
+        planner_mode: 'framework_generic',
+        request_class: 'generic_concern',
+        target_step_family: 'treatment',
+        primary_role_id: 'oil_control_treatment',
+        support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+        semantic_family: 'oil_control',
+        allowed_step_families: ['treatment', 'serum'],
+        blocked_step_families: [],
+        ingredient_hypotheses: ['niacinamide'],
+        source_surface: 'aurora_beauty_strict',
+      },
+      catalogSurface: 'beauty',
+      source: 'aurora-bff',
+      upstreamResponse: {
+        products: [{ id: 'ext_1', source: 'external_seed', title: 'External Serum' }],
+        metadata: { query_source: 'agent_products_search' },
+      },
+      cacheResponse: {
+        products: [{ id: 'int_1', merchant_id: 'merch_skin', title: 'Winona Soothing Repair Serum' }],
+      },
+    });
+
+    expect(decision).toEqual(
+      expect.objectContaining({
+        evaluated: false,
+        decision: 'keep_upstream',
+        reason: 'beauty_mainline_cache_override_disabled',
+        cache_owner_bypass_reason: 'beauty_mainline_contract',
+      }),
+    );
+  });
+
+  test('serum cache preference helper bypasses legacy cache override for beauty discovery when upstream is external-only', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -2470,14 +2514,15 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(decision).toEqual(
       expect.objectContaining({
-        evaluated: true,
-        decision: 'replace_with_cache',
-        reason: 'upstream_external_only_prefers_internal_cache',
+        evaluated: false,
+        decision: 'keep_upstream',
+        reason: 'beauty_mainline_cache_override_disabled',
+        cache_owner_bypass_reason: 'beauty_mainline_derived_contract',
       }),
     );
   });
 
-  test('serum cache preference helper prefers internal skincare cache when upstream is sample-biased', async () => {
+  test('serum cache preference helper bypasses legacy cache override for beauty discovery when upstream is sample-biased', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -2511,14 +2556,15 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(decision).toEqual(
       expect.objectContaining({
-        evaluated: true,
-        decision: 'replace_with_cache',
-        reason: 'upstream_sample_biased_prefers_internal_cache',
+        evaluated: false,
+        decision: 'keep_upstream',
+        reason: 'beauty_mainline_cache_override_disabled',
+        cache_owner_bypass_reason: 'beauty_mainline_derived_contract',
       }),
     );
   });
 
-  test('serum cache preference helper keeps upstream when internal skincare cache is empty', async () => {
+  test('serum cache preference helper still bypasses legacy cache override when internal skincare cache is empty', async () => {
     const app = require('../../src/server');
     const decision = app._debug.decideGenericSkincareCachePreference({
       rawQuery: 'serum',
@@ -2538,7 +2584,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       expect.objectContaining({
         evaluated: false,
         decision: 'keep_upstream',
-        reason: 'cache_has_no_internal_skincare_hits',
+        reason: 'beauty_mainline_cache_override_disabled',
+        cache_owner_bypass_reason: 'beauty_mainline_derived_contract',
       }),
     );
   });
