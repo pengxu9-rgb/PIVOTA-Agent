@@ -5091,7 +5091,7 @@ test('/v1/chat: step-aware sunscreen soft-mismatch candidates still return recom
   }
 });
 
-test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when aurora planner returns empty', async () => {
+test('/v1/chat: step-aware typed reco hands off to shopping beauty mainline when aurora planner returns empty', async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -5131,7 +5131,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       forwardedAuthorization: String(config?.headers?.Authorization || ''),
     });
     if (
-      query === 'daily sunscreen'
+      query === 'what sunscreen should i use for oily skin?'
       && String(config?.params?.catalog_surface || '') === 'beauty'
     ) {
       return {
@@ -5196,19 +5196,19 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
     assert.ok(payload);
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
     assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_bridge_1');
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied, true);
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_attempted, true);
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_owner, 'shopping_agent_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_attempted, true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_owner, 'shopping_agent_beauty_mainline');
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
-    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_bridge_attempts));
-    assert.ok(payload.recommendation_meta.beauty_mainline_bridge_attempts.length >= 1);
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied_query, 'daily sunscreen');
+    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
+    assert.equal(payload.recommendation_meta.beauty_mainline_handoff_attempts.length, 1);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied_query, 'what sunscreen should i use for oily skin?');
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
     assert.ok(
       observedCalls.some((entry) =>
-        entry.query === 'daily sunscreen'
+        entry.query === 'what sunscreen should i use for oily skin?'
         && entry.semanticContractOwner === 'aurora_reco_planner'
         && entry.semanticContractTargetStep === 'sunscreen'
         && entry.queryStepStrength === 'exact_step'
@@ -5221,13 +5221,14 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
         && entry.forwardedAuthorization === 'Bearer ak_live_bridge_test'),
       JSON.stringify(observedCalls),
     );
+    assert.equal(observedCalls.some((entry) => entry.query === 'daily sunscreen'), false);
   } finally {
     axios.get = originalGet;
     harness.restore();
   }
 });
 
-test('/v1/chat: generic concern late beauty mainline rescue uses primary-role query and still returns products', async () => {
+test('/v1/chat: generic concern beauty mainline handoff uses raw ask and still returns products', async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -5262,11 +5263,24 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
       targetStepFamily: String(config?.params?.target_step_family || ''),
       semanticFamily: String(config?.params?.semantic_family || ''),
     });
-    if (query === 'oil control serum') {
+    if (query === 'what products should i use for oily skin?') {
       return {
         status: 200,
         data: {
           products: [
+            {
+              product_id: 'generic_bridge_1',
+              merchant_id: 'external_seed',
+              brand: 'GoalSkin',
+              name: 'Oil Control Serum',
+              display_name: 'Oil Control Serum',
+              category: 'skincare',
+              product_type: 'serum',
+              source: 'external_seed',
+              url: 'https://example.com/oil-control-serum',
+              short_description: 'A lightweight serum for oily skin.',
+              ingredient_tokens: ['niacinamide', 'zinc pca'],
+            },
             {
               product_id: 'generic_wrong_body',
               merchant_id: 'external_seed',
@@ -5290,19 +5304,6 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
               source: 'external_seed',
               url: 'https://example.com/lip-treatment',
               short_description: 'A peptide treatment for lips.',
-            },
-            {
-              product_id: 'generic_bridge_1',
-              merchant_id: 'external_seed',
-              brand: 'GoalSkin',
-              name: 'Oil Control Serum',
-              display_name: 'Oil Control Serum',
-              category: 'skincare',
-              product_type: 'serum',
-              source: 'external_seed',
-              url: 'https://example.com/oil-control-serum',
-              short_description: 'A lightweight serum for oily skin.',
-              ingredient_tokens: ['niacinamide', 'zinc pca'],
             },
           ],
           metadata: {
@@ -5349,17 +5350,17 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
     assert.ok(payload);
     assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
     assert.equal(payload.recommendations[0]?.product_id, 'generic_bridge_1');
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied, true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied, true);
     assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
-    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_bridge_attempts));
+    assert.ok(Array.isArray(payload.recommendation_meta?.beauty_mainline_handoff_attempts));
     assert.ok(
-      payload.recommendation_meta.beauty_mainline_bridge_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'oil control serum'),
-      JSON.stringify(payload.recommendation_meta.beauty_mainline_bridge_attempts),
+      payload.recommendation_meta.beauty_mainline_handoff_attempts.some((entry) => String(entry?.query || '').trim().toLowerCase() === 'what products should i use for oily skin?'),
+      JSON.stringify(payload.recommendation_meta.beauty_mainline_handoff_attempts),
     );
-    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied_query, 'oil control serum');
+    assert.equal(payload.recommendation_meta?.beauty_mainline_handoff_applied_query, 'what products should i use for oily skin?');
     assert.ok(
       observedCalls.some((entry) =>
-        entry.query === 'oil control serum'
+        entry.query === 'what products should i use for oily skin?'
         && entry.semanticContractOwner === 'aurora_reco_planner'
         && entry.semanticContractTargetStep === 'treatment'
         && entry.semanticContractPrimaryRole === 'oil_control_treatment'),
@@ -5367,13 +5368,13 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
     );
     assert.ok(
       observedCalls.some((entry) =>
-        entry.query === 'oil control serum'
+        entry.query === 'what products should i use for oily skin?'
         && entry.queryStepStrength === 'strong_goal_family'
         && entry.targetStepFamily === 'treatment'
         && entry.semanticFamily === 'oil_control'),
       JSON.stringify(observedCalls),
     );
-    assert.equal(observedCalls.some((entry) => entry.query === 'what products should i use for oily skin?'), false);
+    assert.equal(observedCalls.some((entry) => entry.query === 'oil control serum'), false);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
@@ -5462,12 +5463,10 @@ test('/v1/chat: step-aware typed reco still returns products when upstream reco 
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
-    assert.ok(
-      observedCalls.some((entry) =>
-        entry.query === 'daily sunscreen'
-        && entry.catalogSurface === ''),
-      JSON.stringify(observedCalls),
-    );
+    assert.equal(observedCalls.length, 1);
+    assert.equal(observedCalls[0]?.catalogSurface, '');
+    assert.equal(observedCalls[0]?.query, 'lightweight sunscreen oily skin');
+    assert.equal(observedCalls.some((entry) => entry.query === 'daily sunscreen'), false);
   } finally {
     axios.get = originalGet;
     harness.restore();
