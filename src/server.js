@@ -22496,9 +22496,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         '',
     );
     const semanticOwnerMinQueriesBeforeBudgetGuard =
-      semanticOwnerTargetStepFamily === 'sunscreen'
-        ? Math.min(2, Math.max(semanticOwnerQueryTotal, 0))
-        : 1;
+      semanticOwnerQueryTotal > 0
+        ? Math.min(semanticOwnerQueryTotal, 3)
+        : semanticOwnerTargetStepFamily === 'sunscreen'
+          ? 2
+          : 1;
     const buildVariantRequestBody = (baseRequestBody, queryValue, queryIndex) => {
       const normalizedQuery = String(queryValue || '').trim();
       if (!normalizedQuery || !baseRequestBody || typeof baseRequestBody !== 'object' || Array.isArray(baseRequestBody)) {

@@ -351,9 +351,8 @@ describe('find_products_multi context building', () => {
       }),
     );
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expanded).toBe('daily sunscreen');
-    expect(expanded).not.toContain('broad spectrum');
-    expect(expanded).not.toContain('sun protection');
+    expect(expanded).toBe('lightweight sunscreen oily skin');
+    expect(expanded).not.toContain('brush');
   });
 
   test('strict semantic contract owner bypasses llm rewrite and uses deterministic query pack output', async () => {
@@ -409,7 +408,7 @@ describe('find_products_multi context building', () => {
         metadata: {},
       });
 
-      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toBe('daily sunscreen');
+      expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
       expect(out.expansion_meta.semantic_rewrite_result).toEqual(
         expect.objectContaining({
           owner: 'shopping_agent_beauty_mainline',
@@ -417,13 +416,51 @@ describe('find_products_multi context building', () => {
           llm_enrichment_attempted: false,
           llm_enrichment_applied: false,
           llm_enrichment_status: 'skipped_strict_contract_owner',
-          normalized_query_pack: ['daily sunscreen', 'face sunscreen', 'best sunscreen for oily skin'],
+          normalized_query_pack: [
+            'lightweight sunscreen oily skin',
+            'oil control sunscreen',
+            'spf oily skin',
+          ],
         }),
       );
     } finally {
       jest.dontMock('../src/findProductsMulti/intentLlm');
       jest.resetModules();
     }
+  });
+
+  test('strict sunscreen contract keeps explicit SPF query ahead of generic sunscreen fallbacks', async () => {
+    const out = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'face sunscreen spf50',
+          semantic_contract: {
+            version: 'beauty_semantic_contract_v1',
+            owner: 'aurora_reco_planner',
+            planner_mode: 'step_aware',
+            request_class: 'sunscreen',
+            target_step_family: 'sunscreen',
+            primary_role_id: 'daily_sunscreen',
+            support_role_ids: [],
+            semantic_family: 'sunscreen',
+            allowed_step_families: ['sunscreen'],
+            blocked_step_families: ['treatment', 'moisturizer'],
+            ingredient_hypotheses: [],
+            source_surface: 'aurora_beauty_strict',
+          },
+        },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'face sunscreen spf50' }],
+      },
+      metadata: {},
+    });
+
+    expect(String(out.adjustedPayload?.search?.query || '').toLowerCase()).toBe('face sunscreen spf50');
+    expect(out.expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        normalized_query_pack: ['face sunscreen spf50', 'broad spectrum sunscreen', 'daily sunscreen'],
+      }),
+    );
   });
 
   test('beauty query without explicit semantic contract derives the same mainline contract for invoke-style payloads', async () => {
@@ -438,7 +475,7 @@ describe('find_products_multi context building', () => {
 
     expect(out.adjustedPayload.search).toEqual(
       expect.objectContaining({
-        query: 'daily sunscreen',
+        query: 'lightweight sunscreen oily skin',
         catalog_surface: 'beauty',
         commerce_surface: 'beauty',
         target_step_family: 'sunscreen',
@@ -456,7 +493,11 @@ describe('find_products_multi context building', () => {
       expect.objectContaining({
         owner: 'shopping_agent_beauty_mainline',
         mode: 'deterministic_contract',
-        normalized_query_pack: ['daily sunscreen', 'face sunscreen', 'best sunscreen for oily skin'],
+        normalized_query_pack: [
+          'lightweight sunscreen oily skin',
+          'oil control sunscreen',
+          'spf oily skin',
+        ],
       }),
     );
   });

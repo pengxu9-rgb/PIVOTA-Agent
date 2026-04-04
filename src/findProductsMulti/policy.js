@@ -1721,6 +1721,12 @@ function buildDeterministicStrictSemanticQueryPack({
     }
     out.push(normalized);
   };
+  const pushExactUnique = (value) => {
+    const normalized = normalizeSemanticQueryLabel(value);
+    if (!normalized) return;
+    if (out.includes(normalized)) return;
+    out.push(normalized);
+  };
 
   const raw = normalizeSemanticQueryLabel(rawQuery);
   const targetStepFamily = normalizeSemanticStepFamily(contract?.target_step_family);
@@ -1733,12 +1739,42 @@ function buildDeterministicStrictSemanticQueryPack({
     .map((value) => normalizeSemanticStepFamily(value))
     .filter(Boolean);
 
-  push(primaryRoleLabel);
+  if (targetStepFamily !== 'sunscreen') {
+    push(primaryRoleLabel);
+  }
 
   if (targetStepFamily === 'sunscreen') {
-    push('daily sunscreen');
-    push('face sunscreen');
-    push(raw);
+    const sunscreenSignalText = `${raw} ${semanticFamily}`.trim();
+    const oilySunscreenSignal =
+      /\b(oily skin|oil control|shine control|mattify|mattifying|non-greasy|non greasy|sebum)\b/.test(
+        sunscreenSignalText,
+      );
+    const sensitiveSunscreenSignal =
+      /\b(sensitive|barrier|redness|soothing|calming|fragrance free|fragrance-free)\b/.test(
+        sunscreenSignalText,
+      );
+    const explicitSunscreenSpecificity =
+      /\b(spf(?:\s*\d{1,3}\+?)?|broad spectrum|mineral|tinted|water resistant|uv|pa\+{1,4}|face sunscreen|sunblock)\b/.test(
+        raw,
+      );
+
+    if (explicitSunscreenSpecificity) pushExactUnique(raw);
+
+    if (oilySunscreenSignal) {
+      pushExactUnique('lightweight sunscreen oily skin');
+      pushExactUnique('oil control sunscreen');
+      pushExactUnique('spf oily skin');
+    } else if (sensitiveSunscreenSignal) {
+      pushExactUnique('sensitive skin sunscreen');
+      pushExactUnique('barrier sunscreen');
+      pushExactUnique('spf sensitive skin');
+    } else {
+      pushExactUnique('broad spectrum sunscreen');
+      pushExactUnique('daily sunscreen');
+      pushExactUnique('face sunscreen');
+    }
+
+    pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
     if (semanticFamily) {
       push(
