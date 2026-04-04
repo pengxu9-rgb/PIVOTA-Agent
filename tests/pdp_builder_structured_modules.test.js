@@ -236,7 +236,24 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
     );
     expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
-      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_0.png?width=650px&height=750px',
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
+    );
+  });
+
+  test('aliases known missing Tom Ford sdcdn assets onto existing siblings', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_3',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://sdcdn.io/tf/tf_sku_T2SS02%20_3000x3000_0.png?width=650px&height=750px',
+      },
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T2SS02_3000x3000_1.png?width=650px&height=750px',
     );
   });
 });

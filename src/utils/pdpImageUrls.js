@@ -1,6 +1,9 @@
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 const SHOPIFY_FILE_HASH_SUFFIX_RE =
   /^(.*?_[0-9]+)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})\.(avif|gif|jpe?g|png|webp)$/i;
+const KNOWN_SDCND_FILENAME_ALIASES = {
+  'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
+};
 
 function isAbsoluteHttpUrl(value) {
   return ABSOLUTE_HTTP_URL_RE.test(String(value || '').trim());
@@ -49,11 +52,12 @@ function normalizeShopifyLikeFilename(filename) {
     decoded = trimmed;
   }
   const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
-  const matched = compacted.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
+  const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
+  const matched = aliased.match(SHOPIFY_FILE_HASH_SUFFIX_RE);
   if (matched) {
     return `${matched[1]}.${matched[2]}`;
   }
-  return compacted;
+  return aliased;
 }
 
 function normalizePdpImageUrl(value) {
