@@ -22869,6 +22869,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       fallbackQuery = '',
     } = {}) => {
       const rescueQueries = [];
+      if (semanticOwnerTargetStepFamily === 'sunscreen') {
+        const rescueBaseQuery = String(rawUserQuery || fallbackQuery || '').trim();
+        rescueQueries.push(
+          ...buildBeautyFamilySupplementQueries(rescueBaseQuery, {
+            target_step_family: semanticOwnerTargetStepFamily,
+            semantic_family: semanticOwnerSemanticFamily,
+            query_step_strength: semanticOwnerQueryStepStrength,
+          }),
+        );
+        const normalizedRescueBaseQuery = normalizeSearchTextForMatch(rescueBaseQuery);
+        const explicitSerumRequested = /\b(?:spf|sunscreen|uv filters)\s+serum\b|\bserum\b/.test(
+          normalizedRescueBaseQuery,
+        );
+        if (!explicitSerumRequested) rescueQueries.push('face sunscreen spf');
+      }
       if (semanticOwnerTargetStepFamily === 'treatment') {
         for (const hypothesis of semanticOwnerIngredientHypotheses.slice(0, 2)) {
           rescueQueries.push(`${hypothesis} treatment`, `${hypothesis} serum`);
@@ -24167,7 +24182,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
       !semanticOwnerAdoptedByValidHit &&
-      (semanticOwnerIgnoredObservationCandidate || semanticOwnerDeferredLastResortCache) &&
+      (
+        semanticOwnerIgnoredObservationCandidate ||
+        semanticOwnerDeferredLastResortCache ||
+        semanticOwnerQueryAttempts.every(
+          (attempt) =>
+            attempt &&
+            !attempt.adopted &&
+            !attempt.skipped_reason &&
+            !attempt.error &&
+            Number(attempt.result_count || 0) <= 0,
+        )
+      ) &&
       semanticOwnerQueryPack.length > 0
     ) {
       const semanticOwnerExternalRescueAttempt = [...semanticOwnerQueryAttempts]

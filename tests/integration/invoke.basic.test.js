@@ -2107,6 +2107,134 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
+  it('beauty semantic-owner uses legacy sunscreen rescue after every primary sunscreen query is empty', async () => {
+    const attemptedPrimaryQueries = [];
+    const attemptedExternalQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() === 'true') return false;
+        attemptedPrimaryQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(3)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() !== 'true') return false;
+        attemptedExternalQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(6)
+      .reply(function replyExternalRescue(_uri, _requestBody) {
+        const latestQuery = attemptedExternalQueries[attemptedExternalQueries.length - 1];
+        if (latestQuery === 'face sunscreen spf') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'external_spf_fallback_1',
+                product_id: 'external_spf_fallback_1',
+                merchant_id: 'external_seed',
+                title: 'UV Filters SPF 45 Serum',
+                name: 'UV Filters SPF 45 Serum',
+                display_name: 'UV Filters SPF 45 Serum',
+                category: 'external',
+                product_type: 'external',
+                source: 'external_seed',
+                description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+                how_to_use: 'Apply to face every morning as the final skincare step before sun exposure.',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_external_seed_direct',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_external_seed_direct',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedPrimaryQueries).toEqual([
+      'lightweight sunscreen oily skin',
+      'oil control sunscreen',
+      'lightweight face sunscreen',
+    ]);
+    expect(attemptedExternalQueries).toEqual([
+      'lightweight face sunscreen',
+      'matte face sunscreen',
+      'face sunscreen lotion',
+      'sunscreen milk',
+      'mineral face sunscreen',
+      'face sunscreen spf',
+    ]);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_fallback_1');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_external_rescue_applied: true,
+        semantic_owner_external_rescue_query: 'face sunscreen spf',
+      }),
+    );
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'face sunscreen spf',
+          adopted: true,
+          adoption_mode: 'external_seed_rescue',
+          rescue_only: true,
+        }),
+      ]),
+    );
+  });
+
   it('marks brush-only skincare results as invalid_hit observation instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',
