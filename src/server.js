@@ -23809,15 +23809,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       for (let queryIndex = 1; queryIndex < semanticOwnerQueryPack.length; queryIndex += 1) {
         const remainingBudgetForSemanticOwner = getFpmRemainingBudgetMs();
-        const requiredSemanticOwnerRetryBudgetFloor =
-          semanticOwnerTargetStepFamily === 'treatment'
-            ? 50
-            : semanticOwnerIgnoredObservationCandidate
-              ? 100
-              : 250;
         const allowRequiredSemanticOwnerRetry =
           queryIndex < semanticOwnerMinQueriesBeforeBudgetGuard &&
-          remainingBudgetForSemanticOwner >= requiredSemanticOwnerRetryBudgetFloor;
+          (
+            semanticOwnerTargetStepFamily === 'treatment' ||
+            remainingBudgetForSemanticOwner >=
+              (semanticOwnerIgnoredObservationCandidate ? 100 : 250)
+          );
         if (
           FPM_GATE_SIMPLIFY_V1 &&
           remainingBudgetForSemanticOwner < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS &&
