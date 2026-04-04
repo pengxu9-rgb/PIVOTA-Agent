@@ -23858,6 +23858,100 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products_multi' &&
       semanticOwnerControlled &&
       !semanticOwnerAdoptedByValidHit &&
+      !semanticOwnerObservationFallback &&
+      semanticOwnerIgnoredObservationCandidate &&
+      semanticOwnerQueryPack.length > 0
+    ) {
+      const semanticOwnerExternalRescueQuery =
+        String(semanticOwnerQueryPack[semanticOwnerQueryPack.length - 1] || queryParams?.query || '').trim() ||
+        String(queryParams?.query || '').trim();
+      if (semanticOwnerExternalRescueQuery) {
+        const rescueQueryParams = {
+          ...(queryParams && typeof queryParams === 'object' && !Array.isArray(queryParams) ? queryParams : {}),
+          query: semanticOwnerExternalRescueQuery,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: 'unified_relevance',
+          ...(semanticOwnerTargetStepFamily ? { target_step_family: semanticOwnerTargetStepFamily } : {}),
+        };
+        const semanticOwnerExternalRescuePage = Math.max(
+          1,
+          Number(queryParams?.page || effectivePayload?.search?.page || 1) || 1,
+        );
+        const rescueLimit = Math.min(
+          Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1),
+          SEARCH_LIMIT_MAX,
+        );
+        try {
+          const externalRescue = await fetchExternalSeedSupplementFromBackend({
+            queryParams: rescueQueryParams,
+            checkoutToken,
+            neededCount: rescueLimit,
+            source: metadata?.source,
+          });
+          const rescueProducts = Array.isArray(externalRescue?.products) ? externalRescue.products : [];
+          if (rescueProducts.length > 0) {
+            const rescueBody = normalizeAgentProductsListResponse(
+              {
+                status: 'success',
+                success: true,
+                products: rescueProducts,
+                total: rescueProducts.length,
+                page: semanticOwnerExternalRescuePage,
+                page_size: rescueProducts.length,
+                reply: null,
+                metadata: {
+                  query_source: 'agent_products_search',
+                  semantic_owner_external_rescue_applied: true,
+                  semantic_owner_external_rescue_query: semanticOwnerExternalRescueQuery,
+                  external_seed_rows_fetched: Math.max(
+                    rescueProducts.length,
+                    Number(externalRescue?.metadata?.external_seed_rows_raw || 0) || 0,
+                  ),
+                  external_seed_rows_built: rescueProducts.length,
+                  external_seed_returned_count: rescueProducts.length,
+                  source_breakdown: {
+                    internal_count: 0,
+                    external_seed_count: rescueProducts.length,
+                    stale_cache_used: false,
+                    strategy_applied: 'semantic_owner_external_rescue',
+                  },
+                },
+              },
+              {
+                limit: rescueLimit,
+                offset: 0,
+              },
+            );
+            response = { status: 200, data: rescueBody };
+            upstreamData = normalizeSearchOperationResponseData({
+              responseBody: rescueBody,
+              queryParamsOverride: rescueQueryParams,
+              requestBodyOverride: requestBody,
+            });
+            queryParams = rescueQueryParams;
+            const chosenAttempt =
+              semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
+            if (chosenAttempt && chosenAttempt.adopted !== true) {
+              chosenAttempt.adopted = true;
+              chosenAttempt.adoption_mode = 'external_seed_rescue';
+            }
+          }
+        } catch (semanticOwnerExternalRescueErr) {
+          logger.warn(
+            {
+              err: semanticOwnerExternalRescueErr?.message || String(semanticOwnerExternalRescueErr),
+              query: semanticOwnerExternalRescueQuery,
+            },
+            'semantic-owner external rescue failed after pure cache invalid query pack',
+          );
+        }
+      }
+    }
+    if (
+      operation === 'find_products_multi' &&
+      semanticOwnerControlled &&
+      !semanticOwnerAdoptedByValidHit &&
       semanticOwnerObservationFallback &&
       Array.isArray(semanticOwnerObservationFallback.upstreamData?.products) &&
       semanticOwnerObservationFallback.upstreamData.products.length > 0

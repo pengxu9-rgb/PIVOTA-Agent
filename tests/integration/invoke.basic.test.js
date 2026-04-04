@@ -1215,6 +1215,119 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
+  it('beauty semantic-owner uses external rescue when every primary sunscreen query is pure cache invalid', async () => {
+    const attemptedPrimaryQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() === 'true') return false;
+        attemptedPrimaryQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(3)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'tool_noise_1',
+            product_id: 'tool_noise_1',
+            merchant_id: 'merchant_cache',
+            title: 'Foundation Brush',
+            name: 'Foundation Brush',
+            display_name: 'Foundation Brush',
+            category: null,
+            product_type: null,
+            query_source: 'cache_all_platforms',
+          },
+        ],
+        metadata: {
+          query_source: 'cache_all_platforms',
+        },
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() === 'true')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'external_spf_rescue_1',
+            product_id: 'external_spf_rescue_1',
+            merchant_id: 'external_seed',
+            title: 'UV Filters SPF 45 Serum',
+            name: 'UV Filters SPF 45 Serum',
+            display_name: 'UV Filters SPF 45 Serum',
+            category: 'external',
+            product_type: 'external',
+            source: 'external_seed',
+            description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+            how_to_use: 'Apply to face every morning as the final skincare step before sun exposure.',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedPrimaryQueries).toEqual([
+      'lightweight sunscreen oily skin',
+      'oil control sunscreen',
+      'spf oily skin',
+    ]);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_rescue_1');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_external_rescue_applied: true,
+        semantic_owner_external_rescue_query: 'spf oily skin',
+      }),
+    );
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'spf oily skin',
+          query_index: 2,
+          adopted: true,
+          adoption_mode: 'external_seed_rescue',
+        }),
+      ]),
+    );
+  });
+
   it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',
