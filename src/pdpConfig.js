@@ -1,3 +1,5 @@
+const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+
 const STANDARD_PDP_INITIAL_INCLUDE = Object.freeze([
   'offers',
   'variant_selector',
@@ -8,6 +10,18 @@ const STANDARD_PDP_INITIAL_INCLUDE = Object.freeze([
   'reviews_preview',
   'similar',
 ]);
+
+function inferCanonicalPdpMerchantId(productId, merchantId) {
+  const explicitMerchantId = String(merchantId || '').trim();
+  if (explicitMerchantId) return explicitMerchantId;
+
+  const normalizedProductId = String(productId || '').trim().toLowerCase();
+  if (!normalizedProductId) return null;
+  if (normalizedProductId.startsWith('ext_') || normalizedProductId.startsWith('ext:')) {
+    return EXTERNAL_SEED_MERCHANT_ID;
+  }
+  return null;
+}
 
 function buildPdpCorePrewarmRequestBody(target, metadataSource = 'pdp_core_prewarm') {
   return {
@@ -29,6 +43,8 @@ function buildPdpCorePrewarmRequestBody(target, metadataSource = 'pdp_core_prewa
 }
 
 module.exports = {
+  EXTERNAL_SEED_MERCHANT_ID,
   STANDARD_PDP_INITIAL_INCLUDE,
   buildPdpCorePrewarmRequestBody,
+  inferCanonicalPdpMerchantId,
 };

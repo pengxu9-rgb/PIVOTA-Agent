@@ -26,7 +26,11 @@ const {
 } = require('./offers/offerIds');
 const { prioritizeOffersResolveResponse } = require('./offers/offersPriority');
 const { buildPdpPayload } = require('./pdpBuilder');
-const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  buildPdpCorePrewarmRequestBody,
+  inferCanonicalPdpMerchantId,
+} = require('./pdpConfig');
 const {
   getAllPromotions,
   getPromotionById,
@@ -19492,6 +19496,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // We keep this as a soft precheck: do not fail the whole PDP when upstream jitters.
 	      let precheckedMerchantProduct = null;
 	      let precheckEntryProductMissing = false;
+      requestedMerchantId =
+        inferCanonicalPdpMerchantId(productId, requestedMerchantId) || requestedMerchantId;
+
 	      const shouldPrecheckMerchantScoped =
 	        Boolean(requestedMerchantId) &&
 	        Boolean(productId) &&
@@ -19519,7 +19526,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
 
 	      const resolveGroupCachedStartedAt = Date.now();
-	      if (!canonicalProductRef) {
+	      const shouldSkipExternalSeedGroupResolve =
+          !canonicalProductRef &&
+          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+          inferCanonicalPdpMerchantId(productId, null) === EXTERNAL_SEED_MERCHANT_ID;
+	      if (!canonicalProductRef && !shouldSkipExternalSeedGroupResolve) {
 	        const resolvedGroup = await resolveProductGroupCached({
 			          productId,
 	          merchantId: requestedMerchantId || null,
@@ -19538,7 +19549,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 
         const recoverExactProductStartedAt = Date.now();
-        if (!canonicalProductRef && !requestedMerchantId && productId) {
+	      if (!canonicalProductRef && !requestedMerchantId && productId) {
           const configuredMerchantTarget = await resolveCatalogSyncMerchantIds().catch(() => ({
             merchantIds: [],
             source: 'resolve_failed',

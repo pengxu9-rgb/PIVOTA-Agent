@@ -1,6 +1,8 @@
 const {
+  EXTERNAL_SEED_MERCHANT_ID,
   STANDARD_PDP_INITIAL_INCLUDE,
   buildPdpCorePrewarmRequestBody,
+  inferCanonicalPdpMerchantId,
 } = require('../src/pdpConfig');
 
 describe('pdpConfig', () => {
@@ -39,5 +41,12 @@ describe('pdpConfig', () => {
         source: 'pdp_core_prewarm_script',
       },
     });
+  });
+
+  test('infers external seed merchant ids for ext_* product ids', () => {
+    expect(inferCanonicalPdpMerchantId('ext_123', null)).toBe(EXTERNAL_SEED_MERCHANT_ID);
+    expect(inferCanonicalPdpMerchantId('ext:abc', '')).toBe(EXTERNAL_SEED_MERCHANT_ID);
+    expect(inferCanonicalPdpMerchantId('prod_1', null)).toBeNull();
+    expect(inferCanonicalPdpMerchantId('ext_123', 'merchant_a')).toBe('merchant_a');
   });
 });
