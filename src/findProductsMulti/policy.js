@@ -16,6 +16,7 @@ const {
 const {
   buildBeautyQueryProfile,
   classifyBeautyBucketFromText,
+  inferBeautyConcernClass,
   isBeautyBucketCompatibleForQuery,
 } = require('./beautyQueryProfile');
 const {
@@ -1391,6 +1392,8 @@ function normalizeSearchSemanticContract(raw) {
       6,
     ),
     semantic_family: String(contract.semantic_family || contract.semanticFamily || '').trim().toLowerCase() || null,
+    concern_class:
+      String(contract.concern_class || contract.concernClass || '').trim().toLowerCase() || null,
     allowed_step_families: normalizeSemanticStringList(
       (Array.isArray(contract.allowed_step_families) ? contract.allowed_step_families : contract.allowedStepFamilies) || [],
       6,
@@ -1681,6 +1684,9 @@ function buildBeautyDiscoverySemanticContract({
   if (!targetStepFamily) return null;
 
   const semanticFamily = explicitSemanticFamily || inferBeautySemanticFamily(normalizedQuery, targetStepFamily);
+  const concernClass =
+    inferBeautyConcernClass(normalizedQuery, profile?.bucket) ||
+    (targetStepFamily === 'sunscreen' ? 'sunscreen' : null);
   const ingredientHypotheses = inferBeautyIngredientHypotheses(normalizedQuery);
   const queryClass = inferQueryClassFromIntentAndQuery(syntheticIntent, normalizedQuery);
   const forceDiscoveryContract = shouldForceBeautyDiscoveryContract({
@@ -1726,6 +1732,7 @@ function buildBeautyDiscoverySemanticContract({
     }),
     support_role_ids: supportRoleIds,
     semantic_family: semanticFamily,
+    concern_class: concernClass,
     allowed_step_families: allowedStepFamilies,
     blocked_step_families: blockedStepFamilies,
     ingredient_hypotheses: ingredientHypotheses,
@@ -1785,6 +1792,15 @@ function buildDeterministicStrictSemanticQueryPack({
   const targetStepFamily = normalizeSemanticStepFamily(contract?.target_step_family);
   const primaryRoleLabel = normalizeSemanticQueryLabel(contract?.primary_role_id);
   const semanticFamily = normalizeSemanticQueryLabel(contract?.semantic_family);
+  const concernClass =
+    normalizeSemanticContractIdentifier(
+      contract?.concern_class || contract?.concernClass,
+      '',
+    ) ||
+    normalizeSemanticContractIdentifier(
+      inferBeautyConcernClass(raw, targetStepFamily === 'sunscreen' ? 'skincare' : null),
+      '',
+    );
   const ingredientHypotheses = normalizeSemanticStringList(contract?.ingredient_hypotheses, 8)
     .map((value) => normalizeSemanticQueryLabel(value))
     .filter(Boolean);
@@ -1792,7 +1808,14 @@ function buildDeterministicStrictSemanticQueryPack({
     .map((value) => normalizeSemanticStepFamily(value))
     .filter(Boolean);
 
-  if (targetStepFamily !== 'sunscreen') {
+  const shouldAutoSeedPrimaryRole =
+    targetStepFamily !== 'sunscreen' &&
+    !(
+      targetStepFamily === 'moisturizer' &&
+      (concernClass === 'hydration' || concernClass === 'barrier_repair')
+    );
+
+  if (shouldAutoSeedPrimaryRole) {
     push(primaryRoleLabel);
   }
 
@@ -1813,7 +1836,7 @@ function buildDeterministicStrictSemanticQueryPack({
 
     if (explicitSunscreenSpecificity) pushExactUnique(raw);
 
-    if (oilySunscreenSignal) {
+    if (oilySunscreenSignal || concernClass === 'oil_control') {
       pushExactUnique('lightweight sunscreen oily skin');
       pushExactUnique('oil control sunscreen');
       pushExactUnique('spf oily skin');
@@ -1829,17 +1852,51 @@ function buildDeterministicStrictSemanticQueryPack({
 
     pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
-    if (semanticFamily) {
-      push(`${semanticFamily} treatment`);
+    if (concernClass === 'oil_control') {
+      push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+      for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
+        push(`${hypothesis} treatment`);
+      }
+      if (allowedStepFamilies.includes('serum')) push('oil control serum');
+      push(raw);
+    } else if (concernClass === 'brightening') {
+      push(primaryRoleLabel || `${semanticFamily || 'brightening'} treatment`);
+      if (ingredientHypotheses.some((value) => value === 'vitamin c')) push('vitamin c treatment');
+      if (ingredientHypotheses.some((value) => value === 'tranexamic acid')) push('tranexamic acid treatment');
+      for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
+        push(`${hypothesis} treatment`);
+      }
+      push(raw);
+    } else if (concernClass === 'acne_urgent') {
+      push(primaryRoleLabel || `${semanticFamily || 'acne'} treatment`);
+      push('spot treatment');
+      for (const hypothesis of ingredientHypotheses.slice(0, 1)) {
+        push(`${hypothesis} treatment`);
+      }
+      push(raw);
+    } else {
+      if (semanticFamily) {
+        push(`${semanticFamily} treatment`);
+      }
+      for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
+        push(`${hypothesis} treatment`);
+      }
+      if (allowedStepFamilies.includes('serum')) push('oil control serum');
+      push(raw);
     }
-    for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
-      push(`${hypothesis} treatment`);
-    }
-    if (allowedStepFamilies.includes('serum')) push('oil control serum');
-    push(raw);
   } else if (targetStepFamily === 'moisturizer') {
-    push('lightweight moisturizer');
-    push('face moisturizer');
+    if (concernClass === 'barrier_repair') {
+      push('barrier moisturizer');
+      push('ceramide moisturizer');
+      push('panthenol moisturizer');
+    } else if (concernClass === 'hydration') {
+      push('hydrating moisturizer');
+      push('hyaluronic moisturizer');
+      push('face moisturizer');
+    } else {
+      push('lightweight moisturizer');
+      push('face moisturizer');
+    }
     push(raw);
   } else if (targetStepFamily) {
     push(targetStepFamily);
@@ -2007,6 +2064,7 @@ function buildStrictSemanticRewriteResult({
       primary_role_id: contract.primary_role_id,
       support_role_ids: contract.support_role_ids,
       semantic_family: contract.semantic_family,
+      concern_class: contract.concern_class || null,
       planner_mode: contract.planner_mode,
       request_class: contract.request_class,
     },
@@ -4108,6 +4166,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const effectiveSemanticFamily =
     String(search?.semantic_family || search?.semanticFamily || '').trim() ||
     String(semanticContract?.semantic_family || '').trim();
+  const effectiveConcernClass =
+    String(search?.concern_class || search?.concernClass || '').trim() ||
+    String(semanticContract?.concern_class || semanticContract?.concernClass || '').trim() ||
+    String(buildBeautyQueryProfile({ rawQuery: latestUserQuery })?.concernClass || '').trim();
   const semanticRewriteTimeoutMs = resolveSemanticRewriteTimeoutMs(semanticContract);
   const resolveIntentLlmExecutionPlan =
     typeof intentLlmDebug.resolveIntentLlmExecutionPlan === 'function'
@@ -4625,6 +4687,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
       ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
+      ...(effectiveConcernClass ? { concern_class: effectiveConcernClass } : {}),
       ...(adjustedSemanticContract ? { semantic_contract: adjustedSemanticContract } : {}),
     },
   };
@@ -4643,6 +4706,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       !preserveStrictQueryOwner && semanticRewriteResult.applied ? semanticRewriteResult.owner : null,
     semantic_owner_locked: semanticOwnerLockedEffective,
     semantic_rewrite_timeout_ms: effectiveSemanticRewriteTimeoutMs,
+    concern_class: effectiveConcernClass || null,
     intent_parse_latency_ms: intentParseLatencyMs,
     rewrite_gate: rewriteGate,
     association_plan: associationPlan,

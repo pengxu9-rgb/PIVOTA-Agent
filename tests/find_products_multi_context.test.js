@@ -283,7 +283,7 @@ describe('find_products_multi context building', () => {
     expect(intent.query_class).toBe('category');
   });
 
-  test('face sunscreen expansion keeps primary query compact but preserves SPF-oriented recall pack', async () => {
+  test('face sunscreen expansion adds SPF-oriented skincare terms', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
         search: { query: 'Face sunscreen' },
@@ -294,8 +294,7 @@ describe('find_products_multi context building', () => {
     });
 
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expanded).toBe('face sunscreen');
-    expect(expanded).not.toContain('brush');
+    expect(expanded).toContain('face sunscreen');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
         normalized_query_pack: expect.arrayContaining([
@@ -305,6 +304,7 @@ describe('find_products_multi context building', () => {
         ]),
       }),
     );
+    expect(expanded).not.toContain('brush');
   });
 
   test('aurora semantic contract locks backend semantic owner and avoids generic expansion drift', async () => {
@@ -487,10 +487,12 @@ describe('find_products_multi context building', () => {
         commerce_surface: 'beauty',
         target_step_family: 'sunscreen',
         semantic_family: 'oil_control',
+        concern_class: 'sunscreen',
         semantic_contract: expect.objectContaining({
           owner: 'shopping_agent_beauty_contract_builder',
           request_class: 'sunscreen',
           target_step_family: 'sunscreen',
+          concern_class: 'sunscreen',
           source_surface: 'shopping_agent_public_beauty',
         }),
       }),
@@ -556,10 +558,12 @@ describe('find_products_multi context building', () => {
         commerce_surface: 'beauty',
         target_step_family: 'treatment',
         semantic_family: 'oil_control',
+        concern_class: 'oil_control',
         semantic_contract: expect.objectContaining({
           owner: 'shopping_agent_beauty_contract_builder',
           request_class: 'generic_concern',
           target_step_family: 'treatment',
+          concern_class: 'oil_control',
           ingredient_hypotheses: ['niacinamide', 'salicylic acid'],
         }),
       }),
@@ -671,7 +675,37 @@ describe('find_products_multi context building', () => {
     );
   });
 
-  test('hydrating moisturizer expansion preserves moisturizer-specific recall pack even when primary query is compacted', async () => {
+  test('barrier moisturizer query derives family policy instead of generic moisturizer expansion', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        query: 'barrier repair moisturizer',
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'barrier repair moisturizer' }],
+      },
+      metadata: {},
+    });
+
+    expect(adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        target_step_family: 'moisturizer',
+        concern_class: 'barrier_repair',
+        semantic_contract: expect.objectContaining({
+          concern_class: 'barrier_repair',
+        }),
+      }),
+    );
+    expect(expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        normalized_query_pack: [
+          'barrier moisturizer',
+          'ceramide moisturizer',
+          'panthenol moisturizer',
+        ],
+      }),
+    );
+  });
+
+  test('hydrating moisturizer expansion adds moisturizer-specific recall terms', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
         search: { query: 'hydrating moisturizer' },
@@ -682,15 +716,15 @@ describe('find_products_multi context building', () => {
     });
 
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expanded).toBe('lightweight moisturizer');
+    expect(expanded).toBe('hydrating moisturizer');
     expect(expanded).not.toContain('foundation');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
-        normalized_query_pack: expect.arrayContaining([
-          'lightweight moisturizer',
-          'face moisturizer',
+        normalized_query_pack: [
           'hydrating moisturizer',
-        ]),
+          'hyaluronic moisturizer',
+          'face moisturizer',
+        ],
       }),
     );
   });

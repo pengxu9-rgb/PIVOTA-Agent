@@ -2,6 +2,70 @@ function normalizeBeautyQueryClass(queryClass) {
   return String(queryClass || '').trim().toLowerCase() || null;
 }
 
+function inferBeautyConcernClass(queryText, bucket = null) {
+  const q = String(queryText || '').trim().toLowerCase();
+  if (!q) return null;
+
+  if (
+    /\b(sunscreen|spf\b|sunblock|sun protection|broad spectrum|uv|uva|uvb|pa\+{1,4})\b/.test(q) ||
+    /防晒|防曬|日焼け止め/.test(q)
+  ) {
+    return 'sunscreen';
+  }
+
+  if (
+    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?|benzoyl peroxide)\b/.test(
+      q,
+    ) ||
+    (
+      /\b(acne|blemish|breakout|pimple|congestion)\b/.test(q) &&
+      /\b(urgent|overnight|fast|quick|rapid|rescue|relief|spot|patch|pad)\b/.test(q)
+    )
+  ) {
+    return 'acne_urgent';
+  }
+
+  if (
+    /\b(oily skin|oil control|shine control|anti-shine|mattify|mattifying|sebum|pore|minimizing|niacinamide|salicylic(?:\s+acid)?|zinc)\b/.test(
+      q,
+    ) ||
+    /控油|出油|毛孔|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(q)
+  ) {
+    return 'oil_control';
+  }
+
+  if (
+    /\b(dark spots?|hyperpigmentation|brighten|brightening|radiance|vitamin c|tranexamic|kojic|alpha arbutin)\b/.test(
+      q,
+    ) ||
+    /提亮|淡斑|暗沉|维他命c|維他命c|传明酸|傳明酸|熊果苷/.test(q)
+  ) {
+    return 'brightening';
+  }
+
+  if (
+    /\b(barrier|repair|ceramide|panthenol|b5|cica|centella|redness|sensitive|soothing|calming)\b/.test(
+      q,
+    ) ||
+    /屏障|修护|修護|神经酰胺|神經醯胺|泛醇|积雪草|積雪草|敏感|泛红|泛紅|舒缓|舒緩/.test(q)
+  ) {
+    return 'barrier_repair';
+  }
+
+  if (
+    /\b(hydrat\w*|dehydrat\w*|plump\w*|hyalur\w*|hyaluronate|glycerin)\b/.test(q) ||
+    /保湿|保濕|补水|補水|透明质酸|透明質酸|玻尿酸|甘油/.test(q)
+  ) {
+    return 'hydration';
+  }
+
+  if (bucket === 'skincare') {
+    return 'generic_skincare';
+  }
+
+  return null;
+}
+
 function hasFragranceFreeSkincareSignal(text) {
   return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
     String(text || ''),
@@ -117,6 +181,7 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
   const primaryDomain = String(intent?.primary_domain || '').trim().toLowerCase();
   const scenario = String(intent?.scenario?.name || '').trim().toLowerCase();
   const bucket = detectBeautyQueryBucket(rawQuery);
+  const concernClass = inferBeautyConcernClass(rawQuery, bucket);
   const isBeautyQuery = primaryDomain === 'beauty' || bucket != null;
   const isSpecificBeautyQuery =
     isBeautyQuery && ['skincare', 'tools', 'fragrance'].includes(String(bucket || ''));
@@ -137,6 +202,7 @@ function buildBeautyQueryProfile({ rawQuery, queryClass, intent } = {}) {
     allowBeautyDiversity,
     queryClass: normalizedQueryClass,
     scenario: scenario || null,
+    concernClass,
     rawQuery,
   };
 }
@@ -191,6 +257,7 @@ module.exports = {
   buildBeautyQueryProfile,
   classifyBeautyBucketFromText,
   detectBeautyQueryBucket,
+  inferBeautyConcernClass,
   getBeautyCacheExpansionTerms,
   isBeautyBucketCompatibleForQuery,
 };
