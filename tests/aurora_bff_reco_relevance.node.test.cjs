@@ -5121,6 +5121,9 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       query,
       semanticContractOwner: String(semanticContract?.owner || ''),
       semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
+      queryStepStrength: String(config?.params?.query_step_strength || ''),
+      targetStepFamily: String(config?.params?.target_step_family || ''),
+      semanticFamily: String(config?.params?.semantic_family || ''),
       catalogSurface: String(config?.params?.catalog_surface || ''),
       fastMode: config?.params?.fast_mode,
       timeoutMs: Number(config?.timeout || 0),
@@ -5208,6 +5211,9 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
         entry.query === 'daily sunscreen'
         && entry.semanticContractOwner === 'aurora_reco_planner'
         && entry.semanticContractTargetStep === 'sunscreen'
+        && entry.queryStepStrength === 'exact_step'
+        && entry.targetStepFamily === 'sunscreen'
+        && entry.semanticFamily === 'sunscreen'
         && entry.catalogSurface === 'beauty'
         && entry.fastMode === undefined
         && entry.timeoutMs >= 5000
@@ -5252,6 +5258,9 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
       semanticContractOwner: String(semanticContract?.owner || ''),
       semanticContractTargetStep: String(semanticContract?.target_step_family || ''),
       semanticContractPrimaryRole: String(semanticContract?.primary_role_id || ''),
+      queryStepStrength: String(config?.params?.query_step_strength || ''),
+      targetStepFamily: String(config?.params?.target_step_family || ''),
+      semanticFamily: String(config?.params?.semantic_family || ''),
     });
     if (query === 'oil control serum') {
       return {
@@ -5354,6 +5363,14 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
         && entry.semanticContractOwner === 'aurora_reco_planner'
         && entry.semanticContractTargetStep === 'treatment'
         && entry.semanticContractPrimaryRole === 'oil_control_treatment'),
+        JSON.stringify(observedCalls),
+    );
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'oil control serum'
+        && entry.queryStepStrength === 'strong_goal_family'
+        && entry.targetStepFamily === 'treatment'
+        && entry.semanticFamily === 'oil_control'),
       JSON.stringify(observedCalls),
     );
     assert.equal(observedCalls.some((entry) => entry.query === 'what products should i use for oily skin?'), false);

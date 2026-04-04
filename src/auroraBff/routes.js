@@ -17565,6 +17565,14 @@ async function bridgeRecoToBeautyMainlineSearch({
     RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
     Number.isFinite(Number(minTimeoutMs)) ? Math.trunc(Number(minTimeoutMs)) : 0,
   );
+  const semanticTargetStepFamily = normalizeRecoTargetStep(semanticContract?.target_step_family);
+  const semanticFamily = pickFirstTrimmed(semanticContract?.semantic_family) || '';
+  const queryStepStrength =
+    semanticTargetStepFamily === 'sunscreen'
+      ? 'exact_step'
+      : semanticTargetStepFamily
+        ? 'strong_goal_family'
+        : '';
   const searchResult = await searchPivotaBackendProducts({
     query,
     limit: 6,
@@ -17577,6 +17585,9 @@ async function bridgeRecoToBeautyMainlineSearch({
     deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
     searchSourceOverride: 'aurora-bff',
     fastMode: undefined,
+    queryStepStrength,
+    targetStepFamily: semanticTargetStepFamily,
+    semanticFamily,
     semanticContract,
     traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
     authHeaders: authHeaders || ctx?.backend_auth_headers || null,
