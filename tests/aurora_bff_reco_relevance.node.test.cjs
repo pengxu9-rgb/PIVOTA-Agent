@@ -5124,10 +5124,11 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       query,
       semanticContractOwner: String(semanticContract?.owner || ''),
       catalogSurface: String(config?.params?.catalog_surface || ''),
+      fastMode: config?.params?.fast_mode,
     });
     if (
       query === 'what sunscreen should i use for oily skin?'
-      && String(semanticContract?.owner || '') === 'shopping_agent_beauty_contract_builder'
+      && String(config?.params?.catalog_surface || '') === 'beauty'
     ) {
       return {
         status: 200,
@@ -5200,7 +5201,8 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       observedCalls.some((entry) =>
         entry.query === 'what sunscreen should i use for oily skin?'
         && entry.catalogSurface === 'beauty'
-        && entry.semanticContractOwner === 'shopping_agent_beauty_contract_builder'),
+        && entry.fastMode === undefined),
+      JSON.stringify(observedCalls),
     );
   } finally {
     axios.get = originalGet;
