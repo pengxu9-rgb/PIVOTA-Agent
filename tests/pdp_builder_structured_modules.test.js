@@ -165,4 +165,47 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'https://cdn.shopify.com/s/files/1/2139/2967/files/Related_Blush_1200.png',
     );
   });
+
+  test('rewrites known Tom Ford Shopify assets onto sdcdn mirrors', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tf_1',
+        merchant_id: 'external_seed',
+        title: 'Tom Ford Beauty Product',
+        image_url:
+          'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg?v=1774376799',
+        variants: [
+          {
+            id: 'sku_tf_1',
+            sku: 'T1QS01',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg?v=1774376799',
+            price: { amount: 96, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [
+        {
+          id: 'rec_tf_1',
+          merchant_id: 'external_seed',
+          title: 'TF Rec',
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png?v=1774376799',
+          price: '90.00',
+          currency: 'USD',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+    );
+    expect(payload.product.variants[0].image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg?height=1400px&width=1400px',
+    );
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items[0]?.image_url).toBe(
+      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png?height=1400px&width=1400px',
+    );
+  });
 });

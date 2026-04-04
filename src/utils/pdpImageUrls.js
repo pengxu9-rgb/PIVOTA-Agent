@@ -21,6 +21,24 @@ function isShopifyLikeAsset(parsed) {
   );
 }
 
+function rewriteKnownSdcdnMirror(parsed) {
+  const next = new URL(parsed.toString());
+  const filename = String(next.pathname.split('/').pop() || '').trim();
+  if (!filename) return next;
+
+  if (
+    isKnownHost(next.hostname, ['cdn.shopify.com', 'shopifycdn.com']) &&
+    /^tf_/i.test(filename)
+  ) {
+    const mirror = new URL(`https://sdcdn.io/tf/${filename}`);
+    mirror.searchParams.set('height', '1400px');
+    mirror.searchParams.set('width', '1400px');
+    return mirror;
+  }
+
+  return next;
+}
+
 function normalizeShopifyLikeFilename(filename) {
   const trimmed = String(filename || '').trim();
   if (!trimmed) return trimmed;
@@ -36,7 +54,7 @@ function normalizePdpImageUrl(value) {
   if (!isAbsoluteHttpUrl(raw)) return '';
 
   try {
-    const parsed = new URL(raw);
+    let parsed = new URL(raw);
     if (isShopifyLikeAsset(parsed)) {
       parsed.searchParams.delete('v');
       const segments = parsed.pathname.split('/');
@@ -44,6 +62,7 @@ function normalizePdpImageUrl(value) {
       segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '');
       parsed.pathname = segments.join('/');
     }
+    parsed = rewriteKnownSdcdnMirror(parsed);
     return parsed.toString();
   } catch {
     return '';
