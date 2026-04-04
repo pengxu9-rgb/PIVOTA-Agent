@@ -4367,12 +4367,14 @@ async function searchPivotaBackendProducts({
         break;
       }
       try {
+        const searchHeaders = {
+          ...(isSelfProxyBase ? { 'Content-Type': 'application/json' } : {}),
+          ...buildPivotaBackendAgentHeaders(),
+          ...(traceId ? { 'X-Trace-ID': String(traceId).trim() } : {}),
+        };
         const resp = await axios.get(endpoint, {
           params,
-          headers: {
-            ...(isSelfProxyBase ? { 'Content-Type': 'application/json' } : buildPivotaBackendAgentHeaders()),
-            ...(traceId ? { 'X-Trace-ID': String(traceId).trim() } : {}),
-          },
+          headers: searchHeaders,
           timeout: effectiveRequestTimeoutMs,
           validateStatus: () => true,
         });

@@ -2488,6 +2488,7 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
 
   test('step-aware aurora reco transport policy keeps catalog search on self proxy main path', async () => {
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog-upstream.test';
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'test-api-key';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS = 'http://catalog-upstream.test';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_SOURCE = 'aurora-bff';
     process.env.AURORA_BFF_RECO_CATALOG_SEARCH_PREFER_CONFIGURED_BASE_URLS = 'true';
@@ -2496,6 +2497,8 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_RECO_CATALOG_MULTI_SOURCE_ENABLED = 'true';
 
     nock('http://catalog-self.test')
+      .matchHeader('x-api-key', 'test-api-key')
+      .matchHeader('authorization', 'Bearer test-api-key')
       .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
