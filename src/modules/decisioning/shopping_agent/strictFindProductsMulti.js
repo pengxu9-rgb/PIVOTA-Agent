@@ -94,6 +94,38 @@ const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
   'toner',
 ]);
 
+const STRICT_FIND_PRODUCTS_MULTI_EXACT_TITLE_FORM_FACTOR_TOKENS = new Set([
+  'serum',
+  'treatment',
+  'moisturizer',
+  'cleanser',
+  'toner',
+  'sunscreen',
+  'cream',
+  'lotion',
+  'gel',
+  'essence',
+  'ampoule',
+  'mist',
+  'foundation',
+  'lipstick',
+  'blush',
+  'gloss',
+  'concealer',
+]);
+
+const STRICT_FIND_PRODUCTS_MULTI_EXACT_TITLE_STOPWORDS = new Set([
+  'for',
+  'with',
+  'and',
+  'the',
+  'skin',
+  'face',
+  'daily',
+  'best',
+  'recommend',
+]);
+
 const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
   1,
   Math.min(Number(process.env.STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT || 12) || 12, 50),
@@ -129,6 +161,55 @@ function getRequestedCatalogSurface({ search = {}, metadata = {} } = {}) {
 
 function isStrictCommerceCatalogSurface(surface) {
   return ['agent_api', 'acp', 'ucp'].includes(String(surface || '').trim().toLowerCase());
+}
+
+function tokenizeStrictExactLookupQuery(rawQuery, normalizeSearchTextForMatch) {
+  const normalized = normalizeSearchTextForMatch(rawQuery);
+  return normalized ? normalized.split(' ').filter(Boolean) : [];
+}
+
+function isStrictBeautyExactLookupQuery({
+  rawQuery = '',
+  beautyQueryProfile = null,
+  ingredientIntents = [],
+  normalizeSearchTextForMatch,
+} = {}) {
+  if (!beautyQueryProfile || beautyQueryProfile.isBeautyQuery !== true) return false;
+  const raw = String(rawQuery || '').trim();
+  if (!raw || raw.length > 96) return false;
+  if (/[?？]/.test(raw)) return false;
+  const lower = raw.toLowerCase();
+  if (
+    /\b(recommend|best|for\s|how|guide|tips|budget|under\s|gift|checklist)\b/.test(lower) ||
+    /推荐|适合|怎么|如何|教程|礼物|清单/.test(raw)
+  ) {
+    return false;
+  }
+
+  const tokens = tokenizeStrictExactLookupQuery(raw, normalizeSearchTextForMatch);
+  if (tokens.length < 3 || tokens.length > 10) return false;
+
+  const informativeTokens = tokens.filter((token) => {
+    const normalized = String(token || '').trim().toLowerCase();
+    return normalized && !STRICT_FIND_PRODUCTS_MULTI_EXACT_TITLE_STOPWORDS.has(normalized) && normalized.length >= 3;
+  });
+  if (!informativeTokens.length) return false;
+
+  const hasFormFactor = tokens.some((token) =>
+    STRICT_FIND_PRODUCTS_MULTI_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').trim().toLowerCase()),
+  );
+  const capitalizedWords = raw.match(/\b[A-Z][A-Za-z0-9'’+-]*\b/g) || [];
+  const hasPercentSignal = /\b\d{1,3}(?:\.\d+)?%/.test(raw);
+  const hasStrongTitleSignal =
+    /[-/+]/.test(raw) || hasPercentSignal || capitalizedWords.length >= 2;
+  const hasFormulaSignal =
+    ingredientIntents.length > 0 &&
+    (hasPercentSignal || /[-/+]/.test(raw));
+  const multiIngredientFormula = ingredientIntents.length >= 2 && hasFormulaSignal;
+
+  if (hasFormFactor && hasStrongTitleSignal) return true;
+  if (multiIngredientFormula && informativeTokens.length >= 2) return true;
+  return false;
 }
 
 function buildSqlLikeClauses(columnSql, values, params, startIndex) {
@@ -344,6 +425,22 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
     const beautyQueryProfile = buildBeautyQueryProfile({ rawQuery });
     const ingredientIntents = extractStrictFindProductsMultiIngredientIntents(rawQuery, beautyQueryProfile);
     const shadeOptionIntents = extractStrictFindProductsMultiShadeOptionIntents(rawQuery, beautyQueryProfile);
+    const exactLookupLikeQuery = isStrictBeautyExactLookupQuery({
+      rawQuery,
+      beautyQueryProfile,
+      ingredientIntents,
+      normalizeSearchTextForMatch,
+    });
+    if (exactLookupLikeQuery) {
+      return {
+        enabled: false,
+        catalogSurface: null,
+        strictConstraintQuery: false,
+        strictConstraintReason: null,
+        ingredientIntents,
+        shadeOptionIntents,
+      };
+    }
     const hasIngredientConstraint = ingredientIntents.length > 0;
     const hasShadeConstraint = shadeOptionIntents.length > 0;
     if (!hasIngredientConstraint && !hasShadeConstraint && explicitStrictSurface) {
