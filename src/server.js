@@ -22490,6 +22490,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? normalizeSemanticOwnerQueryPack(semanticRewriteResultMeta?.normalized_query_pack)
         : [];
     const semanticOwnerQueryTotal = semanticOwnerQueryPack.length;
+    const semanticOwnerTargetStepFamily = normalizeRecoTargetStep(
+      semanticContractMeta?.target_step_family ||
+        semanticContractMeta?.primary_step_family ||
+        '',
+    );
+    const semanticOwnerMinQueriesBeforeBudgetGuard =
+      semanticOwnerTargetStepFamily === 'sunscreen'
+        ? Math.min(2, Math.max(semanticOwnerQueryTotal, 0))
+        : 1;
     const buildVariantRequestBody = (baseRequestBody, queryValue, queryIndex) => {
       const normalizedQuery = String(queryValue || '').trim();
       if (!normalizedQuery || !baseRequestBody || typeof baseRequestBody !== 'object' || Array.isArray(baseRequestBody)) {
@@ -22540,6 +22549,107 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         };
       }
       return baseRequestBody;
+    };
+    const evaluateSemanticOwnerBeautyAdoption = ({
+      upstreamData,
+      queryText,
+      queryParamsValue,
+      requestBodyValue,
+    }) => {
+      const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+      if (!products.length) {
+        return {
+          adopt: false,
+          hitDecision: null,
+          beautyScoped: false,
+        };
+      }
+      const requestSearch =
+        requestBodyValue?.payload &&
+        typeof requestBodyValue.payload === 'object' &&
+        !Array.isArray(requestBodyValue.payload) &&
+        requestBodyValue.payload.search &&
+        typeof requestBodyValue.payload.search === 'object' &&
+        !Array.isArray(requestBodyValue.payload.search)
+          ? requestBodyValue.payload.search
+          : requestBodyValue?.search &&
+              typeof requestBodyValue.search === 'object' &&
+              !Array.isArray(requestBodyValue.search)
+            ? requestBodyValue.search
+            : {};
+      const responseMeta =
+        upstreamData?.metadata &&
+        typeof upstreamData.metadata === 'object' &&
+        !Array.isArray(upstreamData.metadata)
+          ? upstreamData.metadata
+          : {};
+      const uiSurface = normalizeSearchUiSurface(
+        requestSearch?.ui_surface ||
+          requestSearch?.uiSurface ||
+          responseMeta?.ui_surface ||
+          metadata?.ui_surface ||
+          queryParamsValue?.ui_surface ||
+          queryParamsValue?.uiSurface,
+      );
+      const guidanceOnlyDiscovery = uiSurface === 'ingredient_plan_guidance_only';
+      const targetStepFamily = normalizeRecoTargetStep(
+        responseMeta?.query_target_step_family ||
+          requestSearch?.target_step_family ||
+          requestSearch?.targetStepFamily ||
+          queryParamsValue?.target_step_family ||
+          queryParamsValue?.targetStepFamily ||
+          semanticContractMeta?.target_step_family,
+      );
+      const queryBucket = detectBeautyQueryBucket(queryText);
+      if (queryBucket !== 'skincare' || !targetStepFamily) {
+        return {
+          adopt: products.length > 0,
+          hitDecision: null,
+          beautyScoped: false,
+        };
+      }
+      const decisionMode = normalizeRecommendationDecisionMode(
+        responseMeta?.decision_mode ||
+          requestSearch?.decision_mode ||
+          requestSearch?.decisionMode ||
+          queryParamsValue?.decision_mode ||
+          queryParamsValue?.decisionMode ||
+          metadata?.decision_mode ||
+          metadata?.decisionMode ||
+          (semanticContractMeta?.planner_mode === 'step_aware' ? 'step_aware_reco' : null),
+        { guidanceOnlyDiscovery },
+      );
+      const requestedStepStrength = resolveGuidanceSearchStepStrength(
+        responseMeta?.query_step_strength ||
+          requestSearch?.query_step_strength ||
+          requestSearch?.queryStepStrength ||
+          queryParamsValue?.query_step_strength ||
+          queryParamsValue?.queryStepStrength,
+        queryText,
+        targetStepFamily,
+      );
+      const queryStepStrength = shouldUseSharedTargetRelevancePipeline({
+        mode: decisionMode,
+        targetStepFamily,
+        queryStepStrength: requestedStepStrength,
+      })
+        ? requestedStepStrength
+        : null;
+      const hitDecision = buildBeautySkincareHitQualityDecision({
+        queryText,
+        products,
+        queryTargetStepFamily: targetStepFamily,
+        guidanceOnlyDiscovery,
+        queryStepStrength,
+        mode: decisionMode,
+      });
+      return {
+        adopt: hitDecision?.applied === true
+          ? hitDecision.hit_quality === 'valid_hit'
+          : products.length > 0,
+        hitDecision,
+        beautyScoped: true,
+      };
     };
     if (semanticOwnerQueryPack.length > 0) {
       const primarySemanticQuery = semanticOwnerQueryPack[0];
@@ -23292,6 +23402,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       requestBodyOverride: requestBody,
       includeRouteDebug: true,
     });
+    const primarySemanticOwnerAdoption = evaluateSemanticOwnerBeautyAdoption({
+      upstreamData,
+      queryText: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0] || '',
+      queryParamsValue: queryParams,
+      requestBodyValue: requestBody,
+    });
     let semanticOwnerQueryAttempts =
       semanticOwnerQueryPack.length > 0
         ? [
@@ -23300,7 +23416,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               query_index: 0,
               query_total: semanticOwnerQueryTotal,
               result_count: Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0,
-              adopted: Array.isArray(upstreamData?.products) ? upstreamData.products.length > 0 : false,
+              adopted: primarySemanticOwnerAdoption.adopt,
+              ...(primarySemanticOwnerAdoption.hitDecision
+                ? {
+                    hit_quality: primarySemanticOwnerAdoption.hitDecision.hit_quality || null,
+                    invalid_hit_reason: primarySemanticOwnerAdoption.hitDecision.invalid_hit_reason || null,
+                    post_quality_result_count: Array.isArray(primarySemanticOwnerAdoption.hitDecision.valid_products)
+                      ? primarySemanticOwnerAdoption.hitDecision.valid_products.length
+                      : 0,
+                  }
+                : {}),
             },
           ]
         : [];
@@ -23310,11 +23435,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       semanticOwnerQueryPack.length > 1 &&
       response?.status >= 200 &&
       response?.status < 300 &&
-      (
-        !Array.isArray(upstreamData?.products) ||
-        upstreamData.products.length === 0 ||
-        Boolean(upstreamData?.clarification?.question)
-      )
+      primarySemanticOwnerAdoption.adopt !== true
     ) {
       const semanticOwnerRetryLimit = Math.min(
         Math.max(Number(queryParams?.limit || queryParams?.page_size || 20) || 20, 1) * 2,
@@ -23322,9 +23443,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       for (let queryIndex = 1; queryIndex < semanticOwnerQueryPack.length; queryIndex += 1) {
         const remainingBudgetForSemanticOwner = getFpmRemainingBudgetMs();
+        const allowRequiredSemanticOwnerRetry =
+          queryIndex < semanticOwnerMinQueriesBeforeBudgetGuard &&
+          remainingBudgetForSemanticOwner >= 250;
         if (
           FPM_GATE_SIMPLIFY_V1 &&
-          remainingBudgetForSemanticOwner < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS
+          remainingBudgetForSemanticOwner < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS &&
+          !allowRequiredSemanticOwnerRetry
         ) {
           semanticOwnerQueryAttempts.push({
             query: semanticOwnerQueryPack[queryIndex],
@@ -23383,13 +23508,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const variantProducts = Array.isArray(variantUpstreamData?.products)
           ? variantUpstreamData.products
           : [];
-        const shouldAdoptVariant = variantResponse?.status >= 200 && variantResponse?.status < 300 && variantProducts.length > 0;
+        const variantAdoption = evaluateSemanticOwnerBeautyAdoption({
+          upstreamData: variantUpstreamData,
+          queryText: semanticOwnerQueryPack[queryIndex],
+          queryParamsValue: variantQueryParams,
+          requestBodyValue: variantRequestBody,
+        });
+        const shouldAdoptVariant =
+          variantResponse?.status >= 200 &&
+          variantResponse?.status < 300 &&
+          variantProducts.length > 0 &&
+          variantAdoption.adopt === true;
         semanticOwnerQueryAttempts.push({
           query: semanticOwnerQueryPack[queryIndex],
           query_index: queryIndex,
           query_total: semanticOwnerQueryTotal,
           result_count: variantProducts.length,
           adopted: shouldAdoptVariant,
+          ...(variantAdoption.hitDecision
+            ? {
+                hit_quality: variantAdoption.hitDecision.hit_quality || null,
+                invalid_hit_reason: variantAdoption.hitDecision.invalid_hit_reason || null,
+                post_quality_result_count: Array.isArray(variantAdoption.hitDecision.valid_products)
+                  ? variantAdoption.hitDecision.valid_products.length
+                  : 0,
+              }
+            : {}),
         });
         if (shouldAdoptVariant) {
           response = variantResponse;

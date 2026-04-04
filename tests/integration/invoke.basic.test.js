@@ -603,6 +603,119 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.reason_codes).not.toContain('FILTERED_TO_EMPTY');
   });
 
+  it('beauty semantic-owner query pack retries after a non-empty invalid_hit first treatment query', async () => {
+    const attemptedQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/v2/products/search')
+      .query((query) => {
+        attemptedQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(2)
+      .reply(function replyVariant() {
+        const latestQuery = attemptedQueries[attemptedQueries.length - 1];
+        if (latestQuery === 'oil control treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'brush_1',
+                product_id: 'brush_1',
+                title: 'Small Eyeshadow Brush',
+                name: 'Small Eyeshadow Brush',
+                display_name: 'Small Eyeshadow Brush',
+                category: 'makeup brush',
+                product_type: 'tool',
+              },
+              {
+                id: 'lip_1',
+                product_id: 'lip_1',
+                title: 'Peptide Lip Treatment Strawberry Glaze',
+                name: 'Peptide Lip Treatment Strawberry Glaze',
+                display_name: 'Peptide Lip Treatment Strawberry Glaze',
+                category: 'lip treatment',
+                product_type: 'treatment',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_search',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: 'treat_valid_1',
+              product_id: 'treat_valid_1',
+              merchant_id: 'merchant_treat',
+              title: 'Salicylic Acid Oil Control Treatment',
+              name: 'Salicylic Acid Oil Control Treatment',
+              display_name: 'Salicylic Acid Oil Control Treatment',
+              category: 'skincare',
+              product_type: 'treatment',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedQueries).toEqual(['oil control treatment', 'oil control serum']);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('treat_valid_1');
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'oil control treatment',
+          query_index: 0,
+          adopted: false,
+          hit_quality: 'invalid_hit',
+        }),
+        expect.objectContaining({
+          query: 'oil control serum',
+          query_index: 1,
+          adopted: true,
+          hit_quality: 'valid_hit',
+        }),
+      ]),
+    );
+  });
+
   it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',
