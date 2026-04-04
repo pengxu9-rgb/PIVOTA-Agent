@@ -5094,6 +5094,118 @@ test('/v1/chat: step-aware sunscreen soft-mismatch candidates still return recom
   }
 });
 
+test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when aurora planner returns empty', async () => {
+  const originalGet = axios.get;
+  const observedCalls = [];
+  const harness = createAppWithPatchedAuroraChat({
+    auroraChatImpl: async () => ({
+      intent: 'recommend_products',
+      answer: '{"summary":"empty structured reco"}',
+      structured: {
+        recommendations: [],
+        confidence: null,
+        warnings: ['upstream_missing_or_empty'],
+      },
+      context: {},
+    }),
+  });
+
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    const semanticContract = (() => {
+      try {
+        return JSON.parse(String(config?.params?.semantic_contract || '{}'));
+      } catch (_err) {
+        return null;
+      }
+    })();
+    observedCalls.push({
+      query,
+      semanticContractOwner: String(semanticContract?.owner || ''),
+    });
+    if (
+      query === 'what sunscreen should i use for oily skin?'
+      && String(semanticContract?.owner || '') === 'shopping_agent_beauty_contract_builder'
+    ) {
+      return {
+        status: 200,
+        data: {
+          products: [
+            {
+              product_id: 'ext_spf_bridge_1',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+              display_name: 'Ultra Light Liquid Mineral Sunscreen SPF 30',
+              category: 'external',
+              product_type: 'external',
+              source: 'external_seed',
+              url: 'https://example.com/ultra-light-spf-30',
+              short_description: 'A lightweight sunscreen for oily skin.',
+            },
+          ],
+          metadata: {
+            query_source: 'agent_products_search',
+            decision_owner: 'shopping_agent_beauty_mainline',
+            final_decision: 'products_returned',
+          },
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_step_bridge_uid',
+        'X-Trace-ID': 'trace_chat_step_bridge',
+        'X-Brief-ID': 'chat_step_bridge_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'what sunscreen should i use for oily skin?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['sun protection', 'oil control'],
+            },
+          },
+        },
+        message: 'what sunscreen should i use for oily skin?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length >= 1);
+    assert.equal(payload.recommendations[0]?.product_id, 'ext_spf_bridge_1');
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_applied, true);
+    assert.equal(payload.recommendation_meta?.beauty_mainline_bridge_owner, 'shopping_agent_beauty_mainline');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceCard, null);
+    assert.ok(
+      observedCalls.some((entry) =>
+        entry.query === 'what sunscreen should i use for oily skin?'
+        && entry.semanticContractOwner === 'shopping_agent_beauty_contract_builder'),
+    );
+  } finally {
+    axios.get = originalGet;
+    harness.restore();
+  }
+});
+
 test('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
   const originalGet = axios.get;
   const observedQueries = [];

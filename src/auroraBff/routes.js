@@ -94,6 +94,10 @@ const {
   resolveRecoRecallTransportModeForPlannerMode,
 } = require('./recoRecallTransportPolicy');
 const {
+  BEAUTY_DISCOVERY_MAINLINE_OWNER,
+  buildBeautyDiscoverySemanticContract,
+} = require('../findProductsMulti/policy');
+const {
   resolveAuroraGeminiMainlineModel,
   resolveAuroraPublicLlmRoute,
   validateAuroraModelSelection,
@@ -17275,6 +17279,141 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ].filter(Boolean),
     };
   });
+}
+
+function buildRecoRowsFromBridgeProducts(products, {
+  targetContext = null,
+  language = 'EN',
+  debug = false,
+} = {}) {
+  const primaryFrameworkRole = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim())
+      || targetContext.framework_roles[0]
+      || null
+    : null;
+  const primaryFrameworkStep = pickFirstTrimmed(
+    primaryFrameworkRole?.preferred_step,
+    targetContext?.resolved_target_step,
+  );
+  return (Array.isArray(products) ? products : []).map((picked, index) => {
+    const stepToken = pickFirstTrimmed(
+      primaryFrameworkStep,
+      targetContext?.resolved_target_step,
+      picked?.product_type,
+      picked?.category,
+      'other',
+    );
+    const normalizedStep = normalizeRecoTargetStep(stepToken) || 'other';
+    const canonicalRef = normalizeCanonicalProductRef(
+      {
+        product_id: pickFirstString(picked?.product_id, picked?.productId),
+        merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
+      },
+      { requireMerchant: true, allowOpaqueProductId: false },
+    );
+    return {
+      slot: inferSlotForStep(normalizedStep),
+      step: humanizeRecoProductType(normalizedStep, language),
+      score: Math.max(72, 95 - index * 3),
+      product_id: pickFirstString(picked?.product_id, picked?.productId),
+      merchant_id: pickFirstString(picked?.merchant_id, picked?.merchantId),
+      brand: pickFirstString(picked?.brand, picked?.brand_name, picked?.brandName),
+      name: pickFirstString(picked?.name, picked?.title, picked?.display_name, picked?.displayName),
+      display_name: pickFirstString(picked?.display_name, picked?.displayName, picked?.name, picked?.title),
+      category: pickFirstString(
+        picked?.category,
+        picked?.category_name,
+        picked?.categoryName,
+        picked?.product_type,
+        picked?.productType,
+        picked?.type,
+        normalizedStep,
+      ),
+      retrieval_source: pickFirstString(picked?.retrieval_source, picked?.retrievalSource, 'catalog'),
+      retrieval_reason: pickFirstString(
+        picked?.retrieval_reason,
+        picked?.retrievalReason,
+        'shopping_agent_beauty_mainline_bridge',
+      ),
+      ...(canonicalRef ? { canonical_product_ref: canonicalRef } : {}),
+      ...(pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) ? { canonical_pdp_url: pickFirstString(picked?.canonical_pdp_url, picked?.canonicalPdpUrl) } : {}),
+      ...(pickFirstString(picked?.purchase_path, picked?.purchasePath) ? { purchase_path: pickFirstString(picked?.purchase_path, picked?.purchasePath) } : {}),
+      ...(isPlainObject(picked?.pdp_open) ? { pdp_open: picked.pdp_open } : {}),
+      ...(primaryFrameworkRole
+        ? {
+            matched_role_id: pickFirstTrimmed(primaryFrameworkRole?.role_id) || null,
+            matched_role_label: pickFirstTrimmed(primaryFrameworkRole?.label) || null,
+            matched_role_rank: Number.isFinite(Number(primaryFrameworkRole?.rank)) ? Number(primaryFrameworkRole.rank) : null,
+          }
+        : {}),
+      sku: picked,
+      notes: [
+        ...(debug
+          ? [String(language || '').toUpperCase() === 'CN'
+            ? '来自 Pivota 商品库（beauty mainline bridge）'
+            : 'From Pivota catalog (beauty mainline bridge)']
+          : []),
+      ].filter(Boolean),
+    };
+  });
+}
+
+async function bridgeRecoToBeautyMainlineSearch({
+  ctx,
+  logger,
+  query,
+  targetContext = null,
+  deadlineAtMs = null,
+  debug = false,
+} = {}) {
+  const search = {
+    catalog_surface: 'beauty',
+  };
+  const explicitTargetStepFamily = normalizeRecoTargetStep(
+    pickFirstTrimmed(
+      targetContext?.resolved_target_step,
+      Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0
+        ? targetContext.framework_roles[0]?.preferred_step
+        : '',
+    ),
+  );
+  if (explicitTargetStepFamily) search.target_step_family = explicitTargetStepFamily;
+  const semanticContract = buildBeautyDiscoverySemanticContract({
+    rawQuery: query,
+    search,
+    metadata: { source: 'aurora-bff' },
+  });
+  if (!semanticContract) {
+    return {
+      recommendations: [],
+      semanticContract: null,
+      searchResult: null,
+    };
+  }
+  const searchResult = await searchPivotaBackendProducts({
+    query,
+    limit: 6,
+    logger,
+    timeoutMs: RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
+    minTimeoutMs: RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS,
+    mode: 'main_path',
+    searchAllMerchants: true,
+    deadlineMs: Number.isFinite(Number(deadlineAtMs)) ? Number(deadlineAtMs) : 0,
+    searchSourceOverride: 'aurora-bff',
+    fastMode: true,
+    semanticContract,
+    traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
+  });
+  const recommendations = buildRecoRowsFromBridgeProducts(searchResult?.products, {
+    targetContext,
+    language: ctx?.lang || 'EN',
+    debug,
+  });
+  return {
+    recommendations,
+    semanticContract,
+    searchResult,
+  };
 }
 
 const CONCERN_SUNSCREEN_SIGNAL_RE = /\b(spf(?:\s*\d{1,3}\+?)?|sunscreen|sun screen|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|pa\+{1,4}|防晒|防曬)\b/i;
@@ -61621,6 +61760,59 @@ async function generateProductRecommendations({
     concernWinnerSource = 'deterministic';
     concernSupportRolesSurfaced = [];
   }
+  let beautyMainlineBridgeNonBlocking = false;
+  if (
+    deterministicCatalogFirstEnabled
+    && !concernSemanticPlanBlockedReason
+    && promptContract.ok !== false
+    && (!Array.isArray(norm.payload?.recommendations) || norm.payload.recommendations.length === 0)
+  ) {
+    const bridgedReco = await bridgeRecoToBeautyMainlineSearch({
+      ctx,
+      logger,
+      query: userAsk,
+      targetContext,
+      deadlineAtMs,
+      debug,
+    });
+    if (Array.isArray(bridgedReco.recommendations) && bridgedReco.recommendations.length > 0) {
+      beautyMainlineBridgeNonBlocking = true;
+      effectiveFailureClass = 'none';
+      failureOrigin = 'none';
+      presentationMode = presentationMode || 'deterministic_degraded';
+      successMode = successMode || 'degraded_success';
+      const nextPayload = {
+        ...norm.payload,
+        recommendations: bridgedReco.recommendations,
+        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
+        recommendation_meta: {
+          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+          beauty_mainline_bridge_applied: true,
+          beauty_mainline_bridge_owner: pickFirstTrimmed(
+            bridgedReco.searchResult?.decision_owner,
+            BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          beauty_mainline_bridge_query_source: pickFirstTrimmed(bridgedReco.searchResult?.query_source) || null,
+          beauty_mainline_bridge_result_count: bridgedReco.recommendations.length,
+          beauty_mainline_bridge_contract_owner: pickFirstTrimmed(bridgedReco.semanticContract?.owner) || null,
+        },
+        metadata: {
+          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+          beauty_mainline_bridge_applied: true,
+          beauty_mainline_bridge_owner: pickFirstTrimmed(
+            bridgedReco.searchResult?.decision_owner,
+            BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          beauty_mainline_bridge_query_source: pickFirstTrimmed(bridgedReco.searchResult?.query_source) || null,
+          beauty_mainline_bridge_result_count: bridgedReco.recommendations.length,
+          beauty_mainline_bridge_contract_owner: pickFirstTrimmed(bridgedReco.semanticContract?.owner) || null,
+        },
+      };
+      delete nextPayload.products_empty_reason;
+      delete nextPayload.telemetry_reason;
+      norm.payload = nextPayload;
+    }
+  }
   if (frameworkMode && Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
     const finalRecoRowsForPdp = Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations : [];
     const groundedRecoRows = [];
@@ -61714,6 +61906,7 @@ async function generateProductRecommendations({
       && (
         frameworkMainlineWarningNonBlocking
         || stepAwarePoolWarningNonBlocking
+        || beautyMainlineBridgeNonBlocking
         || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking)
       );
     const normalizedFailureClass = normalizeRecoEffectiveFailureClass(failureSignals.effective_failure_class || 'none');
@@ -68236,27 +68429,6 @@ function mountAuroraBffRoutes(app, { logger }) {
         finalDirectContract.mainline_status = 'needs_more_context';
         finalDirectContract.upstream_status = 'artifact_missing';
       }
-      const directRecoMainlineEmpty =
-        !explicitOnlyNeedsMoreContext
-        && !hasPayloadRecommendations
-        && hasDirectRecoTarget
-        && !['needs_more_context', 'upstream_timeout', 'severe_parse_or_prompt_failure'].includes(
-          String(
-            pickFirstTrimmed(
-              finalDirectContract.mainline_status,
-              payload?.mainline_status,
-              payload?.recommendation_meta?.mainline_status,
-            ) || '',
-          ).trim().toLowerCase(),
-        );
-      if (directRecoMainlineEmpty) {
-        finalDirectContract.primary_failure_reason = 'reco_mainline_empty';
-        finalDirectContract.surface_reason = 'reco_mainline_empty';
-        finalDirectContract.products_empty_reason = 'reco_mainline_empty';
-        finalDirectContract.telemetry_failure_reason = 'reco_mainline_empty';
-        finalDirectContract.mainline_status = 'reco_mainline_empty';
-        finalDirectContract.upstream_status = 'ok';
-      }
       const recommendationAnalysisContextMeta = buildTaskAnalysisContextUsageMeta(
         recommendationAnalysisTaskContext,
         {
@@ -68287,15 +68459,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               products_empty_reason: 'needs_more_context',
               mainline_status: 'needs_more_context',
             }
-            : directRecoMainlineEmpty
-              ? {
-                primary_failure_reason: 'reco_mainline_empty',
-                telemetry_failure_reason: 'reco_mainline_empty',
-                surface_reason: 'reco_mainline_empty',
-                products_empty_reason: 'reco_mainline_empty',
-                mainline_status: 'reco_mainline_empty',
-              }
-              : {}),
+            : {}),
           ...(directRecoTargetContext?.resolved_target_step ? { resolved_target_step: directRecoTargetContext.resolved_target_step } : {}),
           ...(directRecoTargetContext?.resolved_target_step_confidence ? { resolved_target_step_confidence: directRecoTargetContext.resolved_target_step_confidence } : {}),
           ...(directRecoTargetContext?.resolved_target_step_source ? { resolved_target_step_source: directRecoTargetContext.resolved_target_step_source } : {}),
@@ -68305,11 +68469,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           payload.mainline_status = 'needs_more_context';
           payload.products_empty_reason = 'needs_more_context';
           payload.telemetry_reason = 'minimum_recommendation_context_unsatisfied';
-        } else if (directRecoMainlineEmpty) {
-          payload.mainline_status = 'reco_mainline_empty';
-          payload.products_empty_reason = 'reco_mainline_empty';
-          payload.telemetry_reason = 'reco_mainline_empty';
-          payload.failure_reason = 'reco_mainline_empty';
         }
         payload.metadata = {
           ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
