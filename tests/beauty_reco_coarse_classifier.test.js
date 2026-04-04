@@ -140,4 +140,55 @@ describe('beauty treatment scoring', () => {
 
     expect(decision.valid_products[0]?.title).toBe('Niacinamide Serum 12% Plus Zinc 2%');
   });
+
+  test('oil control treatment query does not let broad brightening serums outrank niacinamide zinc', () => {
+    const niacinamide = scoreBeautyCandidateForTarget(
+      {
+        title: 'Niacinamide Serum 12% Plus Zinc 2%',
+        category: 'Serum',
+        product_type: 'Serum',
+        merchant_id: 'external_seed',
+        description: 'Oil control serum for pores and shine.',
+        active_ingredients: ['Niacinamide', 'Zinc PCA', 'Salicylic acid'],
+      },
+      {
+        queryTargetStepFamily: 'treatment',
+        queryText: 'oil control treatment',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const vitaminC = scoreBeautyCandidateForTarget(
+      {
+        title: 'Vitamin C Super Serum Plus',
+        category: 'Serum',
+        product_type: 'Serum',
+        merchant_id: 'external_seed',
+        description: 'Brightening serum for dark spots.',
+        active_ingredients: ['Vitamin C (Ascorbic acid)', 'Niacinamide', 'Salicylic acid'],
+      },
+      {
+        queryTargetStepFamily: 'treatment',
+        queryText: 'oil control treatment',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const tranexamic = scoreBeautyCandidateForTarget(
+      {
+        title: 'Tranexamic Topical Acid 5%',
+        category: 'Serum',
+        product_type: 'Serum',
+        merchant_id: 'external_seed',
+        description: 'Brightening serum for dark spots.',
+        active_ingredients: ['Tranexamic acid', 'Niacinamide', 'Salicylic acid'],
+      },
+      {
+        queryTargetStepFamily: 'treatment',
+        queryText: 'oil control treatment',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+
+    expect(niacinamide.score).toBeGreaterThan(vitaminC.score);
+    expect(niacinamide.score).toBeGreaterThan(tranexamic.score);
+  });
 });
