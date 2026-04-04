@@ -697,7 +697,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
   it('beauty semantic-owner query pack retries after a non-empty invalid_hit first treatment query', async () => {
     const attemptedQueries = [];
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query((query) => {
         attemptedQueries.push(String(query?.query || ''));
         return true;

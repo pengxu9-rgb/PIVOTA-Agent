@@ -22772,6 +22772,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         beautyScoped: true,
       };
     };
+    const scoreSemanticOwnerObservationFallback = ({ upstreamData, hitDecision }) => {
+      const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
+      if (!products.length) return -1;
+      if (!hitDecision?.applied) return products.length;
+      return (
+        Number(hitDecision.exact_step_topk_count || 0) * 1000 +
+        Number(hitDecision.strong_goal_family_topk_count || 0) * 100 +
+        Number(hitDecision.supportive_same_family_topk_count || 0) * 25 +
+        Number(hitDecision.same_family_topk_count || 0) * 10 +
+        Number(hitDecision.raw_result_count || products.length || 0)
+      );
+    };
     if (semanticOwnerQueryPack.length > 0) {
       const primarySemanticQuery = semanticOwnerQueryPack[0];
       queryParams = {
@@ -23539,6 +23551,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       queryParamsValue: queryParams,
       requestBodyValue: requestBody,
     });
+    let semanticOwnerAdoptedByValidHit = primarySemanticOwnerAdoption.adopt === true;
+    let semanticOwnerObservationFallback =
+      semanticOwnerControlled &&
+      primarySemanticOwnerAdoption.adopt !== true &&
+      Array.isArray(upstreamData?.products) &&
+      upstreamData.products.length > 0
+        ? {
+            score: scoreSemanticOwnerObservationFallback({
+              upstreamData,
+              hitDecision: primarySemanticOwnerAdoption.hitDecision,
+            }),
+            response,
+            upstreamData,
+            queryParams,
+            requestBody,
+            queryIndex: 0,
+          }
+        : null;
     let semanticOwnerQueryAttempts =
       semanticOwnerQueryPack.length > 0
         ? [
@@ -23653,6 +23683,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           variantResponse?.status < 300 &&
           variantProducts.length > 0 &&
           variantAdoption.adopt === true;
+        if (
+          semanticOwnerControlled &&
+          !shouldAdoptVariant &&
+          variantProducts.length > 0
+        ) {
+          const fallbackScore = scoreSemanticOwnerObservationFallback({
+            upstreamData: variantUpstreamData,
+            hitDecision: variantAdoption.hitDecision,
+          });
+          if (!semanticOwnerObservationFallback || fallbackScore > semanticOwnerObservationFallback.score) {
+            semanticOwnerObservationFallback = {
+              score: fallbackScore,
+              response: variantResponse,
+              upstreamData: variantUpstreamData,
+              queryParams: variantQueryParams,
+              requestBody: variantRequestBody,
+              queryIndex,
+            };
+          }
+        }
         semanticOwnerQueryAttempts.push({
           query: semanticOwnerQueryPack[queryIndex],
           query_index: queryIndex,
@@ -23670,6 +23720,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : {}),
         });
         if (shouldAdoptVariant) {
+          semanticOwnerAdoptedByValidHit = true;
           response = variantResponse;
           upstreamData = variantUpstreamData;
           queryParams = variantQueryParams;
@@ -23682,6 +23733,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
           break;
         }
+      }
+    }
+    if (
+      operation === 'find_products_multi' &&
+      semanticOwnerControlled &&
+      !semanticOwnerAdoptedByValidHit &&
+      semanticOwnerObservationFallback &&
+      Array.isArray(semanticOwnerObservationFallback.upstreamData?.products) &&
+      semanticOwnerObservationFallback.upstreamData.products.length > 0
+    ) {
+      response = semanticOwnerObservationFallback.response;
+      upstreamData = semanticOwnerObservationFallback.upstreamData;
+      queryParams = semanticOwnerObservationFallback.queryParams;
+      requestBody = semanticOwnerObservationFallback.requestBody;
+      const chosenAttempt = semanticOwnerQueryAttempts[semanticOwnerObservationFallback.queryIndex];
+      if (chosenAttempt && chosenAttempt.adopted !== true) {
+        chosenAttempt.adopted = true;
+        chosenAttempt.adoption_mode = 'observation_only';
       }
     }
 
