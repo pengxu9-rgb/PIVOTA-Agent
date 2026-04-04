@@ -4261,6 +4261,7 @@ function isSemanticOwnerControlledSearch({
   operation = '',
   semanticContract = null,
   semanticRewriteResult = null,
+  queryClass = null,
 } = {}) {
   if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
   const contract =
@@ -4273,6 +4274,8 @@ function isSemanticOwnerControlledSearch({
       : null;
   if (!contract || !rewrite) return false;
   if (!isBeautyDiscoverySemanticContract(contract)) return false;
+  const normalizedQueryClass = String(queryClass || '').trim().toLowerCase();
+  if (['lookup', 'attribute'].includes(normalizedQueryClass)) return false;
   return rewrite.applied === true && String(rewrite.owner || '').trim() === BEAUTY_DISCOVERY_MAINLINE_OWNER;
 }
 
@@ -4913,6 +4916,7 @@ function resolveLegacyBeautyCacheOwnerBypass({
   rawQuery = '',
   queryClass = null,
   strictConstraintQuery = false,
+  allowImplicitDerivedBeautyMainlineBypass = true,
 } = {}) {
   const normalizedSearch = isPlainRecord(search) ? search : {};
   const normalizedMetadata = isPlainRecord(metadata) ? metadata : {};
@@ -4962,22 +4966,13 @@ function resolveLegacyBeautyCacheOwnerBypass({
       semanticContract: explicitSemanticContract,
     };
   }
-  const derivedSemanticContract = buildBeautyDiscoverySemanticContract({
-    rawQuery: queryText,
-    search: normalizedSearch,
-    metadata: normalizedMetadata,
-  });
-  if (isBeautyDiscoverySemanticContract(derivedSemanticContract)) {
-    return {
-      bypass: true,
-      reason: 'beauty_mainline_derived_contract',
-      semanticContract: derivedSemanticContract,
-    };
-  }
   const catalogSurface = String(
     normalizedSearch.catalog_surface ||
       normalizedSearch.catalogSurface ||
+      normalizedSearch.commerce_surface ||
+      normalizedSearch.commerceSurface ||
       normalizedMetadata.catalog_surface ||
+      normalizedMetadata.commerce_surface ||
       '',
   )
     .trim()
@@ -4985,13 +4980,31 @@ function resolveLegacyBeautyCacheOwnerBypass({
   const source = String(normalizedMetadata.source || normalizedSearch.source || '')
     .trim()
     .toLowerCase();
+  const normalizedSource = source.replace(/[_\s]+/g, '-').replace(/-+/g, '-');
   const beautyQueryProfile = buildBeautyQueryProfile({
     rawQuery: queryText,
     queryClass: normalizedQueryClass || undefined,
   });
+  const allowDerivedBeautyMainlineBypass = allowImplicitDerivedBeautyMainlineBypass
+    ? true
+    : catalogSurface === 'beauty' || normalizedSource === 'aurora-bff';
+  if (allowDerivedBeautyMainlineBypass) {
+    const derivedSemanticContract = buildBeautyDiscoverySemanticContract({
+      rawQuery: queryText,
+      search: normalizedSearch,
+      metadata: normalizedMetadata,
+    });
+    if (isBeautyDiscoverySemanticContract(derivedSemanticContract)) {
+      return {
+        bypass: true,
+        reason: 'beauty_mainline_derived_contract',
+        semanticContract: derivedSemanticContract,
+      };
+    }
+  }
   if (
     beautyQueryProfile?.isBeautyQuery === true &&
-    (catalogSurface === 'beauty' || source === 'aurora-bff' || source === 'shopping-agent')
+    allowDerivedBeautyMainlineBypass
   ) {
     return {
       bypass: true,
@@ -16720,6 +16733,7 @@ function extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody = {}
   const userConstraints = isPlainRecord(requestContext.user_constraints) ? requestContext.user_constraints : {};
   const price = isPlainRecord(userConstraints.price) ? userConstraints.price : {};
   const sourceCurrency = toNonEmptyStringOrNull(price.currency)?.toUpperCase() || null;
+  const explicitFxSource = toNonEmptyStringOrNull(price.fx_source);
   const invokeCurrency =
     toNonEmptyStringOrNull(price.invoke_currency)?.toUpperCase() ||
     toNonEmptyStringOrNull(search.currency)?.toUpperCase() ||
@@ -16735,7 +16749,12 @@ function extractStrictBudgetMetadataFromInvokeRequestBody(invokeRequestBody = {}
       price.max == null || !Number.isFinite(Number(price.max)) ? null : Number(price.max),
     budget_fx_applied: directCurrencyMatch || hasFxRate,
     budget_fx_rate: directCurrencyMatch ? 1 : hasFxRate ? fxRate : null,
-    budget_fx_source: directCurrencyMatch ? 'direct_currency_match' : hasFxRate ? 'strict_request_context' : null,
+    budget_fx_source:
+      directCurrencyMatch
+        ? 'direct_currency_match'
+        : hasFxRate
+          ? explicitFxSource || 'strict_request_context'
+          : null,
     budget_fx_candidate_currency: invokeCurrency || null,
     budget_fx_unresolved:
       Boolean(sourceCurrency || invokeCurrency) && !(directCurrencyMatch || hasFxRate),
@@ -17077,8 +17096,8 @@ function normalizeStrictMainlineResponseMetadata({
   return {
     ...responseBody,
     metadata: {
-      ...resolveStrictBudgetMetadata(metadata, budgetMetadata),
       ...metadata,
+      ...resolveStrictBudgetMetadata(budgetMetadata, metadata),
       strict_constraint_query: true,
       strict_constraint_reason:
         strictInvokeDecision.strictConstraintReason ||
@@ -17170,7 +17189,8 @@ function normalizeShoppingStrictMainlineCacheResponse({
     ...strictEmpty,
     metadata: {
       ...strictEmptyMetadata,
-      ...resolveStrictBudgetMetadata(metadata, budgetMetadata),
+      ...metadata,
+      ...resolveStrictBudgetMetadata(budgetMetadata, metadata),
       ...(metadata.service_version ? { service_version: metadata.service_version } : {}),
       query_source: strictSource,
       strict_constraint_query: true,
@@ -17224,6 +17244,10 @@ function normalizeShoppingStrictMainlineCacheResponse({
   };
 }
 
+function shouldUseShoppingFreshMainlineSearch(source = null) {
+  return isShoppingSource(source) && !process.env.DATABASE_URL;
+}
+
 function normalizeShoppingFreshMainlineCacheResponse({
   responseBody = null,
   requestSource = null,
@@ -17233,7 +17257,7 @@ function normalizeShoppingFreshMainlineCacheResponse({
   queryText = '',
 } = {}) {
   if (!isPlainRecord(responseBody)) return responseBody;
-  if (!isShoppingSource(requestSource)) return responseBody;
+  if (!shouldUseShoppingFreshMainlineSearch(requestSource)) return responseBody;
 
   const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
   const querySource = String(metadata.query_source || '').trim().toLowerCase();
@@ -17386,7 +17410,7 @@ function normalizeShoppingFinalSearchResponse({
   queryText = '',
 } = {}) {
   if (!isPlainRecord(responseBody)) return responseBody;
-  if (!isShoppingSource(requestSource)) return responseBody;
+  if (!shouldUseShoppingFreshMainlineSearch(requestSource)) return responseBody;
 
   const metadata = isPlainRecord(responseBody.metadata) ? responseBody.metadata : {};
   const routeHealth = isPlainRecord(metadata.route_health) ? metadata.route_health : {};
@@ -18877,12 +18901,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation,
     });
     payload = applyFindProductsMultiSourceContract(parsedPayload, metadata, operation);
-    const auroraInvokePlan = buildAuroraFindProductsMultiPlan({
+    let auroraInvokePlan = buildAuroraFindProductsMultiPlan({
       source: metadata?.source,
       operation,
     });
-    const auroraFallbackOverrides = auroraInvokePlan.fallbackOverrides;
-    const resolverTimeoutMs = auroraInvokePlan.resolverTimeoutMs;
+    let auroraFallbackOverrides = auroraInvokePlan.fallbackOverrides;
+    let resolverTimeoutMs = auroraInvokePlan.resolverTimeoutMs;
     const creatorId = extractCreatorId({ ...payload, metadata });
     const now = new Date();
     let findProductsMultiCtx = null;
@@ -18896,6 +18920,68 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
       });
       debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
+      const governanceShadowRuntime =
+        metadata?.governance_shadow_runtime &&
+        typeof metadata.governance_shadow_runtime === 'object' &&
+        !Array.isArray(metadata.governance_shadow_runtime)
+          ? metadata.governance_shadow_runtime
+          : null;
+      const declaredRequestSource = String(
+        req?.body?.metadata?.source ||
+          parsedPayload?.metadata?.source ||
+          '',
+      )
+        .trim()
+        .toLowerCase();
+      const semanticContractCandidate =
+        findProductsMultiCtx?.expansion_meta?.semantic_contract &&
+        typeof findProductsMultiCtx.expansion_meta.semantic_contract === 'object' &&
+        !Array.isArray(findProductsMultiCtx.expansion_meta.semantic_contract)
+          ? findProductsMultiCtx.expansion_meta.semantic_contract
+          : null;
+      const declaredAuroraBeautyMainlineBypass = resolveLegacyBeautyCacheOwnerBypass({
+        search:
+          findProductsMultiCtx?.adjustedPayload?.search ||
+          parsedPayload?.search ||
+          payload?.search ||
+          null,
+        metadata: {
+          ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}),
+          source: declaredRequestSource || metadata?.source || null,
+        },
+        rawQuery:
+          findProductsMultiCtx?.rawUserQuery ||
+          findProductsMultiCtx?.adjustedPayload?.search?.query ||
+          parsedPayload?.search?.query ||
+          payload?.search?.query ||
+          '',
+        queryClass: findProductsMultiCtx?.expansion_meta?.query_class || null,
+        strictConstraintQuery: false,
+      });
+      if (
+        isAuroraSource(declaredRequestSource) &&
+        (
+          isBeautyDiscoverySemanticContract(semanticContractCandidate) ||
+          declaredAuroraBeautyMainlineBypass.bypass === true
+        )
+      ) {
+        metadata = {
+          ...metadata,
+          source: declaredRequestSource,
+          governance_shadow_runtime: {
+            ...governanceShadowRuntime,
+            source_restore_applied: true,
+            source_restore_reason: 'aurora_beauty_mainline',
+            source_restore_from_request: declaredRequestSource,
+          },
+        };
+        auroraInvokePlan = buildAuroraFindProductsMultiPlan({
+          source: metadata?.source,
+          operation,
+        });
+        auroraFallbackOverrides = auroraInvokePlan.fallbackOverrides;
+        resolverTimeoutMs = auroraInvokePlan.resolverTimeoutMs;
+      }
     }
     const effectivePayload = findProductsMultiCtx?.adjustedPayload || payload;
     const effectiveIntent = findProductsMultiCtx?.intent || null;
@@ -18983,6 +19069,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation,
       semanticContract: semanticContractMeta,
       semanticRewriteResult: semanticRewriteResultMeta,
+      queryClass: traceQueryClass,
     });
     const semanticOwnerAllowsBroadening =
       semanticOwnerControlled && semanticRewriteResultMeta?.needs_broadening === true;
@@ -20574,6 +20661,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
   let strictBeautyDirectSearch = false;
+  let useStableCrossMerchantAgentSearch = false;
   let strictFindProductsMultiDecision = {
     enabled: false,
     catalogSurface: null,
@@ -20582,7 +20670,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   };
   const shoppingFreshMainlineSearch =
     (operation === 'find_products' || operation === 'find_products_multi') &&
-    isShoppingSource(metadata?.source);
+    shouldUseShoppingFreshMainlineSearch(metadata?.source);
   let creatorCacheRouteDebug = null;
   let creatorHumanApparelDirectRouteDebug = null;
   let crossMerchantCacheRouteDebug = null;
@@ -21059,6 +21147,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         rawQuery: cacheQueryText,
         queryClass: cachePolicyQueryClass,
         strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
+        allowImplicitDerivedBeautyMainlineBypass: false,
       });
       const cacheBeautyQueryProfile = buildBeautyQueryProfile({
         rawQuery: cacheQueryText,
@@ -21128,10 +21217,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             strictConstraintQuery: strictCommerceFindProductsMulti,
             guidanceOnlyDiscovery: guidanceOnlyCacheDiscovery,
           });
-          const baseCacheSearchQueryText =
-            preferRawBeautyCacheQuery || !expandedCacheSearchQueryText
-              ? cacheQueryText
-              : expandedCacheSearchQueryText;
+          const normalizedCacheSource = String(source || '').trim().toLowerCase();
+          const baseCacheSearchQueryText = cacheQueryText || expandedCacheSearchQueryText;
           const runCacheSearch = async (queryTextForCache, beautyQueryProfile, stageLabel) => {
             const elapsedMs = Math.max(0, Date.now() - cacheStageStartedAt);
             const remainingBudgetMs = Math.max(
@@ -21155,9 +21242,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheBeautyQueryProfile,
             'cache_stage',
           );
-          let cacheQueryMode = preferRawBeautyCacheQuery ? 'raw_first' : null;
+          let cacheQueryMode = cacheQueryText ? 'raw_first' : null;
           if (
-            preferRawBeautyCacheQuery &&
+            expandedCacheSearchQueryText &&
+            expandedCacheSearchQueryText !== cacheQueryText &&
+            !['lookup', 'mission', 'scenario', 'exploratory', 'non_shopping'].includes(
+              String(cachePolicyQueryClass || ''),
+            ) &&
+            (
+              preferRawBeautyCacheQuery ||
+              ['attribute', 'category'].includes(String(cachePolicyQueryClass || '')) ||
+              isShoppingSource(normalizedCacheSource) ||
+              normalizedCacheSource === 'search'
+            ) &&
             expandedCacheSearchQueryText &&
             expandedCacheSearchQueryText !== cacheQueryText
           ) {
@@ -21169,7 +21266,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const compatibleExpandedBucket =
               expandedBeautyQueryProfile?.bucket === cacheBeautyQueryProfile?.bucket;
             const rawCacheProducts = Array.isArray(fromCache?.products) ? fromCache.products : [];
-            if (compatibleExpandedBucket && rawCacheProducts.length === 0) {
+            const shouldRetryExpandedCacheQuery =
+              rawCacheProducts.length === 0 &&
+              (!preferRawBeautyCacheQuery || compatibleExpandedBucket);
+            if (shouldRetryExpandedCacheQuery) {
               const retried = await runCacheSearch(
                 expandedCacheSearchQueryText,
                 cacheBeautyQueryProfile,
@@ -21538,7 +21638,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             cacheTransitionPlan.forceSearchFirstForExpandedQuery;
           const bypassCacheStrictEmptyForUnified =
             cacheTransitionPlan.bypassCacheStrictEmptyForUnified;
-          const blockShoppingCacheStageReturn = isShoppingSource(source);
+          const blockShoppingCacheStageReturn = shoppingFreshMainlineSearch;
           crossMerchantCacheRouteDebug = applyGuidanceOnlyCacheRouteDebugOutcome({
             cacheRouteDebug: crossMerchantCacheRouteDebug,
             effectiveCacheHit,
@@ -22010,17 +22110,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ),
             ingredientIntent: false,
           });
-        const beautyExactTitleDirectSearch = beautyExactTitleLookup;
+        const beautyExactTitleDirectSearch =
+          beautyExactTitleLookup && !strictCommerceFindProductsMulti;
         const beautyMainlineBypass = resolveLegacyBeautyCacheOwnerBypass({
           search,
           metadata,
           rawQuery: rawUserQuery || search?.query || '',
-          queryClass: null,
+          queryClass: traceQueryClass || null,
           strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
         });
+        const normalizedTraceQueryClass = String(traceQueryClass || '').trim().toLowerCase();
+        const auroraBeautyDirectSearch =
+          isAuroraSource(metadata?.source) &&
+          (
+            ['lookup', 'attribute'].includes(normalizedTraceQueryClass) ||
+            beautyMainlineBypass.reason === 'beauty_mainline_contract'
+          );
         strictBeautyDirectSearch =
           beautyExactTitleDirectSearch ||
-          (!beautyExactTitleLookup && beautyMainlineBypass.bypass) ||
+          (!beautyExactTitleLookup &&
+            beautyMainlineBypass.bypass &&
+            (!isAuroraSource(metadata?.source) || auroraBeautyDirectSearch)) ||
           (strictCommerceFindProductsMulti &&
             normalizeCommerceSurface(
               strictFindProductsMultiDecision.catalogSurface ||
@@ -22031,6 +22141,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 search.commerceSurface,
               '',
             ) === 'beauty');
+        if (isAuroraSource(metadata?.source) && !auroraBeautyDirectSearch) {
+          strictBeautyDirectSearch = false;
+        }
         if (strictCommerceFindProductsMulti) {
           requestBody = await buildFindProductsMultiInvokeBody({
             payload,
@@ -22053,6 +22166,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             defaultSearchAllMerchants:
               !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
           });
+        }
+        if (
+          !strictCommerceFindProductsMulti &&
+          !strictBeautyDirectSearch &&
+          isAuroraSource(metadata?.source) &&
+          beautyMainlineBypass.bypass === true
+        ) {
+          const mainlineBeautySurface = 'beauty';
+          requestBody = {
+            ...requestBody,
+            ...(String(search.query || rawUserQuery || '').trim()
+              ? { query: String(search.query || rawUserQuery || '').trim() }
+              : {}),
+            ...(mainlineBeautySurface
+              ? {
+                  catalog_surface: mainlineBeautySurface,
+                  commerce_surface: mainlineBeautySurface,
+                }
+              : {}),
+            ...((search.semantic_contract || beautyMainlineBypass.semanticContract)
+              ? {
+                  semantic_contract:
+                    search.semantic_contract || beautyMainlineBypass.semanticContract,
+                }
+              : {}),
+          };
+        }
+        useStableCrossMerchantAgentSearch =
+          !strictCommerceFindProductsMulti &&
+          !isAuroraSource(metadata?.source) &&
+          !shoppingFreshMainlineSearch;
+        if (useStableCrossMerchantAgentSearch) {
+          url = `${searchInvokeBase}/agent/v1/products/search`;
         }
         if (strictBeautyDirectSearch) {
           url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
@@ -22077,6 +22223,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : {};
           queryParams = {
             ...queryParams,
+            ...(String(rawUserQuery || directSearchRequest.query || '').trim()
+              ? { query: String(rawUserQuery || directSearchRequest.query || '').trim() }
+              : {}),
             ...(strictSurfaceState.commerceSurface
               ? {
                   catalog_surface: strictSurfaceState.commerceSurface,
@@ -22613,7 +22762,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
-    logger.info({ operation, method: route.method, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
+    const invokeMethod =
+      operation === 'find_products_multi' &&
+      (strictBeautyDirectSearch || useStableCrossMerchantAgentSearch)
+        ? 'GET'
+        : route.method;
+
+    logger.info({ operation, method: invokeMethod, url, hasQuery: Object.keys(queryParams).length > 0 }, 'Forwarding invoke request');
 
     const normalizeSemanticOwnerQueryPack = (values = []) =>
       Array.from(
@@ -23002,14 +23157,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
 
     const axiosConfig = {
-      method:
-        operation === 'find_products_multi' && strictBeautyDirectSearch
-          ? 'GET'
-          : route.method,
+      method: invokeMethod,
       url: `${url}${queryString}`,
       headers: {
-        ...(!(operation === 'find_products_multi' && strictBeautyDirectSearch) &&
-          route.method !== 'GET' && { 'Content-Type': 'application/json' }),
+        ...(invokeMethod !== 'GET' && { 'Content-Type': 'application/json' }),
         'X-Trace-ID': String(metadata?.trace_id || gatewayRequestId || '').trim(),
         ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
@@ -23018,8 +23169,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation === 'find_products_multi'
           ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
           : getUpstreamTimeoutMs(operation),
-      ...(!(operation === 'find_products_multi' && strictBeautyDirectSearch) &&
-        route.method !== 'GET' &&
+      ...(invokeMethod !== 'GET' &&
         Object.keys(requestBody).length > 0 && { data: requestBody })
     };
     const callTrackedUpstream = async (op, config) => {
@@ -24907,8 +25057,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       if (shouldFallback && !shoppingFreshMainlineSearch) {
         let replacedByFallback = false;
+        const skipSecondaryFallbackEffective =
+          skipSecondaryFallback || strictCommerceFindProductsMulti;
+        const secondaryFallbackSkipReason =
+          strictCommerceFindProductsMulti
+            ? 'strict_main_path'
+            : normalizedSecondaryFallbackSkipReason || 'resolver_miss_skip_secondary';
 
-        if (allowResolverFallbackEffective && !skipSecondaryFallback) {
+        if (allowResolverFallbackEffective && !skipSecondaryFallbackEffective) {
           try {
             const resolverFallback = await queryResolveSearchFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -24949,7 +25105,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !replacedByFallback &&
           allowSecondaryFallback &&
           (allowInvokeFallback || forceInvokeFallbackForFragrance) &&
-          !skipSecondaryFallback
+          !skipSecondaryFallbackEffective
         ) {
           try {
             const fallback = await queryFindProductsMultiFallback({
@@ -25013,8 +25169,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
 
 	        if (!replacedByFallback) {
-            const fallbackReason = skipSecondaryFallback
-              ? normalizedSecondaryFallbackSkipReason || 'resolver_miss_skip_secondary'
+            const fallbackReason = skipSecondaryFallbackEffective
+              ? secondaryFallbackSkipReason
               : secondaryFallbackOutcome?.reason ||
                 (secondaryFallbackMeta?.semantic_retry_applied
                   ? 'semantic_retry_exhausted'
@@ -25026,11 +25182,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               primaryIrrelevant,
               primaryLowQualityNonempty,
               primaryMonoculture,
-              skipSecondaryFallback,
+              skipSecondaryFallback: skipSecondaryFallbackEffective,
               secondaryFallbackOutcome,
               semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
               fallbackNotBetterReason: fallbackReason,
             });
+            const forceStrictEmptyControlledRecall =
+              !replacedByFallback &&
+              SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
+              ['scenario', 'mission', 'gift', 'category'].includes(
+                String(traceQueryClass || '').trim().toLowerCase(),
+              ) &&
+              primaryIrrelevant &&
+              shouldFallback;
+            const effectivePrimaryOutcomeDecision = forceStrictEmptyControlledRecall
+              ? {
+                  ...primaryOutcomeDecision,
+                  decision: 'strict_empty',
+                  reason: primaryOutcomeDecision.reason || fallbackReason || 'primary_irrelevant_no_fallback',
+                  querySource: 'agent_products_error_fallback',
+                  resolution_authority: 'agent_products_error_fallback',
+                  fallback_applied: true,
+                  fallback_reason_codes: [
+                    primaryOutcomeDecision.reason || fallbackReason || 'primary_irrelevant_no_fallback',
+                  ],
+                }
+              : primaryOutcomeDecision;
             const semanticOwnerRawProductsPresent =
               semanticOwnerControlled &&
               Array.isArray(upstreamData?.products) &&
@@ -25067,8 +25244,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ).trim() || null;
             if (
               semanticOwnerRawProductsPresent &&
-              (primaryOutcomeDecision.decision === 'clarify' ||
-                primaryOutcomeDecision.decision === 'strict_empty')
+              (effectivePrimaryOutcomeDecision.decision === 'clarify' ||
+                effectivePrimaryOutcomeDecision.decision === 'strict_empty')
             ) {
               const preservedMeta =
                 upstreamData?.metadata && typeof upstreamData.metadata === 'object'
@@ -25091,15 +25268,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     upstream_error_code: primaryFallbackUpstreamCode,
                     upstream_error_message: primaryFallbackUpstreamMessage,
                   },
-                  primary_outcome_decision: primaryOutcomeDecision.decision,
-                  primary_outcome_reason: primaryOutcomeDecision.reason,
-                  primary_outcome_query_source: primaryOutcomeDecision.querySource,
+                  primary_outcome_decision: effectivePrimaryOutcomeDecision.decision,
+                  primary_outcome_reason: effectivePrimaryOutcomeDecision.reason,
+                  primary_outcome_query_source: effectivePrimaryOutcomeDecision.querySource,
                 },
               };
-            } else if (primaryOutcomeDecision.decision === 'clarify') {
+            } else if (effectivePrimaryOutcomeDecision.decision === 'clarify') {
               upstreamData = buildProxySearchSoftFallbackResponse({
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-                reason: primaryOutcomeDecision.reason,
+                reason: effectivePrimaryOutcomeDecision.reason,
                 upstreamStatus: primaryFallbackUpstreamStatus,
                 upstreamCode: primaryFallbackUpstreamCode,
                 upstreamMessage: primaryFallbackUpstreamMessage,
@@ -25112,7 +25289,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 intent: effectiveIntent,
                 queryClass: traceQueryClass,
                 queryText,
-                querySource: primaryOutcomeDecision.querySource,
+                querySource: effectivePrimaryOutcomeDecision.querySource,
                 semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
                 semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
                 semanticRetryHits: Math.max(
@@ -25122,11 +25299,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 forceClarify: true,
                 slotStateInput: metadata?.slot_state || payload?.context || null,
               });
-            } else if (primaryOutcomeDecision.decision === 'strict_empty') {
+            } else if (effectivePrimaryOutcomeDecision.decision === 'strict_empty') {
               upstreamData = buildStrictEmptyFallbackResponse({
                 body: upstreamData,
                 queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
-                reason: primaryOutcomeDecision.reason,
+                reason: effectivePrimaryOutcomeDecision.reason,
                 upstreamStatus: primaryFallbackUpstreamStatus,
                 upstreamCode: primaryFallbackUpstreamCode,
                 upstreamMessage: primaryFallbackUpstreamMessage,
@@ -25136,7 +25313,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 intent: effectiveIntent,
                 queryClass: traceQueryClass,
                 queryText,
-                querySource: primaryOutcomeDecision.querySource,
+                querySource: effectivePrimaryOutcomeDecision.querySource,
                 semanticRetryApplied: Boolean(secondaryFallbackMeta?.semantic_retry_applied),
                 semanticRetryQuery: secondaryFallbackMeta?.semantic_retry_query || null,
                 semanticRetryHits: Math.max(
@@ -25144,10 +25321,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   Number(secondaryFallbackMeta?.semantic_retry_hits || 0) || 0,
                 ),
               });
+              if (
+                forceStrictEmptyControlledRecall &&
+                upstreamData &&
+                typeof upstreamData === 'object' &&
+                !Array.isArray(upstreamData)
+              ) {
+                upstreamData = {
+                  ...upstreamData,
+                  metadata: {
+                    ...(upstreamData.metadata && typeof upstreamData.metadata === 'object'
+                      ? upstreamData.metadata
+                      : {}),
+                    strict_empty: true,
+                    strict_empty_reason:
+                      effectivePrimaryOutcomeDecision.reason ||
+                      fallbackReason ||
+                      'primary_irrelevant_no_fallback',
+                  },
+                };
+              }
             } else {
               upstreamData = applyProxySearchFallbackMetadata(upstreamData, {
                 applied: false,
-                reason: primaryOutcomeDecision.reason,
+                reason: effectivePrimaryOutcomeDecision.reason,
                 ...(secondaryFallbackMeta?.semantic_retry_applied ? { query_variant: 'semantic_retry' } : {}),
               });
             }
@@ -25964,6 +26161,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
         }
       }
+
+      if (strictCommerceFindProductsMulti) {
+        maybePolicy = normalizeStrictMainlineResponseMetadata({
+          responseBody: maybePolicy,
+          strictInvokeDecision: strictFindProductsMultiDecision,
+          invokeRequestBody: requestBody,
+        });
+      }
     }
 
     if (operation === 'find_products_multi') {
@@ -26625,6 +26830,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           enriched.metadata && typeof enriched.metadata === 'object' && !Array.isArray(enriched.metadata)
             ? enriched.metadata
             : {};
+        const effectiveSemanticOwner =
+          semanticOwnerDecision ||
+          String(existingMetaForGates.semantic_owner || '').trim() ||
+          (String(existingMetaForGates.decision_owner || '').trim() ===
+          BEAUTY_DISCOVERY_MAINLINE_OWNER
+            ? BEAUTY_DISCOVERY_MAINLINE_OWNER
+            : null);
         const existingGateTrace = Array.isArray(existingMetaForGates.gate_trace)
           ? existingMetaForGates.gate_trace
           : [];
@@ -26704,9 +26916,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     semanticOwnerLastResortCacheQuery || null,
                 }
               : {}),
-            semantic_owner: semanticOwnerDecision,
+            semantic_owner: effectiveSemanticOwner,
             decision_owner:
-              semanticOwnerDecision ||
+              effectiveSemanticOwner ||
               existingMetaForGates.decision_owner ||
               querySource,
             search_stage_ledger: searchStageLedger,

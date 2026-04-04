@@ -8,16 +8,16 @@ This audit records which release and acceptance rails now use the supported auth
 
 - `Celestial Commerce Core Readiness`
   - deploy verify uses `scripts/verify_deployed_commit_matches.sh`
-  - authoritative target: `COMMERCE_CORE_PROD_SMOKE_BASE_URL + /agent/shop/v1/invoke`
-  - auth: `COMMERCE_CORE_PROD_AUTH_TOKEN` or `COMMERCE_CORE_PROD_AGENT_API_KEY`
+  - authoritative target: `COMMERCE_CORE_PROD_SMOKE_BASE_URL + /version` with `/healthz` fallback
 - `Shopping Search Release Gate`
-  - deploy verify uses authenticated invoke only
+  - deploy verify uses `/version` with `/healthz` fallback
   - budget FX preflight uses authenticated invoke only
   - runtime warm uses authenticated invoke only
   - prod skincare smoke uses authenticated invoke only
+  - discovery smoke uses authenticated invoke only
 - `scripts/verify_deployed_commit_matches.sh`
-  - supports `INVOKE_BASE_URL`, `AUTH_TOKEN`, `AGENT_API_KEY`
-  - defaults to strict invoke-only verification for `authoritative_commerce`
+  - supports direct version probing without invoke payload parsing
+  - defaults to `/version`, then `/healthz.version.commit`
 
 ## Scan Conclusion
 
@@ -65,5 +65,6 @@ Expected contract for `vitamin c serum under €30`:
 
 ## Verification Notes
 
-- For supported commerce production verification, treat authenticated `/agent/shop/v1/invoke` as authoritative.
+- Deploy provenance should use `/version` and `/healthz`, not invoke response metadata.
+- Invoke health should use authenticated `/agent/shop/v1/invoke`.
 - Public `/api/gateway` remains useful for observability and legacy probes, but it is no longer the shared commerce release gate.

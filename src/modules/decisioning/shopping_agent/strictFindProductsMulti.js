@@ -228,6 +228,12 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
       original_max: sourceMax,
       fx_applied: canConvert && sourceCurrency !== targetCurrency,
       fx_rate: canConvert && sourceCurrency !== targetCurrency ? Math.round(fxRate * 1000000) / 1000000 : null,
+      fx_source:
+        canConvert && sourceCurrency !== targetCurrency
+          ? 'fx_table'
+          : sourceCurrency === targetCurrency
+            ? 'direct_currency_match'
+            : null,
     };
   }
 
@@ -638,6 +644,7 @@ function createStrictFindProductsMultiRuntime(deps = {}) {
               invoke_max: resolvedBudgetConstraint.max,
               fx_applied: resolvedBudgetConstraint.fx_applied,
               fx_rate: resolvedBudgetConstraint.fx_rate,
+              fx_source: resolvedBudgetConstraint.fx_source,
             }),
           })
         : (payload?.context?.user_constraints && typeof payload.context.user_constraints === 'object'

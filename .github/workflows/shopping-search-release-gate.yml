@@ -8,7 +8,7 @@ on:
         required: false
         default: "https://agent.pivota.cc"
       wait_for_commit:
-        description: "Wait for deployed service_version.commit to match this workflow commit"
+        description: "Wait for deployed /version.commit to match this workflow commit"
         type: boolean
         required: false
         default: true
@@ -18,9 +18,15 @@ on:
     paths:
       - ".github/workflows/shopping-search-release-gate.yml"
       - "package.json"
+      - "docs/deployment.md"
+      - "docs/pivota-api-mapping.md"
+      - "docs/runbooks/deploy_via_github_push_only.md"
+      - "docs/runbooks/shopping_discovery_cutover.md"
       - "scripts/check_budget_fx_freshness.js"
       - "scripts/search_stability_matrix.js"
+      - "scripts/smoke_discovery_feed_prod.sh"
       - "scripts/smoke_find_products_multi_skincare_prod.sh"
+      - "scripts/run_discovery_feed_smoke.cjs"
       - "scripts/verify_deployed_commit_matches.sh"
       - "scripts/verify_commerce_invoke_rails.js"
       - "scripts/lib/**"
@@ -31,16 +37,65 @@ on:
       - "src/server.js"
       - "src/findProductsMulti/**"
       - "src/modules/decisioning/shopping_agent/**"
+      - "src/observability/discoveryMetrics.js"
+      - "src/services/discoveryFeed.js"
       - "src/services/externalSeedProducts.js"
       - "src/services/externalSeedHarvesterBridge.js"
+      - "tests/discovery_feed_smoke_script.test.js"
+      - "tests/discovery_feed_service.test.js"
       - "tests/find_products_multi_policy.test.js"
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/integration/invoke.find_products_multi_cache_search.test.js"
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+      - "tests/integration/invoke.get_discovery_feed.test.js"
+      - "tests/integration/invoke.get_discovery_feed_products_search.test.js"
       - "tests/commerce_invoke_rail_inventory.test.js"
       - "tests/commerce_primary_path_contract.test.js"
       - "tests/services/external_seed_products.test.js"
       - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/verify_deployed_commit_matches_script.test.js"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/shopping-search-release-gate.yml"
+      - "package.json"
+      - "docs/deployment.md"
+      - "docs/pivota-api-mapping.md"
+      - "docs/runbooks/deploy_via_github_push_only.md"
+      - "docs/runbooks/shopping_discovery_cutover.md"
+      - "scripts/check_budget_fx_freshness.js"
+      - "scripts/search_stability_matrix.js"
+      - "scripts/smoke_discovery_feed_prod.sh"
+      - "scripts/smoke_find_products_multi_skincare_prod.sh"
+      - "scripts/run_discovery_feed_smoke.cjs"
+      - "scripts/verify_deployed_commit_matches.sh"
+      - "scripts/verify_commerce_invoke_rails.js"
+      - "scripts/lib/**"
+      - "scripts/warm_find_products_multi_runtime.js"
+      - "scripts/fixtures/commerce_invoke_rail_inventory.json"
+      - "scripts/fixtures/find_products_multi_skincare_prod_gate.json"
+      - "scripts/fixtures/find_products_multi_external_seed_ingredient_validity_batch.json"
+      - "src/server.js"
+      - "src/findProductsMulti/**"
+      - "src/modules/decisioning/shopping_agent/**"
+      - "src/observability/discoveryMetrics.js"
+      - "src/services/discoveryFeed.js"
+      - "src/services/externalSeedProducts.js"
+      - "src/services/externalSeedHarvesterBridge.js"
+      - "tests/discovery_feed_smoke_script.test.js"
+      - "tests/discovery_feed_service.test.js"
+      - "tests/find_products_multi_policy.test.js"
+      - "tests/shopping_agent_strict_find_products_multi.test.js"
+      - "tests/integration/invoke.find_products_multi_cache_search.test.js"
+      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+      - "tests/integration/invoke.get_discovery_feed.test.js"
+      - "tests/integration/invoke.get_discovery_feed_products_search.test.js"
+      - "tests/commerce_invoke_rail_inventory.test.js"
+      - "tests/commerce_primary_path_contract.test.js"
+      - "tests/services/external_seed_products.test.js"
+      - "tests/services/external_seed_harvester_bridge.test.js"
+      - "tests/verify_deployed_commit_matches_script.test.js"
 
 concurrency:
   group: shopping-search-release-gate
@@ -48,7 +103,7 @@ concurrency:
 
 jobs:
   unit:
-    name: Shopping Search Unit + Contract Gate
+    name: Shopping Search + Discovery Unit + Contract Gate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -77,28 +132,36 @@ jobs:
           set -euo pipefail
           node --check src/server.js
           node --check scripts/check_budget_fx_freshness.js
+          node --check scripts/run_discovery_feed_smoke.cjs
           node --check scripts/warm_find_products_multi_runtime.js
           node --check scripts/search_stability_matrix.js
           node scripts/verify_commerce_invoke_rails.js
+          bash -n scripts/smoke_discovery_feed_prod.sh
           bash -n scripts/smoke_find_products_multi_skincare_prod.sh
           bash -n scripts/verify_deployed_commit_matches.sh
 
-      - name: Search regressions
+      - name: Shared search + discovery regressions
         run: |
           npx jest --runInBand \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
+            tests/integration/invoke.get_discovery_feed.test.js \
+            tests/integration/invoke.get_discovery_feed_products_search.test.js \
             tests/commerce_invoke_rail_inventory.test.js \
             tests/commerce_primary_path_contract.test.js \
             tests/shopping_agent_strict_find_products_multi.test.js \
             tests/services/external_seed_products.test.js \
             tests/services/external_seed_harvester_bridge.test.js \
-            tests/find_products_multi_policy.test.js
+            tests/find_products_multi_policy.test.js \
+            tests/discovery_feed_service.test.js \
+            tests/discovery_feed_smoke_script.test.js \
+            tests/verify_deployed_commit_matches_script.test.js
 
   runtime_smoke:
-    name: Shopping Search Runtime Smoke
+    name: Shopping Search + Discovery Runtime Smoke
     runs-on: ubuntu-latest
     needs: [unit]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     env:
       BASE_URL: ${{ inputs.base_url || vars.PIVOTA_AGENT_PUBLIC_BASE_URL || vars.AGENT_PUBLIC_BASE_URL || 'https://agent.pivota.cc' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
@@ -119,17 +182,13 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Verify deployed commit via service_version
+      - name: Verify deployed commit via /version
         if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="$BASE_URL" \
           INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
-          AUTH_TOKEN="$COMMERCE_CORE_PROD_AUTH_TOKEN" \
-          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
-          GATEWAY_ENDPOINT="" \
-          ALT_GATEWAY_ENDPOINT="$PROD_SMOKE_ENDPOINT" \
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
           bash scripts/verify_deployed_commit_matches.sh
 
@@ -174,6 +233,17 @@ jobs:
           ROUNDS=1 \
           OUT_DIR="reports/search-prod-skincare-release-gate" \
           bash scripts/smoke_find_products_multi_skincare_prod.sh
+
+      - name: Production discovery smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="$PROD_SMOKE_BASE_URL" \
+          ENDPOINT="$PROD_SMOKE_ENDPOINT" \
+          AGENT_API_KEY="$COMMERCE_CORE_PROD_AGENT_API_KEY" \
+          VERIFY_DEPLOY=0 \
+          TIMEOUT_MS=25000 \
+          bash scripts/smoke_discovery_feed_prod.sh
 
       - name: Upload smoke reports
         if: always()

@@ -22,6 +22,8 @@ Commit-match verification command:
 npm run deploy:verify:production
 ```
 
+This verifies the deployed commit via `/version.commit`, with `/healthz.version.commit` as fallback.
+
 Detailed policy: `docs/runbooks/deploy_via_github_push_only.md`
 
 ## Environment Variables

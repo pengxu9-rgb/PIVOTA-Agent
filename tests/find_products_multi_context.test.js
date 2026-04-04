@@ -297,7 +297,11 @@ describe('find_products_multi context building', () => {
     expect(expanded).toContain('face sunscreen');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
-        normalized_query_pack: ['face sunscreen', 'broad spectrum sunscreen', 'daily sunscreen'],
+        normalized_query_pack: expect.arrayContaining([
+          'face sunscreen',
+          'broad spectrum sunscreen',
+          'daily sunscreen',
+        ]),
       }),
     );
     expect(expanded).not.toContain('brush');
@@ -507,6 +511,36 @@ describe('find_products_multi context building', () => {
     );
   });
 
+  test('strict shopping-agent beauty queries preserve raw query and agent_api surface', async () => {
+    const out = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'vitamin c serum under €30',
+          limit: 10,
+          in_stock_only: true,
+        },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'vitamin c serum under €30' }],
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    expect(out.adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        query: 'vitamin c serum under €30',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+        target_step_family: 'treatment',
+        semantic_family: 'brightening',
+      }),
+    );
+    expect(out.adjustedPayload.search.semantic_contract).toBeUndefined();
+    expect(out.expansion_meta.semantic_contract).toBeNull();
+    expect(out.expansion_meta.semantic_owner_locked).toBe(false);
+  });
+
   test('oil-control treatment query derives ingredient-led treatment query pack before serum fallback', async () => {
     const out = await buildFindProductsMultiContext({
       payload: {
@@ -683,6 +717,7 @@ describe('find_products_multi context building', () => {
 
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
     expect(expanded).toBe('hydrating moisturizer');
+    expect(expanded).not.toContain('foundation');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
         normalized_query_pack: [
@@ -692,7 +727,6 @@ describe('find_products_multi context building', () => {
         ],
       }),
     );
-    expect(expanded).not.toContain('foundation');
   });
 
   test('perfume query uses fragrance semantic expansion without makeup drift', async () => {

@@ -88,12 +88,13 @@ describe('/agent/shop/v1/invoke get_discovery_feed', () => {
       expect.objectContaining({
         discovery_strategy: 'personalized_interest',
         personalization_source: 'account_history',
-        scoring_version: 'discovery_v1',
+        scoring_version: 'discovery_v2',
         surface: 'home_hot_deals',
         candidate_source: 'products_search',
         rank_debug: expect.any(Object),
       }),
     );
     expect(Array.isArray(res.body.metadata.rank_debug.top_candidates)).toBe(true);
+    expect(Array.isArray(res.body.metadata.rank_debug.recall_summary)).toBe(true);
   });
 });
