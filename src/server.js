@@ -10283,6 +10283,87 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     guidanceContext.is_guidance_only || isShoppingSource(source)
       ? 'unified_relevance'
       : requestedExternalSeedStrategy;
+  if (process.env.NODE_ENV !== 'test' && process.env.DATABASE_URL) {
+    try {
+      const directResponse = await searchExternalSeedOnlyProductsDirect({
+        search: {
+          ...query,
+          query: queryText,
+          limit: Math.min(requestedCount, SEARCH_LIMIT_MAX),
+          offset: 0,
+          allow_external_seed: true,
+          allow_stale_cache: false,
+          external_seed_strategy: externalSeedStrategy,
+          retrieval_query_variants: queryVariants,
+          ...(explicitTargetStepFamily ? { target_step_family: explicitTargetStepFamily } : {}),
+          ...(explicitSemanticFamily ? { semantic_family: explicitSemanticFamily } : {}),
+          ...(explicitQueryStepStrength ? { query_step_strength: explicitQueryStepStrength } : {}),
+          ...(explicitProductOnly !== null ? { product_only: explicitProductOnly } : {}),
+        },
+        metadata: {
+          source,
+          ...(guidanceContext.is_guidance_only
+            ? {
+                ui_surface: guidanceContext.ui_surface || GUIDANCE_ONLY_UI_SURFACE,
+                decision_mode: guidanceContext.decision_mode || GUIDANCE_ONLY_DECISION_MODE,
+              }
+            : {}),
+          ...(explicitTargetStepFamily ? { query_target_step_family: explicitTargetStepFamily } : {}),
+          ...(explicitQueryStepStrength ? { query_step_strength: explicitQueryStepStrength } : {}),
+        },
+        guidanceFastpath: guidanceContext.is_guidance_recall_first,
+      });
+      if (directResponse && typeof directResponse === 'object') {
+        const directProducts = Array.isArray(directResponse.products)
+          ? directResponse.products.filter((product) => isExternalSeedProduct(product))
+          : [];
+        const directMeta =
+          directResponse.metadata &&
+          typeof directResponse.metadata === 'object' &&
+          !Array.isArray(directResponse.metadata)
+            ? directResponse.metadata
+            : {};
+        if (directProducts.length > 0) {
+          return {
+            products: directProducts,
+            metadata: {
+              attempted: true,
+              applied: true,
+              reason: 'external_seed_direct_local_hit',
+              requested_count: requestedCount,
+              fetched_count: directProducts.length,
+              fetched_raw_count: Number(directMeta.external_seed_rows_fetched || directProducts.length) || directProducts.length,
+              fetched_variant_count: queryVariants.length,
+              upstream_calls: 0,
+              brand_query_detected: Boolean(brandDetection?.brand_like),
+              brand_entities: brandTerms,
+              brand_scope: hasExplicitCategory ? 'category_scoped' : 'broad',
+              filtered_out_irrelevant_count: Math.max(
+                0,
+                (Number(directMeta.external_seed_rows_fetched || directProducts.length) || directProducts.length) -
+                  directProducts.length,
+              ),
+              query_variants: queryVariants,
+              upstream_status: 200,
+              retrieval_mode: guidanceContext.is_guidance_recall_first ? GUIDANCE_RETRIEVAL_MODE : 'direct_local',
+              negative_constraints_applied: guidanceContext.negative_constraints,
+              external_seed_rows_raw:
+                Number(directMeta.external_seed_rows_fetched || directProducts.length) || directProducts.length,
+              external_seed_rows_relevant: directProducts.length,
+            },
+          };
+        }
+      }
+    } catch (directExternalErr) {
+      logger.warn(
+        {
+          err: directExternalErr?.message || String(directExternalErr),
+          query: queryText,
+        },
+        'local external seed supplement direct path failed; falling back to public route',
+      );
+    }
+  }
   const externalSupplementApiBase =
     normalizedSource === 'aurora-bff' || normalizedSource === 'aurora-chatbox'
       ? PIVOTA_API_BASE
