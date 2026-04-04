@@ -49,7 +49,7 @@ describe('run_discovery_feed_smoke helpers', () => {
       }),
     );
     expect(typeof deriveRecentQuery(seed)).toBe('string');
-    expect(deriveRecentQuery(seed)).toBe('Alpha');
+    expect(deriveRecentQuery(seed)).toBe('Serum');
   });
 
   test('validates discovery response contract and suppression checks', () => {
@@ -90,5 +90,38 @@ describe('run_discovery_feed_smoke helpers', () => {
         strategy: 'personalized_interest',
       }),
     );
+  });
+
+  test('accepts cold-start recall labels across curated and browse fallback variants', () => {
+    const summary = validateDiscoveryResponse(
+      {
+        products: [
+          {
+            merchant_id: 'm2',
+            product_id: 'p2',
+            title: 'Beta Repair Toner',
+          },
+        ],
+        metadata: {
+          candidate_source: 'products_search',
+          discovery_strategy: 'cold_start_curated',
+          personalization_source: 'none',
+          rank_debug: {
+            recall_summary: [
+              { label: 'cold_start_curated', status: 200, returned: 6 },
+            ],
+          },
+        },
+      },
+      {
+        discoveryStrategy: 'cold_start_curated',
+        personalizationSource: 'none',
+        candidateSource: 'products_search',
+        requireRankDebug: true,
+        requiredRecallLabels: [['cold_start_curated', 'browse_pool']],
+      },
+    );
+
+    expect(summary.strategy).toBe('cold_start_curated');
   });
 });
