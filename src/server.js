@@ -18810,6 +18810,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
     return res.json(enriched);
   }
+  
 	  if (operation === 'get_pdp_v2') {
 	    const pdpV2StartedAt = Date.now();
 	    const pdpV2PhaseTimings = {};
