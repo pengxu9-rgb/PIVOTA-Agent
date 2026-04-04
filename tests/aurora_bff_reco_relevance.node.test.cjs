@@ -4872,19 +4872,127 @@ test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline rec
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.equal(payload, null);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendations[0]?.product_id, 'cream_degraded_1');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.equal(payload.recommendation_meta?.non_blocking_llm_issue, 'prompt_contract_mismatch');
+    assert.equal(payload.recommendation_meta?.presentation_mode, 'deterministic_degraded');
+    assert.equal(payload.recommendation_meta?.success_mode, 'degraded_success');
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
-    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
-    assert.ok(confidenceCard);
-    assert.equal(confidenceCard?.payload?.reason, 'prompt_contract_mismatch');
+    const promptMismatchConfidenceCard = cards.find(
+      (card) =>
+        card &&
+        card.type === 'confidence_notice' &&
+        String(card?.payload?.reason || '').trim().toLowerCase() === 'prompt_contract_mismatch',
+    ) || null;
+    assert.equal(promptMismatchConfidenceCard, null);
     const recoEvent = Array.isArray(response.body?.events)
       ? response.body.events.find((event) => event && event.event_name === 'recos_requested')
       : null;
-    assert.equal(recoEvent?.data?.mainline_status, 'severe_parse_or_prompt_failure');
-    assert.equal(recoEvent?.data?.effective_failure_class, 'prompt_contract_mismatch');
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.notEqual(recoEvent?.data?.effective_failure_class, 'prompt_contract_mismatch');
   } finally {
     if (originalPromptMismatch == null) delete process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH;
     else process.env.AURORA_RECO_FORCE_PROMPT_CONTRACT_MISMATCH = originalPromptMismatch;
+    axios.get = originalGet;
+  }
+});
+
+test('/v1/chat: framework weak pool with a valid primary product still returns recommendations', async () => {
+  const originalGet = axios.get;
+  const observedQueries = [];
+  let harness = null;
+  axios.get = async (url, config = {}) => {
+    if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
+    const query = String(config?.params?.query || '').trim().toLowerCase();
+    observedQueries.push(query);
+    if (query.includes('oil control') || query.includes('niacinamide')) {
+      return {
+        status: 200,
+        data: {
+          metadata: {
+            search_decision: {
+              contract_version: 'beauty_search_decision_v4',
+              hit_quality: 'valid_hit',
+              query_bucket: 'skincare',
+              query_target_step_family: 'treatment',
+              same_family_topk_count: 1,
+              exact_step_topk_count: 1,
+              raw_result_count: 1,
+              products_returned_count: 1,
+            },
+          },
+          products: [
+            {
+              product_id: 'serum_weak_pool_1',
+              merchant_id: 'merchant_weak_pool_serum',
+              brand: 'Clear Lab',
+              name: 'Oil Balance Serum',
+              display_name: 'Oil Balance Serum',
+              category: 'skincare',
+              product_type: 'serum',
+              ingredient_tokens: ['niacinamide', 'zinc'],
+              benefit_tags: ['oil control', 'shine control'],
+              search_aliases: ['Oil Control Serum'],
+              short_description: 'A mattifying oil-control serum for oily skin.',
+            },
+          ],
+        },
+      };
+    }
+    return { status: 200, data: { products: [] } };
+  };
+
+  try {
+    harness = createAppWithPatchedAuroraChat({
+      auroraChatImpl: buildConcernPlannerMock(),
+      geminiTextImpl: buildConcernPlannerGeminiTextMock({
+        plainText: buildConcernPlannerTextFixture(),
+      }),
+      useMemoryStore: false,
+    });
+    await seedHighConfidenceArtifactForReco({ auroraUid: 'chat_framework_weak_uid', briefId: 'chat_framework_weak_brief' });
+    const response = await harness.request
+      .post('/v1/chat')
+      .set({
+        'X-Aurora-UID': 'chat_framework_weak_uid',
+        'X-Trace-ID': 'trace_chat_framework_weak',
+        'X-Brief-ID': 'chat_framework_weak_brief',
+      })
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: {
+            reply_text: 'im oily skin, what product should i use?',
+            profile_patch: {
+              skinType: 'oily',
+              sensitivity: 'low',
+              barrierStatus: 'stable',
+              goals: ['oil control'],
+            },
+          },
+        },
+        message: 'im oily skin, what product should i use?',
+        client_state: 'IDLE_CHAT',
+        session: { state: 'idle' },
+        language: 'EN',
+      });
+
+    assert.equal(response.statusCode, 200);
+    const payload = getRecommendationsPayload(response.body);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload.recommendations[0]?.product_id, 'serum_weak_pool_1');
+    assert.equal(payload.recommendation_meta?.framework_owner_state, 'trusted');
+    assert.equal(payload.recommendation_meta?.mainline_status, 'grounded_success');
+    assert.ok(observedQueries.some((query) => query.includes('oil control')));
+    const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
+    const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceCard, null);
+  } finally {
+    harness?.restore?.();
     axios.get = originalGet;
   }
 });

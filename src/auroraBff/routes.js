@@ -18742,10 +18742,19 @@ async function buildRecoGenerateFromCatalog({
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
     : [];
+  const fallbackSelectedCandidates = frameworkMode && selectedCandidates.length === 0
+    ? (Array.isArray(candidateState.viable_candidate_pool)
+      ? candidateState.viable_candidate_pool.filter((item) => Number(item?.framework_score || 0) >= 0.72).slice(0, 1)
+      : [])
+    : [];
+  const surfacedCandidates =
+    selectedCandidates.length > 0
+      ? selectedCandidates
+      : fallbackSelectedCandidates;
   const frameworkSummary = frameworkMode
     ? buildConcernFrameworkSummary({
         targetContext,
-        recommendations: selectedCandidates,
+        recommendations: surfacedCandidates,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
       })
     : null;
@@ -18758,7 +18767,7 @@ async function buildRecoGenerateFromCatalog({
     : null;
 
   const recos = frameworkMode
-    ? buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
+    ? buildConcernRecommendationsFromSelectedCandidates(surfacedCandidates, {
         targetContext,
         language: ctx && ctx.lang ? ctx.lang : 'EN',
         debug,
@@ -18962,7 +18971,7 @@ async function buildRecoGenerateFromCatalog({
     ? candidateState.viable_candidate_pool.slice(0, 24)
     : [];
 
-  if (!recos.length || (targetContext && targetContext.step_aware_intent && !candidateState.terminal_success)) {
+  if (!recos.length) {
     return {
       structured: null,
       candidate_pool: candidatePool,
@@ -61056,11 +61065,35 @@ async function generateProductRecommendations({
         promptContractOk: promptContract.ok,
       })
     : null;
-  if (stepAwareMainlineFailure) {
+  const stepAwareHasRecommendations =
+    Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0;
+  const stepAwareMainlineFailureBlocking = Boolean(stepAwareMainlineFailure && !stepAwareHasRecommendations);
+  if (stepAwareMainlineFailureBlocking) {
     effectiveFailureClass = stepAwareMainlineFailure.effectiveFailureClass || effectiveFailureClass;
     failureOrigin = stepAwareMainlineFailure.failureOrigin || failureOrigin;
     presentationMode = '';
     successMode = '';
+  } else if (stepAwareMainlineFailure && stepAwareHasRecommendations) {
+    norm.payload = {
+      ...norm.payload,
+      mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
+      recommendation_meta: {
+        ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+        step_aware_mainline_warning_reason:
+          stepAwareMainlineFailure.productsEmptyReason || stepAwareMainlineFailure.effectiveFailureClass || 'step_aware_non_terminal',
+        step_aware_mainline_warning_non_blocking: true,
+      },
+      metadata: {
+        ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+        step_aware_mainline_warning_reason:
+          stepAwareMainlineFailure.productsEmptyReason || stepAwareMainlineFailure.effectiveFailureClass || 'step_aware_non_terminal',
+        step_aware_mainline_warning_non_blocking: true,
+      },
+    };
+    effectiveFailureClass = 'none';
+    failureOrigin = 'none';
+    presentationMode = presentationMode || 'deterministic_degraded';
+    successMode = successMode || 'degraded_success';
   }
   if (concernSemanticPlanBlockedReason) {
     norm.payload.recommendations = [];
@@ -61069,7 +61102,7 @@ async function generateProductRecommendations({
     norm.payload.mainline_status = concernSemanticPlanBlockedFailureClass === 'upstream_timeout'
       ? 'upstream_timeout'
       : 'severe_parse_or_prompt_failure';
-  } else if (stepAwareMainlineFailure) {
+  } else if (stepAwareMainlineFailureBlocking) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = stepAwareMainlineFailure.productsEmptyReason;
     norm.payload.telemetry_reason = stepAwareMainlineFailure.telemetryReason || null;
@@ -61092,12 +61125,12 @@ async function generateProductRecommendations({
     }
   } else if (promptContract.ok === false && (!Array.isArray(norm.payload.recommendations) || norm.payload.recommendations.length === 0)) {
     norm.payload.products_empty_reason = 'prompt_contract_mismatch';
-  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success) {
+  } else if (targetContext.step_aware_intent && !viablePoolState.terminal_success && !stepAwareHasRecommendations) {
     norm.payload.recommendations = [];
     norm.payload.products_empty_reason = deriveStepAwareEmptyReason(targetContext, viablePoolState);
   }
   const effectiveGroundingStatus =
-    stepAwareMainlineFailure
+    stepAwareMainlineFailureBlocking
       ? ''
       : frameworkPartialSurface
         ? 'partially_grounded'
@@ -61108,13 +61141,13 @@ async function generateProductRecommendations({
             ? 'partially_grounded'
             : '');
   const effectiveGroundedCount =
-    stepAwareMainlineFailure
+    stepAwareMainlineFailureBlocking
       ? 0
       : Number.isFinite(Number(mapped?.grounded_count))
         ? Math.max(0, Math.trunc(Number(mapped?.grounded_count)))
         : (structuredSource === 'catalog_grounded' ? (Array.isArray(norm.payload.recommendations) ? norm.payload.recommendations.length : 0) : 0);
   const effectiveUngroundedCount =
-    stepAwareMainlineFailure
+    stepAwareMainlineFailureBlocking
       ? 0
       : Number.isFinite(Number(mapped?.ungrounded_count))
         ? Math.max(0, Math.trunc(Number(mapped?.ungrounded_count)))
@@ -61122,11 +61155,11 @@ async function generateProductRecommendations({
   const effectiveMainlineStatus = pickFirstTrimmed(
     groundingResult && groundingResult.mainline_status,
     mapped && mapped.mainline_status,
-    stepAwareMainlineFailure ? stepAwareMainlineFailure.mainlineStatus : '',
+    stepAwareMainlineFailureBlocking ? stepAwareMainlineFailure.mainlineStatus : '',
     frameworkPartialSurface ? 'partially_grounded' : '',
     frameworkMode && !viablePoolState.terminal_success ? 'needs_more_context' : '',
     promptContract.ok === false ? 'severe_parse_or_prompt_failure' : '',
-    targetContext.step_aware_intent && !viablePoolState.terminal_success ? 'needs_more_context' : '',
+    targetContext.step_aware_intent && !viablePoolState.terminal_success && !stepAwareHasRecommendations ? 'needs_more_context' : '',
     structuredSource === 'catalog_grounded'
       ? 'grounded_success'
       : structuredSource === 'catalog_transient_fallback'
@@ -61146,7 +61179,7 @@ async function generateProductRecommendations({
   const effectiveTelemetryReason = pickFirstTrimmed(
     groundingResult && groundingResult.telemetry_reason,
     mapped && mapped.telemetry_reason,
-    stepAwareMainlineFailure ? stepAwareMainlineFailure.telemetryReason : '',
+    stepAwareMainlineFailureBlocking ? stepAwareMainlineFailure.telemetryReason : '',
     promptContract.ok === false ? 'prompt_contract_mismatch' : '',
     llmFailureClass === 'timeout' || upstreamFailureCode === 'UPSTREAM_TIMEOUT' ? 'timeout_degraded' : '',
   ) || null;
@@ -61494,17 +61527,36 @@ async function generateProductRecommendations({
       norm.payload.primary_recommendation_id = selectorApplied.primary_recommendation_id || norm.payload.primary_recommendation_id || null;
     }
   }
+  let frameworkMainlineWarningNonBlocking = false;
   if (frameworkMode && !concernSemanticPlanBlockedReason && viablePoolState?.primary_role_matched !== true) {
-    // Support-role rows are useful for diagnostics, but they must not surface as a successful
-    // first-turn answer when the core role has no safe winner.
-    norm.payload.recommendations = [];
-    norm.payload.primary_recommendation_id = null;
-    norm.payload.products_empty_reason = pickFirstTrimmed(
+    const frameworkWarningReason = pickFirstTrimmed(
       norm.payload?.products_empty_reason,
       viablePoolState?.candidate_drop_stage,
       viablePoolState?.weak_viable_pool ? 'weak_viable_pool' : '',
       'weak_viable_pool',
     ) || 'weak_viable_pool';
+    if (Array.isArray(norm.payload?.recommendations) && norm.payload.recommendations.length > 0) {
+      frameworkMainlineWarningNonBlocking = true;
+      norm.payload = {
+        ...norm.payload,
+        mainline_status: pickFirstTrimmed(norm.payload?.mainline_status, 'grounded_success') || 'grounded_success',
+        recommendation_meta: {
+          ...(isPlainObject(norm.payload?.recommendation_meta) ? norm.payload.recommendation_meta : {}),
+          framework_mainline_warning_reason: frameworkWarningReason,
+          framework_mainline_warning_non_blocking: true,
+        },
+        metadata: {
+          ...(isPlainObject(norm.payload?.metadata) ? norm.payload.metadata : {}),
+          framework_mainline_warning_reason: frameworkWarningReason,
+          framework_mainline_warning_non_blocking: true,
+        },
+      };
+    } else {
+      // Support-role rows are useful for diagnostics, but without any candidate we still need a bounded empty response.
+      norm.payload.recommendations = [];
+      norm.payload.primary_recommendation_id = null;
+      norm.payload.products_empty_reason = frameworkWarningReason;
+    }
     concernWinnerSource = 'deterministic';
     concernSupportRolesSurfaced = [];
   }
@@ -61575,7 +61627,7 @@ async function generateProductRecommendations({
   let finalRecommendations = Array.isArray(norm.payload?.recommendations) ? norm.payload.recommendations : [];
   finalSelectedCandidateCount = finalRecommendations.length;
   postGuardrailCount = finalSelectedCandidateCount;
-  if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailure) {
+  if (deterministicCatalogFirstEnabled && !stepAwareMainlineFailureBlocking) {
     const failureSignals = frameworkMode
       ? resolveConcernMainlineFailure({
           plannerBlocked: Boolean(concernSemanticPlanBlockedReason),
@@ -61596,8 +61648,20 @@ async function generateProductRecommendations({
           catalogDebug,
           postGuardrailCount,
         });
-    effectiveFailureClass = failureSignals.effective_failure_class || 'none';
-    failureOrigin = failureSignals.failure_origin || 'none';
+    const returnedProductsWarningNonBlocking =
+      finalRecommendations.length > 0
+      && (frameworkMainlineWarningNonBlocking || Boolean(stepAwareMainlineFailure && !stepAwareMainlineFailureBlocking));
+    const normalizedFailureClass = normalizeRecoEffectiveFailureClass(failureSignals.effective_failure_class || 'none');
+    if (
+      returnedProductsWarningNonBlocking
+      && (normalizedFailureClass === 'weak_viable_pool' || normalizedFailureClass === 'no_recall_from_planned_sources')
+    ) {
+      effectiveFailureClass = 'none';
+      failureOrigin = 'none';
+    } else {
+      effectiveFailureClass = failureSignals.effective_failure_class || 'none';
+      failureOrigin = failureSignals.failure_origin || 'none';
+    }
   }
   const sourceMode = finalRecommendations.length > 0
     ? structuredSource === 'llm_primary'
