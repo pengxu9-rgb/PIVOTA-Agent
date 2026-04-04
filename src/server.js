@@ -7449,10 +7449,20 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return false;
   let softPenalty = 1;
+  const queryLike =
+    options.queryLike && typeof options.queryLike === 'object' ? options.queryLike : {};
   const guidanceContext =
     options.guidanceContext && typeof options.guidanceContext === 'object'
       ? options.guidanceContext
-      : extractGuidanceRetrievalContext(options.queryLike || {}, { queryText });
+      : extractGuidanceRetrievalContext(queryLike, { queryText });
+  const explicitTargetStepFamily = normalizeRecoTargetStep(
+    firstQueryParamValue(
+      queryLike.target_step_family ||
+        queryLike.targetStepFamily ||
+        queryLike.semantic_family ||
+        queryLike.semanticFamily,
+    ) || guidanceContext.target_step_family || '',
+  );
 
   if (guidanceContext.is_guidance_only) {
     const targetClass = classifyGuidanceTargetRelevance(product, queryText, guidanceContext);
@@ -7509,6 +7519,22 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   if (beautyQueryBucket) {
     const candidateBucket = classifyBeautyBucketFromText(candidateText);
     if (!isBeautyBucketCompatibleForQuery(candidateBucket, beautyQueryBucket)) return false;
+  }
+  if (explicitTargetStepFamily === 'sunscreen') {
+    if (
+      /\b(brush|tool|pet|dog|dogs|cat|cats|harness|leash|service|body lotion|body cream|body wash|lingerie|sleepwear)\b/i.test(
+        candidateText,
+      )
+    ) {
+      return false;
+    }
+    if (
+      /\b(spf|sunscreen|sunblock|sun fluid|sun lotion|uv filter|uv filters|broad spectrum|uva|uvb|pa\+{1,4})\b/i.test(
+        candidateText,
+      )
+    ) {
+      return true;
+    }
   }
 
   if (hasBeautyMakeupSearchSignal(queryText) && !hasBeautyCatalogProductSignal(candidateText)) {
@@ -10233,6 +10259,18 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
     ),
   ).slice(0, 8);
   const normalizedSource = String(source || '').trim().toLowerCase();
+  const explicitTargetStepFamily = normalizeRecoTargetStep(
+    firstQueryParamValue(query.target_step_family || query.targetStepFamily) || '',
+  );
+  const explicitSemanticFamily = String(
+    firstQueryParamValue(query.semantic_family || query.semanticFamily) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const explicitQueryStepStrength = String(
+    firstQueryParamValue(query.query_step_strength || query.queryStepStrength) || '',
+  ).trim();
+  const explicitProductOnly = parseQueryBoolean(query.product_only ?? query.productOnly);
   const requestedExternalSeedStrategy = normalizeExternalSeedStrategy(
     firstQueryParamValue(query.external_seed_strategy ?? query.externalSeedStrategy),
     guidanceContext.is_guidance_only
@@ -10279,6 +10317,10 @@ async function fetchExternalSeedSupplementFromBackend({ queryParams, checkoutTok
       allow_stale_cache: false,
       external_seed_strategy: externalSeedStrategy,
       fast_mode: guidanceContext.is_guidance_recall_first ? false : true,
+      ...(explicitTargetStepFamily ? { target_step_family: explicitTargetStepFamily } : {}),
+      ...(explicitSemanticFamily ? { semantic_family: explicitSemanticFamily } : {}),
+      ...(explicitQueryStepStrength ? { query_step_strength: explicitQueryStepStrength } : {}),
+      ...(explicitProductOnly !== null ? { product_only: explicitProductOnly } : {}),
       ...(guidanceContext.is_guidance_only
         ? {
             ui_surface: guidanceContext.ui_surface || GUIDANCE_ONLY_UI_SURFACE,
@@ -22641,6 +22683,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         semanticContractMeta?.primary_step_family ||
         '',
     );
+    const semanticOwnerSemanticFamily = String(
+      firstQueryParamValue(
+        semanticContractMeta?.semantic_family ||
+          queryParams?.semantic_family ||
+          queryParams?.semanticFamily ||
+          effectivePayload?.search?.semantic_family ||
+          effectivePayload?.search?.semanticFamily ||
+          metadata?.semantic_family,
+      ) || '',
+    )
+      .trim()
+      .toLowerCase();
+    const semanticOwnerQueryStepStrength = String(
+      firstQueryParamValue(
+        queryParams?.query_step_strength ||
+          queryParams?.queryStepStrength ||
+          effectivePayload?.search?.query_step_strength ||
+          effectivePayload?.search?.queryStepStrength ||
+          metadata?.query_step_strength,
+      ) || '',
+    ).trim();
     const semanticOwnerMinQueriesBeforeBudgetGuard =
       semanticOwnerQueryTotal > 0
         ? Math.min(semanticOwnerQueryTotal, 3)
@@ -23862,8 +23925,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       semanticOwnerIgnoredObservationCandidate &&
       semanticOwnerQueryPack.length > 0
     ) {
+      const semanticOwnerExternalRescueAttempt = [...semanticOwnerQueryAttempts]
+        .reverse()
+        .find(
+          (attempt) =>
+            attempt &&
+            attempt.observation_candidate_ignored === true &&
+            String(attempt.query || '').trim(),
+        );
       const semanticOwnerExternalRescueQuery =
-        String(semanticOwnerQueryPack[semanticOwnerQueryPack.length - 1] || queryParams?.query || '').trim() ||
+        String(
+          semanticOwnerExternalRescueAttempt?.query ||
+            semanticOwnerQueryPack[semanticOwnerQueryPack.length - 1] ||
+            queryParams?.query ||
+            '',
+        ).trim() ||
         String(queryParams?.query || '').trim();
       if (semanticOwnerExternalRescueQuery) {
         const rescueQueryParams = {
@@ -23873,6 +23949,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           allow_stale_cache: false,
           external_seed_strategy: 'unified_relevance',
           ...(semanticOwnerTargetStepFamily ? { target_step_family: semanticOwnerTargetStepFamily } : {}),
+          ...(semanticOwnerSemanticFamily ? { semantic_family: semanticOwnerSemanticFamily } : {}),
+          ...(semanticOwnerQueryStepStrength ? { query_step_strength: semanticOwnerQueryStepStrength } : {}),
         };
         const semanticOwnerExternalRescuePage = Math.max(
           1,
@@ -23931,7 +24009,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
             queryParams = rescueQueryParams;
             const chosenAttempt =
-              semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
+              semanticOwnerQueryAttempts.find(
+                (attempt) =>
+                  attempt &&
+                  attempt.query_index === semanticOwnerExternalRescueAttempt?.query_index &&
+                  String(attempt.query || '').trim() === semanticOwnerExternalRescueQuery,
+              ) || semanticOwnerQueryAttempts[semanticOwnerQueryAttempts.length - 1];
             if (chosenAttempt && chosenAttempt.adopted !== true) {
               chosenAttempt.adopted = true;
               chosenAttempt.adoption_mode = 'external_seed_rescue';

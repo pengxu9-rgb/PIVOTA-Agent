@@ -1248,7 +1248,14 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/search')
-      .query((query) => String(query?.external_seed_only || '').trim() === 'true')
+      .query((query) => {
+        if (String(query?.external_seed_only || '').trim() !== 'true') return false;
+        return (
+          String(query?.query || '').trim() === 'spf oily skin' &&
+          String(query?.target_step_family || '').trim() === 'sunscreen' &&
+          String(query?.semantic_family || '').trim() === 'sunscreen'
+        );
+      })
       .reply(200, {
         status: 'success',
         success: true,
