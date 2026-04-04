@@ -426,7 +426,7 @@ describe('find_products_multi context building', () => {
           normalized_query_pack: [
             'lightweight sunscreen oily skin',
             'oil control sunscreen',
-            'face sunscreen spf',
+            'lightweight face sunscreen',
           ],
         }),
       );
@@ -505,7 +505,7 @@ describe('find_products_multi context building', () => {
         normalized_query_pack: [
           'lightweight sunscreen oily skin',
           'oil control sunscreen',
-          'face sunscreen spf',
+          'lightweight face sunscreen',
         ],
       }),
     );

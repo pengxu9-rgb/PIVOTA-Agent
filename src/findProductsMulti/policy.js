@@ -1839,7 +1839,7 @@ function buildDeterministicStrictSemanticQueryPack({
     if (oilySunscreenSignal || concernClass === 'oil_control') {
       pushExactUnique('lightweight sunscreen oily skin');
       pushExactUnique('oil control sunscreen');
-      pushExactUnique('face sunscreen spf');
+      pushExactUnique('lightweight face sunscreen');
     } else if (sensitiveSunscreenSignal) {
       pushExactUnique('sensitive skin sunscreen');
       pushExactUnique('barrier sunscreen');

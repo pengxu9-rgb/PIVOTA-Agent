@@ -1868,7 +1868,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .times(3)
       .reply(function replyVariant() {
         const latestQuery = attemptedQueries[attemptedQueries.length - 1];
-        if (latestQuery === 'face sunscreen spf') {
+        if (latestQuery === 'lightweight face sunscreen') {
           return [200, {
             status: 'success',
             success: true,
@@ -1957,7 +1957,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(attemptedQueries).toEqual([
       'lightweight sunscreen oily skin',
       'oil control sunscreen',
-      'face sunscreen spf',
+      'lightweight face sunscreen',
     ]);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_2');
@@ -1978,7 +1978,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           observation_candidate_ignored: true,
         }),
         expect.objectContaining({
-          query: 'face sunscreen spf',
+          query: 'lightweight face sunscreen',
           query_index: 2,
           adopted: true,
           hit_quality: 'valid_hit',
@@ -2023,7 +2023,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .query((query) => {
         if (String(query?.external_seed_only || '').trim() !== 'true') return false;
         return (
-          String(query?.query || '').trim() === 'face sunscreen spf' &&
+          String(query?.query || '').trim() === 'lightweight face sunscreen' &&
           String(query?.target_step_family || '').trim() === 'sunscreen' &&
           String(query?.semantic_family || '').trim() === 'sunscreen'
         );
@@ -2085,20 +2085,20 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(attemptedPrimaryQueries).toEqual([
       'lightweight sunscreen oily skin',
       'oil control sunscreen',
-      'face sunscreen spf',
+      'lightweight face sunscreen',
     ]);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_rescue_1');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         semantic_owner_external_rescue_applied: true,
-        semantic_owner_external_rescue_query: 'face sunscreen spf',
+        semantic_owner_external_rescue_query: 'lightweight face sunscreen',
       }),
     );
     expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          query: 'face sunscreen spf',
+          query: 'lightweight face sunscreen',
           query_index: 2,
           adopted: true,
           adoption_mode: 'external_seed_rescue',
