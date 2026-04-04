@@ -1576,6 +1576,39 @@ function shouldForceBeautyDiscoveryContract({
   return hasRoleSignal && (hasConcernSignal || ingredientHypotheses.length > 0 || Boolean(semanticFamily));
 }
 
+function isBeautyExactTitleLookupQuery(rawQuery = '', intent = null) {
+  if (String(intent?.primary_domain || '').toLowerCase() !== 'beauty') return false;
+  const raw = String(rawQuery || '').trim();
+  if (!raw || raw.length > 96) return false;
+  if (/[?？]/.test(raw)) return false;
+  const lower = raw.toLowerCase();
+  if (
+    /推荐|best|for\s|适合|怎么|如何|教程|guide|tips|budget|under\s|above\s|at least|gift|礼物|清单|what to buy|need to buy|checklist/i.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  const normalizedResolverQuery = normalizeResolverLookupText(raw);
+  const resolverQueryTokens = tokenizeResolverLookupQuery(normalizedResolverQuery);
+  if (resolverQueryTokens.length < 3 || resolverQueryTokens.length > 8) return false;
+  const hasFormFactor = resolverQueryTokens.some((token) =>
+    BEAUTY_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').toLowerCase()),
+  );
+  if (!hasFormFactor) return false;
+  const informativeTokens = resolverQueryTokens.filter((token) => {
+    const normalized = String(token || '').trim().toLowerCase();
+    return normalized && !BEAUTY_EXACT_TITLE_GENERIC_TOKENS.has(normalized) && normalized.length >= 3;
+  });
+  if (!informativeTokens.length) return false;
+  const hasStrongTitleSignal =
+    /[-/+]/.test(raw) ||
+    /\d/.test(raw) ||
+    ((raw.match(/\b[A-Z][A-Za-z0-9'’+-]*\b/g) || []).length >= 2);
+  if (hasStrongTitleSignal) return informativeTokens.length >= 1;
+  return informativeTokens.length >= 2;
+}
+
 function buildBeautyDiscoverySemanticContract({
   rawQuery = '',
   search = null,
@@ -1603,6 +1636,9 @@ function buildBeautyDiscoverySemanticContract({
     ...(isPlainObject(intent) ? intent : {}),
     primary_domain: 'beauty',
   };
+  if (isBeautyExactTitleLookupQuery(normalizedQuery, syntheticIntent)) {
+    return null;
+  }
   const profile = buildBeautyQueryProfile({
     rawQuery: normalizedQuery,
     queryClass: syntheticIntent?.query_class || null,
@@ -1991,42 +2027,7 @@ function buildSemanticOwnerSearchQuery({
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
   const normalizedResolverQuery = normalizeResolverLookupText(rawQuery);
   const resolverQueryTokens = tokenizeResolverLookupQuery(normalizedResolverQuery);
-  const looksLikeBeautyExactTitleLookupQuery = (() => {
-    if (String(intent?.primary_domain || '').toLowerCase() !== 'beauty') return false;
-    const raw = String(rawQuery || '').trim();
-    if (!raw || raw.length > 96) return false;
-    if (/[?？]/.test(raw)) return false;
-    const lower = raw.toLowerCase();
-    if (
-      /推荐|best|for\s|适合|怎么|如何|教程|guide|tips|budget|under\s|above\s|at least|gift|礼物|清单|what to buy|need to buy|checklist/i.test(
-        lower,
-      )
-    ) {
-      return false;
-    }
-    if (resolverQueryTokens.length < 3 || resolverQueryTokens.length > 8) return false;
-    const hasFormFactor = resolverQueryTokens.some((token) =>
-      BEAUTY_EXACT_TITLE_FORM_FACTOR_TOKENS.has(String(token || '').toLowerCase()),
-    );
-    if (!hasFormFactor) return false;
-    const informativeTokens = resolverQueryTokens.filter((token) => {
-      const normalized = String(token || '').trim().toLowerCase();
-      return (
-        normalized &&
-        !BEAUTY_EXACT_TITLE_GENERIC_TOKENS.has(normalized) &&
-        normalized.length >= 3
-      );
-    });
-    if (!informativeTokens.length) return false;
-    const hasStrongTitleSignal =
-      /[-/+]/.test(raw) ||
-      /\d/.test(raw) ||
-      ((raw.match(/\b[A-Z][A-Za-z0-9'’+-]*\b/g) || []).length >= 2);
-    if (hasStrongTitleSignal) {
-      return informativeTokens.length >= 1;
-    }
-    return informativeTokens.length >= 2;
-  })();
+  const looksLikeBeautyExactTitleLookupQuery = isBeautyExactTitleLookupQuery(rawQuery, intent);
   const stableAliasLookupMatch =
     resolveKnownStableLookupAlias && normalizedResolverQuery && resolverQueryTokens.length >= 3
       ? resolveKnownStableLookupAlias({

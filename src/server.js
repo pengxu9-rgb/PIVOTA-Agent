@@ -15125,13 +15125,25 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
     payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
       ? payload.search
       : {};
+  const publicBeautyMainlineBypass = resolveLegacyBeautyCacheOwnerBypass({
+    search: rawSearch,
+    metadata:
+      payload?.metadata && typeof payload.metadata === 'object' && !Array.isArray(payload.metadata)
+        ? payload.metadata
+        : {},
+    rawQuery: rawSearch?.query || '',
+    queryClass: null,
+    strictConstraintQuery: false,
+  });
   const explicitShoppingExternalSeedOnly =
     rawSearch?.external_seed_only === true &&
     String(rawSearch?.merchant_id || '').trim() === 'external_seed';
   const forceStrictShoppingMainPath =
     isShoppingSource(publicSearchSource) && !explicitShoppingExternalSeedOnly;
   const forceAuroraInvokeMainPath = isAuroraSource(publicSearchSource);
-  const forceDirectInvokeMainPath = forceStrictShoppingMainPath || forceAuroraInvokeMainPath;
+  const forceBeautyMainlineInvokePath = publicBeautyMainlineBypass.bypass === true;
+  const forceDirectInvokeMainPath =
+    forceStrictShoppingMainPath || forceAuroraInvokeMainPath || forceBeautyMainlineInvokePath;
   if (forceStrictShoppingMainPath) {
     payload.search = {
       ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
@@ -15148,6 +15160,26 @@ async function handleAgentProductsSearchViaInvoke(req, res) {
       source: normalizeAgentSource(publicSearchSource) || publicSearchSource,
       catalog_surface: 'agent_api',
       commerce_surface: 'agent_api',
+    };
+  }
+  if (forceBeautyMainlineInvokePath) {
+    payload.search = {
+      ...(payload?.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+        ? payload.search
+        : {}),
+      ...(publicBeautyMainlineBypass.semanticContract
+        ? { semantic_contract: publicBeautyMainlineBypass.semanticContract }
+        : {}),
+      catalog_surface:
+        payload?.search?.catalog_surface ||
+        payload?.search?.catalogSurface ||
+        'beauty',
+      commerce_surface:
+        payload?.search?.commerce_surface ||
+        payload?.search?.commerceSurface ||
+        payload?.search?.catalog_surface ||
+        payload?.search?.catalogSurface ||
+        'beauty',
     };
   }
 
@@ -20522,6 +20554,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   let crossMerchantCacheProtectedResponse = null;
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
+  let strictBeautyDirectSearch = false;
   let strictFindProductsMultiDecision = {
     enabled: false,
     catalogSurface: null,
@@ -21945,8 +21978,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? strictFindProductsMultiDecision
             : getStrictFindProductsMultiConstraintDecision({ search, metadata });
         strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
+        const beautyExactTitleLookup =
+          isShoppingSource(metadata?.source) &&
+          shouldRunExternalSeedExactTitleRecall({
+            queryText: String(rawUserQuery || search?.query || '').trim(),
+            queryTokens: Array.from(
+              new Set(
+                tokenizeSearchTextForMatch(
+                  normalizeSearchTextForMatch(String(rawUserQuery || search?.query || '').trim()),
+                ),
+              ),
+            ),
+            ingredientIntent: false,
+          });
+        const beautyExactTitleDirectSearch = beautyExactTitleLookup;
+        const beautyMainlineBypass = resolveLegacyBeautyCacheOwnerBypass({
+          search,
+          metadata,
+          rawQuery: rawUserQuery || search?.query || '',
+          queryClass: null,
+          strictConstraintQuery: Boolean(strictCommerceFindProductsMulti),
+        });
+        strictBeautyDirectSearch =
+          beautyExactTitleDirectSearch ||
+          (!beautyExactTitleLookup && beautyMainlineBypass.bypass) ||
+          (strictCommerceFindProductsMulti &&
+            normalizeCommerceSurface(
+              strictFindProductsMultiDecision.catalogSurface ||
+                strictSurfaceState.commerceSurface ||
+                search.catalog_surface ||
+                search.catalogSurface ||
+                search.commerce_surface ||
+                search.commerceSurface,
+              '',
+            ) === 'beauty');
         if (strictCommerceFindProductsMulti) {
-          url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
           requestBody = await buildFindProductsMultiInvokeBody({
             payload,
             search,
@@ -21968,6 +22034,59 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             defaultSearchAllMerchants:
               !merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog,
           });
+        }
+        if (strictBeautyDirectSearch) {
+          url = `${PIVOTA_API_BASE}/agent/v1/products/search`;
+          const directSearchRequest =
+            requestBody?.payload &&
+            typeof requestBody.payload === 'object' &&
+            !Array.isArray(requestBody.payload) &&
+            requestBody.payload.search &&
+            typeof requestBody.payload.search === 'object' &&
+            !Array.isArray(requestBody.payload.search)
+              ? requestBody.payload.search
+              : requestBody?.search &&
+                  typeof requestBody.search === 'object' &&
+                  !Array.isArray(requestBody.search)
+                ? requestBody.search
+                : {};
+          const directRequestMetadata =
+            requestBody?.metadata &&
+            typeof requestBody.metadata === 'object' &&
+            !Array.isArray(requestBody.metadata)
+              ? requestBody.metadata
+              : {};
+          queryParams = {
+            ...queryParams,
+            ...(strictSurfaceState.commerceSurface
+              ? {
+                  catalog_surface: strictSurfaceState.commerceSurface,
+                  commerce_surface: strictSurfaceState.commerceSurface,
+                }
+              : {}),
+            ...(metadata?.source
+              ? { source: String(metadata.source).trim() }
+              : directRequestMetadata?.source
+                ? { source: String(directRequestMetadata.source).trim() }
+                : {}),
+            ...(directSearchRequest.target_step_family
+              ? { target_step_family: directSearchRequest.target_step_family }
+              : {}),
+            ...(directSearchRequest.query_step_strength
+              ? { query_step_strength: directSearchRequest.query_step_strength }
+              : {}),
+            ...(directSearchRequest.semantic_family
+              ? { semantic_family: directSearchRequest.semantic_family }
+              : {}),
+            ...(directSearchRequest.product_only !== undefined
+              ? { product_only: directSearchRequest.product_only }
+              : {}),
+            ...(directSearchRequest.semantic_contract
+              ? { semantic_contract: JSON.stringify(directSearchRequest.semantic_contract) }
+              : {}),
+          };
+        } else if (strictCommerceFindProductsMulti) {
+          url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
         }
         break;
       }
@@ -22666,7 +22785,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
     // Make the upstream request
     const queryString =
-      strictCommerceFindProductsMulti && operation === 'find_products_multi'
+      strictCommerceFindProductsMulti &&
+      operation === 'find_products_multi' &&
+      !strictBeautyDirectSearch
         ? ''
         : buildQueryString(queryParams);
     const primarySearchQueryText = String(extractSearchQueryText(queryParams) || rawUserQuery || '').trim();
@@ -22681,10 +22802,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
 
     const axiosConfig = {
-      method: route.method,
+      method:
+        operation === 'find_products_multi' && strictBeautyDirectSearch
+          ? 'GET'
+          : route.method,
       url: `${url}${queryString}`,
       headers: {
-        ...(route.method !== 'GET' && { 'Content-Type': 'application/json' }),
+        ...(!(operation === 'find_products_multi' && strictBeautyDirectSearch) &&
+          route.method !== 'GET' && { 'Content-Type': 'application/json' }),
         'X-Trace-ID': String(metadata?.trace_id || gatewayRequestId || '').trim(),
         ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
       },
@@ -22693,7 +22818,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation === 'find_products_multi'
           ? Math.min(getUpstreamTimeoutMs(operation), upstreamBudgetMsForSearch)
           : getUpstreamTimeoutMs(operation),
-      ...(route.method !== 'GET' && Object.keys(requestBody).length > 0 && { data: requestBody })
+      ...(!(operation === 'find_products_multi' && strictBeautyDirectSearch) &&
+        route.method !== 'GET' &&
+        Object.keys(requestBody).length > 0 && { data: requestBody })
     };
     const callTrackedUpstream = async (op, config) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
@@ -22717,7 +22844,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products_multi' && strictCommerceFindProductsMulti
         ? {
             attempted_contract: 'shop_invoke_strict',
-            resolved_contract: 'shop_invoke_strict',
+            resolved_contract: strictBeautyDirectSearch
+              ? 'agent_v1_search_beauty_mainline'
+              : 'shop_invoke_strict',
             legacy_fallback: false,
           }
         : null;
@@ -23477,13 +23606,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryIndex,
         );
         const variantQueryString =
-          strictCommerceFindProductsMulti && operation === 'find_products_multi'
+          strictCommerceFindProductsMulti &&
+          operation === 'find_products_multi' &&
+          !strictBeautyDirectSearch
             ? ''
             : buildQueryString(variantQueryParams);
         const variantAxiosConfig = {
           ...axiosConfig,
           url: `${url}${variantQueryString}`,
-          ...(route.method !== 'GET' && Object.keys(variantRequestBody || {}).length > 0
+          ...((strictBeautyDirectSearch ? 'GET' : route.method) !== 'GET' &&
+          Object.keys(variantRequestBody || {}).length > 0
             ? { data: variantRequestBody }
             : {}),
         };
@@ -23543,7 +23675,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryParams = variantQueryParams;
           requestBody = variantRequestBody;
           axiosConfig.url = variantAxiosConfig.url;
-          if (route.method !== 'GET') axiosConfig.data = variantRequestBody;
+          if ((strictBeautyDirectSearch ? 'GET' : route.method) !== 'GET') {
+            axiosConfig.data = variantRequestBody;
+          } else if (Object.prototype.hasOwnProperty.call(axiosConfig, 'data')) {
+            delete axiosConfig.data;
+          }
           break;
         }
       }
@@ -25341,7 +25477,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
-    enriched = normalizePrimaryClarifyContract(enriched);
+    const skipPrimaryClarifyNormalization =
+      operation === 'find_products_multi' &&
+      (strictBeautyDirectSearch || semanticOwnerControlled);
+    if (!skipPrimaryClarifyNormalization) {
+      enriched = normalizePrimaryClarifyContract(enriched);
+    }
     enriched = normalizeGovernanceShadowBlockContract(enriched);
 
     if (operation === 'find_products' || operation === 'find_products_multi') {

@@ -67,12 +67,12 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
   });
 
   test('keeps shopping search on fresh upstream with unified external seed blending', async () => {
-    let capturedBody = null;
+    let capturedQuery = null;
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
+      .get('/agent/v1/products/search')
       .query(true)
-      .reply(200, function reply(_uri, body) {
-        capturedBody = body;
+      .reply(200, function reply(uri) {
+        capturedQuery = uri;
         return {
           status: 'success',
           success: true,
@@ -91,15 +91,12 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         };
       });
 
-    const legacySearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
+    const legacySearch = nock('http://pivota.test').post('/agent/shop/v1/invoke').query(true).reply(200, {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+    });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -125,25 +122,9 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     expect(resp.status).toBe(200);
     expect(upstreamSearch.isDone()).toBe(true);
     expect(legacySearch.isDone()).toBe(false);
-    expect(capturedBody).toEqual(
-      expect.objectContaining({
-        operation: 'find_products_multi',
-        payload: expect.objectContaining({
-          search: expect.objectContaining({
-            allow_external_seed: true,
-            allow_stale_cache: false,
-            external_seed_strategy: 'unified_relevance',
-            query: 'niacinamide serum',
-            request_context: expect.objectContaining({
-              channel: 'shopping_agent',
-            }),
-          }),
-        }),
-        metadata: expect.objectContaining({
-          source: 'shopping_agent',
-        }),
-      }),
-    );
+    expect(String(capturedQuery || '')).toContain('/agent/v1/products/search?');
+    expect(String(capturedQuery || '')).toContain('query=');
+    expect(String(capturedQuery || '')).toContain('allow_external_seed=true');
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_search',
@@ -152,15 +133,13 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
   });
 
   test('keeps title-like beauty exact product queries on raw lookup text', async () => {
-    let capturedBody = null;
-    let capturedPath = null;
+    let capturedPrimaryUpstreamPath = null;
 
-    const invokeUpstream = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
+    const primaryLookup = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
       .query(true)
-      .reply(200, function reply(_uri, body) {
-        capturedBody = body;
-        capturedPath = 'invoke';
+      .reply(200, function reply(uri) {
+        capturedPrimaryUpstreamPath = uri;
         return {
           status: 'success',
           success: true,
@@ -179,12 +158,36 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         };
       });
 
-    const directUpstream = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
+    const exactTitleRescue = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(
+        (query) =>
+          String(query.merchant_id || '').trim() === 'external_seed' &&
+          String(query.external_seed_only || '').trim().toLowerCase() === 'true',
+      )
+      .reply(200, function reply() {
+        return {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              product_id: 'ext_multicalm',
+              merchant_id: 'external_seed',
+              title: 'Multi-Calm Cream Cleanser',
+              source: 'external_seed',
+            },
+          ],
+          total: 1,
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        };
+      });
+
+    const legacyInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
       .query(true)
-      .reply(200, function reply(_uri, body) {
-        capturedBody = body;
-        capturedPath = 'search';
+      .reply(200, function reply() {
         return {
           status: 'success',
           success: true,
@@ -222,16 +225,14 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
         metadata: {
           source: 'shopping_agent',
         },
-      });
+    });
 
     expect(resp.status).toBe(200);
-    expect(capturedPath).toBeTruthy();
-    const forwardedQuery =
-      capturedPath === 'search'
-        ? String(capturedBody?.query || '')
-        : String(capturedBody?.payload?.search?.query || '');
-    expect(forwardedQuery).toBe('Multi-Calm Cream Cleanser');
-    expect(invokeUpstream.isDone() || directUpstream.isDone()).toBe(true);
+    expect(String(capturedPrimaryUpstreamPath || '')).toContain('/agent/v1/products/search');
+    expect(String(capturedPrimaryUpstreamPath || '')).toContain('Multi-Calm+Cream+Cleanser');
+    expect(primaryLookup.isDone()).toBe(true);
+    expect(exactTitleRescue.isDone()).toBe(false);
+    expect(legacyInvoke.isDone()).toBe(false);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         query_source: 'agent_products_search',
@@ -320,7 +321,7 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     }));
 
     const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, {
         status: 'success',
