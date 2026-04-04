@@ -16,6 +16,41 @@ function getHeader(req, name) {
   return v == null ? null : String(v);
 }
 
+function buildBackendAuthHeaders(req) {
+  const checkoutToken = getHeader(req, 'X-Checkout-Token') || getHeader(req, 'x-checkout-token');
+  if (checkoutToken && String(checkoutToken).trim()) {
+    return { 'X-Checkout-Token': String(checkoutToken).trim() };
+  }
+
+  const inboundAgentKey = [
+    getHeader(req, 'X-Agent-API-Key'),
+    getHeader(req, 'x-agent-api-key'),
+    getHeader(req, 'X-API-Key'),
+    getHeader(req, 'x-api-key'),
+  ]
+    .map((value) => (value == null ? '' : String(value).trim()))
+    .find(Boolean);
+  const inboundAuthorization = [
+    getHeader(req, 'Authorization'),
+    getHeader(req, 'authorization'),
+  ]
+    .map((value) => (value == null ? '' : String(value).trim()))
+    .find(Boolean);
+  const bearerMatch = inboundAuthorization ? inboundAuthorization.match(/^Bearer\s+(.+)$/i) : null;
+  const bearerToken = bearerMatch && bearerMatch[1] ? String(bearerMatch[1]).trim() : '';
+  const effectiveToken = inboundAgentKey || bearerToken;
+  if (!effectiveToken && !inboundAuthorization) return null;
+
+  const headers = {};
+  if (effectiveToken) {
+    headers['X-Agent-API-Key'] = effectiveToken;
+    headers['X-API-Key'] = effectiveToken;
+  }
+  if (inboundAuthorization) headers.Authorization = inboundAuthorization;
+  else if (effectiveToken) headers.Authorization = `Bearer ${effectiveToken}`;
+  return headers;
+}
+
 function detectTextExplicit(message) {
   return isExplicitTextTrigger(message);
 }
@@ -102,6 +137,7 @@ function buildRequestContext(req, body) {
   const requestId = getHeader(req, 'X-Request-ID') || randomUUID();
   const triggerSource = inferTriggerSource(body || {});
   const state = (body && body.session && body.session.state) || null;
+  const backendAuthHeaders = buildBackendAuthHeaders(req);
 
   return {
     request_id: requestId,
@@ -115,6 +151,7 @@ function buildRequestContext(req, body) {
     language_resolution_source: languageResolved.language_resolution_source,
     trigger_source: triggerSource,
     state,
+    backend_auth_headers: backendAuthHeaders,
   };
 }
 

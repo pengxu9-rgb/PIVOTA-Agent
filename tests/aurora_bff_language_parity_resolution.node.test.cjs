@@ -35,6 +35,18 @@ test('request context uses text-detected language without explicit header/body l
   assert.equal(ctx.language_resolution_source, 'text_detected');
 });
 
+test('request context preserves inbound backend auth headers for downstream search', () => {
+  const req = makeReq({
+    'X-Agent-API-Key': 'ak_live_test',
+  });
+  const ctx = buildRequestContext(req, { message: 'I want to buy sunscreen' });
+  assert.deepEqual(ctx.backend_auth_headers, {
+    'X-Agent-API-Key': 'ak_live_test',
+    'X-API-Key': 'ak_live_test',
+    Authorization: 'Bearer ak_live_test',
+  });
+});
+
 test('text explicit detection covers EN plan/buy phrasing', () => {
   assert.equal(detectTextExplicit('give me a plan for acne-safe sunscreen'), true);
   assert.equal(looksLikeRecommendationRequest('i want to buy sunscreen for travel'), true);

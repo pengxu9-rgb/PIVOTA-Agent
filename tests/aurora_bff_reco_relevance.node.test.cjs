@@ -4562,7 +4562,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
   }
 });
 
-test('/v1/chat: profile-driven generic reco without explicit focus returns needs_more_context and skips catalog search', async () => {
+test('/v1/chat: profile-driven generic reco without explicit focus preserves warning but still returns products', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -4633,23 +4633,23 @@ test('/v1/chat: profile-driven generic reco without explicit focus returns needs
 
     assert.equal(response.status, 200);
     const payload = getRecommendationsPayload(response.body);
-    assert.equal(payload, null);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload?.mainline_status, 'grounded_success');
+    assert.equal(payload?.recommendation_meta?.minimum_recommendation_context_warning, true);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceNotice = cards.find((card) => card && card.type === 'confidence_notice') || null;
-    assert.ok(confidenceNotice);
-    assert.equal(confidenceNotice?.payload?.reason, 'needs_more_context');
+    assert.equal(confidenceNotice, null);
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.reason, 'needs_more_context');
-    assert.equal(recoEvent?.data?.telemetry_reason, 'minimum_recommendation_context_unsatisfied');
-    assert.equal(observedQueries.length, 0);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.ok(observedQueries.length > 0);
   } finally {
     axios.get = originalGet;
   }
 });
 
-test('/v1/chat: stored-profile generic reco returns needs_more_context before upstream schema-invalid path', async () => {
+test('/v1/chat: stored-profile generic reco preserves warning but still returns products', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
 
@@ -4720,20 +4720,17 @@ test('/v1/chat: stored-profile generic reco returns needs_more_context before up
       .expect(200);
 
     const payload = getRecommendationsPayload(response.body);
-    assert.equal(payload, null);
+    assert.ok(payload);
+    assert.ok(Array.isArray(payload?.recommendations) && payload.recommendations.length > 0);
+    assert.equal(payload?.mainline_status, 'grounded_success');
+    assert.equal(payload?.recommendation_meta?.minimum_recommendation_context_warning, true);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
-    const confidenceNotice =
-      cards.find((card) => card && card.type === 'confidence_notice' && String(card?.payload?.reason || '') === 'needs_more_context')
-      || null;
-    assert.ok(confidenceNotice);
+    const confidenceNotice = cards.find((card) => card && card.type === 'confidence_notice') || null;
+    assert.equal(confidenceNotice, null);
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.ok(recoEvent);
-    assert.equal(recoEvent?.data?.mainline_status, 'needs_more_context');
-    assert.equal(recoEvent?.data?.reason, 'needs_more_context');
-    assert.equal(recoEvent?.data?.telemetry_reason, 'minimum_recommendation_context_unsatisfied');
-    assert.equal(recoEvent?.data?.products_empty_reason, 'needs_more_context');
-    assert.equal(recoEvent?.data?.surface_reason, 'needs_more_context');
-    assert.equal(observedQueries.length, 0);
+    assert.equal(recoEvent?.data?.mainline_status, 'grounded_success');
+    assert.ok(observedQueries.length > 0);
   } finally {
     axios.get = originalGet;
     harness.restore();
@@ -5125,6 +5122,8 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       semanticContractOwner: String(semanticContract?.owner || ''),
       catalogSurface: String(config?.params?.catalog_surface || ''),
       fastMode: config?.params?.fast_mode,
+      forwardedAgentApiKey: String(config?.headers?.['X-Agent-API-Key'] || ''),
+      forwardedAuthorization: String(config?.headers?.Authorization || ''),
     });
     if (
       query === 'what sunscreen should i use for oily skin?'
@@ -5165,6 +5164,7 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
         'X-Aurora-UID': 'chat_step_bridge_uid',
         'X-Trace-ID': 'trace_chat_step_bridge',
         'X-Brief-ID': 'chat_step_bridge_brief',
+        'X-Agent-API-Key': 'ak_live_bridge_test',
       })
       .send({
         action: {
@@ -5201,7 +5201,9 @@ test('/v1/chat: step-aware typed reco bridges to shopping beauty mainline when a
       observedCalls.some((entry) =>
         entry.query === 'what sunscreen should i use for oily skin?'
         && entry.catalogSurface === 'beauty'
-        && entry.fastMode === undefined),
+        && entry.fastMode === undefined
+        && entry.forwardedAgentApiKey === 'ak_live_bridge_test'
+        && entry.forwardedAuthorization === 'Bearer ak_live_bridge_test'),
       JSON.stringify(observedCalls),
     );
   } finally {
