@@ -24061,8 +24061,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   offset: 0,
                 },
               );
-              response = { status: 200, data: rescueBody };
-              upstreamData = normalizeSearchOperationResponseData({
+              const rescueResponse = { status: 200, data: rescueBody };
+              const rescueUpstreamData = normalizeSearchOperationResponseData({
                 responseBody: rescueBody,
                 queryParamsOverride: {
                   ...rescueQueryParams,
@@ -24070,10 +24070,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 },
                 requestBodyOverride: requestBody,
               });
-              queryParams = {
+              const rescueQueryParamsApplied = {
                 ...rescueQueryParams,
                 query: semanticOwnerExternalRescueQuery,
               };
+              const rescueAdoption = evaluateSemanticOwnerBeautyAdoption({
+                upstreamData: rescueUpstreamData,
+                queryText: semanticOwnerExternalRescueQuery,
+                queryParamsValue: rescueQueryParamsApplied,
+                requestBodyValue: requestBody,
+              });
+              const rescueObservation = describeSemanticOwnerObservationFallback({
+                upstreamData: rescueUpstreamData,
+                hitDecision: rescueAdoption.hitDecision,
+                queryText: semanticOwnerExternalRescueQuery,
+              });
+              const shouldPreferDeferredLastResortCache =
+                semanticOwnerObservationFallback?.last_resort_cache_candidate === true &&
+                Number(semanticOwnerObservationFallback?.score || -1) >=
+                  Number(rescueObservation?.score || -1);
+              if (shouldPreferDeferredLastResortCache) {
+                continue;
+              }
+              response = rescueResponse;
+              upstreamData = rescueUpstreamData;
+              queryParams = rescueQueryParamsApplied;
               const chosenAttempt =
                 semanticOwnerQueryAttempts.find(
                   (attempt) =>

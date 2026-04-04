@@ -1105,7 +1105,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
-  it('beauty semantic-owner defers cache_all_platforms valid treatment hits and prefers external rescue', async () => {
+  it('beauty semantic-owner defers cache_all_platforms valid treatment hits before deciding whether rescue is stronger', async () => {
     const attemptedPrimaryQueries = [];
     const attemptedExternalQueries = [];
     nock(process.env.PIVOTA_API_BASE)
@@ -1235,11 +1235,11 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(attemptedExternalQueries[0]).toBe('salicylic acid treatment');
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products).toHaveLength(1);
-    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_treat_2');
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('cache_treat_valid_1');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
-        semantic_owner_external_rescue_applied: true,
-        semantic_owner_external_rescue_query: 'salicylic acid treatment',
+        semantic_owner_last_resort_cache_applied: true,
+        semantic_owner_last_resort_cache_query: 'oil control treatment',
       }),
     );
     expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
@@ -1247,9 +1247,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
         expect.objectContaining({
           query: 'oil control treatment',
           query_index: 0,
-          adopted: false,
+          adopted: true,
+          adoption_mode: 'last_resort_cache',
           hit_quality: 'valid_hit',
           last_resort_cache_candidate: true,
+        }),
+        expect.objectContaining({
+          query: 'salicylic acid treatment',
+          query_index: 1,
+          adopted: false,
         }),
       ]),
     );
@@ -1363,6 +1369,116 @@ describe('/agent/shop/v1/invoke gateway', () => {
         }),
       ]),
     );
+  });
+
+  it('beauty semantic-owner keeps stronger deferred cache when external rescue is weaker', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() !== 'true')
+      .times(3)
+      .reply(function replyPrimaryTreatment(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const primaryQuery = String(url.searchParams.get('query') || '');
+        if (primaryQuery === 'oil control treatment') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'cache_treat_valid_3',
+                product_id: 'cache_treat_valid_3',
+                merchant_id: 'merchant_cache',
+                title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+                category: 'skincare',
+                product_type: 'serum',
+                query_source: 'cache_all_platforms',
+              },
+            ],
+            metadata: {
+              query_source: 'cache_all_platforms',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [],
+          metadata: {
+            query_source: 'agent_products_search',
+          },
+        }];
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => String(query?.external_seed_only || '').trim() === 'true')
+      .times(6)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'external_treat_weak_1',
+            product_id: 'external_treat_weak_1',
+            merchant_id: 'external_seed',
+            title: 'Vitamin C Super Serum Plus - Jumbo',
+            name: 'Vitamin C Super Serum Plus - Jumbo',
+            display_name: 'Vitamin C Super Serum Plus - Jumbo',
+            category: 'external',
+            product_type: 'external',
+            source: 'external_seed',
+            description: 'Brightening serum with vitamin C.',
+            how_to_use: 'Apply daily.',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_external_seed_direct',
+        },
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'framework_generic',
+              request_class: 'generic_concern',
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+              support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+              semantic_family: 'oil_control',
+              allowed_step_families: ['treatment', 'serum', 'moisturizer', 'sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: ['salicylic acid'],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('cache_treat_valid_3');
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        semantic_owner_last_resort_cache_applied: true,
+        semantic_owner_last_resort_cache_query: 'oil control treatment',
+      }),
+    );
+    expect(res.body.metadata?.semantic_owner_external_rescue_applied || null).toBe(null);
   });
 
   it('beauty semantic-owner isolates pure cache invalid treatment noise when rescue also fails', async () => {
