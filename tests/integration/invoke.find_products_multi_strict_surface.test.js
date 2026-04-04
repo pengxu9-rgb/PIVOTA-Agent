@@ -7,13 +7,25 @@ const nock = require('nock');
 
 describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
   let prevDatabaseUrl;
+  let prevPivotaApiBase;
+  let prevPivotaApiKey;
+  let prevApiMode;
+  let prevPivotaBackendBaseUrl;
 
   beforeEach(() => {
     jest.resetModules();
     nock.cleanAll();
     nock.disableNetConnect();
     prevDatabaseUrl = process.env.DATABASE_URL;
+    prevPivotaApiBase = process.env.PIVOTA_API_BASE;
+    prevPivotaApiKey = process.env.PIVOTA_API_KEY;
+    prevApiMode = process.env.API_MODE;
+    prevPivotaBackendBaseUrl = process.env.PIVOTA_BACKEND_BASE_URL;
+    process.env.PIVOTA_API_BASE = 'http://pivota.test';
+    process.env.PIVOTA_API_KEY = 'test-token';
+    process.env.API_MODE = 'REAL';
     delete process.env.DATABASE_URL;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
     nock.enableNetConnect((host) => {
       const value = String(host || '');
       return value.includes('127.0.0.1') || value.includes('localhost') || value === '::1';
@@ -27,6 +39,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     nock.enableNetConnect();
     if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = prevDatabaseUrl;
+    if (prevPivotaApiBase === undefined) delete process.env.PIVOTA_API_BASE;
+    else process.env.PIVOTA_API_BASE = prevPivotaApiBase;
+    if (prevPivotaApiKey === undefined) delete process.env.PIVOTA_API_KEY;
+    else process.env.PIVOTA_API_KEY = prevPivotaApiKey;
+    if (prevApiMode === undefined) delete process.env.API_MODE;
+    else process.env.API_MODE = prevApiMode;
+    if (prevPivotaBackendBaseUrl === undefined) delete process.env.PIVOTA_BACKEND_BASE_URL;
+    else process.env.PIVOTA_BACKEND_BASE_URL = prevPivotaBackendBaseUrl;
   });
 
   test('routes explicit agent_api surface to strict shopping invoke without accepting cache-stage results', async () => {
