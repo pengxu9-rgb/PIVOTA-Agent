@@ -38,6 +38,7 @@ PORT=3000                              # Server port
 
 # Pivota API Configuration  
 PIVOTA_API_BASE=<your-pivota-api-url>  # e.g., https://web-production-fedb.up.railway.app
+PIVOTA_BACKEND_BASE_URL=<your-pivota-backend-url>  # e.g., https://web-production-fedb.up.railway.app
 PIVOTA_API_KEY=<your-api-key>          # From Pivota console
 
 # OpenAI Configuration (for /ui/chat)
@@ -54,6 +55,34 @@ USE_MOCK=false                         # Set to 'true' for local development
 LOG_LEVEL=info                         # debug, info, warn, error
 TEST_MERCHANT_ID=<test-merchant-id>   # For safe testing
 TEST_AGENT_ID=<test-agent-id>         # For agent identification
+
+# Discovery retrieval tuning
+DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS=6500
+DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS=4
+```
+
+### Shopping Discovery production defaults
+
+For Shopping Discovery / Recommendation rollout, keep these boundaries:
+
+```bash
+# Public contract remains on pivota-agent:
+# POST /agent/shop/v1/invoke { operation: "get_discovery_feed" }
+
+# Internal candidate recall stays on the commerce data plane.
+PIVOTA_BACKEND_BASE_URL=https://web-production-fedb.up.railway.app
+PIVOTA_API_BASE=https://web-production-fedb.up.railway.app
+API_MODE=REAL
+USE_MOCK=false
+DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS=6500
+DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS=4
+```
+
+Do not point external callers or the creator UI directly at `web-production-fedb` for discovery. The UI should keep using the public gateway URL:
+
+```bash
+PIVOTA_AGENT_URL=https://pivota-agent-production.up.railway.app/agent/shop/v1/invoke
+CREATOR_AGENT_API_KEY=<public invoke key>
 ```
 
 ### Aurora Chat V2 KB v0 production defaults
@@ -187,6 +216,25 @@ For share persistence across restarts, configure `DATABASE_URL` (Postgres). With
    - Railway will automatically deploy on push
    - Monitor deployment in the dashboard
    - Check logs for startup confirmation
+
+#### Post-deploy discovery verification
+
+After Railway reports healthy:
+
+```bash
+npm run deploy:verify:production
+
+CREATOR_AGENT_API_KEY=<public invoke key> \
+BASE_URL=https://pivota-agent-production.up.railway.app \
+npm run smoke:discovery:prod
+```
+
+Discovery smoke passes only when:
+- `get_discovery_feed` responds on the public `pivota-agent` contract
+- `metadata.candidate_source=products_search`
+- `home_hot_deals` cold start returns `cold_start_curated`
+- `home_hot_deals` with seeded history returns `personalized_interest`
+- page 1 suppression removes the seeded recent-view product from both `home_hot_deals` and `browse_products`
 
 #### Railway-Specific Configuration
 

@@ -276,6 +276,11 @@ try {
 }
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
 const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
+const {
+  DiscoveryCatalogUnavailableError,
+  DiscoveryValidationError,
+  getDiscoveryFeed,
+} = require('./services/discoveryFeed');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -18780,6 +18785,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   // Internal mocks are kept only for legacy checkout compatibility surfaces.
   const shouldUseMock = mockRequested && INTERNAL_MOCK_ALLOWED_OPERATIONS.has(operation);
+
+  if (operation === 'get_discovery_feed') {
+    try {
+      const discoveryResponse = await getDiscoveryFeed(effectivePayload, {
+        useMock: shouldUseMock,
+      });
+      const promotions = await getActivePromotions(now, creatorId);
+      const enriched = applyDealsToResponse(discoveryResponse, promotions, now, creatorId);
+      return res.json(enriched);
+    } catch (err) {
+      if (err instanceof DiscoveryValidationError || Number(err?.statusCode) === 400) {
+        return res.status(400).json({
+          error: err.code || 'INVALID_DISCOVERY_REQUEST',
+          message: err.message || 'Invalid discovery feed request',
+        });
+      }
+      if (err instanceof DiscoveryCatalogUnavailableError || Number(err?.statusCode) === 503) {
+        return res.status(503).json({
+          error: err.code || 'DISCOVERY_CATALOG_UNAVAILABLE',
+          message: err.message || 'Discovery catalog is unavailable',
+        });
+      }
+      logger.error(
+        { err: err?.message || String(err), operation },
+        'get_discovery_feed failed',
+      );
+      return res.status(500).json({
+        error: 'DISCOVERY_FEED_FAILED',
+        message: 'Failed to build discovery feed',
+      });
+    }
+  }
 
   // Discovery / chitchat routing: when the user hasn't expressed a shopping goal yet,
   // do NOT query the catalog. Return a guided, creator-styled prompt instead.

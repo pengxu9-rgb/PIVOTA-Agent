@@ -1,0 +1,527 @@
+const nock = require('nock');
+const {
+  DiscoveryCatalogUnavailableError,
+  buildDiscoveryProfile,
+  getDiscoveryFeed,
+  _internals,
+} = require('../src/services/discoveryFeed');
+const {
+  getLastDiscoverySnapshot,
+  renderDiscoveryMetricsPrometheus,
+  resetDiscoveryMetricsForTest,
+} = require('../src/observability/discoveryMetrics');
+
+function makeProduct({
+  merchant_id = 'merch_a',
+  product_id,
+  title,
+  description = '',
+  brand,
+  category,
+  product_type,
+  price = 20,
+  currency = 'USD',
+  inventory_quantity = 10,
+} = {}) {
+  return {
+    merchant_id,
+    product_id,
+    title: title || product_id,
+    description,
+    ...(brand ? { brand } : {}),
+    ...(category ? { category } : {}),
+    ...(product_type ? { product_type } : {}),
+    price,
+    currency,
+    inventory_quantity,
+    status: 'active',
+  };
+}
+
+describe('discovery feed service', () => {
+  let previousEnv;
+
+  beforeEach(() => {
+    previousEnv = {
+      PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
+      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+      DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
+      DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
+    };
+    resetDiscoveryMetricsForTest();
+    nock.cleanAll();
+  });
+
+  afterEach(() => {
+    nock.cleanAll();
+    Object.entries(previousEnv).forEach(([key, value]) => {
+      if (value == null) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    });
+  });
+
+  test('buildDiscoveryProfile dedupes views and infers merged personalization source', () => {
+    const request = _internals.normalizeDiscoveryRequest({
+      surface: 'home_hot_deals',
+      context: {
+        auth_state: 'authenticated',
+        recent_views: [
+          {
+            merchant_id: 'm1',
+            product_id: 'p1',
+            title: 'Acme Repair Serum',
+            brand: 'Acme',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-04T10:00:00Z',
+            history_source: 'account',
+          },
+          {
+            merchant_id: 'm1',
+            product_id: 'p1',
+            title: 'Acme Repair Serum',
+            brand: 'Acme',
+            category: 'Skincare',
+            product_type: 'Serum',
+            viewed_at: '2026-04-03T10:00:00Z',
+            history_source: 'session',
+          },
+          {
+            merchant_id: 'm2',
+            product_id: 'p2',
+            title: 'Glow Lip Oil',
+            brand: 'Glow',
+            category: 'Makeup',
+            product_type: 'Lip',
+            viewed_at: '2026-04-02T10:00:00Z',
+            history_source: 'session',
+          },
+        ],
+        recent_queries: ['repair serum', 'lip oil'],
+      },
+    });
+
+    const profile = buildDiscoveryProfile(request.context);
+
+    expect(profile.historyItemsUsed).toBe(2);
+    expect(profile.personalizationSource).toBe('merged');
+    expect(profile.anchors).toHaveLength(2);
+    expect(profile.brandAffinity.get('acme')).toBeGreaterThan(profile.brandAffinity.get('glow'));
+    expect(profile.categoryAffinity.get('serum')).toBeGreaterThan(0);
+    expect(profile.queryTokens.has('repair')).toBe(true);
+  });
+
+  test('home_hot_deals excludes exact recent views and caps same brand at two items', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'exact_viewed',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'exact_viewed',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_1',
+            title: 'Alpha Night Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_2',
+            title: 'Alpha Barrier Cream',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_3',
+            title: 'Alpha Daily Lotion',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Lotion',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'beta_1',
+            title: 'Beta Repair Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'gamma_1',
+            title: 'Gamma Repair Toner',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Toner',
+          }),
+        ],
+      },
+    );
+
+    const ids = response.products.map((product) => product.product_id);
+    const alphaCount = response.products.filter((product) => product.brand === 'Alpha').length;
+
+    expect(response.metadata.discovery_strategy).toBe('personalized_interest');
+    expect(ids).not.toContain('exact_viewed');
+    expect(alphaCount).toBeLessThanOrEqual(2);
+  });
+
+  test('emits rank debug, candidate metadata, and discovery metrics for discovery feed requests', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 4,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'exact_viewed',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['repair serum'],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'exact_viewed',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_1',
+            title: 'Alpha Night Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_2',
+            title: 'Alpha Barrier Cream',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_3',
+            title: 'Alpha Daily Lotion',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Lotion',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'beta_1',
+            title: 'Beta Repair Serum',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'gamma_1',
+            title: 'Gamma Repair Toner',
+            brand: 'Gamma',
+            category: 'Skincare',
+            product_type: 'Toner',
+          }),
+        ],
+      },
+    );
+
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        candidate_source: 'override',
+        candidate_counts: {
+          raw: 6,
+          normalized: 6,
+          scored: 6,
+          eligible_pool: 5,
+          returned: 4,
+        },
+        request_latency_ms: expect.any(Number),
+        rank_debug: expect.any(Object),
+      }),
+    );
+    expect(response.metadata.rank_debug.profile_summary.top_brands[0]).toEqual(
+      expect.objectContaining({ key: 'alpha' }),
+    );
+
+    const decisions = new Map(
+      response.metadata.rank_debug.top_candidates.map((candidate) => [candidate.product_id, candidate.decision]),
+    );
+    expect(decisions.get('exact_viewed')).toBe('filtered_recent_view');
+    expect(Array.from(decisions.values())).toContain('filtered_brand_cap');
+
+    const snapshot = getLastDiscoverySnapshot('home_hot_deals');
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        surface: 'home_hot_deals',
+        status: 'success',
+        strategy: 'personalized_interest',
+        candidate_source: 'override',
+      }),
+    );
+    expect(snapshot.candidate_counts).toEqual(
+      expect.objectContaining({
+        raw: 6,
+        returned: 4,
+      }),
+    );
+
+    const metrics = renderDiscoveryMetricsPrometheus();
+    expect(metrics).toContain(
+      'discovery_feed_requests_total{candidate_source="override",personalization_source="account_history",reason="none",status="success",strategy="personalized_interest",surface="home_hot_deals"} 1',
+    );
+    expect(metrics).toContain(
+      'discovery_feed_latency_ms_count{status="success",surface="home_hot_deals"} 1',
+    );
+    expect(metrics).toContain(
+      'discovery_feed_candidates_count{stage="returned",surface="home_hot_deals"} 1',
+    );
+  });
+
+  test('loads discovery candidates from products/search and emits recall summary in debug mode', async () => {
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedParams = [];
+    nock('http://catalog.test')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .times(2)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'm1',
+            product_id: 'alpha_serum',
+            title: 'Alpha Repair Serum',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'm2',
+            product_id: 'alpha_cream',
+            title: 'Alpha Barrier Cream',
+            brand: 'Alpha',
+            category: 'Skincare',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'm3',
+            product_id: 'beta_toner',
+            title: 'Beta Repair Toner',
+            brand: 'Beta',
+            category: 'Skincare',
+            product_type: 'Toner',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 3,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'seed_alpha',
+              title: 'Alpha Repair Serum',
+              brand: 'Alpha',
+              category: 'Skincare',
+              product_type: 'Serum',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['repair serum'],
+        },
+      },
+      { candidateLimit: 120 },
+    );
+
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        candidate_source: 'products_search',
+        rank_debug: expect.any(Object),
+      }),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'interest_pool', status: 200 }),
+        expect.objectContaining({ label: 'browse_pool', status: 200 }),
+      ]),
+    );
+    expect(capturedParams.some((params) => String(params.query || '').trim().length > 0)).toBe(true);
+    expect(
+      capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'query') || !String(params.query || '').trim()),
+    ).toBe(true);
+  });
+
+  test('browse_products suppresses exact recent views on page 1 and can allow them on later pages', async () => {
+    const candidateProducts = [
+      makeProduct({ merchant_id: 'm1', product_id: 'browse_a', title: 'Browse A', category: 'Kitchen' }),
+      makeProduct({ merchant_id: 'm1', product_id: 'browse_b', title: 'Browse B', category: 'Kitchen' }),
+      makeProduct({ merchant_id: 'm1', product_id: 'recent_exact', title: 'Browse C', category: 'Kitchen' }),
+      makeProduct({ merchant_id: 'm1', product_id: 'browse_d', title: 'Browse D', category: 'Kitchen' }),
+    ];
+
+    const pageOne = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 2,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'recent_exact',
+              title: 'Recently viewed item',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+        },
+      },
+      { candidateProducts },
+    );
+
+    const pageTwo = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 2,
+        limit: 2,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'm1',
+              product_id: 'recent_exact',
+              title: 'Recently viewed item',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+        },
+      },
+      { candidateProducts },
+    );
+
+    expect(pageOne.products.map((product) => product.product_id)).not.toContain('recent_exact');
+    expect(pageTwo.products.map((product) => product.product_id)).toContain('recent_exact');
+  });
+
+  test('cold start returns curated metadata with no personalization source', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 3,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({ merchant_id: 'm1', product_id: 'cold_1', title: 'Cold Start One', category: 'Kitchen' }),
+          makeProduct({ merchant_id: 'm1', product_id: 'cold_2', title: 'Cold Start Two', category: 'Electronics' }),
+          makeProduct({ merchant_id: 'm1', product_id: 'cold_3', title: 'Cold Start Three', category: 'Beauty' }),
+        ],
+      },
+    );
+
+    expect(response.metadata.discovery_strategy).toBe('cold_start_curated');
+    expect(response.metadata.personalization_source).toBe('none');
+    expect(response.metadata.history_items_used).toBe(0);
+    expect(response.products).toHaveLength(3);
+  });
+
+  test('throws when products/search catalog is unavailable and mock mode is not explicitly enabled', async () => {
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+
+    await expect(
+      getDiscoveryFeed({
+        surface: 'home_hot_deals',
+        limit: 3,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      }),
+    ).rejects.toBeInstanceOf(DiscoveryCatalogUnavailableError);
+
+    const snapshot = getLastDiscoverySnapshot('home_hot_deals');
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        surface: 'home_hot_deals',
+        status: 'catalog_unavailable',
+        candidate_source: 'products_search',
+        error_code: 'DISCOVERY_CATALOG_UNAVAILABLE',
+      }),
+    );
+
+    const metrics = renderDiscoveryMetricsPrometheus();
+    expect(metrics).toContain(
+      'discovery_feed_requests_total{candidate_source="products_search",personalization_source="none",reason="discovery_catalog_unavailable",status="catalog_unavailable",strategy="cold_start_curated",surface="home_hot_deals"} 1',
+    );
+  });
+});
