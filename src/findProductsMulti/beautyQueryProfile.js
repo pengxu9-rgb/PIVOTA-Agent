@@ -13,7 +13,7 @@ function classifyBeautyBucketFromText(text) {
   if (!q) return 'other';
 
   const hasSkincareTreatmentSignal =
-    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha)\b/i.test(
+    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(

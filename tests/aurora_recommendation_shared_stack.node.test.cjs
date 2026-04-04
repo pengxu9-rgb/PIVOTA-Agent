@@ -20,6 +20,7 @@ const {
   buildBeautySkincareHitQualityDecision,
   scoreBeautyCandidateForTarget,
 } = require('../src/shared/beautyRecoCoarseClassifier');
+const { detectBeautyQueryBucket } = require('../src/findProductsMulti/beautyQueryProfile');
 
 test('step resolution parity keeps moisturizer aliases aligned across direct/chat', () => {
   const aliases = ['moisturizer', 'cream', '面霜', '保湿霜', '日霜'];
@@ -352,6 +353,12 @@ test('shared coarse classifier keeps body cream and beauty tools out of face-moi
   assert.equal(brush.domain_scope, 'beauty_tool');
   assert.equal(brush.object_type, 'brush');
   assert.equal(brush.coarse_valid_for_target, false);
+});
+
+test('beauty query bucket treats oil-control treatment asks as skincare without reclassifying lip queries', () => {
+  assert.equal(detectBeautyQueryBucket('oil control treatment'), 'skincare');
+  assert.equal(detectBeautyQueryBucket('best sunscreen for oily skin'), 'skincare');
+  assert.equal(detectBeautyQueryBucket('lip treatment'), 'general');
 });
 
 test('guidance-only moisturizer classifier separates strong/supportive rows from noisy moisturizer-like candidates', () => {
@@ -859,6 +866,165 @@ test('guidance-only serum classifier still promotes explicit barrier-repair seru
   assert.equal(Array.isArray(decision.valid_products), true);
   assert.equal(decision.valid_products.length, 1);
   assert.equal(String(decision.valid_products[0]?.product_id || ''), 'serum_1');
+});
+
+test('shared treatment pipeline promotes face treatment candidates and drops lip-body-tool noise', () => {
+  const niacinamide = classifyBeautyCoarseCandidate({
+    title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+    category: 'serum',
+    product_type: 'serum',
+    description: 'Oil control serum for blemish-prone skin.',
+  }, {
+    queryText: 'oil control treatment',
+    queryTargetStepFamily: 'treatment',
+    mode: null,
+  });
+  const lip = classifyBeautyCoarseCandidate({
+    title: 'Peptide Lip Treatment Strawberry Glaze',
+    category: 'lip treatment',
+    product_type: 'treatment',
+  }, {
+    queryText: 'oil control treatment',
+    queryTargetStepFamily: 'treatment',
+    mode: null,
+  });
+  const body = classifyBeautyCoarseCandidate({
+    title: 'After-Shower Nourishing Body Oil',
+    category: 'body oil',
+    product_type: 'oil',
+  }, {
+    queryText: 'oil control treatment',
+    queryTargetStepFamily: 'treatment',
+    mode: null,
+  });
+  const brush = classifyBeautyCoarseCandidate({
+    title: 'Small Eyeshadow Brush',
+    category: 'makeup brush',
+    product_type: 'tool',
+  }, {
+    queryText: 'oil control treatment',
+    queryTargetStepFamily: 'treatment',
+    mode: null,
+  });
+
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'oil control treatment',
+    queryTargetStepFamily: 'treatment',
+    mode: null,
+    products: [
+      {
+        product_id: 'niacinamide_1',
+        merchant_id: 'merchant_treatment',
+        title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        description: 'Oil control serum for blemish-prone skin.',
+      },
+      {
+        product_id: 'lip_1',
+        merchant_id: 'merchant_lip',
+        title: 'Peptide Lip Treatment Strawberry Glaze',
+        category: 'lip treatment',
+        product_type: 'treatment',
+      },
+      {
+        product_id: 'body_1',
+        merchant_id: 'merchant_body',
+        title: 'After-Shower Nourishing Body Oil',
+        category: 'body oil',
+        product_type: 'oil',
+      },
+      {
+        product_id: 'brush_1',
+        merchant_id: 'merchant_tool',
+        title: 'Small Eyeshadow Brush',
+        category: 'makeup brush',
+        product_type: 'tool',
+      },
+    ],
+  });
+
+  assert.equal(niacinamide.target_relevance_class, 'strong_goal_family');
+  assert.equal(niacinamide.coarse_valid_for_target, true);
+  assert.equal(lip.target_relevance_class, 'hard_invalid');
+  assert.equal(body.target_relevance_class, 'hard_invalid');
+  assert.equal(brush.target_relevance_class, 'hard_invalid');
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.deepEqual(
+    decision.valid_products.map((product) => String(product?.product_id || '')),
+    ['niacinamide_1'],
+  );
+});
+
+test('shared sunscreen pipeline keeps face sunscreen rows and drops tint-tool-body noise', () => {
+  const sunscreen = classifyBeautyCoarseCandidate({
+    title: 'Daily Invisible Face Sunscreen SPF 50',
+    category: 'sun care',
+    product_type: 'sun care',
+    description: 'Lightweight face sunscreen for oily skin.',
+  }, {
+    queryText: 'best sunscreen for oily skin',
+    queryTargetStepFamily: 'sunscreen',
+    mode: null,
+  });
+  const tinted = classifyBeautyCoarseCandidate({
+    title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20',
+    category: 'moisturizer',
+    product_type: 'moisturizer',
+  }, {
+    queryText: 'best sunscreen for oily skin',
+    queryTargetStepFamily: 'sunscreen',
+    mode: null,
+  });
+  const brush = classifyBeautyCoarseCandidate({
+    title: 'Small Eyeshadow Brush',
+    category: 'makeup brush',
+    product_type: 'tool',
+  }, {
+    queryText: 'best sunscreen for oily skin',
+    queryTargetStepFamily: 'sunscreen',
+    mode: null,
+  });
+
+  const decision = buildBeautySkincareHitQualityDecision({
+    queryText: 'best sunscreen for oily skin',
+    queryTargetStepFamily: 'sunscreen',
+    mode: null,
+    products: [
+      {
+        product_id: 'spf_1',
+        merchant_id: 'merchant_spf',
+        title: 'Daily Invisible Face Sunscreen SPF 50',
+        category: 'sun care',
+        product_type: 'sun care',
+        description: 'Lightweight face sunscreen for oily skin.',
+      },
+      {
+        product_id: 'tint_1',
+        merchant_id: 'merchant_tint',
+        title: 'Positive Light Tinted Moisturizer Broad Spectrum SPF 20',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+      },
+      {
+        product_id: 'brush_1',
+        merchant_id: 'merchant_tool',
+        title: 'Small Eyeshadow Brush',
+        category: 'makeup brush',
+        product_type: 'tool',
+      },
+    ],
+  });
+
+  assert.equal(sunscreen.target_relevance_class, 'strong_goal_family');
+  assert.equal(sunscreen.coarse_valid_for_target, true);
+  assert.equal(tinted.target_relevance_class, 'adjacent_noise');
+  assert.equal(brush.target_relevance_class, 'hard_invalid');
+  assert.equal(decision.hit_quality, 'valid_hit');
+  assert.deepEqual(
+    decision.valid_products.map((product) => String(product?.product_id || '')),
+    ['spf_1'],
+  );
 });
 
 test('guidance-only serum panthenol canary still rejects a single supportive-only shortlist hit', () => {

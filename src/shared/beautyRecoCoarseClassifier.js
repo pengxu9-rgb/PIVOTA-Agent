@@ -45,6 +45,10 @@ const HAIR_RE = /\b(hair|scalp|frizz|heat protectant|styling|conditioner|shampoo
 const BRIGHTENING_RE = /\b(brightening|vitamin c|glow|radiance)\b/i;
 const MOISTURIZER_GUIDANCE_FAMILY_RE = /\b(moisturizer|moisturiser|cream|lotion|gel cream|balm)\b/i;
 const SERUM_GUIDANCE_FAMILY_RE = /\b(serum|ampoule|essence)\b/i;
+const TREATMENT_GUIDANCE_FAMILY_RE = /\b(treatment|spot treatment|serum|ampoule|concentrate|booster|solution|suspension|gel)\b/i;
+const TREATMENT_GOAL_RE = /\b(oil control|shine control|acne|blemish|congestion|clarifying|salicylic|niacinamide|retinol|retinoid|azelaic|pore)\b/i;
+const SUNSCREEN_GUIDANCE_FAMILY_RE = /\b(sunscreen|sun screen|sunblock|sun fluid|sun lotion|spf\s*\d+|broad spectrum|uv filters?)\b/i;
+const SUNSCREEN_SUPPORTIVE_RE = /\b(face|facial|daily|lightweight|oil[- ]?control|oily|matte|non[- ]greasy|mineral|invisible)\b/i;
 const GUIDANCE_BARRIER_RE = /\b(barrier|repair)\b/i;
 const GUIDANCE_INGREDIENT_RE = /\b(ceramides?|panthenol|vitamin[- ]?b5|b5|niacinamide|hyalur|hyaluronic|centella|cica|allantoin|phyto.?ceramides?)\b/i;
 const GUIDANCE_SENSITIVITY_RE = /\b(sensitive|fragrance[- ]free|gentle|soothing|calming)\b/i;
@@ -520,6 +524,143 @@ function classifyGuidanceOnlySerumTargetRelevance({
   };
 }
 
+function classifySharedTreatmentTargetRelevance({
+  text,
+  coarse,
+  queryText,
+}) {
+  const lower = asString(text).toLowerCase();
+  const normalizedQuery = asString(queryText).toLowerCase();
+  const offerType = detectBeautyOfferType(lower);
+  const candidateHasTreatmentCue = TREATMENT_GOAL_RE.test(lower);
+  const queryHasTreatmentCue = TREATMENT_GOAL_RE.test(normalizedQuery) || /\btreatment\b/.test(normalizedQuery);
+  const looksLikeTreatmentFamily =
+    coarse.candidate_step === 'treatment' ||
+    coarse.candidate_step === 'serum' ||
+    TREATMENT_GUIDANCE_FAMILY_RE.test(lower);
+  const looksLikeAdjacentLiquid =
+    SERUM_ADJACENT_LIQUID_RE.test(lower) &&
+    coarse.candidate_step !== 'treatment' &&
+    !candidateHasTreatmentCue;
+
+  if (coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'service' };
+  }
+  if (
+    coarse.object_type === 'brush' ||
+    coarse.object_type === 'tool' ||
+    coarse.object_type === 'accessory' ||
+    coarse.domain_scope === 'beauty_tool'
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tool' };
+  }
+  if (HAIR_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'hair' };
+  }
+  if (coarse.candidate_step === 'cleanser' || CLEANSER_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (SPF_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'spf' };
+  }
+  if (PEEL_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'peel' };
+  }
+  if (coarse.domain_scope === 'bodycare' || coarse.usage_scope === 'body') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'body' };
+  }
+  if (coarse.domain_scope === 'makeup') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'makeup' };
+  }
+  if (coarse.application_mode === 'rinse_off') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (
+    coarse.domain_scope !== 'skincare' ||
+    coarse.object_type !== 'product' ||
+    coarse.usage_scope !== 'face' ||
+    !looksLikeTreatmentFamily
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'wrong_scope' };
+  }
+  if (offerType === 'bundle' || offerType === 'duo' || offerType === 'set' || offerType === 'kit') {
+    return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'bundle' };
+  }
+  if (looksLikeAdjacentLiquid) {
+    return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'adjacent_liquid' };
+  }
+  if (
+    candidateHasTreatmentCue &&
+    (queryHasTreatmentCue || coarse.candidate_step === 'treatment' || coarse.candidate_step === 'serum')
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+  }
+  if (coarse.candidate_step === 'treatment') {
+    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+  }
+  if (coarse.candidate_step === 'serum' || looksLikeTreatmentFamily) {
+    return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+  }
+  return { offer_type: offerType, target_relevance_class: 'generic_family', noise_reason: null };
+}
+
+function classifySharedSunscreenTargetRelevance({
+  text,
+  coarse,
+}) {
+  const lower = asString(text).toLowerCase();
+  const offerType = detectBeautyOfferType(lower);
+  const candidateHasSunscreenCue =
+    coarse.candidate_step === 'sunscreen' ||
+    SUNSCREEN_GUIDANCE_FAMILY_RE.test(lower);
+  const candidateHasSupportiveCue = SUNSCREEN_SUPPORTIVE_RE.test(lower);
+  const tintedMakeupLike = TINT_RE.test(lower);
+
+  if (coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'service' };
+  }
+  if (
+    coarse.object_type === 'brush' ||
+    coarse.object_type === 'tool' ||
+    coarse.object_type === 'accessory' ||
+    coarse.domain_scope === 'beauty_tool'
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'tool' };
+  }
+  if (HAIR_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'hair' };
+  }
+  if (coarse.candidate_step === 'cleanser' || CLEANSER_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'cleanser' };
+  }
+  if (PEEL_RE.test(lower)) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'peel' };
+  }
+  if (coarse.domain_scope === 'bodycare' || coarse.usage_scope === 'body') {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'body' };
+  }
+  if (
+    coarse.domain_scope !== 'skincare' ||
+    coarse.object_type !== 'product' ||
+    coarse.usage_scope !== 'face'
+  ) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'wrong_scope' };
+  }
+  if (offerType === 'bundle' || offerType === 'duo' || offerType === 'set' || offerType === 'kit') {
+    return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'bundle' };
+  }
+  if (!candidateHasSunscreenCue) {
+    return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'spf_missing' };
+  }
+  if (tintedMakeupLike) {
+    return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'tint' };
+  }
+  if (coarse.candidate_step === 'sunscreen' || candidateHasSupportiveCue) {
+    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+  }
+  return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+}
+
 function asString(value) {
   return value == null ? '' : String(value).trim();
 }
@@ -688,6 +829,10 @@ function classifyBeautyCoarseCandidate(product, {
     const guidanceRelevance =
       normalizedTargetStepFamily === 'serum'
         ? classifyGuidanceOnlySerumTargetRelevance(guidanceInput)
+        : normalizedTargetStepFamily === 'treatment'
+          ? classifySharedTreatmentTargetRelevance(guidanceInput)
+          : normalizedTargetStepFamily === 'sunscreen'
+            ? classifySharedSunscreenTargetRelevance(guidanceInput)
         : classifyGuidanceOnlyMoisturizerTargetRelevance(guidanceInput);
     offerType = guidanceRelevance.offer_type;
     targetRelevanceClass = guidanceRelevance.target_relevance_class;

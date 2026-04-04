@@ -123,6 +123,9 @@ function shouldUseSharedTargetRelevancePipeline({
 } = {}) {
   const normalizedMode = normalizeRecommendationDecisionMode(mode);
   const normalizedStep = asString(targetStepFamily).toLowerCase();
+  if (normalizedStep === 'treatment' || normalizedStep === 'sunscreen') {
+    return true;
+  }
   if (normalizedMode === RECOMMENDATION_DECISION_MODES.guidance_only) {
     return normalizedStep === 'moisturizer' || normalizedStep === 'serum';
   }
