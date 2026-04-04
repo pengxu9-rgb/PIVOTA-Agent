@@ -1,3 +1,5 @@
+const { normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
+
 const BEAUTY_KEYWORDS = [
   'beauty',
   'makeup',
@@ -330,7 +332,7 @@ function buildVariants(product) {
         options: [],
         price: { current: { amount: normalizeAmount(product.price), currency } },
         availability,
-        image_url: product.image_url,
+        image_url: normalizePdpImageUrl(product.image_url) || undefined,
       },
     ];
   }
@@ -435,13 +437,12 @@ function buildVariants(product) {
     const availability = {};
     if (inStock !== undefined) availability.in_stock = inStock;
     if (availableQuantity !== undefined) availability.available_quantity = availableQuantity;
-    const variantImages = Array.from(
-      new Set(
-        [v.image_url, v.image, ...(Array.isArray(v.images) ? v.images : []), ...(Array.isArray(v.image_urls) ? v.image_urls : [])]
-          .map((image) => (typeof image === 'string' ? image : image?.url || image?.src || image?.image_url))
-          .filter((image) => typeof image === 'string' && image.trim()),
-      ),
-    );
+    const variantImages = normalizePdpImageUrls([
+      v.image_url,
+      v.image,
+      ...(Array.isArray(v.images) ? v.images : []),
+      ...(Array.isArray(v.image_urls) ? v.image_urls : []),
+    ]);
 
     return {
       variant_id: String(variantId),
@@ -468,12 +469,12 @@ function buildMediaItems(product, variants) {
       : [];
 
   media.forEach((m) => {
-    const url = m.url || m.image_url || m.src;
+    const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
     if (!url) return;
     items.push({
       type: m.type || m.media_type || 'image',
       url,
-      thumbnail_url: m.thumbnail_url || m.thumbnail,
+      thumbnail_url: normalizePdpImageUrl(m.thumbnail_url || m.thumbnail) || undefined,
       alt_text: m.alt_text || product.title,
       source: m.source,
       duration_ms: m.duration_ms,
@@ -481,14 +482,17 @@ function buildMediaItems(product, variants) {
   });
 
   images.forEach((img) => {
-    const url = typeof img === 'string' ? img : img.url || img.image_url;
+    const url = normalizePdpImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
     if (!url) return;
     items.push({
       type: 'image',
       url,
       alt_text: typeof img === 'object' ? img.alt_text : product.title,
       source: typeof img === 'object' ? img.source : undefined,
-      thumbnail_url: typeof img === 'object' ? img.thumbnail_url : undefined,
+      thumbnail_url:
+        typeof img === 'object'
+          ? normalizePdpImageUrl(img.thumbnail_url) || undefined
+          : undefined,
     });
   });
 
@@ -502,7 +506,11 @@ function buildMediaItems(product, variants) {
           : [];
 
     variantImages.forEach((variantImage) => {
-      const url = typeof variantImage === 'string' ? variantImage : variantImage?.url || variantImage?.src || variantImage?.image_url;
+      const url = normalizePdpImageUrl(
+        typeof variantImage === 'string'
+          ? variantImage
+          : variantImage?.url || variantImage?.src || variantImage?.image_url,
+      );
       if (!url || items.some((item) => item.url === url)) return;
       items.push({
         type: 'image',
@@ -511,19 +519,21 @@ function buildMediaItems(product, variants) {
       });
     });
 
-    if (v.image_url && !items.some((i) => i.url === v.image_url)) {
+    const variantImageUrl = normalizePdpImageUrl(v.image_url);
+    if (variantImageUrl && !items.some((i) => i.url === variantImageUrl)) {
       items.push({
         type: 'image',
-        url: v.image_url,
+        url: variantImageUrl,
         alt_text: product.title,
       });
     }
   });
 
-  if (!items.length && product.image_url) {
+  const fallbackProductImage = normalizePdpImageUrl(product.image_url);
+  if (!items.length && fallbackProductImage) {
     items.push({
       type: 'image',
-      url: product.image_url,
+      url: fallbackProductImage,
       alt_text: product.title,
     });
   }
@@ -572,17 +582,53 @@ function splitDelimitedText(input, maxItems = 64) {
   return normalizeStringList(text.split(/[,\n;|•]+/), maxItems);
 }
 
+function cleanStructuredToken(value) {
+  return normalizeTextValue(value)
+    .replace(/^[\s\-•*]+/, '')
+    .replace(/^(?:step\s*)?\d+[\).:\-]\s*/i, '')
+    .replace(/\s*[-•]\s*$/, '')
+    .trim();
+}
+
+function normalizeStructuredTokens(values, maxItems = 64) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = cleanStructuredToken(value);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= Math.max(1, Number(maxItems) || 64)) break;
+  }
+  return out;
+}
+
+function splitIngredientsText(input, maxItems = 64) {
+  const text = normalizeTextValue(input)
+    .replace(/^full ingredients[:\s-]*/i, '')
+    .replace(/^ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
+    .trim();
+  if (!text) return [];
+  return normalizeStructuredTokens(text.split(/\n+|;|,(?![^()]*\))/), maxItems).filter(
+    (item) => item.length > 1,
+  );
+}
+
 function splitHowToUseSteps(input, maxItems = 8) {
   const text = normalizeTextValue(input);
   if (!text) return [];
   const normalized = text
     .replace(/\r/g, '\n')
-    .replace(/\s*[•●▪]\s*/g, '\n')
-    .replace(/\s*\d+\.\s*/g, '\n')
-    .replace(/\s*step\s+\d+[:.-]?\s*/gi, '\n');
-  const lines = normalizeStringList(normalized.split(/\n+/), maxItems);
+    .replace(/(?:^|\s)[•●▪*-]\s+/g, '\n')
+    .replace(/(?:^|\s)(?:step\s*)?\d+[\).:\-]\s*/gi, '\n')
+    .replace(/\s+-\s+/g, '\n');
+  const lines = normalizeStructuredTokens(normalized.split(/\n+/), maxItems).filter(
+    (item) => item !== '-' && item !== '•',
+  );
   if (lines.length > 1) return lines;
-  return normalizeStringList(
+  return normalizeStructuredTokens(
     text
       .split(/(?:\.\s+)(?=[A-Z])|(?:;\s+)/)
       .map((part) => part.trim())
@@ -660,6 +706,42 @@ function resolveIngredientSourceMeta(product, prefersPdpField = false) {
   return { source_origin: 'unknown', source_quality_status: 'unknown' };
 }
 
+function extractStructuredSourceMeta(payload) {
+  const sourceOrigin = normalizeTextValue(payload?.source_origin || payload?.sourceOrigin);
+  const sourceQualityStatus = normalizeTextValue(
+    payload?.source_quality_status || payload?.sourceQualityStatus,
+  );
+  return {
+    ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+    ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+  };
+}
+
+function isRegulatoryActiveIngredientSource(sourceMeta, rawText) {
+  const combined = [sourceMeta?.source_origin, sourceMeta?.source_quality_status, rawText]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+  return (
+    combined.includes('regulatory') ||
+    combined.includes('otc') ||
+    combined.includes('drug facts') ||
+    combined.includes('active ingredient')
+  );
+}
+
+function shouldSuppressLowConfidenceActiveIngredients(product, items, ingredientsModule, sourceMeta, rawText) {
+  if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
+  if (detectTemplateHint(product) !== 'beauty') return false;
+  if (isRegulatoryActiveIngredientSource(sourceMeta, rawText)) return false;
+  const qualityStatus = String(sourceMeta?.source_quality_status || '').trim().toLowerCase();
+  if (qualityStatus === 'reviewed' || qualityStatus === 'captured' || qualityStatus === 'high') {
+    return false;
+  }
+  const activeCount = Array.isArray(items) ? items.length : 0;
+  const ingredientsCount = Array.isArray(ingredientsModule?.items) ? ingredientsModule.items.length : 0;
+  return activeCount <= 1 && ingredientsCount >= 4;
+}
+
 function buildIngredientsModule(product, detailSections) {
   const directIngredientsPayload =
     product.ingredients_inci ||
@@ -680,45 +762,72 @@ function buildIngredientsModule(product, detailSections) {
   );
   const inciItems = normalizeStringList(product.inci_list);
   const tokenItems = normalizeStringList(product.ingredient_tokens);
+  const parsedRawItems = splitIngredientsText(rawText);
   const normalizedItems = directItems.length
-    ? directItems
+    ? normalizeStringList([...directItems, ...parsedRawItems])
     : inciItems.length
     ? inciItems
     : tokenItems.length
       ? tokenItems
-      : splitDelimitedText(rawText);
+      : parsedRawItems;
   if (!rawText && !normalizedItems.length) return null;
+  const sourceMeta = extractStructuredSourceMeta(directIngredientsPayload);
   return {
     title: 'Ingredients',
     raw_text: rawText || undefined,
     items: normalizedItems,
-    ...resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw)),
+    ...(Object.keys(sourceMeta).length
+      ? sourceMeta
+      : resolveIngredientSourceMeta(product, Boolean(product.pdp_ingredients_raw))),
   };
 }
 
-function buildActiveIngredientsModule(product, detailSections) {
+function buildActiveIngredientsModule(product, detailSections, ingredientsModule) {
+  const directActivePayload =
+    product.active_ingredients ||
+    product.activeIngredients ||
+    product.key_ingredients ||
+    product.keyIngredients ||
+    null;
   const rawText =
+    normalizeTextValue(directActivePayload?.raw_text || directActivePayload?.text) ||
     normalizeTextValue(product.pdp_active_ingredients_raw) ||
     normalizeTextValue(
       detailSections.find((section) => matchesSectionHeading(section, ACTIVE_INGREDIENT_SECTION_HEADING_RE))
         ?.content,
     );
-  const items = normalizeStringList(product.active_ingredients);
-  const keyItems = normalizeStringList(product.key_ingredients);
+  const items = normalizeStringList(
+    directActivePayload?.items || directActivePayload?.list || product.active_ingredients,
+  );
+  const keyItems = normalizeStringList(product.key_ingredients || product.keyIngredients);
   const normalizedItems = items.length
     ? items
     : keyItems.length
       ? keyItems
-      : splitDelimitedText(rawText, 16);
+      : splitIngredientsText(rawText, 16);
   if (!rawText && !normalizedItems.length) return null;
+  const sourceMeta = Object.keys(extractStructuredSourceMeta(directActivePayload)).length
+    ? extractStructuredSourceMeta(directActivePayload)
+    : resolveIngredientSourceMeta(
+        product,
+        Boolean(product.pdp_active_ingredients_raw || product.pdp_ingredients_raw),
+      );
+  if (
+    shouldSuppressLowConfidenceActiveIngredients(
+      product,
+      normalizedItems,
+      ingredientsModule,
+      sourceMeta,
+      rawText,
+    )
+  ) {
+    return null;
+  }
   return {
     title: 'Active ingredients',
     items: normalizedItems,
     ...(rawText ? { raw_text: rawText } : {}),
-    ...resolveIngredientSourceMeta(
-      product,
-      Boolean(product.pdp_active_ingredients_raw || product.pdp_ingredients_raw),
-    ),
+    ...sourceMeta,
   };
 }
 
@@ -747,7 +856,10 @@ function buildHowToUseModule(product, detailSections) {
     directHowToUsePayload?.list,
     8,
   );
-  const steps = directSteps.length ? directSteps : splitHowToUseSteps(rawText);
+  const splitDirectSteps = directSteps.flatMap((step) => splitHowToUseSteps(step, 8));
+  const steps = splitDirectSteps.length
+    ? normalizeStringList(splitDirectSteps, 8)
+    : splitHowToUseSteps(rawText);
   if (!rawText && !steps.length) return null;
   return {
     title: 'How to use',
@@ -897,9 +1009,9 @@ function buildReviewsPreview(product, options = {}) {
       media: Array.isArray(item.media)
         ? item.media.map((m) => ({
             type: m.type || 'image',
-            url: m.url || m.image_url,
-            thumbnail_url: m.thumbnail_url,
-          }))
+            url: normalizePdpImageUrl(m.url || m.image_url) || undefined,
+            thumbnail_url: normalizePdpImageUrl(m.thumbnail_url) || undefined,
+          })).filter((mediaItem) => mediaItem.url)
         : undefined,
     })),
     entry_points: {
@@ -936,7 +1048,10 @@ function buildRecommendations(items, currencyFallback) {
       product_id: p.product_id || p.id,
       merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
       title: p.title || p.name,
-      image_url: p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined),
+      image_url:
+        normalizePdpImageUrl(
+          p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined),
+        ) || undefined,
       price: {
         amount: normalizeAmount(p.price),
         currency: normalizeCurrency(p, currencyFallback),
@@ -959,7 +1074,11 @@ function buildPdpPayload(args) {
   const mediaItems = buildMediaItems(product, variants);
   const detailSections = readDetailSections(product);
   const ingredientsModule = buildIngredientsModule(product, detailSections);
-  const activeIngredientsModule = buildActiveIngredientsModule(product, detailSections);
+  const activeIngredientsModule = buildActiveIngredientsModule(
+    product,
+    detailSections,
+    ingredientsModule,
+  );
   const howToUseModule = buildHowToUseModule(product, detailSections);
   const productFactsSections = buildProductFactSections(product, detailSections);
   const reviews = buildReviewsPreview(product, { includeEmpty: args.includeEmptyReviews });
@@ -1084,7 +1203,7 @@ function buildPdpPayload(args) {
       subtitle: product.subtitle || '',
       brand: product.brand ? { name: product.brand.name || product.brand } : undefined,
       category_path: inferCategoryPath(product),
-      image_url: product.image_url || product.image || undefined,
+      image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
       tags: Array.isArray(product.tags) ? product.tags : undefined,
       department: product.department || undefined,
       default_variant_id: defaultVariant.variant_id,

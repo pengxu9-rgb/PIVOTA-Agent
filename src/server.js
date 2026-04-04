@@ -26,6 +26,7 @@ const {
 } = require('./offers/offerIds');
 const { prioritizeOffersResolveResponse } = require('./offers/offersPriority');
 const { buildPdpPayload } = require('./pdpBuilder');
+const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
 const {
   getAllPromotions,
   getPromotionById,
@@ -27348,22 +27349,13 @@ async function runPdpCorePrewarmPass() {
     const productId = String(target?.product_id || '').trim();
     if (!merchantId || !productId) continue;
 
-    const reqBody = {
-      operation: 'get_pdp_v2',
-      payload: {
-        product_ref: {
-          merchant_id: merchantId,
-          product_id: productId,
-        },
-        include: ['offers'],
-        options: {
-          debug: false,
-        },
+    const reqBody = buildPdpCorePrewarmRequestBody(
+      {
+        merchant_id: merchantId,
+        product_id: productId,
       },
-      metadata: {
-        source: 'pdp_core_prewarm',
-      },
-    };
+      'pdp_core_prewarm',
+    );
 
     const reqStartedAt = Date.now();
     try {
