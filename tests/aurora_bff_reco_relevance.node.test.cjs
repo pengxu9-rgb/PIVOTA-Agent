@@ -5259,6 +5259,30 @@ test('/v1/chat: generic concern late beauty mainline rescue uses primary-role qu
         data: {
           products: [
             {
+              product_id: 'generic_wrong_body',
+              merchant_id: 'external_seed',
+              brand: 'BodyBrand',
+              name: 'After-Shower Nourishing Body Oil',
+              display_name: 'After-Shower Nourishing Body Oil',
+              category: 'body oil',
+              product_type: 'body oil',
+              source: 'external_seed',
+              url: 'https://example.com/body-oil',
+              short_description: 'A nourishing oil for body care.',
+            },
+            {
+              product_id: 'generic_wrong_lip',
+              merchant_id: 'external_seed',
+              brand: 'LipBrand',
+              name: 'Peptide Lip Treatment',
+              display_name: 'Peptide Lip Treatment',
+              category: 'lip treatment',
+              product_type: 'lip treatment',
+              source: 'external_seed',
+              url: 'https://example.com/lip-treatment',
+              short_description: 'A peptide treatment for lips.',
+            },
+            {
               product_id: 'generic_bridge_1',
               merchant_id: 'external_seed',
               brand: 'GoalSkin',

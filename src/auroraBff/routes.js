@@ -17328,16 +17328,69 @@ function buildRecoRowsFromBridgeProducts(products, {
   language = 'EN',
   debug = false,
 } = {}) {
+  let bridgeRows = Array.isArray(products) ? products.filter((row) => isPlainObject(row)) : [];
+  const frameworkMode = Boolean(
+    Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
+  );
+  if (frameworkMode) {
+    const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
+    bridgeRows = bridgeRows
+      .map((row, index) => {
+        const scopeClassification = classifyConcernScopeCandidate(row);
+        const candidateText = uniqCaseInsensitiveStrings([
+          buildConcernFrameworkCandidateText(row),
+          buildConcernCandidateText(row),
+        ], 2).join(' ').trim();
+        const stepResolution = normalizeCandidateStep(row, { targetContext });
+        const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
+        let bestRoleScore = null;
+        for (const role of roles) {
+          const nextScore = scoreConcernRoleCandidate(row, role, { candidateStep, candidateText });
+          if (!nextScore) continue;
+          const adjusted = Number(
+            Math.max(0, Number(nextScore.score || 0) - Number(scopeClassification.penalty || 0)).toFixed(4),
+          );
+          if (!bestRoleScore || adjusted > bestRoleScore.score) {
+            bestRoleScore = {
+              role,
+              score: adjusted,
+            };
+          }
+        }
+        let bridgeFrameworkScore = Number(bestRoleScore?.score || 0);
+        if (scopeClassification.classification === 'explicit_face_skincare') bridgeFrameworkScore += 0.18;
+        if (scopeClassification.classification === 'explicit_non_face_supportive') bridgeFrameworkScore -= 1.0;
+        if (scopeClassification.hard_reject) bridgeFrameworkScore -= 1.25;
+        if (isConcernFrameworkOutOfScopeArea(row, candidateText)) bridgeFrameworkScore -= 0.9;
+        bridgeFrameworkScore += scoreConcernFrameworkCandidateTiebreak(row);
+        bridgeFrameworkScore -= index * 0.0001;
+        return {
+          ...row,
+          bridge_framework_score: Number(bridgeFrameworkScore.toFixed(4)),
+          ...(candidateStep ? { candidate_step: candidateStep } : {}),
+          ...(bestRoleScore?.role
+            ? {
+                matched_role_id: pickFirstTrimmed(bestRoleScore.role?.role_id) || null,
+                matched_role_label: pickFirstTrimmed(bestRoleScore.role?.label) || null,
+                matched_role_rank: Number.isFinite(Number(bestRoleScore.role?.rank))
+                  ? Number(bestRoleScore.role.rank)
+                  : null,
+              }
+            : {}),
+        };
+      })
+      .sort((left, right) => Number(right?.bridge_framework_score || 0) - Number(left?.bridge_framework_score || 0));
+  }
   const primaryFrameworkRole = Array.isArray(targetContext?.framework_roles)
     ? targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim())
       || targetContext.framework_roles[0]
       || null
     : null;
   const primaryFrameworkStep = pickFirstTrimmed(
-    primaryFrameworkRole?.preferred_step,
-    targetContext?.resolved_target_step,
+      primaryFrameworkRole?.preferred_step,
+      targetContext?.resolved_target_step,
   );
-  return (Array.isArray(products) ? products : []).map((picked, index) => {
+  return bridgeRows.map((picked, index) => {
     const stepToken = pickFirstTrimmed(
       primaryFrameworkStep,
       targetContext?.resolved_target_step,
