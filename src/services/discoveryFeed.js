@@ -28,113 +28,6 @@ const MAX_PRODUCTS_SEARCH_CALLS = 4;
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const VALID_SURFACES = new Set(['home_hot_deals', 'browse_products']);
 const VALID_AUTH_STATES = new Set(['authenticated', 'anonymous']);
-// Discovery keeps its own tiny mock seed so the stable contract does not depend on repo-wide mockProducts.js.
-const DISCOVERY_MOCK_PRODUCTS = [
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'ECHO_DOT_5',
-    title: 'Echo Dot (5th Gen) Smart Speaker with Alexa',
-    description: 'Compact smart speaker with improved audio and Alexa voice assistant.',
-    brand: 'Amazon',
-    category: 'Electronics',
-    product_type: 'Smart Speaker',
-    price: 49.99,
-    currency: 'USD',
-    inventory_quantity: 18,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'HEADPHONE_001',
-    title: 'Wireless Bluetooth Headphones',
-    description: 'Over-ear wireless headphones with noise cancellation and long battery life.',
-    brand: 'SonicWave',
-    category: 'Electronics',
-    product_type: 'Headphones',
-    price: 79.99,
-    currency: 'USD',
-    inventory_quantity: 21,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'EARBUD_001',
-    title: 'Wireless Noise Cancelling Earbuds',
-    description: 'Pocket-size wireless earbuds with charging case and transparency mode.',
-    brand: 'SonicWave',
-    category: 'Electronics',
-    product_type: 'Earbuds',
-    price: 59.99,
-    currency: 'USD',
-    inventory_quantity: 15,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'CHARGER_001',
-    title: 'Portable Power Bank 20000mAh',
-    description: 'Fast-charging USB-C battery pack for phones, tablets, and accessories.',
-    brand: 'Voltix',
-    category: 'Electronics',
-    product_type: 'Power Bank',
-    price: 35.99,
-    currency: 'USD',
-    inventory_quantity: 17,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'SPEAKER_001',
-    title: 'Portable Bluetooth Speaker',
-    description: 'Water-resistant speaker with stereo sound and all-day battery.',
-    brand: 'Voltix',
-    category: 'Electronics',
-    product_type: 'Speaker',
-    price: 42.5,
-    currency: 'USD',
-    inventory_quantity: 14,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'CAMERA_001',
-    title: 'Indoor Smart Security Camera',
-    description: 'HD indoor camera with motion alerts and two-way talk.',
-    brand: 'HomeSight',
-    category: 'Electronics',
-    product_type: 'Camera',
-    price: 64.99,
-    currency: 'USD',
-    inventory_quantity: 12,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'SERUM_001',
-    title: 'Repair Barrier Serum',
-    description: 'Skincare serum focused on barrier repair and hydration.',
-    brand: 'GlowLab',
-    category: 'Beauty',
-    product_type: 'Serum',
-    price: 32,
-    currency: 'USD',
-    inventory_quantity: 9,
-    status: 'active',
-  },
-  {
-    merchant_id: 'merch_208139f7600dbf42',
-    product_id: 'TONER_001',
-    title: 'Balancing Repair Toner',
-    description: 'Daily toner that supports calm, balanced skin.',
-    brand: 'GlowLab',
-    category: 'Beauty',
-    product_type: 'Toner',
-    price: 24,
-    currency: 'USD',
-    inventory_quantity: 11,
-    status: 'active',
-  },
-];
 
 class DiscoveryValidationError extends Error {
   constructor(message) {
@@ -476,13 +369,6 @@ function normalizeCandidateProduct(product, browseRank = 0) {
   };
 }
 
-function buildDiscoveryMockCatalog(limit) {
-  return DISCOVERY_MOCK_PRODUCTS
-    .filter((product) => String(product.merchant_id || '').trim() !== EXTERNAL_SEED_MERCHANT_ID)
-    .slice(0, limit)
-    .map((product) => ({ ...product }));
-}
-
 function buildDiscoveryInterestQuery(request, profile) {
   const terms = [];
   const seen = new Set();
@@ -654,29 +540,11 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
 }
 
 async function loadCatalogCandidates({
-  useMock = false,
   request = null,
   profile = null,
   limit = MAX_CANDIDATE_FETCH,
 } = {}) {
   const safeLimit = Math.max(40, Math.min(limit, MAX_CANDIDATE_FETCH));
-  if (useMock) {
-    const mockCatalog = buildDiscoveryMockCatalog(safeLimit);
-    return {
-      products: mockCatalog,
-      recallSummary: [
-        {
-          label: 'mock_catalog',
-          query: null,
-          offset: 0,
-          limit: safeLimit,
-          status: 200,
-          returned: mockCatalog.length,
-        },
-      ],
-    };
-  }
-
   return loadProductsSearchCandidates({
     request,
     profile,
@@ -875,7 +743,6 @@ function buildCandidateCounts({
 
 function getCandidateSource(options = {}) {
   if (Array.isArray(options.candidateProducts)) return 'override';
-  if (options.useMock === true) return 'mock_catalog';
   return 'products_search';
 }
 
@@ -965,14 +832,12 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     personalizationSource =
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
 
-    const useMock = options.useMock === true;
     const candidateLoadResult = Array.isArray(options.candidateProducts)
       ? {
           products: options.candidateProducts,
           recallSummary: [],
         }
       : await loadCatalogCandidates({
-          useMock,
           request,
           profile,
           limit: options.candidateLimit || MAX_CANDIDATE_FETCH,

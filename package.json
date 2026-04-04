@@ -5,9 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "start:mock": "USE_MOCK=true node src/server.js",
     "dev": "node src/server.js",
-    "dev:mock": "USE_MOCK=true node src/server.js",
     "smoke:layer2": "node scripts/smoke-layer2.js",
     "smoke:travel-plans:runtime": "bash scripts/smoke_travel_plans_runtime.sh",
     "probe:travel-plans:synthetic": "bash scripts/travel_plans_synthetic_probe.sh",
@@ -132,7 +130,6 @@
     "internal:report:us": "node scripts/report-internal-pins.js --market US",
     "internal:report:jp": "node scripts/report-internal-pins.js --market JP",
     "verify:premerge": "node scripts/verify-pr-file-boundary.js && node scripts/verify-premerge-layer2-slots.js && node scripts/verify-bilingual-resolution.js && node scripts/verify-jp-placeholder-noncrash.js && node scripts/verify-selection-stability.js",
-    "mock:pivota": "node scripts/mock-pivota-api.js",
     "demo:status": "node scripts/demo-openai-status.mjs",
     "embeddings:backfill": "node scripts/backfill-products-cache-embeddings.js",
     "external-seeds:backfill:catalog": "node scripts/backfill-external-product-seeds-catalog.js",

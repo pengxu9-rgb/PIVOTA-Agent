@@ -1,3 +1,4 @@
+const nock = require('nock');
 const {
   recommend,
   pickLayeredRecommendations,
@@ -38,8 +39,28 @@ function makeProduct({
 }
 
 describe('RecommendationEngine (PDP)', () => {
+  let previousEnv;
+
   beforeEach(() => {
+    previousEnv = {
+      DATABASE_URL: process.env.DATABASE_URL,
+      PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
+      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+    };
     _internals.resetCache();
+    nock.cleanAll();
+  });
+
+  afterEach(() => {
+    nock.cleanAll();
+    Object.entries(previousEnv).forEach(([key, value]) => {
+      if (value == null) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    });
   });
 
   test('a) internal has same-brand + same-leaf + near price => topK mostly same brand', () => {
@@ -385,5 +406,73 @@ describe('RecommendationEngine (PDP)', () => {
 
     expect(result?.debug?.fetch_strategy?.base_product_is_external).toBe(true);
     expect(result?.debug?.fetch_strategy?.external_skipped).toBe(false);
+  });
+
+  test('l) internal fallback uses products/search when DB is unavailable', async () => {
+    delete process.env.DATABASE_URL;
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    process.env.PIVOTA_API_KEY = 'test-key';
+
+    const capturedParams = [];
+    nock('http://catalog.test')
+      .matchHeader('x-api-key', 'test-key')
+      .get('/agent/v1/products/search')
+      .query((params) => {
+        capturedParams.push(params);
+        return true;
+      })
+      .twice()
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'merch_store',
+            product_id: 'same_store_1',
+            title: 'GlowLab Repair Serum',
+            brand: 'GlowLab',
+            category: 'Beauty',
+            product_type: 'Serum',
+          }),
+          makeProduct({
+            merchant_id: 'merch_other',
+            product_id: 'other_1',
+            title: 'GlowLab Barrier Cream',
+            brand: 'GlowLab',
+            category: 'Beauty',
+            product_type: 'Cream',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'ext_1',
+            title: 'External Seed Product',
+            brand: 'GlowLab',
+            category: 'Beauty',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+
+    const candidates = await _internals.fetchInternalCandidates({
+      merchantId: 'merch_store',
+      excludeMerchantId: 'merch_store',
+      limit: 8,
+      baseProduct: makeProduct({
+        merchant_id: 'merch_store',
+        product_id: 'base_serum',
+        title: 'GlowLab Repair Serum',
+        brand: 'GlowLab',
+        category: 'Beauty',
+        product_type: 'Serum',
+      }),
+    });
+
+    expect(candidates.map((item) => item.product_id)).toContain('same_store_1');
+    expect(candidates.map((item) => item.product_id)).toContain('other_1');
+    expect(candidates.map((item) => item.product_id)).not.toContain('ext_1');
+    expect(
+      capturedParams.some((params) => String(params.merchant_id || '').trim() === 'merch_store'),
+    ).toBe(true);
+    expect(
+      capturedParams.some((params) => !Object.prototype.hasOwnProperty.call(params, 'merchant_id')),
+    ).toBe(true);
   });
 });

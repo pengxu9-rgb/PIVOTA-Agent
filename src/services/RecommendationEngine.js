@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const axios = require('axios');
 
 const logger = require('../logger');
 const { query } = require('../db');
@@ -12,6 +13,24 @@ const {
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('./externalSeedProducts');
+
+function normalizeBaseUrl(raw) {
+  return String(raw || '').trim().replace(/\/+$/, '');
+}
+
+function getProductsSearchBaseUrl() {
+  return normalizeBaseUrl(process.env.PIVOTA_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE);
+}
+
+function buildProductsSearchHeaders() {
+  const headers = {};
+  const apiKey = String(process.env.PIVOTA_API_KEY || '').trim();
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -699,20 +718,110 @@ function pickLayeredRecommendations({
   };
 }
 
-async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId }) {
+function buildProductsSearchRecallQuery(baseProduct) {
+  const terms = [];
+  const seen = new Set();
+  const pushTerm = (value) => {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+    const key = normalizeText(normalized);
+    if (!normalized || !key || seen.has(key)) return;
+    seen.add(key);
+    terms.push(normalized);
+  };
+
+  pushTerm(getBrandName(baseProduct));
+  pushTerm(getLeafCategory(baseProduct));
+  pushTerm(getParentCategory(baseProduct));
+
+  tokenize(String(baseProduct?.title || ''))
+    .filter((token) => token.length >= 3 && !/^\d+$/.test(token))
+    .slice(0, 3)
+    .forEach(pushTerm);
+
+  return terms.slice(0, 4).join(' ').trim();
+}
+
+async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, baseProduct = null }) {
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
+  const maxResults = safeLimit * 4;
+
+  async function fetchFromProductsSearch(baseProduct) {
+    const baseUrl = getProductsSearchBaseUrl();
+    if (!baseUrl) return [];
+
+    const headers = buildProductsSearchHeaders();
+    const queryText = buildProductsSearchRecallQuery(baseProduct);
+    const requests = [];
+    if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
+      requests.push({
+        merchantId: mid,
+        limit: Math.min(120, maxResults),
+      });
+    }
+    requests.push({
+      merchantId: null,
+      limit: Math.min(240, maxResults),
+    });
+
+    const out = [];
+    const seen = new Set();
+    for (const step of requests) {
+      try {
+        const resp = await axios.get(`${baseUrl}/agent/v1/products/search`, {
+          params: {
+            ...(step.merchantId ? { merchant_id: step.merchantId } : {}),
+            ...(queryText ? { query: queryText } : {}),
+            in_stock_only: false,
+            limit: step.limit,
+            offset: 0,
+          },
+          headers,
+          timeout: Math.max(500, PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS),
+          validateStatus: () => true,
+        });
+        if (!(resp.status >= 200 && resp.status < 300)) continue;
+
+        const products = Array.isArray(resp.data?.products)
+          ? resp.data.products
+          : Array.isArray(resp.data?.results)
+            ? resp.data.results
+            : [];
+
+        for (const product of products) {
+          const candidate = toCandidate(product, {
+            merchant_id: product?.merchant_id || step.merchantId || undefined,
+          });
+          if (!candidate) continue;
+          const candidateMerchantId = String(getMerchantId(candidate) || '').trim();
+          if (!candidateMerchantId || candidateMerchantId === EXTERNAL_SEED_MERCHANT_ID) continue;
+          if (!step.merchantId && excludeMerchantId && candidateMerchantId === String(excludeMerchantId || '').trim()) {
+            continue;
+          }
+          const key = `${candidateMerchantId}::${getProductId(candidate)}`;
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          out.push(candidate);
+          if (out.length >= maxResults) break;
+        }
+        if (out.length >= maxResults) break;
+      } catch (err) {
+        logger.warn(
+          {
+            err: err?.message || String(err),
+            merchant_id: step.merchantId || null,
+            query: queryText || null,
+          },
+          'recommendations internal products/search fallback failed',
+        );
+      }
+    }
+
+    return out.slice(0, maxResults);
+  }
 
   if (!process.env.DATABASE_URL) {
-    logger.warn(
-      {
-        merchant_id: mid || null,
-        exclude_merchant_id: excludeMerchantId ? String(excludeMerchantId || '').trim() : null,
-        limit: safeLimit,
-      },
-      'pdp recommendation internal candidate fetch skipped because DATABASE_URL is missing and mock catalog fallback is disabled',
-    );
-    return [];
+    return fetchFromProductsSearch(baseProduct);
   }
   const out = [];
 
@@ -766,7 +875,13 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId })
     logger.warn({ err: err?.message || String(err) }, 'recommendations internal global query failed');
   }
 
-  return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
+  const deduped = uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, maxResults);
+  if (deduped.length > 0) {
+    return deduped;
+  }
+
+  const fallback = await fetchFromProductsSearch(baseProduct);
+  return uniqueByKey(fallback.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, maxResults);
 }
 
 async function fetchExternalCandidates({ brandHint, categoryHint, limit }) {
@@ -1056,6 +1171,7 @@ async function recommend({
           merchantId: getMerchantId(baseProduct),
           limit: Math.max(60, safeK * 10),
           excludeMerchantId: getMerchantId(baseProduct),
+          baseProduct,
         }),
     PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS,
     [],
@@ -1186,5 +1302,6 @@ module.exports = {
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
+    fetchInternalCandidates,
   },
 };
