@@ -362,6 +362,87 @@ describe('RecommendationEngine (PDP)', () => {
     expect(internalCount + externalCount).toBe(out.items.length);
   });
 
+  test('j2) recommendations dedupe repeated semantic titles across different product ids', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_rose_prick_base',
+      title: 'Tom Ford Ombre Leather Eau de Parfum',
+      brand: 'Tom Ford',
+      category: 'Fragrance',
+      source: 'external_seed',
+      price: 180,
+    });
+
+    const external = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_rose_prick_30',
+        title: 'Rose Prick Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 180,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_rose_prick_50',
+        title: 'Rose Prick Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 182,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_electric_cherry_30',
+        title: 'Electric Cherry Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 175,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_electric_cherry_50',
+        title: 'Electric Cherry Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 178,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_lost_cherry',
+        title: 'Lost Cherry Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 190,
+      }),
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'ext_fucking_fabulous',
+        title: 'Fucking Fabulous Eau de Parfum',
+        brand: 'Tom Ford',
+        category: 'Fragrance',
+        source: 'external_seed',
+        price: 195,
+      }),
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    const titles = out.items.map((item) => item.title);
+    expect(titles.filter((title) => title === 'Rose Prick Eau de Parfum')).toHaveLength(1);
+    expect(titles.filter((title) => title === 'Electric Cherry Eau de Parfum')).toHaveLength(1);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
   test('k) strong semantic external base still fetches external candidates', async () => {
     const base = makeProduct({
       merchant_id: 'external_seed',
