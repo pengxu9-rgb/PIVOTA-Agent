@@ -22799,10 +22799,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         beautyScoped: true,
       };
     };
-    const scoreSemanticOwnerObservationFallback = ({ upstreamData, hitDecision, queryText }) => {
+    const SEMANTIC_OWNER_CACHE_INVALID_OBSERVATION_REASONS = new Set([
+      'invalid_hit_all_non_skincare',
+      'invalid_hit_no_same_family_candidates',
+      'invalid_hit_wrong_beauty_bucket',
+      'invalid_hit_adjacent_noise_dominant',
+      'invalid_hit_tools_dominant',
+    ]);
+    const describeSemanticOwnerObservationFallback = ({ upstreamData, hitDecision, queryText }) => {
       const products = Array.isArray(upstreamData?.products) ? upstreamData.products : [];
-      if (!products.length) return -1;
-      if (!hitDecision?.applied) return products.length;
+      if (!products.length) {
+        return {
+          score: -1,
+          ignore: false,
+          ignore_reason: null,
+          source_summary: summarizeSharedCandidateSources([]),
+        };
+      }
+      if (!hitDecision?.applied) {
+        return {
+          score: products.length,
+          ignore: false,
+          ignore_reason: null,
+          source_summary: summarizeSharedCandidateSources(products.slice(0, 5)),
+        };
+      }
       const rankedProducts =
         Array.isArray(hitDecision?.ranked_products) && hitDecision.ranked_products.length > 0
           ? hitDecision.ranked_products
@@ -22821,7 +22842,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         scoredTopRows.length > 0
           ? scoredTopRows.reduce((sum, row) => sum + Number(row?.score || 0), 0) / scoredTopRows.length
           : 0;
-      return (
+      const pureCacheOnly =
+        Number(sourceSummary.source_tier_counts?.cache_fresh || 0) > 0 &&
+        Number(sourceSummary.source_tier_counts?.fresh_internal || 0) <= 0 &&
+        Number(sourceSummary.source_tier_counts?.fresh_external || 0) <= 0 &&
+        Number(sourceSummary.source_tier_counts?.cache_stale || 0) <= 0;
+      const normalizedInvalidReason = String(hitDecision?.invalid_hit_reason || '').trim().toLowerCase();
+      const ignore =
+        hitDecision?.hit_quality === 'invalid_hit' &&
+        pureCacheOnly &&
+        SEMANTIC_OWNER_CACHE_INVALID_OBSERVATION_REASONS.has(normalizedInvalidReason);
+      const score = (
         Number(hitDecision.exact_step_topk_count || 0) * 1000 +
         Number(hitDecision.strong_goal_family_topk_count || 0) * 100 +
         Number(hitDecision.supportive_same_family_topk_count || 0) * 25 +
@@ -22835,6 +22866,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Number(sourceSummary.source_tier_counts?.cache_stale || 0) * 40 -
         Number(sourceSummary.source_quality_counts?.degraded || 0) * 24
       );
+      return {
+        score: ignore ? -1 : score,
+        ignore,
+        ignore_reason: ignore ? 'pure_cache_invalid_hit' : null,
+        source_summary: sourceSummary,
+      };
     };
     if (semanticOwnerQueryPack.length > 0) {
       const primarySemanticQuery = semanticOwnerQueryPack[0];
@@ -23609,18 +23646,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       queryParamsValue: queryParams,
       requestBodyValue: requestBody,
     });
+    const primarySemanticOwnerObservation = describeSemanticOwnerObservationFallback({
+      upstreamData,
+      hitDecision: primarySemanticOwnerAdoption.hitDecision,
+      queryText: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0] || '',
+    });
     let semanticOwnerAdoptedByValidHit = primarySemanticOwnerAdoption.adopt === true;
+    let semanticOwnerIgnoredObservationCandidate =
+      semanticOwnerControlled && primarySemanticOwnerObservation.ignore === true;
     let semanticOwnerObservationFallback =
       semanticOwnerControlled &&
       primarySemanticOwnerAdoption.adopt !== true &&
       Array.isArray(upstreamData?.products) &&
-      upstreamData.products.length > 0
+      upstreamData.products.length > 0 &&
+      primarySemanticOwnerObservation.ignore !== true
         ? {
-            score: scoreSemanticOwnerObservationFallback({
-              upstreamData,
-              hitDecision: primarySemanticOwnerAdoption.hitDecision,
-              queryText: String(queryParams?.query || '').trim() || semanticOwnerQueryPack[0] || '',
-            }),
+            score: primarySemanticOwnerObservation.score,
             response,
             upstreamData,
             queryParams,
@@ -23644,6 +23685,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     post_quality_result_count: Array.isArray(primarySemanticOwnerAdoption.hitDecision.valid_products)
                       ? primarySemanticOwnerAdoption.hitDecision.valid_products.length
                       : 0,
+                    observation_candidate_ignored: primarySemanticOwnerObservation.ignore === true,
+                    observation_ignore_reason: primarySemanticOwnerObservation.ignore_reason || null,
                   }
                 : {}),
             },
@@ -23665,7 +23708,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const remainingBudgetForSemanticOwner = getFpmRemainingBudgetMs();
         const allowRequiredSemanticOwnerRetry =
           queryIndex < semanticOwnerMinQueriesBeforeBudgetGuard &&
-          remainingBudgetForSemanticOwner >= 250;
+          (
+            remainingBudgetForSemanticOwner >= 250 ||
+            (semanticOwnerIgnoredObservationCandidate && remainingBudgetForSemanticOwner >= 100)
+          );
         if (
           FPM_GATE_SIMPLIFY_V1 &&
           remainingBudgetForSemanticOwner < FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS &&
@@ -23742,19 +23788,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           variantResponse?.status < 300 &&
           variantProducts.length > 0 &&
           variantAdoption.adopt === true;
+        const variantObservationFallback =
+          semanticOwnerControlled &&
+          !shouldAdoptVariant &&
+          variantProducts.length > 0
+            ? describeSemanticOwnerObservationFallback({
+                upstreamData: variantUpstreamData,
+                hitDecision: variantAdoption.hitDecision,
+                queryText: semanticOwnerQueryPack[queryIndex],
+              })
+            : null;
         if (
           semanticOwnerControlled &&
           !shouldAdoptVariant &&
           variantProducts.length > 0
         ) {
-          const fallbackScore = scoreSemanticOwnerObservationFallback({
-            upstreamData: variantUpstreamData,
-            hitDecision: variantAdoption.hitDecision,
-            queryText: semanticOwnerQueryPack[queryIndex],
-          });
-          if (!semanticOwnerObservationFallback || fallbackScore > semanticOwnerObservationFallback.score) {
+          const fallbackCandidate = variantObservationFallback;
+          if (fallbackCandidate.ignore) {
+            semanticOwnerIgnoredObservationCandidate = true;
+          } else if (
+            !semanticOwnerObservationFallback ||
+            fallbackCandidate.score > semanticOwnerObservationFallback.score
+          ) {
             semanticOwnerObservationFallback = {
-              score: fallbackScore,
+              score: fallbackCandidate.score,
               response: variantResponse,
               upstreamData: variantUpstreamData,
               queryParams: variantQueryParams,
@@ -23776,6 +23833,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 post_quality_result_count: Array.isArray(variantAdoption.hitDecision.valid_products)
                   ? variantAdoption.hitDecision.valid_products.length
                   : 0,
+                observation_candidate_ignored: variantObservationFallback?.ignore === true,
+                observation_ignore_reason: variantObservationFallback?.ignore_reason || null,
               }
             : {}),
         });

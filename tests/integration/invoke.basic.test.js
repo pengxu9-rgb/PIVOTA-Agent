@@ -1072,10 +1072,142 @@ describe('/agent/shop/v1/invoke gateway', () => {
           adopted: false,
           hit_quality: 'invalid_hit',
           invalid_hit_reason: 'invalid_hit_all_non_skincare',
+          observation_candidate_ignored: true,
+          observation_ignore_reason: 'pure_cache_invalid_hit',
         }),
         expect.objectContaining({
           query: 'oil control sunscreen',
           query_index: 1,
+          adopted: true,
+          hit_quality: 'valid_hit',
+        }),
+      ]),
+    );
+  });
+
+  it('beauty semantic-owner keeps retrying past pure cache invalid sunscreen candidates until a later external sunscreen query wins', async () => {
+    const attemptedQueries = [];
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query((query) => {
+        attemptedQueries.push(String(query?.query || ''));
+        return true;
+      })
+      .times(3)
+      .reply(function replyVariant() {
+        const latestQuery = attemptedQueries[attemptedQueries.length - 1];
+        if (latestQuery === 'spf oily skin') {
+          return [200, {
+            status: 'success',
+            success: true,
+            products: [
+              {
+                id: 'external_spf_2',
+                product_id: 'external_spf_2',
+                merchant_id: 'external_seed',
+                title: 'UV Filters SPF 45 Serum',
+                name: 'UV Filters SPF 45 Serum',
+                display_name: 'UV Filters SPF 45 Serum',
+                category: 'external',
+                product_type: 'external',
+                source: 'external_seed',
+                description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters. Apply liberally 15 minutes before sun exposure and reapply every 2 hours.',
+                how_to_use: 'Apply to face every morning as the final skincare step before sun exposure.',
+              },
+            ],
+            metadata: {
+              query_source: 'agent_products_search',
+            },
+          }];
+        }
+        return [200, {
+          status: 'success',
+          success: true,
+          products: [
+            {
+              id: latestQuery === 'lightweight sunscreen oily skin' ? 'dog_noise_2' : 'sleepwear_noise_1',
+              product_id: latestQuery === 'lightweight sunscreen oily skin' ? 'dog_noise_2' : 'sleepwear_noise_1',
+              merchant_id: 'merchant_cache',
+              title:
+                latestQuery === 'lightweight sunscreen oily skin'
+                  ? 'Reflective Dog Harness for Small Dogs'
+                  : "Velvet Padded Deep V women's sleepwear set 6271",
+              name:
+                latestQuery === 'lightweight sunscreen oily skin'
+                  ? 'Reflective Dog Harness for Small Dogs'
+                  : "Velvet Padded Deep V women's sleepwear set 6271",
+              display_name:
+                latestQuery === 'lightweight sunscreen oily skin'
+                  ? 'Reflective Dog Harness for Small Dogs'
+                  : "Velvet Padded Deep V women's sleepwear set 6271",
+              category: null,
+              product_type: null,
+              query_source: 'cache_all_platforms',
+            },
+          ],
+          metadata: {
+            query_source: 'cache_all_platforms',
+          },
+        }];
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            semantic_contract: {
+              version: 'beauty_semantic_contract_v1',
+              owner: 'aurora_reco_planner',
+              planner_mode: 'step_aware',
+              request_class: 'sunscreen',
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              support_role_ids: [],
+              semantic_family: 'sunscreen',
+              allowed_step_families: ['sunscreen'],
+              blocked_step_families: [],
+              ingredient_hypotheses: [],
+              source_surface: 'aurora_beauty_strict',
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(attemptedQueries).toEqual([
+      'lightweight sunscreen oily skin',
+      'oil control sunscreen',
+      'spf oily skin',
+    ]);
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_2');
+    expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          query: 'lightweight sunscreen oily skin',
+          query_index: 0,
+          adopted: false,
+          hit_quality: 'invalid_hit',
+          observation_candidate_ignored: true,
+        }),
+        expect.objectContaining({
+          query: 'oil control sunscreen',
+          query_index: 1,
+          adopted: false,
+          hit_quality: 'invalid_hit',
+          observation_candidate_ignored: true,
+        }),
+        expect.objectContaining({
+          query: 'spf oily skin',
+          query_index: 2,
           adopted: true,
           hit_quality: 'valid_hit',
         }),
