@@ -53,6 +53,9 @@ const TREATMENT_GUIDANCE_FAMILY_RE = /\b(treatment|spot treatment|serum|ampoule|
 const TREATMENT_GOAL_RE = /\b(oil control|shine control|acne|blemish|congestion|clarifying|salicylic|niacinamide|retinol|retinoid|azelaic|pore)\b/i;
 const SUNSCREEN_GUIDANCE_FAMILY_RE = /\b(sunscreen|sun screen|sunblock|sun fluid|sun lotion|spf\s*\d+|broad spectrum|uv filters?)\b/i;
 const SUNSCREEN_SUPPORTIVE_RE = /\b(face|facial|daily|lightweight|oil[- ]?control|oily|matte|non[- ]greasy|mineral|invisible)\b/i;
+const SUNSCREEN_PRIMARY_FORM_RE = /\b(face sunscreen|sunscreen|sun screen|sunblock|sun fluid|sun lotion|sun milk|sun cream|broad spectrum|mineral sunscreen|mineral sun fluid|mineral sun lotion|zinc oxide sunscreen)\b/i;
+const SUNSCREEN_SERUM_FORM_RE = /\bserum\b/i;
+const SUNSCREEN_MINERAL_RE = /\b(mineral|zinc oxide|titanium dioxide)\b/i;
 const GUIDANCE_BARRIER_RE = /\b(barrier|repair)\b/i;
 const GUIDANCE_INGREDIENT_RE = /\b(ceramides?|panthenol|vitamin[- ]?b5|b5|niacinamide|hyalur|hyaluronic|centella|cica|allantoin|phyto.?ceramides?)\b/i;
 const GUIDANCE_SENSITIVITY_RE = /\b(sensitive|fragrance[- ]free|gentle|soothing|calming)\b/i;
@@ -884,14 +887,32 @@ function classifySharedTreatmentTargetRelevance({
 function classifySharedSunscreenTargetRelevance({
   text,
   coarse,
+  queryText = '',
+  product,
 }) {
   const lower = asString(text).toLowerCase();
+  const normalizedQuery = asString(queryText).toLowerCase();
   const offerType = detectBeautyOfferType(lower);
   const candidateHasSunscreenCue =
     coarse.candidate_step === 'sunscreen' ||
     SUNSCREEN_GUIDANCE_FAMILY_RE.test(lower);
   const candidateHasSupportiveCue = SUNSCREEN_SUPPORTIVE_RE.test(lower);
   const tintedMakeupLike = TINT_RE.test(lower);
+  const evidence = buildBeautyCandidateEvidence(product);
+  const sunscreenPrimaryConfidence = maxConfidence(
+    resolveEvidenceConfidence(SUNSCREEN_PRIMARY_FORM_RE, evidence),
+    resolveEvidenceConfidence(/\bspf\s*\d+\+?\b/i, evidence),
+  );
+  const sunscreenSupportiveConfidence = resolveEvidenceConfidence(SUNSCREEN_SUPPORTIVE_RE, evidence);
+  const sunscreenSerumConfidence = resolveEvidenceConfidence(SUNSCREEN_SERUM_FORM_RE, evidence);
+  const queryHasExplicitSerumCue = /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(
+    normalizedQuery,
+  );
+  const serumShapedSunscreen =
+    confidenceWeight(sunscreenSerumConfidence) >= 2 && !queryHasExplicitSerumCue;
+  const strongPrimarySunscreen =
+    confidenceWeight(sunscreenPrimaryConfidence) >= 2 &&
+    (!serumShapedSunscreen || confidenceWeight(sunscreenSupportiveConfidence) >= 2);
 
   if (coarse.object_type === 'service' || coarse.domain_scope === 'beauty_service') {
     return { offer_type: offerType, target_relevance_class: 'hard_invalid', noise_reason: 'service' };
@@ -932,10 +953,35 @@ function classifySharedSunscreenTargetRelevance({
   if (tintedMakeupLike) {
     return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'tint' };
   }
-  if (coarse.candidate_step === 'sunscreen' || candidateHasSupportiveCue) {
-    return { offer_type: offerType, target_relevance_class: 'strong_goal_family', noise_reason: null };
+  if (strongPrimarySunscreen || (coarse.candidate_step === 'sunscreen' && !serumShapedSunscreen)) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'strong_goal_family',
+      noise_reason: null,
+      relevance_channel: 'goal-strong',
+      overlay_score:
+        confidenceWeight(resolveEvidenceConfidence(SUNSCREEN_MINERAL_RE, evidence)) >= 2 ? 2 : 1,
+    };
   }
-  return { offer_type: offerType, target_relevance_class: 'supportive_family', noise_reason: null };
+  if (serumShapedSunscreen) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: confidenceWeight(sunscreenPrimaryConfidence) >= 2 ? 'goal-strong' : null,
+      overlay_score: confidenceWeight(sunscreenSupportiveConfidence) >= 2 ? 1 : 0,
+    };
+  }
+  if (candidateHasSupportiveCue || confidenceWeight(sunscreenPrimaryConfidence) >= 1) {
+    return {
+      offer_type: offerType,
+      target_relevance_class: 'supportive_family',
+      noise_reason: null,
+      relevance_channel: null,
+      overlay_score: confidenceWeight(sunscreenSupportiveConfidence) >= 2 ? 1 : 0,
+    };
+  }
+  return { offer_type: offerType, target_relevance_class: 'generic_family', noise_reason: null };
 }
 
 function asString(value) {
@@ -1332,7 +1378,10 @@ function classifyBeautyCoarseCandidate(product, {
               product,
             })
           : normalizedTargetStepFamily === 'sunscreen'
-            ? classifySharedSunscreenTargetRelevance(guidanceInput)
+            ? classifySharedSunscreenTargetRelevance({
+                ...guidanceInput,
+                product,
+              })
         : classifyGuidanceOnlyMoisturizerTargetRelevance(guidanceInput);
     offerType = guidanceRelevance.offer_type;
     targetRelevanceClass = guidanceRelevance.target_relevance_class;
@@ -1439,6 +1488,13 @@ function scoreBeautyCandidateForTarget(product, {
     /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/,
     evidence,
   );
+  const sunscreenPrimaryConfidence = maxConfidence(
+    resolveEvidenceConfidence(SUNSCREEN_PRIMARY_FORM_RE, evidence),
+    resolveEvidenceConfidence(/\bspf\s*\d+\+?\b/i, evidence),
+  );
+  const sunscreenSupportiveConfidence = resolveEvidenceConfidence(SUNSCREEN_SUPPORTIVE_RE, evidence);
+  const sunscreenSerumConfidence = resolveEvidenceConfidence(SUNSCREEN_SERUM_FORM_RE, evidence);
+  const sunscreenMineralConfidence = resolveEvidenceConfidence(SUNSCREEN_MINERAL_RE, evidence);
   const acneConfidence = resolveEvidenceConfidence(
     /\b(acne|blemish|breakout|clarifying|rapid relief|deep relief)\b/,
     evidence,
@@ -1455,6 +1511,9 @@ function scoreBeautyCandidateForTarget(product, {
   const candidateHasSalicylic = Boolean(salicylicConfidence);
   const candidateHasZinc = Boolean(zincConfidence);
   const candidateIsSpotLike = Boolean(spotConfidence);
+  const queryHasExplicitSunscreenSerumCue = /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(
+    normalizedQuery,
+  );
   const candidateHasOilControlPrimarySignal =
     confidenceWeight(
       maxConfidence(
@@ -1514,6 +1573,22 @@ function scoreBeautyCandidateForTarget(product, {
       if (candidateIsSpotLike) score += 72;
       if (confidenceWeight(acneConfidence) >= 2) score += 42;
       if (!candidateIsSpotLike && confidenceWeight(niacinamideConfidence) >= 2) score += 16;
+    }
+  } else if (normalizeRecoTargetStep(queryTargetStepFamily) === 'sunscreen') {
+    if (confidenceWeight(sunscreenPrimaryConfidence) >= 2) score += 58;
+    else if (sunscreenPrimaryConfidence) score += 12;
+    if (confidenceWeight(sunscreenSupportiveConfidence) >= 2) score += 18;
+    else if (sunscreenSupportiveConfidence) score += 4;
+    if (confidenceWeight(sunscreenMineralConfidence) >= 2) score += 24;
+    else if (sunscreenMineralConfidence) score += 8;
+    if (concernClass === 'oil_control' || queryHasOilControlCue) {
+      if (confidenceWeight(oilControlConfidence) >= 2) score += 24;
+      else if (oilControlConfidence) score += 6;
+    }
+    if (confidenceWeight(sunscreenSerumConfidence) >= 2 && !queryHasExplicitSunscreenSerumCue) {
+      score -= 68;
+    } else if (sunscreenSerumConfidence && !queryHasExplicitSunscreenSerumCue) {
+      score -= 24;
     }
   }
   score += Number(SOURCE_TIER_SCORE_ADJUSTMENTS[provenance.source_tier] || 0);

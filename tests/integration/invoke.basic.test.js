@@ -877,6 +877,98 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
+  it('direct public beauty search and invoke gateway keep real sunscreen formats ahead of sunscreen serums', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'uv_serum',
+            product_id: 'uv_serum',
+            merchant_id: 'external_seed',
+            title: 'UV Filters SPF 45 Serum',
+            category: 'serum',
+            product_type: 'serum',
+            source: 'external_seed',
+            description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+          },
+          {
+            id: 'mineral_spf',
+            product_id: 'mineral_spf',
+            merchant_id: 'external_seed',
+            title: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            source: 'external_seed',
+            description: 'Lightweight face sunscreen for oily skin with zinc oxide.',
+          },
+          {
+            id: 'milk_spf',
+            product_id: 'milk_spf',
+            merchant_id: 'external_seed',
+            title: 'Hydrating Sunscreen Milk Broad Spectrum SPF 45',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            source: 'external_seed',
+            description: 'Daily face sunscreen milk with broad spectrum SPF 45.',
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const direct = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'best sunscreen for oily skin',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      })
+      .expect(200);
+
+    const invoke = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'best sunscreen for oily skin',
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    const directIds = (direct.body.products || []).slice(0, 3).map((item) => item.product_id || item.id);
+    const invokeIds = (invoke.body.products || []).slice(0, 3).map((item) => item.product_id || item.id);
+
+    expect(directIds).toEqual(invokeIds);
+    expect(directIds[0]).toBe('mineral_spf');
+    expect(directIds[1]).toBe('milk_spf');
+    expect(directIds[2]).toBe('uv_serum');
+    expect(direct.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+      }),
+    );
+    expect(invoke.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+      }),
+    );
+  });
+
   it('beauty mainline keeps treatment products when ambiguity only requires non-blocking clarify', async () => {
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/search')
@@ -1776,7 +1868,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .times(3)
       .reply(function replyVariant() {
         const latestQuery = attemptedQueries[attemptedQueries.length - 1];
-        if (latestQuery === 'spf oily skin') {
+        if (latestQuery === 'face sunscreen spf') {
           return [200, {
             status: 'success',
             success: true,
@@ -1865,7 +1957,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(attemptedQueries).toEqual([
       'lightweight sunscreen oily skin',
       'oil control sunscreen',
-      'spf oily skin',
+      'face sunscreen spf',
     ]);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_2');
@@ -1886,7 +1978,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           observation_candidate_ignored: true,
         }),
         expect.objectContaining({
-          query: 'spf oily skin',
+          query: 'face sunscreen spf',
           query_index: 2,
           adopted: true,
           hit_quality: 'valid_hit',
@@ -1931,7 +2023,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .query((query) => {
         if (String(query?.external_seed_only || '').trim() !== 'true') return false;
         return (
-          String(query?.query || '').trim() === 'spf oily skin' &&
+          String(query?.query || '').trim() === 'face sunscreen spf' &&
           String(query?.target_step_family || '').trim() === 'sunscreen' &&
           String(query?.semantic_family || '').trim() === 'sunscreen'
         );
@@ -1993,20 +2085,20 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(attemptedPrimaryQueries).toEqual([
       'lightweight sunscreen oily skin',
       'oil control sunscreen',
-      'spf oily skin',
+      'face sunscreen spf',
     ]);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('external_spf_rescue_1');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         semantic_owner_external_rescue_applied: true,
-        semantic_owner_external_rescue_query: 'spf oily skin',
+        semantic_owner_external_rescue_query: 'face sunscreen spf',
       }),
     );
     expect(res.body.metadata?.semantic_owner_query_attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          query: 'spf oily skin',
+          query: 'face sunscreen spf',
           query_index: 2,
           adopted: true,
           adoption_mode: 'external_seed_rescue',

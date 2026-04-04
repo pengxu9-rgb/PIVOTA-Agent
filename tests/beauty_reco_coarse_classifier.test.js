@@ -260,4 +260,71 @@ describe('beauty treatment scoring', () => {
     expect(decision.valid_products[0]?.title).toBe('Niacinamide Serum 12% Plus Zinc 2%');
     expect(decision.valid_products[1]?.title).toBe('Deep Relief Acne Treatment');
   });
+
+  test('broad sunscreen query prefers real sunscreen formats over uv-filter serum shapes', () => {
+    const sunscreen = scoreBeautyCandidateForTarget(
+      {
+        title: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        merchant_id: 'external_seed',
+        description: 'Lightweight face sunscreen for oily skin with zinc oxide.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'best sunscreen for oily skin',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const serum = scoreBeautyCandidateForTarget(
+      {
+        title: 'UV Filters SPF 45 Serum',
+        category: 'serum',
+        product_type: 'serum',
+        merchant_id: 'external_seed',
+        description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'best sunscreen for oily skin',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+
+    expect(sunscreen.score).toBeGreaterThan(serum.score);
+  });
+
+  test('explicit sunscreen serum query can still keep sunscreen serum competitive', () => {
+    const sunscreen = scoreBeautyCandidateForTarget(
+      {
+        title: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        merchant_id: 'external_seed',
+        description: 'Lightweight face sunscreen for oily skin with zinc oxide.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'spf serum for oily skin',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const serum = scoreBeautyCandidateForTarget(
+      {
+        title: 'UV Filters SPF 45 Serum',
+        category: 'serum',
+        product_type: 'serum',
+        merchant_id: 'external_seed',
+        description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'spf serum for oily skin',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+
+    expect(serum.score).toBeGreaterThan(0);
+    expect(sunscreen.score).toBeGreaterThanOrEqual(serum.score);
+  });
 });
