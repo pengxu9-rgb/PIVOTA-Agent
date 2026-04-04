@@ -1,4 +1,5 @@
 const {
+  buildBeautyQueryProfile,
   classifyBeautyBucketFromText,
   detectBeautyQueryBucket,
 } = require('../findProductsMulti/beautyQueryProfile');
@@ -78,6 +79,11 @@ const SOURCE_QUALITY_SCORE_ADJUSTMENTS = Object.freeze({
   trusted: 12,
   mixed: 0,
   degraded: -16,
+});
+const CONFIDENCE_WEIGHTS = Object.freeze({
+  high: 3,
+  medium: 2,
+  low: 1,
 });
 
 function normalizeGuidanceIntentStrength(value) {
@@ -187,6 +193,80 @@ function detectBeautyOfferType(text) {
   if (KIT_RE.test(lower)) return 'kit';
   if (SAMPLE_RE.test(lower)) return 'sample';
   return 'single';
+}
+
+function flattenEvidenceTextParts(values) {
+  return (Array.isArray(values) ? values : [values])
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function buildBeautyCandidateEvidence(product) {
+  return {
+    primary_identity_text: flattenEvidenceTextParts([
+      product?.title,
+      product?.name,
+      product?.display_name,
+      product?.displayName,
+      product?.brand,
+      product?.product_type,
+      product?.productType,
+      product?.category,
+      product?.category_name,
+      product?.categoryName,
+      product?.subtitle,
+    ]),
+    supporting_claims_text: flattenEvidenceTextParts([
+      product?.description,
+      product?.benefits,
+      product?.claims,
+      product?.why_we_love_it,
+      product?.whyWeLoveIt,
+      product?.skin_concerns,
+      product?.skinConcerns,
+      product?.highlights,
+      product?.benefit_bullets,
+      product?.benefitBullets,
+    ]),
+    ingredient_evidence_text: flattenEvidenceTextParts([
+      product?.key_ingredients,
+      product?.keyIngredients,
+      product?.active_ingredients,
+      product?.activeIngredients,
+      product?.ingredient_tokens,
+      product?.ingredientTokens,
+      product?.pdp_active_ingredients_raw,
+      product?.pdp_ingredients_raw,
+    ]),
+  };
+}
+
+function resolveEvidenceConfidence(pattern, evidence) {
+  if (!pattern || !evidence) return null;
+  if (pattern.test(evidence.primary_identity_text)) return 'high';
+  if (pattern.test(evidence.supporting_claims_text)) return 'medium';
+  if (pattern.test(evidence.ingredient_evidence_text)) return 'low';
+  return null;
+}
+
+function confidenceWeight(value) {
+  return Number(CONFIDENCE_WEIGHTS[String(value || '').toLowerCase()] || 0);
+}
+
+function maxConfidence(...values) {
+  let best = null;
+  let bestWeight = 0;
+  for (const value of values) {
+    const weight = confidenceWeight(value);
+    if (weight > bestWeight) {
+      best = value;
+      bestWeight = weight;
+    }
+  }
+  return best;
 }
 
 function classifyGuidanceOnlyMoisturizerTargetRelevance({
@@ -548,21 +628,12 @@ function classifySharedTreatmentTargetRelevance({
 }) {
   const lower = asString(text).toLowerCase();
   const normalizedQuery = asString(queryText).toLowerCase();
-  const titleText = [
-    asString(product?.title),
-    asString(product?.name),
-    asString(product?.display_name),
-    asString(product?.displayName),
-    asString(product?.brand),
-    asString(product?.product_type),
-    asString(product?.productType),
-    asString(product?.category),
-    asString(product?.category_name),
-    asString(product?.categoryName),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
+  const queryProfile = buildBeautyQueryProfile({ rawQuery: queryText });
+  const concernClass = String(queryProfile?.concernClass || '').trim().toLowerCase() || null;
+  const evidence = buildBeautyCandidateEvidence(product);
+  const titleText = evidence.primary_identity_text;
+  const claimsText = evidence.supporting_claims_text;
+  const ingredientText = evidence.ingredient_evidence_text;
   const offerType = detectBeautyOfferType(lower);
   const candidateHasTreatmentCue = TREATMENT_GOAL_RE.test(lower);
   const queryHasTreatmentCue = TREATMENT_GOAL_RE.test(normalizedQuery) || /\btreatment\b/.test(normalizedQuery);
@@ -575,36 +646,49 @@ function classifySharedTreatmentTargetRelevance({
     /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/.test(
       normalizedQuery,
     );
-  const candidateHasNiacinamide = /\bniacinamide\b/.test(lower);
-  const candidateHasSalicylic = /\bsalicylic(?:\s+acid)?\b/.test(lower);
-  const candidateHasZinc = /\bzinc\b/.test(lower);
-  const candidateTitleHasNiacinamide = /\bniacinamide\b/.test(titleText);
-  const candidateTitleHasSalicylic = /\bsalicylic(?:\s+acid)?\b/.test(titleText);
-  const candidateTitleHasZinc = /\bzinc\b/.test(titleText);
+  const oilControlCueRe =
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/;
+  const brighteningCueRe =
+    /\b(vitamin c|ascorbic|tranexamic|kojic|alpha arbutin|dark spots?|brighten|brightening|radiance)\b/;
+  const acneCueRe = /\b(acne|blemish|breakout|clarifying|rapid relief|deep relief)\b/;
+  const spotCueRe =
+    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/;
+  const niacinamideConfidence = resolveEvidenceConfidence(/\bniacinamide\b/, evidence);
+  const salicylicConfidence = resolveEvidenceConfidence(/\bsalicylic(?:\s+acid)?\b/, evidence);
+  const zincConfidence = resolveEvidenceConfidence(/\bzinc\b/, evidence);
+  const oilControlConfidence = resolveEvidenceConfidence(oilControlCueRe, evidence);
+  const brighteningConfidence = resolveEvidenceConfidence(brighteningCueRe, evidence);
+  const acneConfidence = resolveEvidenceConfidence(acneCueRe, evidence);
+  const spotConfidence = resolveEvidenceConfidence(spotCueRe, evidence);
+  const candidateHasNiacinamide = Boolean(niacinamideConfidence);
+  const candidateHasSalicylic = Boolean(salicylicConfidence);
+  const candidateHasZinc = Boolean(zincConfidence);
+  const candidateTitleHasNiacinamide = niacinamideConfidence === 'high';
+  const candidateTitleHasSalicylic = salicylicConfidence === 'high';
+  const candidateTitleHasZinc = zincConfidence === 'high';
   const candidateHasOilControlCue =
-    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/.test(
-      lower,
-    );
-  const candidateTitleHasOilControlCue =
-    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/.test(
-      titleText,
-    );
-  const candidateHasAcneCue = /\b(acne|blemish|breakout|clarifying)\b/.test(lower);
-  const candidateTitleHasBrighteningCue =
-    /\b(vitamin c|ascorbic|tranexamic|kojic|alpha arbutin|dark spots?|brighten|brightening|radiance)\b/.test(
-      titleText,
-    );
-  const candidateIsSpotLike =
-    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/.test(
-      lower,
-    );
+    oilControlCueRe.test(lower) || oilControlCueRe.test(claimsText) || oilControlCueRe.test(ingredientText);
+  const candidateTitleHasOilControlCue = oilControlConfidence === 'high';
+  const candidateHasAcneCue = Boolean(acneConfidence);
+  const candidateTitleHasBrighteningCue = brighteningConfidence === 'high';
+  const candidateIsSpotLike = Boolean(spotConfidence);
+  const candidateHasOilControlPrimarySignal =
+    confidenceWeight(
+      maxConfidence(
+        niacinamideConfidence,
+        salicylicConfidence,
+        zincConfidence,
+        oilControlConfidence,
+      ),
+    ) >= 2;
   const candidateHasOilControlSignal =
-    candidateTitleHasNiacinamide ||
-    candidateTitleHasSalicylic ||
-    candidateTitleHasZinc ||
-    candidateTitleHasOilControlCue ||
-    (!candidateTitleHasBrighteningCue &&
-      (candidateHasNiacinamide || candidateHasSalicylic || candidateHasZinc || candidateHasOilControlCue));
+    candidateHasOilControlPrimarySignal ||
+    (
+      !candidateTitleHasBrighteningCue &&
+      (candidateHasNiacinamide || candidateHasSalicylic || candidateHasZinc || candidateHasOilControlCue)
+    );
+  const candidateHasBrighteningPrimarySignal = confidenceWeight(brighteningConfidence) >= 2;
+  const candidateHasAcnePrimarySignal = confidenceWeight(acneConfidence) >= 2;
   const looksLikeTreatmentFamily =
     coarse.candidate_step === 'treatment' ||
     coarse.candidate_step === 'serum' ||
@@ -660,7 +744,7 @@ function classifySharedTreatmentTargetRelevance({
   if (looksLikeAdjacentLiquid) {
     return { offer_type: offerType, target_relevance_class: 'adjacent_noise', noise_reason: 'adjacent_liquid' };
   }
-  if (queryHasOilControlCue && !queryHasExplicitAcneCue && !queryHasSpotCue) {
+  if ((concernClass === 'oil_control' || queryHasOilControlCue) && !queryHasExplicitAcneCue && !queryHasSpotCue) {
     if (candidateIsSpotLike) {
       return {
         offer_type: offerType,
@@ -671,7 +755,7 @@ function classifySharedTreatmentTargetRelevance({
         ingredient_overlap: false,
       };
     }
-    if (candidateTitleHasBrighteningCue && !candidateHasOilControlSignal) {
+    if (candidateHasBrighteningPrimarySignal && !candidateHasOilControlPrimarySignal) {
       return {
         offer_type: offerType,
         target_relevance_class: 'supportive_family',
@@ -681,7 +765,7 @@ function classifySharedTreatmentTargetRelevance({
         ingredient_overlap: false,
       };
     }
-    if (candidateHasOilControlSignal) {
+    if (candidateHasOilControlPrimarySignal) {
       return {
         offer_type: offerType,
         target_relevance_class: 'strong_goal_family',
@@ -707,7 +791,71 @@ function classifySharedTreatmentTargetRelevance({
           candidateTitleHasZinc,
       };
     }
+    if (candidateHasOilControlSignal) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 1,
+        ingredient_overlap: false,
+      };
+    }
     if (candidateHasAcneCue) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 0,
+        ingredient_overlap: false,
+      };
+    }
+    if (candidateHasTreatmentCue || looksLikeTreatmentFamily) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 0,
+        ingredient_overlap: false,
+      };
+    }
+  }
+  if (concernClass === 'acne_urgent' || (queryHasExplicitAcneCue && queryHasSpotCue)) {
+    if (candidateIsSpotLike || candidateHasAcnePrimarySignal) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'strong_goal_family',
+        noise_reason: null,
+        relevance_channel: candidateIsSpotLike ? 'goal-strong' : 'ingredient-strong',
+        overlay_score: candidateIsSpotLike ? 3 : 2,
+        ingredient_overlap: candidateHasSalicylic || candidateHasNiacinamide,
+      };
+    }
+    if (candidateHasSalicylic || candidateHasNiacinamide || candidateHasTreatmentCue || looksLikeTreatmentFamily) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'supportive_family',
+        noise_reason: null,
+        relevance_channel: null,
+        overlay_score: 0,
+        ingredient_overlap: candidateHasSalicylic || candidateHasNiacinamide,
+      };
+    }
+  }
+  if (concernClass === 'brightening') {
+    if (candidateHasBrighteningPrimarySignal) {
+      return {
+        offer_type: offerType,
+        target_relevance_class: 'strong_goal_family',
+        noise_reason: null,
+        relevance_channel: 'goal-strong',
+        overlay_score: 3,
+        ingredient_overlap: false,
+      };
+    }
+    if (candidateHasTreatmentCue || looksLikeTreatmentFamily) {
       return {
         offer_type: offerType,
         target_relevance_class: 'supportive_family',
@@ -1272,6 +1420,9 @@ function scoreBeautyCandidateForTarget(product, {
   const candidateText = buildBeautyCandidateText(product, { includeRetrieval: true });
   const normalizedCandidateText = candidateText.toLowerCase();
   const normalizedQuery = asString(queryText).toLowerCase();
+  const queryProfile = buildBeautyQueryProfile({ rawQuery: queryText });
+  const concernClass = String(queryProfile?.concernClass || '').trim().toLowerCase() || null;
+  const evidence = buildBeautyCandidateEvidence(product);
   const queryHasOilControlCue =
     /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore)\b/.test(
       normalizedQuery,
@@ -1281,13 +1432,38 @@ function scoreBeautyCandidateForTarget(product, {
   const queryHasSpotCue = /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|pads?)\b/.test(
     normalizedQuery,
   );
-  const candidateHasNiacinamide = /\bniacinamide\b/.test(normalizedCandidateText);
-  const candidateHasSalicylic = /\bsalicylic(?:\s+acid)?\b/.test(normalizedCandidateText);
-  const candidateHasZinc = /\bzinc\b/.test(normalizedCandidateText);
-  const candidateIsSpotLike =
-    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/.test(
-      normalizedCandidateText,
-    );
+  const niacinamideConfidence = resolveEvidenceConfidence(/\bniacinamide\b/, evidence);
+  const salicylicConfidence = resolveEvidenceConfidence(/\bsalicylic(?:\s+acid)?\b/, evidence);
+  const zincConfidence = resolveEvidenceConfidence(/\bzinc\b/, evidence);
+  const oilControlConfidence = resolveEvidenceConfidence(
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pore|minimizing)\b/,
+    evidence,
+  );
+  const acneConfidence = resolveEvidenceConfidence(
+    /\b(acne|blemish|breakout|clarifying|rapid relief|deep relief)\b/,
+    evidence,
+  );
+  const spotConfidence = resolveEvidenceConfidence(
+    /\b(spot treatment|spot gel|acne spot|acne patch|pimple patch|clearing pads?|pads?)\b/,
+    evidence,
+  );
+  const brighteningConfidence = resolveEvidenceConfidence(
+    /\b(vitamin c|ascorbic|tranexamic|kojic|alpha arbutin|dark spots?|brighten|brightening|radiance)\b/,
+    evidence,
+  );
+  const candidateHasNiacinamide = Boolean(niacinamideConfidence);
+  const candidateHasSalicylic = Boolean(salicylicConfidence);
+  const candidateHasZinc = Boolean(zincConfidence);
+  const candidateIsSpotLike = Boolean(spotConfidence);
+  const candidateHasOilControlPrimarySignal =
+    confidenceWeight(
+      maxConfidence(
+        niacinamideConfidence,
+        salicylicConfidence,
+        zincConfidence,
+        oilControlConfidence,
+      ),
+    ) >= 2;
   let score = 0;
   if (coarse.domain_scope === 'skincare') score += 40;
   if (coarse.usage_scope === 'face') score += 20;
@@ -1320,13 +1496,24 @@ function scoreBeautyCandidateForTarget(product, {
   if (normalizeRecoTargetStep(queryTargetStepFamily) === 'treatment') {
     if (queryHasNiacinamide && candidateHasNiacinamide) score += 115;
     if (queryHasSalicylic && candidateHasSalicylic) score += 105;
-    if (queryHasOilControlCue) {
-      if (candidateHasNiacinamide) score += 28;
-      if (candidateHasSalicylic) score += 22;
-      if (candidateHasZinc) score += 18;
-      if (candidateIsSpotLike && !queryHasSpotCue) score -= 52;
+    if (concernClass === 'oil_control' || queryHasOilControlCue) {
+      if (confidenceWeight(niacinamideConfidence) >= 2) score += 76;
+      else if (candidateHasNiacinamide) score += 14;
+      if (confidenceWeight(salicylicConfidence) >= 2) score += 54;
+      else if (candidateHasSalicylic) score += 10;
+      if (confidenceWeight(zincConfidence) >= 2) score += 38;
+      else if (candidateHasZinc) score += 8;
+      if (confidenceWeight(oilControlConfidence) >= 2) score += 36;
+      else if (oilControlConfidence) score += 6;
+      if (confidenceWeight(brighteningConfidence) >= 2 && !candidateHasOilControlPrimarySignal) score -= 70;
+      if (confidenceWeight(acneConfidence) >= 2 && !candidateHasOilControlPrimarySignal) score -= 42;
+      if (candidateIsSpotLike && !queryHasSpotCue) score -= 60;
     } else if (candidateIsSpotLike && !queryHasSpotCue && (queryHasNiacinamide || queryHasSalicylic)) {
       score -= 48;
+    } else if (concernClass === 'acne_urgent') {
+      if (candidateIsSpotLike) score += 72;
+      if (confidenceWeight(acneConfidence) >= 2) score += 42;
+      if (!candidateIsSpotLike && confidenceWeight(niacinamideConfidence) >= 2) score += 16;
     }
   }
   score += Number(SOURCE_TIER_SCORE_ADJUSTMENTS[provenance.source_tier] || 0);

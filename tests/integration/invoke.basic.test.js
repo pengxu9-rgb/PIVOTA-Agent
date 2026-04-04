@@ -156,12 +156,8 @@ describe('/agent/shop/v1/invoke gateway', () => {
 
   it('semantic-contract discovery keeps shopping-agent semantic owner and emits stage ledger metadata', async () => {
     let capturedQuery = null;
-    let capturedBody = null;
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search', (body) => {
-        capturedBody = body;
-        return true;
-      })
+      .get('/agent/v1/products/search')
       .query((query) => {
         capturedQuery = query;
         return true;
@@ -218,7 +214,6 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .expect(200);
 
     expect(String(capturedQuery?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
-    expect(String(capturedBody?.query || '').toLowerCase()).toBe('lightweight sunscreen oily skin');
     expect(res.body.metadata).toEqual(
       expect.objectContaining({
         semantic_owner: 'shopping_agent_beauty_mainline',
@@ -264,16 +259,15 @@ describe('/agent/shop/v1/invoke gateway', () => {
   it('semantic-contract discovery retries the next deterministic query when primary contract query is empty', async () => {
     const attemptedQueries = [];
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search', (body) => {
-        attemptedQueries.push(String(body?.query || ''));
-        return true;
-      })
+      .get('/agent/v1/products/search')
       .query((query) => {
         return true;
       })
       .times(2)
-      .reply(function reply(_uri, body) {
-        const query = String(body?.query || '').trim().toLowerCase();
+      .reply(function reply(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const query = String(url.searchParams.get('query') || '').trim().toLowerCase();
+        attemptedQueries.push(query);
         if (query === 'lightweight sunscreen oily skin') {
           return [
             200,
@@ -372,14 +366,13 @@ describe('/agent/shop/v1/invoke gateway', () => {
   it('semantic-contract sunscreen query pack can reach a third deterministic retry before budget guard cuts off the mainline', async () => {
     const attemptedQueries = [];
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search', (body) => {
-        attemptedQueries.push(String(body?.query || ''));
-        return true;
-      })
+      .get('/agent/v1/products/search')
       .query(true)
       .times(3)
-      .reply(function reply(_uri, body) {
-        const query = String(body?.query || '').trim().toLowerCase();
+      .reply(function reply(uri) {
+        const url = new URL(`${process.env.PIVOTA_API_BASE}${uri}`);
+        const query = String(url.searchParams.get('query') || '').trim().toLowerCase();
+        attemptedQueries.push(query);
         if (query === 'daily sunscreen') {
           return [
             200,
@@ -666,6 +659,11 @@ describe('/agent/shop/v1/invoke gateway', () => {
         resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
+    expect(res.body.metadata?.semantic_contract).toEqual(
+      expect.objectContaining({
+        concern_class: 'sunscreen',
+      }),
+    );
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id || res.body.products[0]?.id).toBe('internal_spf_1');
     expect(res.body.metadata?.source_breakdown).toEqual(
@@ -770,6 +768,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
           owner: 'shopping_agent_beauty_contract_builder',
           request_class: 'sunscreen',
           target_step_family: 'sunscreen',
+          concern_class: 'sunscreen',
         }),
         search_stage_ledger: expect.objectContaining({
           final_decision: expect.objectContaining({
@@ -785,6 +784,95 @@ describe('/agent/shop/v1/invoke gateway', () => {
             ],
           }),
         }),
+      }),
+    );
+  });
+
+  it('direct public beauty search and invoke gateway surface the same adopted oil-control ranking when upstream candidates match', async () => {
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(2)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            id: 'deep_relief',
+            product_id: 'deep_relief',
+            merchant_id: 'external_seed',
+            title: 'Deep Relief Acne Treatment',
+            category: 'skincare',
+            product_type: 'treatment',
+            source: 'external_seed',
+          },
+          {
+            id: 'niacinamide_zinc',
+            product_id: 'niacinamide_zinc',
+            merchant_id: 'external_seed',
+            title: 'Niacinamide Serum 12% Plus Zinc 2%',
+            category: 'skincare',
+            product_type: 'serum',
+            source: 'external_seed',
+          },
+          {
+            id: 'vitamin_c',
+            product_id: 'vitamin_c',
+            merchant_id: 'external_seed',
+            title: 'Vitamin C Super Serum Plus',
+            category: 'skincare',
+            product_type: 'serum',
+            source: 'external_seed',
+            description: 'Brightening serum for dark spots.',
+            active_ingredients: ['Vitamin C', 'Niacinamide', 'Tranexamic acid'],
+          },
+        ],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+
+    const direct = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'oil control treatment',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      })
+      .expect(200);
+
+    const invoke = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    const directIds = (direct.body.products || []).slice(0, 3).map((item) => item.product_id || item.id);
+    const invokeIds = (invoke.body.products || []).slice(0, 3).map((item) => item.product_id || item.id);
+
+    expect(directIds).toEqual(invokeIds);
+    expect(directIds[0]).toBe('niacinamide_zinc');
+    expect(direct.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+      }),
+    );
+    expect(invoke.body.metadata?.contract_bridge).toEqual(
+      expect.objectContaining({
+        resolved_contract: 'agent_v1_search_beauty_mainline',
       }),
     );
   });
@@ -1927,7 +2015,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     );
   });
 
-  it('marks brush-only skincare results as invalid_hit instead of strict_empty', async () => {
+  it('marks brush-only skincare results as invalid_hit observation instead of strict_empty', async () => {
     const upstreamBody = {
       status: 'success',
       success: true,
@@ -1963,31 +2051,34 @@ describe('/agent/shop/v1/invoke gateway', () => {
       .get('/agent/v1/products/search')
       .query(true)
       .reply(200, upstreamBody);
-    nock('http://localhost:8080')
-      .post('/agent/shop/v1/invoke')
-      .reply(200, upstreamBody);
 
     const res = await request(app)
       .get('/agent/v1/products/search')
       .query({
-        query: 'moisturizer barrier repair Ceramide NP barrier repair',
+        query: 'barrier repair moisturizer',
         catalog_surface: 'beauty',
         source: 'aurora-bff',
       })
       .expect(200);
 
     expect(Array.isArray(res.body.products)).toBe(true);
-    expect(res.body.products).toHaveLength(0);
-    expect(res.body.metadata?.search_decision?.hit_quality).toBe('invalid_hit');
-    expect(res.body.metadata?.search_decision?.contract_version).toBe('beauty_search_decision_v4');
-    expect(res.body.metadata?.search_decision?.invalid_hit_reason).toBe('invalid_hit_tools_dominant');
-    expect(res.body.metadata?.search_decision?.final_decision).toBe('invalid_hit');
-    expect(res.body.metadata?.search_decision?.products_returned_count).toBe(0);
-    expect(res.body.metadata?.search_decision?.raw_result_count).toBe(2);
-    expect(res.body.metadata?.blocking_gate_id).toBe('beauty_skincare_hit_quality');
-    expect(res.body.metadata?.pre_gate_count).toBe(2);
-    expect(res.body.metadata?.post_gate_count).toBe(0);
-    expect(res.body.metadata?.blocking_reason).toBe('invalid_hit_tools_dominant');
+    expect(res.body.products).toHaveLength(2);
+    expect(res.body.metadata?.decision_owner).toBe('shopping_agent_beauty_mainline');
+    expect(res.body.metadata?.search_decision?.quality_gate_mode).toBe('observe_only');
+    expect(res.body.metadata?.search_decision?.final_decision).toBe('products_returned');
+    expect(res.body.metadata?.search_decision?.hit_quality_observation).toEqual(
+      expect.objectContaining({
+        contract_version: 'beauty_search_decision_v4',
+        hit_quality: 'invalid_hit',
+        invalid_hit_reason: 'invalid_hit_tools_dominant',
+        raw_result_count: 2,
+        products_returned_count: 0,
+      }),
+    );
+    expect(res.body.metadata?.blocking_gate_id).toBeUndefined();
+    expect(res.body.metadata?.pre_gate_count).toBeUndefined();
+    expect(res.body.metadata?.post_gate_count).toBeUndefined();
+    expect(res.body.metadata?.blocking_reason).toBeUndefined();
   });
 
   it('does not count body cream as valid face-moisturizer hit', async () => {
@@ -2113,7 +2204,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)
@@ -2129,13 +2220,23 @@ describe('/agent/shop/v1/invoke gateway', () => {
       })
       .expect(200);
 
-    expect(res.body.metadata?.search_decision?.hit_quality).toBe('valid_hit');
-    expect(res.body.metadata?.search_decision?.same_family_topk_count).toBeGreaterThan(0);
+    expect(res.body.metadata?.decision_owner).toBe('shopping_agent_beauty_mainline');
+    expect(res.body.metadata?.search_decision?.quality_gate_mode).toBe('observe_only');
+    expect(res.body.metadata?.search_decision?.hit_quality_observation).toEqual(
+      expect.objectContaining({
+        hit_quality: 'valid_hit',
+        same_family_topk_count: expect.any(Number),
+      }),
+    );
+    expect(res.body.metadata?.search_decision?.hit_quality_observation?.same_family_topk_count).toBeGreaterThan(0);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]?.product_id).toBe('cream_1');
-    expect(res.body.products.some((row) => String(row?.product_id || '').includes('cleanser_1'))).toBe(false);
-    expect(res.body.products.some((row) => String(row?.product_id || '').includes('body_1'))).toBe(false);
-    expect(res.body.products.some((row) => String(row?.product_id || '').includes('spf_1'))).toBe(false);
+    expect(res.body.products.map((row) => String(row?.product_id || ''))).toEqual([
+      'cream_1',
+      'spf_1',
+      'cleanser_1',
+      'body_1',
+    ]);
   });
 
   it('applies product-only guidance discovery filtering and reports service rows removed', async () => {
@@ -2172,7 +2273,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     };
 
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/products/search')
+      .get('/agent/v1/products/search')
       .query(true)
       .reply(200, upstreamBody);
     nock(process.env.PIVOTA_API_BASE)

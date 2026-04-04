@@ -8360,6 +8360,13 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
       if (!search.catalog_surface) search.catalog_surface = 'beauty';
     }
   }
+  if (
+    search.semantic_contract &&
+    isBeautyDiscoverySemanticContract(search.semantic_contract) &&
+    search.limit === undefined
+  ) {
+    search.limit = 20;
+  }
 
   const payload = { search };
   if (context) payload.context = context;
@@ -26509,10 +26516,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ? { strategy_applied: 'semantic_owner_last_resort_cache' }
           : {}),
       };
+      const normalizedExistingContractBridge =
+        existingMeta?.contract_bridge &&
+        typeof existingMeta.contract_bridge === 'object' &&
+        !Array.isArray(existingMeta.contract_bridge)
+          ? existingMeta.contract_bridge
+          : {};
+      const shouldStampBeautyMainlineContract =
+        operation === 'find_products_multi' &&
+        (
+          strictBeautyDirectSearch ||
+          semanticOwnerControlled ||
+          beautyDecisionOwner === 'shopping_agent_beauty_mainline' ||
+          beautySemanticOwner === 'shopping_agent_beauty_mainline'
+        );
+      const resolvedContractForMetadata =
+        String(normalizedExistingContractBridge.resolved_contract || '').trim() ||
+        (shouldStampBeautyMainlineContract ? 'agent_v1_search_beauty_mainline' : '');
+      const attemptedContractForMetadata =
+        String(normalizedExistingContractBridge.attempted_contract || '').trim() ||
+        (resolvedContractForMetadata ? resolvedContractForMetadata : '');
       enriched = {
         ...enriched,
         metadata: {
           ...(existingMeta && typeof existingMeta === 'object' && !Array.isArray(existingMeta) ? existingMeta : {}),
+          ...(resolvedContractForMetadata
+            ? {
+                contract_bridge: {
+                  ...normalizedExistingContractBridge,
+                  attempted_contract: attemptedContractForMetadata,
+                  resolved_contract: resolvedContractForMetadata,
+                  legacy_fallback:
+                    normalizedExistingContractBridge.legacy_fallback === true ? true : false,
+                },
+              }
+            : {}),
           source_breakdown: mergedSourceBreakdown,
           search_decision: {
             ...(

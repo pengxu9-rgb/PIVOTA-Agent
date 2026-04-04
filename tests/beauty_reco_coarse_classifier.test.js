@@ -191,4 +191,73 @@ describe('beauty treatment scoring', () => {
     expect(niacinamide.score).toBeGreaterThan(vitaminC.score);
     expect(niacinamide.score).toBeGreaterThan(tranexamic.score);
   });
+
+  test('oil control treatment treats ingredient-list-only niacinamide on brightening serum as weak evidence', () => {
+    const niacinamide = scoreBeautyCandidateForTarget(
+      {
+        title: 'Niacinamide Serum 12% Plus Zinc 2%',
+        category: 'Serum',
+        product_type: 'Serum',
+        merchant_id: 'external_seed',
+        description: 'Oil control serum for pores and shine.',
+        active_ingredients: ['Niacinamide', 'Zinc PCA'],
+      },
+      {
+        queryTargetStepFamily: 'treatment',
+        queryText: 'oil control treatment',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const pollutedBrightening = scoreBeautyCandidateForTarget(
+      {
+        title: 'Vitamin C Super Serum Plus',
+        category: 'Serum',
+        product_type: 'Serum',
+        merchant_id: 'external_seed',
+        description: 'Brightening serum for dark spots and radiance.',
+        active_ingredients: ['Vitamin C', 'Niacinamide', 'Zinc PCA', 'Salicylic acid', 'Tranexamic acid'],
+        ingredient_tokens: ['vitamin c', 'niacinamide', 'zinc pca', 'salicylic acid', 'tranexamic acid'],
+      },
+      {
+        queryTargetStepFamily: 'treatment',
+        queryText: 'oil control treatment',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+
+    expect(niacinamide.score).toBeGreaterThan(pollutedBrightening.score);
+  });
+
+  test('oil control treatment decision demotes generic acne relief below niacinamide family', () => {
+    const decision = buildBeautySkincareHitQualityDecision({
+      queryText: 'oil control treatment',
+      queryTargetStepFamily: 'treatment',
+      mode: 'shopping_agent_beauty_mainline',
+      products: [
+        {
+          title: 'Deep Relief Acne Treatment',
+          category: 'skincare',
+          product_type: 'treatment',
+          merchant_id: 'external_seed',
+        },
+        {
+          title: 'Niacinamide Serum 12% Plus Zinc 2%',
+          category: 'skincare',
+          product_type: 'serum',
+          merchant_id: 'external_seed',
+        },
+        {
+          title: 'Vitamin C Super Serum Plus',
+          category: 'skincare',
+          product_type: 'serum',
+          merchant_id: 'external_seed',
+          description: 'Brightening serum.',
+          active_ingredients: ['Vitamin C', 'Niacinamide', 'Tranexamic acid'],
+        },
+      ],
+    });
+
+    expect(decision.valid_products[0]?.title).toBe('Niacinamide Serum 12% Plus Zinc 2%');
+    expect(decision.valid_products[1]?.title).toBe('Deep Relief Acne Treatment');
+  });
 });
