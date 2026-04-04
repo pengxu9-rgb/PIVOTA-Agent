@@ -29,8 +29,10 @@ const ACCESSORY_RE = /\b(accessory|mirror|curler|sharpener)\b/i;
 const BODY_RE = /\b(body|hand|hands|nail|nails|cuticle|foot|heel|bath|shower|deodorant|butt|booty|butta|trio|set)\b/i;
 const FACE_RE = /\b(face|facial|barrier cream|gel cream)\b/i;
 const MAKEUP_RE = /\b(lip|lipstick|mascara|eyeshadow|shadow|blush|concealer|foundation|liner|brow|powder|highlighter)\b/i;
-const SERVICE_RE = /\b(cabine|fauteuil|minutes?|session|appointment|booking|spa)\b/i;
+const SERVICE_RE = /\b(cabine|fauteuil|session|appointment|booking|spa)\b/i;
 const SERVICE_FRENCH_RE = /\bsoin\b/i;
+const SERVICE_DURATION_RE = /\b\d+\s*minutes?\b/i;
+const SERVICE_CONTEXT_RE = /\b(session|appointment|booking|spa|facial|massage|service|cabine|fauteuil)\b/i;
 const BUNDLE_RE = /\b(bundle)\b/i;
 const DUO_RE = /\b(duo)\b/i;
 const SET_RE = /\b(set)\b/i;
@@ -982,7 +984,10 @@ function classifyBeautyCoarseCandidate(product, {
   const candidateStep = normalizeRecoTargetStep(stepResolution.candidate_step);
   const hasBodyCue = BODY_RE.test(lower);
   const hasFaceCue = FACE_RE.test(lower);
-  const hasServiceCue = SERVICE_RE.test(lower) || (SERVICE_FRENCH_RE.test(lower) && SERVICE_RE.test(lower));
+  const hasServiceCue =
+    SERVICE_RE.test(lower) ||
+    (SERVICE_FRENCH_RE.test(lower) && SERVICE_RE.test(lower)) ||
+    (SERVICE_DURATION_RE.test(lower) && SERVICE_CONTEXT_RE.test(lower));
   const hasSkincareCue =
     rawBucket === 'skincare' ||
     Boolean(candidateStep) ||

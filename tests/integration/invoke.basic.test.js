@@ -1020,7 +1020,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
               category: 'external',
               product_type: 'external',
               source: 'external_seed',
-              description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters.',
+              description: 'Daily lightweight SPF 45 serum for oily skin with broad spectrum UV filters. Apply liberally 15 minutes before sun exposure and reapply every 2 hours.',
               how_to_use: 'Apply to face every morning as the final skincare step before sun exposure.',
             },
           ],
