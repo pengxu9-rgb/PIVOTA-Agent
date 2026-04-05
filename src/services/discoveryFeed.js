@@ -75,6 +75,25 @@ const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'products',
   'product',
 ]);
+const DISCOVERY_DESCRIPTOR_STOP_TOKENS = new Set([
+  ...GENERIC_DISCOVERY_QUERY_TOKENS,
+  'skin',
+  'care',
+  'daily',
+  'routine',
+  'recommended',
+  'recommendation',
+  'best',
+]);
+const DISCOVERY_BEAUTY_QUERY_FALLBACKS = {
+  serum: ['barrier repair serum', 'niacinamide serum', 'vitamin c serum'],
+  toner: ['hydrating toner', 'barrier toner', 'gentle toner'],
+  moisturizer: ['barrier moisturizer', 'ceramide moisturizer', 'repair cream'],
+  cleanser: ['gentle cleanser', 'hydrating cleanser', 'cream cleanser'],
+  sunscreen: ['daily sunscreen', 'mineral sunscreen', 'spf 50 sunscreen'],
+  lip: ['lip treatment', 'lip balm', 'lip oil'],
+  beauty: ['barrier repair skincare', 'niacinamide skincare', 'hydrating skincare'],
+};
 const DOMAIN_KEYWORDS = {
   beauty: [
     'beauty',
@@ -914,6 +933,14 @@ function buildDiscoveryQueryTerms(values, maxTerms = 4) {
   return terms;
 }
 
+function pickFirstNonEmptyString(values = []) {
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = String(value || '').trim();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
 function isSpecificDiscoveryQueryText(value) {
   const tokens = tokenize(String(value || ''));
   if (!tokens.length) return false;
@@ -927,6 +954,113 @@ function buildDiscoveryBucketLabel(bucket) {
   if (normalized === 'tools') return 'beauty tools';
   if (normalized === 'fragrance') return 'fragrance';
   return normalized.replace(/_/g, ' ');
+}
+
+function buildBeautyDiscoveryDescriptorTokens(request, profile, maxTokens = 4) {
+  const topBrands = new Set(
+    buildDiscoveryQueryTerms(
+      [
+        ...getTopMapKeys(profile?.brandAffinity, 2),
+        ...(Array.isArray(profile?.anchors) ? profile.anchors.map((anchor) => anchor.brand) : []),
+      ],
+      6,
+    ).flatMap((value) => tokenizeDiscoverySearchText(value)),
+  );
+  const orderedTokens = [];
+  const seen = new Set();
+  const pushTokens = (values = []) => {
+    for (const value of Array.isArray(values) ? values : []) {
+      for (const token of tokenizeDiscoverySearchText(value)) {
+        if (
+          !token ||
+          DISCOVERY_DESCRIPTOR_STOP_TOKENS.has(token) ||
+          topBrands.has(token) ||
+          seen.has(token)
+        ) {
+          continue;
+        }
+        seen.add(token);
+        orderedTokens.push(token);
+        if (orderedTokens.length >= maxTokens) return;
+      }
+    }
+  };
+
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 3);
+  pushTokens(recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText)));
+  pushTokens(
+    (Array.isArray(profile?.anchors) ? profile.anchors : []).map((anchor) =>
+      [anchor?.category, anchor?.parent_category].filter(Boolean).join(' '),
+    ),
+  );
+  pushTokens(
+    (Array.isArray(profile?.anchors) ? profile.anchors : []).map((anchor) =>
+      Array.isArray(anchor?.tokens) ? anchor.tokens.join(' ') : '',
+    ),
+  );
+  return orderedTokens.slice(0, maxTokens);
+}
+
+function getPreferredBeautyDiscoveryCategory(profile) {
+  const candidates = [
+    ...(Array.isArray(profile?.anchors)
+      ? profile.anchors.flatMap((anchor) => [anchor.category, anchor.parent_category])
+      : []),
+    ...getTopMapKeys(profile?.categoryAffinity, 4),
+  ]
+    .map((value) => normalizeText(value || ''))
+    .filter((value) => value && !isWeakCategoryLabel(value));
+
+  const prioritized = candidates.find((value) => value !== 'skincare');
+  return prioritized || candidates[0] || 'beauty';
+}
+
+function buildBeautyPersonalizedQueries(request, profile) {
+  const preferredCategory = getPreferredBeautyDiscoveryCategory(profile);
+  const topBrand = getTopMapKeys(profile?.brandAffinity, 1)[0] || '';
+  const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
+  const specificRecentQuery = recentQueries.find((queryText) => isSpecificDiscoveryQueryText(queryText)) || '';
+  const descriptorTokens = buildBeautyDiscoveryDescriptorTokens(request, profile, 4);
+  const descriptorPhrase = buildDiscoveryQueryTerms(
+    [...descriptorTokens.slice(0, 2), preferredCategory],
+    3,
+  ).join(' ');
+  const brandPhrase = buildDiscoveryQueryTerms([topBrand, preferredCategory], 2).join(' ');
+  const fallbackQueries = buildDiscoverySearchPhraseSet(
+    DISCOVERY_BEAUTY_QUERY_FALLBACKS[preferredCategory] || DISCOVERY_BEAUTY_QUERY_FALLBACKS.beauty,
+    3,
+  );
+
+  const primary = pickFirstNonEmptyString([
+    specificRecentQuery,
+    descriptorPhrase,
+    brandPhrase,
+    fallbackQueries[0],
+  ]);
+  const expansion = pickFirstNonEmptyString([
+    fallbackQueries.find((queryText) => queryText !== primary),
+    descriptorPhrase !== primary ? descriptorPhrase : '',
+    brandPhrase !== primary ? brandPhrase : '',
+  ]);
+  const browse = pickFirstNonEmptyString([
+    descriptorPhrase,
+    brandPhrase,
+    fallbackQueries.find((queryText) => queryText !== primary && queryText !== expansion),
+    fallbackQueries[1],
+    fallbackQueries[0],
+  ]);
+
+  return {
+    primary,
+    expansion,
+    browse,
+    providerQueries: buildDiscoverySearchPhraseSet(
+      [primary, expansion, browse, brandPhrase, ...fallbackQueries],
+      5,
+    ),
+    preferredCategory,
+    descriptorTokens,
+  };
 }
 
 function buildDiscoveryProfile(context = {}) {
@@ -1087,6 +1221,9 @@ function buildDiscoveryBrandScopedQuery(request) {
 }
 
 function buildDiscoveryInterestQuery(request, profile) {
+  if (profile?.dominantDomain === 'beauty') {
+    return buildBeautyPersonalizedQueries(request, profile).primary;
+  }
   const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
   const specificRecentQueries = recentQueries.filter((queryText) => isSpecificDiscoveryQueryText(queryText));
   const genericRecentQueries = recentQueries.filter((queryText) => !isSpecificDiscoveryQueryText(queryText));
@@ -1124,6 +1261,9 @@ function buildDiscoveryInterestQuery(request, profile) {
 }
 
 function buildDiscoveryExpansionQuery(request, profile) {
+  if (profile?.dominantDomain === 'beauty') {
+    return buildBeautyPersonalizedQueries(request, profile).expansion;
+  }
   const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
   const anchorCategories = (Array.isArray(profile?.anchors) ? profile.anchors : [])
     .map((anchor) => anchor.category || anchor.parent_category)
@@ -1154,6 +1294,9 @@ function buildDiscoveryExpansionQuery(request, profile) {
 }
 
 function buildDiscoverySeededBrowseQuery(request, profile) {
+  if (profile?.dominantDomain === 'beauty') {
+    return buildBeautyPersonalizedQueries(request, profile).browse;
+  }
   const recentQueries = uniqStrings(request?.context?.recent_queries, 2);
   const topCategories = getTopMapKeys(profile?.categoryAffinity, 3).filter((key) => !isWeakCategoryLabel(key));
   const bucketLabel = buildDiscoveryBucketLabel(profile?.preferredBeautyBucket);
@@ -1187,6 +1330,10 @@ function buildDiscoveryProviderQueries(request, profile) {
 
   if (!profile?.hasInterestSignals) {
     return getDiscoveryColdStartQueries();
+  }
+
+  if (profile?.dominantDomain === 'beauty') {
+    return buildBeautyPersonalizedQueries(request, profile).providerQueries;
   }
 
   if (request?.surface === 'browse_products') {
@@ -3489,10 +3636,14 @@ module.exports = {
   getDiscoveryFeed,
   _internals: {
     buildBrandScopeAliases,
+    buildBeautyPersonalizedQueries,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,
+    buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
+    buildDiscoverySeededBrowseQuery,
+    buildDiscoveryExpansionQuery,
     getDiscoveryProductsSearchApiKey,
     getDiscoveryProductsSearchBaseUrl,
     getDiscoveryPoolCacheTtlMs,
