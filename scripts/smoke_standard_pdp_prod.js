@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+const { buildPdpImageDedupeKey } = require('../src/utils/pdpImageUrls');
+
 const DEFAULT_GATEWAY = 'https://agent.pivota.cc/api/gateway';
 const DEFAULT_TIMEOUT_MS = 12000;
 const DEFAULT_ROUNDS = 2;
@@ -47,6 +49,44 @@ const CASES = Object.freeze([
     title: 'IPSA Time Reset Aqua',
     min_similar: 0,
     allow_missing_similar: true,
+  },
+]);
+
+const GALLERY_CASES = Object.freeze([
+  {
+    key: 'tf_quad_canary_gallery',
+    merchant_id: 'external_seed',
+    product_id: 'ext_8e7b0abf06e2ebc11f1356ae',
+    title: 'Runway Eye Color Quad Creme',
+    min_variant_count: 2,
+  },
+  {
+    key: 'bitter_peach_gallery',
+    merchant_id: 'external_seed',
+    product_id: 'ext_19513f251948a0319c8e94bc',
+    title: 'Bitter Peach Eau de Parfum',
+    min_variant_count: 2,
+  },
+  {
+    key: 'rose_prick_gallery',
+    merchant_id: 'external_seed',
+    product_id: 'ext_38240bbbfe31ed1a5a638bb2',
+    title: 'Rose Prick Eau de Parfum',
+    min_variant_count: 2,
+  },
+  {
+    key: 'electric_cherry_gallery',
+    merchant_id: 'external_seed',
+    product_id: 'ext_3a2d781fbce98aac40f16264',
+    title: 'Electric Cherry Eau de Parfum',
+    min_variant_count: 2,
+  },
+  {
+    key: 'architecture_powder_gallery',
+    merchant_id: 'external_seed',
+    product_id: 'ext_2fb99143039e36fd802f0440',
+    title: 'Architecture Soft Matte Blurring Powder',
+    min_variant_count: 2,
   },
 ]);
 
@@ -130,6 +170,21 @@ function getSimilarItems(payload) {
   return Array.isArray(items) ? items : [];
 }
 
+function getCanonicalProduct(payload) {
+  const canonical = getModule(payload, 'canonical');
+  return canonical?.data?.pdp_payload?.product || null;
+}
+
+function getCanonicalGalleryItems(payload) {
+  const canonical = getModule(payload, 'canonical');
+  const modules = canonical?.data?.pdp_payload?.modules;
+  const mediaGallery = Array.isArray(modules)
+    ? modules.find((module) => module && module.type === 'media_gallery')
+    : null;
+  const items = mediaGallery?.data?.items;
+  return Array.isArray(items) ? items : [];
+}
+
 function buildGetPdpBody(target) {
   return {
     operation: 'get_pdp_v2',
@@ -173,6 +228,25 @@ function summarizePdpResponse(result, target) {
   const payload = result?.json || null;
   const similarModule = getModule(payload, 'similar');
   const similarItems = getSimilarItems(payload);
+  const canonicalProduct = getCanonicalProduct(payload);
+  const variants = Array.isArray(canonicalProduct?.variants) ? canonicalProduct.variants : [];
+  const selectedVariant = canonicalProduct?.selected_variant || variants[0] || null;
+  const selectedVariantImageUrls = selectedVariant
+    ? [
+        ...(Array.isArray(selectedVariant.image_urls) ? selectedVariant.image_urls : []),
+        ...(Array.isArray(selectedVariant.images) ? selectedVariant.images : []),
+        ...(selectedVariant.image_url ? [selectedVariant.image_url] : []),
+      ]
+    : [];
+  const selectedVariantImageKeys = new Set(
+    selectedVariantImageUrls
+      .map((url) => buildPdpImageDedupeKey(url))
+      .filter(Boolean),
+  );
+  const canonicalGalleryItems = getCanonicalGalleryItems(payload);
+  const canonicalGalleryUrls = canonicalGalleryItems
+    .map((item) => item?.url || item?.src || item?.image_url || null)
+    .filter(Boolean);
   const missingModules = Array.isArray(payload?.missing)
     ? payload.missing
         .map((item) => String(item?.type || '').trim())
@@ -192,6 +266,16 @@ function summarizePdpResponse(result, target) {
     has_similar_module: Boolean(similarModule),
     similar_count: similarItems.length,
     similar_titles: similarItems.map((item) => String(item?.title || '').trim()).filter(Boolean),
+    variant_count: variants.length,
+    selected_variant_title:
+      typeof selectedVariant?.title === 'string' && selectedVariant.title.trim()
+        ? selectedVariant.title.trim()
+        : null,
+    selected_variant_image_count: selectedVariantImageKeys.size,
+    canonical_gallery_count: canonicalGalleryUrls.length,
+    canonical_gallery_leaked_urls: canonicalGalleryUrls.filter(
+      (url) => !selectedVariantImageKeys.has(buildPdpImageDedupeKey(url)),
+    ),
     raw_error: result.error || null,
   };
 }
@@ -330,6 +414,37 @@ async function runFindSimilarPaginationCheck(baseGateway, timeoutMs, target) {
   };
 }
 
+function validateGalleryCase(target, summary) {
+  const errors = [];
+  const warnings = [];
+
+  if (!summary.ok) {
+    errors.push(`${target.key}: get_pdp_v2 failed (${summary.status || 0}) ${summary.raw_error || ''}`.trim());
+    return { errors, warnings };
+  }
+
+  const minVariantCount = Math.max(2, Number(target.min_variant_count || 2));
+  if (summary.variant_count < minVariantCount) {
+    errors.push(`${target.key}: variant_count ${summary.variant_count} below expected minimum ${minVariantCount}`);
+  }
+
+  if (summary.selected_variant_image_count <= 0) {
+    errors.push(`${target.key}: selected variant has no image set`);
+  }
+
+  if (summary.canonical_gallery_count <= 0) {
+    errors.push(`${target.key}: canonical media_gallery is empty`);
+  }
+
+  if (summary.canonical_gallery_leaked_urls.length) {
+    errors.push(
+      `${target.key}: canonical media_gallery leaked ${summary.canonical_gallery_leaked_urls.length} non-selected-variant image(s)`,
+    );
+  }
+
+  return { errors, warnings };
+}
+
 async function main() {
   const baseGateway = String(process.env.PDP_SMOKE_GATEWAY || DEFAULT_GATEWAY).trim();
   const timeoutMs = parsePositiveInt(process.env.PDP_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
@@ -384,6 +499,26 @@ async function main() {
       page2_count: pagination.page2_count,
     }),
   );
+
+  for (const target of GALLERY_CASES) {
+    const result = await timedFetchJson(baseGateway, buildGetPdpBody(target), timeoutMs);
+    const summary = summarizePdpResponse(result, target);
+    const validation = validateGalleryCase(target, summary);
+    allErrors.push(...validation.errors);
+    allWarnings.push(...validation.warnings);
+    console.log(
+      JSON.stringify({
+        key: target.key,
+        build_id: summary.build_id,
+        title: summary.title,
+        variant_count: summary.variant_count,
+        selected_variant_title: summary.selected_variant_title,
+        selected_variant_image_count: summary.selected_variant_image_count,
+        canonical_gallery_count: summary.canonical_gallery_count,
+        leaked_gallery_count: summary.canonical_gallery_leaked_urls.length,
+      }),
+    );
+  }
 
   if (allWarnings.length) {
     console.error('WARNINGS:');
