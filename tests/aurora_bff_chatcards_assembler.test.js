@@ -216,4 +216,24 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.cards).toHaveLength(1);
     expect(out.cards[0].type).toBe('nudge');
   });
+
+  test('passes through root mainline_status and context_warning from envelope', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        mainline_status: 'grounded_success',
+        context_warning: {
+          applied: true,
+          reasons: ['clarify_preferred'],
+        },
+      }),
+      ctx: makeCtx(),
+      intent: 'reco_products',
+    });
+
+    expect(out.mainline_status).toBe('grounded_success');
+    expect(out.context_warning).toEqual({
+      applied: true,
+      reasons: ['clarify_preferred'],
+    });
+  });
 });

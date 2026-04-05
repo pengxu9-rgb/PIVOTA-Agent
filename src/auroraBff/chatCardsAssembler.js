@@ -605,6 +605,8 @@ function buildChatCardsResponse({
     request_id: requestId,
     trace_id: traceId,
     assistant_text: assistantText,
+    ...(asString(base.mainline_status) ? { mainline_status: asString(base.mainline_status) } : {}),
+    ...(isPlainObject(base.context_warning) ? { context_warning: base.context_warning } : {}),
     assistant_message: assistantMessage,
     cards,
     follow_up_questions: followUpQuestions,

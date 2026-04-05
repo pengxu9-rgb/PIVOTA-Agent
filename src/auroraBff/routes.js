@@ -47425,10 +47425,7 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
         ? out.assistant_message.content
         : assistantText;
     const selectionContract = extractRecoFinalSelectionContract(recoPayload);
-    const shouldRebuildForSelectionContract =
-      recoPayload &&
-      selectionContract &&
-      !assistantTextMatchesRecoSelectionContract(currentAssistantText, selectionContract);
+    const shouldRebuildForSelectionContract = Boolean(recoPayload && selectionContract);
     if (
       recoPayload &&
       (
